@@ -13,6 +13,12 @@ export default [
     ignores: ['dist/**', 'node_modules/**', '.vite/**', 'coverage/**', '*.log'],
   },
   {
+    files: ['**/*.js', '**/*.jsx'],
+    rules: {
+      ...commonRules,
+    },
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsParser,
