@@ -10,10 +10,8 @@ const commonRules = {
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', '.vite/**', 'coverage/**', '*.log'],
   },
-  // Put prettier first so later configs can override it.
-  prettierConfig,
   {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
@@ -38,7 +36,6 @@ export default [
         parser: tsParser,
         ecmaVersion: 'latest',
         sourceType: 'module',
-        extraFileExtensions: ['.vue'],
       },
     },
     plugins: {
@@ -48,4 +45,6 @@ export default [
       ...commonRules,
     },
   },
+  // Keep this last to disable formatting rules that conflict with Prettier.
+  prettierConfig,
 ];
