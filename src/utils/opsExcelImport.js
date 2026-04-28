@@ -73,22 +73,6 @@ function buildDeptForestFromRows(rows) {
     forest.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
     return forest;
 }
-/** 带完整路径扁平化（用于组织架构条形图 TOP） */
-function flattenDeptTree(nodes, prefix = '') {
-    const out = [];
-    for (const n of nodes) {
-        const pathLabel = prefix ? `${prefix}/${n.name}` : n.name;
-        out.push({
-            name: pathLabel,
-            skills: n.skills,
-            downloads: n.downloads,
-        });
-        if (n.children && n.children.length > 0) {
-            out.push(...flattenDeptTree(n.children, pathLabel));
-        }
-    }
-    return out;
-}
 export function parseOpsExcelBuffer(buffer) {
     const workbook = XLSX.read(buffer, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
@@ -145,13 +129,24 @@ export function buildOpsDashboardBundle(rows) {
     const totalDownloads = rows.reduce((s, r) => s + r.downloadCount, 0);
     const activeSkills = rows.filter((r) => r.downloadCount > 0).length;
     const deptTree = buildDeptForestFromRows(rows);
-    const flatForBars = flattenDeptTree(deptTree);
-    flatForBars.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
-    const orgBars = flatForBars.slice(0, 8);
+    const orgLevelRows = rows.filter((r) => r.publishLevel.trim() === '组织级');
+    const orgAgg = new Map();
+    for (const r of orgLevelRows) {
+        const key = r.deptName.trim() || '未填写部门';
+        const cur = orgAgg.get(key) ?? { skills: 0, downloads: 0 };
+        cur.skills += 1;
+        cur.downloads += r.downloadCount;
+        orgAgg.set(key, cur);
+    }
+    const orgBars = [...orgAgg.entries()].map(([name, v]) => ({
+        name,
+        skills: v.skills,
+        downloads: v.downloads,
+    }));
     const sortedTop = [...rows].sort((a, b) => b.downloadCount - a.downloadCount);
     const topSkills = sortedTop.slice(0, 6).map((r, i) => ({
         rank: i + 1,
-        name: r.description || r.skillId,
+        name: r.skillId,
         dept: r.deptName.trim() || '未填写部门',
         downloads: r.downloadCount,
     }));

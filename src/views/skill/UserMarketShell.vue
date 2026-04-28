@@ -362,8 +362,29 @@ const uiOrgBars = computed(() =>
   opsImportedBundle.value ? opsImportedBundle.value.orgBars : defaultUiOrgBars,
 );
 
+const uiOrgBarsSorted = computed(() => {
+  const list = [...uiOrgBars.value];
+  if (opsBarMode.value === 'skills') {
+    return list.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
+  }
+  return list.sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
+});
+
+function orgBarLabel(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const parts = trimmed.split('/');
+  return parts[parts.length - 1]?.trim() || trimmed;
+}
+
+function minDeptLabel(name: string): string {
+  return orgBarLabel(name);
+}
+
 const uiOrgBarsMax = computed(() => {
-  const list = uiOrgBars.value.map((x: OrgBarRow) =>
+  const list = uiOrgBarsSorted.value.map((x: OrgBarRow) =>
     opsBarMode.value === 'skills' ? x.skills : x.downloads,
   );
   return Math.max(1, ...list);
@@ -953,8 +974,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           <section class="ops-panel-block">
             <div class="ops-panel-hd ops-panel-hd-row">
               <div>
-                <h3 class="ops-panel-title">组织架构 Skill 分布详情</h3>
-                <p class="ops-panel-sub">展示各业务单元或各子公司的 Skill 详情分布</p>
+                <h3 class="ops-panel-title">组织级 Skill 分布详情</h3>
+                <p class="ops-panel-sub">
+                  {{
+                    opsBarMode === 'skills'
+                      ? '按 Skill 数量倒序展示公司市场组织级 Skill'
+                      : '按下载量倒序展示公司市场组织级 Skill'
+                  }}
+                </p>
               </div>
               <div class="ops-toggle" role="group" aria-label="图表度量切换">
                 <button
@@ -963,7 +990,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   :class="{ on: opsBarMode === 'skills' }"
                   @click="opsBarMode = 'skills'"
                 >
-                  技能数
+                  按数量
                 </button>
                 <button
                   type="button"
@@ -971,13 +998,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   :class="{ on: opsBarMode === 'downloads' }"
                   @click="opsBarMode = 'downloads'"
                 >
-                  下载数量
+                  按下载量
                 </button>
               </div>
             </div>
             <div class="org-bar-list" role="list" aria-label="组织架构分布条形图">
-              <div v-for="row in uiOrgBars" :key="row.name" class="org-bar-row" role="listitem">
-                <div class="org-bar-label">{{ row.name }}</div>
+              <div v-for="row in uiOrgBarsSorted.slice(0, 8)" :key="row.name" class="org-bar-row" role="listitem">
+                <div class="org-bar-label" :title="row.name">{{ orgBarLabel(row.name) }}</div>
                 <div class="org-bar-track-wrap">
                   <div class="org-bar-track" aria-hidden="true">
                     <div
@@ -1006,8 +1033,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
         <section class="ops-top-section">
           <div class="ops-panel-hd">
-            <h3 class="ops-panel-title">TOP Skill (按下下载量)</h3>
-            <p class="ops-panel-sub">展示目前被收藏或下载数量最多的 Skill</p>
+            <h3 class="ops-panel-title">TOP Skill（按下载量）</h3>
+            <p class="ops-panel-sub">展示当前查询范围内下载量最高的Skill</p>
           </div>
           <ul class="ops-top-list" role="list">
             <li
@@ -1019,7 +1046,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <span class="ops-top-rank">{{ item.rank }}</span>
               <div class="ops-top-main">
                 <strong class="ops-top-name">{{ item.name }}</strong>
-                <span class="ops-top-dept">{{ item.dept }}</span>
+                <span class="ops-top-dept" :title="item.dept">{{ minDeptLabel(item.dept) }}</span>
               </div>
               <span class="ops-top-dl">{{ item.downloads }}</span>
             </li>

@@ -281,8 +281,26 @@ const defaultUiOrgBars = [
 const opsBarMode = ref('skills');
 const uiDeptTree = computed(() => opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree);
 const uiOrgBars = computed(() => opsImportedBundle.value ? opsImportedBundle.value.orgBars : defaultUiOrgBars);
+const uiOrgBarsSorted = computed(() => {
+    const list = [...uiOrgBars.value];
+    if (opsBarMode.value === 'skills') {
+        return list.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
+    }
+    return list.sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
+});
+function orgBarLabel(name) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+        return '';
+    }
+    const parts = trimmed.split('/');
+    return parts[parts.length - 1]?.trim() || trimmed;
+}
+function minDeptLabel(name) {
+    return orgBarLabel(name);
+}
 const uiOrgBarsMax = computed(() => {
-    const list = uiOrgBars.value.map((x) => opsBarMode.value === 'skills' ? x.skills : x.downloads);
+    const list = uiOrgBarsSorted.value.map((x) => opsBarMode.value === 'skills' ? x.skills : x.downloads);
     return Math.max(1, ...list);
 });
 const defaultUiTopSkillsByDl = [
@@ -1728,6 +1746,9 @@ else {
         ...{ class: "ops-panel-sub" },
     });
     /** @type {__VLS_StyleScopedClasses['ops-panel-sub']} */ ;
+    (__VLS_ctx.opsBarMode === 'skills'
+        ? '按 Skill 数量倒序展示公司市场组织级 Skill'
+        : '按下载量倒序展示公司市场组织级 Skill');
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "ops-toggle" },
         role: "group",
@@ -1744,7 +1765,7 @@ else {
                     return;
                 __VLS_ctx.opsBarMode = 'skills';
                 // @ts-ignore
-                [opsBarMode,];
+                [opsBarMode, opsBarMode,];
             } },
         type: "button",
         ...{ class: "ops-toggle-btn" },
@@ -1776,7 +1797,7 @@ else {
         'aria-label': "组织架构分布条形图",
     });
     /** @type {__VLS_StyleScopedClasses['org-bar-list']} */ ;
-    for (const [row] of __VLS_vFor((__VLS_ctx.uiOrgBars))) {
+    for (const [row] of __VLS_vFor((__VLS_ctx.uiOrgBarsSorted.slice(0, 8)))) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             key: (row.name),
             ...{ class: "org-bar-row" },
@@ -1785,9 +1806,10 @@ else {
         /** @type {__VLS_StyleScopedClasses['org-bar-row']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "org-bar-label" },
+            title: (row.name),
         });
         /** @type {__VLS_StyleScopedClasses['org-bar-label']} */ ;
-        (row.name);
+        (__VLS_ctx.orgBarLabel(row.name));
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "org-bar-track-wrap" },
         });
@@ -1814,7 +1836,7 @@ else {
             ? `${row.skills}个`
             : `${row.downloads}下载`);
         // @ts-ignore
-        [opsBarMode, opsBarMode, opsBarMode, uiOrgBars, uiOrgBarsMax,];
+        [opsBarMode, opsBarMode, opsBarMode, uiOrgBarsSorted, orgBarLabel, uiOrgBarsMax,];
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
         ...{ class: "ops-top-section" },
@@ -1860,16 +1882,17 @@ else {
         (item.name);
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
             ...{ class: "ops-top-dept" },
+            title: (item.dept),
         });
         /** @type {__VLS_StyleScopedClasses['ops-top-dept']} */ ;
-        (item.dept);
+        (__VLS_ctx.minDeptLabel(item.dept));
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
             ...{ class: "ops-top-dl" },
         });
         /** @type {__VLS_StyleScopedClasses['ops-top-dl']} */ ;
         (item.downloads);
         // @ts-ignore
-        [uiTopSkillsByDl,];
+        [uiTopSkillsByDl, minDeptLabel,];
     }
 }
 const __VLS_29 = UploadSkillModal;
