@@ -236,10 +236,10 @@ const opsImporting = ref(false);
 const opsExcelInputRef = ref(null);
 const uiOpsKpi = computed(() => opsImportedBundle.value ? opsImportedBundle.value.kpi : defaultOpsKpi);
 const uiOpsKpiDesc = {
-    totalSkills: '目前 Skill 的累计总数',
-    activeSkills: '近30天内有使用的 Skill 数',
+    totalSkills: '部门 Skill 分布总量',
+    activeSkills: '公司市场组织级 Skill 数量',
     personalSkills: '个人发布的 Skill 数量',
-    totalDownloads: '部门内活跃下载',
+    totalDownloads: '部门维度累计下载 Skill 数量',
 };
 const defaultUiDeptTree = [
     {

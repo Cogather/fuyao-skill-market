@@ -298,10 +298,10 @@ const uiOpsKpi = computed(() =>
 );
 
 const uiOpsKpiDesc = {
-  totalSkills: '目前 Skill 的累计总数',
-  activeSkills: '近30天内有使用的 Skill 数',
+  totalSkills: '部门 Skill 分布总量',
+  activeSkills: '公司市场组织级 Skill 数量',
   personalSkills: '个人发布的 Skill 数量',
-  totalDownloads: '部门内活跃下载',
+  totalDownloads: '部门维度累计下载 Skill 数量',
 } as const;
 
 type DeptTreeNode = {
@@ -908,12 +908,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
         <div class="ops-kpi-grid" role="group" aria-label="运营看板指标">
           <div class="ops-kpi-card">
-            <div class="ops-kpi-label">Skill 总数</div>
+            <div class="ops-kpi-label">总 Skill 数</div>
             <div class="ops-kpi-value">{{ uiOpsKpi.totalSkills }}</div>
             <div class="ops-kpi-desc">{{ uiOpsKpiDesc.totalSkills }}</div>
           </div>
           <div class="ops-kpi-card">
-            <div class="ops-kpi-label">活跃 Skill</div>
+            <div class="ops-kpi-label">组织级 Skill</div>
             <div class="ops-kpi-value">{{ uiOpsKpi.activeSkills }}</div>
             <div class="ops-kpi-desc">{{ uiOpsKpiDesc.activeSkills }}</div>
           </div>

@@ -127,9 +127,9 @@ export function buildOpsDashboardBundle(rows) {
     const totalSkills = rows.length;
     const personalSkills = rows.filter((r) => r.publishLevel.includes('个人')).length;
     const totalDownloads = rows.reduce((s, r) => s + r.downloadCount, 0);
-    const activeSkills = rows.filter((r) => r.downloadCount > 0).length;
     const deptTree = buildDeptForestFromRows(rows);
     const orgLevelRows = rows.filter((r) => r.publishLevel.trim() === '组织级');
+    const activeSkills = orgLevelRows.length;
     const orgAgg = new Map();
     for (const r of orgLevelRows) {
         const key = r.deptName.trim() || '未填写部门';
