@@ -25,6 +25,9 @@ export interface SkillVersionEntry {
   version: string;
   publishTime: string;
   note?: string;
+  packageFileName?: string;
+  packageSize?: number;
+  packageBlob?: Blob;
 }
 
 export type MarketPerspective = 'user' | 'admin';
@@ -40,3 +43,35 @@ export type OverviewQuickFilter =
   | 'productLine'
   | 'recent'
   | 'highDl';
+
+export type SkillMarketScope = 'all' | 'personal' | 'devDept' | 'pdu' | 'productLine';
+
+export interface SkillUploadPayload {
+  name: string;
+  publisher?: string;
+  userId?: string;
+  note?: string;
+  file?: File | null;
+  scopeLabel?: string;
+  tagFunctional?: string;
+}
+
+export interface SkillUploadResponse {
+  created: boolean;
+  skill: Skill;
+}
+
+export interface SkillListQuery {
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+  scope?: SkillMarketScope;
+}
+
+export interface SkillListResponse {
+  list: Skill[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
