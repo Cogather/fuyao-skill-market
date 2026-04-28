@@ -1,13 +1,20 @@
-<script setup lang="ts">
-import { computed, ref } from 'vue';
-import type { OverviewQuickFilter, UserInnerTab } from '../../types/skill';
+﻿<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
-import type { Skill } from '../../types/skill';
+import type {
+  OverviewQuickFilter,
+  Skill,
+  SkillMarketScope,
+  SkillUploadPayload,
+  UserInnerTab,
+} from '../../types/skill';
+import type { OpsDashboardBundle } from '../../utils/opsExcelImport';
+import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 
 const store = useSkillMarketStore();
-const { skills } = store;
+const { skills, totalDownloads, totalSkills, downloadsLast30Days, orgCount } = store;
 
 const innerTab = ref<UserInnerTab>('overview');
 const uploadOpen = ref(false);
@@ -15,9 +22,9 @@ const search = ref('');
 const levelFilter = ref('all');
 const sceneFilter = ref('all');
 const quickFilter = ref<OverviewQuickFilter>('all');
-
+const page = ref(1);
+const pageSize = 8;
 const toast = ref('');
-
 const versionPanelSkill = ref<Skill | null>(null);
 
 const quickEntries: { key: OverviewQuickFilter; label: string }[] = [
@@ -30,62 +37,27 @@ const quickEntries: { key: OverviewQuickFilter; label: string }[] = [
   { key: 'highDl', label: '高下载' },
 ];
 
-function comparePublishTime(a: Skill, b: Skill): number {
-  if (a.latestPublishTime === b.latestPublishTime) {
-    return 0;
-  }
-  return a.latestPublishTime < b.latestPublishTime ? 1 : -1;
+function toListScope(filter: OverviewQuickFilter): SkillMarketScope {
+  return ['personal', 'devDept', 'pdu', 'productLine'].includes(filter)
+    ? (filter as SkillMarketScope)
+    : 'all';
 }
 
-const filteredSkills = computed(() => {
-  let list = [...skills.value];
-  const q = search.value.trim().toLowerCase();
-  if (q) {
-    list = list.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.publisher.toLowerCase().includes(q) ||
-        s.level.toLowerCase().includes(q) ||
-        s.tagOrg.toLowerCase().includes(q) ||
-        s.tagFunctional.toLowerCase().includes(q),
-    );
-  }
-  if (quickFilter.value === 'personal') {
-    list = list.filter(
-      (s) =>
-        s.tagOrg.includes('个人') ||
-        s.publisher.includes('个人') ||
-        Boolean(s.ownedByUser),
-    );
-  }
-  if (quickFilter.value === 'devDept') {
-    list = list.filter((s) => s.tagFunctional === '开发' || s.tagOrg.includes('开发部'));
-  }
-  if (quickFilter.value === 'pdu') {
-    list = list.filter((s) => s.tagOrg.includes('PDU') || s.level.includes('PDU'));
-  }
-  if (quickFilter.value === 'productLine') {
-    list = list.filter((s) => s.tagOrg.includes('产品线') || s.level.includes('产品线'));
-  }
-  if (quickFilter.value === 'recent') {
-    list = [...list].sort(comparePublishTime).slice(0, 4);
-  }
-  if (quickFilter.value === 'highDl') {
-    list = list.filter((s) => s.downloads >= 3000);
-  }
-  if (levelFilter.value !== 'all') {
-    list = list.filter((s) => s.level.includes(levelFilter.value));
-  }
-  if (sceneFilter.value === 'review') {
-    list = list.filter((s) => s.name.includes('Review') || s.name.includes('审查'));
-  }
-  if (sceneFilter.value === 'cicd') {
-    list = list.filter((s) => s.name.toUpperCase().includes('CI') || s.name.includes('流水线'));
-  }
-  return list;
-});
+const listResponse = computed(() =>
+  store.listSkills({
+    keyword: search.value,
+    page: page.value,
+    pageSize,
+    scope: toListScope(quickFilter.value),
+  }),
+);
 
-const myReleases = computed(() => skills.value.filter((s) => s.ownedByUser));
+const filteredSkills = computed(() => listResponse.value.list);
+const myReleases = computed(() => skills.value.filter((skill) => skill.ownedByUser));
+
+watch([search, quickFilter], () => {
+  page.value = 1;
+});
 
 function openUpload(): void {
   uploadOpen.value = true;
@@ -95,34 +67,49 @@ function goTab(tab: UserInnerTab): void {
   innerTab.value = tab;
 }
 
-function onUploadSubmit(payload: { name: string; publisher: string; note: string }): void {
-  try {
-    const r = store.uploadSkill(payload);
-    if (r.created) {
-      toast.value = `已发布新 Skill「${r.skill.name}」v${r.skill.version}`;
-    } else {
-      toast.value = `同名 Skill 已更新为 v${r.skill.version}（版本追加）`;
-    }
-  } catch (e) {
-    toast.value = e instanceof Error ? e.message : '上传失败';
-  }
+function showToast(message: string, ms = 3000): void {
+  toast.value = message;
   setTimeout(() => {
     toast.value = '';
-  }, 4000);
+  }, ms);
+}
+
+function onUploadSubmit(payload: SkillUploadPayload): void {
+  try {
+    const result = store.uploadSkill(payload);
+    page.value = 1;
+    showToast(
+      result.created
+        ? `已发布新 Skill「${result.skill.name}」v${result.skill.version}`
+        : `同名 Skill 已更新为 v${result.skill.version}（版本追加）`,
+      4000,
+    );
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '上传失败');
+  }
 }
 
 function onDownload(id: string): void {
-  store.recordDownload(id);
-  toast.value = '已开始下载（演示：下载量 +1）';
-  setTimeout(() => {
-    toast.value = '';
-  }, 2500);
+  try {
+    const result = store.downloadSkill(id);
+    const url = URL.createObjectURL(result.blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = result.fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast(`已下载当前版本：${result.skill.name} v${result.skill.version}`);
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '下载失败');
+  }
 }
 
 function onViewVersions(id: string): void {
-  const s = skills.value.find((x) => x.id === id);
-  if (s) {
-    versionPanelSkill.value = s;
+  const skill = skills.value.find((item) => item.id === id);
+  if (skill) {
+    versionPanelSkill.value = skill;
   }
 }
 
@@ -130,13 +117,13 @@ function closeVersionPanel(): void {
   versionPanelSkill.value = null;
 }
 
-// 为贴近 UI 设计稿：指标展示按稿面数值
-const uiStats = {
-  skills: '128',
-  totalDownloads: '48,260',
-  last30Days: '4,826',
-  orgs: '16',
-} as const;
+function prevPage(): void {
+  page.value = Math.max(1, page.value - 1);
+}
+
+function nextPage(): void {
+  page.value = Math.min(listResponse.value.totalPages, page.value + 1);
+}
 
 // 为贴近 UI 设计稿：我的发布指标按稿面数值
 const uiMyStats = {
@@ -294,134 +281,276 @@ function onUploadExistingVersion(): void {
   openUpload();
 }
 
-// 为贴近 UI 设计稿：运营看板的数据展示按稿面数值
-const uiOpsStats = {
-  totalSkills: '128',
-  totalDownloads: '48,260',
-  last30Days: '4,826',
-  upgradeRequests: '18',
-  activeMaintainers: '42',
+/** 运营看板：导入前展示设计稿默认数值 */
+const defaultOpsKpi = {
+  totalSkills: '334',
+  activeSkills: '125',
+  personalSkills: '44',
+  totalDownloads: '508',
 } as const;
 
-const uiLevelDist = [
-  { key: 'personal', label: '个人', count: 44, color: '#1677ff' },
-  { key: 'dev', label: '开发部', count: 42, color: '#1677ff' },
-  { key: 'pdu', label: 'PDU', count: 27, color: '#1677ff' },
-  { key: 'pl', label: '产品线', count: 15, color: '#1677ff' },
-] as const;
+const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
+const opsImporting = ref(false);
+const opsExcelInputRef = ref<HTMLInputElement | null>(null);
 
-const uiPduRank = [
-  { label: 'PDU-终端安全', count: 27 },
-  { label: 'PDU-云平台', count: 21 },
-  { label: 'PDU-智能座舱', count: 17 },
-] as const;
-
-const uiDevRank = [
-  { label: '终端安全开发一部', count: 18 },
-  { label: '终端安全开发二部', count: 15 },
-  { label: '云服务开发部', count: 12 },
-  { label: '平台工具开发部', count: 8 },
-] as const;
-
-const uiTopSkills = computed(() =>
-  [...skills.value]
-    .sort((a, b) => b.downloads - a.downloads)
-    .slice(0, 5)
-    .map((s, idx) => ({
-      rank: idx + 1,
-      name: s.name,
-      level: s.level.includes('·') ? s.level.split('·')[0].trim() : s.level,
-      downloads: s.downloads,
-    })),
+const uiOpsKpi = computed(() =>
+  opsImportedBundle.value ? opsImportedBundle.value.kpi : defaultOpsKpi,
 );
 
-type OpsSceneKey = 'dev' | 'test' | 'maint' | 'design' | 'office' | 'other';
+const uiOpsKpiDesc = {
+  totalSkills: '部门 Skill 分布总量',
+  activeSkills: '公司市场组织级 Skill 数量',
+  personalSkills: '个人发布的 Skill 数量',
+  totalDownloads: '部门维度累计下载 Skill 数量',
+} as const;
 
-const uiSceneDist: {
-  key: OpsSceneKey;
-  label: string;
-  percent: number;
-  color: string;
+type DeptTreeNode = {
+  name: string;
   skills: number;
   downloads: number;
-  top: string;
-}[] = [
+  children?: DeptTreeNode[];
+};
+
+const defaultUiDeptTree: DeptTreeNode[] = [
   {
-    key: 'dev',
-    label: '开发',
-    percent: 32.8,
-    color: '#1677ff',
-    skills: 42,
-    downloads: 18600,
-    top: 'Java 代码 Review 助手',
+    name: '云化端到端经营管理部',
+    skills: 165,
+    downloads: 253,
+    children: [
+      { name: '智能数据产品部', skills: 61, downloads: 83 },
+      { name: '物联平台部', skills: 55, downloads: 31 },
+      { name: '质量工具组', skills: 38, downloads: 25 },
+      { name: '平台工具组', skills: 15, downloads: 23 },
+    ],
   },
   {
-    key: 'test',
-    label: '测试',
-    percent: 18.0,
-    color: '#722ed1',
-    skills: 23,
-    downloads: 9420,
-    top: '测试用例生成 Skill',
+    name: '联通业务部',
+    skills: 12,
+    downloads: 20,
   },
   {
-    key: 'maint',
-    label: '维护',
-    percent: 14.8,
-    color: '#13c2c2',
-    skills: 19,
-    downloads: 7840,
-    top: '日志分析 Skill',
-  },
-  {
-    key: 'design',
-    label: '设计',
-    percent: 12.5,
-    color: '#faad14',
-    skills: 16,
-    downloads: 6300,
-    top: '接口设计检查 Skill',
-  },
-  {
-    key: 'office',
-    label: '办公',
-    percent: 16.4,
-    color: '#52c41a',
-    skills: 21,
-    downloads: 5760,
-    top: '迭代周报生成 Skill',
-  },
-  {
-    key: 'other',
-    label: '其他',
-    percent: 5.5,
-    color: '#bfbfbf',
-    skills: 7,
-    downloads: 1240,
-    top: '通用问答 Skill',
+    name: '设备能源产品部',
+    skills: 4,
+    downloads: 4,
+    children: [
+      { name: '产品建设一组', skills: 1, downloads: 1 },
+      { name: '物资管理案部', skills: 1, downloads: 1 },
+    ],
   },
 ];
 
-const donutSegments = computed(() => {
-  const total = uiSceneDist.reduce((sum, x) => sum + x.percent, 0);
-  const normalized = uiSceneDist.map((x) => ({
-    ...x,
-    pct: total > 0 ? x.percent / total : 0,
-  }));
-  let acc = 0;
-  return normalized.map((x) => {
-    const start = acc;
-    acc += x.pct;
-    return {
-      ...x,
-      dash: `${(x.pct * 100).toFixed(4)} ${(100 - x.pct * 100).toFixed(4)}`,
-      offset: (100 - start * 100).toFixed(4),
-    };
-  });
+type OrgBarRow = { name: string; skills: number; downloads: number };
+
+const defaultUiOrgBars: OrgBarRow[] = [
+  { name: '项目管理部', skills: 31, downloads: 186 },
+  { name: '平台二部部', skills: 24, downloads: 142 },
+  { name: '质量工具组', skills: 18, downloads: 96 },
+  { name: '平台工具组', skills: 15, downloads: 88 },
+  { name: '二层系统', skills: 12, downloads: 62 },
+  { name: 'R&D测试', skills: 10, downloads: 51 },
+  { name: '业务运营组', skills: 9, downloads: 38 },
+  { name: '数据库运营', skills: 8, downloads: 29 },
+];
+
+const opsBarMode = ref<'skills' | 'downloads'>('skills');
+
+const uiDeptTree = computed(() =>
+  opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree,
+);
+
+const uiOrgBars = computed(() =>
+  opsImportedBundle.value ? opsImportedBundle.value.orgBars : defaultUiOrgBars,
+);
+
+const uiOrgBarsSorted = computed(() => {
+  const list = [...uiOrgBars.value];
+  if (opsBarMode.value === 'skills') {
+    return list.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
+  }
+  return list.sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
 });
+
+function orgBarLabel(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const parts = trimmed.split('/');
+  return parts[parts.length - 1]?.trim() || trimmed;
+}
+
+function minDeptLabel(name: string): string {
+  return orgBarLabel(name);
+}
+
+const uiOrgBarsMax = computed(() => {
+  const list = uiOrgBarsSorted.value.map((x: OrgBarRow) =>
+    opsBarMode.value === 'skills' ? x.skills : x.downloads,
+  );
+  return Math.max(1, ...list);
+});
+
+const defaultUiTopSkillsByDl: {
+  rank: number;
+  name: string;
+  dept: string;
+  downloads: number;
+}[] = [
+  { rank: 1, name: 'Java 代码 Review 助手', dept: '门诊系统部', downloads: 43 },
+  { rank: 2, name: '投口指标统计 Skill', dept: '门诊系统部', downloads: 41 },
+  { rank: 3, name: '部门 Merit 生成 Skill', dept: '门诊系统部', downloads: 40 },
+  { rank: 4, name: 'CICD 发布效率 Skill', dept: '平台工具组', downloads: 18 },
+  { rank: 5, name: '部署开发资源 Skill', dept: '平台工程部', downloads: 14 },
+  { rank: 6, name: '质量日工效率 Skill', dept: '平台工程部', downloads: 10 },
+];
+
+const uiTopSkillsByDl = computed(() =>
+  opsImportedBundle.value
+    ? opsImportedBundle.value.topSkills
+    : defaultUiTopSkillsByDl,
+);
+
+type FlatDeptRow = { name: string; skills: number; downloads: number; depth: number };
+
+type FlatDeptRowV2 = FlatDeptRow & { path: string; hasChildren: boolean; expanded: boolean };
+
+const expandedDeptPaths = ref<Set<string>>(new Set());
+
+watch(
+  uiDeptTree,
+  (tree) => {
+    const next = new Set<string>();
+    for (const n of tree) {
+      next.add(n.name);
+    }
+    expandedDeptPaths.value = next;
+  },
+  { immediate: true },
+);
+
+function toggleDeptExpand(path: string): void {
+  const next = new Set(expandedDeptPaths.value);
+  if (next.has(path)) {
+    next.delete(path);
+  } else {
+    next.add(path);
+  }
+  expandedDeptPaths.value = next;
+}
+
+function flattenDeptTreeVisible(
+  nodes: DeptTreeNode[],
+  depth = 0,
+  parentPath = '',
+): FlatDeptRowV2[] {
+  const out: FlatDeptRowV2[] = [];
+  for (const n of nodes) {
+    const path = parentPath ? `${parentPath}/${n.name}` : n.name;
+    const hasChildren = Boolean(n.children && n.children.length > 0);
+    const expanded = hasChildren ? expandedDeptPaths.value.has(path) : false;
+    out.push({
+      path,
+      name: n.name,
+      skills: n.skills,
+      downloads: n.downloads,
+      depth,
+      hasChildren,
+      expanded,
+    });
+    if (hasChildren && expanded) {
+      out.push(...flattenDeptTreeVisible(n.children!, depth + 1, path));
+    }
+  }
+  return out;
+}
+
+const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
+
+function triggerOpsExcelImport(): void {
+  opsExcelInputRef.value?.click();
+}
+
+async function onOpsExcelFileChange(ev: Event): Promise<void> {
+  const input = ev.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) {
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    showToast('请上传 .xlsx 格式的 Excel 文件');
+    input.value = '';
+    return;
+  }
+  opsImporting.value = true;
+  try {
+    const buf = await file.arrayBuffer();
+    const rows = parseOpsExcelBuffer(buf);
+    if (rows.length === 0) {
+      showToast('Excel 中没有可解析的数据行');
+      input.value = '';
+      return;
+    }
+    opsImportedBundle.value = buildOpsDashboardBundle(rows);
+    showToast(`已导入 ${rows.length} 条 Skill，运营看板已更新`);
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : 'Excel 解析失败');
+  } finally {
+    opsImporting.value = false;
+    input.value = '';
+  }
+}
 </script>
 
 <template>
+  <div class="user-shell">
+<!-- 
+    <section class="panel two-col">
+      <div>
+        <h2>我的发布</h2>
+        <p v-if="myReleases.length === 0" class="muted">上传后会出现在这里。</p>
+        <ul v-else class="plain-list">
+          <li v-for="skill in myReleases" :key="skill.id">
+            <strong>{{ skill.name }}</strong>
+            <span>v{{ skill.version }} · {{ skill.latestPublishTime }}</span>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h2>TOP 使用 Skill</h2>
+        <ul class="plain-list">
+          <li v-for="skill in topSkills" :key="skill.id">
+            <strong>{{ skill.name }}</strong>
+            <span>{{ skill.downloads.toLocaleString('zh-CN') }} 次下载</span>
+          </li>
+        </ul>
+      </div>
+    </section> -->
+
+    <UploadSkillModal v-model="uploadOpen" @submit="onUploadSubmit" />
+
+    <Teleport to="body">
+      <div v-if="versionPanelSkill" class="overlay" role="presentation" @click.self="closeVersionPanel">
+        <div class="v-dialog" role="dialog" aria-modal="true">
+          <div class="v-head">
+            <strong>{{ versionPanelSkill.name }}</strong>
+            <button type="button" class="close-x" aria-label="关闭" @click="closeVersionPanel">x</button>
+          </div>
+          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version }}</p>
+          <ul class="v-list">
+            <li v-for="version in [...versionPanelSkill.versions].reverse()" :key="version.version + version.publishTime">
+              <span class="ver">{{ version.version }}</span>
+              <span class="time">{{ version.publishTime }}</span>
+              <span v-if="version.packageFileName" class="note">{{ version.packageFileName }}</span>
+              <span v-if="version.note" class="note">{{ version.note }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </Teleport>
+
+    <div v-if="toast" class="toast" role="status">{{ toast }}</div>
+  </div>
+  <!-- <p>--------------------------------这是分界线--------------------------------</p> -->
   <div class="user-shell">
     <section class="hero">
       <div class="hero-inner">
@@ -486,22 +615,22 @@ const donutSegments = computed(() => {
       <div class="stats-strip" role="group" aria-label="市场指标">
         <div class="stat-cell">
           <span class="stat-k">Skill</span>
-          <span class="stat-v">{{ uiStats.skills }}</span>
+          <span class="stat-v">{{ totalSkills }}</span>
         </div>
         <div class="stat-div" aria-hidden="true" />
         <div class="stat-cell">
           <span class="stat-k">累计下载</span>
-          <span class="stat-v">{{ uiStats.totalDownloads }}</span>
+          <span class="stat-v">{{ totalDownloads.toLocaleString('zh-CN') }}</span>
         </div>
         <div class="stat-div" aria-hidden="true" />
         <div class="stat-cell">
           <span class="stat-k">近 30 天下载</span>
-          <span class="stat-v">{{ uiStats.last30Days }}</span>
+          <span class="stat-v">{{ downloadsLast30Days.toLocaleString('zh-CN') }}</span>
         </div>
         <div class="stat-div" aria-hidden="true" />
         <div class="stat-cell">
           <span class="stat-k">覆盖组织</span>
-          <span class="stat-v">{{ uiStats.orgs }}</span>
+          <span class="stat-v">{{ orgCount }}</span>
         </div>
       </div>
 
@@ -526,7 +655,7 @@ const donutSegments = computed(() => {
             v-model="search"
             class="search"
             type="search"
-            placeholder="搜索 Skill 名称 / 维护方 / 目标系统"
+            placeholder="通过 Skill 名称搜索"
           />
           <select v-model="levelFilter" class="select">
             <option value="all">全部层级 / 全部组织</option>
@@ -542,7 +671,7 @@ const donutSegments = computed(() => {
         </div>
       </div>
 
-      <div class="grid">
+      <div v-if="filteredSkills.length > 0" class="grid">
         <SkillCard
           v-for="s in filteredSkills"
           :key="s.id"
@@ -551,6 +680,25 @@ const donutSegments = computed(() => {
           @download="onDownload"
           @view-versions="onViewVersions"
         />
+      </div>
+      <p v-else class="empty">暂无匹配的 Skill</p>
+
+      <div class="pager">
+        <span>
+          共 {{ listResponse.total }} 个 Skill · 第 {{ listResponse.page }} /
+          {{ listResponse.totalPages }} 页
+        </span>
+        <div class="pager-actions">
+          <button type="button" class="mini" :disabled="page <= 1" @click="prevPage">上一页</button>
+          <button
+            type="button"
+            class="mini"
+            :disabled="page >= listResponse.totalPages"
+            @click="nextPage"
+          >
+            下一页
+          </button>
+        </div>
       </div>
     </div>
 
@@ -734,169 +882,177 @@ const donutSegments = computed(() => {
     </div>
 
     <div v-else class="panel tab-panel ops">
-      <div class="ops-alert" role="note" aria-label="运营看板提示">
-        <strong>运营看板口径</strong>：只统计 Skill，不统计 CoreHarness。普通用户和管理员都可以看到运营看板，用于对比趋势。
-      </div>
+      <section class="ops-dashboard-card" aria-label="Skill 运营看板">
+        <header class="ops-dash-top">
+          <h2 class="ops-dash-title">Skill 运营看板</h2>
+          <div class="ops-dash-meta">
+            <span class="ops-dash-note">数据统计至：T+1 (统计更新延迟1天)</span>
+            <input
+              ref="opsExcelInputRef"
+              class="visually-hidden"
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              aria-label="选择运营看板 Excel 文件"
+              @change="onOpsExcelFileChange"
+            />
+            <button
+              type="button"
+              class="btn outline sm ops-import-btn"
+              :disabled="opsImporting"
+              @click="triggerOpsExcelImport"
+            >
+              {{ opsImporting ? '导入中…' : 'Excel 导入' }}
+            </button>
+          </div>
+        </header>
 
-      <div class="ops-kpis" role="group" aria-label="运营指标">
-        <div class="kpi-card">
-          <div class="kpi-k">Skill 总数量</div>
-          <div class="kpi-v">{{ uiOpsStats.totalSkills }}</div>
-          <div class="kpi-sub">Skill，不含 CoreHarness</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-k">总下载量</div>
-          <div class="kpi-v">{{ uiOpsStats.totalDownloads }}</div>
-          <div class="kpi-sub">Skill 累计下载</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-k">全市场近 30 天下载</div>
-          <div class="kpi-v">{{ uiOpsStats.last30Days }}</div>
-          <div class="kpi-sub">Skill 近 30 天下载量</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-k">升级申请中</div>
-          <div class="kpi-v">{{ uiOpsStats.upgradeRequests }}</div>
-          <div class="kpi-sub">开发部 / PDU / 产品线审核中</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-k">活跃维护人</div>
-          <div class="kpi-v">{{ uiOpsStats.activeMaintainers }}</div>
-          <div class="kpi-sub">近 30 天有过维护动作</div>
-        </div>
-      </div>
-
-      <section class="ops-count-block">
-        <div class="blk-head">
-          <h3 class="blk-title">层级数量分布</h3>
-          <p class="blk-help">个人、开发部、PDU、产品线四层级 Skill 分布，一键看趋势。</p>
-        </div>
-        <div class="lvl-bars" role="list" aria-label="层级分布条">
-          <div v-for="x in uiLevelDist" :key="x.key" class="lvl-row" role="listitem">
-            <div class="lvl-name">{{ x.label }}</div>
-            <div class="lvl-track" aria-hidden="true">
-              <div
-                class="lvl-fill"
-                :style="{ width: `${(x.count / uiLevelDist[0].count) * 100}%` }"
-              />
-            </div>
-            <div class="lvl-num">{{ x.count }}</div>
+        <div class="ops-kpi-grid" role="group" aria-label="运营看板指标">
+          <div class="ops-kpi-card">
+            <div class="ops-kpi-label">总 Skill 数</div>
+            <div class="ops-kpi-value">{{ uiOpsKpi.totalSkills }}</div>
+            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.totalSkills }}</div>
+          </div>
+          <div class="ops-kpi-card">
+            <div class="ops-kpi-label">组织级 Skill</div>
+            <div class="ops-kpi-value">{{ uiOpsKpi.activeSkills }}</div>
+            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.activeSkills }}</div>
+          </div>
+          <div class="ops-kpi-card">
+            <div class="ops-kpi-label">个人级 Skill</div>
+            <div class="ops-kpi-value">{{ uiOpsKpi.personalSkills }}</div>
+            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.personalSkills }}</div>
+          </div>
+          <div class="ops-kpi-card">
+            <div class="ops-kpi-label">累计下载量</div>
+            <div class="ops-kpi-value">{{ uiOpsKpi.totalDownloads }}</div>
+            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.totalDownloads }}</div>
           </div>
         </div>
+
+        <div class="ops-mid-2col">
+          <section class="ops-panel-block">
+            <div class="ops-panel-hd">
+              <h3 class="ops-panel-title">部门 Skill 分布详情</h3>
+              <p class="ops-panel-sub">展示了主要部门及各子部门在该平台上的 Skill 情况</p>
+            </div>
+            <div class="dept-tree-wrap">
+              <div class="dept-tree-head">
+                <span class="dt-col-name">部门名称</span>
+                <span class="dt-col-num">Skill 数量</span>
+                <span class="dt-col-num">下载次数</span>
+              </div>
+              <div class="dept-tree-body" role="list">
+                <div
+                  v-for="row in uiDeptFlat"
+                  :key="row.path"
+                  class="dept-tree-row"
+                  :class="{ child: row.depth > 0 }"
+                  role="listitem"
+                  :style="{ paddingLeft: `${12 + row.depth * 20}px` }"
+                >
+                  <span class="dt-name">
+                    <button
+                      v-if="row.hasChildren"
+                      type="button"
+                      class="dt-toggle"
+                      :aria-label="row.expanded ? '收起' : '展开'"
+                      @click.stop="toggleDeptExpand(row.path)"
+                    >
+                      <span class="dt-caret" :class="{ on: row.expanded }" aria-hidden="true" />
+                    </button>
+                    <span v-else class="dt-toggle-spacer" aria-hidden="true" />
+                    <span v-if="row.depth > 0" class="dt-bullet" aria-hidden="true">·</span>
+                    {{ row.name }}
+                  </span>
+                  <span class="dt-skills">{{ row.skills }}个</span>
+                  <span class="dt-dl">{{ row.downloads }}下载</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="ops-panel-block">
+            <div class="ops-panel-hd ops-panel-hd-row">
+              <div>
+                <h3 class="ops-panel-title">组织级 Skill 分布详情</h3>
+                <p class="ops-panel-sub">
+                  {{
+                    opsBarMode === 'skills'
+                      ? '按 Skill 数量倒序展示公司市场组织级 Skill'
+                      : '按下载量倒序展示公司市场组织级 Skill'
+                  }}
+                </p>
+              </div>
+              <div class="ops-toggle" role="group" aria-label="图表度量切换">
+                <button
+                  type="button"
+                  class="ops-toggle-btn"
+                  :class="{ on: opsBarMode === 'skills' }"
+                  @click="opsBarMode = 'skills'"
+                >
+                  按数量
+                </button>
+                <button
+                  type="button"
+                  class="ops-toggle-btn"
+                  :class="{ on: opsBarMode === 'downloads' }"
+                  @click="opsBarMode = 'downloads'"
+                >
+                  按下载量
+                </button>
+              </div>
+            </div>
+            <div class="org-bar-list" role="list" aria-label="组织架构分布条形图">
+              <div v-for="row in uiOrgBarsSorted.slice(0, 8)" :key="row.name" class="org-bar-row" role="listitem">
+                <div class="org-bar-label" :title="row.name">{{ orgBarLabel(row.name) }}</div>
+                <div class="org-bar-track-wrap">
+                  <div class="org-bar-track" aria-hidden="true">
+                    <div
+                      class="org-bar-fill"
+                      :style="{
+                        width: `${
+                          ((opsBarMode === 'skills' ? row.skills : row.downloads) /
+                            uiOrgBarsMax) *
+                          100
+                        }%`,
+                      }"
+                    />
+                  </div>
+                </div>
+                <div class="org-bar-val">
+                  {{
+                    opsBarMode === 'skills'
+                      ? `${row.skills}个`
+                      : `${row.downloads}下载`
+                  }}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="ops-top-section">
+          <div class="ops-panel-hd">
+            <h3 class="ops-panel-title">TOP Skill（按下载量）</h3>
+            <p class="ops-panel-sub">展示当前查询范围内下载量最高的Skill</p>
+          </div>
+          <ul class="ops-top-list" role="list">
+            <li
+              v-for="item in uiTopSkillsByDl"
+              :key="`${item.rank}-${item.name}-${item.downloads}`"
+              class="ops-top-row"
+              role="listitem"
+            >
+              <span class="ops-top-rank">{{ item.rank }}</span>
+              <div class="ops-top-main">
+                <strong class="ops-top-name">{{ item.name }}</strong>
+                <span class="ops-top-dept" :title="item.dept">{{ minDeptLabel(item.dept) }}</span>
+              </div>
+              <span class="ops-top-dl">{{ item.downloads }}</span>
+            </li>
+          </ul>
+        </section>
       </section>
-
-      <div class="ops-2col">
-        <section class="ops-block">
-          <div class="blk-head">
-            <h3 class="blk-title">PDU 排名</h3>
-            <p class="blk-help">按具体 PDU 展示 Skill 发布数量，兼容查看下载量 TOP 5 Skill。</p>
-          </div>
-          <div class="rank-list" role="list" aria-label="PDU 排名列表">
-            <div v-for="(x, i) in uiPduRank" :key="x.label" class="rank-row" role="listitem">
-              <div class="rank-left">
-                <span class="rk">{{ i + 1 }}.</span>
-                <strong class="rname">{{ x.label }}</strong>
-              </div>
-              <div class="rank-right">
-                <span class="rcount">{{ x.count }} 个 Skill</span>
-              </div>
-              <div class="rbar" aria-hidden="true">
-                <div class="rfill" :style="{ width: `${(x.count / uiPduRank[0].count) * 100}%` }" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="ops-block">
-          <div class="blk-head">
-            <h3 class="blk-title">开发部排名</h3>
-            <p class="blk-help">按具体开发部展示 Skill 发布数量，兼容查看下载量 TOP 5 Skill。</p>
-          </div>
-          <div class="rank-list" role="list" aria-label="开发部排名列表">
-            <div v-for="(x, i) in uiDevRank" :key="x.label" class="rank-row" role="listitem">
-              <div class="rank-left">
-                <span class="rk">{{ i + 1 }}.</span>
-                <strong class="rname">{{ x.label }}</strong>
-              </div>
-              <div class="rank-right">
-                <span class="rcount">{{ x.count }} 个 Skill</span>
-              </div>
-              <div class="rbar" aria-hidden="true">
-                <div class="rfill" :style="{ width: `${(x.count / uiDevRank[0].count) * 100}%` }" />
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div class="ops-2col bottom">
-        <section class="ops-block">
-          <div class="blk-head">
-            <h3 class="blk-title">TOP 使用 Skill</h3>
-            <p class="blk-help">仅统计 Skill。</p>
-          </div>
-          <div class="table-wrap">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th style="width: 72px">排名</th>
-                  <th>Skill</th>
-                  <th style="width: 120px">层级</th>
-                  <th style="width: 120px">下载量</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="x in uiTopSkills" :key="x.rank + x.name">
-                  <td class="num">{{ x.rank }}</td>
-                  <td>{{ x.name }}</td>
-                  <td class="cell-sub">{{ x.level }}</td>
-                  <td class="num">{{ x.downloads.toLocaleString('zh-CN') }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="ops-block">
-          <div class="blk-head">
-            <h3 class="blk-title">使用场景分布</h3>
-            <p class="blk-help">按使用场景展示 Skill 数量占比、下载量占比（含 Skill）。</p>
-          </div>
-
-          <div class="scene">
-            <div class="donut" aria-label="使用场景分布圆环图">
-              <svg viewBox="0 0 42 42" class="donut-svg" aria-hidden="true">
-                <circle class="donut-bg" cx="21" cy="21" r="15.9155" />
-                <circle
-                  v-for="seg in donutSegments"
-                  :key="seg.key"
-                  class="donut-seg"
-                  cx="21"
-                  cy="21"
-                  r="15.9155"
-                  :stroke="seg.color"
-                  :stroke-dasharray="seg.dash"
-                  :stroke-dashoffset="seg.offset"
-                />
-              </svg>
-              <div class="donut-center">使用场景</div>
-            </div>
-
-            <div class="scene-list" role="list" aria-label="使用场景列表">
-              <div v-for="x in uiSceneDist" :key="x.key" class="scene-item" role="listitem">
-                <div class="scene-top">
-                  <span class="dot" :style="{ background: x.color }" aria-hidden="true" />
-                  <strong class="sname">{{ x.label }}</strong>
-                  <span class="spct">{{ x.percent.toFixed(1) }}%</span>
-                </div>
-                <div class="scene-sub">
-                  {{ x.skills }} 个 Skill · 下载量 {{ x.downloads.toLocaleString('zh-CN') }} · TOP：{{ x.top }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
     </div>
 
     <UploadSkillModal v-model="uploadOpen" @submit="onUploadSubmit" />
@@ -981,7 +1137,35 @@ const donutSegments = computed(() => {
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  /* gap: 10px; */
+  margin-top: 10px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hero h1,
+.panel h2 {
+  margin: 0;
+  color: #10243e;
+}
+
+.hero h1 {
+  font-size: 26px;
+  line-height: 1.35;
+}
+
+.hero-desc,
+.panel p,
+.muted {
+  margin: 8px 0 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .btn {
@@ -1397,365 +1581,411 @@ const donutSegments = computed(() => {
   box-shadow: none;
 }
 
-.ops-alert {
-  background: #eff6ff;
-  border: 1px solid #b7d5ff;
-  border-radius: 8px;
-  padding: 16px 18px;
-  color: #155bd4;
-  font-size: 14px;
-  line-height: 1.7;
-  margin: 0 0 18px;
-  width: 100%;
-}
-
-.ops-alert strong {
-  color: #064ec4;
-  margin-right: 4px;
-}
-
-.ops-kpis {
-  width: 100%;
-  display: grid;
-  grid-auto-flow: column;
-  grid-template-columns: 265px, 1fr;
-  gap: 18px;
-  margin-bottom: 24px;
-}
-
-/* @media (max-width: 1100px) {
-  .ops-kpis {
-    grid-template-columns: repeat(2, 1fr);
-  }
-} */
-
-.kpi-card {
+.ops-dashboard-card {
+width: 100%;
   background: #fff;
-  border: 1px solid #dbe3ef;
+  border: 1px solid #f0f0f0;
   border-radius: 8px;
-  padding: 16px;
-  min-height: 121px;
-  box-shadow: 0 14px 32px rgba(18, 52, 91, 0.06);
+  padding: 20px 24px 28px;
   box-sizing: border-box;
 }
 
-.kpi-k {
-  font-size: 13px;
-  font-weight: 800;
-  color: #51647f;
+.ops-dash-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.kpi-v {
-  margin-top: 8px;
-  font-size: 28px;
-  line-height: 1;
-  font-weight: 700;
-  color: #061a3d;
-  font-variant-numeric: tabular-nums;
-}
-
-.kpi-sub {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #526782;
-}
-
-.ops-block,
-.ops-count-block {
-  background: #fff;
-  border: 1px solid #dbe3ef;
-  border-radius: 10px;
-  padding: 0;
-  overflow: hidden;
-  box-shadow: 0 14px 34px rgba(18, 52, 91, 0.06);
-  /* height: 420px; */
-}
-
-.ops-count-block {
-  width: 100%;
-}
-.ops-block {
-  width: 100%;
-}
-
-.blk-head {
-  padding: 18px 20px;
-  border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 0;
-}
-
-.blk-title {
-  margin: 0 0 8px;
+.ops-dash-title {
+  margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #061a3d;
+  color: rgba(0, 0, 0, 0.88);
 }
 
-.blk-help {
-  margin: 0;
-  font-size: 13px;
-  color: #526782;
-  line-height: 1.6;
-}
-
-.lvl-bars {
-  display: grid;
-  gap: 12px;
-  padding: 18px 20px;
-  height: 140px;
-}
-
-.lvl-row {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 48px;
-  align-items: center;
-}
-
-.lvl-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #061a3d;
-}
-
-.lvl-track {
-  width: 97%;
-  height: 14px;
-  background: #eaf0f7;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.lvl-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #08b7ca 0%, #2f5df4 100%);
-  border-radius: 999px;
-}
-
-.lvl-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: #061a3d;
-  font-size: 14px;
-}
-
-.ops-2col {
+.ops-dash-meta {
   display: flex;
-  align-items: start;
-  gap: 22px;
-  margin-top: 24px;
-  width: 100%;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.ops-2col.bottom {
-  margin-top: 20px;
+.ops-dash-note {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.ops-import-btn {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.ops-import-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ops-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1100px) {
+  .ops-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .ops-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ops-kpi-card {
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px 18px;
+  min-height: 100px;
+  box-sizing: border-box;
+}
+
+.ops-kpi-label {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 500;
+}
+
+.ops-kpi-value {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgba(0, 0, 0, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-kpi-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.5;
+}
+
+.ops-mid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: stretch;
+  margin-bottom: 24px;
 }
 
 @media (max-width: 1000px) {
-  .ops-2col {
+  .ops-mid-2col {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 720px) {
-  .lvl-row {
-    grid-template-columns: 72px minmax(0, 1fr) 38px;
-    gap: 10px;
-  }
-
-  .blk-title {
-    font-size: 18px;
-  }
-
-  .blk-help {
-    font-size: 13px;
-  }
-
-  .kpi-v {
-    font-size: 30px;
-  }
-}
-
-.ops-block > .table-wrap,
-.ops-block > .scene {
-  padding: 18px 20px;
-}
-
-.panel.tab-panel.ops .table {
-  border: 1px solid #dbe3ef;
+.ops-panel-block {
+  border: 1px solid #f0f0f0;
   border-radius: 8px;
+  background: #fff;
   overflow: hidden;
-  border-collapse: separate;
-  border-spacing: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.panel.tab-panel.ops .table th {
-  background: #f8fafc;
-  color: #51647f;
-  font-size: 13px;
+.ops-panel-hd {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ops-panel-hd-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ops-panel-title {
+  margin: 0 0 8px;
+  font-size: 16px;
   font-weight: 700;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.ops-panel-sub {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.6;
+}
+
+.ops-toggle {
+  display: inline-flex;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+
+.ops-toggle-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.ops-toggle-btn.on {
+  background: #e6f4ff;
+  color: #1677ff;
+  font-weight: 500;
+}
+
+.dept-tree-wrap {
+  padding: 0 0 16px;
+  font-size: 13px;
+}
+
+.dept-tree-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  padding: 10px 18px;
+  background: #fafafa;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.dept-tree-body {
+  max-height: 380px;
+  overflow: auto;
+}
+
+.dept-tree-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 18px 10px 12px;
+  border-bottom: 1px solid #f5f5f5;
+  box-sizing: border-box;
+}
+
+.dept-tree-row.child {
+  background: #fcfcfc;
+}
+
+.dt-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.dt-toggle {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border:none;
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.dt-toggle:hover {
+  border-color: #91d5ff;
+  background: #f0f7ff;
+}
+
+.dt-toggle-spacer {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.dt-caret {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(0, 0, 0, 0.45);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.45);
+  transform: rotate(-45deg);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.dt-toggle:hover .dt-caret {
+  border-right-color: #1677ff;
+  border-bottom-color: #1677ff;
+}
+
+.dt-caret.on {
+  transform: rotate(45deg);
+  border-right-color: #1677ff;
+  border-bottom-color: #1677ff;
+}
+
+.dt-bullet {
+  color: #1677ff;
+  margin-right: 4px;
+}
+
+.dt-skills,
+.dt-dl {
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.65);
+  text-align: right;
   white-space: nowrap;
 }
 
-.panel.tab-panel.ops .table th,
-.panel.tab-panel.ops .table td {
-  padding: 12px 18px;
+.dt-col-num {
+  text-align: right;
+  white-space: nowrap;
 }
 
-.rank-list {
+.org-bar-list {
+  padding: 16px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.org-bar-row {
   display: grid;
-  gap: 16px;
-  padding: 18px 20px;
-  height: 354px;
-}
-
-.rank-row {
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  padding: 12px 14px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  /* gap: 12px; */
-  background: #fff;
-}
-
-.rank-left {
-  font-size: 13px;
-  height: 19px;
-  display: inline-flex;
+  grid-template-columns: 108px minmax(0, 1fr) 72px;
+  gap: 10px;
   align-items: center;
-  /* gap: 6px; */
 }
 
-.rk {
-  color: #061a3d;
-  font-weight: 700;
-}
-
-.rname {
-  font-weight: 700;
-  color: #061a3d;
-}
-
-.rank-right {
-  font-size: 13px;
-  /* align-self: center; */
-  height: 19px;
-}
-
-.rcount {
-  font-weight: 700;
-  color: #536982;
-  font-variant-numeric: tabular-nums;
-}
-
-.rbar {
-  grid-column: 1 / -1;
-  height: 12px;
-  background: #eaf0f7;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.rfill {
-  height: 100%;
-  background: linear-gradient(90deg, #2563eb 0%, #8b35e8 100%);
-  border-radius: 999px;
-}
-
-.scene {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(280px, 1.1fr);
-  gap: 8px;
-  align-items: center;
-  height: 445px;
-}
-
-@media (max-width: 980px) {
-  .scene {
-    grid-template-columns: 1fr;
+@media (max-width: 600px) {
+  .org-bar-row {
+    grid-template-columns: 88px minmax(0, 1fr) 64px;
   }
 }
 
-.donut {
-  position: relative;
-  width: 250px;
-  height: 250px;
-  margin: 0 auto;
-}
-
-.donut-svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.donut-bg {
-  fill: transparent;
-  stroke: #f0f0f0;
-  stroke-width: 6;
-}
-
-.donut-seg {
-  fill: transparent;
-  stroke-width: 6;
-  stroke-linecap: butt;
-}
-
-.donut-center {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: rgba(0, 0, 0, 0.65);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.scene-list {
-  display: grid;
-  gap: 10px;
-}
-
-.scene-item {
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  padding: 9px 10px;
-  background: #fff;
-}
-
-.scene-top {
-  font-size: 13px;
-  height: 19px;
-  display: flex;
-  align-items: center;
-  gap: 0 8px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-
-.sname {
-  font-size: 13px;
-  color: #061a3d;
-}
-
-.spct {
-  margin-left: auto;
+.org-bar-label {
   font-size: 12px;
-  color: #061a3d;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.org-bar-track-wrap {
+  min-width: 0;
+}
+
+.org-bar-track {
+  height: 14px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.org-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6 0%, #3b82f6 100%);
+  border-radius: 4px;
+  min-width: 2px;
+}
+
+.org-bar-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-top-section {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ops-top-section .ops-panel-hd {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ops-top-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 16px;
+}
+
+.ops-top-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 48px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.ops-top-row:last-child {
+  border-bottom: none;
+}
+
+.ops-top-rank {
+  font-size: 16px;
   font-weight: 700;
+  color: #1677ff;
   font-variant-numeric: tabular-nums;
 }
 
-.scene-sub {
-  margin-top: 6px;
+.ops-top-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ops-top-name {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.ops-top-dept {
   font-size: 12px;
-  color: #526782;
-  line-height: 1.6;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.ops-top-dl {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: rgba(0, 0, 0, 0.88);
 }
 
 .panel-head {
@@ -1770,11 +2000,6 @@ const donutSegments = computed(() => {
   margin: 0 0 6px;
   font-size: 18px;
   text-align: left;
-}
-
-.panel.tab-panel.ops > .panel-title {
-  text-align: left;
-  margin-bottom: 8px;
 }
 
 .panel-help {
@@ -2164,6 +2389,164 @@ const donutSegments = computed(() => {
   line-height: 1.9;
 }
 
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.stat-cell {
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1px solid #e7edf6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.stat-cell span {
+  display: block;
+  color: #667085;
+  font-size: 13px;
+}
+
+.stat-cell strong {
+  display: block;
+  margin-top: 8px;
+  color: #10243e;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.panel {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid #e7edf6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* .filter-block {
+  display: grid;
+  grid-template-columns: 1fr minmax(240px, 360px);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+} */
+
+.quick-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill,
+.mini {
+  border: 1px solid #d8e1ec;
+  background: #fff;
+  color: #344054;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pill {
+  padding: 6px 12px;
+}
+
+.pill.active {
+  color: #fff;
+  background: #1677ff;
+  border-color: #1677ff;
+}
+
+.search {
+  width: 100%;
+  height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #d8e1ec;
+  border-radius: 6px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.pager-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mini {
+  padding: 6px 10px;
+}
+
+.mini:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.empty {
+  padding: 28px;
+  text-align: center;
+  color: #667085;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.plain-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.plain-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+}
+
+.plain-list strong {
+  color: #10243e;
+}
+
+.plain-list span {
+  color: #667085;
+  font-size: 13px;
+  text-align: right;
+}
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -2248,5 +2631,20 @@ const donutSegments = computed(() => {
   z-index: 1100;
   max-width: 90vw;
   text-align: center;
+}
+
+@media (max-width: 820px) {
+  .hero,
+  .panel-head,
+  .pager {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stats-strip,
+  .filter-block,
+  .two-col {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -12,12 +12,13 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [v: boolean];
-  submit: [payload: { name: string; userId: string; note: string }];
+  submit: [payload: { name: string; publisher: string; note: string; file: File | null }];
 }>();
 
 const name = ref('');
-const userId = ref('');
+const userId = ref('当前用户');
 const note = ref('');
+const file = ref<File | null>(null);
 
 watch(
   () => props.modelValue,
@@ -28,6 +29,7 @@ watch(
     name.value = '';
     userId.value = '当前用户';
     note.value = '';
+    file.value = null;
   },
 );
 
@@ -39,11 +41,20 @@ function onOverlayClick(): void {
   close();
 }
 
+function onFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  file.value = input.files?.[0] ?? null;
+  name.value = file.value?.name ?? '';
+  console.log(file.value);
+  // name
+}
+
 function onSubmit(): void {
   emit('submit', {
     name: name.value,
     publisher: userId.value,
     note: note.value,
+    file: file.value,
   });
   close();
 }
@@ -55,14 +66,14 @@ function onSubmit(): void {
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="upload-title">
         <div class="dialog-head">
           <h2 id="upload-title" class="dialog-title">上传 Skill</h2>
-          <button type="button" class="close-x" aria-label="关闭" @click="close">×</button>
+          <button type="button" class="close-x" aria-label="关闭" @click="close">x</button>
         </div>
         <p class="hint">
           若 Skill 名称与市场中已有条目<strong>完全相同</strong>，将视为<strong>新版本发布</strong>并追加版本记录。
         </p>
         <div class="field">
-          <label for="sk-name">Skill 名称</label>
-          <input id="sk-name" v-model="name" type="text" placeholder="例如：Java 代码 Review 助手" />
+          <label for="sk-file">Skill ZIP 包</label>
+          <input id="sk-file" type="file" accept=".zip,application/zip" @change="onFileChange" />
         </div>
         <div class="field">
           <label for="sk-note">版本说明（可选）</label>
