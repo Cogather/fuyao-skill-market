@@ -1,24 +1,45 @@
 /** Skill 一条市场展示记录（聚合了最新版本信息） */
 export interface Skill {
-  id: string;
-  name: string;
+  /** Excel 字段：skill_id */
+  skill_id: string;
+  /** Excel 字段：description */
+  description: string;
+  /** Excel 字段：publish_name */
+  publish_name: string;
+  /** Excel 字段：publish_level（个人级 / 组织级 等） */
+  publish_level: string;
+  /** Excel 字段：owner_list（原表为 JSON/字符串，前端保持 string 兼容） */
+  owner_list: string;
+  /** Excel 字段：download_count */
+  download_count: number;
+  /** Excel 字段：dept_name（/ 分隔层级） */
+  dept_name: string;
+
+  /**
+   * 兼容历史 UI 字段（逐步淘汰）
+   * - 仍有页面依赖 SkillCard / 上传 / 版本等旧字段
+   */
+  id?: string;
+  name?: string;
   /** 用于卡片左侧图标：emoji 或简短标识 */
-  icon: string;
-  publisher: string;
-  latestPublishTime: string;
-  level: string;
-  downloads: number;
-  rating: number;
+  icon?: string;
+  publisher?: string;
+  latestPublishTime?: string;
+  level?: string;
+  downloads?: number;
+  rating?: number;
   /** 当前对外展示版本号 */
-  version: string;
+  version?: string;
   /** 历史版本（新上传同名 Skill 会追加） */
-  versions: SkillVersionEntry[];
+  versions?: SkillVersionEntry[];
   /** 当前登录用户是否曾通过本地上传发布/更新过 */
   ownedByUser?: boolean;
   /** 功能类标签（如：开发、运维、设计、办公） */
-  tagFunctional: string;
+  tagFunctional?: string;
   /** 组织/范围类标签 */
-  tagOrg: string;
+  tagOrg?: string;
+  /** 标签集合，用于市场总览左侧标签筛选 */
+  tags: string[];
 }
 
 export interface SkillVersionEntry {

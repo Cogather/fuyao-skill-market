@@ -9,7 +9,8 @@ const statusLabel = computed(() => {
     if (props.variant !== 'coreHarness') {
         return '';
     }
-    if (props.skill.downloads >= 2000) {
+    const downloads = props.skill.download_count ?? props.skill.downloads ?? 0;
+    if (downloads >= 2000) {
         return '已发布';
     }
     if (props.skill.ownedByUser) {
@@ -21,12 +22,33 @@ const orgShort = computed(() => {
     if (props.variant !== 'coreHarness') {
         return '';
     }
-    const raw = props.skill.tagOrg || props.skill.level;
+    const raw = props.skill.tagOrg || props.skill.level || props.skill.dept_name || '';
     const parts = raw.split('·').map((s) => s.trim()).filter(Boolean);
     if (parts.length === 0) {
         return raw;
     }
     return parts.slice(0, 2).join(' · ');
+});
+const scopeLabel = computed(() => {
+    const rawLevel = (props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg ?? '').trim();
+    if (rawLevel.includes('组织')) {
+        const orgName = (props.skill.publish_name ?? props.skill.publisher ?? '').trim();
+        return orgName ? `组织级 · ${orgName}` : '组织级';
+    }
+    if (rawLevel.includes('个人')) {
+        return '个人级';
+    }
+    return rawLevel;
+});
+const scopeKind = computed(() => {
+    const rawLevel = (props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg ?? '').trim();
+    if (rawLevel.includes('组织')) {
+        return 'org';
+    }
+    if (rawLevel.includes('个人')) {
+        return 'personal';
+    }
+    return 'other';
 });
 function toggleMenu() {
     menuOpen.value = !menuOpen.value;
@@ -36,14 +58,17 @@ function closeMenu() {
 }
 function onDownload() {
     closeMenu();
-    emit('download', props.skill.id);
+    emit('download', props.skill.id ?? props.skill.skill_id);
 }
 function onViewVersions() {
     closeMenu();
-    emit('view-versions', props.skill.id);
+    emit('view-versions', props.skill.id ?? props.skill.skill_id);
 }
 function onFooterDownload() {
-    emit('download', props.skill.id);
+    emit('download', props.skill.id ?? props.skill.skill_id);
+}
+function onOpenDetail() {
+    emit('open-detail', props.skill.id ?? props.skill.skill_id);
 }
 const __VLS_defaults = {
     menuMode: 'full',
@@ -59,6 +84,7 @@ const __VLS_ctx = {
 let __VLS_components;
 let __VLS_intrinsics;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['card']} */ ;
 /** @type {__VLS_StyleScopedClasses['more']} */ ;
 /** @type {__VLS_StyleScopedClasses['dd-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['tags']} */ ;
@@ -67,7 +93,12 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['tag-status']} */ ;
 /** @type {__VLS_StyleScopedClasses['dl-btn']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.article, __VLS_intrinsics.article)({
+    ...{ onClick: (__VLS_ctx.onOpenDetail) },
+    ...{ onKeydown: (__VLS_ctx.onOpenDetail) },
+    ...{ onKeydown: (__VLS_ctx.onOpenDetail) },
     ...{ class: "card" },
+    role: "button",
+    tabindex: "0",
 });
 /** @type {__VLS_StyleScopedClasses['card']} */ ;
 if (__VLS_ctx.variant === 'coreHarness') {
@@ -111,8 +142,9 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({
     ...{ class: "title" },
 });
 /** @type {__VLS_StyleScopedClasses['title']} */ ;
-(__VLS_ctx.skill.name);
+(__VLS_ctx.skill.name ?? __VLS_ctx.skill.skill_id);
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ onClick: () => { } },
     ...{ class: "menu-wrap" },
 });
 /** @type {__VLS_StyleScopedClasses['menu-wrap']} */ ;
@@ -152,36 +184,45 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ class: "meta" },
 });
 /** @type {__VLS_StyleScopedClasses['meta']} */ ;
-(__VLS_ctx.skill.publisher);
+(__VLS_ctx.skill.publish_name ?? __VLS_ctx.skill.publisher);
 __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ class: "meta" },
 });
 /** @type {__VLS_StyleScopedClasses['meta']} */ ;
-(__VLS_ctx.skill.latestPublishTime);
+(__VLS_ctx.skill.publish_level ?? __VLS_ctx.skill.level);
+if (__VLS_ctx.skill.description) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+        ...{ class: "meta" },
+    });
+    /** @type {__VLS_StyleScopedClasses['meta']} */ ;
+    (__VLS_ctx.skill.description);
+}
+__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+    ...{ class: "card-foot" },
+});
+/** @type {__VLS_StyleScopedClasses['card-foot']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "tags" },
     ...{ class: ({ compact: __VLS_ctx.variant === 'coreHarness' }) },
 });
 /** @type {__VLS_StyleScopedClasses['tags']} */ ;
 /** @type {__VLS_StyleScopedClasses['compact']} */ ;
-__VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-    ...{ class: "tag tag-fn" },
-});
-/** @type {__VLS_StyleScopedClasses['tag']} */ ;
-/** @type {__VLS_StyleScopedClasses['tag-fn']} */ ;
-(__VLS_ctx.skill.tagFunctional);
-if (__VLS_ctx.variant !== 'coreHarness') {
+if (__VLS_ctx.skill.tagFunctional) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-        ...{ class: "tag tag-org" },
+        ...{ class: "tag tag-fn" },
     });
     /** @type {__VLS_StyleScopedClasses['tag']} */ ;
-    /** @type {__VLS_StyleScopedClasses['tag-org']} */ ;
-    (__VLS_ctx.skill.tagOrg);
+    /** @type {__VLS_StyleScopedClasses['tag-fn']} */ ;
+    (__VLS_ctx.skill.tagFunctional);
 }
-__VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-    ...{ class: "card-foot" },
-});
-/** @type {__VLS_StyleScopedClasses['card-foot']} */ ;
+if (__VLS_ctx.variant !== 'coreHarness' && __VLS_ctx.scopeLabel) {
+    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+        ...{ class: "tag" },
+        ...{ class: (__VLS_ctx.scopeKind === 'personal' ? 'tag-personal' : 'tag-org') },
+    });
+    /** @type {__VLS_StyleScopedClasses['tag']} */ ;
+    (__VLS_ctx.scopeLabel);
+}
 __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
     ...{ onClick: (__VLS_ctx.onFooterDownload) },
     type: "button",
@@ -207,9 +248,9 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
     ...{ class: "dl-num" },
 });
 /** @type {__VLS_StyleScopedClasses['dl-num']} */ ;
-(__VLS_ctx.skill.downloads.toLocaleString('zh-CN'));
+((__VLS_ctx.skill.download_count ?? __VLS_ctx.skill.downloads ?? 0).toLocaleString('zh-CN'));
 // @ts-ignore
-[variant, variant, variant, orgShort, orgShort, skill, skill, skill, skill, skill, skill, skill, statusLabel, statusLabel, toggleMenu, menuOpen, menuOpen, onDownload, menuMode, onViewVersions, onFooterDownload,];
+[onOpenDetail, onOpenDetail, onOpenDetail, variant, variant, variant, orgShort, orgShort, skill, skill, skill, skill, skill, skill, skill, skill, skill, skill, skill, skill, skill, statusLabel, statusLabel, toggleMenu, menuOpen, menuOpen, onDownload, menuMode, onViewVersions, scopeLabel, scopeLabel, scopeKind, onFooterDownload,];
 const __VLS_export = (await import('vue')).defineComponent({
     __typeEmits: {},
     __typeProps: {},

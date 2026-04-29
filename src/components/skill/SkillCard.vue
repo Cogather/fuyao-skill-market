@@ -19,6 +19,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   download: [id: string];
   'view-versions': [id: string];
+  'open-detail': [id: string];
 }>();
 
 const menuOpen = ref(false);
@@ -27,7 +28,8 @@ const statusLabel = computed(() => {
   if (props.variant !== 'coreHarness') {
     return '';
   }
-  if (props.skill.downloads >= 2000) {
+  const downloads = props.skill.download_count ?? props.skill.downloads ?? 0;
+  if (downloads >= 2000) {
     return '已发布';
   }
   if (props.skill.ownedByUser) {
@@ -40,12 +42,35 @@ const orgShort = computed(() => {
   if (props.variant !== 'coreHarness') {
     return '';
   }
-  const raw = props.skill.tagOrg || props.skill.level;
+  const raw = props.skill.tagOrg || props.skill.level || props.skill.dept_name || '';
   const parts = raw.split('·').map((s) => s.trim()).filter(Boolean);
   if (parts.length === 0) {
     return raw;
   }
   return parts.slice(0, 2).join(' · ');
+});
+
+const scopeLabel = computed(() => {
+  const rawLevel = (props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg ?? '').trim();
+  if (rawLevel.includes('组织')) {
+    const orgName = (props.skill.publish_name ?? props.skill.publisher ?? '').trim();
+    return orgName ? `组织级 · ${orgName}` : '组织级';
+  }
+  if (rawLevel.includes('个人')) {
+    return '个人级';
+  }
+  return rawLevel;
+});
+
+const scopeKind = computed(() => {
+  const rawLevel = (props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg ?? '').trim();
+  if (rawLevel.includes('组织')) {
+    return 'org';
+  }
+  if (rawLevel.includes('个人')) {
+    return 'personal';
+  }
+  return 'other';
 });
 
 function toggleMenu(): void {
@@ -58,21 +83,32 @@ function closeMenu(): void {
 
 function onDownload(): void {
   closeMenu();
-  emit('download', props.skill.id);
+  emit('download', props.skill.id ?? props.skill.skill_id);
 }
 
 function onViewVersions(): void {
   closeMenu();
-  emit('view-versions', props.skill.id);
+  emit('view-versions', props.skill.id ?? props.skill.skill_id);
 }
 
 function onFooterDownload(): void {
-  emit('download', props.skill.id);
+  emit('download', props.skill.id ?? props.skill.skill_id);
+}
+
+function onOpenDetail(): void {
+  emit('open-detail', props.skill.id ?? props.skill.skill_id);
 }
 </script>
 
 <template>
-  <article class="card">
+  <article
+    class="card"
+    role="button"
+    tabindex="0"
+    @click="onOpenDetail"
+    @keydown.enter="onOpenDetail"
+    @keydown.space.prevent="onOpenDetail"
+  >
     <div v-if="variant === 'coreHarness'" class="top-tags" aria-label="CoreHarness 标签区">
       <span class="tag tag-core">CoreHarness</span>
       <span v-if="orgShort" class="tag tag-org">{{ orgShort }}</span>
@@ -80,20 +116,20 @@ function onFooterDownload(): void {
       <span class="tag tag-status" :class="`st-${statusLabel}`">{{ statusLabel }}</span>
     </div>
     <div class="card-head">
-      <h3 class="title">{{ skill.name }}</h3>
-      <div class="menu-wrap">
+      <h3 class="title">{{ skill.name ?? skill.skill_id }}</h3>
+      <div class="menu-wrap" @click.stop>
         <button
           type="button"
           class="more"
           aria-label="更多"
           aria-haspopup="true"
           :aria-expanded="menuOpen"
-          @click="toggleMenu"
+          @click.stop="toggleMenu"
         >
           ···
         </button>
         <div v-if="menuOpen" class="dropdown" role="menu">
-          <button type="button" role="menuitem" class="dd-item" @click="onDownload">
+          <button type="button" role="menuitem" class="dd-item" @click.stop="onDownload">
             下载到本地
           </button>
           <button
@@ -101,21 +137,28 @@ function onFooterDownload(): void {
             type="button"
             role="menuitem"
             class="dd-item"
-            @click="onViewVersions"
+            @click.stop="onViewVersions"
           >
             查看版本
           </button>
         </div>
       </div>
     </div>
-    <p class="meta">发布人：{{ skill.publisher }}</p>
-    <p class="meta">最新发布时间：{{ skill.latestPublishTime }}</p>
-    <div class="tags" :class="{ compact: variant === 'coreHarness' }">
-      <span class="tag tag-fn">{{ skill.tagFunctional }}</span>
-      <span v-if="variant !== 'coreHarness'" class="tag tag-org">{{ skill.tagOrg }}</span>
-    </div>
+    <p class="meta">发布组织：{{ skill.publish_name ?? skill.publisher }}</p>
+    <p class="meta">发布层级：{{ skill.publish_level ?? skill.level }}</p>
+    <p v-if="skill.description" class="meta">描述：{{ skill.description }}</p>
     <div class="card-foot">
-      <button type="button" class="dl-btn" aria-label="下载" @click="onFooterDownload">
+      <div class="tags" :class="{ compact: variant === 'coreHarness' }">
+        <span v-if="skill.tagFunctional" class="tag tag-fn">{{ skill.tagFunctional }}</span>
+        <span
+          v-if="variant !== 'coreHarness' && scopeLabel"
+          class="tag"
+          :class="scopeKind === 'personal' ? 'tag-personal' : 'tag-org'"
+        >
+          {{ scopeLabel }}
+        </span>
+      </div>
+      <button type="button" class="dl-btn" aria-label="下载" @click.stop="onFooterDownload">
         <svg class="dl-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M12 4v12m0 0l4-4m-4 4L8 12M5 19h14"
@@ -125,7 +168,7 @@ function onFooterDownload(): void {
             stroke-linejoin="round"
           />
         </svg>
-        <span class="dl-num">{{ skill.downloads.toLocaleString('zh-CN') }}</span>
+        <span class="dl-num">{{ (skill.download_count ?? skill.downloads ?? 0).toLocaleString('zh-CN') }}</span>
       </button>
     </div>
   </article>
@@ -142,6 +185,12 @@ function onFooterDownload(): void {
   display: flex;
   flex-direction: column;
   min-height: 118px;
+  cursor: pointer;
+}
+
+.card:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.18);
+  outline-offset: 2px;
 }
 
 .top-tags {
@@ -229,19 +278,18 @@ function onFooterDownload(): void {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
-  margin-bottom: auto;
+  min-width: 0;
 }
 
 .tags.compact {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .tag {
   display: inline-block;
   font-size: 12px;
-  line-height: 1.5;
-  padding: 1px 8px;
+  /* line-height: 1.5; */
+  /* padding: 1px 8px; */
   border-radius: 3px;
   border: 1px solid transparent;
 }
@@ -281,21 +329,28 @@ function onFooterDownload(): void {
 
 .tag-fn {
   color: #1890ff;
-  background: rgba(24, 144, 255, 0.06);
+  /* background: rgba(24, 144, 255, 0.06); */
   border-color: rgba(24, 144, 255, 0.25);
 }
 
 .tag-org {
-  color: #722ed1;
-  background: rgba(114, 46, 209, 0.06);
-  border-color: rgba(114, 46, 209, 0.2);
+  color: #178f5f;
+  background: #e8f8ef;
+  border-color: rgba(18, 128, 92, 0.18);
+}
+
+.tag-personal {
+  color: #3f5f7c;
+  background: #f1f4f8;
+  border-color: #edf1f5;
 }
 
 .card-foot {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
-  margin-top: 6px;
+  gap: 12px;
+  margin-top: auto;
   padding-top: 2px;
 }
 
@@ -303,6 +358,7 @@ function onFooterDownload(): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   border: none;
   background: transparent;
   cursor: pointer;
