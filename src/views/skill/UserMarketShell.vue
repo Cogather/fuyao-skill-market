@@ -1126,28 +1126,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
 <template>
   <div class="user-shell">
-<!-- 
-    <section class="panel two-col">
-      <div>
-        <h2>我的发布</h2>
-        <p v-if="myReleases.length === 0" class="muted">上传后会出现在这里。</p>
-        <ul v-else class="plain-list">
-          <li v-for="skill in myReleases" :key="skill.id">
-            <strong>{{ skill.name }}</strong>
-            <span>v{{ skill.version }} · {{ skill.latestPublishTime }}</span>
-          </li>
-        </ul>
-      </div>
-      <div>
-        <h2>TOP 使用 Skill</h2>
-        <ul class="plain-list">
-          <li v-for="skill in topSkills" :key="skill.id">
-            <strong>{{ skill.name ?? skill.skill_id }}</strong>
-            <span>{{ (skill.download_count ?? skill.downloads ?? 0).toLocaleString('zh-CN') }} 次下载</span>
-          </li>
-        </ul>
-      </div>
-    </section> -->
 
     <UploadSkillModal v-model="uploadOpen" @submit="onUploadSubmit" />
 
