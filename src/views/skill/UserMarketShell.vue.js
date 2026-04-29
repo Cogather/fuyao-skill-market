@@ -830,6 +830,22 @@ function flattenDeptTreeVisible(nodes, depth = 0, parentPath = '') {
     return out;
 }
 const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
+function buildOpsDeptTreeJsonFileName(sourceName) {
+    const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dept-tree';
+    return `${baseName}-dept-tree.json`;
+}
+function downloadOpsDeptTreeJson(sourceName, deptTree) {
+    const json = JSON.stringify(deptTree, null, 2);
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = buildOpsDeptTreeJsonFileName(sourceName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
 function triggerOpsExcelImport() {
     opsExcelInputRef.value?.click();
 }
@@ -853,8 +869,10 @@ async function onOpsExcelFileChange(ev) {
             input.value = '';
             return;
         }
-        opsImportedBundle.value = buildOpsDashboardBundle(rows);
-        showToast(`已导入 ${rows.length} 条 Skill，运营看板已更新`);
+        const bundle = buildOpsDashboardBundle(rows);
+        opsImportedBundle.value = bundle;
+        downloadOpsDeptTreeJson(file.name, bundle.deptTree);
+        showToast(`已导入 ${rows.length} 条 Skill，运营看板已更新，部门树 JSON 已下载`);
     }
     catch (e) {
         showToast(e instanceof Error ? e.message : 'Excel 解析失败');
