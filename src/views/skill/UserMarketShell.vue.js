@@ -680,17 +680,9 @@ function onUploadExistingVersion() {
     toastAction('上传已有 Skill 新版本（演示）：请在弹窗中选择同名 Skill 以追加版本');
     openUpload();
 }
-/** 运营看板：导入前展示设计稿默认数值 */
-const defaultOpsKpi = {
-    totalSkills: '334',
-    activeSkills: '125',
-    personalSkills: '44',
-    totalDownloads: '508',
-};
 const opsImportedBundle = ref(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref(null);
-const uiOpsKpi = computed(() => opsImportedBundle.value ? opsImportedBundle.value.kpi : defaultOpsKpi);
 const uiOpsKpiDesc = {
     totalSkills: '部门 Skill 分布总量',
     activeSkills: '公司市场组织级 Skill 数量',
@@ -724,19 +716,57 @@ const defaultUiDeptTree = [
         ],
     },
 ];
-const defaultUiOrgBars = [
-    { name: '项目管理部', skills: 31, downloads: 186 },
-    { name: '平台二部部', skills: 24, downloads: 142 },
-    { name: '质量工具组', skills: 18, downloads: 96 },
-    { name: '平台工具组', skills: 15, downloads: 88 },
-    { name: '二层系统', skills: 12, downloads: 62 },
-    { name: 'R&D测试', skills: 10, downloads: 51 },
-    { name: '业务运营组', skills: 9, downloads: 38 },
-    { name: '数据库运营', skills: 8, downloads: 29 },
-];
+function collectDeptMetricRows(nodes, parentPath = '', out = []) {
+    for (const node of nodes) {
+        const path = parentPath ? `${parentPath}/${node.name}` : node.name;
+        out.push({
+            name: path,
+            label: node.name,
+            parent: parentPath,
+            skills: node.skills,
+            downloads: node.downloads,
+        });
+        if (node.children && node.children.length > 0) {
+            collectDeptMetricRows(node.children, path, out);
+        }
+    }
+    return out;
+}
+function buildDefaultOpsKpi(nodes) {
+    const totalSkills = nodes.reduce((sum, node) => sum + node.skills, 0);
+    const totalDownloads = nodes.reduce((sum, node) => sum + node.downloads, 0);
+    return {
+        totalSkills: String(totalSkills),
+        activeSkills: String(totalSkills),
+        personalSkills: '0',
+        totalDownloads: String(totalDownloads),
+    };
+}
+function buildDefaultOrgBars(nodes) {
+    return collectDeptMetricRows(nodes).map(({ name, skills, downloads }) => ({
+        name,
+        skills,
+        downloads,
+    }));
+}
+function buildDefaultTopDeptRows(nodes) {
+    return collectDeptMetricRows(nodes)
+        .sort((a, b) => b.downloads - a.downloads || b.skills - a.skills)
+        .slice(0, 6)
+        .map((row, index) => ({
+        rank: index + 1,
+        name: row.label,
+        dept: row.parent || row.name,
+        downloads: row.downloads,
+    }));
+}
+const defaultOpsKpi = buildDefaultOpsKpi(defaultUiDeptTree);
+const defaultUiOrgBars = buildDefaultOrgBars(defaultUiDeptTree);
+const defaultUiTopDeptRows = buildDefaultTopDeptRows(defaultUiDeptTree);
 const opsBarMode = ref('skills');
 const opsBoardSystem = ref('company');
 const uiDeptTree = computed(() => opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree);
+const uiOpsKpi = computed(() => opsImportedBundle.value ? opsImportedBundle.value.kpi : defaultOpsKpi);
 const uiOrgBars = computed(() => opsImportedBundle.value ? opsImportedBundle.value.orgBars : defaultUiOrgBars);
 const uiOrgBarsSorted = computed(() => {
     const list = [...uiOrgBars.value];
@@ -773,17 +803,13 @@ const uiOrgBarsMax = computed(() => {
     const list = uiOrgBarsSorted.value.map((x) => opsBarMode.value === 'skills' ? x.skills : x.downloads);
     return Math.max(1, ...list);
 });
-const defaultUiTopSkillsByDl = [
-    { rank: 1, name: 'Java 代码 Review 助手', dept: '门诊系统部', downloads: 43 },
-    { rank: 2, name: '投口指标统计 Skill', dept: '门诊系统部', downloads: 41 },
-    { rank: 3, name: '部门 Merit 生成 Skill', dept: '门诊系统部', downloads: 40 },
-    { rank: 4, name: 'CICD 发布效率 Skill', dept: '平台工具组', downloads: 18 },
-    { rank: 5, name: '部署开发资源 Skill', dept: '平台工程部', downloads: 14 },
-    { rank: 6, name: '质量日工效率 Skill', dept: '平台工程部', downloads: 10 },
-];
 const uiTopSkillsByDl = computed(() => opsImportedBundle.value
     ? opsImportedBundle.value.topSkills
-    : defaultUiTopSkillsByDl);
+    : defaultUiTopDeptRows);
+const opsTopTitle = computed(() => opsImportedBundle.value ? 'TOP Skill（按下载量）' : 'TOP 部门（按下载量）');
+const opsTopSubTitle = computed(() => opsImportedBundle.value
+    ? '展示当前查询范围内下载量最高的Skill'
+    : '展示默认部门树中下载量最高的部门节点');
 const expandedDeptPaths = ref(new Set());
 function collectExpandableDeptPaths(nodes, parentPath = '', out = new Set()) {
     for (const n of nodes) {
@@ -2883,10 +2909,12 @@ else {
         ...{ class: "ops-panel-title" },
     });
     /** @type {__VLS_StyleScopedClasses['ops-panel-title']} */ ;
+    (__VLS_ctx.opsTopTitle);
     __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
         ...{ class: "ops-panel-sub" },
     });
     /** @type {__VLS_StyleScopedClasses['ops-panel-sub']} */ ;
+    (__VLS_ctx.opsTopSubTitle);
     __VLS_asFunctionalElement1(__VLS_intrinsics.ul, __VLS_intrinsics.ul)({
         ...{ class: "ops-top-list" },
         role: "list",
@@ -2925,7 +2953,7 @@ else {
         /** @type {__VLS_StyleScopedClasses['ops-top-dl']} */ ;
         (item.downloads);
         // @ts-ignore
-        [uiTopSkillsByDl, minDeptLabel,];
+        [opsTopTitle, opsTopSubTitle, uiTopSkillsByDl, minDeptLabel,];
     }
 }
 const __VLS_36 = UploadSkillModal;
