@@ -6,12 +6,15 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/skill-market',
+      name: 'skill-market',
+      component: SkillMarketPage,
     },
     {
       path: '/skill-market',
-      name: 'skill-market',
-      component: SkillMarketPage,
+      redirect: (to) => ({
+        path: '/',
+        query: to.query,
+      }),
     },
   ],
 });
