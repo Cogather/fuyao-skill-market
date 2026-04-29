@@ -8,7 +8,9 @@ const { skills } = store;
 const toast = ref('');
 
 const rows = computed(() =>
-  [...skills.value].sort((a, b) => (a.latestPublishTime < b.latestPublishTime ? 1 : -1)),
+  [...skills.value].sort((a, b) =>
+    (a.latestPublishTime ?? '') < (b.latestPublishTime ?? '') ? 1 : -1,
+  ),
 );
 
 function approve(skillId: string): void {
@@ -47,17 +49,17 @@ function approve(skillId: string): void {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in rows" :key="s.id">
+            <tr v-for="s in rows" :key="s.id ?? s.skill_id">
               <td>
                 <span class="icon">{{ s.icon }}</span>
-                {{ s.name }}
+                {{ s.name ?? s.skill_id }}
               </td>
               <td>{{ s.version }}</td>
-              <td>{{ s.publisher }}</td>
+              <td>{{ s.publish_name ?? s.publisher }}</td>
               <td>{{ s.latestPublishTime }}</td>
-              <td>{{ s.downloads }}</td>
+              <td>{{ s.download_count ?? s.downloads ?? 0 }}</td>
               <td>
-                <button type="button" class="link-btn" @click="approve(s.id)">批准分层发布</button>
+                <button type="button" class="link-btn" @click="approve(s.id ?? s.skill_id)">批准分层发布</button>
               </td>
             </tr>
           </tbody>

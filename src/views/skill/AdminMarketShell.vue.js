@@ -3,7 +3,7 @@ import { useSkillMarketStore } from '../../stores/skillMarketStore';
 const store = useSkillMarketStore();
 const { skills } = store;
 const toast = ref('');
-const rows = computed(() => [...skills.value].sort((a, b) => (a.latestPublishTime < b.latestPublishTime ? 1 : -1)));
+const rows = computed(() => [...skills.value].sort((a, b) => (a.latestPublishTime ?? '') < (b.latestPublishTime ?? '') ? 1 : -1));
 function approve(skillId) {
     toast.value = `已批准（演示）：Skill #${skillId}`;
     setTimeout(() => {
@@ -75,7 +75,7 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.tbody, __VLS_intrinsics.tbody)({});
 for (const [s] of __VLS_vFor((__VLS_ctx.rows))) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({
-        key: (s.id),
+        key: (s.id ?? s.skill_id),
     });
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
@@ -83,19 +83,19 @@ for (const [s] of __VLS_vFor((__VLS_ctx.rows))) {
     });
     /** @type {__VLS_StyleScopedClasses['icon']} */ ;
     (s.icon);
-    (s.name);
+    (s.name ?? s.skill_id);
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     (s.version);
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (s.publisher);
+    (s.publish_name ?? s.publisher);
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     (s.latestPublishTime);
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
-    (s.downloads);
+    (s.download_count ?? s.downloads ?? 0);
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (...[$event]) => {
-                __VLS_ctx.approve(s.id);
+                __VLS_ctx.approve(s.id ?? s.skill_id);
                 // @ts-ignore
                 [rows, approve,];
             } },
