@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
@@ -38,6 +38,8 @@ const deptFilter = ref('all'); // 当前层级下的具体部门
 const categoryFilter = ref('all');
 const selectedTags = ref([]);
 const quickFilter = ref('all');
+const tabPanelRef = ref(null);
+const tabPanelMinHeight = ref(0);
 const page = ref(1);
 const pageSize = 8;
 const toast = ref('');
@@ -168,6 +170,27 @@ const tagOptions = computed(() => {
     }
     return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 });
+const tabPanelFillStyle = computed(() => ({
+    minHeight: tabPanelMinHeight.value > 0 ? `${tabPanelMinHeight.value}px` : undefined,
+}));
+function syncTabPanelMinHeight() {
+    void nextTick(() => {
+        const panel = tabPanelRef.value;
+        if (!panel) {
+            return;
+        }
+        const bottomGutter = 32;
+        const top = panel.getBoundingClientRect().top;
+        tabPanelMinHeight.value = Math.max(360, Math.floor(window.innerHeight - top - bottomGutter));
+    });
+}
+onMounted(() => {
+    syncTabPanelMinHeight();
+    window.addEventListener('resize', syncTabPanelMinHeight);
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', syncTabPanelMinHeight);
+});
 const deptOptions = computed(() => {
     if (sceneFilter.value === 'all') {
         return [];
@@ -260,6 +283,9 @@ watch(() => route.query.tab, (tab) => {
     if (nextTab !== innerTab.value) {
         innerTab.value = nextTab;
     }
+});
+watch(innerTab, () => {
+    syncTabPanelMinHeight();
 });
 function showToast(message, ms = 3000) {
     toast.value = message;
@@ -603,7 +629,7 @@ const defaultUiOrgBars = [
     { name: '数据库运营', skills: 8, downloads: 29 },
 ];
 const opsBarMode = ref('skills');
-const opsBoardSystem = ref('fuyao');
+const opsBoardSystem = ref('company');
 const uiDeptTree = computed(() => opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree);
 const uiOrgBars = computed(() => opsImportedBundle.value ? opsImportedBundle.value.orgBars : defaultUiOrgBars);
 const uiOrgBarsSorted = computed(() => {
@@ -653,12 +679,18 @@ const uiTopSkillsByDl = computed(() => opsImportedBundle.value
     ? opsImportedBundle.value.topSkills
     : defaultUiTopSkillsByDl);
 const expandedDeptPaths = ref(new Set());
-watch(uiDeptTree, (tree) => {
-    const next = new Set();
-    for (const n of tree) {
-        next.add(n.name);
+function collectExpandableDeptPaths(nodes, parentPath = '', out = new Set()) {
+    for (const n of nodes) {
+        const path = parentPath ? `${parentPath}/${n.name}` : n.name;
+        if (n.children && n.children.length > 0) {
+            out.add(path);
+            collectExpandableDeptPaths(n.children, path, out);
+        }
     }
-    expandedDeptPaths.value = next;
+    return out;
+}
+watch(uiDeptTree, (tree) => {
+    expandedDeptPaths.value = collectExpandableDeptPaths(tree);
 }, { immediate: true });
 function toggleDeptExpand(path) {
     const next = new Set(expandedDeptPaths.value);
@@ -743,6 +775,8 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['btn']} */ ;
 /** @type {__VLS_StyleScopedClasses['sub-tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel']} */ ;
@@ -917,6 +951,7 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['stats-strip']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
@@ -1347,9 +1382,10 @@ if (__VLS_ctx.toast) {
     (__VLS_ctx.toast);
 }
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-    ...{ class: "user-shell" },
+    ...{ class: "user-shell skill-market-shell" },
 });
 /** @type {__VLS_StyleScopedClasses['user-shell']} */ ;
+/** @type {__VLS_StyleScopedClasses['skill-market-shell']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
     ...{ class: "hero" },
 });
@@ -1442,7 +1478,9 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
 /** @type {__VLS_StyleScopedClasses['on']} */ ;
 if (__VLS_ctx.innerTab === 'overview') {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ref: "tabPanelRef",
         ...{ class: "panel tab-panel overview-panel" },
+        ...{ style: (__VLS_ctx.tabPanelFillStyle) },
     });
     /** @type {__VLS_StyleScopedClasses['panel']} */ ;
     /** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
@@ -1539,7 +1577,7 @@ if (__VLS_ctx.innerTab === 'overview') {
                     return;
                 __VLS_ctx.quickFilter = 'all';
                 // @ts-ignore
-                [innerTab, innerTab, totalSkills, totalDownloads, downloadsLast30Days, orgCount, quickFilter,];
+                [innerTab, innerTab, tabPanelFillStyle, totalSkills, totalDownloads, downloadsLast30Days, orgCount, quickFilter,];
             } },
         type: "button",
         ...{ class: "side-nav-item" },
@@ -2008,7 +2046,9 @@ else if (__VLS_ctx.innerTab === 'core') {
 }
 else if (__VLS_ctx.innerTab === 'releases') {
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ref: "tabPanelRef",
         ...{ class: "panel tab-panel my-release-panel" },
+        ...{ style: (__VLS_ctx.tabPanelFillStyle) },
     });
     /** @type {__VLS_StyleScopedClasses['panel']} */ ;
     /** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
@@ -2107,7 +2147,7 @@ else if (__VLS_ctx.innerTab === 'releases') {
                         return;
                     __VLS_ctx.releaseFilter = f.key;
                     // @ts-ignore
-                    [innerTab, uiMyStats, uiMyStats, uiMyStats, uiMyStats, releaseFilters, releaseFilter,];
+                    [innerTab, tabPanelFillStyle, uiMyStats, uiMyStats, uiMyStats, uiMyStats, releaseFilters, releaseFilter,];
                 } },
             key: (f.key),
             type: "button",

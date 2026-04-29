@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
@@ -51,6 +51,8 @@ const deptFilter = ref('all'); // 当前层级下的具体部门
 const categoryFilter = ref('all');
 const selectedTags = ref<string[]>([]);
 const quickFilter = ref<OverviewQuickFilter>('all');
+const tabPanelRef = ref<HTMLElement | null>(null);
+const tabPanelMinHeight = ref(0);
 const page = ref(1);
 const pageSize = 8;
 const toast = ref('');
@@ -204,6 +206,31 @@ const tagOptions = computed(() => {
   return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 });
 
+const tabPanelFillStyle = computed(() => ({
+  minHeight: tabPanelMinHeight.value > 0 ? `${tabPanelMinHeight.value}px` : undefined,
+}));
+
+function syncTabPanelMinHeight(): void {
+  void nextTick(() => {
+    const panel = tabPanelRef.value;
+    if (!panel) {
+      return;
+    }
+    const bottomGutter = 32;
+    const top = panel.getBoundingClientRect().top;
+    tabPanelMinHeight.value = Math.max(360, Math.floor(window.innerHeight - top - bottomGutter));
+  });
+}
+
+onMounted(() => {
+  syncTabPanelMinHeight();
+  window.addEventListener('resize', syncTabPanelMinHeight);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncTabPanelMinHeight);
+});
+
 const deptOptions = computed(() => {
   if (sceneFilter.value === 'all') {
     return [];
@@ -315,6 +342,10 @@ watch(
     }
   },
 );
+
+watch(innerTab, () => {
+  syncTabPanelMinHeight();
+});
 
 function showToast(message: string, ms = 3000): void {
   toast.value = message;
@@ -728,7 +759,7 @@ const defaultUiOrgBars: OrgBarRow[] = [
 ];
 
 const opsBarMode = ref<'skills' | 'downloads'>('skills');
-const opsBoardSystem = ref<'fuyao' | 'company'>('fuyao');
+const opsBoardSystem = ref<'fuyao' | 'company'>('company');
 
 const uiDeptTree = computed(() =>
   opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree,
@@ -808,14 +839,25 @@ type FlatDeptRowV2 = FlatDeptRow & { path: string; hasChildren: boolean; expande
 
 const expandedDeptPaths = ref<Set<string>>(new Set());
 
+function collectExpandableDeptPaths(
+  nodes: DeptTreeNode[],
+  parentPath = '',
+  out = new Set<string>(),
+): Set<string> {
+  for (const n of nodes) {
+    const path = parentPath ? `${parentPath}/${n.name}` : n.name;
+    if (n.children && n.children.length > 0) {
+      out.add(path);
+      collectExpandableDeptPaths(n.children, path, out);
+    }
+  }
+  return out;
+}
+
 watch(
   uiDeptTree,
   (tree) => {
-    const next = new Set<string>();
-    for (const n of tree) {
-      next.add(n.name);
-    }
-    expandedDeptPaths.value = next;
+    expandedDeptPaths.value = collectExpandableDeptPaths(tree);
   },
   { immediate: true },
 );
@@ -1039,7 +1081,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
   </div>
   <!-- <p>--------------------------------这是分界线--------------------------------</p> -->
-  <div class="user-shell">
+  <div class="user-shell skill-market-shell">
     <section class="hero">
       <div class="hero-inner">
         <h1 class="hero-title">把你的日常作业经验沉淀成可复用的 Skill</h1>
@@ -1090,7 +1132,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </button>
     </nav>
 
-    <div v-if="innerTab === 'overview'" class="panel tab-panel overview-panel">
+    <div
+      v-if="innerTab === 'overview'"
+      ref="tabPanelRef"
+      class="panel tab-panel overview-panel"
+      :style="tabPanelFillStyle"
+    >
       <div class="stats-strip" role="group" aria-label="市场指标">
         <div class="stat-cell">
           <span class="stat-k">Skill</span>
@@ -1325,7 +1372,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </div>
 
-    <div v-else-if="innerTab === 'releases'" class="panel tab-panel my-release-panel">
+    <div
+      v-else-if="innerTab === 'releases'"
+      ref="tabPanelRef"
+      class="panel tab-panel my-release-panel"
+      :style="tabPanelFillStyle"
+    >
       <div class="my-stats" role="group" aria-label="我的发布指标">
         <div class="my-cell">
           <span class="my-k">我维护的 Skill</span>
@@ -1850,10 +1902,17 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 }
 
 .panel.tab-panel.overview-panel {
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(180deg, #f8fbff 0%, #ffffff 180px);
   padding: 20px;
   border-color: #e7edf6;
   box-shadow: 0 10px 28px rgba(22, 58, 105, 0.06);
+}
+
+.panel.tab-panel.my-release-panel {
+  display: flex;
+  flex-direction: column;
 }
 
 .panel.muted {
@@ -2353,6 +2412,7 @@ width: 100%;
   background: #fafafa;
   flex-shrink: 0;
 }
+
 
 .ops-system-toggle {
   align-items: center;
@@ -3618,10 +3678,12 @@ width: 100%;
 }
 
 .market-layout {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .market-sidebar {
@@ -3753,7 +3815,10 @@ width: 100%;
 }
 
 .market-content {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .market-chip-row {
@@ -3930,7 +3995,8 @@ width: 100%;
 }
 
 .overview-panel .pager {
-  margin-top: 16px;
+  margin-top: auto;
+  padding-top: 16px;
 }
 
 .my-release-panel .my-toolbar {
@@ -3966,6 +4032,8 @@ width: 100%;
 }
 
 .my-release-panel .table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-x: auto;
 }
 
