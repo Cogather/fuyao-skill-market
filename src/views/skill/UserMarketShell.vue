@@ -896,6 +896,8 @@ const opsTopTitle = 'TOP Skill（按下载量）';
 
 const opsTopSubTitle = '展示当前查询范围内下载量最高的Skill';
 
+const OPS_DEPT_DETAIL_VISIBLE_START_DEPTH = 2;
+
 type FlatDeptRow = { name: string; skills: number; downloads: number; depth: number };
 
 type FlatDeptRowV2 = FlatDeptRow & { path: string; hasChildren: boolean; expanded: boolean };
@@ -937,7 +939,7 @@ function toggleDeptExpand(path: string): void {
 
 function flattenDeptTreeVisible(
   nodes: DeptTreeNode[],
-  depth = 0,
+  sourceDepth = 0,
   parentPath = '',
 ): FlatDeptRowV2[] {
   const out: FlatDeptRowV2[] = [];
@@ -945,17 +947,20 @@ function flattenDeptTreeVisible(
     const path = parentPath ? `${parentPath}/${n.name}` : n.name;
     const hasChildren = Boolean(n.children && n.children.length > 0);
     const expanded = hasChildren ? expandedDeptPaths.value.has(path) : false;
-    out.push({
-      path,
-      name: n.name,
-      skills: n.skills,
-      downloads: n.downloads,
-      depth,
-      hasChildren,
-      expanded,
-    });
-    if (hasChildren && expanded) {
-      out.push(...flattenDeptTreeVisible(n.children!, depth + 1, path));
+    const shouldRender = sourceDepth >= OPS_DEPT_DETAIL_VISIBLE_START_DEPTH;
+    if (shouldRender) {
+      out.push({
+        path,
+        name: n.name,
+        skills: n.skills,
+        downloads: n.downloads,
+        depth: sourceDepth - OPS_DEPT_DETAIL_VISIBLE_START_DEPTH,
+        hasChildren,
+        expanded,
+      });
+    }
+    if (hasChildren && (!shouldRender || expanded)) {
+      out.push(...flattenDeptTreeVisible(n.children!, sourceDepth + 1, path));
     }
   }
   return out;
@@ -1145,7 +1150,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
   <div class="user-shell skill-market-shell">
     <section class="hero">
       <div class="hero-inner">
-        <h1 class="hero-title">把你的日常作业经验沉淀成可复用的 Skill</h1>
+        <h1 class="hero-title">把零散的日常作业经验沉淀成可复用的 Skill</h1>
         <p class="hero-desc">
           Skill 是将脚本、文档、检查清单等日常能力打包后的可复用单元，便于在团队内发现与下载。个人上传默认仅对自己可见；进入市场总览需经分层发布与管理员审批。同名 Skill 再次上传将自动作为该条目的新版本。
         </p>
