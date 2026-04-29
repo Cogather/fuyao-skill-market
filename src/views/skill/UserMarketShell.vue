@@ -19,6 +19,9 @@ const { skills, totalDownloads, totalSkills, downloadsLast30Days, orgCount } = s
 const route = useRoute();
 const router = useRouter();
 
+const OVERVIEW_DEFAULT_VISIBLE_ROWS = 3;
+const OVERVIEW_MAX_PAGE_SIZE = 48;
+
 const innerTabAliases: Record<string, UserInnerTab> = {
   overview: 'overview',
   market: 'overview',
@@ -42,6 +45,32 @@ function routeTabFromQuery(value: unknown): UserInnerTab {
   return innerTabAliases[raw] ?? innerTabAliases[raw.toLowerCase()] ?? 'overview';
 }
 
+function overviewColumnCountByViewport(): number {
+  if (typeof window === 'undefined') {
+    return 3;
+  }
+  if (window.innerWidth >= 1920) {
+    return 4;
+  }
+  if (window.innerWidth <= 760) {
+    return 1;
+  }
+  if (window.innerWidth <= 1180) {
+    return 2;
+  }
+  return 3;
+}
+
+function overviewPageSizeByLayout(columns: number, rows: number): number {
+  const safeColumns = Math.max(1, Math.floor(columns));
+  const safeRows = Math.max(1, Math.floor(rows));
+  return Math.min(OVERVIEW_MAX_PAGE_SIZE, safeColumns * safeRows);
+}
+
+function initialOverviewPageSize(): number {
+  return overviewPageSizeByLayout(overviewColumnCountByViewport(), OVERVIEW_DEFAULT_VISIBLE_ROWS);
+}
+
 const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
 const uploadOpen = ref(false);
 const search = ref('');
@@ -53,11 +82,14 @@ const selectedTags = ref<string[]>([]);
 const quickFilter = ref<OverviewQuickFilter>('all');
 const tabPanelRef = ref<HTMLElement | null>(null);
 const tabPanelMinHeight = ref(0);
+const marketContentRef = ref<HTMLElement | null>(null);
+const overviewGridRef = ref<HTMLElement | null>(null);
 const page = ref(1);
-const pageSize = 8;
+const pageSize = ref(initialOverviewPageSize());
 const toast = ref('');
 const versionPanelSkill = ref<Skill | null>(null);
 const detailPanelSkill = ref<Skill | null>(null);
+let overviewPageSizeFrame = 0;
 
 function formatYmd(date: Date): string {
   const y = date.getFullYear();
@@ -210,6 +242,70 @@ const tabPanelFillStyle = computed(() => ({
   minHeight: tabPanelMinHeight.value > 0 ? `${tabPanelMinHeight.value}px` : undefined,
 }));
 
+function overviewGridColumnCount(grid: HTMLElement): number {
+  const columns = window.getComputedStyle(grid).gridTemplateColumns;
+  if (columns && columns !== 'none') {
+    const count = columns.split(/\s+/).filter(Boolean).length;
+    if (count > 0) {
+      return count;
+    }
+  }
+  return overviewColumnCountByViewport();
+}
+
+function syncOverviewPageSize(): void {
+  void nextTick(() => {
+    if (overviewPageSizeFrame) {
+      window.cancelAnimationFrame(overviewPageSizeFrame);
+    }
+    overviewPageSizeFrame = window.requestAnimationFrame(() => {
+      overviewPageSizeFrame = 0;
+      if (innerTab.value !== 'overview') {
+        return;
+      }
+      const content = marketContentRef.value;
+      const grid = overviewGridRef.value;
+      if (!content || !grid) {
+        return;
+      }
+      const columns = overviewGridColumnCount(grid);
+      const gridStyle = window.getComputedStyle(grid);
+      const rowGap = Number.parseFloat(gridStyle.rowGap || gridStyle.gap) || 14;
+      const firstCard = grid.firstElementChild as HTMLElement | null;
+      const measuredCardHeight = firstCard?.getBoundingClientRect().height ?? 0;
+      const cardHeight = Math.max(1, measuredCardHeight || 136);
+      const filters = content.querySelector<HTMLElement>('.filters');
+      const filtersHeight = filters?.offsetHeight ?? 0;
+      const filtersMarginBottom = filters
+        ? Number.parseFloat(window.getComputedStyle(filters).marginBottom) || 0
+        : 0;
+      const pagerHeight = content.querySelector<HTMLElement>('.pager')?.offsetHeight ?? 0;
+      const contentRect = content.getBoundingClientRect();
+      const panel = tabPanelRef.value;
+      const panelRect = panel?.getBoundingClientRect();
+      const panelPaddingBottom = panel
+        ? Number.parseFloat(window.getComputedStyle(panel).paddingBottom) || 0
+        : 0;
+      const plannedContentHeight =
+        panelRect && tabPanelMinHeight.value > 0
+          ? tabPanelMinHeight.value - (contentRect.top - panelRect.top) - panelPaddingBottom
+          : content.clientHeight;
+      const availableHeight = Math.max(
+        cardHeight,
+        plannedContentHeight - filtersHeight - filtersMarginBottom - pagerHeight,
+      );
+      const rows = Math.max(
+        OVERVIEW_DEFAULT_VISIBLE_ROWS,
+        Math.floor((availableHeight + rowGap) / (cardHeight + rowGap)),
+      );
+      const nextSize = overviewPageSizeByLayout(columns, rows);
+      if (nextSize !== pageSize.value) {
+        pageSize.value = nextSize;
+      }
+    });
+  });
+}
+
 function syncTabPanelMinHeight(): void {
   void nextTick(() => {
     const panel = tabPanelRef.value;
@@ -219,16 +315,25 @@ function syncTabPanelMinHeight(): void {
     const bottomGutter = 32;
     const top = panel.getBoundingClientRect().top;
     tabPanelMinHeight.value = Math.max(360, Math.floor(window.innerHeight - top - bottomGutter));
+    syncOverviewPageSize();
   });
 }
 
-onMounted(() => {
+function syncResponsiveLayout(): void {
   syncTabPanelMinHeight();
-  window.addEventListener('resize', syncTabPanelMinHeight);
+  syncOverviewPageSize();
+}
+
+onMounted(() => {
+  syncResponsiveLayout();
+  window.addEventListener('resize', syncResponsiveLayout);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', syncTabPanelMinHeight);
+  if (overviewPageSizeFrame) {
+    window.cancelAnimationFrame(overviewPageSizeFrame);
+  }
+  window.removeEventListener('resize', syncResponsiveLayout);
 });
 
 const deptOptions = computed(() => {
@@ -265,15 +370,15 @@ const listResponse = computed(() => {
   }
 
   const total = list.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize.value));
   const safePage = Math.min(page.value, totalPages);
-  const start = (safePage - 1) * pageSize;
+  const start = (safePage - 1) * pageSize.value;
 
   return {
-    list: list.slice(start, start + pageSize),
+    list: list.slice(start, start + pageSize.value),
     total,
     page: safePage,
-    pageSize,
+    pageSize: pageSize.value,
     totalPages,
   };
 });
@@ -283,7 +388,36 @@ const myReleases = computed(() => skills.value.filter((skill) => skill.ownedByUs
 
 watch([search, quickFilter, levelFilter, sceneFilter, deptFilter, categoryFilter, selectedTags], () => {
   page.value = 1;
+  syncOverviewPageSize();
 });
+
+watch(page, () => {
+  syncOverviewPageSize();
+});
+
+watch(
+  () => filteredSkills.value.length,
+  () => {
+    syncOverviewPageSize();
+  },
+  { flush: 'post' },
+);
+
+watch(
+  () => listResponse.value.totalPages,
+  (totalPages) => {
+    if (page.value > totalPages) {
+      page.value = totalPages;
+    }
+  },
+);
+
+watch(
+  () => skills.value.length,
+  () => {
+    syncOverviewPageSize();
+  },
+);
 
 watch(levelFilter, () => {
   deptFilter.value = 'all';
@@ -1239,7 +1373,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </aside>
 
-        <div class="market-content">
+        <div ref="marketContentRef" class="market-content">
           <div class="filters">
             <input
               v-model="search"
@@ -1275,7 +1409,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
           </div>
 
-          <div v-if="filteredSkills.length > 0" class="grid">
+          <div v-if="filteredSkills.length > 0" ref="overviewGridRef" class="grid">
             <SkillCard
               v-for="s in filteredSkills"
               :key="s.id ?? s.skill_id"
@@ -3678,6 +3812,7 @@ width: 100%;
 
 .market-layout {
   flex: 1 1 auto;
+  height: 100%;
   min-height: 0;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
@@ -3817,6 +3952,7 @@ width: 100%;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100%;
   min-height: 0;
 }
 
