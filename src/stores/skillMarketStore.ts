@@ -11,6 +11,175 @@ import type {
   SkillUploadResponse,
 } from '../types/skill';
 
+type ExtraMockSkillSeed = {
+  name: string;
+  description: string;
+  publishName: string;
+  publishLevel: '个人级' | '组织级';
+  deptName: string;
+  downloads: number;
+  category: string;
+  icon: string;
+  version: string;
+  tags: string[];
+  ownedByUser?: boolean;
+};
+
+const EXTRA_MOCK_SKILL_SEEDS: ExtraMockSkillSeed[] = [
+  {
+    name: '日志分析 Skill',
+    description: '自动解析运行日志并输出异常摘要',
+    publishName: 'SRE团队',
+    publishLevel: '组织级',
+    deptName: '部门1/SRE产品线/平台稳定部/日志工具组',
+    downloads: 128,
+    category: '工具类',
+    icon: 'LA',
+    version: '1.0.0',
+    tags: ['log', 'ops'],
+    ownedByUser: true,
+  },
+  {
+    name: '接口 Mock 生成 Skill',
+    description: '根据接口文档生成 Mock 数据和联调样例',
+    publishName: 'xxx_个人发布商',
+    publishLevel: '个人级',
+    deptName: '部门1/API产品线/联调工具部',
+    downloads: 236,
+    category: '作业类',
+    icon: 'MO',
+    version: '1.1.0',
+    tags: ['mock', 'api'],
+    ownedByUser: true,
+  },
+  {
+    name: '测试用例评审 Skill',
+    description: '检查测试用例覆盖范围并给出评审建议',
+    publishName: '质量工具组',
+    publishLevel: '组织级',
+    deptName: '部门1/质量产品线/质量工具组/评审小组',
+    downloads: 86,
+    category: '业务类',
+    icon: 'QA',
+    version: '1.0.2',
+    tags: ['review', 'test'],
+  },
+  {
+    name: '日报生成 Skill',
+    description: '汇总项目进展并生成团队日报',
+    publishName: 'xxx_个人发布商',
+    publishLevel: '个人级',
+    deptName: '部门1/项目产品线/项目管理部',
+    downloads: 64,
+    category: '作业类',
+    icon: 'DR',
+    version: '0.9.0',
+    tags: ['report'],
+    ownedByUser: true,
+  },
+  {
+    name: 'CI/CD 发布检查 Skill',
+    description: '发布前检查流水线、镜像和配置项风险',
+    publishName: 'DevOps组',
+    publishLevel: '组织级',
+    deptName: '部门1/平台产品线/DevOps部/发布工具组',
+    downloads: 312,
+    category: '工具类',
+    icon: 'CI',
+    version: '1.3.1',
+    tags: ['cicd', 'release'],
+    ownedByUser: true,
+  },
+  {
+    name: '需求拆解 Skill',
+    description: '辅助将业务需求拆解为研发任务清单',
+    publishName: '业务运营组',
+    publishLevel: '组织级',
+    deptName: '部门1/业务产品线/业务运营部/需求分析组',
+    downloads: 53,
+    category: '业务类',
+    icon: 'RD',
+    version: '1.0.1',
+    tags: ['design', 'requirement'],
+  },
+  {
+    name: 'SQL 巡检 Skill',
+    description: '扫描 SQL 风险并给出优化建议',
+    publishName: '数据库运营',
+    publishLevel: '组织级',
+    deptName: '部门1/数据产品线/数据库运营部/SQL治理组',
+    downloads: 97,
+    category: '工具类',
+    icon: 'SQL',
+    version: '2.1.0',
+    tags: ['sql', 'ops'],
+  },
+  {
+    name: '交互文案检查 Skill',
+    description: '检查页面文案一致性和可读性',
+    publishName: 'xxx_个人发布商',
+    publishLevel: '个人级',
+    deptName: '部门1/设计产品线/体验设计部',
+    downloads: 41,
+    category: '业务类',
+    icon: 'UX',
+    version: '0.8.5',
+    tags: ['design'],
+    ownedByUser: true,
+  },
+  {
+    name: '变更影响分析 Skill',
+    description: '根据变更内容推断影响系统和回归范围',
+    publishName: '平台工具组',
+    publishLevel: '组织级',
+    deptName: '部门1/平台产品线/平台工具组/变更分析组',
+    downloads: 174,
+    category: '作业类',
+    icon: 'CH',
+    version: '1.2.3',
+    tags: ['impact', 'release'],
+  },
+];
+
+function createExtraMockSkill(seed: ExtraMockSkillSeed, index: number): Skill {
+  const seq = index + 4;
+  const publishTime = `2024-05-${String(20 - index).padStart(2, '0')} ${String(10 + index).padStart(
+    2,
+    '0',
+  )}:30`;
+  return {
+    skill_id: `mock${seq}`,
+    description: seed.description,
+    publish_name: seed.publishName,
+    publish_level: seed.publishLevel,
+    owner_list: JSON.stringify([{ lastName: seed.publishName, Account: `mock${seq}` }]),
+    download_count: seed.downloads,
+    dept_name: seed.deptName,
+    id: String(seq),
+    name: seed.name,
+    icon: seed.icon,
+    publisher: seed.publishName,
+    latestPublishTime: publishTime,
+    level: seed.publishLevel,
+    downloads: seed.downloads,
+    rating: 4.3 + (index % 5) * 0.1,
+    version: seed.version,
+    versions: [
+      {
+        version: seed.version,
+        publishTime,
+        note: 'Mock 分页验证数据',
+        packageFileName: `mock${seq}-v${seed.version}.zip`,
+        packageSize: 120000 + index * 18000,
+      },
+    ],
+    ownedByUser: seed.ownedByUser,
+    tagFunctional: seed.category,
+    tagOrg: seed.publishLevel,
+    tags: seed.tags,
+  };
+}
+
 const MOCK_SKILLS: Skill[] = [
   {
     skill_id: 'test1',
@@ -100,6 +269,7 @@ const MOCK_SKILLS: Skill[] = [
     tagOrg: '个人级',
     tags: [],
   },
+  ...EXTRA_MOCK_SKILL_SEEDS.map(createExtraMockSkill),
 ];
 
 export function createSkillMarketStore() {

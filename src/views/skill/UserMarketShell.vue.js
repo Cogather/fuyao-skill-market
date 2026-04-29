@@ -1001,6 +1001,8 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['card']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['card']} */ ;

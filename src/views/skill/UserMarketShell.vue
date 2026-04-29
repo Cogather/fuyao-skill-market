@@ -2413,7 +2413,6 @@ width: 100%;
   flex-shrink: 0;
 }
 
-
 .ops-system-toggle {
   align-items: center;
   gap: 4px;
@@ -3936,6 +3935,12 @@ width: 100%;
 .overview-panel .grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+@media (min-width: 1920px) {
+  .overview-panel .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .overview-panel :deep(.card) {
