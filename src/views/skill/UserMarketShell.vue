@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
@@ -15,27 +16,61 @@ import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExc
 
 const store = useSkillMarketStore();
 const { skills, totalDownloads, totalSkills, downloadsLast30Days, orgCount } = store;
+const route = useRoute();
+const router = useRouter();
 
-const innerTab = ref<UserInnerTab>('overview');
+const innerTabAliases: Record<string, UserInnerTab> = {
+  overview: 'overview',
+  market: 'overview',
+  '市场总览': 'overview',
+  core: 'core',
+  coreharness: 'core',
+  releases: 'releases',
+  publish: 'releases',
+  '我的发布': 'releases',
+  ops: 'ops',
+  operation: 'ops',
+  dashboard: 'ops',
+  '运营看板': 'ops',
+};
+
+function routeTabFromQuery(value: unknown): UserInnerTab {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') {
+    return 'overview';
+  }
+  return innerTabAliases[raw] ?? innerTabAliases[raw.toLowerCase()] ?? 'overview';
+}
+
+const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
 const uploadOpen = ref(false);
 const search = ref('');
-const levelFilter = ref('all');
-const sceneFilter = ref('all');
+const levelFilter = ref('all'); // publish_name（筛选组织）
+const sceneFilter = ref('all'); // dept_name 层级（级联筛选：1~6）
+const deptFilter = ref('all'); // 当前层级下的具体部门
+const categoryFilter = ref('all');
+const selectedTags = ref<string[]>([]);
 const quickFilter = ref<OverviewQuickFilter>('all');
+const tabPanelRef = ref<HTMLElement | null>(null);
+const tabPanelMinHeight = ref(0);
 const page = ref(1);
 const pageSize = 8;
 const toast = ref('');
 const versionPanelSkill = ref<Skill | null>(null);
+const detailPanelSkill = ref<Skill | null>(null);
 
-const quickEntries: { key: OverviewQuickFilter; label: string }[] = [
-  { key: 'all', label: '全部' },
-  { key: 'personal', label: '个人' },
-  { key: 'devDept', label: '开发部' },
-  { key: 'pdu', label: 'PDU' },
-  { key: 'productLine', label: '产品线' },
-  { key: 'recent', label: '最近更新' },
-  { key: 'highDl', label: '高下载' },
-];
+function formatYmd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+const opsAsOfText = computed(() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatYmd(d);
+});
 
 function toListScope(filter: OverviewQuickFilter): SkillMarketScope {
   return ['personal', 'devDept', 'pdu', 'productLine'].includes(filter)
@@ -43,35 +78,366 @@ function toListScope(filter: OverviewQuickFilter): SkillMarketScope {
     : 'all';
 }
 
-const listResponse = computed(() =>
-  store.listSkills({
-    keyword: search.value,
-    page: page.value,
+function deptSegments(raw: string): string[] {
+  return raw
+    .split('/')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function deptAtLevel(skill: Skill, level: string): string {
+  const n = Number(level);
+  if (!Number.isFinite(n) || n <= 0) {
+    return '';
+  }
+  const segs = deptSegments(skill.dept_name ?? '');
+  return segs[n - 1] ?? '';
+}
+
+function matchesScopeFilter(skill: Skill, scope: SkillMarketScope): boolean {
+  if (scope === 'all') {
+    return true;
+  }
+  if (scope === 'personal') {
+    return (
+      (skill.publish_level ?? skill.level ?? '').includes('个人') ||
+      (skill.publish_name ?? skill.publisher ?? '').includes('个人') ||
+      Boolean(skill.ownedByUser)
+    );
+  }
+  if (scope === 'devDept') {
+    return (skill.publish_level ?? '').trim() === '组织级';
+  }
+  if (scope === 'pdu') {
+    return (skill.publish_name ?? '').includes('PDU');
+  }
+  return (skill.publish_name ?? '').includes('产品线');
+}
+
+function matchesKeyword(skill: Skill, q: string): boolean {
+  if (!q) {
+    return true;
+  }
+  return (skill.name ?? skill.skill_id ?? '').toLowerCase().includes(q);
+}
+
+function matchesOrgFilter(skill: Skill): boolean {
+  return levelFilter.value === 'all' || (skill.publish_name ?? '').trim() === levelFilter.value;
+}
+
+function skillCategory(skill: Skill): string {
+  return (skill.tagFunctional ?? '').trim();
+}
+
+function matchesCategoryFilter(skill: Skill): boolean {
+  return categoryFilter.value === 'all' || skillCategory(skill) === categoryFilter.value;
+}
+
+function skillTags(skill: Skill): string[] {
+  return (skill.tags ?? []).map((tag) => tag.trim()).filter(Boolean);
+}
+
+function matchesSelectedTags(skill: Skill): boolean {
+  if (selectedTags.value.length === 0) {
+    return true;
+  }
+  const tags = skillTags(skill);
+  return selectedTags.value.every((tag) => tags.includes(tag));
+}
+
+function matchesDeptLevelFilter(skill: Skill): boolean {
+  if (sceneFilter.value === 'all') {
+    return true;
+  }
+  return Boolean(deptAtLevel(skill, sceneFilter.value));
+}
+
+function matchesSpecificDeptFilter(skill: Skill): boolean {
+  return deptFilter.value === 'all' || deptAtLevel(skill, sceneFilter.value) === deptFilter.value;
+}
+
+function matchesPrimaryFilters(skill: Skill, q: string, scope: SkillMarketScope): boolean {
+  return (
+    matchesScopeFilter(skill, scope) &&
+    matchesKeyword(skill, q) &&
+    matchesOrgFilter(skill) &&
+    matchesCategoryFilter(skill) &&
+    matchesDeptLevelFilter(skill)
+  );
+}
+
+const orgOptions = computed(() => {
+  const opts = new Set<string>();
+  for (const s of skills.value) {
+    if ((s.publish_level ?? '').trim() !== '组织级') {
+      continue;
+    }
+    const name = (s.publish_name ?? '').trim();
+    if (name) {
+      opts.add(name);
+    }
+  }
+  return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+});
+
+const categoryOptions = computed(() => {
+  const opts = new Set<string>();
+  for (const s of skills.value) {
+    const category = skillCategory(s);
+    if (category) {
+      opts.add(category);
+    }
+  }
+  return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+});
+
+const tagOptions = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  const scope = toListScope(quickFilter.value);
+  const opts = new Set<string>();
+  for (const s of skills.value) {
+    if (!matchesPrimaryFilters(s, q, scope) || !matchesSpecificDeptFilter(s)) {
+      continue;
+    }
+    for (const tag of skillTags(s)) {
+      opts.add(tag);
+    }
+  }
+  return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+});
+
+const tabPanelFillStyle = computed(() => ({
+  minHeight: tabPanelMinHeight.value > 0 ? `${tabPanelMinHeight.value}px` : undefined,
+}));
+
+function syncTabPanelMinHeight(): void {
+  void nextTick(() => {
+    const panel = tabPanelRef.value;
+    if (!panel) {
+      return;
+    }
+    const bottomGutter = 32;
+    const top = panel.getBoundingClientRect().top;
+    tabPanelMinHeight.value = Math.max(360, Math.floor(window.innerHeight - top - bottomGutter));
+  });
+}
+
+onMounted(() => {
+  syncTabPanelMinHeight();
+  window.addEventListener('resize', syncTabPanelMinHeight);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncTabPanelMinHeight);
+});
+
+const deptOptions = computed(() => {
+  if (sceneFilter.value === 'all') {
+    return [];
+  }
+  const q = search.value.trim().toLowerCase();
+  const scope = toListScope(quickFilter.value);
+  const opts = new Set<string>();
+  for (const s of skills.value) {
+    if (!matchesPrimaryFilters(s, q, scope)) {
+      continue;
+    }
+    const dept = deptAtLevel(s, sceneFilter.value);
+    if (dept) {
+      opts.add(dept);
+    }
+  }
+  return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+});
+
+const listResponse = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  const scope = toListScope(quickFilter.value);
+
+  let list = [...skills.value].filter((s) => matchesPrimaryFilters(s, q, scope));
+
+  list = list.filter((s) => matchesSpecificDeptFilter(s) && matchesSelectedTags(s));
+
+  if (quickFilter.value === 'highDl') {
+    list.sort((a, b) => (b.download_count ?? 0) - (a.download_count ?? 0));
+  } else {
+    list.sort((a, b) => (b.skill_id ?? '').localeCompare(a.skill_id ?? ''));
+  }
+
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page.value, totalPages);
+  const start = (safePage - 1) * pageSize;
+
+  return {
+    list: list.slice(start, start + pageSize),
+    total,
+    page: safePage,
     pageSize,
-    scope: toListScope(quickFilter.value),
-  }),
-);
+    totalPages,
+  };
+});
 
 const filteredSkills = computed(() => listResponse.value.list);
 const myReleases = computed(() => skills.value.filter((skill) => skill.ownedByUser));
 
-watch([search, quickFilter], () => {
+watch([search, quickFilter, levelFilter, sceneFilter, deptFilter, categoryFilter, selectedTags], () => {
   page.value = 1;
 });
+
+watch(levelFilter, () => {
+  deptFilter.value = 'all';
+});
+
+watch(sceneFilter, () => {
+  deptFilter.value = 'all';
+});
+
+watch(deptOptions, (options) => {
+  if (deptFilter.value !== 'all' && !options.includes(deptFilter.value)) {
+    deptFilter.value = 'all';
+  }
+});
+
+watch(tagOptions, (options) => {
+  selectedTags.value = selectedTags.value.filter((tag) => options.includes(tag));
+});
+
+function toggleTagFilter(tag: string): void {
+  selectedTags.value = selectedTags.value.includes(tag)
+    ? selectedTags.value.filter((item) => item !== tag)
+    : [...selectedTags.value, tag];
+}
+
+function clearTagFilters(): void {
+  selectedTags.value = [];
+}
 
 function openUpload(): void {
   uploadOpen.value = true;
 }
 
-function goTab(tab: UserInnerTab): void {
+function goTab(tab: UserInnerTab, replace = false): void {
   innerTab.value = tab;
+  const target = {
+    name: 'skill-market',
+    query: {
+      ...route.query,
+      tab,
+    },
+  };
+  if (replace) {
+    void router.replace(target);
+  } else {
+    void router.push(target);
+  }
 }
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const nextTab = routeTabFromQuery(tab);
+    if (nextTab !== innerTab.value) {
+      innerTab.value = nextTab;
+    }
+  },
+);
+
+watch(innerTab, () => {
+  syncTabPanelMinHeight();
+});
 
 function showToast(message: string, ms = 3000): void {
   toast.value = message;
   setTimeout(() => {
     toast.value = '';
   }, ms);
+}
+
+function skillKey(skill: Skill): string {
+  return skill.id ?? skill.skill_id;
+}
+
+function skillTitle(skill: Skill): string {
+  return skill.name ?? skill.skill_id;
+}
+
+function skillVersion(skill: Skill): string {
+  return skill.version ?? '1.0.0';
+}
+
+function skillAuthor(skill: Skill): string {
+  const raw = skill.owner_list?.trim();
+  if (raw) {
+    try {
+      const owners = JSON.parse(raw) as Array<{ lastName?: string; Account?: string }>;
+      const owner = owners[0];
+      if (owner?.lastName || owner?.Account) {
+        return [owner.lastName, owner.Account].filter(Boolean).join(' ');
+      }
+    } catch {
+      // owner_list can be a free-form string in imported Excel rows.
+    }
+  }
+  return skill.publish_name ?? skill.publisher ?? '当前用户';
+}
+
+function skillScopeLabel(skill: Skill): string {
+  const level = (skill.publish_level ?? skill.level ?? skill.tagOrg ?? '').trim();
+  if (level.includes('组织')) {
+    return skill.publish_name ? `组织级 · ${skill.publish_name}` : '组织级';
+  }
+  if (level.includes('个人')) {
+    return '个人级';
+  }
+  return level || '-';
+}
+
+function skillScopeClass(skill: Skill): string {
+  return skillScopeLabel(skill).includes('组织') ? 'scope-org' : 'scope-personal';
+}
+
+function skillDownloadCount(skill: Skill): string {
+  return (skill.download_count ?? skill.downloads ?? 0).toLocaleString('zh-CN');
+}
+
+function detailRows(skill: Skill): { label: string; value: string }[] {
+  return [
+    { label: 'author', value: skillAuthor(skill) },
+    { label: 'version', value: skillVersion(skill) },
+    { label: 'category', value: skill.tagFunctional ?? '-' },
+    { label: 'publish_level', value: skill.publish_level ?? skill.level ?? '-' },
+    { label: 'publish_name', value: skill.publish_name ?? skill.publisher ?? '-' },
+    { label: 'dept_name', value: skill.dept_name || '-' },
+  ];
+}
+
+function detailFileTree(skill: Skill): string {
+  const root = skillTitle(skill);
+  return `${root}/
+├─ SKILL.md
+├─ skill.yaml
+├─ README.md
+├─ prompts/
+│  ├─ system.md
+│  └─ examples.md
+├─ scripts/
+│  └─ main.py
+├─ assets/
+│  └─ config.example.json
+└─ tests/
+   └─ sample_input.json`;
+}
+
+function skillRequirements(skill: Skill): string {
+  return skillScopeLabel(skill).includes('组织') ? '需要组织内权限、Python 3.10+' : '本地运行环境、Python 3.10+';
+}
+
+function skillTagSummary(skill: Skill): string {
+  const deptParts = deptSegments(skill.dept_name ?? '');
+  return [skill.tagFunctional, skill.skill_id, deptParts[deptParts.length - 1]]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function onUploadSubmit(payload: SkillUploadPayload): void {
@@ -100,17 +466,42 @@ function onDownload(id: string): void {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast(`已下载当前版本：${result.skill.name} v${result.skill.version}`);
+    showToast(`已下载当前版本：${skillTitle(result.skill)} v${skillVersion(result.skill)}`);
   } catch (e) {
     showToast(e instanceof Error ? e.message : '下载失败');
   }
 }
 
 function onViewVersions(id: string): void {
-  const skill = skills.value.find((item) => item.id === id);
+  const skill = skills.value.find((item) => skillKey(item) === id);
   if (skill) {
     versionPanelSkill.value = skill;
   }
+}
+
+function openDetailPanel(id: string): void {
+  const skill = skills.value.find((item) => skillKey(item) === id);
+  if (skill) {
+    detailPanelSkill.value = skill;
+  }
+}
+
+function closeDetailPanel(): void {
+  detailPanelSkill.value = null;
+}
+
+function onDetailDownload(): void {
+  if (!detailPanelSkill.value) {
+    return;
+  }
+  onDownload(skillKey(detailPanelSkill.value));
+}
+
+function onTrySkill(): void {
+  if (!detailPanelSkill.value) {
+    return;
+  }
+  showToast(`已进入在线试用（演示）：${skillTitle(detailPanelSkill.value)}`);
 }
 
 function closeVersionPanel(): void {
@@ -157,20 +548,21 @@ const coreSkills = computed(() => {
   if (q) {
     list = list.filter(
       (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.publisher.toLowerCase().includes(q) ||
-        s.tagOrg.toLowerCase().includes(q) ||
-        s.tagFunctional.toLowerCase().includes(q),
+        (s.name ?? s.skill_id ?? '').toLowerCase().includes(q) ||
+        (s.publisher ?? s.publish_name ?? '').toLowerCase().includes(q) ||
+        (s.tagOrg ?? s.dept_name ?? '').toLowerCase().includes(q) ||
+        (s.tagFunctional ?? '').toLowerCase().includes(q) ||
+        (s.description ?? '').toLowerCase().includes(q),
     );
   }
   if (coreQuick.value === 'devDept') {
-    list = list.filter((s) => s.tagOrg.includes('开发部') || s.level.includes('开发部'));
+    list = list.filter((s) => (s.publish_level ?? '').trim() === '组织级');
   }
   if (coreQuick.value === 'pdu') {
-    list = list.filter((s) => s.tagOrg.includes('PDU') || s.level.includes('PDU'));
+    list = list.filter((s) => (s.publish_name ?? '').includes('PDU'));
   }
   if (coreQuick.value === 'productLine') {
-    list = list.filter((s) => s.tagOrg.includes('产品线') || s.level.includes('产品线'));
+    list = list.filter((s) => (s.publish_name ?? '').includes('产品线'));
   }
   return list;
 });
@@ -194,11 +586,10 @@ const releaseFilter = ref<ReleaseFilterKey>('all');
 
 const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
-  { key: 'personal', label: '个人层级' },
-  { key: 'published', label: '已发布' },
-  { key: 'reviewing', label: '审核中' },
-  { key: 'rejected', label: '被驳回' },
-  { key: 'coreApply', label: 'CoreHarness 申请' },
+  { key: 'personal', label: '个人级' },
+  { key: 'published', label: '组织级' },
+  { key: 'reviewing', label: '组织审核中' },
+  { key: 'rejected', label: '组织已驳回' },
 ];
 
 type ReleaseStatusKey = 'published' | 'reviewing-dev' | 'rejected-pdu';
@@ -215,29 +606,44 @@ function statusOf(skill: Skill): ReleaseStatusKey {
 
 function statusText(st: ReleaseStatusKey): string {
   if (st === 'published') {
-    return '已发布';
+    return '组织级';
   }
   if (st === 'reviewing-dev') {
-    return '开发部审核中';
+    return '组织审核中';
   }
-  return 'PDU 审核驳回';
+  return '组织已驳回';
 }
 
 function lastActionText(st: ReleaseStatusKey): string {
   if (st === 'published') {
-    return '可申请升级到开发部级';
+    return '已同步至公司组织';
   }
   if (st === 'reviewing-dev') {
-    return '等待终端安全开发一部审核';
+    return '等待目标组织管理员审核';
   }
   return '需补充复现数据和说明文档';
+}
+
+function releasePrimaryLevel(skill: Skill): string {
+  if ((skill.publish_level ?? skill.level ?? '').includes('个人')) {
+    return '个人级';
+  }
+  return '组织级';
+}
+
+function releaseOrgLabel(skill: Skill): string {
+  if ((skill.publish_level ?? skill.level ?? '').includes('个人')) {
+    return '个人空间';
+  }
+  return skill.publish_name ?? skill.level ?? '';
 }
 
 const myReleaseRows = computed(() => {
   const list = myReleases.value.length > 0 ? myReleases.value : skills.value.slice(0, 4);
   return list.map((s) => {
     const st = statusOf(s);
-    const isPersonal = s.level.includes('个人') || s.tagOrg.includes('个人');
+    const isPersonal =
+      (s.publish_level ?? s.level ?? '').includes('个人') || (s.dept_name ?? s.tagOrg ?? '').includes('个人');
     return {
       skill: s,
       statusKey: st,
@@ -353,6 +759,7 @@ const defaultUiOrgBars: OrgBarRow[] = [
 ];
 
 const opsBarMode = ref<'skills' | 'downloads'>('skills');
+const opsBoardSystem = ref<'fuyao' | 'company'>('company');
 
 const uiDeptTree = computed(() =>
   opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree,
@@ -370,6 +777,8 @@ const uiOrgBarsSorted = computed(() => {
   return list.sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
 });
 
+const visibleOrgBars = computed(() => uiOrgBarsSorted.value.slice(0, 8));
+
 function orgBarLabel(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -378,6 +787,20 @@ function orgBarLabel(name: string): string {
   const parts = trimmed.split('/');
   return parts[parts.length - 1]?.trim() || trimmed;
 }
+
+function estimateOrgBarLabelWidth(label: string): number {
+  let width = 0;
+  for (const char of label) {
+    width += /[\u0000-\u00ff]/.test(char) ? 7 : 13;
+  }
+  return Math.ceil(width + 8);
+}
+
+const orgBarLabelColumnWidth = computed(() => {
+  const widths = visibleOrgBars.value.map((row) => estimateOrgBarLabelWidth(orgBarLabel(row.name)));
+  const contentWidth = Math.max(0, ...widths);
+  return Math.min(180, Math.max(78, contentWidth));
+});
 
 function minDeptLabel(name: string): string {
   return orgBarLabel(name);
@@ -416,14 +839,25 @@ type FlatDeptRowV2 = FlatDeptRow & { path: string; hasChildren: boolean; expande
 
 const expandedDeptPaths = ref<Set<string>>(new Set());
 
+function collectExpandableDeptPaths(
+  nodes: DeptTreeNode[],
+  parentPath = '',
+  out = new Set<string>(),
+): Set<string> {
+  for (const n of nodes) {
+    const path = parentPath ? `${parentPath}/${n.name}` : n.name;
+    if (n.children && n.children.length > 0) {
+      out.add(path);
+      collectExpandableDeptPaths(n.children, path, out);
+    }
+  }
+  return out;
+}
+
 watch(
   uiDeptTree,
   (tree) => {
-    const next = new Set<string>();
-    for (const n of tree) {
-      next.add(n.name);
-    }
-    expandedDeptPaths.value = next;
+    expandedDeptPaths.value = collectExpandableDeptPaths(tree);
   },
   { immediate: true },
 );
@@ -519,8 +953,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <h2>TOP 使用 Skill</h2>
         <ul class="plain-list">
           <li v-for="skill in topSkills" :key="skill.id">
-            <strong>{{ skill.name }}</strong>
-            <span>{{ skill.downloads.toLocaleString('zh-CN') }} 次下载</span>
+            <strong>{{ skill.name ?? skill.skill_id }}</strong>
+            <span>{{ (skill.download_count ?? skill.downloads ?? 0).toLocaleString('zh-CN') }} 次下载</span>
           </li>
         </ul>
       </div>
@@ -529,15 +963,111 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <UploadSkillModal v-model="uploadOpen" @submit="onUploadSubmit" />
 
     <Teleport to="body">
+      <div
+        v-if="detailPanelSkill"
+        class="overlay detail-overlay"
+        role="presentation"
+        @click.self="closeDetailPanel"
+      >
+        <section class="skill-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="skill-detail-title">
+          <header class="detail-head">
+            <h2 id="skill-detail-title">Skill 详情</h2>
+            <button type="button" class="detail-close" @click="closeDetailPanel">关闭</button>
+          </header>
+
+          <div class="detail-toolbar">
+            <div class="detail-tags">
+              <span class="detail-pill pill-category">{{ detailPanelSkill.tagFunctional }}</span>
+              <span class="detail-pill pill-id">{{ detailPanelSkill.skill_id }}</span>
+              <span class="detail-pill">版本 {{ skillVersion(detailPanelSkill) }}</span>
+              <span class="detail-pill">作者 {{ skillAuthor(detailPanelSkill) }}</span>
+              <span class="detail-pill" :class="skillScopeClass(detailPanelSkill)">
+                {{ skillScopeLabel(detailPanelSkill) }}
+              </span>
+              <span class="detail-download">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M12 4v12m0 0 4-4m-4 4-4-4M5 20h14"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                {{ skillDownloadCount(detailPanelSkill) }}
+              </span>
+            </div>
+            <div class="detail-actions">
+              <button type="button" class="detail-btn ghost" @click="onTrySkill">在线试用</button>
+              <button type="button" class="detail-btn primary" @click="onDetailDownload">下载到本地</button>
+            </div>
+          </div>
+
+          <div class="detail-main">
+            <aside class="detail-file-panel">
+              <div class="detail-panel-title">文件结构</div>
+              <pre>{{ detailFileTree(detailPanelSkill) }}</pre>
+            </aside>
+            <article class="detail-md-panel">
+              <div class="detail-panel-title">SKILL.md</div>
+              <div class="detail-md-body">
+                <h3>{{ skillTitle(detailPanelSkill) }} Skill</h3>
+                <p>{{ detailPanelSkill.description || '暂无描述。' }}</p>
+
+                <h4>Metadata</h4>
+                <table class="detail-meta-table">
+                  <tbody>
+                    <tr v-for="row in detailRows(detailPanelSkill)" :key="row.label">
+                      <th>{{ row.label }}</th>
+                      <td>{{ row.value }}</td>
+                    </tr>
+                    <tr>
+                      <th>requirements</th>
+                      <td>{{ skillRequirements(detailPanelSkill) }}</td>
+                    </tr>
+                    <tr>
+                      <th>tags</th>
+                      <td>{{ skillTagSummary(detailPanelSkill) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <h4>分类信息</h4>
+                <ul>
+                  <li>大类：{{ detailPanelSkill.tagFunctional || '-' }}</li>
+                  <li>发布层级：{{ skillScopeLabel(detailPanelSkill) }}</li>
+                  <li>所属部门：{{ detailPanelSkill.dept_name || '-' }}</li>
+                </ul>
+
+                <h4>使用说明</h4>
+                <p>
+                  下载后可在本地 Skill 运行环境中加载使用；组织级 Skill 可在对应组织范围内共享和复用。
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <footer class="detail-foot">
+            <button type="button" class="detail-btn ghost" @click="closeDetailPanel">取消</button>
+            <button type="button" class="detail-btn primary" @click="onDetailDownload">下载到本地</button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
       <div v-if="versionPanelSkill" class="overlay" role="presentation" @click.self="closeVersionPanel">
         <div class="v-dialog" role="dialog" aria-modal="true">
           <div class="v-head">
-            <strong>{{ versionPanelSkill.name }}</strong>
+            <strong>{{ versionPanelSkill.name ?? versionPanelSkill.skill_id }}</strong>
             <button type="button" class="close-x" aria-label="关闭" @click="closeVersionPanel">x</button>
           </div>
-          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version }}</p>
+          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version ?? '-' }}</p>
           <ul class="v-list">
-            <li v-for="version in [...versionPanelSkill.versions].reverse()" :key="version.version + version.publishTime">
+            <li
+              v-for="version in [...(versionPanelSkill.versions ?? [])].reverse()"
+              :key="version.version + version.publishTime"
+            >
               <span class="ver">{{ version.version }}</span>
               <span class="time">{{ version.publishTime }}</span>
               <span v-if="version.packageFileName" class="note">{{ version.packageFileName }}</span>
@@ -551,7 +1081,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
   </div>
   <!-- <p>--------------------------------这是分界线--------------------------------</p> -->
-  <div class="user-shell">
+  <div class="user-shell skill-market-shell">
     <section class="hero">
       <div class="hero-inner">
         <h1 class="hero-title">把你的日常作业经验沉淀成可复用的 Skill</h1>
@@ -576,6 +1106,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         市场总览
       </button>
       <button
+        v-if="false"
         type="button"
         class="sub-tab"
         :class="{ on: innerTab === 'core' }"
@@ -601,17 +1132,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </button>
     </nav>
 
-    <div v-if="innerTab === 'overview'" class="panel tab-panel overview-panel">
-      <div class="panel-head">
-        <div>
-          <h2 class="panel-title">市场总览</h2>
-          <p class="panel-help">卡片右上角 &quot;...&quot; 仅提供下载到本地。</p>
-        </div>
-        <button type="button" class="btn primary sm" @click="openUpload">
-          <span class="up">↑</span> 上传 Skill
-        </button>
-      </div>
-
+    <div
+      v-if="innerTab === 'overview'"
+      ref="tabPanelRef"
+      class="panel tab-panel overview-panel"
+      :style="tabPanelFillStyle"
+    >
       <div class="stats-strip" role="group" aria-label="市场指标">
         <div class="stat-cell">
           <span class="stat-k">Skill</span>
@@ -634,70 +1160,152 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </div>
       </div>
 
-      <div class="filter-block">
-        <div class="quick-row">
-          <span class="quick-label">快捷入口</span>
-          <div class="quick-pills">
+      <div class="market-layout">
+        <aside class="market-sidebar" aria-label="市场筛选">
+          <nav class="side-nav">
             <button
-              v-for="item in quickEntries"
-              :key="item.key"
               type="button"
-              class="pill"
-              :class="{ active: quickFilter === item.key }"
-              @click="quickFilter = item.key"
+              class="side-nav-item"
+              :class="{ active: quickFilter === 'all' }"
+              @click="quickFilter = 'all'"
             >
-              {{ item.label }}
+              <span class="side-nav-icon">◇</span>全部 Skill
             </button>
+            <button
+              type="button"
+              class="side-nav-item"
+              :class="{ active: quickFilter === 'personal' }"
+              @click="quickFilter = 'personal'"
+            >
+              <span class="side-nav-icon">♙</span>个人级
+            </button>
+            <button
+              type="button"
+              class="side-nav-item"
+              :class="{ active: quickFilter === 'devDept' }"
+              @click="quickFilter = 'devDept'"
+            >
+              <span class="side-nav-icon">▦</span>组织级
+            </button>
+          </nav>
+          <div class="side-block">
+            <div class="side-title">分类 <span class="side-help">?</span></div>
+            <div class="side-tags">
+              <button
+                type="button"
+                class="side-tag"
+                :class="{ active: categoryFilter === 'all' }"
+                @click="categoryFilter = 'all'"
+              >
+                全部
+              </button>
+              <button
+                v-for="category in categoryOptions"
+                :key="category"
+                type="button"
+                class="side-tag"
+                :class="{ active: categoryFilter === category }"
+                @click="categoryFilter = category"
+              >
+                {{ category }}
+              </button>
+            </div>
           </div>
-        </div>
-        <div class="filters">
-          <input
-            v-model="search"
-            class="search"
-            type="search"
-            placeholder="通过 Skill 名称搜索"
-          />
-          <select v-model="levelFilter" class="select">
-            <option value="all">全部层级 / 全部组织</option>
-            <option value="开发部">开发部</option>
-            <option value="平台部">平台部</option>
-            <option value="研发平台">研发平台</option>
-          </select>
-          <select v-model="sceneFilter" class="select">
-            <option value="all">全部场景</option>
-            <option value="review">代码审查</option>
-            <option value="cicd">CI/CD</option>
-          </select>
-        </div>
-      </div>
+          <div class="side-block">
+            <div class="side-title tag-title">
+              <span>标签 <span class="side-help">?</span></span>
+              <button
+                v-if="selectedTags.length > 0"
+                type="button"
+                class="tag-clear"
+                @click="clearTagFilters"
+              >
+                清除
+              </button>
+            </div>
+            <div class="side-tags">
+              <button
+                v-for="tag in tagOptions"
+                :key="tag"
+                type="button"
+                class="side-tag"
+                :class="{ active: selectedTags.includes(tag) }"
+                @click="toggleTagFilter(tag)"
+              >
+                {{ tag }}
+              </button>
+              <span v-if="tagOptions.length === 0" class="side-empty">暂无标签</span>
+            </div>
+          </div>
+        </aside>
 
-      <div v-if="filteredSkills.length > 0" class="grid">
-        <SkillCard
-          v-for="s in filteredSkills"
-          :key="s.id"
-          :skill="s"
-          menu-mode="download-only"
-          @download="onDownload"
-          @view-versions="onViewVersions"
-        />
-      </div>
-      <p v-else class="empty">暂无匹配的 Skill</p>
+        <div class="market-content">
+          <div class="filters">
+            <input
+              v-model="search"
+              class="search"
+              type="search"
+              placeholder="搜索 Skill 名称"
+            />
+            <select v-model="levelFilter" class="select">
+              <option value="all">筛选组织</option>
+              <option v-for="org in orgOptions" :key="org" :value="org">{{ org }}</option>
+            </select>
+            <div class="cascade-selects" aria-label="部门级联筛选">
+              <select v-model="sceneFilter" class="select cascade-level">
+                <option value="all">分层筛选部门</option>
+                <option value="1">一级部门</option>
+                <option value="2">二级部门</option>
+                <option value="3">三级部门</option>
+                <option value="4">四级部门</option>
+                <option value="5">五级部门</option>
+                <option value="6">六级部门</option>
+              </select>
+              <span class="cascade-arrow" aria-hidden="true">›</span>
+              <select
+                v-model="deptFilter"
+                class="select cascade-dept"
+                :disabled="sceneFilter === 'all' || deptOptions.length === 0"
+              >
+                <option value="all">
+                  {{ sceneFilter === 'all' ? '先选择部门层级' : '选择具体部门' }}
+                </option>
+                <option v-for="d in deptOptions" :key="d" :value="d">{{ d }}</option>
+              </select>
+            </div>
+          </div>
 
-      <div class="pager">
-        <span>
-          共 {{ listResponse.total }} 个 Skill · 第 {{ listResponse.page }} /
-          {{ listResponse.totalPages }} 页
-        </span>
-        <div class="pager-actions">
-          <button type="button" class="mini" :disabled="page <= 1" @click="prevPage">上一页</button>
-          <button
-            type="button"
-            class="mini"
-            :disabled="page >= listResponse.totalPages"
-            @click="nextPage"
-          >
-            下一页
-          </button>
+          <div v-if="filteredSkills.length > 0" class="grid">
+            <SkillCard
+              v-for="s in filteredSkills"
+              :key="s.id ?? s.skill_id"
+              class="market-skill-card"
+              :skill="s"
+              menu-mode="download-only"
+              @download="onDownload"
+              @open-detail="openDetailPanel"
+              @view-versions="onViewVersions"
+            />
+          </div>
+          <p v-else class="empty">没有匹配的 Skill，可调整筛选条件。</p>
+
+          <div class="pager">
+            <span>
+              共 {{ listResponse.total }} 个 Skill · 第 {{ listResponse.page }} /
+              {{ listResponse.totalPages }} 页
+            </span>
+            <div class="pager-actions">
+              <button type="button" class="mini" :disabled="page <= 1" @click="prevPage">上一页</button>
+              <button
+                type="button"
+                class="mini"
+                :disabled="page >= listResponse.totalPages"
+                @click="nextPage"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -764,17 +1372,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </div>
 
-    <div v-else-if="innerTab === 'releases'" class="panel tab-panel">
-      <div class="panel-head">
-        <div>
-          <h2 class="panel-title">我的发布</h2>
-          <p class="panel-help">聚合我维护的 Skill、升级申请、新版本和 CoreHarness 转换申请。</p>
-        </div>
-        <button type="button" class="btn primary sm" @click="openUpload">
-          <span class="up">↑</span> 上传新 Skill
-        </button>
-      </div>
-
+    <div
+      v-else-if="innerTab === 'releases'"
+      ref="tabPanelRef"
+      class="panel tab-panel my-release-panel"
+      :style="tabPanelFillStyle"
+    >
       <div class="my-stats" role="group" aria-label="我的发布指标">
         <div class="my-cell">
           <span class="my-k">我维护的 Skill</span>
@@ -794,11 +1397,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <div class="my-cell">
           <span class="my-k">我的累计下载</span>
           <span class="my-v">{{ uiMyStats.myTotalDownloads }}</span>
-        </div>
-        <div class="my-div" aria-hidden="true" />
-        <div class="my-cell">
-          <span class="my-k">我的近 30 天下载</span>
-          <span class="my-v">{{ uiMyStats.my30DaysDownloads }}</span>
         </div>
       </div>
 
@@ -844,8 +1442,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </div>
               </td>
               <td>
-                <div class="cell-main">{{ row.skill.level.split('·')[0]?.trim() || row.skill.level }}</div>
-                <div class="cell-sub">{{ row.skill.level }}</div>
+                <div class="cell-main">{{ releasePrimaryLevel(row.skill) }}</div>
+                <div class="cell-sub">{{ releaseOrgLabel(row.skill) }}</div>
               </td>
               <td>
                 <div class="cell-main">{{ row.skill.version }}</div>
@@ -854,7 +1452,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <td>
                 <span class="st" :class="`st-${row.statusKey}`">{{ row.statusLabel }}</span>
               </td>
-              <td class="num">{{ row.skill.downloads.toLocaleString('zh-CN') }}</td>
+              <td class="num">{{ (row.skill.download_count ?? row.skill.downloads ?? 0).toLocaleString('zh-CN') }}</td>
               <td class="cell-sub">{{ row.lastAction }}</td>
               <td>
                 <div class="ops">
@@ -862,10 +1460,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     新版本
                   </button>
                   <button type="button" class="mini" @click="toastAction('升级（演示）：提交层级升级申请')">
-                    升级
-                  </button>
-                  <button type="button" class="mini" @click="toastAction('转 CoreHarness（演示）：提交转换申请')">
-                    转 CoreHarness
+                    同步至公司组织
                   </button>
                   <button type="button" class="mini" @click="toastAction('记录（演示）：打开操作记录面板')">
                     记录
@@ -884,9 +1479,40 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div v-else class="panel tab-panel ops">
       <section class="ops-dashboard-card" aria-label="Skill 运营看板">
         <header class="ops-dash-top">
-          <h2 class="ops-dash-title">Skill 运营看板</h2>
+          <div class="ops-dash-heading">
+            <h2 class="ops-dash-title">Skill 运营看板</h2>
+            <p class="ops-dash-desc">
+              扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级 Skill。
+            </p>
+          </div>
           <div class="ops-dash-meta">
-            <span class="ops-dash-note">数据统计至：T+1 (统计更新延迟1天)</span>
+            <div class="ops-toggle ops-system-toggle" role="tablist" aria-label="运营看板系统切换">
+              <button
+                type="button"
+                class="ops-system-btn"
+                data-system="fuyao"
+                role="tab"
+                :class="{ active: opsBoardSystem === 'fuyao' }"
+                :aria-selected="opsBoardSystem === 'fuyao'"
+                @click="opsBoardSystem = 'fuyao'"
+              >
+                扶摇系统
+              </button>
+              <button
+                type="button"
+                class="ops-system-btn"
+                data-system="company"
+                role="tab"
+                :class="{ active: opsBoardSystem === 'company' }"
+                :aria-selected="opsBoardSystem === 'company'"
+                @click="opsBoardSystem = 'company'"
+              >
+                公司系统
+              </button>
+            </div>
+            <span class="ops-dash-note" :title="`统计至：${opsAsOfText}`">
+              数据口径：T+1（统计数据延迟 1 天）
+            </span>
             <input
               ref="opsExcelInputRef"
               class="visually-hidden"
@@ -1002,8 +1628,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </button>
               </div>
             </div>
-            <div class="org-bar-list" role="list" aria-label="组织架构分布条形图">
-              <div v-for="row in uiOrgBarsSorted.slice(0, 8)" :key="row.name" class="org-bar-row" role="listitem">
+            <div
+              class="org-bar-list"
+              role="list"
+              aria-label="组织架构分布条形图"
+              :style="{ '--org-bar-label-width': `${orgBarLabelColumnWidth}px` }"
+            >
+              <div v-for="row in visibleOrgBars" :key="row.name" class="org-bar-row" role="listitem">
                 <div class="org-bar-label" :title="row.name">{{ orgBarLabel(row.name) }}</div>
                 <div class="org-bar-track-wrap">
                   <div class="org-bar-track" aria-hidden="true">
@@ -1061,12 +1692,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       <div v-if="versionPanelSkill" class="overlay" role="presentation" @click.self="closeVersionPanel">
         <div class="v-dialog" role="dialog" aria-modal="true">
           <div class="v-head">
-            <strong>{{ versionPanelSkill.name }}</strong>
+            <strong>{{ versionPanelSkill.name ?? versionPanelSkill.skill_id }}</strong>
             <button type="button" class="close-x" aria-label="关闭" @click="closeVersionPanel">×</button>
           </div>
-          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version }}</p>
+          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version ?? '-' }}</p>
           <ul class="v-list">
-            <li v-for="v in [...versionPanelSkill.versions].reverse()" :key="v.version + v.publishTime">
+            <li v-for="v in [...(versionPanelSkill.versions ?? [])].reverse()" :key="v.version + v.publishTime">
               <span class="ver">{{ v.version }}</span>
               <span class="time">{{ v.publishTime }}</span>
               <span v-if="v.note" class="note">{{ v.note }}</span>
@@ -1271,10 +1902,17 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 }
 
 .panel.tab-panel.overview-panel {
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(180deg, #f8fbff 0%, #ffffff 180px);
   padding: 20px;
   border-color: #e7edf6;
   box-shadow: 0 10px 28px rgba(22, 58, 105, 0.06);
+}
+
+.panel.tab-panel.my-release-panel {
+  display: flex;
+  flex-direction: column;
 }
 
 .panel.muted {
@@ -1601,6 +2239,12 @@ width: 100%;
   border-bottom: 1px solid #f0f0f0;
 }
 
+.ops-dash-heading {
+  display: grid;
+  gap: 6px;
+  min-width: 280px;
+}
+
 .ops-dash-title {
   margin: 0;
   font-size: 18px;
@@ -1608,16 +2252,33 @@ width: 100%;
   color: rgba(0, 0, 0, 0.88);
 }
 
+.ops-dash-desc {
+  margin: 0;
+  max-width: 720px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .ops-dash-meta {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .ops-dash-note {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.45);
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #f8fbff;
+  color: #2563eb;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .ops-import-btn {
@@ -1752,6 +2413,41 @@ width: 100%;
   flex-shrink: 0;
 }
 
+.ops-system-toggle {
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-color: #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+  overflow: visible;
+}
+
+.ops-system-btn {
+  min-height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.ops-system-btn.active {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.2);
+}
+
+.ops-system-btn:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
 .ops-toggle-btn {
   border: none;
   background: transparent;
@@ -1881,23 +2577,26 @@ width: 100%;
 
 .org-bar-row {
   display: grid;
-  grid-template-columns: 108px minmax(0, 1fr) 72px;
+  grid-template-columns: var(--org-bar-label-width, 108px) minmax(0, 1fr) 72px;
   gap: 10px;
   align-items: center;
 }
 
 @media (max-width: 600px) {
   .org-bar-row {
-    grid-template-columns: 88px minmax(0, 1fr) 64px;
+    grid-template-columns: minmax(72px, min(var(--org-bar-label-width, 88px), 128px)) minmax(0, 1fr) 64px;
   }
 }
 
 .org-bar-label {
+  max-width: var(--org-bar-label-width, 108px);
+  min-width: 0;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.65);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .org-bar-track-wrap {
@@ -2558,6 +3257,246 @@ width: 100%;
   padding: 16px;
 }
 
+.detail-overlay {
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.skill-detail-dialog {
+  width: min(1040px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.detail-head h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.detail-close,
+.detail-btn {
+  border: 1px solid #dbe4f0;
+  background: #fff;
+  color: #172033;
+  border-radius: 7px;
+  min-height: 34px;
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.detail-close:hover,
+.detail-btn.ghost:hover {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.detail-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 18px 22px 12px;
+}
+
+.detail-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detail-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e5eaf1;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.detail-pill.pill-category,
+.detail-pill.pill-id {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #dbeafe;
+}
+
+.detail-pill.scope-org {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #bbf7d0;
+  font-weight: 800;
+}
+
+.detail-pill.scope-personal {
+  background: #f1f4f8;
+  color: #3f5f7c;
+  border-color: #edf1f5;
+  font-weight: 800;
+}
+
+.detail-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.detail-download svg {
+  width: 16px;
+  height: 16px;
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.detail-btn.primary {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.detail-btn.primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.detail-main {
+  display: grid;
+  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 22px 18px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.detail-file-panel,
+.detail-md-panel {
+  min-height: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.detail-panel-title {
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.detail-file-panel pre {
+  margin: 0;
+  padding: 16px;
+  white-space: pre-wrap;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.55;
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.detail-md-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-md-body {
+  padding: 18px;
+  overflow: auto;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.58;
+}
+
+.detail-md-body h3 {
+  margin: 0 0 8px;
+  color: #334155;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.detail-md-body h4 {
+  margin: 16px 0 8px;
+  color: #334155;
+  font-size: 16px;
+}
+
+.detail-md-body p,
+.detail-md-body ul {
+  margin: 0 0 12px;
+}
+
+.detail-meta-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.detail-meta-table th,
+.detail-meta-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  font-size: 13px;
+}
+
+.detail-meta-table tr:last-child th,
+.detail-meta-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.detail-meta-table th {
+  width: 132px;
+  color: #475569;
+  background: #f8fafc;
+  font-weight: 800;
+}
+
+.detail-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
 .v-dialog {
   width: 100%;
   max-width: 420px;
@@ -2645,6 +3584,566 @@ width: 100%;
   .filter-block,
   .two-col {
     grid-template-columns: 1fr;
+  }
+
+  .skill-detail-dialog {
+    width: calc(100vw - 24px);
+  }
+
+  .detail-toolbar,
+  .detail-main {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .detail-actions,
+  .detail-foot {
+    width: 100%;
+  }
+
+  .detail-btn {
+    flex: 1;
+  }
+
+  .detail-main {
+    overflow: auto;
+  }
+}
+
+/* User market visual refresh aligned to supplied prototype */
+.panel.tab-panel.overview-panel,
+.panel.tab-panel.my-release-panel {
+  margin-top: 0;
+  padding: 18px 20px 22px;
+  border: 1px solid #e2e8f0;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  background: #fff;
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.06);
+}
+
+.overview-panel .stats-strip,
+.my-release-panel .my-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.overview-panel .stat-cell,
+.my-release-panel .my-cell {
+  flex: 0 0 auto;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-height: auto;
+  padding: 5px 8px;
+  border: 1px solid #edf2f7;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.overview-panel .stat-k,
+.my-release-panel .my-k {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.overview-panel .stat-v,
+.my-release-panel .my-v {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.overview-panel .stat-div,
+.my-release-panel .my-div {
+  display: none;
+}
+
+.market-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.market-sidebar {
+  position: sticky;
+  top: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.side-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.side-nav-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 9px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-nav-item:hover {
+  background: #f8fafc;
+}
+
+.side-nav-item.active {
+  color: #3158ff;
+  background: linear-gradient(90deg, #eaf0ff, #f4f7ff);
+}
+
+.side-nav-icon {
+  width: 18px;
+  text-align: center;
+  color: inherit;
+}
+
+.side-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eef2f7;
+}
+
+.side-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 9px;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.tag-title {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tag-title > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-clear {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.tag-clear:hover {
+  color: #2563eb;
+}
+
+.side-help {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #94a3b8;
+  color: #64748b;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.side-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.side-tag {
+  border: 1px solid #dce3ed;
+  background: #fff;
+  color: #64748b;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.side-tag:hover,
+.side-tag.active {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.side-empty {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.market-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.market-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.market-chip-main {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.market-chip {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #172033;
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.market-chip.active {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.overview-panel .filters {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.25fr) 200px minmax(380px, 0.95fr);
+  gap: 12px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.overview-panel .search,
+.overview-panel .select {
+  height: 42px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background-color: #fff;
+  color: #334155;
+  font-size: 14px;
+}
+
+.overview-panel .search {
+  padding: 0 14px;
+}
+
+.overview-panel .select {
+  padding: 0 34px 0 14px;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #94a3b8 50%),
+    linear-gradient(135deg, #94a3b8 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.overview-panel .select:disabled {
+  color: #94a3b8;
+  background-color: #f8fafc;
+  cursor: not-allowed;
+}
+
+.cascade-selects {
+  display: grid;
+  grid-template-columns: minmax(144px, 1fr) 24px minmax(160px, 1.1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.cascade-selects .select {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  border-color: #dbe3ee;
+  background-color: #fff;
+}
+
+.cascade-selects .select:focus {
+  border-color: #1677ff;
+}
+
+.cascade-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #2563eb;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.overview-panel .grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.overview-panel :deep(.card) {
+  min-height: auto;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.overview-panel :deep(.card:hover) {
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.overview-panel :deep(.title) {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.overview-panel :deep(.meta) {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.overview-panel :deep(.tag) {
+  min-height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: #f3f6fb;
+  color: #667085;
+  padding: 3px 9px;
+}
+
+.overview-panel :deep(.tag-fn) {
+  background: #eaf2ff;
+  color: #2563eb;
+}
+
+.overview-panel :deep(.tag-org) {
+  background: #e8f8ef;
+  color: #12805c;
+}
+
+.overview-panel :deep(.dl-btn) {
+  color: #172033;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.overview-panel .pager {
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.my-release-panel .my-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.my-release-panel .my-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.my-release-panel .seg {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #475569;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.my-release-panel .seg.on {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.my-release-panel .table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.my-release-panel .table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.my-release-panel .table th,
+.my-release-panel .table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  font-size: 13px;
+  vertical-align: top;
+}
+
+.my-release-panel .table th {
+  color: #475569;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.my-release-panel .table tr:last-child td {
+  border-bottom: 0;
+}
+
+.my-release-panel .table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.my-release-panel .skill-name,
+.my-release-panel .cell-main {
+  color: #111827;
+  font-weight: 700;
+}
+
+.my-release-panel .skill-sub,
+.my-release-panel .cell-sub {
+  color: #64748b;
+}
+
+.my-release-panel .st {
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-weight: 800;
+}
+
+.my-release-panel .st-published {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.my-release-panel .st-reviewing-dev {
+  color: #c2410c;
+  background: #ffedd5;
+}
+
+.my-release-panel .st-rejected-pdu {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.my-release-panel .mini {
+  border-color: #e5e7eb;
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+@media (max-width: 1180px) {
+  .overview-panel .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overview-panel .filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cascade-selects {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .panel.tab-panel.overview-panel,
+  .panel.tab-panel.my-release-panel {
+    padding: 14px;
+  }
+
+  .market-layout,
+  .overview-panel .filters,
+  .overview-panel .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .market-sidebar {
+    position: static;
+  }
+
+  .cascade-selects {
+    grid-template-columns: 1fr;
+  }
+
+  .cascade-arrow {
+    display: none;
   }
 }
 </style>
