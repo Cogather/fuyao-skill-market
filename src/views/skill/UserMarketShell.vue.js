@@ -735,6 +735,7 @@ const uiOrgBarsMax = computed(() => {
 const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
 const opsTopTitle = 'TOP Skill（按下载量）';
 const opsTopSubTitle = '展示当前查询范围内下载量最高的Skill';
+const OPS_DEPT_DETAIL_VISIBLE_START_DEPTH = 2;
 const expandedDeptPaths = ref(new Set());
 function collectExpandableDeptPaths(nodes, parentPath = '', out = new Set()) {
     for (const n of nodes) {
@@ -759,23 +760,26 @@ function toggleDeptExpand(path) {
     }
     expandedDeptPaths.value = next;
 }
-function flattenDeptTreeVisible(nodes, depth = 0, parentPath = '') {
+function flattenDeptTreeVisible(nodes, sourceDepth = 0, parentPath = '') {
     const out = [];
     for (const n of nodes) {
         const path = parentPath ? `${parentPath}/${n.name}` : n.name;
         const hasChildren = Boolean(n.children && n.children.length > 0);
         const expanded = hasChildren ? expandedDeptPaths.value.has(path) : false;
-        out.push({
-            path,
-            name: n.name,
-            skills: n.skills,
-            downloads: n.downloads,
-            depth,
-            hasChildren,
-            expanded,
-        });
-        if (hasChildren && expanded) {
-            out.push(...flattenDeptTreeVisible(n.children, depth + 1, path));
+        const shouldRender = sourceDepth >= OPS_DEPT_DETAIL_VISIBLE_START_DEPTH;
+        if (shouldRender) {
+            out.push({
+                path,
+                name: n.name,
+                skills: n.skills,
+                downloads: n.downloads,
+                depth: sourceDepth - OPS_DEPT_DETAIL_VISIBLE_START_DEPTH,
+                hasChildren,
+                expanded,
+            });
+        }
+        if (hasChildren && (!shouldRender || expanded)) {
+            out.push(...flattenDeptTreeVisible(n.children, sourceDepth + 1, path));
         }
     }
     return out;
