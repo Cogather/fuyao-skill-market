@@ -25,44 +25,52 @@ function bumpPatchVersion(current: string): string {
   return `${Number(m[1])}.${Number(m[2])}.${Number(m[3]) + 1}`;
 }
 
+function skillName(skill: Skill): string {
+  return skill.name ?? skill.skill_id;
+}
+
+function skillVersion(skill: Skill): string {
+  return skill.version ?? '1.0.0';
+}
+
+function skillPublishTime(skill: Skill): string {
+  return skill.latestPublishTime ?? '';
+}
+
 function matchesScope(skill: Skill, scope: SkillMarketScope): boolean {
   if (scope === 'all') {
     return true;
   }
   if (scope === 'personal') {
     return (
-      skill.tagOrg.includes('个人') ||
-      skill.level.includes('个人') ||
-      skill.publisher.includes('个人') ||
+      (skill.publish_level ?? skill.level ?? skill.tagOrg ?? '').includes('个人') ||
+      (skill.publish_name ?? skill.publisher ?? '').includes('个人') ||
       Boolean(skill.ownedByUser)
     );
   }
   if (scope === 'devDept') {
-    return (
-      skill.tagOrg.includes('开发部') ||
-      skill.level.includes('开发部') ||
-      skill.tagFunctional.includes('开发')
-    );
+    return (skill.publish_level ?? '').trim() === '组织级';
   }
   if (scope === 'pdu') {
-    return skill.tagOrg.includes('PDU') || skill.level.includes('PDU');
+    return (skill.publish_name ?? skill.tagOrg ?? skill.level ?? '').includes('PDU');
   }
-  return skill.tagOrg.includes('产品线') || skill.level.includes('产品线');
+  return (skill.publish_name ?? skill.tagOrg ?? skill.level ?? '').includes('产品线');
 }
 
 function latestEntry(skill: Skill): SkillVersionEntry {
+  const versions = skill.versions ?? [];
   return (
-    skill.versions.find((v) => v.version === skill.version) ??
-    skill.versions[skill.versions.length - 1] ?? {
-      version: skill.version,
-      publishTime: skill.latestPublishTime,
+    versions.find((v) => v.version === skill.version) ??
+    versions[versions.length - 1] ?? {
+      version: skillVersion(skill),
+      publishTime: skillPublishTime(skill),
     }
   );
 }
 
 function toZipFileName(skill: Skill): string {
   const entry = latestEntry(skill);
-  return entry.packageFileName ?? `${skill.name}-v${skill.version}.zip`;
+  return entry.packageFileName ?? `${skillName(skill)}-v${skillVersion(skill)}.zip`;
 }
 
 export function listSkillsApi(
@@ -77,11 +85,19 @@ export function listSkillsApi(
   let list = database.filter((skill) => matchesScope(skill, scope));
 
   if (keyword) {
-    list = list.filter((skill) => skill.name.toLowerCase().includes(keyword));
+    list = list.filter((skill) =>
+      [skill.skill_id, skill.description, skill.publish_name, skill.dept_name, skill.name]
+        .filter((x): x is string => Boolean(x))
+        .some((x) => x.toLowerCase().includes(keyword)),
+    );
   }
 
   list = [...list].sort((a, b) =>
-    a.latestPublishTime === b.latestPublishTime ? 0 : a.latestPublishTime < b.latestPublishTime ? 1 : -1,
+    skillPublishTime(a) === skillPublishTime(b)
+      ? 0
+      : skillPublishTime(a) < skillPublishTime(b)
+        ? 1
+        : -1,
   );
 
   const total = list.length;
@@ -111,12 +127,12 @@ export function uploadSkillApi(
   const publisher = payload.publisher?.trim() || payload.userId?.trim() || '当前用户';
   const fileName = payload.file?.name || `${name}.zip`;
   const fileSize = payload.file?.size ?? 0;
-  const existing = database.find((skill) => skill.name === name);
+  const existing = database.find((skill) => skillName(skill) === name);
 
   if (existing) {
-    const version = bumpPatchVersion(existing.version);
+    const version = bumpPatchVersion(skillVersion(existing));
     existing.versions = [
-      ...existing.versions,
+      ...(existing.versions ?? []),
       {
         version,
         publishTime,
@@ -129,18 +145,27 @@ export function uploadSkillApi(
     existing.version = version;
     existing.latestPublishTime = publishTime;
     existing.publisher = publisher;
+    existing.publish_name = publisher;
     existing.ownedByUser = true;
     return { created: false, skill: existing };
   }
 
   const version = '1.0.0';
+  const publishLevel = payload.scopeLabel ?? '个人级';
   const skill: Skill = {
+    skill_id: name,
+    description: payload.note ?? '',
+    publish_name: publisher,
+    publish_level: publishLevel,
+    owner_list: '[]',
+    download_count: 0,
+    dept_name: publisher,
     id: `${Date.now()}`,
     name,
     icon: '📦',
     publisher,
     latestPublishTime: publishTime,
-    level: payload.scopeLabel ?? '个人',
+    level: publishLevel,
     downloads: 0,
     rating: 5,
     version,
@@ -156,7 +181,8 @@ export function uploadSkillApi(
     ],
     ownedByUser: true,
     tagFunctional: payload.tagFunctional ?? '通用',
-    tagOrg: payload.scopeLabel ?? '个人',
+    tagOrg: publishLevel,
+    tags: [],
   };
 
   database.unshift(skill);
@@ -168,20 +194,21 @@ export function downloadSkillApi(database: Skill[], skillId: string): {
   fileName: string;
   skill: Skill;
 } {
-  const skill = database.find((item) => item.id === skillId);
+  const skill = database.find((item) => (item.id ?? item.skill_id) === skillId);
   if (!skill) {
     throw new Error('Skill 不存在');
   }
 
-  skill.downloads += 1;
+  skill.download_count = (skill.download_count ?? 0) + 1;
+  skill.downloads = (skill.downloads ?? 0) + 1;
   const fileName = toZipFileName(skill);
   const entry = latestEntry(skill);
   const content = JSON.stringify(
     {
-      id: skill.id,
-      name: skill.name,
-      version: skill.version,
-      publishTime: skill.latestPublishTime,
+      id: skill.id ?? skill.skill_id,
+      name: skillName(skill),
+      version: skillVersion(skill),
+      publishTime: skillPublishTime(skill),
       mock: true,
     },
     null,
