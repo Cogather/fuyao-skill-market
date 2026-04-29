@@ -3,6 +3,7 @@ import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
+import defaultOpsDashboardJson from '../../mock/opsDashboardDefault.json?raw';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 const store = useSkillMarketStore();
 const { skills, totalDownloads, totalSkills, downloadsLast30Days, orgCount } = store;
@@ -683,91 +684,19 @@ function onUploadExistingVersion() {
 const opsImportedBundle = ref(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref(null);
+const defaultOpsDashboardBundle = JSON.parse(defaultOpsDashboardJson);
 const uiOpsKpiDesc = {
     totalSkills: '部门 Skill 分布总量',
     activeSkills: '公司市场组织级 Skill 数量',
     personalSkills: '个人发布的 Skill 数量',
     totalDownloads: '部门维度累计下载 Skill 数量',
 };
-const defaultUiDeptTree = [
-    {
-        name: '云化端到端经营管理部',
-        skills: 165,
-        downloads: 253,
-        children: [
-            { name: '智能数据产品部', skills: 61, downloads: 83 },
-            { name: '物联平台部', skills: 55, downloads: 31 },
-            { name: '质量工具组', skills: 38, downloads: 25 },
-            { name: '平台工具组', skills: 15, downloads: 23 },
-        ],
-    },
-    {
-        name: '联通业务部',
-        skills: 12,
-        downloads: 20,
-    },
-    {
-        name: '设备能源产品部',
-        skills: 4,
-        downloads: 4,
-        children: [
-            { name: '产品建设一组', skills: 1, downloads: 1 },
-            { name: '物资管理案部', skills: 1, downloads: 1 },
-        ],
-    },
-];
-function collectDeptMetricRows(nodes, parentPath = '', out = []) {
-    for (const node of nodes) {
-        const path = parentPath ? `${parentPath}/${node.name}` : node.name;
-        out.push({
-            name: path,
-            label: node.name,
-            parent: parentPath,
-            skills: node.skills,
-            downloads: node.downloads,
-        });
-        if (node.children && node.children.length > 0) {
-            collectDeptMetricRows(node.children, path, out);
-        }
-    }
-    return out;
-}
-function buildDefaultOpsKpi(nodes) {
-    const totalSkills = nodes.reduce((sum, node) => sum + node.skills, 0);
-    const totalDownloads = nodes.reduce((sum, node) => sum + node.downloads, 0);
-    return {
-        totalSkills: String(totalSkills),
-        activeSkills: String(totalSkills),
-        personalSkills: '0',
-        totalDownloads: String(totalDownloads),
-    };
-}
-function buildDefaultOrgBars(nodes) {
-    return collectDeptMetricRows(nodes).map(({ name, skills, downloads }) => ({
-        name,
-        skills,
-        downloads,
-    }));
-}
-function buildDefaultTopDeptRows(nodes) {
-    return collectDeptMetricRows(nodes)
-        .sort((a, b) => b.downloads - a.downloads || b.skills - a.skills)
-        .slice(0, 6)
-        .map((row, index) => ({
-        rank: index + 1,
-        name: row.label,
-        dept: row.parent || row.name,
-        downloads: row.downloads,
-    }));
-}
-const defaultOpsKpi = buildDefaultOpsKpi(defaultUiDeptTree);
-const defaultUiOrgBars = buildDefaultOrgBars(defaultUiDeptTree);
-const defaultUiTopDeptRows = buildDefaultTopDeptRows(defaultUiDeptTree);
 const opsBarMode = ref('skills');
 const opsBoardSystem = ref('company');
-const uiDeptTree = computed(() => opsImportedBundle.value ? opsImportedBundle.value.deptTree : defaultUiDeptTree);
-const uiOpsKpi = computed(() => opsImportedBundle.value ? opsImportedBundle.value.kpi : defaultOpsKpi);
-const uiOrgBars = computed(() => opsImportedBundle.value ? opsImportedBundle.value.orgBars : defaultUiOrgBars);
+const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle);
+const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
+const uiOpsKpi = computed(() => opsDashboardBundle.value.kpi);
+const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
 const uiOrgBarsSorted = computed(() => {
     const list = [...uiOrgBars.value];
     if (opsBarMode.value === 'skills') {
@@ -803,13 +732,9 @@ const uiOrgBarsMax = computed(() => {
     const list = uiOrgBarsSorted.value.map((x) => opsBarMode.value === 'skills' ? x.skills : x.downloads);
     return Math.max(1, ...list);
 });
-const uiTopSkillsByDl = computed(() => opsImportedBundle.value
-    ? opsImportedBundle.value.topSkills
-    : defaultUiTopDeptRows);
-const opsTopTitle = computed(() => opsImportedBundle.value ? 'TOP Skill（按下载量）' : 'TOP 部门（按下载量）');
-const opsTopSubTitle = computed(() => opsImportedBundle.value
-    ? '展示当前查询范围内下载量最高的Skill'
-    : '展示默认部门树中下载量最高的部门节点');
+const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
+const opsTopTitle = 'TOP Skill（按下载量）';
+const opsTopSubTitle = '展示当前查询范围内下载量最高的Skill';
 const expandedDeptPaths = ref(new Set());
 function collectExpandableDeptPaths(nodes, parentPath = '', out = new Set()) {
     for (const n of nodes) {
@@ -856,17 +781,17 @@ function flattenDeptTreeVisible(nodes, depth = 0, parentPath = '') {
     return out;
 }
 const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
-function buildOpsDeptTreeJsonFileName(sourceName) {
-    const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dept-tree';
-    return `${baseName}-dept-tree.json`;
+function buildOpsDashboardMockJsonFileName(sourceName) {
+    const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dashboard';
+    return `${baseName}-ops-dashboard-mock.json`;
 }
-function downloadOpsDeptTreeJson(sourceName, deptTree) {
-    const json = JSON.stringify(deptTree, null, 2);
+function downloadOpsDashboardMockJson(sourceName, bundle) {
+    const json = JSON.stringify(bundle, null, 2);
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = buildOpsDeptTreeJsonFileName(sourceName);
+    link.download = buildOpsDashboardMockJsonFileName(sourceName);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -897,8 +822,8 @@ async function onOpsExcelFileChange(ev) {
         }
         const bundle = buildOpsDashboardBundle(rows);
         opsImportedBundle.value = bundle;
-        downloadOpsDeptTreeJson(file.name, bundle.deptTree);
-        showToast(`已导入 ${rows.length} 条 Skill，运营看板已更新，部门树 JSON 已下载`);
+        downloadOpsDashboardMockJson(file.name, bundle);
+        showToast(`已导入 ${rows.length} 条 Skill，运营看板已更新，默认 mock JSON 已下载`);
     }
     catch (e) {
         showToast(e instanceof Error ? e.message : 'Excel 解析失败');
