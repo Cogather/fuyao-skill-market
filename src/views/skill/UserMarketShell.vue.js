@@ -3,7 +3,8 @@ import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
-import defaultOpsDashboardJson from '../../mock/opsDashboardDefault.json?raw';
+import companyOpsDashboardJson from '../../mock/opsDashboardCompanyDefault.json?raw';
+import fuyaoOpsDashboardJson from '../../mock/opsDashboardDefault.json?raw';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 const store = useSkillMarketStore();
 const { skills, totalDownloads, totalSkills, downloadsLast30Days, orgCount } = store;
@@ -625,6 +626,9 @@ function lastActionText(st) {
     }
     return '需补充复现数据和说明文档';
 }
+function releaseCategoryLabel(skill) {
+    return skill.tagFunctional || '通用类';
+}
 function releasePrimaryLevel(skill) {
     if ((skill.publish_level ?? skill.level ?? '').includes('个人')) {
         return '个人级';
@@ -636,6 +640,23 @@ function releaseOrgLabel(skill) {
         return '个人空间';
     }
     return skill.publish_name ?? skill.level ?? '';
+}
+function releaseSyncActionText(row) {
+    if (row.statusKey === 'published' && !row.personal) {
+        return '更新同步';
+    }
+    return '同步至公司组织';
+}
+function onReleaseNewVersion(row) {
+    toastAction(`新版本（演示）：为「${skillTitle(row.skill)}」追加版本`);
+    openUpload();
+}
+function onReleaseSync(row) {
+    const action = releaseSyncActionText(row);
+    toastAction(`${action}（演示）：${skillTitle(row.skill)}`);
+}
+function onReleaseRecord(row) {
+    toastAction(`记录（演示）：查看「${skillTitle(row.skill)}」操作记录`);
 }
 const myReleaseRows = computed(() => {
     const list = myReleases.value.length > 0 ? myReleases.value : skills.value.slice(0, 4);
@@ -684,71 +705,57 @@ function onUploadExistingVersion() {
 const opsImportedBundle = ref(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref(null);
-const defaultOpsDashboardBundle = JSON.parse(defaultOpsDashboardJson);
-const uiOpsKpiDesc = {
-    totalSkills: '部门 Skill 分布总量',
-    activeSkills: '公司市场组织级 Skill 数量',
-    personalSkills: '个人发布的 Skill 数量',
-    totalDownloads: '部门维度累计下载 Skill 数量',
-};
-const opsBarMode = ref('skills');
+const fuyaoOpsDashboardBundle = JSON.parse(fuyaoOpsDashboardJson);
+const companyOpsDashboardBundle = JSON.parse(companyOpsDashboardJson);
 const opsBoardSystem = ref('company');
-const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle);
+const selectedOpsDeptPath = ref('');
+const selectedOpsOrgName = ref('');
+const defaultOpsDashboardBundle = computed(() => opsBoardSystem.value === 'company' ? companyOpsDashboardBundle : fuyaoOpsDashboardBundle);
+const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle.value);
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
-const uiOpsKpi = computed(() => opsDashboardBundle.value.kpi);
 const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
-const uiOrgBarsSorted = computed(() => {
-    const list = [...uiOrgBars.value];
-    if (opsBarMode.value === 'skills') {
-        return list.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
-    }
-    return list.sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
-});
-const visibleOrgBars = computed(() => uiOrgBarsSorted.value.slice(0, 8));
-function orgBarLabel(name) {
-    const trimmed = name.trim();
-    if (!trimmed) {
-        return '';
-    }
-    const parts = trimmed.split('/');
-    return parts[parts.length - 1]?.trim() || trimmed;
-}
-function estimateOrgBarLabelWidth(label) {
-    let width = 0;
-    for (const char of label) {
-        width += /[\u0000-\u00ff]/.test(char) ? 7 : 13;
-    }
-    return Math.ceil(width + 8);
-}
-const orgBarLabelColumnWidth = computed(() => {
-    const widths = visibleOrgBars.value.map((row) => estimateOrgBarLabelWidth(orgBarLabel(row.name)));
-    const contentWidth = Math.max(0, ...widths);
-    return Math.min(180, Math.max(78, contentWidth));
-});
-function minDeptLabel(name) {
-    return orgBarLabel(name);
-}
-const uiOrgBarsMax = computed(() => {
-    const list = uiOrgBarsSorted.value.map((x) => opsBarMode.value === 'skills' ? x.skills : x.downloads);
-    return Math.max(1, ...list);
-});
-const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
-const opsTopTitle = 'TOP Skill（按下载量）';
-const opsTopSubTitle = '展示当前查询范围内下载量最高的Skill';
-const OPS_DEPT_DETAIL_VISIBLE_START_DEPTH = 2;
 const expandedDeptPaths = ref(new Set());
-function collectExpandableDeptPaths(nodes, parentPath = '', out = new Set()) {
+function formatOpsNumber(value) {
+    const parsed = typeof value === 'number' ? value : Number.parseInt(String(value).replace(/,/g, ''), 10);
+    return Number.isFinite(parsed) ? parsed.toLocaleString('zh-CN') : String(value ?? '-');
+}
+function opsSkillOwner(row) {
+    return row.owner || row.publishName || '未填写发布人';
+}
+function collectDefaultExpandedDeptPaths(nodes) {
+    const out = new Set();
     for (const n of nodes) {
-        const path = parentPath ? `${parentPath}/${n.name}` : n.name;
         if (n.children && n.children.length > 0) {
-            out.add(path);
-            collectExpandableDeptPaths(n.children, path, out);
+            out.add(n.path);
         }
     }
     return out;
 }
+function firstDeptPath(nodes) {
+    return nodes[0]?.path ?? '';
+}
+function findDeptNodeByPath(nodes, path) {
+    for (const node of nodes) {
+        if (node.path === path) {
+            return node;
+        }
+        const child = findDeptNodeByPath(node.children ?? [], path);
+        if (child) {
+            return child;
+        }
+    }
+    return null;
+}
 watch(uiDeptTree, (tree) => {
-    expandedDeptPaths.value = collectExpandableDeptPaths(tree);
+    expandedDeptPaths.value = collectDefaultExpandedDeptPaths(tree);
+    if (!findDeptNodeByPath(tree, selectedOpsDeptPath.value)) {
+        selectedOpsDeptPath.value = firstDeptPath(tree);
+    }
+}, { immediate: true });
+watch(uiOrgBars, (bars) => {
+    if (!bars.some((row) => row.name === selectedOpsOrgName.value)) {
+        selectedOpsOrgName.value = bars[0]?.name ?? '';
+    }
 }, { immediate: true });
 function toggleDeptExpand(path) {
     const next = new Set(expandedDeptPaths.value);
@@ -760,31 +767,94 @@ function toggleDeptExpand(path) {
     }
     expandedDeptPaths.value = next;
 }
-function flattenDeptTreeVisible(nodes, sourceDepth = 0, parentPath = '') {
+function selectOpsDept(path) {
+    selectedOpsDeptPath.value = path;
+}
+function selectOpsOrg(name) {
+    selectedOpsOrgName.value = name;
+}
+function flattenDeptTreeVisible(nodes) {
     const out = [];
     for (const n of nodes) {
-        const path = parentPath ? `${parentPath}/${n.name}` : n.name;
         const hasChildren = Boolean(n.children && n.children.length > 0);
-        const expanded = hasChildren ? expandedDeptPaths.value.has(path) : false;
-        const shouldRender = sourceDepth >= OPS_DEPT_DETAIL_VISIBLE_START_DEPTH;
-        if (shouldRender) {
-            out.push({
-                path,
-                name: n.name,
-                skills: n.skills,
-                downloads: n.downloads,
-                depth: sourceDepth - OPS_DEPT_DETAIL_VISIBLE_START_DEPTH,
-                hasChildren,
-                expanded,
-            });
-        }
-        if (hasChildren && (!shouldRender || expanded)) {
-            out.push(...flattenDeptTreeVisible(n.children, sourceDepth + 1, path));
+        const expanded = hasChildren ? expandedDeptPaths.value.has(n.path) : false;
+        out.push({
+            path: n.path,
+            name: n.name,
+            levelNo: n.levelNo,
+            skills: n.skills,
+            downloads: n.downloads,
+            hasChildren,
+            expanded,
+        });
+        if (hasChildren && expanded) {
+            out.push(...flattenDeptTreeVisible(n.children));
         }
     }
     return out;
 }
 const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
+const uiOrgBarsSorted = computed(() => [...uiOrgBars.value].sort((a, b) => b.downloads - a.downloads || b.skills - a.skills));
+const uiOrgBarsMax = computed(() => Math.max(1, ...uiOrgBarsSorted.value.map((x) => x.downloads)));
+const selectedDeptNode = computed(() => findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null);
+const selectedOrgBar = computed(() => uiOrgBars.value.find((row) => row.name === selectedOpsOrgName.value) ?? uiOrgBars.value[0]);
+const selectedDeptSkillRows = computed(() => selectedDeptNode.value?.skillRows ?? []);
+const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? []);
+const opsKpiCards = computed(() => {
+    const kpi = opsDashboardBundle.value.kpi;
+    if (opsBoardSystem.value === 'company') {
+        return [
+            {
+                label: '公司系统 Skill 数',
+                value: kpi.activeSkills,
+                desc: '目标系统统一管理的组织级 Skill',
+            },
+            {
+                label: '组织级 Skill',
+                value: kpi.activeSkills,
+                desc: '已通过公司发布验证的 Skill',
+            },
+            {
+                label: '关联组织数',
+                value: kpi.orgCount,
+                desc: '组织级 Skill 归属发布组织',
+            },
+            {
+                label: '累计下载量',
+                value: kpi.companyDownloads,
+                desc: '公司系统侧累计下载',
+            },
+        ];
+    }
+    return [
+        {
+            label: '扶摇 Skill 数',
+            value: kpi.totalSkills,
+            desc: '平台内沉淀和验证的 Skill 总量',
+        },
+        {
+            label: '个人级 Skill',
+            value: kpi.personalSkills,
+            desc: '个人发布、沉淀和快速验证',
+        },
+        {
+            label: '部门层级数',
+            value: kpi.deptCount,
+            desc: 'Excel 中解析出的部门节点',
+        },
+        {
+            label: '累计下载量',
+            value: kpi.totalDownloads,
+            desc: '扶摇系统侧累计下载',
+        },
+    ];
+});
+const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
+const opsTopTitle = 'TOP Skill';
+const opsTopSubTitle = '按下载量展示当前市场中使用最集中的 Skill。';
+const opsEmptyText = computed(() => opsBoardSystem.value === 'company'
+    ? '暂无公司系统组织级 Skill 数据'
+    : '暂无扶摇系统运营看板数据');
 function buildOpsDashboardMockJsonFileName(sourceName) {
     const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dashboard';
     return `${baseName}-ops-dashboard-mock.json`;
@@ -892,6 +962,115 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['ops-top-section']} */ ;
 /** @type {__VLS_StyleScopedClasses['ops-panel-hd']} */ ;
 /** @type {__VLS_StyleScopedClasses['ops-top-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-system-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-system-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-system-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-import-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-import-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-caret-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-count']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar-top']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar-top']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['board-org-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bars']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['board-org-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bars']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['board-org-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bars']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-filter']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['dept-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['org-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpis']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-count']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-download']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel-head']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
@@ -964,8 +1143,200 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['ops-grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table-card']} */ ;
 /** @type {__VLS_StyleScopedClasses['stats-strip']} */ ;
 /** @type {__VLS_StyleScopedClasses['stat-cell']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-filter']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-system-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-system-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-system-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-data-note']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-import-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-data-note']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-import-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpis']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['dept-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['org-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['board-org-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-count']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-caret-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bars']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar-top']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bar-top']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-bar-track']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-bar-fill']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-desc']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-owner']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['skill-row-dot']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['owner-pill']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['download-pill']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['download-pill']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-empty-detail']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-rank']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['dept-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['org-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['board-org-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-org-bars']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-kpis']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-top-list']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-filter']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-data-note']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-owner']} */ ;
 /** @type {__VLS_StyleScopedClasses['stat-cell']} */ ;
 /** @type {__VLS_StyleScopedClasses['stat-cell']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel']} */ ;
@@ -1099,6 +1470,16 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['pager']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-toolbar']} */ ;
+/** @type {__VLS_StyleScopedClasses['panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-head']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-stats']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-filters']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
@@ -1121,6 +1502,19 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['table']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-skill']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-level']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-ver']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-action']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['col-ops']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['skill-name']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['cell-main']} */ ;
@@ -1138,6 +1532,14 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['st-rejected-pdu']} */ ;
 /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['mini']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['mini']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['ops']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['num']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['empty-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['overview-panel']} */ ;
@@ -2136,6 +2538,24 @@ else if (__VLS_ctx.innerTab === 'releases') {
     /** @type {__VLS_StyleScopedClasses['panel']} */ ;
     /** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
     /** @type {__VLS_StyleScopedClasses['my-release-panel']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.header, __VLS_intrinsics.header)({
+        ...{ class: "my-release-head" },
+    });
+    /** @type {__VLS_StyleScopedClasses['my-release-head']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+        ...{ onClick: (__VLS_ctx.openUpload) },
+        type: "button",
+        ...{ class: "btn primary my-upload-btn" },
+    });
+    /** @type {__VLS_StyleScopedClasses['btn']} */ ;
+    /** @type {__VLS_StyleScopedClasses['primary']} */ ;
+    /** @type {__VLS_StyleScopedClasses['my-upload-btn']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "my-release-body" },
+    });
+    /** @type {__VLS_StyleScopedClasses['my-release-body']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "my-stats" },
         role: "group",
@@ -2230,7 +2650,7 @@ else if (__VLS_ctx.innerTab === 'releases') {
                         return;
                     __VLS_ctx.releaseFilter = f.key;
                     // @ts-ignore
-                    [innerTab, tabPanelFillStyle, uiMyStats, uiMyStats, uiMyStats, uiMyStats, releaseFilters, releaseFilter,];
+                    [openUpload, innerTab, tabPanelFillStyle, uiMyStats, uiMyStats, uiMyStats, uiMyStats, releaseFilters, releaseFilter,];
                 } },
             key: (f.key),
             type: "button",
@@ -2294,8 +2714,21 @@ else if (__VLS_ctx.innerTab === 'releases') {
     __VLS_asFunctionalElement1(__VLS_intrinsics.tbody, __VLS_intrinsics.tbody)({});
     for (const [row] of __VLS_vFor((__VLS_ctx.filteredMyReleaseRows))) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.innerTab === 'overview'))
+                        return;
+                    if (!!(__VLS_ctx.innerTab === 'core'))
+                        return;
+                    if (!(__VLS_ctx.innerTab === 'releases'))
+                        return;
+                    __VLS_ctx.openDetailPanel(__VLS_ctx.skillKey(row.skill));
+                    // @ts-ignore
+                    [openDetailPanel, onUploadExistingVersion, filteredMyReleaseRows, skillKey,];
+                } },
             key: (row.skill.id),
+            ...{ class: "clickable-row" },
         });
+        /** @type {__VLS_StyleScopedClasses['clickable-row']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "skill-main" },
@@ -2311,6 +2744,7 @@ else if (__VLS_ctx.innerTab === 'releases') {
         });
         /** @type {__VLS_StyleScopedClasses['skill-sub']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+        (__VLS_ctx.releaseCategoryLabel(row.skill));
         (row.skill.publisher);
         __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
@@ -2351,7 +2785,9 @@ else if (__VLS_ctx.innerTab === 'releases') {
         });
         /** @type {__VLS_StyleScopedClasses['cell-sub']} */ ;
         (row.lastAction);
-        __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+            ...{ onClick: () => { } },
+        });
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             ...{ class: "ops" },
         });
@@ -2364,9 +2800,9 @@ else if (__VLS_ctx.innerTab === 'releases') {
                         return;
                     if (!(__VLS_ctx.innerTab === 'releases'))
                         return;
-                    __VLS_ctx.toastAction('新版本（演示）：打开上传弹窗并追加版本');
+                    __VLS_ctx.onReleaseNewVersion(row);
                     // @ts-ignore
-                    [onUploadExistingVersion, filteredMyReleaseRows, releasePrimaryLevel, releaseOrgLabel, toastAction,];
+                    [releaseCategoryLabel, releasePrimaryLevel, releaseOrgLabel, onReleaseNewVersion,];
                 } },
             type: "button",
             ...{ class: "mini" },
@@ -2380,14 +2816,15 @@ else if (__VLS_ctx.innerTab === 'releases') {
                         return;
                     if (!(__VLS_ctx.innerTab === 'releases'))
                         return;
-                    __VLS_ctx.toastAction('升级（演示）：提交层级升级申请');
+                    __VLS_ctx.onReleaseSync(row);
                     // @ts-ignore
-                    [toastAction,];
+                    [onReleaseSync,];
                 } },
             type: "button",
             ...{ class: "mini" },
         });
         /** @type {__VLS_StyleScopedClasses['mini']} */ ;
+        (__VLS_ctx.releaseSyncActionText(row));
         __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.innerTab === 'overview'))
@@ -2396,9 +2833,9 @@ else if (__VLS_ctx.innerTab === 'releases') {
                         return;
                     if (!(__VLS_ctx.innerTab === 'releases'))
                         return;
-                    __VLS_ctx.toastAction('记录（演示）：打开操作记录面板');
+                    __VLS_ctx.onReleaseRecord(row);
                     // @ts-ignore
-                    [toastAction,];
+                    [releaseSyncActionText, onReleaseRecord,];
                 } },
             type: "button",
             ...{ class: "mini" },
@@ -2424,30 +2861,22 @@ else {
     /** @type {__VLS_StyleScopedClasses['tab-panel']} */ ;
     /** @type {__VLS_StyleScopedClasses['ops']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
-        ...{ class: "ops-dashboard-card" },
+        ...{ class: "ops-dashboard-card ops-dashboard" },
         'aria-label': "Skill 运营看板",
     });
     /** @type {__VLS_StyleScopedClasses['ops-dashboard-card']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-dashboard']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.header, __VLS_intrinsics.header)({
-        ...{ class: "ops-dash-top" },
+        ...{ class: "ops-title" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-dash-top']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-title']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-dash-heading" },
+        ...{ class: "ops-filter" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-dash-heading']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.h2, __VLS_intrinsics.h2)({
-        ...{ class: "ops-dash-title" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-dash-title']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
-        ...{ class: "ops-dash-desc" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-dash-desc']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-dash-meta" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-dash-meta']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-filter']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "ops-toggle ops-system-toggle" },
         role: "tablist",
@@ -2498,10 +2927,10 @@ else {
     /** @type {__VLS_StyleScopedClasses['ops-system-btn']} */ ;
     /** @type {__VLS_StyleScopedClasses['active']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-        ...{ class: "ops-dash-note" },
+        ...{ class: "ops-data-note" },
         title: (`统计至：${__VLS_ctx.opsAsOfText}`),
     });
-    /** @type {__VLS_StyleScopedClasses['ops-dash-note']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-data-note']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
         ...{ onChange: (__VLS_ctx.onOpsExcelFileChange) },
         ref: "opsExcelInputRef",
@@ -2514,153 +2943,104 @@ else {
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (__VLS_ctx.triggerOpsExcelImport) },
         type: "button",
-        ...{ class: "btn outline sm ops-import-btn" },
+        ...{ class: "btn btn-soft ops-import-btn" },
         disabled: (__VLS_ctx.opsImporting),
     });
     /** @type {__VLS_StyleScopedClasses['btn']} */ ;
-    /** @type {__VLS_StyleScopedClasses['outline']} */ ;
-    /** @type {__VLS_StyleScopedClasses['sm']} */ ;
+    /** @type {__VLS_StyleScopedClasses['btn-soft']} */ ;
     /** @type {__VLS_StyleScopedClasses['ops-import-btn']} */ ;
     (__VLS_ctx.opsImporting ? '导入中…' : 'Excel 导入');
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-grid" },
+        ...{ class: "ops-kpis" },
         role: "group",
         'aria-label': "运营看板指标",
     });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-grid']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-kpis']} */ ;
+    for (const [card] of __VLS_vFor((__VLS_ctx.opsKpiCards))) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            key: (card.label),
+            ...{ class: "ops-kpi" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-kpi']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({});
+        (card.label);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({});
+        (__VLS_ctx.formatOpsNumber(card.value));
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+        (card.desc);
+        // @ts-ignore
+        [opsBoardSystem, opsBoardSystem, opsAsOfText, onOpsExcelFileChange, triggerOpsExcelImport, opsImporting, opsImporting, opsKpiCards, formatOpsNumber,];
+    }
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-card" },
+        ...{ class: "ops-main-grid" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-card']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-main-grid']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-label" },
+        ...{ class: "ops-board-rows" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-label']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-board-rows']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-value" },
+        ...{ class: "ops-pair-row dept-row" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-value']} */ ;
-    (__VLS_ctx.uiOpsKpi.totalSkills);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-desc" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-desc']} */ ;
-    (__VLS_ctx.uiOpsKpiDesc.totalSkills);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-card" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-card']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-label" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-label']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-value" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-value']} */ ;
-    (__VLS_ctx.uiOpsKpi.activeSkills);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-desc" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-desc']} */ ;
-    (__VLS_ctx.uiOpsKpiDesc.activeSkills);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-card" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-card']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-label" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-label']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-value" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-value']} */ ;
-    (__VLS_ctx.uiOpsKpi.personalSkills);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-desc" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-desc']} */ ;
-    (__VLS_ctx.uiOpsKpiDesc.personalSkills);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-card" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-card']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-label" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-label']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-value" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-value']} */ ;
-    (__VLS_ctx.uiOpsKpi.totalDownloads);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-kpi-desc" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-kpi-desc']} */ ;
-    (__VLS_ctx.uiOpsKpiDesc.totalDownloads);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-mid-2col" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-mid-2col']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+    /** @type {__VLS_StyleScopedClasses['dept-row']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
-        ...{ class: "ops-panel-block" },
+        ...{ class: "ops-card" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-block']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-panel-hd" },
+        ...{ class: "ops-card-head" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-hd']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({
-        ...{ class: "ops-panel-title" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-title']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
-        ...{ class: "ops-panel-sub" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-sub']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "dept-tree-wrap" },
+        ...{ class: "ops-card-body ops-tree board-org-tree" },
+        role: "tree",
     });
-    /** @type {__VLS_StyleScopedClasses['dept-tree-wrap']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "dept-tree-head" },
-    });
-    /** @type {__VLS_StyleScopedClasses['dept-tree-head']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-        ...{ class: "dt-col-name" },
-    });
-    /** @type {__VLS_StyleScopedClasses['dt-col-name']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-        ...{ class: "dt-col-num" },
-    });
-    /** @type {__VLS_StyleScopedClasses['dt-col-num']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-        ...{ class: "dt-col-num" },
-    });
-    /** @type {__VLS_StyleScopedClasses['dt-col-num']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "dept-tree-body" },
-        role: "list",
-    });
-    /** @type {__VLS_StyleScopedClasses['dept-tree-body']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-tree']} */ ;
+    /** @type {__VLS_StyleScopedClasses['board-org-tree']} */ ;
+    if (__VLS_ctx.uiDeptFlat.length === 0) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-empty-state" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({});
+        (__VLS_ctx.opsEmptyText);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+    }
     for (const [row] of __VLS_vFor((__VLS_ctx.uiDeptFlat))) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             key: (row.path),
-            ...{ class: "dept-tree-row" },
-            ...{ class: ({ child: row.depth > 0 }) },
-            role: "listitem",
-            ...{ style: ({ paddingLeft: `${12 + row.depth * 20}px` }) },
+            ...{ class: "ops-tree-item" },
         });
-        /** @type {__VLS_StyleScopedClasses['dept-tree-row']} */ ;
-        /** @type {__VLS_StyleScopedClasses['child']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-            ...{ class: "dt-name" },
+        /** @type {__VLS_StyleScopedClasses['ops-tree-item']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.innerTab === 'overview'))
+                        return;
+                    if (!!(__VLS_ctx.innerTab === 'core'))
+                        return;
+                    if (!!(__VLS_ctx.innerTab === 'releases'))
+                        return;
+                    __VLS_ctx.selectOpsDept(row.path);
+                    // @ts-ignore
+                    [uiDeptFlat, uiDeptFlat, opsEmptyText, selectOpsDept,];
+                } },
+            type: "button",
+            ...{ class: "ops-tree-node" },
+            ...{ class: ([
+                    { active: __VLS_ctx.selectedOpsDeptPath === row.path },
+                    'lv' + (row.levelNo > 6 ? 6 : row.levelNo),
+                ]) },
+            'aria-pressed': (__VLS_ctx.selectedOpsDeptPath === row.path),
         });
-        /** @type {__VLS_StyleScopedClasses['dt-name']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-tree-node']} */ ;
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
         if (row.hasChildren) {
-            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(__VLS_ctx.innerTab === 'overview'))
                             return;
@@ -2672,217 +3052,449 @@ else {
                             return;
                         __VLS_ctx.toggleDeptExpand(row.path);
                         // @ts-ignore
-                        [opsBoardSystem, opsBoardSystem, opsAsOfText, onOpsExcelFileChange, triggerOpsExcelImport, opsImporting, opsImporting, uiOpsKpi, uiOpsKpi, uiOpsKpi, uiOpsKpi, uiOpsKpiDesc, uiOpsKpiDesc, uiOpsKpiDesc, uiOpsKpiDesc, uiDeptFlat, toggleDeptExpand,];
+                        [selectedOpsDeptPath, selectedOpsDeptPath, toggleDeptExpand,];
                     } },
-                type: "button",
-                ...{ class: "dt-toggle" },
-                'aria-label': (row.expanded ? '收起' : '展开'),
+                ...{ class: "ops-caret-btn" },
+                role: "button",
+                tabindex: "-1",
+                'aria-label': (row.expanded ? '收起部门' : '展开部门'),
             });
-            /** @type {__VLS_StyleScopedClasses['dt-toggle']} */ ;
-            __VLS_asFunctionalElement1(__VLS_intrinsics.span)({
-                ...{ class: "dt-caret" },
-                ...{ class: ({ on: row.expanded }) },
-                'aria-hidden': "true",
-            });
-            /** @type {__VLS_StyleScopedClasses['dt-caret']} */ ;
-            /** @type {__VLS_StyleScopedClasses['on']} */ ;
+            /** @type {__VLS_StyleScopedClasses['ops-caret-btn']} */ ;
+            (row.expanded ? '▾' : '▸');
         }
         else {
-            __VLS_asFunctionalElement1(__VLS_intrinsics.span)({
-                ...{ class: "dt-toggle-spacer" },
-                'aria-hidden': "true",
-            });
-            /** @type {__VLS_StyleScopedClasses['dt-toggle-spacer']} */ ;
-        }
-        if (row.depth > 0) {
             __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-                ...{ class: "dt-bullet" },
+                ...{ class: "ops-caret-placeholder" },
                 'aria-hidden': "true",
             });
-            /** @type {__VLS_StyleScopedClasses['dt-bullet']} */ ;
+            /** @type {__VLS_StyleScopedClasses['ops-caret-placeholder']} */ ;
         }
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "ops-tree-name" },
+            title: (row.path),
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-tree-name']} */ ;
         (row.name);
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-            ...{ class: "dt-skills" },
+            ...{ class: "ops-tree-count" },
         });
-        /** @type {__VLS_StyleScopedClasses['dt-skills']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-tree-count']} */ ;
         (row.skills);
         __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-            ...{ class: "dt-dl" },
+            ...{ class: "ops-tree-download" },
         });
-        /** @type {__VLS_StyleScopedClasses['dt-dl']} */ ;
-        (row.downloads);
+        /** @type {__VLS_StyleScopedClasses['ops-tree-download']} */ ;
+        (__VLS_ctx.formatOpsNumber(row.downloads));
         // @ts-ignore
-        [];
+        [formatOpsNumber,];
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
-        ...{ class: "ops-panel-block" },
+        ...{ class: "ops-card ops-detail-table-card" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-block']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-detail-table-card']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-panel-hd ops-panel-hd-row" },
+        ...{ class: "ops-card-body" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-hd']} */ ;
-    /** @type {__VLS_StyleScopedClasses['ops-panel-hd-row']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
-    __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({
-        ...{ class: "ops-panel-title" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-title']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
-        ...{ class: "ops-panel-sub" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-sub']} */ ;
-    (__VLS_ctx.opsBarMode === 'skills'
-        ? '按 Skill 数量倒序展示公司市场组织级 Skill'
-        : '按下载量倒序展示公司市场组织级 Skill');
+    /** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-toggle" },
-        role: "group",
-        'aria-label': "图表度量切换",
+        ...{ class: "ops-skill-table ops-dept-skill-table" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-toggle']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!!(__VLS_ctx.innerTab === 'overview'))
-                    return;
-                if (!!(__VLS_ctx.innerTab === 'core'))
-                    return;
-                if (!!(__VLS_ctx.innerTab === 'releases'))
-                    return;
-                __VLS_ctx.opsBarMode = 'skills';
-                // @ts-ignore
-                [opsBarMode, opsBarMode,];
-            } },
-        type: "button",
-        ...{ class: "ops-toggle-btn" },
-        ...{ class: ({ on: __VLS_ctx.opsBarMode === 'skills' }) },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-toggle-btn']} */ ;
-    /** @type {__VLS_StyleScopedClasses['on']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!!(__VLS_ctx.innerTab === 'overview'))
-                    return;
-                if (!!(__VLS_ctx.innerTab === 'core'))
-                    return;
-                if (!!(__VLS_ctx.innerTab === 'releases'))
-                    return;
-                __VLS_ctx.opsBarMode = 'downloads';
-                // @ts-ignore
-                [opsBarMode, opsBarMode,];
-            } },
-        type: "button",
-        ...{ class: "ops-toggle-btn" },
-        ...{ class: ({ on: __VLS_ctx.opsBarMode === 'downloads' }) },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-toggle-btn']} */ ;
-    /** @type {__VLS_StyleScopedClasses['on']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "org-bar-list" },
-        role: "list",
-        'aria-label': "组织架构分布条形图",
-        ...{ style: ({ '--org-bar-label-width': `${__VLS_ctx.orgBarLabelColumnWidth}px` }) },
-    });
-    /** @type {__VLS_StyleScopedClasses['org-bar-list']} */ ;
-    for (const [row] of __VLS_vFor((__VLS_ctx.visibleOrgBars))) {
+    /** @type {__VLS_StyleScopedClasses['ops-skill-table']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-dept-skill-table']} */ ;
+    if (__VLS_ctx.selectedDeptSkillRows.length === 0) {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            key: (row.name),
-            ...{ class: "org-bar-row" },
-            role: "listitem",
+            ...{ class: "ops-empty-state ops-detail-empty-state" },
         });
-        /** @type {__VLS_StyleScopedClasses['org-bar-row']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-detail-empty-state']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+    }
+    else {
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            ...{ class: "org-bar-label" },
+            ...{ class: "ops-skill-table-wrap" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.table, __VLS_intrinsics.table)({
+            ...{ class: "table ops-detail-table" },
+        });
+        /** @type {__VLS_StyleScopedClasses['table']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.thead, __VLS_intrinsics.thead)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-name sticky-name" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-name']} */ ;
+        /** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "Skill 名称",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-desc" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-desc']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "描述",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-owner" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-owner']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "发布人",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-download sticky-download" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-download']} */ ;
+        /** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "下载量",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.tbody, __VLS_intrinsics.tbody)({});
+        for (const [row, idx] of __VLS_vFor((__VLS_ctx.selectedDeptSkillRows))) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({
+                key: (`dept-${row.name}-${row.dept}-${idx}`),
+            });
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-name sticky-name" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-name']} */ ;
+            /** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                ...{ class: "skill-name-cell" },
+            });
+            /** @type {__VLS_StyleScopedClasses['skill-name-cell']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "skill-row-dot" },
+            });
+            /** @type {__VLS_StyleScopedClasses['skill-row-dot']} */ ;
+            (idx + 1);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "cell-ellipsis" },
+                title: (row.name),
+            });
+            /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+            (row.name);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-desc" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-desc']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "cell-ellipsis desc-text" },
+                title: (row.description),
+            });
+            /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+            /** @type {__VLS_StyleScopedClasses['desc-text']} */ ;
+            (row.description);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-owner" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-owner']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "owner-pill" },
+                title: (__VLS_ctx.opsSkillOwner(row)),
+            });
+            /** @type {__VLS_StyleScopedClasses['owner-pill']} */ ;
+            (__VLS_ctx.opsSkillOwner(row));
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-download sticky-download" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-download']} */ ;
+            /** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "download-pill" },
+                title: (__VLS_ctx.formatOpsNumber(row.downloads)),
+            });
+            /** @type {__VLS_StyleScopedClasses['download-pill']} */ ;
+            (__VLS_ctx.formatOpsNumber(row.downloads));
+            // @ts-ignore
+            [formatOpsNumber, formatOpsNumber, selectedDeptSkillRows, selectedDeptSkillRows, opsSkillOwner, opsSkillOwner,];
+        }
+    }
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-pair-row org-row" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-pair-row']} */ ;
+    /** @type {__VLS_StyleScopedClasses['org-row']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
+        ...{ class: "ops-card" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-card-head" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-card-body" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-org-bars" },
+        role: "list",
+        'aria-label': "组织级 Skill 分布",
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-org-bars']} */ ;
+    if (__VLS_ctx.uiOrgBarsSorted.length === 0) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-empty-state" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({});
+        (__VLS_ctx.opsEmptyText);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+    }
+    for (const [row] of __VLS_vFor((__VLS_ctx.uiOrgBarsSorted))) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(__VLS_ctx.innerTab === 'overview'))
+                        return;
+                    if (!!(__VLS_ctx.innerTab === 'core'))
+                        return;
+                    if (!!(__VLS_ctx.innerTab === 'releases'))
+                        return;
+                    __VLS_ctx.selectOpsOrg(row.name);
+                    // @ts-ignore
+                    [opsEmptyText, uiOrgBarsSorted, uiOrgBarsSorted, selectOpsOrg,];
+                } },
+            key: (row.name),
+            type: "button",
+            ...{ class: "ops-org-bar" },
+            ...{ class: ({ active: __VLS_ctx.selectedOpsOrgName === row.name }) },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-org-bar']} */ ;
+        /** @type {__VLS_StyleScopedClasses['active']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-org-bar-top" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-org-bar-top']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({
             title: (row.name),
         });
-        /** @type {__VLS_StyleScopedClasses['org-bar-label']} */ ;
-        (__VLS_ctx.orgBarLabel(row.name));
+        (row.name);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+        (row.skills);
+        (__VLS_ctx.formatOpsNumber(row.downloads));
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            ...{ class: "org-bar-track-wrap" },
-        });
-        /** @type {__VLS_StyleScopedClasses['org-bar-track-wrap']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            ...{ class: "org-bar-track" },
+            ...{ class: "ops-bar-track" },
             'aria-hidden': "true",
         });
-        /** @type {__VLS_StyleScopedClasses['org-bar-track']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.div)({
-            ...{ class: "org-bar-fill" },
-            ...{ style: ({
-                    width: `${((__VLS_ctx.opsBarMode === 'skills' ? row.skills : row.downloads) /
-                        __VLS_ctx.uiOrgBarsMax) *
-                        100}%`,
-                }) },
+        /** @type {__VLS_StyleScopedClasses['ops-bar-track']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span)({
+            ...{ class: "ops-bar-fill" },
+            ...{ style: ({ width: `${Math.round((row.downloads / __VLS_ctx.uiOrgBarsMax) * 100)}%` }) },
         });
-        /** @type {__VLS_StyleScopedClasses['org-bar-fill']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            ...{ class: "org-bar-val" },
-        });
-        /** @type {__VLS_StyleScopedClasses['org-bar-val']} */ ;
-        (__VLS_ctx.opsBarMode === 'skills'
-            ? `${row.skills}个`
-            : `${row.downloads}下载`);
+        /** @type {__VLS_StyleScopedClasses['ops-bar-fill']} */ ;
         // @ts-ignore
-        [opsBarMode, opsBarMode, opsBarMode, orgBarLabelColumnWidth, visibleOrgBars, orgBarLabel, uiOrgBarsMax,];
+        [formatOpsNumber, selectedOpsOrgName, uiOrgBarsMax,];
     }
     __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
-        ...{ class: "ops-top-section" },
+        ...{ class: "ops-card ops-detail-table-card" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-top-section']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-detail-table-card']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-        ...{ class: "ops-panel-hd" },
+        ...{ class: "ops-card-body" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-hd']} */ ;
-    __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({
-        ...{ class: "ops-panel-title" },
+    /** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-skill-table ops-org-skill-table" },
     });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-title']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-skill-table']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-org-skill-table']} */ ;
+    if (__VLS_ctx.selectedOrgSkillRows.length === 0) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-empty-state ops-detail-empty-state" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-detail-empty-state']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+    }
+    else {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-skill-table-wrap" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-skill-table-wrap']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.table, __VLS_intrinsics.table)({
+            ...{ class: "table ops-detail-table" },
+        });
+        /** @type {__VLS_StyleScopedClasses['table']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-detail-table']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.thead, __VLS_intrinsics.thead)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-name sticky-name" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-name']} */ ;
+        /** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "Skill 名称",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-desc" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-desc']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "描述",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-owner" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-owner']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "发布人",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.th, __VLS_intrinsics.th)({
+            ...{ class: "col-download sticky-download" },
+        });
+        /** @type {__VLS_StyleScopedClasses['col-download']} */ ;
+        /** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+            ...{ class: "cell-ellipsis" },
+            title: "下载量",
+        });
+        /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.tbody, __VLS_intrinsics.tbody)({});
+        for (const [row, idx] of __VLS_vFor((__VLS_ctx.selectedOrgSkillRows))) {
+            __VLS_asFunctionalElement1(__VLS_intrinsics.tr, __VLS_intrinsics.tr)({
+                key: (`org-${row.name}-${row.publishName}-${idx}`),
+            });
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-name sticky-name" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-name']} */ ;
+            /** @type {__VLS_StyleScopedClasses['sticky-name']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                ...{ class: "skill-name-cell" },
+            });
+            /** @type {__VLS_StyleScopedClasses['skill-name-cell']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "skill-row-dot" },
+            });
+            /** @type {__VLS_StyleScopedClasses['skill-row-dot']} */ ;
+            (idx + 1);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "cell-ellipsis" },
+                title: (row.name),
+            });
+            /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+            (row.name);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-desc" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-desc']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "cell-ellipsis desc-text" },
+                title: (row.description),
+            });
+            /** @type {__VLS_StyleScopedClasses['cell-ellipsis']} */ ;
+            /** @type {__VLS_StyleScopedClasses['desc-text']} */ ;
+            (row.description);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-owner" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-owner']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "owner-pill" },
+                title: (__VLS_ctx.opsSkillOwner(row)),
+            });
+            /** @type {__VLS_StyleScopedClasses['owner-pill']} */ ;
+            (__VLS_ctx.opsSkillOwner(row));
+            __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({
+                ...{ class: "col-download sticky-download" },
+            });
+            /** @type {__VLS_StyleScopedClasses['col-download']} */ ;
+            /** @type {__VLS_StyleScopedClasses['sticky-download']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                ...{ class: "download-pill" },
+                title: (__VLS_ctx.formatOpsNumber(row.downloads)),
+            });
+            /** @type {__VLS_StyleScopedClasses['download-pill']} */ ;
+            (__VLS_ctx.formatOpsNumber(row.downloads));
+            // @ts-ignore
+            [formatOpsNumber, formatOpsNumber, opsSkillOwner, opsSkillOwner, selectedOrgSkillRows, selectedOrgSkillRows,];
+        }
+    }
+    __VLS_asFunctionalElement1(__VLS_intrinsics.section, __VLS_intrinsics.section)({
+        ...{ class: "ops-card ops-top-card" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-card']} */ ;
+    /** @type {__VLS_StyleScopedClasses['ops-top-card']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-card-head" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-card-head']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+    __VLS_asFunctionalElement1(__VLS_intrinsics.h3, __VLS_intrinsics.h3)({});
     (__VLS_ctx.opsTopTitle);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
-        ...{ class: "ops-panel-sub" },
-    });
-    /** @type {__VLS_StyleScopedClasses['ops-panel-sub']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({});
     (__VLS_ctx.opsTopSubTitle);
-    __VLS_asFunctionalElement1(__VLS_intrinsics.ul, __VLS_intrinsics.ul)({
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+        ...{ class: "ops-card-body" },
+    });
+    /** @type {__VLS_StyleScopedClasses['ops-card-body']} */ ;
+    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "ops-top-list" },
         role: "list",
     });
     /** @type {__VLS_StyleScopedClasses['ops-top-list']} */ ;
+    if (__VLS_ctx.uiTopSkillsByDl.length === 0) {
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-empty-state ops-top-empty" },
+        });
+        /** @type {__VLS_StyleScopedClasses['ops-empty-state']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-top-empty']} */ ;
+        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({});
+        (__VLS_ctx.opsEmptyText);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
+    }
     for (const [item] of __VLS_vFor((__VLS_ctx.uiTopSkillsByDl))) {
-        __VLS_asFunctionalElement1(__VLS_intrinsics.li, __VLS_intrinsics.li)({
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
             key: (`${item.rank}-${item.name}-${item.downloads}`),
-            ...{ class: "ops-top-row" },
+            ...{ class: "ops-top-item" },
             role: "listitem",
         });
-        /** @type {__VLS_StyleScopedClasses['ops-top-row']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-            ...{ class: "ops-top-rank" },
-        });
-        /** @type {__VLS_StyleScopedClasses['ops-top-rank']} */ ;
-        (item.rank);
+        /** @type {__VLS_StyleScopedClasses['ops-top-item']} */ ;
         __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-            ...{ class: "ops-top-main" },
+            ...{ class: "ops-rank" },
         });
-        /** @type {__VLS_StyleScopedClasses['ops-top-main']} */ ;
-        __VLS_asFunctionalElement1(__VLS_intrinsics.strong, __VLS_intrinsics.strong)({
-            ...{ class: "ops-top-name" },
-        });
-        /** @type {__VLS_StyleScopedClasses['ops-top-name']} */ ;
+        /** @type {__VLS_StyleScopedClasses['ops-rank']} */ ;
+        (item.rank);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+        __VLS_asFunctionalElement1(__VLS_intrinsics.b, __VLS_intrinsics.b)({});
         (item.name);
-        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-            ...{ class: "ops-top-dept" },
+        __VLS_asFunctionalElement1(__VLS_intrinsics.small, __VLS_intrinsics.small)({
             title: (item.dept),
         });
-        /** @type {__VLS_StyleScopedClasses['ops-top-dept']} */ ;
-        (__VLS_ctx.minDeptLabel(item.dept));
-        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-            ...{ class: "ops-top-dl" },
+        (__VLS_ctx.opsSkillOwner(item));
+        (item.dept);
+        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+            ...{ class: "ops-download" },
         });
-        /** @type {__VLS_StyleScopedClasses['ops-top-dl']} */ ;
-        (item.downloads);
+        /** @type {__VLS_StyleScopedClasses['ops-download']} */ ;
+        (__VLS_ctx.formatOpsNumber(item.downloads));
         // @ts-ignore
-        [opsTopTitle, opsTopSubTitle, uiTopSkillsByDl, minDeptLabel,];
+        [formatOpsNumber, opsEmptyText, opsSkillOwner, opsTopTitle, opsTopSubTitle, uiTopSkillsByDl, uiTopSkillsByDl,];
     }
 }
 const __VLS_36 = UploadSkillModal;

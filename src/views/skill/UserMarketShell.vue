@@ -11,8 +11,9 @@ import type {
   SkillUploadPayload,
   UserInnerTab,
 } from '../../types/skill';
-import defaultOpsDashboardJson from '../../mock/opsDashboardDefault.json?raw';
-import type { DeptTreeNode, OpsDashboardBundle } from '../../utils/opsExcelImport';
+import companyOpsDashboardJson from '../../mock/opsDashboardCompanyDefault.json?raw';
+import fuyaoOpsDashboardJson from '../../mock/opsDashboardDefault.json?raw';
+import type { DeptTreeNode, OpsDashboardBundle, OpsSkillDetailRow } from '../../utils/opsExcelImport';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 
 const store = useSkillMarketStore();
@@ -759,6 +760,10 @@ function lastActionText(st: ReleaseStatusKey): string {
   return '需补充复现数据和说明文档';
 }
 
+function releaseCategoryLabel(skill: Skill): string {
+  return skill.tagFunctional || '通用类';
+}
+
 function releasePrimaryLevel(skill: Skill): string {
   if ((skill.publish_level ?? skill.level ?? '').includes('个人')) {
     return '个人级';
@@ -771,6 +776,27 @@ function releaseOrgLabel(skill: Skill): string {
     return '个人空间';
   }
   return skill.publish_name ?? skill.level ?? '';
+}
+
+function releaseSyncActionText(row: { skill: Skill; statusKey: ReleaseStatusKey; personal: boolean }): string {
+  if (row.statusKey === 'published' && !row.personal) {
+    return '更新同步';
+  }
+  return '同步至公司组织';
+}
+
+function onReleaseNewVersion(row: { skill: Skill }): void {
+  toastAction(`新版本（演示）：为「${skillTitle(row.skill)}」追加版本`);
+  openUpload();
+}
+
+function onReleaseSync(row: { skill: Skill; statusKey: ReleaseStatusKey; personal: boolean }): void {
+  const action = releaseSyncActionText(row);
+  toastAction(`${action}（演示）：${skillTitle(row.skill)}`);
+}
+
+function onReleaseRecord(row: { skill: Skill }): void {
+  toastAction(`记录（演示）：查看「${skillTitle(row.skill)}」操作记录`);
 }
 
 const myReleaseRows = computed(() => {
@@ -825,104 +851,90 @@ function onUploadExistingVersion(): void {
 const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref<HTMLInputElement | null>(null);
-const defaultOpsDashboardBundle = JSON.parse(defaultOpsDashboardJson) as OpsDashboardBundle;
+const fuyaoOpsDashboardBundle = JSON.parse(fuyaoOpsDashboardJson) as OpsDashboardBundle;
+const companyOpsDashboardBundle = JSON.parse(companyOpsDashboardJson) as OpsDashboardBundle;
 
-const uiOpsKpiDesc = {
-  totalSkills: '部门 Skill 分布总量',
-  activeSkills: '公司市场组织级 Skill 数量',
-  personalSkills: '个人发布的 Skill 数量',
-  totalDownloads: '部门维度累计下载 Skill 数量',
-} as const;
-
-type OrgBarRow = OpsDashboardBundle['orgBars'][number];
-
-const opsBarMode = ref<'skills' | 'downloads'>('skills');
 const opsBoardSystem = ref<'fuyao' | 'company'>('company');
-const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle);
+const selectedOpsDeptPath = ref('');
+const selectedOpsOrgName = ref('');
+const defaultOpsDashboardBundle = computed(() =>
+  opsBoardSystem.value === 'company' ? companyOpsDashboardBundle : fuyaoOpsDashboardBundle,
+);
+
+const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle.value);
 
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
 
-const uiOpsKpi = computed(() => opsDashboardBundle.value.kpi);
-
 const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
 
-const uiOrgBarsSorted = computed(() => {
-  const list = [...uiOrgBars.value];
-  if (opsBarMode.value === 'skills') {
-    return list.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
-  }
-  return list.sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
-});
+type OpsKpiCard = { label: string; value: string; desc: string };
 
-const visibleOrgBars = computed(() => uiOrgBarsSorted.value.slice(0, 8));
-
-function orgBarLabel(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return '';
-  }
-  const parts = trimmed.split('/');
-  return parts[parts.length - 1]?.trim() || trimmed;
-}
-
-function estimateOrgBarLabelWidth(label: string): number {
-  let width = 0;
-  for (const char of label) {
-    width += /[\u0000-\u00ff]/.test(char) ? 7 : 13;
-  }
-  return Math.ceil(width + 8);
-}
-
-const orgBarLabelColumnWidth = computed(() => {
-  const widths = visibleOrgBars.value.map((row) => estimateOrgBarLabelWidth(orgBarLabel(row.name)));
-  const contentWidth = Math.max(0, ...widths);
-  return Math.min(180, Math.max(78, contentWidth));
-});
-
-function minDeptLabel(name: string): string {
-  return orgBarLabel(name);
-}
-
-const uiOrgBarsMax = computed(() => {
-  const list = uiOrgBarsSorted.value.map((x: OrgBarRow) =>
-    opsBarMode.value === 'skills' ? x.skills : x.downloads,
-  );
-  return Math.max(1, ...list);
-});
-
-const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
-
-const opsTopTitle = 'TOP Skill（按下载量）';
-
-const opsTopSubTitle = '展示当前查询范围内下载量最高的Skill';
-
-const OPS_DEPT_DETAIL_VISIBLE_START_DEPTH = 2;
-
-type FlatDeptRow = { name: string; skills: number; downloads: number; depth: number };
-
-type FlatDeptRowV2 = FlatDeptRow & { path: string; hasChildren: boolean; expanded: boolean };
+type FlatDeptRow = {
+  name: string;
+  path: string;
+  levelNo: number;
+  skills: number;
+  downloads: number;
+  hasChildren: boolean;
+  expanded: boolean;
+};
 
 const expandedDeptPaths = ref<Set<string>>(new Set());
 
-function collectExpandableDeptPaths(
-  nodes: DeptTreeNode[],
-  parentPath = '',
-  out = new Set<string>(),
-): Set<string> {
+function formatOpsNumber(value: string | number): string {
+  const parsed =
+    typeof value === 'number' ? value : Number.parseInt(String(value).replace(/,/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed.toLocaleString('zh-CN') : String(value ?? '-');
+}
+
+function opsSkillOwner(row: OpsSkillDetailRow): string {
+  return row.owner || row.publishName || '未填写发布人';
+}
+
+function collectDefaultExpandedDeptPaths(nodes: DeptTreeNode[]): Set<string> {
+  const out = new Set<string>();
   for (const n of nodes) {
-    const path = parentPath ? `${parentPath}/${n.name}` : n.name;
     if (n.children && n.children.length > 0) {
-      out.add(path);
-      collectExpandableDeptPaths(n.children, path, out);
+      out.add(n.path);
     }
   }
   return out;
 }
 
+function firstDeptPath(nodes: DeptTreeNode[]): string {
+  return nodes[0]?.path ?? '';
+}
+
+function findDeptNodeByPath(nodes: DeptTreeNode[], path: string): DeptTreeNode | null {
+  for (const node of nodes) {
+    if (node.path === path) {
+      return node;
+    }
+    const child = findDeptNodeByPath(node.children ?? [], path);
+    if (child) {
+      return child;
+    }
+  }
+  return null;
+}
+
 watch(
   uiDeptTree,
   (tree) => {
-    expandedDeptPaths.value = collectExpandableDeptPaths(tree);
+    expandedDeptPaths.value = collectDefaultExpandedDeptPaths(tree);
+    if (!findDeptNodeByPath(tree, selectedOpsDeptPath.value)) {
+      selectedOpsDeptPath.value = firstDeptPath(tree);
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  uiOrgBars,
+  (bars) => {
+    if (!bars.some((row) => row.name === selectedOpsOrgName.value)) {
+      selectedOpsOrgName.value = bars[0]?.name ?? '';
+    }
   },
   { immediate: true },
 );
@@ -937,36 +949,116 @@ function toggleDeptExpand(path: string): void {
   expandedDeptPaths.value = next;
 }
 
-function flattenDeptTreeVisible(
-  nodes: DeptTreeNode[],
-  sourceDepth = 0,
-  parentPath = '',
-): FlatDeptRowV2[] {
-  const out: FlatDeptRowV2[] = [];
+function selectOpsDept(path: string): void {
+  selectedOpsDeptPath.value = path;
+}
+
+function selectOpsOrg(name: string): void {
+  selectedOpsOrgName.value = name;
+}
+
+function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
+  const out: FlatDeptRow[] = [];
   for (const n of nodes) {
-    const path = parentPath ? `${parentPath}/${n.name}` : n.name;
     const hasChildren = Boolean(n.children && n.children.length > 0);
-    const expanded = hasChildren ? expandedDeptPaths.value.has(path) : false;
-    const shouldRender = sourceDepth >= OPS_DEPT_DETAIL_VISIBLE_START_DEPTH;
-    if (shouldRender) {
-      out.push({
-        path,
-        name: n.name,
-        skills: n.skills,
-        downloads: n.downloads,
-        depth: sourceDepth - OPS_DEPT_DETAIL_VISIBLE_START_DEPTH,
-        hasChildren,
-        expanded,
-      });
-    }
-    if (hasChildren && (!shouldRender || expanded)) {
-      out.push(...flattenDeptTreeVisible(n.children!, sourceDepth + 1, path));
+    const expanded = hasChildren ? expandedDeptPaths.value.has(n.path) : false;
+    out.push({
+      path: n.path,
+      name: n.name,
+      levelNo: n.levelNo,
+      skills: n.skills,
+      downloads: n.downloads,
+      hasChildren,
+      expanded,
+    });
+    if (hasChildren && expanded) {
+      out.push(...flattenDeptTreeVisible(n.children!));
     }
   }
   return out;
 }
 
 const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
+
+const uiOrgBarsSorted = computed(() =>
+  [...uiOrgBars.value].sort((a, b) => b.downloads - a.downloads || b.skills - a.skills),
+);
+
+const uiOrgBarsMax = computed(() => Math.max(1, ...uiOrgBarsSorted.value.map((x) => x.downloads)));
+
+const selectedDeptNode = computed(() =>
+  findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null,
+);
+
+const selectedOrgBar = computed(
+  () => uiOrgBars.value.find((row) => row.name === selectedOpsOrgName.value) ?? uiOrgBars.value[0],
+);
+
+const selectedDeptSkillRows = computed(() => selectedDeptNode.value?.skillRows ?? []);
+
+const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? []);
+
+const opsKpiCards = computed<OpsKpiCard[]>(() => {
+  const kpi = opsDashboardBundle.value.kpi;
+  if (opsBoardSystem.value === 'company') {
+    return [
+      {
+        label: '公司系统 Skill 数',
+        value: kpi.activeSkills,
+        desc: '目标系统统一管理的组织级 Skill',
+      },
+      {
+        label: '组织级 Skill',
+        value: kpi.activeSkills,
+        desc: '已通过公司发布验证的 Skill',
+      },
+      {
+        label: '关联组织数',
+        value: kpi.orgCount,
+        desc: '组织级 Skill 归属发布组织',
+      },
+      {
+        label: '累计下载量',
+        value: kpi.companyDownloads,
+        desc: '公司系统侧累计下载',
+      },
+    ];
+  }
+  return [
+    {
+      label: '扶摇 Skill 数',
+      value: kpi.totalSkills,
+      desc: '平台内沉淀和验证的 Skill 总量',
+    },
+    {
+      label: '个人级 Skill',
+      value: kpi.personalSkills,
+      desc: '个人发布、沉淀和快速验证',
+    },
+    {
+      label: '部门层级数',
+      value: kpi.deptCount,
+      desc: 'Excel 中解析出的部门节点',
+    },
+    {
+      label: '累计下载量',
+      value: kpi.totalDownloads,
+      desc: '扶摇系统侧累计下载',
+    },
+  ];
+});
+
+const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
+
+const opsTopTitle = 'TOP Skill';
+
+const opsTopSubTitle = '按下载量展示当前市场中使用最集中的 Skill。';
+
+const opsEmptyText = computed(() =>
+  opsBoardSystem.value === 'company'
+    ? '暂无公司系统组织级 Skill 数据'
+    : '暂无扶摇系统运营看板数据',
+);
 
 function buildOpsDashboardMockJsonFileName(sourceName: string): string {
   const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dashboard';
@@ -1444,114 +1536,124 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       class="panel tab-panel my-release-panel"
       :style="tabPanelFillStyle"
     >
-      <div class="my-stats" role="group" aria-label="我的发布指标">
-        <div class="my-cell">
-          <span class="my-k">我维护的 Skill</span>
-          <span class="my-v">{{ uiMyStats.maintained }}</span>
+      <header class="my-release-head">
+        <div>
+          <h2>我的发布</h2>
         </div>
-        <div class="my-div" aria-hidden="true" />
-        <div class="my-cell">
-          <span class="my-k">审核中</span>
-          <span class="my-v">{{ uiMyStats.reviewing }}</span>
-        </div>
-        <div class="my-div" aria-hidden="true" />
-        <div class="my-cell">
-          <span class="my-k">被驳回</span>
-          <span class="my-v">{{ uiMyStats.rejected }}</span>
-        </div>
-        <div class="my-div" aria-hidden="true" />
-        <div class="my-cell">
-          <span class="my-k">我的累计下载</span>
-          <span class="my-v">{{ uiMyStats.myTotalDownloads }}</span>
-        </div>
-      </div>
+        <button type="button" class="btn primary my-upload-btn" @click="openUpload">上传新 Skill</button>
+      </header>
 
-      <div class="my-toolbar">
-        <div class="my-filters" role="tablist" aria-label="我的发布筛选">
-          <button
-            v-for="f in releaseFilters"
-            :key="f.key"
-            type="button"
-            class="seg"
-            :class="{ on: releaseFilter === f.key }"
-            @click="releaseFilter = f.key"
-          >
-            {{ f.label }}
+      <div class="my-release-body">
+        <div class="my-stats" role="group" aria-label="我的发布指标">
+          <div class="my-cell">
+            <span class="my-k">我维护的 Skill</span>
+            <span class="my-v">{{ uiMyStats.maintained }}</span>
+          </div>
+          <div class="my-div" aria-hidden="true" />
+          <div class="my-cell">
+            <span class="my-k">审核中</span>
+            <span class="my-v">{{ uiMyStats.reviewing }}</span>
+          </div>
+          <div class="my-div" aria-hidden="true" />
+          <div class="my-cell">
+            <span class="my-k">被驳回</span>
+            <span class="my-v">{{ uiMyStats.rejected }}</span>
+          </div>
+          <div class="my-div" aria-hidden="true" />
+          <div class="my-cell">
+            <span class="my-k">我的累计下载</span>
+            <span class="my-v">{{ uiMyStats.myTotalDownloads }}</span>
+          </div>
+        </div>
+
+        <div class="my-toolbar">
+          <div class="my-filters" role="tablist" aria-label="我的发布筛选">
+            <button
+              v-for="f in releaseFilters"
+              :key="f.key"
+              type="button"
+              class="seg"
+              :class="{ on: releaseFilter === f.key }"
+              @click="releaseFilter = f.key"
+            >
+              {{ f.label }}
+            </button>
+          </div>
+          <button type="button" class="btn outline sm" @click="onUploadExistingVersion">
+            上传已有 Skill 新版本
           </button>
         </div>
-        <button type="button" class="btn outline sm" @click="onUploadExistingVersion">
-          上传已有 Skill 新版本
-        </button>
-      </div>
 
-      <div class="table-wrap my-table-wrap">
-        <table class="table my-table">
-          <thead>
-            <tr>
-              <th class="col-skill">Skill</th>
-              <th class="col-level">当前层级</th>
-              <th class="col-ver">最新版本</th>
-              <th class="col-status">状态</th>
-              <th class="col-dl">下载量</th>
-              <th class="col-action">最近动作</th>
-              <th class="col-ops">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in filteredMyReleaseRows" :key="row.skill.id">
-              <td>
-                <div class="skill-main">
-                  <strong class="skill-name">{{ row.skill.name }}</strong>
-                  <div class="skill-sub">
-                    <span>维护方：{{ row.skill.publisher }}</span>
+        <div class="table-wrap my-table-wrap">
+          <table class="table my-table">
+            <thead>
+              <tr>
+                <th class="col-skill">Skill</th>
+                <th class="col-level">当前层级</th>
+                <th class="col-ver">最新版本</th>
+                <th class="col-status">状态</th>
+                <th class="col-dl">下载量</th>
+                <th class="col-action">最近动作</th>
+                <th class="col-ops">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in filteredMyReleaseRows"
+                :key="row.skill.id"
+                class="clickable-row"
+                @click="openDetailPanel(skillKey(row.skill))"
+              >
+                <td>
+                  <div class="skill-main">
+                    <strong class="skill-name">{{ row.skill.name }}</strong>
+                    <div class="skill-sub">
+                      <span>{{ releaseCategoryLabel(row.skill) }} · 作者：{{ row.skill.publisher }}</span>
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td>
-                <div class="cell-main">{{ releasePrimaryLevel(row.skill) }}</div>
-                <div class="cell-sub">{{ releaseOrgLabel(row.skill) }}</div>
-              </td>
-              <td>
-                <div class="cell-main">{{ row.skill.version }}</div>
-                <div class="cell-sub">{{ row.skill.latestPublishTime }}</div>
-              </td>
-              <td>
-                <span class="st" :class="`st-${row.statusKey}`">{{ row.statusLabel }}</span>
-              </td>
-              <td class="num">{{ (row.skill.download_count ?? row.skill.downloads ?? 0).toLocaleString('zh-CN') }}</td>
-              <td class="cell-sub">{{ row.lastAction }}</td>
-              <td>
-                <div class="ops">
-                  <button type="button" class="mini" @click="toastAction('新版本（演示）：打开上传弹窗并追加版本')">
-                    新版本
-                  </button>
-                  <button type="button" class="mini" @click="toastAction('升级（演示）：提交层级升级申请')">
-                    同步至公司组织
-                  </button>
-                  <button type="button" class="mini" @click="toastAction('记录（演示）：打开操作记录面板')">
-                    记录
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="filteredMyReleaseRows.length === 0">
-              <td colspan="7" class="empty-row">暂无符合条件的数据</td>
-            </tr>
-          </tbody>
-        </table>
+                </td>
+                <td>
+                  <div class="cell-main">{{ releasePrimaryLevel(row.skill) }}</div>
+                  <div class="cell-sub">{{ releaseOrgLabel(row.skill) }}</div>
+                </td>
+                <td>
+                  <div class="cell-main">{{ row.skill.version }}</div>
+                  <div class="cell-sub">{{ row.skill.latestPublishTime }}</div>
+                </td>
+                <td>
+                  <span class="st" :class="`st-${row.statusKey}`">{{ row.statusLabel }}</span>
+                </td>
+                <td class="num">
+                  {{ (row.skill.download_count ?? row.skill.downloads ?? 0).toLocaleString('zh-CN') }}
+                </td>
+                <td class="cell-sub">{{ row.lastAction }}</td>
+                <td @click.stop>
+                  <div class="ops">
+                    <button type="button" class="mini" @click="onReleaseNewVersion(row)">新版本</button>
+                    <button type="button" class="mini" @click="onReleaseSync(row)">
+                      {{ releaseSyncActionText(row) }}
+                    </button>
+                    <button type="button" class="mini" @click="onReleaseRecord(row)">记录</button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="filteredMyReleaseRows.length === 0">
+                <td colspan="7" class="empty-row">暂无符合条件的数据</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <div v-else class="panel tab-panel ops">
-      <section class="ops-dashboard-card" aria-label="Skill 运营看板">
-        <header class="ops-dash-top">
-          <div class="ops-dash-heading">
-            <h2 class="ops-dash-title">Skill 运营看板</h2>
-            <p class="ops-dash-desc">
-              扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级 Skill。
-            </p>
+      <section class="ops-dashboard-card ops-dashboard" aria-label="Skill 运营看板">
+        <header class="ops-title">
+          <div>
+            <h2>运营看板</h2>
+            <p>扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级 Skill。</p>
           </div>
-          <div class="ops-dash-meta">
+          <div class="ops-filter">
             <div class="ops-toggle ops-system-toggle" role="tablist" aria-label="运营看板系统切换">
               <button
                 type="button"
@@ -1576,7 +1678,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 公司系统
               </button>
             </div>
-            <span class="ops-dash-note" :title="`统计至：${opsAsOfText}`">
+            <span class="ops-data-note" :title="`统计至：${opsAsOfText}`">
               数据口径：T+1（统计数据延迟 1 天）
             </span>
             <input
@@ -1589,7 +1691,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             />
             <button
               type="button"
-              class="btn outline sm ops-import-btn"
+              class="btn btn-soft ops-import-btn"
               :disabled="opsImporting"
               @click="triggerOpsExcelImport"
             >
@@ -1598,157 +1700,243 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </header>
 
-        <div class="ops-kpi-grid" role="group" aria-label="运营看板指标">
-          <div class="ops-kpi-card">
-            <div class="ops-kpi-label">总 Skill 数</div>
-            <div class="ops-kpi-value">{{ uiOpsKpi.totalSkills }}</div>
-            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.totalSkills }}</div>
-          </div>
-          <div class="ops-kpi-card">
-            <div class="ops-kpi-label">组织级 Skill</div>
-            <div class="ops-kpi-value">{{ uiOpsKpi.activeSkills }}</div>
-            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.activeSkills }}</div>
-          </div>
-          <div class="ops-kpi-card">
-            <div class="ops-kpi-label">个人级 Skill</div>
-            <div class="ops-kpi-value">{{ uiOpsKpi.personalSkills }}</div>
-            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.personalSkills }}</div>
-          </div>
-          <div class="ops-kpi-card">
-            <div class="ops-kpi-label">累计下载量</div>
-            <div class="ops-kpi-value">{{ uiOpsKpi.totalDownloads }}</div>
-            <div class="ops-kpi-desc">{{ uiOpsKpiDesc.totalDownloads }}</div>
+        <div class="ops-kpis" role="group" aria-label="运营看板指标">
+          <div v-for="card in opsKpiCards" :key="card.label" class="ops-kpi">
+            <small>{{ card.label }}</small>
+            <strong>{{ formatOpsNumber(card.value) }}</strong>
+            <span>{{ card.desc }}</span>
           </div>
         </div>
 
-        <div class="ops-mid-2col">
-          <section class="ops-panel-block">
-            <div class="ops-panel-hd">
-              <h3 class="ops-panel-title">部门 Skill 分布详情</h3>
-              <p class="ops-panel-sub">展示了主要部门及各子部门在该平台上的 Skill 情况</p>
-            </div>
-            <div class="dept-tree-wrap">
-              <div class="dept-tree-head">
-                <span class="dt-col-name">部门名称</span>
-                <span class="dt-col-num">Skill 数量</span>
-                <span class="dt-col-num">下载次数</span>
-              </div>
-              <div class="dept-tree-body" role="list">
-                <div
-                  v-for="row in uiDeptFlat"
-                  :key="row.path"
-                  class="dept-tree-row"
-                  :class="{ child: row.depth > 0 }"
-                  role="listitem"
-                  :style="{ paddingLeft: `${12 + row.depth * 20}px` }"
-                >
-                  <span class="dt-name">
-                    <button
-                      v-if="row.hasChildren"
-                      type="button"
-                      class="dt-toggle"
-                      :aria-label="row.expanded ? '收起' : '展开'"
-                      @click.stop="toggleDeptExpand(row.path)"
-                    >
-                      <span class="dt-caret" :class="{ on: row.expanded }" aria-hidden="true" />
-                    </button>
-                    <span v-else class="dt-toggle-spacer" aria-hidden="true" />
-                    <span v-if="row.depth > 0" class="dt-bullet" aria-hidden="true">·</span>
-                    {{ row.name }}
-                  </span>
-                  <span class="dt-skills">{{ row.skills }}个</span>
-                  <span class="dt-dl">{{ row.downloads }}下载</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="ops-panel-block">
-            <div class="ops-panel-hd ops-panel-hd-row">
-              <div>
-                <h3 class="ops-panel-title">组织级 Skill 分布详情</h3>
-                <p class="ops-panel-sub">
-                  {{
-                    opsBarMode === 'skills'
-                      ? '按 Skill 数量倒序展示公司市场组织级 Skill'
-                      : '按下载量倒序展示公司市场组织级 Skill'
-                  }}
-                </p>
-              </div>
-              <div class="ops-toggle" role="group" aria-label="图表度量切换">
-                <button
-                  type="button"
-                  class="ops-toggle-btn"
-                  :class="{ on: opsBarMode === 'skills' }"
-                  @click="opsBarMode = 'skills'"
-                >
-                  按数量
-                </button>
-                <button
-                  type="button"
-                  class="ops-toggle-btn"
-                  :class="{ on: opsBarMode === 'downloads' }"
-                  @click="opsBarMode = 'downloads'"
-                >
-                  按下载量
-                </button>
-              </div>
-            </div>
-            <div
-              class="org-bar-list"
-              role="list"
-              aria-label="组织架构分布条形图"
-              :style="{ '--org-bar-label-width': `${orgBarLabelColumnWidth}px` }"
-            >
-              <div v-for="row in visibleOrgBars" :key="row.name" class="org-bar-row" role="listitem">
-                <div class="org-bar-label" :title="row.name">{{ orgBarLabel(row.name) }}</div>
-                <div class="org-bar-track-wrap">
-                  <div class="org-bar-track" aria-hidden="true">
-                    <div
-                      class="org-bar-fill"
-                      :style="{
-                        width: `${
-                          ((opsBarMode === 'skills' ? row.skills : row.downloads) /
-                            uiOrgBarsMax) *
-                          100
-                        }%`,
-                      }"
-                    />
+        <div class="ops-main-grid">
+          <div class="ops-board-rows">
+            <div class="ops-pair-row dept-row">
+              <section class="ops-card">
+                <div class="ops-card-head">
+                  <div>
+                    <h3>部门 Skill 分布详情</h3>
+                    <p>默认展开一级部门；点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
                   </div>
                 </div>
-                <div class="org-bar-val">
-                  {{
-                    opsBarMode === 'skills'
-                      ? `${row.skills}个`
-                      : `${row.downloads}下载`
-                  }}
+                <div class="ops-card-body ops-tree board-org-tree" role="tree">
+                  <div v-if="uiDeptFlat.length === 0" class="ops-empty-state">
+                    <strong>{{ opsEmptyText }}</strong>
+                    <span>导入 Excel 后会在这里展示部门层级、Skill 数量和下载量。</span>
+                  </div>
+                  <div v-for="row in uiDeptFlat" :key="row.path" class="ops-tree-item">
+                    <button
+                      type="button"
+                      class="ops-tree-node"
+                      :class="[
+                        { active: selectedOpsDeptPath === row.path },
+                        'lv' + (row.levelNo > 6 ? 6 : row.levelNo),
+                      ]"
+                      :aria-pressed="selectedOpsDeptPath === row.path"
+                      @click="selectOpsDept(row.path)"
+                    >
+                      <span
+                        v-if="row.hasChildren"
+                        class="ops-caret-btn"
+                        role="button"
+                        tabindex="-1"
+                        :aria-label="row.expanded ? '收起部门' : '展开部门'"
+                        @click.stop="toggleDeptExpand(row.path)"
+                      >
+                        {{ row.expanded ? '▾' : '▸' }}
+                      </span>
+                      <span v-else class="ops-caret-placeholder" aria-hidden="true">•</span>
+                      <span class="ops-tree-name" :title="row.path">{{ row.name }}</span>
+                      <span class="ops-tree-count">{{ row.skills }}个</span>
+                      <span class="ops-tree-download">{{ formatOpsNumber(row.downloads) }}下载</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="ops-card ops-detail-table-card">
+                <div class="ops-card-body">
+                  <div class="ops-skill-table ops-dept-skill-table">
+                    <div v-if="selectedDeptSkillRows.length === 0" class="ops-empty-state ops-detail-empty-state">
+                      <strong>暂无 Skill 明细</strong>
+                      <span>选择有数据的部门层级后，将展示该层级下的 Skill 列表。</span>
+                    </div>
+                    <div v-else class="ops-skill-table-wrap">
+                      <table class="table ops-detail-table">
+                        <thead>
+                          <tr>
+                            <th class="col-name sticky-name">
+                              <span class="cell-ellipsis" title="Skill 名称">Skill 名称</span>
+                            </th>
+                            <th class="col-desc"><span class="cell-ellipsis" title="描述">描述</span></th>
+                            <th class="col-owner">
+                              <span class="cell-ellipsis" title="发布人">发布人</span>
+                            </th>
+                            <th class="col-download sticky-download">
+                              <span class="cell-ellipsis" title="下载量">下载量</span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="(row, idx) in selectedDeptSkillRows"
+                            :key="`dept-${row.name}-${row.dept}-${idx}`"
+                          >
+                            <td class="col-name sticky-name">
+                              <div class="skill-name-cell">
+                                <span class="skill-row-dot">{{ idx + 1 }}</span>
+                                <span class="cell-ellipsis" :title="row.name">{{ row.name }}</span>
+                              </div>
+                            </td>
+                            <td class="col-desc">
+                              <span class="cell-ellipsis desc-text" :title="row.description">
+                                {{ row.description }}
+                              </span>
+                            </td>
+                            <td class="col-owner">
+                              <span class="owner-pill" :title="opsSkillOwner(row)">
+                                {{ opsSkillOwner(row) }}
+                              </span>
+                            </td>
+                            <td class="col-download sticky-download">
+                              <span class="download-pill" :title="formatOpsNumber(row.downloads)">
+                                {{ formatOpsNumber(row.downloads) }}
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="ops-pair-row org-row">
+              <section class="ops-card">
+                <div class="ops-card-head">
+                  <div>
+                    <h3>组织级 Skill 分布详情</h3>
+                    <p>默认选中第一个组织级数据；点击横向条目后，右侧显示该组织级 Skill 列表。</p>
+                  </div>
+                </div>
+                <div class="ops-card-body">
+                  <div class="ops-org-bars" role="list" aria-label="组织级 Skill 分布">
+                    <div v-if="uiOrgBarsSorted.length === 0" class="ops-empty-state">
+                      <strong>{{ opsEmptyText }}</strong>
+                      <span>暂无可展示的组织级 Skill 分布。</span>
+                    </div>
+                    <button
+                      v-for="row in uiOrgBarsSorted"
+                      :key="row.name"
+                      type="button"
+                      class="ops-org-bar"
+                      :class="{ active: selectedOpsOrgName === row.name }"
+                      @click="selectOpsOrg(row.name)"
+                    >
+                      <div class="ops-org-bar-top">
+                        <b :title="row.name">{{ row.name }}</b>
+                        <span>{{ row.skills }}个 · {{ formatOpsNumber(row.downloads) }}下载</span>
+                      </div>
+                      <div class="ops-bar-track" aria-hidden="true">
+                        <span
+                          class="ops-bar-fill"
+                          :style="{ width: `${Math.round((row.downloads / uiOrgBarsMax) * 100)}%` }"
+                        />
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="ops-card ops-detail-table-card">
+                <div class="ops-card-body">
+                  <div class="ops-skill-table ops-org-skill-table">
+                    <div v-if="selectedOrgSkillRows.length === 0" class="ops-empty-state ops-detail-empty-state">
+                      <strong>暂无组织级 Skill 明细</strong>
+                      <span>选择有数据的组织条目后，将展示该组织级 Skill 列表。</span>
+                    </div>
+                    <div v-else class="ops-skill-table-wrap">
+                      <table class="table ops-detail-table">
+                        <thead>
+                          <tr>
+                            <th class="col-name sticky-name">
+                              <span class="cell-ellipsis" title="Skill 名称">Skill 名称</span>
+                            </th>
+                            <th class="col-desc"><span class="cell-ellipsis" title="描述">描述</span></th>
+                            <th class="col-owner">
+                              <span class="cell-ellipsis" title="发布人">发布人</span>
+                            </th>
+                            <th class="col-download sticky-download">
+                              <span class="cell-ellipsis" title="下载量">下载量</span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="(row, idx) in selectedOrgSkillRows"
+                            :key="`org-${row.name}-${row.publishName}-${idx}`"
+                          >
+                            <td class="col-name sticky-name">
+                              <div class="skill-name-cell">
+                                <span class="skill-row-dot">{{ idx + 1 }}</span>
+                                <span class="cell-ellipsis" :title="row.name">{{ row.name }}</span>
+                              </div>
+                            </td>
+                            <td class="col-desc">
+                              <span class="cell-ellipsis desc-text" :title="row.description">
+                                {{ row.description }}
+                              </span>
+                            </td>
+                            <td class="col-owner">
+                              <span class="owner-pill" :title="opsSkillOwner(row)">
+                                {{ opsSkillOwner(row) }}
+                              </span>
+                            </td>
+                            <td class="col-download sticky-download">
+                              <span class="download-pill" :title="formatOpsNumber(row.downloads)">
+                                {{ formatOpsNumber(row.downloads) }}
+                              </span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section class="ops-card ops-top-card">
+              <div class="ops-card-head">
+                <div>
+                  <h3>{{ opsTopTitle }}</h3>
+                  <p>{{ opsTopSubTitle }}</p>
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
-
-        <section class="ops-top-section">
-          <div class="ops-panel-hd">
-            <h3 class="ops-panel-title">{{ opsTopTitle }}</h3>
-            <p class="ops-panel-sub">{{ opsTopSubTitle }}</p>
-          </div>
-          <ul class="ops-top-list" role="list">
-            <li
-              v-for="item in uiTopSkillsByDl"
-              :key="`${item.rank}-${item.name}-${item.downloads}`"
-              class="ops-top-row"
-              role="listitem"
-            >
-              <span class="ops-top-rank">{{ item.rank }}</span>
-              <div class="ops-top-main">
-                <strong class="ops-top-name">{{ item.name }}</strong>
-                <span class="ops-top-dept" :title="item.dept">{{ minDeptLabel(item.dept) }}</span>
+              <div class="ops-card-body">
+                <div class="ops-top-list" role="list">
+                  <div v-if="uiTopSkillsByDl.length === 0" class="ops-empty-state ops-top-empty">
+                    <strong>{{ opsEmptyText }}</strong>
+                    <span>暂无下载排行数据。</span>
+                  </div>
+                  <div
+                    v-for="item in uiTopSkillsByDl"
+                    :key="`${item.rank}-${item.name}-${item.downloads}`"
+                    class="ops-top-item"
+                    role="listitem"
+                  >
+                    <div class="ops-rank">{{ item.rank }}</div>
+                    <div>
+                      <b>{{ item.name }}</b>
+                      <small :title="item.dept">{{ opsSkillOwner(item) }} · {{ item.dept }}</small>
+                    </div>
+                    <div class="ops-download">{{ formatOpsNumber(item.downloads) }}</div>
+                  </div>
+                </div>
               </div>
-              <span class="ops-top-dl">{{ item.downloads }}</span>
-            </li>
-          </ul>
-        </section>
+            </section>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -2753,6 +2941,771 @@ width: 100%;
   color: rgba(0, 0, 0, 0.88);
 }
 
+.panel.tab-panel.ops {
+  display: block;
+  padding: 22px 0 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.btn-soft {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.ops-dashboard-card.ops-dashboard {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px 24px 28px;
+  box-sizing: border-box;
+}
+
+.ops-title {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ops-title h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: #0f172a;
+}
+
+.ops-title p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ops-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ops-toggle.ops-system-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 9px;
+  overflow: visible;
+}
+
+.ops-system-btn {
+  min-height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.ops-system-btn.active {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.ops-data-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.ops-import-btn {
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.ops-import-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ops-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.ops-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 104px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.ops-kpi::after {
+  content: '';
+  position: absolute;
+  right: -20px;
+  top: -20px;
+  width: 74px;
+  height: 74px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(124, 58, 237, 0.08));
+}
+
+.ops-kpi small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  margin-bottom: 8px;
+}
+
+.ops-kpi strong {
+  display: block;
+  font-size: 30px;
+  line-height: 1;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-kpi span {
+  display: block;
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ops-main-grid {
+  display: block;
+}
+
+.ops-board-rows {
+  display: grid;
+  gap: 16px;
+}
+
+.ops-pair-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.ops-pair-row.dept-row > .ops-card {
+  height: 400px;
+  min-height: 400px;
+}
+
+.ops-pair-row.org-row > .ops-card {
+  height: 300px;
+  min-height: 300px;
+}
+
+.ops-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.ops-card-head {
+  flex: 0 0 auto;
+  min-height: 76px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.ops-card-head h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: #0f172a;
+}
+
+.ops-card-head p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ops-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px 18px;
+}
+
+.ops-tree.board-org-tree {
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  padding: 16px 18px;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
+.ops-tree-item {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+
+.ops-tree-node {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 56px 78px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.25;
+}
+
+.ops-tree-node:hover {
+  background: #f8fafc;
+}
+
+.ops-tree-node.active {
+  background: linear-gradient(90deg, #eaf3ff, #f4f7ff);
+  color: #1d4ed8;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.ops-caret-btn {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ops-caret-btn:hover {
+  background: #eef2ff;
+  color: #2563eb;
+}
+
+.ops-caret-placeholder {
+  width: 20px;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.ops-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ops-tree-count,
+.ops-tree-download {
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-tree-download {
+  color: #64748b;
+  font-weight: 750;
+}
+
+.ops-tree-node.active .ops-tree-count {
+  color: #1d4ed8;
+}
+
+.ops-tree-node.lv1 {
+  margin-left: 0;
+}
+
+.ops-tree-node.lv2 {
+  margin-left: 16px;
+  width: calc(100% - 16px);
+}
+
+.ops-tree-node.lv3 {
+  margin-left: 32px;
+  width: calc(100% - 32px);
+}
+
+.ops-tree-node.lv4 {
+  margin-left: 48px;
+  width: calc(100% - 48px);
+}
+
+.ops-tree-node.lv5 {
+  margin-left: 64px;
+  width: calc(100% - 64px);
+}
+
+.ops-tree-node.lv6 {
+  margin-left: 80px;
+  width: calc(100% - 80px);
+}
+
+.ops-org-bars {
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding-right: 6px;
+  align-content: start;
+}
+
+.ops-org-bar {
+  width: 100%;
+  border: 1px solid #edf2f7;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.ops-org-bar:hover {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.ops-org-bar.active {
+  border-color: #93c5fd;
+  background: linear-gradient(90deg, #eaf3ff, #f7fbff);
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.ops-org-bar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.ops-org-bar-top b {
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-org-bar-top span {
+  color: #64748b;
+  font-weight: 850;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-bar-track {
+  height: 14px;
+  background: #eef2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ops-bar-fill {
+  height: 100%;
+  display: block;
+  min-width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #7c3aed);
+}
+
+.ops-detail-table-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border-color: #dfe7f2;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+.ops-pair-row > .ops-detail-table-card .ops-card-body {
+  padding: 10px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.ops-skill-table,
+.ops-skill-table-wrap {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+
+.ops-skill-table-wrap {
+  overflow: auto;
+  border: 1px solid #e6edf6;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.ops-detail-table.table {
+  min-width: 1180px;
+  width: 1180px;
+  table-layout: fixed;
+  border: 0;
+  border-radius: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+}
+
+.ops-detail-table th,
+.ops-detail-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.ops-detail-table .col-name {
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+
+.ops-detail-table .col-desc {
+  width: 610px;
+  min-width: 610px;
+  max-width: 610px;
+}
+
+.ops-detail-table .col-owner {
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
+}
+
+.ops-detail-table .col-download {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+  text-align: left;
+}
+
+.ops-detail-table th.sticky-name,
+.ops-detail-table td.sticky-name {
+  position: sticky;
+  left: 0;
+  z-index: 8;
+  background: #fff;
+  box-shadow: 6px 0 12px -12px rgba(15, 23, 42, 0.35), 1px 0 0 #e5e7eb;
+}
+
+.ops-detail-table th.sticky-download,
+.ops-detail-table td.sticky-download {
+  position: sticky;
+  right: 0;
+  z-index: 8;
+  background: #fff;
+  box-shadow: -6px 0 12px -12px rgba(15, 23, 42, 0.35), -1px 0 0 #e5e7eb;
+}
+
+.ops-detail-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 44px;
+  padding: 0 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid #dce5f0;
+  text-align: left;
+}
+
+.ops-detail-table thead th.sticky-name,
+.ops-detail-table thead th.sticky-download {
+  z-index: 12;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.ops-detail-table tbody td {
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid #eef2f7;
+  color: #334155;
+  font-size: 13px;
+  background: #fff;
+}
+
+.ops-detail-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ops-detail-table tbody tr:hover td,
+.ops-detail-table tbody tr:hover td.sticky-name,
+.ops-detail-table tbody tr:hover td.sticky-download {
+  background: #f8fbff;
+}
+
+.cell-ellipsis {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skill-row-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.desc-text {
+  color: #64748b;
+}
+
+.owner-pill {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.download-pill {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 54px;
+  height: 26px;
+  align-items: center;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #eff6ff, #eef2ff);
+  color: #1d4ed8;
+  border: 1px solid #dbeafe;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ops-empty-detail {
+  height: 96px;
+  text-align: center;
+  color: #94a3b8;
+  background: #fff;
+}
+
+.ops-top-card {
+  min-height: 260px;
+}
+
+.ops-top-card .ops-card-body {
+  overflow: auto;
+}
+
+.ops-top-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+
+.ops-top-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.ops-rank {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-top-item b {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.ops-top-item small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ops-download {
+  color: #0f172a;
+  font-weight: 850;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-tree.board-org-tree::-webkit-scrollbar,
+.ops-org-bars::-webkit-scrollbar,
+.ops-skill-table-wrap::-webkit-scrollbar,
+.ops-top-card .ops-card-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ops-tree.board-org-tree::-webkit-scrollbar-thumb,
+.ops-org-bars::-webkit-scrollbar-thumb,
+.ops-skill-table-wrap::-webkit-scrollbar-thumb,
+.ops-top-card .ops-card-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.ops-tree.board-org-tree::-webkit-scrollbar-track,
+.ops-org-bars::-webkit-scrollbar-track,
+.ops-skill-table-wrap::-webkit-scrollbar-track,
+.ops-top-card .ops-card-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (max-width: 1180px) {
+  .ops-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ops-filter {
+    justify-content: flex-start;
+  }
+
+  .ops-pair-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-pair-row.dept-row > .ops-card,
+  .ops-pair-row.org-row > .ops-card {
+    height: 360px;
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 760px) {
+  .ops-dashboard-card.ops-dashboard {
+    padding: 16px;
+  }
+
+  .ops-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-tree-node {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .ops-tree-count,
+  .ops-tree-download {
+    display: none;
+  }
+}
+
 .panel-head {
   display: flex;
   align-items: flex-start;
@@ -3141,6 +4094,24 @@ width: 100%;
   color: #1890ff;
 }
 
+.ops-dashboard .ops-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: #fff;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.ops-dashboard .ops-detail-table-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border-color: #dfe7f2;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
 .subhead {
   margin: 16px 0 8px;
   font-size: 15px;
@@ -3167,6 +4138,410 @@ width: 100%;
   border: 1px solid #e7edf6;
   border-radius: 8px;
   background: #fff;
+}
+
+/* Ops dashboard visual polish */
+.ops-dashboard-card.ops-dashboard {
+  gap: 16px;
+  padding: 18px;
+  border-color: #dfe7f1;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.055);
+}
+
+.ops-dashboard .ops-title {
+  align-items: center;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.ops-dashboard .ops-title h2 {
+  font-size: 22px;
+  font-weight: 850;
+  color: #10243e;
+}
+
+.ops-dashboard .ops-title p {
+  max-width: 780px;
+  color: #667085;
+}
+
+.ops-dashboard .ops-filter {
+  gap: 8px;
+}
+
+.ops-dashboard .ops-toggle.ops-system-toggle {
+  min-height: 38px;
+  background: #edf4ff;
+  border-color: #d5e3f6;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.ops-dashboard .ops-system-btn {
+  min-width: 72px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.ops-dashboard .ops-system-btn.active {
+  color: #fff;
+  background: #2563eb;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.18);
+}
+
+.ops-dashboard .ops-data-note,
+.ops-dashboard .ops-import-btn {
+  min-height: 38px;
+  border-radius: 9px;
+}
+
+.ops-dashboard .ops-data-note {
+  background: #f7fbff;
+  color: #2563eb;
+  border-color: #d7e8ff;
+}
+
+.ops-dashboard .ops-import-btn {
+  background: #fff;
+  border-color: #cfe1ff;
+}
+
+.ops-dashboard .ops-kpis {
+  gap: 12px;
+}
+
+.ops-dashboard .ops-kpi {
+  min-height: 92px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border-color: #e4ebf5;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+}
+
+.ops-dashboard .ops-kpi::after {
+  right: 10px;
+  top: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(20, 184, 166, 0.08));
+}
+
+.ops-dashboard .ops-kpi small,
+.ops-dashboard .ops-kpi span {
+  color: #667085;
+}
+
+.ops-dashboard .ops-kpi strong {
+  font-size: 28px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.ops-dashboard .ops-card {
+  border-color: #e0e8f2;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
+}
+
+.ops-dashboard .ops-card-head {
+  min-height: 0;
+  padding: 10px 16px 9px;
+  background: #fff;
+}
+
+.ops-dashboard .ops-card-head h3 {
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.ops-dashboard .ops-card-head p {
+  margin-top: 2px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ops-dashboard .ops-pair-row {
+  gap: 14px;
+}
+
+.ops-dashboard .ops-pair-row.dept-row > .ops-card {
+  height: 340px;
+  min-height: 340px;
+}
+
+.ops-dashboard .ops-pair-row.org-row > .ops-card {
+  height: 250px;
+  min-height: 250px;
+}
+
+.ops-dashboard .ops-tree.board-org-tree {
+  padding: 12px;
+  gap: 4px;
+}
+
+.ops-dashboard .ops-tree-node {
+  min-height: 32px;
+  grid-template-columns: 22px minmax(0, 1fr) 46px 76px;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.ops-dashboard .ops-tree-node:hover {
+  border-color: #e3ebf7;
+  background: #f8fbff;
+}
+
+.ops-dashboard .ops-tree-node.active {
+  border-color: #b8d4ff;
+  background: #edf5ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.ops-dashboard .ops-tree-name {
+  font-weight: 750;
+}
+
+.ops-dashboard .ops-tree-count,
+.ops-dashboard .ops-tree-download {
+  color: #475569;
+  font-weight: 760;
+}
+
+.ops-dashboard .ops-caret-btn {
+  background: #f6f9fd;
+}
+
+.ops-dashboard .ops-org-bars {
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.ops-dashboard .ops-org-bar {
+  gap: 7px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border-color: #e5edf6;
+  background: #fbfdff;
+}
+
+.ops-dashboard .ops-org-bar.active {
+  border-color: #aacbff;
+  background: #edf5ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.ops-dashboard .ops-org-bar-top b {
+  font-weight: 800;
+}
+
+.ops-dashboard .ops-org-bar-top span {
+  color: #475569;
+  font-weight: 760;
+}
+
+.ops-dashboard .ops-bar-track {
+  height: 10px;
+  background: #edf2f7;
+}
+
+.ops-dashboard .ops-bar-fill {
+  background: linear-gradient(90deg, #2563eb, #14b8a6);
+}
+
+.ops-dashboard .ops-pair-row > .ops-detail-table-card .ops-card-body {
+  padding: 8px;
+  background: #f8fbff;
+}
+
+.ops-dashboard .ops-skill-table-wrap {
+  border-color: #e0e8f2;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.ops-dashboard .ops-detail-table.table {
+  width: 100%;
+  min-width: 760px;
+}
+
+.ops-dashboard .ops-detail-table .col-name {
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
+}
+
+.ops-dashboard .ops-detail-table .col-desc {
+  width: auto;
+  min-width: 260px;
+  max-width: none;
+}
+
+.ops-dashboard .ops-detail-table .col-owner {
+  width: 130px;
+  min-width: 130px;
+  max-width: 130px;
+}
+
+.ops-dashboard .ops-detail-table .col-download {
+  width: 110px;
+  min-width: 110px;
+  max-width: 110px;
+}
+
+.ops-dashboard .ops-detail-table thead th {
+  height: 40px;
+  padding: 0 12px;
+  background: #f6f9fd;
+  border-bottom-color: #e1e8f1;
+}
+
+.ops-dashboard .ops-detail-table tbody td {
+  height: 48px;
+  padding: 0 12px;
+}
+
+.ops-dashboard .ops-detail-table th.sticky-name,
+.ops-dashboard .ops-detail-table td.sticky-name,
+.ops-dashboard .ops-detail-table th.sticky-download,
+.ops-dashboard .ops-detail-table td.sticky-download {
+  box-shadow: none;
+}
+
+.ops-dashboard .skill-row-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
+}
+
+.ops-dashboard .owner-pill,
+.ops-dashboard .download-pill {
+  height: 24px;
+}
+
+.ops-dashboard .download-pill {
+  color: #1d4ed8;
+  background: #eef5ff;
+  border-color: #d7e8ff;
+}
+
+.ops-dashboard .ops-top-card {
+  min-height: auto;
+}
+
+.ops-dashboard .ops-top-card .ops-card-body {
+  padding: 12px;
+}
+
+.ops-dashboard .ops-top-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ops-dashboard .ops-top-item {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #fbfdff;
+}
+
+.ops-dashboard .ops-empty-state {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 22px 16px;
+  border: 1px dashed #cfe0f3;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #667085;
+  text-align: center;
+}
+
+.ops-dashboard .ops-empty-state strong {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.ops-dashboard .ops-empty-state span {
+  max-width: 360px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ops-dashboard .ops-top-empty {
+  grid-column: 1 / -1;
+}
+
+.ops-dashboard .ops-detail-empty-state {
+  height: 100%;
+  min-height: 0;
+}
+
+.ops-dashboard .ops-empty-detail {
+  height: 112px;
+  color: #667085;
+  background: #f8fbff;
+  font-size: 13px;
+}
+
+.ops-dashboard .ops-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+@media (max-width: 1180px) {
+  .ops-dashboard-card.ops-dashboard {
+    padding: 16px;
+  }
+
+  .ops-dashboard .ops-title {
+    align-items: flex-start;
+  }
+
+  .ops-dashboard .ops-pair-row.dept-row > .ops-card,
+  .ops-dashboard .ops-pair-row.org-row > .ops-card {
+    height: auto;
+    min-height: 0;
+  }
+
+  .ops-dashboard .ops-tree.board-org-tree,
+  .ops-dashboard .ops-org-bars,
+  .ops-dashboard .ops-skill-table-wrap {
+    max-height: 320px;
+  }
+}
+
+@media (max-width: 820px) {
+  .ops-dashboard .ops-kpis,
+  .ops-dashboard .ops-top-list {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-dashboard .ops-filter {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .ops-dashboard .ops-data-note {
+    flex: 1 1 220px;
+  }
+
+  .ops-dashboard .ops-detail-table.table {
+    min-width: 640px;
+  }
+
+  .ops-dashboard .ops-detail-table .col-owner {
+    display: none;
+  }
 }
 
 .stat-cell span {
@@ -4081,6 +5456,47 @@ width: 100%;
   margin-bottom: 14px;
 }
 
+.panel.tab-panel.my-release-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.my-release-panel .my-release-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.my-release-panel .my-release-head h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.my-release-panel .my-upload-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+.my-release-panel .my-release-body {
+  padding: 18px 20px 22px;
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.my-release-panel .my-stats {
+  margin-bottom: 14px;
+}
+
 .my-release-panel .my-filters {
   display: flex;
   flex-wrap: wrap;
@@ -4144,6 +5560,38 @@ width: 100%;
   background: #f8fafc;
 }
 
+.my-release-panel .clickable-row {
+  cursor: pointer;
+}
+
+.my-release-panel .col-skill {
+  min-width: 230px;
+}
+
+.my-release-panel .col-level {
+  min-width: 132px;
+}
+
+.my-release-panel .col-ver {
+  min-width: 132px;
+}
+
+.my-release-panel .col-status {
+  min-width: 116px;
+}
+
+.my-release-panel .col-dl {
+  min-width: 92px;
+}
+
+.my-release-panel .col-action {
+  min-width: 178px;
+}
+
+.my-release-panel .col-ops {
+  min-width: 260px;
+}
+
 .my-release-panel .skill-name,
 .my-release-panel .cell-main {
   color: #111827;
@@ -4153,12 +5601,20 @@ width: 100%;
 .my-release-panel .skill-sub,
 .my-release-panel .cell-sub {
   color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+  margin-top: 4px;
 }
 
 .my-release-panel .st {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   border-radius: 6px;
   padding: 4px 8px;
+  font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .my-release-panel .st-published {
@@ -4180,6 +5636,33 @@ width: 100%;
   border-color: #e5e7eb;
   border-radius: 6px;
   padding: 7px 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.my-release-panel .mini:hover {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.my-release-panel .ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.my-release-panel .num {
+  color: #172033;
+  font-weight: 800;
+}
+
+.my-release-panel .empty-row {
+  padding: 32px 16px;
+  text-align: center;
+  color: #64748b;
 }
 
 @media (max-width: 1180px) {

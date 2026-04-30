@@ -25,53 +25,104 @@ export function parseDeptNamePath(raw) {
     }
     return segs;
 }
-function insertPath(root, segments, downloads) {
+function insertPath(root, segments, skillRow) {
     let node = root;
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         if (!node.children.has(seg)) {
             node.children.set(seg, {
                 name: seg,
-                leafSkills: 0,
-                leafDownloads: 0,
+                skillRows: [],
                 children: new Map(),
             });
         }
         node = node.children.get(seg);
-        if (i === segments.length - 1) {
-            node.leafSkills += 1;
-            node.leafDownloads += downloads;
-        }
+        node.skillRows.push(skillRow);
     }
 }
-function finalizeNode(node) {
-    const childList = [...node.children.values()].map(finalizeNode);
-    const childSkills = childList.reduce((a, c) => a + c.skills, 0);
-    const childDownloads = childList.reduce((a, c) => a + c.downloads, 0);
+function sortSkillRows(rows) {
+    return [...rows].sort((a, b) => b.downloads - a.downloads || a.name.localeCompare(b.name));
+}
+function buildTopSkills(rows, limit = 5) {
+    return sortSkillRows(rows)
+        .slice(0, limit)
+        .map((row) => ({
+        name: row.name,
+        downloads: row.downloads,
+    }));
+}
+function finalizeNode(node, parentPath = '', levelNo = 1) {
+    const path = parentPath ? `${parentPath}/${node.name}` : node.name;
+    const childList = [...node.children.values()].map((child) => finalizeNode(child, path, levelNo + 1));
+    const downloads = node.skillRows.reduce((a, c) => a + c.downloads, 0);
     const sortedChildren = childList.length > 0
         ? childList.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads)
         : undefined;
     return {
         name: node.name,
-        skills: node.leafSkills + childSkills,
-        downloads: node.leafDownloads + childDownloads,
+        path,
+        levelNo,
+        skills: node.skillRows.length,
+        downloads,
+        skillRows: sortSkillRows(node.skillRows),
+        topSkills: buildTopSkills(node.skillRows),
         children: sortedChildren,
     };
 }
 function buildDeptForestFromRows(rows) {
     const root = {
         name: '',
-        leafSkills: 0,
-        leafDownloads: 0,
+        skillRows: [],
         children: new Map(),
     };
     for (const row of rows) {
         const segments = parseDeptNamePath(row.deptName);
-        insertPath(root, segments, row.downloadCount);
+        insertPath(root, segments, toSkillDetailRow(row));
     }
-    const forest = [...root.children.values()].map(finalizeNode);
+    const forest = [...root.children.values()].map((node) => finalizeNode(node));
     forest.sort((a, b) => b.skills - a.skills || b.downloads - a.downloads);
     return forest;
+}
+function parseOwner(raw, fallback) {
+    try {
+        const parsed = JSON.parse(raw);
+        const first = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (first && typeof first === 'object') {
+            const record = first;
+            const owner = String(record.lastName ?? record.lastNmae ?? record.name ?? record.owner ?? fallback ?? '').trim();
+            const account = String(record.Account ?? record.account ?? '').trim();
+            return {
+                owner: owner || fallback || '未填写发布人',
+                account: account || undefined,
+            };
+        }
+    }
+    catch {
+        // owner_list is controlled by upstream exports and may be empty or non-JSON.
+    }
+    return { owner: fallback || '未填写发布人' };
+}
+function toSkillDetailRow(row) {
+    const owner = parseOwner(row.ownerListRaw, row.publishName);
+    return {
+        name: row.skillId,
+        description: row.description || '暂无描述',
+        owner: owner.owner,
+        downloads: row.downloadCount,
+        publishLevel: row.publishLevel || '未填写层级',
+        publishName: row.publishName || '未填写发布方',
+        dept: row.deptName.trim() || '未填写部门',
+        account: owner.account,
+    };
+}
+function isOrgLevel(row) {
+    return row.publishLevel.trim().includes('组织');
+}
+function isPersonalLevel(row) {
+    return row.publishLevel.trim().includes('个人');
+}
+function collectDeptNodeCount(nodes) {
+    return nodes.reduce((sum, node) => sum + 1 + collectDeptNodeCount(node.children ?? []), 0);
 }
 export function parseOpsExcelBuffer(buffer) {
     const workbook = XLSX.read(buffer, { type: 'array' });
@@ -125,30 +176,38 @@ export function parseOpsExcelBuffer(buffer) {
 }
 export function buildOpsDashboardBundle(rows) {
     const totalSkills = rows.length;
-    const personalSkills = rows.filter((r) => r.publishLevel.includes('个人')).length;
+    const personalSkills = rows.filter(isPersonalLevel).length;
     const totalDownloads = rows.reduce((s, r) => s + r.downloadCount, 0);
     const deptTree = buildDeptForestFromRows(rows);
-    const orgLevelRows = rows.filter((r) => r.publishLevel.trim() === '组织级');
+    const orgLevelRows = rows.filter(isOrgLevel);
     const activeSkills = orgLevelRows.length;
+    const companyDownloads = orgLevelRows.reduce((s, r) => s + r.downloadCount, 0);
     const orgAgg = new Map();
     for (const r of orgLevelRows) {
-        const key = r.deptName.trim() || '未填写部门';
-        const cur = orgAgg.get(key) ?? { skills: 0, downloads: 0 };
+        const deptPath = parseDeptNamePath(r.deptName);
+        const key = r.publishName.trim() || deptPath[deptPath.length - 1] || '未填写组织';
+        const cur = orgAgg.get(key) ?? { skills: 0, downloads: 0, skillRows: [] };
         cur.skills += 1;
         cur.downloads += r.downloadCount;
+        cur.skillRows.push(toSkillDetailRow(r));
         orgAgg.set(key, cur);
     }
-    const orgBars = [...orgAgg.entries()].map(([name, v]) => ({
-        name,
-        skills: v.skills,
-        downloads: v.downloads,
-    }));
+    const orgBars = [...orgAgg.entries()]
+        .map(([name, v]) => {
+        const skillRows = sortSkillRows(v.skillRows);
+        return {
+            name,
+            skills: v.skills,
+            downloads: v.downloads,
+            skillRows,
+            topSkills: buildTopSkills(skillRows),
+        };
+    })
+        .sort((a, b) => b.downloads - a.downloads || b.skills - a.skills);
     const sortedTop = [...rows].sort((a, b) => b.downloadCount - a.downloadCount);
     const topSkills = sortedTop.slice(0, 6).map((r, i) => ({
+        ...toSkillDetailRow(r),
         rank: i + 1,
-        name: r.skillId,
-        dept: r.deptName.trim() || '未填写部门',
-        downloads: r.downloadCount,
     }));
     return {
         kpi: {
@@ -156,6 +215,9 @@ export function buildOpsDashboardBundle(rows) {
             activeSkills: String(activeSkills),
             personalSkills: String(personalSkills),
             totalDownloads: String(totalDownloads),
+            companyDownloads: String(companyDownloads),
+            deptCount: String(collectDeptNodeCount(deptTree)),
+            orgCount: String(orgBars.length),
         },
         deptTree,
         orgBars,

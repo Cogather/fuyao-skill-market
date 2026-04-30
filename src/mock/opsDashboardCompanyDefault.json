@@ -1,0 +1,378 @@
+{
+  "kpi": {
+    "totalSkills": "2",
+    "activeSkills": "2",
+    "personalSkills": "0",
+    "totalDownloads": "19566",
+    "companyDownloads": "19566",
+    "deptCount": "11",
+    "orgCount": "2"
+  },
+  "deptTree": [
+    {
+      "name": "部门4",
+      "path": "部门4",
+      "levelNo": 1,
+      "skills": 1,
+      "downloads": 18888,
+      "skillRows": [
+        {
+          "name": "test2",
+          "description": "生成代码时使用",
+          "owner": "xxx",
+          "downloads": 18888,
+          "publishLevel": "组织级",
+          "publishName": "平台工具部",
+          "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+          "account": "f23442265"
+        }
+      ],
+      "topSkills": [
+        {
+          "name": "test2",
+          "downloads": 18888
+        }
+      ],
+      "children": [
+        {
+          "name": "test3产品线",
+          "path": "部门4/test3产品线",
+          "levelNo": 2,
+          "skills": 1,
+          "downloads": 18888,
+          "skillRows": [
+            {
+              "name": "test2",
+              "description": "生成代码时使用",
+              "owner": "xxx",
+              "downloads": 18888,
+              "publishLevel": "组织级",
+              "publishName": "平台工具部",
+              "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+              "account": "f23442265"
+            }
+          ],
+          "topSkills": [
+            {
+              "name": "test2",
+              "downloads": 18888
+            }
+          ],
+          "children": [
+            {
+              "name": "xxx部门",
+              "path": "部门4/test3产品线/xxx部门",
+              "levelNo": 3,
+              "skills": 1,
+              "downloads": 18888,
+              "skillRows": [
+                {
+                  "name": "test2",
+                  "description": "生成代码时使用",
+                  "owner": "xxx",
+                  "downloads": 18888,
+                  "publishLevel": "组织级",
+                  "publishName": "平台工具部",
+                  "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+                  "account": "f23442265"
+                }
+              ],
+              "topSkills": [
+                {
+                  "name": "test2",
+                  "downloads": 18888
+                }
+              ],
+              "children": [
+                {
+                  "name": "haha部门",
+                  "path": "部门4/test3产品线/xxx部门/haha部门",
+                  "levelNo": 4,
+                  "skills": 1,
+                  "downloads": 18888,
+                  "skillRows": [
+                    {
+                      "name": "test2",
+                      "description": "生成代码时使用",
+                      "owner": "xxx",
+                      "downloads": 18888,
+                      "publishLevel": "组织级",
+                      "publishName": "平台工具部",
+                      "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+                      "account": "f23442265"
+                    }
+                  ],
+                  "topSkills": [
+                    {
+                      "name": "test2",
+                      "downloads": 18888
+                    }
+                  ],
+                  "children": [
+                    {
+                      "name": "平台工具部",
+                      "path": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+                      "levelNo": 5,
+                      "skills": 1,
+                      "downloads": 18888,
+                      "skillRows": [
+                        {
+                          "name": "test2",
+                          "description": "生成代码时使用",
+                          "owner": "xxx",
+                          "downloads": 18888,
+                          "publishLevel": "组织级",
+                          "publishName": "平台工具部",
+                          "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+                          "account": "f23442265"
+                        }
+                      ],
+                      "topSkills": [
+                        {
+                          "name": "test2",
+                          "downloads": 18888
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "部门1",
+      "path": "部门1",
+      "levelNo": 1,
+      "skills": 1,
+      "downloads": 678,
+      "skillRows": [
+        {
+          "name": "test5",
+          "description": "阅读时使用",
+          "owner": "xxx",
+          "downloads": 678,
+          "publishLevel": "组织级",
+          "publishName": "业务运营组",
+          "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+          "account": "qswe45565"
+        }
+      ],
+      "topSkills": [
+        {
+          "name": "test5",
+          "downloads": 678
+        }
+      ],
+      "children": [
+        {
+          "name": "test2产品线",
+          "path": "部门1/test2产品线",
+          "levelNo": 2,
+          "skills": 1,
+          "downloads": 678,
+          "skillRows": [
+            {
+              "name": "test5",
+              "description": "阅读时使用",
+              "owner": "xxx",
+              "downloads": 678,
+              "publishLevel": "组织级",
+              "publishName": "业务运营组",
+              "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+              "account": "qswe45565"
+            }
+          ],
+          "topSkills": [
+            {
+              "name": "test5",
+              "downloads": 678
+            }
+          ],
+          "children": [
+            {
+              "name": "xx部门",
+              "path": "部门1/test2产品线/xx部门",
+              "levelNo": 3,
+              "skills": 1,
+              "downloads": 678,
+              "skillRows": [
+                {
+                  "name": "test5",
+                  "description": "阅读时使用",
+                  "owner": "xxx",
+                  "downloads": 678,
+                  "publishLevel": "组织级",
+                  "publishName": "业务运营组",
+                  "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+                  "account": "qswe45565"
+                }
+              ],
+              "topSkills": [
+                {
+                  "name": "test5",
+                  "downloads": 678
+                }
+              ],
+              "children": [
+                {
+                  "name": "test5部门",
+                  "path": "部门1/test2产品线/xx部门/test5部门",
+                  "levelNo": 4,
+                  "skills": 1,
+                  "downloads": 678,
+                  "skillRows": [
+                    {
+                      "name": "test5",
+                      "description": "阅读时使用",
+                      "owner": "xxx",
+                      "downloads": 678,
+                      "publishLevel": "组织级",
+                      "publishName": "业务运营组",
+                      "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+                      "account": "qswe45565"
+                    }
+                  ],
+                  "topSkills": [
+                    {
+                      "name": "test5",
+                      "downloads": 678
+                    }
+                  ],
+                  "children": [
+                    {
+                      "name": "testt部",
+                      "path": "部门1/test2产品线/xx部门/test5部门/testt部",
+                      "levelNo": 5,
+                      "skills": 1,
+                      "downloads": 678,
+                      "skillRows": [
+                        {
+                          "name": "test5",
+                          "description": "阅读时使用",
+                          "owner": "xxx",
+                          "downloads": 678,
+                          "publishLevel": "组织级",
+                          "publishName": "业务运营组",
+                          "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+                          "account": "qswe45565"
+                        }
+                      ],
+                      "topSkills": [
+                        {
+                          "name": "test5",
+                          "downloads": 678
+                        }
+                      ],
+                      "children": [
+                        {
+                          "name": "12349组",
+                          "path": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+                          "levelNo": 6,
+                          "skills": 1,
+                          "downloads": 678,
+                          "skillRows": [
+                            {
+                              "name": "test5",
+                              "description": "阅读时使用",
+                              "owner": "xxx",
+                              "downloads": 678,
+                              "publishLevel": "组织级",
+                              "publishName": "业务运营组",
+                              "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+                              "account": "qswe45565"
+                            }
+                          ],
+                          "topSkills": [
+                            {
+                              "name": "test5",
+                              "downloads": 678
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "orgBars": [
+    {
+      "name": "平台工具部",
+      "skills": 1,
+      "downloads": 18888,
+      "skillRows": [
+        {
+          "name": "test2",
+          "description": "生成代码时使用",
+          "owner": "xxx",
+          "downloads": 18888,
+          "publishLevel": "组织级",
+          "publishName": "平台工具部",
+          "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+          "account": "f23442265"
+        }
+      ],
+      "topSkills": [
+        {
+          "name": "test2",
+          "downloads": 18888
+        }
+      ]
+    },
+    {
+      "name": "业务运营组",
+      "skills": 1,
+      "downloads": 678,
+      "skillRows": [
+        {
+          "name": "test5",
+          "description": "阅读时使用",
+          "owner": "xxx",
+          "downloads": 678,
+          "publishLevel": "组织级",
+          "publishName": "业务运营组",
+          "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+          "account": "qswe45565"
+        }
+      ],
+      "topSkills": [
+        {
+          "name": "test5",
+          "downloads": 678
+        }
+      ]
+    }
+  ],
+  "topSkills": [
+    {
+      "name": "test2",
+      "description": "生成代码时使用",
+      "owner": "xxx",
+      "downloads": 18888,
+      "publishLevel": "组织级",
+      "publishName": "平台工具部",
+      "dept": "部门4/test3产品线/xxx部门/haha部门/平台工具部",
+      "account": "f23442265",
+      "rank": 1
+    },
+    {
+      "name": "test5",
+      "description": "阅读时使用",
+      "owner": "xxx",
+      "downloads": 678,
+      "publishLevel": "组织级",
+      "publishName": "业务运营组",
+      "dept": "部门1/test2产品线/xx部门/test5部门/testt部/12349组",
+      "account": "qswe45565",
+      "rank": 2
+    }
+  ]
+}

@@ -1,139 +1,14 @@
 {
   "kpi": {
-    "totalSkills": "334",
-    "activeSkills": "125",
-    "personalSkills": "44",
-    "totalDownloads": "508"
+    "totalSkills": "0",
+    "activeSkills": "0",
+    "personalSkills": "0",
+    "totalDownloads": "0",
+    "companyDownloads": "0",
+    "deptCount": "0",
+    "orgCount": "0"
   },
-  "deptTree": [
-    {
-      "name": "云化端到端经营管理部",
-      "skills": 165,
-      "downloads": 253,
-      "children": [
-        {
-          "name": "智能数据产品部",
-          "skills": 61,
-          "downloads": 83
-        },
-        {
-          "name": "物联平台部",
-          "skills": 55,
-          "downloads": 31
-        },
-        {
-          "name": "质量工具组",
-          "skills": 38,
-          "downloads": 25
-        },
-        {
-          "name": "平台工具组",
-          "skills": 15,
-          "downloads": 23
-        }
-      ]
-    },
-    {
-      "name": "联通业务部",
-      "skills": 12,
-      "downloads": 20
-    },
-    {
-      "name": "设备能源产品部",
-      "skills": 4,
-      "downloads": 4,
-      "children": [
-        {
-          "name": "产品建设一组",
-          "skills": 1,
-          "downloads": 1
-        },
-        {
-          "name": "物资管理案部",
-          "skills": 1,
-          "downloads": 1
-        }
-      ]
-    }
-  ],
-  "orgBars": [
-    {
-      "name": "项目管理部",
-      "skills": 31,
-      "downloads": 186
-    },
-    {
-      "name": "平台二部部",
-      "skills": 24,
-      "downloads": 142
-    },
-    {
-      "name": "质量工具组",
-      "skills": 18,
-      "downloads": 96
-    },
-    {
-      "name": "平台工具组",
-      "skills": 15,
-      "downloads": 88
-    },
-    {
-      "name": "二层系统",
-      "skills": 12,
-      "downloads": 62
-    },
-    {
-      "name": "R&D测试",
-      "skills": 10,
-      "downloads": 51
-    },
-    {
-      "name": "业务运营组",
-      "skills": 9,
-      "downloads": 38
-    },
-    {
-      "name": "数据库运营",
-      "skills": 8,
-      "downloads": 29
-    }
-  ],
-  "topSkills": [
-    {
-      "rank": 1,
-      "name": "Java 代码 Review 助手",
-      "dept": "门诊系统部",
-      "downloads": 43
-    },
-    {
-      "rank": 2,
-      "name": "投口指标统计 Skill",
-      "dept": "门诊系统部",
-      "downloads": 41
-    },
-    {
-      "rank": 3,
-      "name": "部门 Merit 生成 Skill",
-      "dept": "门诊系统部",
-      "downloads": 40
-    },
-    {
-      "rank": 4,
-      "name": "CICD 发布效率 Skill",
-      "dept": "平台工具组",
-      "downloads": 18
-    },
-    {
-      "rank": 5,
-      "name": "部署开发资源 Skill",
-      "dept": "平台工程部",
-      "downloads": 14
-    },
-    {
-      "rank": 6,
-      "name": "质量日工效率 Skill",
-      "dept": "平台工程部",
-      "downloads": 10
-    }
-  ]
+  "deptTree": [],
+  "orgBars": [],
+  "topSkills": []
 }
