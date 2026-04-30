@@ -867,6 +867,8 @@ const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
 
 const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
 
+const OPS_DEPT_DISPLAY_START_LEVEL = 3;
+
 type OpsKpiCard = { label: string; value: string; desc: string };
 
 type FlatDeptRow = {
@@ -901,6 +903,18 @@ function collectDefaultExpandedDeptPaths(nodes: DeptTreeNode[]): Set<string> {
   return out;
 }
 
+function collectDeptDisplayRoots(nodes: DeptTreeNode[]): DeptTreeNode[] {
+  const out: DeptTreeNode[] = [];
+  for (const node of nodes) {
+    if (node.levelNo >= OPS_DEPT_DISPLAY_START_LEVEL) {
+      out.push(node);
+      continue;
+    }
+    out.push(...collectDeptDisplayRoots(node.children ?? []));
+  }
+  return out;
+}
+
 function firstDeptPath(nodes: DeptTreeNode[]): string {
   return nodes[0]?.path ?? '';
 }
@@ -921,9 +935,10 @@ function findDeptNodeByPath(nodes: DeptTreeNode[], path: string): DeptTreeNode |
 watch(
   uiDeptTree,
   (tree) => {
-    expandedDeptPaths.value = collectDefaultExpandedDeptPaths(tree);
-    if (!findDeptNodeByPath(tree, selectedOpsDeptPath.value)) {
-      selectedOpsDeptPath.value = firstDeptPath(tree);
+    const displayRoots = collectDeptDisplayRoots(tree);
+    expandedDeptPaths.value = collectDefaultExpandedDeptPaths(displayRoots);
+    if (!findDeptNodeByPath(displayRoots, selectedOpsDeptPath.value)) {
+      selectedOpsDeptPath.value = firstDeptPath(displayRoots);
     }
   },
   { immediate: true },
@@ -965,7 +980,7 @@ function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
     out.push({
       path: n.path,
       name: n.name,
-      levelNo: n.levelNo,
+      levelNo: Math.max(1, n.levelNo - OPS_DEPT_DISPLAY_START_LEVEL + 1),
       skills: n.skills,
       downloads: n.downloads,
       hasChildren,
@@ -978,7 +993,9 @@ function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
   return out;
 }
 
-const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
+const uiDeptDisplayRoots = computed(() => collectDeptDisplayRoots(uiDeptTree.value));
+
+const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptDisplayRoots.value));
 
 const uiOrgBarsSorted = computed(() =>
   [...uiOrgBars.value].sort((a, b) => b.downloads - a.downloads || b.skills - a.skills),
@@ -1000,50 +1017,27 @@ const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? [
 
 const opsKpiCards = computed<OpsKpiCard[]>(() => {
   const kpi = opsDashboardBundle.value.kpi;
-  if (opsBoardSystem.value === 'company') {
-    return [
-      {
-        label: '公司系统 Skill 数',
-        value: kpi.activeSkills,
-        desc: '目标系统统一管理的组织级 Skill',
-      },
-      {
-        label: '组织级 Skill',
-        value: kpi.activeSkills,
-        desc: '已通过公司发布验证的 Skill',
-      },
-      {
-        label: '关联组织数',
-        value: kpi.orgCount,
-        desc: '组织级 Skill 归属发布组织',
-      },
-      {
-        label: '累计下载量',
-        value: kpi.companyDownloads,
-        desc: '公司系统侧累计下载',
-      },
-    ];
-  }
+  const systemName = opsBoardSystem.value === 'company' ? '公司系统' : '扶摇系统';
   return [
     {
-      label: '扶摇 Skill 数',
+      label: 'Skill 总数',
       value: kpi.totalSkills,
-      desc: '平台内沉淀和验证的 Skill 总量',
+      desc: `${systemName}内个人级和组织级 Skill 总量`,
+    },
+    {
+      label: '组织级 Skill',
+      value: kpi.activeSkills,
+      desc: '已发布为组织级的 Skill 数量',
     },
     {
       label: '个人级 Skill',
       value: kpi.personalSkills,
-      desc: '个人发布、沉淀和快速验证',
+      desc: '个人发布、沉淀和验证的 Skill 数量',
     },
     {
-      label: '部门层级数',
-      value: kpi.deptCount,
-      desc: 'Excel 中解析出的部门节点',
-    },
-    {
-      label: '累计下载量',
+      label: '全部累计下载量',
       value: kpi.totalDownloads,
-      desc: '扶摇系统侧累计下载',
+      desc: '个人级和组织级 Skill 的累计下载',
     },
   ];
 });
@@ -1056,7 +1050,7 @@ const opsTopSubTitle = '按下载量展示当前市场中使用最集中的 Skil
 
 const opsEmptyText = computed(() =>
   opsBoardSystem.value === 'company'
-    ? '暂无公司系统组织级 Skill 数据'
+    ? '暂无公司系统运营看板数据'
     : '暂无扶摇系统运营看板数据',
 );
 
@@ -1715,13 +1709,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <div class="ops-card-head">
                   <div>
                     <h3>部门 Skill 分布详情</h3>
-                    <p>默认展开一级部门；点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
+                    <p>从三级部门开始呈现；点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
                   </div>
                 </div>
                 <div class="ops-card-body ops-tree board-org-tree" role="tree">
                   <div v-if="uiDeptFlat.length === 0" class="ops-empty-state">
                     <strong>{{ opsEmptyText }}</strong>
-                    <span>导入 Excel 后会在这里展示部门层级、Skill 数量和下载量。</span>
+                    <span>导入 Excel 后会在这里展示三级及以下部门、Skill 数量和下载量。</span>
                   </div>
                   <div v-for="row in uiDeptFlat" :key="row.path" class="ops-tree-item">
                     <button

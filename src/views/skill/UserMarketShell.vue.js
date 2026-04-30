@@ -714,6 +714,7 @@ const defaultOpsDashboardBundle = computed(() => opsBoardSystem.value === 'compa
 const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle.value);
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
 const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
+const OPS_DEPT_DISPLAY_START_LEVEL = 3;
 const expandedDeptPaths = ref(new Set());
 function formatOpsNumber(value) {
     const parsed = typeof value === 'number' ? value : Number.parseInt(String(value).replace(/,/g, ''), 10);
@@ -728,6 +729,17 @@ function collectDefaultExpandedDeptPaths(nodes) {
         if (n.children && n.children.length > 0) {
             out.add(n.path);
         }
+    }
+    return out;
+}
+function collectDeptDisplayRoots(nodes) {
+    const out = [];
+    for (const node of nodes) {
+        if (node.levelNo >= OPS_DEPT_DISPLAY_START_LEVEL) {
+            out.push(node);
+            continue;
+        }
+        out.push(...collectDeptDisplayRoots(node.children ?? []));
     }
     return out;
 }
@@ -747,9 +759,10 @@ function findDeptNodeByPath(nodes, path) {
     return null;
 }
 watch(uiDeptTree, (tree) => {
-    expandedDeptPaths.value = collectDefaultExpandedDeptPaths(tree);
-    if (!findDeptNodeByPath(tree, selectedOpsDeptPath.value)) {
-        selectedOpsDeptPath.value = firstDeptPath(tree);
+    const displayRoots = collectDeptDisplayRoots(tree);
+    expandedDeptPaths.value = collectDefaultExpandedDeptPaths(displayRoots);
+    if (!findDeptNodeByPath(displayRoots, selectedOpsDeptPath.value)) {
+        selectedOpsDeptPath.value = firstDeptPath(displayRoots);
     }
 }, { immediate: true });
 watch(uiOrgBars, (bars) => {
@@ -781,7 +794,7 @@ function flattenDeptTreeVisible(nodes) {
         out.push({
             path: n.path,
             name: n.name,
-            levelNo: n.levelNo,
+            levelNo: Math.max(1, n.levelNo - OPS_DEPT_DISPLAY_START_LEVEL + 1),
             skills: n.skills,
             downloads: n.downloads,
             hasChildren,
@@ -793,7 +806,8 @@ function flattenDeptTreeVisible(nodes) {
     }
     return out;
 }
-const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptTree.value));
+const uiDeptDisplayRoots = computed(() => collectDeptDisplayRoots(uiDeptTree.value));
+const uiDeptFlat = computed(() => flattenDeptTreeVisible(uiDeptDisplayRoots.value));
 const uiOrgBarsSorted = computed(() => [...uiOrgBars.value].sort((a, b) => b.downloads - a.downloads || b.skills - a.skills));
 const uiOrgBarsMax = computed(() => Math.max(1, ...uiOrgBarsSorted.value.map((x) => x.downloads)));
 const selectedDeptNode = computed(() => findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null);
@@ -802,50 +816,27 @@ const selectedDeptSkillRows = computed(() => selectedDeptNode.value?.skillRows ?
 const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? []);
 const opsKpiCards = computed(() => {
     const kpi = opsDashboardBundle.value.kpi;
-    if (opsBoardSystem.value === 'company') {
-        return [
-            {
-                label: '公司系统 Skill 数',
-                value: kpi.activeSkills,
-                desc: '目标系统统一管理的组织级 Skill',
-            },
-            {
-                label: '组织级 Skill',
-                value: kpi.activeSkills,
-                desc: '已通过公司发布验证的 Skill',
-            },
-            {
-                label: '关联组织数',
-                value: kpi.orgCount,
-                desc: '组织级 Skill 归属发布组织',
-            },
-            {
-                label: '累计下载量',
-                value: kpi.companyDownloads,
-                desc: '公司系统侧累计下载',
-            },
-        ];
-    }
+    const systemName = opsBoardSystem.value === 'company' ? '公司系统' : '扶摇系统';
     return [
         {
-            label: '扶摇 Skill 数',
+            label: 'Skill 总数',
             value: kpi.totalSkills,
-            desc: '平台内沉淀和验证的 Skill 总量',
+            desc: `${systemName}内个人级和组织级 Skill 总量`,
+        },
+        {
+            label: '组织级 Skill',
+            value: kpi.activeSkills,
+            desc: '已发布为组织级的 Skill 数量',
         },
         {
             label: '个人级 Skill',
             value: kpi.personalSkills,
-            desc: '个人发布、沉淀和快速验证',
+            desc: '个人发布、沉淀和验证的 Skill 数量',
         },
         {
-            label: '部门层级数',
-            value: kpi.deptCount,
-            desc: 'Excel 中解析出的部门节点',
-        },
-        {
-            label: '累计下载量',
+            label: '全部累计下载量',
             value: kpi.totalDownloads,
-            desc: '扶摇系统侧累计下载',
+            desc: '个人级和组织级 Skill 的累计下载',
         },
     ];
 });
@@ -853,7 +844,7 @@ const uiTopSkillsByDl = computed(() => opsDashboardBundle.value.topSkills);
 const opsTopTitle = 'TOP Skill';
 const opsTopSubTitle = '按下载量展示当前市场中使用最集中的 Skill。';
 const opsEmptyText = computed(() => opsBoardSystem.value === 'company'
-    ? '暂无公司系统组织级 Skill 数据'
+    ? '暂无公司系统运营看板数据'
     : '暂无扶摇系统运营看板数据');
 function buildOpsDashboardMockJsonFileName(sourceName) {
     const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dashboard';
