@@ -1,14 +1,36 @@
 import { computed, ref } from 'vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 const store = useSkillMarketStore();
-const { skills } = store;
+const { skills, marketClient } = store;
 const toast = ref('');
 const rows = computed(() => [...skills.value].sort((a, b) => (a.latestPublishTime ?? '') < (b.latestPublishTime ?? '') ? 1 : -1));
-function approve(skillId) {
-    toast.value = `已批准（演示）：Skill #${skillId}`;
-    setTimeout(() => {
-        toast.value = '';
-    }, 2500);
+async function approve(skillId) {
+    try {
+        const pending = await marketClient.fetchSyncApplications({
+            tab: 'pending',
+            pageNo: 1,
+            pageSize: 20,
+        });
+        const rec = pending.data.records[0];
+        const applicationId = rec?.id ?? 90_001;
+        const r = await marketClient.postSyncApplicationReview(String(applicationId), {
+            decision: 'approve',
+            comment: `演示：批准 Skill ${skillId} 同步至组织`,
+        });
+        toast.value =
+            r.code === 0
+                ? `已调用审核接口：申请 #${applicationId}（Skill #${skillId}）`
+                : r.message || '审核接口返回异常';
+        setTimeout(() => {
+            toast.value = '';
+        }, 3500);
+    }
+    catch (e) {
+        toast.value = e instanceof Error ? e.message : '审核请求失败';
+        setTimeout(() => {
+            toast.value = '';
+        }, 3500);
+    }
 }
 const __VLS_ctx = {
     ...{},
@@ -18,7 +40,9 @@ let __VLS_components;
 let __VLS_intrinsics;
 let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['hero']} */ ;
-/** @type {__VLS_StyleScopedClasses['link-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
+/** @type {__VLS_StyleScopedClasses['table']} */ ;
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "admin-shell" },
 });
@@ -56,6 +80,8 @@ __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
     ...{ class: "panel-help" },
 });
 /** @type {__VLS_StyleScopedClasses['panel-help']} */ ;
+__VLS_asFunctionalElement1(__VLS_intrinsics.code, __VLS_intrinsics.code)({});
+__VLS_asFunctionalElement1(__VLS_intrinsics.code, __VLS_intrinsics.code)({});
 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
     ...{ class: "table-wrap" },
 });
@@ -95,7 +121,7 @@ for (const [s] of __VLS_vFor((__VLS_ctx.rows))) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.td, __VLS_intrinsics.td)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
         ...{ onClick: (...[$event]) => {
-                __VLS_ctx.approve(s.id ?? s.skill_id);
+                __VLS_ctx.approve(String(s.id ?? s.skill_id));
                 // @ts-ignore
                 [rows, approve,];
             } },

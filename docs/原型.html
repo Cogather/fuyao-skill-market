@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>嵌入式 Skill 市场原型</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --soft: #f8fafc;
+      --text: #172033;
+      --muted: #64748b;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --green: #16a34a;
+      --orange: #ea580c;
+      --red: #dc2626;
+      --purple: #7c3aed;
+      --cyan: #0891b2;
+      --shadow: 0 14px 38px rgba(15,23,42,.08);
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .market-shell { max-width: 1440px; margin: 0 auto; padding: 22px 24px 34px; }
+    .topline { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:14px; color:#475569; font-size:13px; flex-wrap:wrap; }
+    .breadcrumb { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .breadcrumb b { color:#0f172a; }
+    .role-switch { display:flex; gap:6px; padding:4px; border:1px solid #dbe5f1; background:#e9eef6; border-radius:8px; }
+    .role-btn { border:0; background:transparent; color:#475569; padding:8px 13px; border-radius:6px; font-weight:800; cursor:pointer; }
+    .role-btn.active { background:#fff; color:#1d4ed8; box-shadow:0 8px 20px rgba(15,23,42,.08); }
+
+    .hero { position:relative; overflow:hidden; border:1px solid #dbeafe; border-radius:12px; padding:26px; background:radial-gradient(circle at 8% 20%, rgba(37,99,235,.16), transparent 28%), radial-gradient(circle at 82% 12%, rgba(124,58,237,.15), transparent 24%), linear-gradient(135deg,#fff 0%,#eff6ff 58%,#f5f3ff 100%); box-shadow:var(--shadow); margin-bottom:18px; }
+    .hero-main { display:grid; grid-template-columns:1fr; gap:24px; align-items:center; }
+    .eyebrow { display:inline-flex; align-items:center; gap:8px; border-radius:6px; background:rgba(37,99,235,.1); color:#1d4ed8; font-size:13px; font-weight:800; padding:7px 10px; margin-bottom:12px; }
+    h1 { margin:0; font-size:34px; line-height:1.16; letter-spacing:-.05em; }
+    .hero p { margin:12px 0 0; max-width:780px; color:#475569; line-height:1.7; font-size:15px; }
+    .hero-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+    .hero-card { background:rgba(255,255,255,.84); border:1px solid rgba(219,234,254,.95); border-radius:20px; padding:18px; backdrop-filter:blur(14px); }
+    .hero-card h3 { margin:0 0 12px; font-size:16px; }
+    .path { display:grid; gap:9px; }
+    .path-step { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid #e2e8f0; background:#fff; border-radius:14px; font-size:13px; }
+    .path-step b { color:#0f172a; }
+
+    .btn { border:1px solid var(--border); background:#fff; color:#334155; padding:10px 14px; border-radius:8px; font-weight:750; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 8px 20px rgba(15,23,42,.05); transition:.16s ease; white-space:nowrap; }
+    .btn:hover { border-color:#bfdbfe; transform:translateY(-1px); }
+    .btn-primary { background:var(--primary); color:white; border-color:var(--primary); }
+    .btn-primary:hover { background:var(--primary-dark); }
+    .btn-soft { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
+    .btn-sm { padding:7px 10px; border-radius:6px; font-size:12px; }
+
+    .tabs { display:flex; gap:8px; overflow:auto; padding:5px; background:#e9eef6; border:1px solid #dde5f0; border-radius:10px; margin-bottom:18px; position:sticky; top:0; z-index:8; }
+    .tab { border:0; background:transparent; padding:10px 14px; border-radius:7px; color:#475569; font-weight:800; cursor:pointer; white-space:nowrap; }
+    .tab.active { background:#fff; color:#1d4ed8; box-shadow:0 8px 20px rgba(15,23,42,.06); }
+    .role-panel, .section { display:none; }
+    .role-panel.active, .section.active { display:block; }
+
+    .stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+    .stats-5 { grid-template-columns:repeat(5,minmax(0,1fr)); }
+    .stat-card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); min-height:108px; }
+    .stat-card small { color:var(--muted); font-weight:800; }
+    .stat-card strong { display:block; font-size:28px; margin-top:8px; letter-spacing:-.04em; }
+    .stat-card span { display:block; color:var(--muted); font-size:12px; margin-top:4px; line-height:1.45; }
+    .summary-strip { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 12px; margin-bottom:14px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:8px; color:#475569; font-size:13px; }
+    .summary-strip b { color:#0f172a; font-size:14px; }
+    .summary-item { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; background:#fff; border:1px solid #edf2f7; white-space:nowrap; }
+    .section-toolbar { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
+    .mini-tabs { display:flex; flex-wrap:wrap; gap:8px; }
+    .mini-tab { border:1px solid var(--border); background:#fff; color:#475569; border-radius:6px; padding:7px 10px; font-size:12px; font-weight:800; cursor:pointer; }
+    .mini-tab.active { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
+    .quick-entry { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 14px; padding:10px 12px; border:1px solid #e5e7eb; background:#fff; border-radius:8px; }
+    .quick-entry-label { color:#64748b; font-size:12px; font-weight:800; margin-right:2px; }
+    .quick-btn { border:1px solid #e5e7eb; background:#f8fafc; color:#475569; border-radius:6px; padding:6px 10px; font-size:12px; font-weight:800; cursor:pointer; }
+    .quick-btn:hover { border-color:#cbd5e1; background:#fff; color:#111827; }
+    .quick-btn.active { border-color:#bfdbfe; background:#eff6ff; color:#1d4ed8; }
+    .market-layout { display:grid; grid-template-columns:240px minmax(0,1fr); gap:18px; align-items:start; }
+    .market-sidebar { border:1px solid #e5e7eb; background:#fff; border-radius:8px; padding:12px; position:sticky; top:64px; }
+    .side-nav { display:grid; gap:4px; }
+    .side-nav-item { width:100%; border:0; background:transparent; color:#334155; display:flex; align-items:center; gap:9px; padding:10px 11px; border-radius:6px; font-size:14px; font-weight:700; cursor:pointer; text-align:left; }
+    .side-nav-item:hover { background:#f8fafc; }
+    .side-nav-item.active { color:#2563eb; background:linear-gradient(90deg,#eef4ff,#eef2ff); }
+    .side-nav-icon { width:18px; text-align:center; color:inherit; font-size:15px; }
+    .side-nav-sub { padding-left:26px; display:grid; gap:2px; margin:2px 0 4px; }
+    .side-nav-sub .side-nav-item { font-weight:600; color:#475569; padding:8px 10px; font-size:13px; }
+    .side-nav-sub .side-nav-item.active { color:#2563eb; }
+    .side-block { margin-top:18px; }
+    .side-title { display:flex; align-items:center; gap:6px; color:#172033; font-size:14px; font-weight:850; margin:0 0 10px; }
+    .side-help { width:14px; height:14px; border:1px solid #94a3b8; color:#64748b; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; line-height:1; }
+    .side-tags { display:flex; flex-wrap:wrap; gap:8px; }
+    .side-filter-stack { display:grid; gap:10px; }
+    .side-filter-stack .select { height:38px; padding:8px 10px; border-radius:8px; font-size:13px; }
+    .side-tag { border:1px solid #d9dee8; background:#fff; color:#64748b; border-radius:4px; padding:3px 9px; font-size:12px; cursor:pointer; line-height:1.2; }
+    .side-tag:hover,.side-tag.active { color:#2563eb; border-color:#bfdbfe; background:#eff6ff; }
+    .market-content { min-width:0; }
+    .market-content .filters { margin-bottom:14px; }
+    .text-muted { color:#64748b; font-size:12px; line-height:1.5; }
+
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:visible; margin-bottom:18px; }
+    .panel-header { padding:18px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .panel-header h2 { margin:0; font-size:18px; letter-spacing:-.03em; }
+    .panel-header p { margin:4px 0 0; color:var(--muted); font-size:13px; }
+    .panel-body { padding:18px 20px; }
+    .filters { display:grid; grid-template-columns:minmax(260px,1.5fr) repeat(2,minmax(160px,.8fr)); gap:10px; margin-bottom:14px; }
+    .input,.select,.textarea { width:100%; border:1px solid var(--border); background:#fff; color:#111827; border-radius:6px; padding:11px 12px; outline:none; font-size:14px; font-family:inherit; }
+    .textarea { resize:vertical; min-height:92px; }
+    .input:focus,.select:focus,.textarea:focus { border-color:#93c5fd; box-shadow:0 0 0 4px rgba(37,99,235,.08); }
+    .readonly { background:#f8fafc; color:#475569; cursor:not-allowed; }
+
+    .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .skill-card { border:1px solid #e5e7eb; border-radius:8px; padding:14px 16px; background:#fff; transition:.16s ease; min-height:auto; position:relative; overflow:visible; box-shadow:none; cursor:pointer; }
+    .skill-card:hover { border-color:#cbd5e1; box-shadow:0 8px 18px rgba(15,23,42,.06); transform:translateY(-1px); }
+    .card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .skill-heading { min-width:0; flex:1; }
+    .skill-main { min-width:0; flex:1; }
+    .skill-title { margin:0; font-size:15px; line-height:1.4; font-weight:750; letter-spacing:0; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+    .skill-subline { margin-top:6px; color:#6b7280; font-size:12px; line-height:1.5; }
+    .skill-desc { color:var(--muted); font-size:13px; line-height:1.55; margin:10px 0 12px; min-height:58px; }
+    .tag-list { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; width:100%; align-items:center; }
+    .tag { display:inline-flex; align-items:center; min-height:24px; padding:3px 9px; border:1px solid #e5e7eb; border-radius:6px; background:#f8fafc; color:#475569; font-size:12px; line-height:1.35; white-space:nowrap; }
+    .tag-strong { background:#fff; color:#111827; font-weight:700; }
+    .tag-company { background:#ecfdf5; border-color:#bbf7d0; color:#166534; }
+    .tag-meta { background:#f5f3ff; border-color:#ddd6fe; color:#6d28d9; }
+    .metadata-table { width:100%; border-collapse:separate; border-spacing:0; border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:14px; }
+    .metadata-table th,.metadata-table td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; font-size:12px; vertical-align:top; }
+    .metadata-table th { width:150px; color:#475569; background:#f8fafc; }
+    .metadata-table tr:last-child th,.metadata-table tr:last-child td { border-bottom:0; }
+    .card-bottom { display:flex; align-items:center; }
+    .detail-grid { display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start; }
+    .detail-card { border:1px solid var(--border); border-radius:8px; background:#fff; overflow:hidden; }
+    .detail-card h4 { margin:0; padding:12px 14px; border-bottom:1px solid var(--border); background:#f8fafc; font-size:13px; color:#334155; }
+    .file-tree { margin:0; padding:14px; white-space:pre-wrap; font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace; font-size:12px; line-height:1.7; color:#334155; background:#fff; max-height:440px; overflow:auto; }
+    .markdown-preview { padding:16px 18px; max-height:440px; overflow:auto; color:#334155; line-height:1.65; font-size:13px; }
+    .markdown-preview h1 { font-size:20px; margin:0 0 10px; letter-spacing:0; }
+    .markdown-preview h2 { font-size:15px; margin:16px 0 8px; }
+    .markdown-preview p { margin:6px 0; }
+    .markdown-preview ul { margin:6px 0 10px 20px; padding:0; }
+    .markdown-preview code { background:#f1f5f9; border:1px solid #e2e8f0; padding:1px 5px; border-radius:4px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .detail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .detail-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .detail-meta { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:0; }
+    .meta-download { margin-left:auto; display:inline-flex; align-items:center; gap:4px; color:#6b7280; font-size:12px; line-height:1; white-space:nowrap; padding:0; }
+    .meta-download svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto; }
+    .badges { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 12px; }
+    .badge { border-radius:6px; padding:4px 8px; font-size:12px; font-weight:800; background:#f1f5f9; color:#475569; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+    .badge.blue { background:#dbeafe; color:#1d4ed8; }
+    .badge.green { background:#dcfce7; color:#15803d; }
+    .badge.orange { background:#ffedd5; color:#c2410c; }
+    .badge.red { background:#fee2e2; color:#b91c1c; }
+    .badge.purple { background:#ede9fe; color:#6d28d9; }
+    .badge.cyan { background:#cffafe; color:#0e7490; }
+    .badge.dark { background:#111827; color:#fff; }
+    .meta-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:12px; }
+    .meta { background:var(--soft); border:1px solid #edf2f7; border-radius:12px; padding:9px 10px; min-width:0; }
+    .meta small { display:block; color:var(--muted); font-size:11px; margin-bottom:3px; }
+    .meta strong { font-size:13px; overflow-wrap:anywhere; }
+
+    .menu-wrap { position:relative; }
+    .menu-btn { width:28px; height:28px; border:0; background:transparent; cursor:pointer; font-size:20px; color:#64748b; box-shadow:none; padding:0; line-height:1; }
+    .menu-btn:hover { background:transparent; color:#1d4ed8; }
+    .menu { position:absolute; right:0; top:40px; width:204px; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 18px 40px rgba(15,23,42,.14); padding:8px; display:none; z-index:20; }
+    .menu.show { display:block; }
+    .menu-item { width:100%; text-align:left; padding:10px 12px; border:0; background:transparent; border-radius:6px; cursor:pointer; font-size:13px; color:#334155; }
+    .menu-item:hover { background:#f8fafc; }
+    .menu-item.danger { color:#b91c1c; }
+
+    .notice { border:1px solid #bfdbfe; background:#eff6ff; color:#1e40af; border-radius:8px; padding:14px 16px; font-size:13px; line-height:1.6; margin-bottom:14px; }
+    .warning { border-color:#fed7aa; background:#fff7ed; color:#9a3412; }
+    .error { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
+    .success { border-color:#bbf7d0; background:#f0fdf4; color:#166534; }
+
+    .split { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .table { width:100%; border-collapse:separate; border-spacing:0; border:1px solid var(--border); border-radius:8px; background:#fff; overflow:hidden; }
+    .table th,.table td { padding:13px 14px; border-bottom:1px solid var(--border); text-align:left; font-size:13px; vertical-align:top; }
+    .table th { color:#475569; background:#f8fafc; font-size:12px; }
+    .table tr:last-child td { border-bottom:0; }
+    .clickable-row { cursor:pointer; }
+    .clickable-row:hover td { background:#f8fafc; }
+
+    .upload-zone { border:1.5px dashed #93c5fd; background:linear-gradient(135deg,#eff6ff,#f8fafc); border-radius:8px; padding:22px; text-align:center; cursor:pointer; transition:.16s ease; margin-bottom:16px; }
+    .upload-zone:hover { background:#eff6ff; transform:translateY(-1px); }
+    .upload-icon { font-size:34px; margin-bottom:8px; }
+    .upload-zone h3 { margin:0 0 6px; }
+    .upload-zone p { margin:0; color:var(--muted); font-size:13px; line-height:1.6; }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .upload-result-card { border:1px solid #e2e8f0; border-radius:10px; background:#fff; overflow:hidden; margin-top:12px; }
+    .upload-result-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }
+    .upload-result-head b { color:#0f172a; font-size:14px; }
+    .upload-result-head span { color:#64748b; font-size:12px; }
+    .upload-result-body { padding:14px; }
+    .upload-meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .upload-meta-grid .form-field.full { grid-column:1 / -1; }
+    .upload-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+    @media (max-width:760px){ .upload-meta-grid { grid-template-columns:1fr; } }
+    .form-field label { display:block; font-size:12px; color:var(--muted); font-weight:800; margin-bottom:7px; }
+    .form-field.full { grid-column:1 / -1; }
+
+    .dashboard-grid { display:grid; grid-template-columns:1.25fr .95fr; gap:16px; align-items:start; }
+    .funnel { display:grid; gap:10px; }
+    .funnel-row { display:grid; grid-template-columns:120px 1fr 64px; align-items:center; gap:12px; font-size:13px; }
+    .funnel-track { height:14px; background:#eef2f7; border-radius:999px; overflow:hidden; }
+    .funnel-fill { display:block; height:100%; background:linear-gradient(90deg,#06b6d4,#2563eb); border-radius:999px; }
+    .coverage-list { display:grid; gap:10px; }
+    .coverage-item { padding:12px 14px; border:1px solid var(--border); border-radius:14px; background:#fff; }
+    .coverage-top { display:flex; justify-content:space-between; gap:10px; margin-bottom:8px; font-size:13px; font-weight:800; }
+    .bar { height:10px; border-radius:999px; background:#eef2f7; overflow:hidden; }
+    .bar > span { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#2563eb,#7c3aed); }
+    .mini-note { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.55; }
+
+    .rank-bars { display:grid; gap:12px; }
+    .rank-bar-item { position:relative; padding:12px 14px; border:1px solid var(--border); border-radius:8px; background:#fff; }
+    .rank-bar-item:hover { border-color:#93c5fd; box-shadow:0 12px 28px rgba(37,99,235,.10); }
+    .rank-bar-top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:9px; font-size:13px; }
+    .rank-bar-top b { color:#0f172a; }
+    .rank-bar-top span { color:#64748b; font-weight:800; }
+    .rank-bar-track { height:12px; border-radius:999px; background:#eef2f7; overflow:hidden; }
+    .rank-bar-fill { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#2563eb,#7c3aed); }
+    .rank-tooltip { display:none; position:absolute; left:16px; right:16px; top:calc(100% + 8px); z-index:18; padding:12px 14px; border:1px solid #dbeafe; border-radius:14px; background:#ffffff; box-shadow:0 18px 40px rgba(15,23,42,.16); color:#334155; font-size:12px; line-height:1.6; }
+    .rank-bar-item:hover .rank-tooltip { display:block; }
+    .rank-tooltip b { color:#0f172a; }
+    .rank-tooltip ol { margin:6px 0 0 18px; padding:0; }
+    .rank-tooltip li { margin:2px 0; }
+    .board-filter-grid { display:grid; grid-template-columns:220px 260px auto 1fr; gap:12px; align-items:end; }
+    .dept-board-layout { display:grid; grid-template-columns:360px minmax(0,1fr); gap:16px; align-items:start; }
+    .org-tree-panel { border:1px solid var(--border); border-radius:10px; background:#fff; padding:10px; max-height:560px; overflow:auto; }
+    .org-tree-title { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px 12px; color:#172033; font-weight:850; font-size:14px; border-bottom:1px solid #edf2f7; margin-bottom:6px; }
+    .org-tree { display:grid; gap:2px; }
+    .org-node { width:100%; border:0; background:transparent; color:#334155; display:flex; align-items:center; gap:6px; padding:8px 8px; border-radius:7px; cursor:pointer; text-align:left; font-size:13px; line-height:1.3; }
+    .org-node:hover { background:#f8fafc; }
+    .org-node.active { background:linear-gradient(90deg,#eaf3ff,#f3f7ff); color:#1d4ed8; }
+    .org-node .caret { width:14px; color:#64748b; flex:0 0 auto; }
+    .org-node .name { font-weight:800; color:inherit; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .org-node .meta { color:#64748b; font-size:12px; white-space:nowrap; margin-left:2px; }
+    .org-node.active .meta { color:#4776d8; }
+    .org-node.level-1 { padding-left:8px; }
+    .org-node.level-2 { padding-left:28px; }
+    .org-node.level-3 { padding-left:48px; }
+    .org-node.level-4 { padding-left:68px; }
+    .org-node.level-5 { padding-left:88px; }
+    .org-node.level-6 { padding-left:108px; }
+    .dept-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .dept-summary-card { border:1px solid var(--border); background:#fff; border-radius:8px; padding:12px 14px; }
+    .dept-summary-card small { color:#64748b; display:block; font-weight:800; margin-bottom:5px; }
+    .dept-summary-card strong { font-size:22px; color:#0f172a; }
+    .dept-org-list { display:flex; flex-wrap:wrap; gap:8px; }
+    .dept-org-pill { border:1px solid #e2e8f0; background:#f8fafc; color:#334155; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:750; }
+    @media (max-width:900px) { .board-filter-grid,.dept-summary,.dept-board-layout { grid-template-columns:1fr; } }
+
+    .board-row { display:grid; grid-template-columns:1fr; gap:16px; margin-bottom:18px; }
+    .board-row.two { grid-template-columns:1fr 1fr; align-items:stretch; }
+    .pie-layout { display:grid; grid-template-columns:240px 1fr; gap:18px; align-items:center; }
+    .pie-chart-wrap { display:flex; align-items:center; justify-content:center; }
+    .pie-chart { width:220px; height:220px; border-radius:50%; background:conic-gradient(#2563eb 0% 56.3%, #7c3aed 56.3% 78.2%, #06b6d4 78.2% 100%); position:relative; box-shadow:0 14px 30px rgba(15,23,42,.10); }
+    .pie-chart::after { content:"大类分布"; position:absolute; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:92px; height:92px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; text-align:center; color:#334155; font-size:14px; font-weight:800; box-shadow:inset 0 0 0 1px #e5e7eb; }
+    .pie-legend { display:grid; gap:8px; }
+    .pie-legend-item { display:grid; grid-template-columns:12px 1fr auto; gap:10px; align-items:start; border:1px solid var(--border); border-radius:8px; padding:9px 10px; background:#fff; }
+    .pie-dot { width:12px; height:12px; border-radius:50%; margin-top:4px; }
+    .pie-legend-item b { display:block; color:#0f172a; margin-bottom:2px; font-size:13px; }
+    .pie-legend-item small { display:block; color:#64748b; font-size:12px; line-height:1.45; }
+    .pie-legend-item strong { color:#0f172a; font-size:13px; white-space:nowrap; }
+
+    .board-row.two > .panel { height:100%; display:flex; flex-direction:column; min-height:420px; }
+    .board-row.two > .panel .panel-body { flex:1; min-height:0; overflow:auto; }
+    .board-row.two:first-of-type > .panel .panel-body { max-height:360px; }
+    .board-row.two .table { min-width:520px; }
+    .board-row.two > .panel .panel-body::-webkit-scrollbar { width:8px; height:8px; }
+    .board-row.two > .panel .panel-body::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:999px; }
+    .board-row.two > .panel .panel-body::-webkit-scrollbar-track { background:#f1f5f9; border-radius:999px; }
+    /* Redesigned Skill operations dashboard */
+    .ops-dashboard { display:grid; gap:18px; }
+    .ops-title { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:2px; }
+    .ops-title h2 { margin:0; font-size:24px; letter-spacing:-.04em; }
+    .ops-title p { margin:6px 0 0; color:#64748b; font-size:13px; }
+    .ops-filter { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end; }
+    .ops-filter .select { width:180px; height:38px; padding:8px 10px; border-radius:8px; font-size:13px; }
+    .ops-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+    .ops-kpi { background:#fff; border:1px solid #e6ebf2; border-radius:12px; padding:16px 18px; box-shadow:0 12px 28px rgba(15,23,42,.05); position:relative; overflow:hidden; }
+    .ops-kpi::after { content:''; position:absolute; right:-20px; top:-20px; width:74px; height:74px; border-radius:999px; background:linear-gradient(135deg,rgba(37,99,235,.10),rgba(124,58,237,.08)); }
+    .ops-kpi small { display:block; color:#64748b; font-size:12px; font-weight:850; margin-bottom:8px; }
+    .ops-kpi strong { display:block; font-size:30px; line-height:1; color:#0f172a; letter-spacing:-.04em; }
+    .ops-kpi span { display:block; margin-top:8px; color:#94a3b8; font-size:12px; }
+    .ops-main-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+    .ops-card { background:#fff; border:1px solid #e6ebf2; border-radius:12px; box-shadow:0 12px 28px rgba(15,23,42,.05); overflow:hidden; display:flex; flex-direction:column; }
+    .ops-card-head { padding:16px 18px; border-bottom:1px solid #edf2f7; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .ops-card-head h3 { margin:0; font-size:17px; letter-spacing:-.03em; }
+    .ops-card-head p { margin:4px 0 0; color:#64748b; font-size:12px; }
+    .ops-card-body { padding:16px 18px; flex:1; min-height:0; }
+    .ops-tree { max-height:520px; overflow:auto; padding:0; display:grid; gap:2px; align-content:start; }
+    .ops-tree-item { display:grid; gap:2px; align-content:start; }
+    .ops-tree-children { display:grid; gap:2px; align-content:start; }
+    .ops-tree-node { width:100%; border:0; background:transparent; display:grid; grid-template-columns:24px minmax(0,1fr) 56px 70px; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; color:#334155; cursor:pointer; text-align:left; line-height:1.25; min-height:34px; }
+    .ops-tree-node:hover { background:#f8fafc; }
+    .ops-tree-node.active { background:linear-gradient(90deg,#eaf3ff,#f4f7ff); color:#1d4ed8; }
+    .ops-tree-caret { width:14px; color:#64748b; flex:0 0 auto; }
+    .ops-caret-btn { width:20px; height:20px; border:0; background:transparent; color:#64748b; cursor:pointer; border-radius:6px; font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; }
+    .ops-caret-btn:hover { background:#eef2ff; color:#2563eb; }
+    .ops-caret-placeholder { width:20px; text-align:center; color:#cbd5e1; font-size:12px; }
+    .ops-tree-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:800; }
+    .ops-tree-count { color:#1f2937; font-size:12px; white-space:nowrap; font-weight:850; text-align:right; }
+    .ops-tree-node.active .ops-tree-count { color:#1d4ed8; }
+    .ops-tree-download { color:#64748b; font-size:12px; white-space:nowrap; font-weight:750; text-align:right; }
+    .ops-tree-node.lv1 { margin-left:0; }
+    .ops-tree-node.lv2 { margin-left:16px; width:calc(100% - 16px); }
+    .ops-tree-node.lv3 { margin-left:32px; width:calc(100% - 32px); }
+    .ops-tree-node.lv4 { margin-left:48px; width:calc(100% - 48px); }
+    .ops-tree-node.lv5 { margin-left:64px; width:calc(100% - 64px); }
+    .ops-tree-node.lv6 { margin-left:80px; width:calc(100% - 80px); }
+    .ops-current { display:none; }
+    .ops-bars { display:grid; gap:13px; }
+    .ops-bar-row { display:grid; grid-template-columns:180px 1fr 70px; align-items:center; gap:12px; }
+    .ops-bar-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:850; color:#172033; }
+    .ops-bar-track { height:14px; background:#eef2f7; border-radius:999px; overflow:hidden; }
+    .ops-bar-fill { height:100%; display:block; border-radius:999px; background:linear-gradient(90deg,#2563eb,#7c3aed); }
+    .ops-bar-value { text-align:right; color:#334155; font-size:13px; font-weight:850; }
+    .ops-bottom-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:16px; }
+    .ops-top-list { display:grid; gap:10px; }
+    .ops-top-item { display:grid; grid-template-columns:34px 1fr auto; gap:10px; align-items:center; padding:10px 12px; border:1px solid #edf2f7; border-radius:10px; background:#fff; }
+    .ops-rank { width:26px; height:26px; border-radius:8px; background:#eff6ff; color:#1d4ed8; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:12px; }
+    .ops-top-item b { display:block; font-size:13px; color:#0f172a; margin-bottom:2px; }
+    .ops-top-item small { color:#64748b; font-size:12px; }
+    .ops-download { color:#0f172a; font-weight:850; font-size:13px; }
+    .ops-review-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+    .ops-review-metric { border:1px solid #edf2f7; border-radius:10px; padding:12px; background:#f8fafc; }
+    .ops-review-metric small { display:block; color:#64748b; font-size:12px; margin-bottom:5px; font-weight:850; }
+    .ops-review-metric strong { font-size:22px; color:#0f172a; }
+    .ops-review-list { display:grid; gap:8px; }
+    .ops-review-item { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; padding:10px 12px; border:1px solid #edf2f7; border-radius:10px; background:#fff; }
+    .ops-review-item b { display:block; font-size:13px; color:#0f172a; }
+    .ops-review-item small { color:#64748b; font-size:12px; }
+    .ops-pill { display:inline-flex; align-items:center; border-radius:999px; padding:4px 8px; font-size:12px; font-weight:850; background:#fff7ed; color:#c2410c; }
+    .ops-toggle { display:inline-flex; align-items:center; gap:4px; padding:4px; border:1px solid #e2e8f0; background:#f8fafc; border-radius:9px; }
+    .ops-toggle button { border:0; background:transparent; color:#64748b; border-radius:7px; padding:6px 10px; font-size:12px; font-weight:850; cursor:pointer; }
+    .ops-toggle button.active { background:#2563eb; color:#fff; box-shadow:0 8px 18px rgba(37,99,235,.18); }
+    .ops-data-note { display:inline-flex; align-items:center; gap:6px; height:36px; padding:0 12px; border:1px solid #dbeafe; background:#eff6ff; color:#1d4ed8; border-radius:999px; font-size:12px; font-weight:850; white-space:nowrap; }
+    .ops-full { grid-column:1 / -1; }
+    @media (max-width:1180px){ .ops-main-grid,.ops-bottom-grid { grid-template-columns:1fr; } .ops-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:760px){ .ops-title { flex-direction:column; align-items:flex-start; } .ops-kpis,.ops-review-metrics { grid-template-columns:1fr; } .ops-bar-row { grid-template-columns:1fr; } }
+
+    .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; padding:24px; z-index:30; }
+    .modal-backdrop.show { display:flex; }
+    .modal { width:min(940px,100%); max-height:min(90vh,780px); overflow:auto; background:#fff; border-radius:10px; box-shadow:0 28px 70px rgba(15,23,42,.35); }
+    .modal-header,.modal-footer { padding:18px 22px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:12px; position:sticky; background:#fff; z-index:2; }
+    .modal-header { top:0; }
+    .modal-footer { bottom:0; border-bottom:0; border-top:1px solid var(--border); justify-content:flex-end; }
+    .modal-header h3 { margin:0; }
+    .modal-body { padding:22px; }
+    .toast { position:fixed; right:24px; bottom:24px; background:#0f172a; color:white; border-radius:14px; padding:12px 16px; box-shadow:0 18px 40px rgba(15,23,42,.25); opacity:0; transform:translateY(10px); pointer-events:none; transition:.2s ease; z-index:40; font-size:14px; }
+    .toast.show { opacity:1; transform:translateY(0); }
+    .empty { padding:38px 18px; text-align:center; color:var(--muted); border:1px dashed var(--border); border-radius:8px; background:#f8fafc; grid-column:1 / -1; }
+
+    @media (max-width:1180px) { .hero-main,.split,.dashboard-grid,.board-row.two,.pie-layout,.detail-grid,.market-layout { grid-template-columns:1fr; } .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } .filters { grid-template-columns:1fr 1fr; } .stats,.stats-5 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:760px) { .market-shell { padding:14px; } h1 { font-size:26px; } .stats,.stats-5,.cards,.filters,.form-grid { grid-template-columns:1fr; } .market-sidebar { position:static; } .panel-header,.topline { align-items:flex-start; flex-direction:column; } .hero-actions { flex-direction:column; align-items:stretch; } .btn { width:100%; } .funnel-row { grid-template-columns:1fr; } }
+  
+
+    /* Marketplace visual refresh: inspired by modern app marketplace layout */
+    body { background:#f7f9fd; }
+    .market-shell { max-width:none; width:100%; margin:0; padding:0 0 38px; }
+    .topline { height:60px; margin:0; padding:0 28px; background:rgba(255,255,255,.92); border-bottom:1px solid #eef2f7; display:grid; grid-template-columns:190px 1fr auto; gap:22px; align-items:center; position:sticky; top:0; z-index:30; backdrop-filter:blur(12px); }
+    .breadcrumb { display:block; }
+    .breadcrumb span, .breadcrumb b { display:none; }
+    .breadcrumb::before { content:'Skill'; display:block; color:#111827; font-size:22px; font-weight:900; letter-spacing:-.04em; }
+    .top-tabs { display:flex; align-items:center; gap:34px; height:100%; }
+    .top-tab { height:100%; border:0; background:transparent; color:#172033; font-size:15px; font-weight:850; cursor:pointer; position:relative; padding:0 2px; }
+    .top-tab.active { color:#2563eb; }
+    .top-tab.active::after { content:''; position:absolute; left:0; right:0; bottom:0; height:3px; border-radius:999px; background:#2563eb; }
+    .top-right { display:flex; align-items:center; gap:12px; }
+    .top-icon { width:30px; height:30px; border:0; background:transparent; border-radius:999px; color:#172033; cursor:pointer; font-size:18px; }
+    .avatar-dot { width:32px; height:32px; border-radius:999px; background:#3158ff; color:white; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; }
+    .role-switch { background:#f5f7fb; border-color:#e5eaf2; padding:3px; }
+    .role-btn { padding:6px 9px; font-size:12px; }
+    .hero { margin:0; border:0; border-radius:0; min-height:252px; box-shadow:none; padding:44px 28px 34px; background:radial-gradient(circle at 12% 20%, rgba(237,199,255,.58), transparent 22%), radial-gradient(circle at 82% 14%, rgba(194,219,255,.72), transparent 24%), radial-gradient(circle at 64% 80%, rgba(226,232,255,.86), transparent 35%), linear-gradient(105deg,#fff6ff 0%,#f7f2ff 40%,#eff7ff 100%); }
+    .hero::before { content:''; position:absolute; inset:0; opacity:.38; background-image:radial-gradient(circle, rgba(148,163,184,.5) 1px, transparent 1px), linear-gradient(120deg, transparent 0 48%, rgba(255,255,255,.65) 49%, transparent 51%); background-size:18px 18px, 100% 100%; mask-image:linear-gradient(to bottom, #000, transparent 72%); }
+    .hero::after { content:''; position:absolute; right:9%; top:38px; width:110px; height:110px; border-radius:32px 55px 38px 62px; background:linear-gradient(135deg, rgba(194,219,255,.7), rgba(216,180,254,.55), rgba(153,246,228,.38)); box-shadow:0 18px 50px rgba(124,58,237,.12); transform:rotate(16deg); opacity:.8; }
+    .hero-main { position:relative; z-index:1; display:block; max-width:1180px; margin:0 auto; text-align:center; }
+    .eyebrow, #heroDesc { display:none; }
+    h1#heroTitle { font-size:34px; letter-spacing:-.055em; line-height:1.2; font-weight:950; color:#0f172a; margin:0 auto 24px; }
+    .hero-number { display:inline-flex; padding:2px 12px 4px; margin-right:10px; border-radius:10px; background:linear-gradient(135deg,#dbe4ff,#cbd7ff); color:#3158ff; box-shadow:0 10px 24px rgba(49,88,255,.12); }
+    .hero-actions { justify-content:center; align-items:center; gap:12px; margin-top:0; }
+    .hero-search { width:min(720px,58vw); height:52px; border-radius:999px; border:1px solid #e4e8f1; background:rgba(255,255,255,.94); box-shadow:0 14px 36px rgba(15,23,42,.10); display:flex; align-items:center; gap:12px; padding:0 20px; color:#94a3b8; text-align:left; }
+    .hero-search svg { width:18px; height:18px; stroke:#111827; fill:none; stroke-width:2; }
+    .hero-search span { font-size:14px; color:#9aa4b2; }
+    .hero .btn-primary { height:52px; border-radius:999px; padding:0 25px; background:#fff; color:#172033; border-color:#e5e7eb; box-shadow:0 14px 30px rgba(15,23,42,.10); font-weight:850; }
+    .hero .btn-primary:hover { color:#2563eb; border-color:#bfdbfe; background:#fff; }
+    .tabs { display:none; }
+    .section { padding:0 24px; }
+    #user-overview, #admin-overview { padding:0 24px; margin-top:-22px; position:relative; z-index:2; }
+    #user-overview > .panel, #admin-overview > .panel { border:0; background:transparent; box-shadow:none; overflow:visible; margin:0; }
+    #user-overview > .panel > .panel-header, #admin-overview > .panel > .panel-header { display:none; }
+    #user-overview > .panel > .panel-body, #admin-overview > .panel > .panel-body { padding:0; max-width:1480px; margin:0 auto; }
+    #user-overview .summary-strip, #admin-overview .summary-strip { display:none; }
+    .market-chip-row { display:flex; align-items:center; gap:10px; margin:0 0 10px 246px; min-height:42px; }
+    .market-chip-main { display:flex; flex-wrap:wrap; gap:10px; align-items:center; flex:1; }
+    .market-chip { border:1px solid #e7eaf2; background:rgba(255,255,255,.92); color:#172033; border-radius:10px; min-height:34px; padding:7px 14px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.04); }
+    .market-chip.active { color:#fff; background:linear-gradient(135deg,#2563eb,#4f6dff); border-color:#3158ff; box-shadow:0 10px 22px rgba(37,99,235,.18); }
+    .market-chip.ghost { color:#334155; }
+    .market-sort { color:#172033; display:flex; align-items:center; gap:6px; font-size:13px; white-space:nowrap; padding-right:2px; }
+    .market-layout { grid-template-columns:220px minmax(0,1fr); gap:16px; max-width:1480px; margin:0 auto; }
+    .market-sidebar { border:0; background:rgba(255,255,255,.72); border-radius:10px; padding:12px 10px; box-shadow:0 10px 28px rgba(15,23,42,.06); top:78px; }
+    .side-nav-item { font-weight:760; font-size:13px; padding:10px 9px; color:#334155; border-radius:7px; }
+    .side-nav-item.active { background:linear-gradient(90deg,#eaf0ff,#f4f7ff); color:#3158ff; }
+    .side-nav-sub { padding-left:26px; }
+    .side-nav-sub .side-nav-item { font-size:12.5px; padding:7px 9px; }
+    .side-block { margin-top:16px; padding-top:14px; border-top:1px solid #eef2f7; }
+    .side-title { margin-bottom:9px; font-size:13px; }
+    .side-tags { gap:7px; }
+    .side-tag { background:#fff; color:#64748b; border-color:#dce3ed; border-radius:6px; padding:4px 8px; }
+    .market-content .filters { grid-template-columns:1fr; margin-bottom:14px; }
+    .market-content .filters .select { display:none; }
+    .market-content .input { height:0; padding:0; border:0; overflow:hidden; opacity:0; pointer-events:none; }
+    .cards { grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; }
+    .skill-card { min-height:310px; border-color:#edf1f7; border-radius:10px; padding:0; box-shadow:0 12px 28px rgba(15,23,42,.06); overflow:hidden; background:#fff; }
+    .skill-card:hover { transform:translateY(-2px); box-shadow:0 18px 38px rgba(15,23,42,.10); border-color:#d8e2ee; }
+    .card-top { display:block; height:100%; position:relative; padding:28px 24px 0; }
+    .skill-icon { width:64px; height:64px; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-bottom:22px; color:#fff; box-shadow:0 12px 28px rgba(37,99,235,.16); font-weight:900; font-size:26px; letter-spacing:-.05em; }
+    .skill-icon.purple { background:linear-gradient(135deg,#c084fc,#6366f1); }
+    .skill-icon.green { background:linear-gradient(135deg,#99f6e4,#34d399); }
+    .skill-icon.orange { background:linear-gradient(135deg,#fdba74,#fb923c); }
+    .skill-icon.blue { background:linear-gradient(135deg,#93c5fd,#3b82f6); }
+    .skill-icon.pink { background:linear-gradient(135deg,#f9a8d4,#ec4899); }
+    .skill-title { font-size:16px; font-weight:900; color:#0f172a; margin-bottom:10px; }
+    .skill-subline { font-size:13px; color:#64748b; line-height:1.7; }
+    .tag-list { gap:8px; margin-top:14px; padding-bottom:54px; }
+    .tag { min-height:24px; border:0; border-radius:6px; background:#f3f6fb; color:#667085; padding:3px 9px; font-size:12px; }
+    .tag-meta { background:#eaf2ff; color:#2563eb; }
+    .tag-company { background:#e8f8ef; color:#12805c; border:0; }
+    .meta-download { position:absolute; left:24px; bottom:18px; margin:0; color:#172033; font-size:14px; }
+    .meta-download svg { width:16px; height:16px; }
+    .menu-wrap { position:absolute; top:26px; right:22px; }
+    .menu-btn { color:#94a3b8; font-size:22px; transform:rotate(90deg); }
+    .menu { top:34px; }
+    .bookmark { position:absolute; top:28px; right:28px; width:18px; height:22px; color:#94a3b8; }
+    .bookmark svg { width:100%; height:100%; stroke:currentColor; fill:none; stroke-width:1.8; }
+    #user-my, #user-board, #admin-my, #admin-board, #admin-org, #admin-approval { max-width:1440px; margin:18px auto 0; }
+    @media (max-width:1280px) { .cards { grid-template-columns:repeat(3,minmax(0,1fr)); } .market-chip-row { margin-left:0; } }
+    @media (max-width:980px) { .topline { grid-template-columns:1fr; height:auto; padding:12px 18px; gap:10px; } .top-tabs { order:3; gap:18px; overflow:auto; } .hero-search { width:100%; } .hero-actions { flex-direction:column; } .hero .btn-primary { width:100%; } .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:760px) { .section,#user-overview,#admin-overview { padding:0 14px; } .market-layout { grid-template-columns:1fr; } .cards { grid-template-columns:1fr; } .market-sidebar { position:static; } h1#heroTitle { font-size:26px; } }
+
+    /* Final prototype alignment: enterprise embedded platform style */
+    .market-shell { max-width:1440px; margin:0 auto; padding:24px 24px 42px; }
+    .topline { position:static; height:auto; margin:0 0 18px; padding:0; background:transparent; border:0; display:flex; align-items:center; justify-content:space-between; gap:16px; backdrop-filter:none; }
+    .breadcrumb { display:flex; align-items:center; gap:8px; color:#64748b; font-size:13px; }
+    .breadcrumb span,.breadcrumb b { display:inline; }
+    .breadcrumb::before { content:none; }
+    .breadcrumb b { color:#0f172a; font-weight:900; }
+    .top-right,.top-icon,.avatar-dot { display:none; }
+    .role-switch { display:flex; gap:6px; padding:4px; border:1px solid #dbe5f1; background:#e9eef6; border-radius:8px; }
+    .role-btn { border:0; background:transparent; color:#334155; padding:8px 14px; border-radius:6px; font-size:13px; font-weight:900; cursor:pointer; }
+    .role-btn.active { background:#fff; color:#2563eb; box-shadow:0 8px 20px rgba(15,23,42,.08); }
+    .hero { max-width:1392px; margin:0 auto 18px; min-height:auto; border:1px solid #dbeafe; border-radius:12px; padding:32px 26px 26px; box-shadow:0 14px 38px rgba(15,23,42,.06); background:radial-gradient(circle at 11% 18%, rgba(37,99,235,.16), transparent 28%), radial-gradient(circle at 86% 10%, rgba(124,58,237,.15), transparent 24%), linear-gradient(135deg,#fff 0%,#eff6ff 58%,#f5f3ff 100%); }
+    .hero::before,.hero::after { display:none; }
+    .hero-main { max-width:none; margin:0; text-align:left; }
+    .eyebrow { display:none !important; }
+    #heroDesc { display:block; margin:12px 0 0; max-width:980px; color:#334155; line-height:1.8; font-size:15px; }
+    h1#heroTitle { margin:0; font-size:34px; line-height:1.18; letter-spacing:-.04em; color:#0f172a; }
+    .hero-number { display:none; }
+    .hero-actions { justify-content:flex-start; margin-top:20px; }
+    .hero .btn-primary { height:42px; border-radius:8px; padding:0 18px; background:#2563eb; color:#fff; border-color:#2563eb; box-shadow:0 10px 22px rgba(37,99,235,.18); }
+    .hero .btn-primary:hover { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
+    .hero-search { display:none; }
+    .tabs { display:none; }
+    .top-tabs { display:flex; align-items:center; gap:12px; height:auto; max-width:1392px; margin:0 auto 18px; padding:6px; border:1px solid #dbe5f1; background:linear-gradient(180deg,#f8fbff,#eef3f8); border-radius:10px; overflow:auto; }
+    .top-tab { height:auto; border:0; background:transparent; color:#334155; font-size:14px; font-weight:900; cursor:pointer; position:relative; padding:10px 16px; border-radius:8px; white-space:nowrap; }
+    .top-tab.active { background:#fff; color:#2563eb; box-shadow:0 8px 20px rgba(15,23,42,.06); }
+    .top-tab.active::after { display:none; }
+    .section,#user-overview,#admin-overview,#user-my,#user-board,#admin-my,#admin-board,#admin-org,#admin-approval { max-width:1392px; margin:0 auto; padding:0; }
+    #user-overview > .panel, #admin-overview > .panel { background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 14px 38px rgba(15,23,42,.06); overflow:hidden; margin:0; }
+    #user-overview > .panel > .panel-header, #admin-overview > .panel > .panel-header { display:none; }
+    #user-overview > .panel > .panel-body, #admin-overview > .panel > .panel-body { padding:18px 20px 22px; max-width:none; margin:0; }
+    #user-overview .summary-strip,#admin-overview .summary-strip { display:flex; }
+    .market-chip-row { margin:0 0 14px; padding:0; display:flex; align-items:center; gap:10px; }
+    .market-chip-main { width:100%; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .market-chip { border:1px solid #e2e8f0; background:#fff; border-radius:8px; min-height:34px; padding:7px 12px; box-shadow:none; }
+    .market-chip.active { color:#fff; background:#2563eb; border-color:#2563eb; box-shadow:none; }
+    .market-layout { grid-template-columns:220px minmax(0,1fr); gap:16px; max-width:none; margin:0; align-items:start; }
+    .market-sidebar { border:1px solid #e2e8f0; background:#fff; border-radius:10px; padding:12px; box-shadow:none; top:12px; }
+    .market-content .filters { display:grid; grid-template-columns:minmax(320px,1.4fr) 200px 200px 200px; gap:12px; margin-bottom:14px; align-items:center; }
+    .market-content .input { height:42px; opacity:1; pointer-events:auto; border:1px solid #dbe3ee; border-radius:8px; padding:0 14px; overflow:visible; color:#334155; }
+    .market-content .filters .select { display:block; height:42px; border:1px solid #dbe3ee; border-radius:8px; padding:0 34px 0 14px; box-sizing:border-box; appearance:none; background-color:#fff; background-image:linear-gradient(45deg,transparent 50%,#94a3b8 50%),linear-gradient(135deg,#94a3b8 50%,transparent 50%); background-position:calc(100% - 18px) calc(50% - 3px),calc(100% - 12px) calc(50% - 3px); background-size:6px 6px,6px 6px; background-repeat:no-repeat; }
+    .cards { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .skill-card { min-height:auto; border-radius:10px; padding:14px 16px; box-shadow:none; border:1px solid #e5e7eb; }
+    .card-top { display:flex; height:auto; position:relative; padding:0; }
+    .skill-icon,.bookmark { display:none; }
+    .skill-title { font-size:15px; margin-bottom:0; }
+    .skill-subline { font-size:12px; }
+    .tag-list { margin-top:12px; padding-bottom:0; }
+    .menu-wrap { position:relative; top:auto; right:auto; }
+    .menu-btn { transform:none; }
+    .meta-download { position:static; margin-left:auto; font-size:12px; }
+    #user-my > .panel > .panel-header, #admin-my > .panel > .panel-header { display:none; }
+    @media (max-width:1180px){ .market-content .filters { grid-template-columns:1fr 1fr; } .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:760px){ .market-shell { padding:14px; } .topline { flex-direction:column; align-items:flex-start; } .market-layout,.market-content .filters { grid-template-columns:1fr; } .cards { grid-template-columns:1fr; } .market-sidebar { position:static; } }
+
+    /* Ops board: align two main cards and use internal scrolling */
+    .ops-main-grid { align-items:stretch; }
+    .ops-main-grid > .ops-card { height:420px; min-height:420px; }
+    .ops-main-grid > .ops-card .ops-card-head { flex:0 0 auto; min-height:86px; align-items:flex-start; }
+    .ops-main-grid > .ops-card .ops-card-body { flex:1 1 auto; min-height:0; overflow:hidden; }
+    .ops-tree.board-org-tree { height:100%; max-height:none; overflow-y:auto; overflow-x:hidden; padding-right:6px; align-content:start; }
+    .ops-main-grid .ops-bars { height:100%; overflow-y:auto; overflow-x:hidden; padding-right:6px; align-content:start; }
+    .ops-tree.board-org-tree::-webkit-scrollbar,
+    .ops-main-grid .ops-bars::-webkit-scrollbar { width:8px; }
+    .ops-tree.board-org-tree::-webkit-scrollbar-track,
+    .ops-main-grid .ops-bars::-webkit-scrollbar-track { background:transparent; }
+    .ops-tree.board-org-tree::-webkit-scrollbar-thumb,
+    .ops-main-grid .ops-bars::-webkit-scrollbar-thumb { background:#dbe3ee; border-radius:999px; }
+    .ops-tree.board-org-tree::-webkit-scrollbar-thumb:hover,
+    .ops-main-grid .ops-bars::-webkit-scrollbar-thumb:hover { background:#c7d2e3; }
+    @media (max-width:1180px){ .ops-main-grid > .ops-card { height:auto; min-height:360px; } }
+
+    /* Ops board: left distribution stack + right skill detail table */
+    .ops-left-stack { display:grid; gap:16px; min-height:0; }
+    .ops-left-stack .ops-card { min-height:0; }
+    .ops-left-stack .ops-card:first-child { height:360px; }
+    .ops-left-stack .ops-card:first-child .ops-card-body { min-height:0; overflow:hidden; }
+    .ops-left-stack .ops-card:first-child .ops-tree { height:100%; max-height:none; overflow-y:auto; overflow-x:hidden; padding-right:6px; }
+    .ops-left-stack .ops-card:first-child .ops-tree::-webkit-scrollbar,
+    .ops-org-bars::-webkit-scrollbar,
+    .ops-skill-table-wrap::-webkit-scrollbar { width:8px; height:8px; }
+    .ops-left-stack .ops-card:first-child .ops-tree::-webkit-scrollbar-thumb,
+    .ops-org-bars::-webkit-scrollbar-thumb,
+    .ops-skill-table-wrap::-webkit-scrollbar-thumb { background:#dbe3ee; border-radius:999px; }
+    .ops-left-stack .ops-card:first-child .ops-tree::-webkit-scrollbar-track,
+    .ops-org-bars::-webkit-scrollbar-track,
+    .ops-skill-table-wrap::-webkit-scrollbar-track { background:transparent; }
+    .ops-org-bars { max-height:250px; overflow:auto; display:grid; gap:10px; padding-right:6px; }
+    .ops-org-bar { border:1px solid #edf2f7; background:#fff; border-radius:10px; padding:10px 12px; cursor:pointer; display:grid; gap:8px; }
+    .ops-org-bar:hover { border-color:#bfdbfe; background:#f8fbff; }
+    .ops-org-bar.active { border-color:#93c5fd; background:linear-gradient(90deg,#eaf3ff,#f7fbff); }
+    .ops-org-bar-top { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; }
+    .ops-org-bar-top b { color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ops-org-bar-top span { color:#64748b; font-weight:850; white-space:nowrap; }
+    .ops-detail-card { min-height:626px; height:626px; }
+    .ops-detail-card .ops-card-body { overflow:hidden; min-height:0; }
+    .ops-skill-table-wrap { height:100%; overflow:auto; padding-right:4px; }
+    .ops-skill-table .table { min-width:720px; }
+    .ops-skill-table td:nth-child(2) { color:#64748b; line-height:1.55; }
+    .ops-detail-title strong { color:#0f172a; }
+    .ops-detail-title p { margin:4px 0 0; color:#64748b; font-size:12px; }
+    @media (max-width:1180px){ .ops-detail-card { height:auto; min-height:420px; } .ops-left-stack .ops-card:first-child { height:360px; } }
+
+    /* Ops board final alignment: default selected first department, right table aligns with left stack */
+    .ops-main-grid { align-items:stretch; grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .ops-left-stack { height:660px; min-height:660px; grid-template-rows:minmax(0,1fr) 276px; }
+    .ops-left-stack .ops-card { min-height:0; height:auto; }
+    .ops-left-stack .ops-card:first-child { height:auto; min-height:0; }
+    .ops-left-stack .ops-card:first-child .ops-card-body,
+    .ops-left-stack .ops-card:nth-child(2) .ops-card-body { min-height:0; overflow:hidden; }
+    .ops-left-stack .ops-card:first-child .ops-tree { height:100%; max-height:none; overflow-y:auto; overflow-x:hidden; }
+    .ops-org-bars { height:100%; max-height:none; overflow:auto; }
+    .ops-detail-card { height:660px; min-height:660px; }
+    .ops-detail-card .ops-card-body { min-height:0; height:100%; overflow:hidden; }
+    .ops-skill-table { height:100%; min-height:0; }
+    .ops-skill-table-wrap { height:100%; max-height:100%; overflow:auto; }
+    .ops-tree-node.active, .ops-org-bar.active { box-shadow:inset 3px 0 0 #2563eb; }
+    @media (max-width:1180px){ .ops-left-stack,.ops-detail-card { height:620px; min-height:620px; } .ops-left-stack { grid-template-rows:minmax(0,1fr) 250px; } }
+
+    /* Ops board alignment fix: left stack and right detail table same height; right side shows table only */
+    .ops-main-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:stretch; }
+    .ops-main-grid > .ops-left-stack { height:660px; min-height:660px; display:grid; grid-template-rows:minmax(0,1fr) 276px; gap:16px; }
+    .ops-main-grid > .ops-detail-card { height:660px; min-height:660px; display:flex; flex-direction:column; align-self:stretch; }
+    .ops-main-grid > .ops-detail-card .ops-card-head { display:none; }
+    .ops-main-grid > .ops-detail-card .ops-card-body { padding:0; flex:1 1 auto; min-height:0; overflow:hidden; }
+    .ops-main-grid > .ops-detail-card .ops-skill-table { height:100%; min-height:0; }
+    .ops-main-grid > .ops-detail-card .ops-skill-table-wrap { height:100%; max-height:100%; overflow:auto; padding:0; }
+    .ops-main-grid > .ops-detail-card .table { border:0; border-radius:12px; min-width:720px; }
+    .ops-main-grid > .ops-detail-card .table th { position:sticky; top:0; z-index:1; }
+    @media (max-width:1180px){
+      .ops-main-grid > .ops-left-stack,
+      .ops-main-grid > .ops-detail-card { height:620px; min-height:620px; }
+      .ops-main-grid > .ops-left-stack { grid-template-rows:minmax(0,1fr) 250px; }
+    }
+
+    /* Ops board paired alignment: department row aligns with department detail, org row aligns with org detail */
+    .ops-main-grid { display:block; }
+    .ops-board-rows { display:grid; gap:16px; }
+    .ops-pair-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:stretch; }
+    .ops-pair-row.dept-row > .ops-card { height:400px; min-height:400px; }
+    .ops-pair-row.org-row > .ops-card { height:300px; min-height:300px; }
+    .ops-pair-row > .ops-card { display:flex; flex-direction:column; }
+    .ops-pair-row > .ops-card .ops-card-head { flex:0 0 auto; min-height:76px; display:flex; }
+    .ops-pair-row > .ops-card .ops-card-body { flex:1 1 auto; min-height:0; overflow:hidden; }
+    .ops-pair-row .ops-tree.board-org-tree,
+    .ops-pair-row .ops-org-bars,
+    .ops-pair-row .ops-skill-table,
+    .ops-pair-row .ops-skill-table-wrap { height:100%; max-height:100%; min-height:0; overflow:auto; }
+    .ops-pair-row .ops-skill-table-wrap { padding:0; }
+    .ops-pair-row .ops-skill-table .table { min-width:720px; border-radius:8px; }
+    .ops-pair-row .ops-skill-table .table th { position:sticky; top:0; z-index:2; }
+    .ops-top-card { min-height:260px; }
+    .ops-top-card .ops-card-body { overflow:auto; }
+    .ops-skill-detail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .ops-skill-detail-head h3 { margin:0; font-size:17px; letter-spacing:-.03em; }
+    .ops-skill-detail-head p { margin:4px 0 0; color:#64748b; font-size:12px; }
+    @media (max-width:1180px){ .ops-pair-row { grid-template-columns:1fr; } .ops-pair-row.dept-row > .ops-card,.ops-pair-row.org-row > .ops-card { height:360px; min-height:360px; } }
+
+    /* Remove detail card heads: right-side dept/org detail cards show table directly */
+    .ops-pair-row > .ops-detail-table-card .ops-card-body { padding:0; }
+    .ops-pair-row > .ops-detail-table-card .ops-skill-table-wrap { padding:0; }
+    .ops-pair-row > .ops-detail-table-card .table { border:0; border-radius:12px; }
+
+    /* Skill detail tables: fixed name/download columns, single-line ellipsis, hover title for full text */
+    .ops-pair-row .ops-skill-table-wrap { overflow:auto; }
+    .ops-detail-table { table-layout:fixed; width:max-content; min-width:960px; }
+    .ops-detail-table th,
+    .ops-detail-table td { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+    .ops-detail-table .col-name { width:220px; min-width:220px; max-width:220px; }
+    .ops-detail-table .col-desc { width:480px; min-width:480px; max-width:480px; }
+    .ops-detail-table .col-owner { width:160px; min-width:160px; max-width:160px; }
+    .ops-detail-table .col-download { width:110px; min-width:110px; max-width:110px; text-align:right; }
+    .ops-detail-table .sticky-name { position:sticky; left:0; z-index:4; background:#fff; box-shadow:1px 0 0 #e5e7eb; }
+    .ops-detail-table .sticky-download { position:sticky; right:0; z-index:4; background:#fff; box-shadow:-1px 0 0 #e5e7eb; }
+    .ops-detail-table thead .sticky-name,
+    .ops-detail-table thead .sticky-download { z-index:7; background:#f8fafc; }
+    .ops-detail-table .cell-ellipsis { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+    .ops-detail-table .sticky-name .cell-ellipsis { font-weight:850; color:#0f172a; }
+    .ops-detail-table .sticky-download .cell-ellipsis { font-weight:850; color:#0f172a; text-align:right; }
+    .ops-detail-table tbody tr:hover .sticky-name,
+    .ops-detail-table tbody tr:hover .sticky-download { background:#f8fafc; }
+    /* Force sticky columns for horizontal scroll in Skill detail tables */
+    .ops-pair-row .ops-detail-table-card .ops-skill-table-wrap {
+      position:relative;
+      overflow:auto !important;
+    }
+    .ops-detail-table.table {
+      min-width:1180px !important;
+      width:1180px !important;
+      table-layout:fixed !important;
+      border-collapse:separate !important;
+      border-spacing:0 !important;
+      overflow:visible !important;
+    }
+    .ops-detail-table th,
+    .ops-detail-table td {
+      white-space:nowrap !important;
+      overflow:hidden !important;
+      text-overflow:ellipsis !important;
+    }
+    .ops-detail-table .col-name {
+      width:240px !important;
+      min-width:240px !important;
+      max-width:240px !important;
+    }
+    .ops-detail-table .col-desc {
+      width:610px !important;
+      min-width:610px !important;
+      max-width:610px !important;
+    }
+    .ops-detail-table .col-owner {
+      width:190px !important;
+      min-width:190px !important;
+      max-width:190px !important;
+    }
+    .ops-detail-table .col-download {
+      width:140px !important;
+      min-width:140px !important;
+      max-width:140px !important;
+      text-align:right !important;
+    }
+    .ops-detail-table th.sticky-name,
+    .ops-detail-table td.sticky-name {
+      position:sticky !important;
+      left:0 !important;
+      z-index:8 !important;
+      background:#fff !important;
+      box-shadow:2px 0 0 #e5e7eb !important;
+    }
+    .ops-detail-table th.sticky-download,
+    .ops-detail-table td.sticky-download {
+      position:sticky !important;
+      right:0 !important;
+      z-index:8 !important;
+      background:#fff !important;
+      box-shadow:-2px 0 0 #e5e7eb !important;
+    }
+    .ops-detail-table thead th.sticky-name,
+    .ops-detail-table thead th.sticky-download {
+      top:0 !important;
+      z-index:12 !important;
+      background:#f8fafc !important;
+    }
+    .ops-detail-table tbody tr:hover td.sticky-name,
+    .ops-detail-table tbody tr:hover td.sticky-download {
+      background:#f8fafc !important;
+    }
+    /* Polished Skill detail table */
+    .ops-detail-table-card {
+      background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);
+      border-color:#dfe7f2;
+      box-shadow:0 14px 30px rgba(15,23,42,.06);
+    }
+    .ops-pair-row > .ops-detail-table-card .ops-card-body {
+      padding:10px !important;
+      background:linear-gradient(180deg,#f8fbff 0%,#ffffff 100%);
+    }
+    .ops-pair-row .ops-detail-table-card .ops-skill-table-wrap {
+      border:1px solid #e6edf6;
+      border-radius:10px;
+      background:#fff;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.85);
+      scrollbar-color:#cbd5e1 transparent;
+    }
+    .ops-pair-row .ops-detail-table-card .ops-skill-table-wrap::-webkit-scrollbar { width:8px; height:8px; }
+    .ops-pair-row .ops-detail-table-card .ops-skill-table-wrap::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:999px; }
+    .ops-pair-row .ops-detail-table-card .ops-skill-table-wrap::-webkit-scrollbar-track { background:transparent; }
+    .ops-detail-table.table {
+      border:0 !important;
+      border-radius:0 !important;
+      background:#fff !important;
+    }
+    .ops-detail-table thead th {
+      height:44px;
+      padding:0 14px !important;
+      background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%) !important;
+      color:#334155 !important;
+      font-size:12px !important;
+      font-weight:900 !important;
+      letter-spacing:.02em;
+      border-bottom:1px solid #dce5f0 !important;
+    }
+    .ops-detail-table tbody td {
+      height:52px;
+      padding:0 14px !important;
+      border-bottom:1px solid #eef2f7 !important;
+      color:#334155;
+      font-size:13px;
+      background:#fff;
+    }
+    .ops-detail-table tbody tr:last-child td { border-bottom:0 !important; }
+    .ops-detail-table tbody tr:hover td { background:#f8fbff !important; }
+    .ops-detail-table th.sticky-name,
+    .ops-detail-table td.sticky-name {
+      background:#fff !important;
+      box-shadow:6px 0 12px -12px rgba(15,23,42,.35), 1px 0 0 #e5e7eb !important;
+    }
+    .ops-detail-table th.sticky-download,
+    .ops-detail-table td.sticky-download {
+      background:#fff !important;
+      box-shadow:-6px 0 12px -12px rgba(15,23,42,.35), -1px 0 0 #e5e7eb !important;
+    }
+    .ops-detail-table thead th.sticky-name,
+    .ops-detail-table thead th.sticky-download { background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%) !important; }
+    .ops-detail-table tbody tr:hover td.sticky-name,
+    .ops-detail-table tbody tr:hover td.sticky-download { background:#f8fbff !important; }
+    .skill-name-cell { display:flex; align-items:center; gap:10px; min-width:0; }
+    .skill-row-dot {
+      width:22px;
+      height:22px;
+      border-radius:8px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
+      background:#eff6ff;
+      color:#2563eb;
+      font-size:11px;
+      font-weight:900;
+    }
+    .desc-text { color:#64748b; }
+    .owner-pill {
+      max-width:100%;
+      display:inline-flex;
+      align-items:center;
+      height:26px;
+      padding:0 10px;
+      border-radius:999px;
+      background:#f8fafc;
+      border:1px solid #e2e8f0;
+      color:#475569;
+      font-size:12px;
+      font-weight:800;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      vertical-align:middle;
+    }
+    .download-pill {
+      display:inline-flex;
+      justify-content:center;
+      min-width:54px;
+      height:26px;
+      align-items:center;
+      padding:0 9px;
+      border-radius:999px;
+      background:linear-gradient(135deg,#eff6ff,#eef2ff);
+      color:#1d4ed8;
+      border:1px solid #dbeafe;
+      font-size:12px;
+      font-weight:900;
+    }
+    /* Align table headers: center metadata columns, keep name left and downloads right */
+    .ops-detail-table thead th { text-align:center !important; }
+    .ops-detail-table thead th.sticky-name { text-align:left !important; }
+    .ops-detail-table thead th.sticky-download { text-align:right !important; }
+    .ops-detail-table thead th.col-desc .cell-ellipsis,
+    .ops-detail-table thead th.col-owner .cell-ellipsis { text-align:center !important; }
+    .ops-detail-table thead th.col-download .cell-ellipsis { text-align:right !important; }
+    .ops-detail-table tbody td.col-owner { text-align:center !important; }
+    .ops-detail-table tbody td.col-download { text-align:right !important; }
+    .ops-detail-table tbody td.col-owner .owner-pill { margin:0 auto; }
+    .ops-detail-table tbody td.col-download .download-pill { margin-left:auto; }
+    /* Skill detail table alignment: all headers and cells left-aligned */
+    .ops-detail-table thead th,
+    .ops-detail-table tbody td,
+    .ops-detail-table thead th.sticky-name,
+    .ops-detail-table thead th.sticky-download,
+    .ops-detail-table tbody td.col-owner,
+    .ops-detail-table tbody td.col-download {
+      text-align:left !important;
+    }
+    .ops-detail-table thead th .cell-ellipsis,
+    .ops-detail-table thead th.col-desc .cell-ellipsis,
+    .ops-detail-table thead th.col-owner .cell-ellipsis,
+    .ops-detail-table thead th.col-download .cell-ellipsis,
+    .ops-detail-table .sticky-download .cell-ellipsis {
+      text-align:left !important;
+    }
+    .ops-detail-table tbody td.col-owner .owner-pill,
+    .ops-detail-table tbody td.col-download .download-pill {
+      margin-left:0 !important;
+      margin-right:auto !important;
+    }
+    .ops-detail-table .col-download {
+      text-align:left !important;
+    }
+
+    /* Approval center: pending / completed tabs */
+    .approval-pane { display:none; }
+    .approval-pane.active { display:block; }
+    .approval-summary { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  </style>
+</head>
+<body onclick="closeMenus(event)">
+  <div class="market-shell">
+    <div class="topline">
+      <div class="breadcrumb"><span>研发平台</span><span>/</span><b>Skill 市场</b><span>/</span><span>唯一产品线</span></div>
+      <div class="role-switch">
+        <button class="role-btn active" data-role="user" onclick="switchRole('user')">普通用户视角</button>
+        <button class="role-btn" data-role="admin" onclick="switchRole('admin')">管理员视角</button>
+      </div>
+    </div>
+
+    <section class="hero">
+      <div class="hero-main">
+        <div>
+          <div class="eyebrow" id="heroEyebrow" style="display:none"></div>
+          <h1 id="heroTitle">把零散的日常作业经验沉淀成可复用的 Skill</h1>
+          <p id="heroDesc">Skill 是面向日常作业场景的可复用能力包。</p>
+          <div class="hero-actions" id="heroActions">
+            <button class="btn btn-primary" onclick="openModal('upload')">⬆ 上传 Skill</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <nav id="topTabs" class="top-tabs"></nav>
+
+    <div id="role-user" class="role-panel active">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-scope="user" data-tab="user-overview" onclick="switchTab('user-overview','user')">市场总览</button>
+        <button class="tab" data-scope="user" data-tab="user-my" onclick="switchTab('user-my','user')">我的发布</button>
+        <button class="tab" data-scope="user" data-tab="user-board" onclick="switchTab('user-board','user')">运营看板</button>
+      </div>
+
+      <section id="user-overview" class="section active">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2>市场总览</h2></div>
+            <button class="btn btn-primary" onclick="openModal('upload')">⬆ 上传 Skill</button>
+          </div>
+          <div class="panel-body">
+            <div class="summary-strip">
+              <span class="summary-item">Skill <b>9</b></span>
+              <span class="summary-item">累计下载 <b>48,260</b></span>
+            </div>
+            <div class="market-layout">
+              <aside class="market-sidebar">
+                <nav class="side-nav" data-side-group="user-market">
+                  <button class="side-nav-item active" onclick="applySideScope('all', false, this)"><span class="side-nav-icon">◇</span>全部 Skill</button>
+                  <button class="side-nav-item" onclick="applySideScope('level:个人级', false, this)"><span class="side-nav-icon">♙</span>个人级</button>
+                  <button class="side-nav-item" onclick="applySideScope('level:组织级', false, this)"><span class="side-nav-icon">▦</span>组织级</button>
+                </nav>
+                <div class="side-block">
+                  <div class="side-title">分类 <span class="side-help">?</span></div>
+                  <div class="side-tags" data-side-tags="user-category">
+                    <button class="side-tag active" onclick="applySideCategory('all', false, this)">全部</button>
+                    <button class="side-tag" onclick="applySideCategory('作业类', false, this)">作业类</button>
+                    <button class="side-tag" onclick="applySideCategory('业务类', false, this)">业务类</button>
+                    <button class="side-tag" onclick="applySideCategory('工具类', false, this)">工具类</button>
+                  </div>
+                </div>
+                <div class="side-block">
+                  <div class="side-title">标签 <span class="side-help">?</span></div>
+                  <div class="side-tags">
+                    <button class="side-tag" onclick="applySideKeyword('pdf', false, this)">pdf</button>
+                    <button class="side-tag" onclick="applySideKeyword('document', false, this)">document</button>
+                    <button class="side-tag" onclick="applySideKeyword('api', false, this)">api</button>
+                    <button class="side-tag" onclick="applySideKeyword('review', false, this)">review</button>
+                    <button class="side-tag" onclick="applySideKeyword('cicd', false, this)">cicd</button>
+                    <button class="side-tag" onclick="applySideKeyword('log', false, this)">log</button>
+                  </div>
+                </div>
+              </aside>
+              <div class="market-content">
+                <div class="filters">
+                  <input id="searchInput" class="input" placeholder="搜索 Skill 名称 / 描述 / 维护方" oninput="renderSkills()" />
+                  <select id="scopeFilter" class="select" onchange="setMarketScopeFromSelect(false)">
+                    <option value="all">筛选组织</option>
+                    <option value="org:IT装备部">IT装备部</option>
+                    <option value="org:质量工具组">质量工具组</option>
+                    <option value="org:平台工具组">平台工具组</option>
+                    <option value="org:云服务组">云服务组</option>
+                    <option value="org:SRE团队">SRE团队</option>
+                    <option value="org:测试开发组">测试开发组</option>
+                    <option value="org:数据开发组">数据开发组</option>
+                  </select>
+                  <select id="deptLevelFilter" class="select" onchange="updateDeptOptions(false); renderSkills()"><option value="all">分层筛选部门</option><option value="一级部门">一级部门</option><option value="二级部门">二级部门</option><option value="三级部门">三级部门</option><option value="四级部门">四级部门</option><option value="五级部门">五级部门</option><option value="六级部门">六级部门</option></select>
+                  <select id="deptFilter" class="select" onchange="renderSkills()"><option value="all">选择具体部门</option></select>
+                </div>
+                <div id="cards" class="cards"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="user-my" class="section">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2>我的发布</h2></div>
+            <button class="btn btn-primary" onclick="openModal('upload')">上传新 Skill</button>
+          </div>
+          <div class="panel-body">
+            <div class="summary-strip">
+              <span class="summary-item">我维护的 Skill <b>8</b></span>
+              <span class="summary-item">审核中 <b>3</b></span>
+              <span class="summary-item">被驳回 <b>1</b></span>
+              <span class="summary-item">我的累计下载 <b>1,278</b></span>
+            </div>
+
+            <div class="section-toolbar">
+              <div class="mini-tabs">
+                <button class="mini-tab active">全部</button>
+                <button class="mini-tab">个人级</button>
+                <button class="mini-tab">组织级</button>
+                <button class="mini-tab">组织审核中</button>
+                <button class="mini-tab">组织已驳回</button>
+              </div>
+              <button class="btn btn-sm" onclick="openModal('newVersion')">上传已有 Skill 新版本</button>
+            </div>
+
+            <table class="table">
+              <thead><tr><th>Skill</th><th>当前层级</th><th>最新版本</th><th>状态</th><th>下载量</th><th>最近动作</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr class="clickable-row" onclick="openSkillDetail('skill-api','my')">
+                  <td><b>接口设计检查 Skill</b><div class="text-muted">作业类 · 作者：后端服务组</div></td>
+                  <td>组织级<br><span class="text-muted">质量工具组</span></td>
+                  <td>1.3.4<br><span class="text-muted">2026-04-22 14:30</span></td>
+                  <td><span class="badge green">组织级</span></td>
+                  <td>1,108</td>
+                  <td>已同步至公司组织</td>
+                  <td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('syncUpdate')">更新同步</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td>
+                </tr>
+                <tr class="clickable-row" onclick="openSkillDetail('skill-log','my')">
+                  <td><b>日志分析 Skill</b><div class="text-muted">工具类 · 作者：当前用户</div></td>
+                  <td>组织级<br><span class="text-muted">SRE团队</span></td>
+                  <td>1.0.0<br><span class="text-muted">2026-04-21 09:10</span></td>
+                  <td><span class="badge green">组织级</span></td>
+                  <td>128</td>
+                  <td>已同步至公司组织</td>
+                  <td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('syncUpdate')">更新同步</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td>
+                </tr>
+                <tr class="clickable-row" onclick="openSkillDetail('skill-pdf-personal','my')">
+                  <td><b>PDF 表格抽取 Skill</b><div class="text-muted">工具类 · 作者：当前用户</div></td>
+                  <td>个人级<br><span class="text-muted">个人空间</span></td>
+                  <td>0.8.2<br><span class="text-muted">2026-04-18 09:30</span></td>
+                  <td><span class="badge blue">个人级</span></td>
+                  <td>76</td>
+                  <td>可同步至公司组织</td>
+                  <td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('levelApply')">同步至公司组织</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td>
+                </tr>
+                <tr class="clickable-row" onclick="openSkillDetailInline('会议纪要 Skill','办公','个人级','同步组织审核中','0.9.0','当前用户','42','2026-04-19 17:42','my')">
+                  <td><b>会议纪要 Skill</b><div class="text-muted">业务类 · 作者：当前用户</div></td>
+                  <td>个人级<br><span class="text-muted">同步组织审核中</span></td>
+                  <td>0.9.0<br><span class="text-muted">2026-04-19 17:42</span></td>
+                  <td><span class="badge orange">组织审核中</span></td>
+                  <td>42</td>
+                  <td>等待目标组织管理员审核</td>
+                  <td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('levelApply')">同步至公司组织</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td>
+                </tr>
+                <tr class="clickable-row" onclick="openSkillDetailInline('接口 Mock 生成 Skill','开发','个人','个人空间','1.1.0','当前用户','236','2026-04-18 11:20','my')">
+                  <td><b>接口 Mock 生成 Skill</b><div class="text-muted">作业类 · 作者：当前用户</div></td>
+                  <td>个人级<br><span class="text-muted">个人空间</span></td>
+                  <td>1.1.0<br><span class="text-muted">2026-04-18 11:20</span></td>
+                  <td><span class="badge red">组织已驳回</span></td>
+                  <td>236</td>
+                  <td>需补充复用数据和说明文档</td>
+                  <td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('levelApply')">同步至公司组织</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="user-board" class="section board-section"></section>
+    </div>
+
+    <div id="role-admin" class="role-panel">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-scope="admin" data-tab="admin-overview" onclick="switchTab('admin-overview','admin')">市场总览</button>
+        <button class="tab" data-scope="admin" data-tab="admin-my" onclick="switchTab('admin-my','admin')">我的发布</button>
+        <button class="tab" data-scope="admin" data-tab="admin-board" onclick="switchTab('admin-board','admin')">运营看板</button>
+        <button class="tab" data-scope="admin" data-tab="admin-org" onclick="switchTab('admin-org','admin')">组织管理</button>
+        <button class="tab" data-scope="admin" data-tab="admin-approval" onclick="switchTab('admin-approval','admin')">审核中心</button>
+      </div>
+
+      <section id="admin-overview" class="section active">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2>市场总览</h2></div>
+            <button class="btn btn-primary" onclick="openModal('upload')">⬆ 上传 Skill</button>
+          </div>
+          <div class="panel-body">
+            <div class="summary-strip">
+              <span class="summary-item">Skill <b>9</b></span>
+              <span class="summary-item">累计下载 <b>48,260</b></span>
+              <span class="summary-item">待审核 <b>12</b></span>
+            </div>
+            <div class="market-layout">
+              <aside class="market-sidebar">
+                <nav class="side-nav" data-side-group="admin-market">
+                  <button class="side-nav-item active" onclick="applySideScope('all', true, this)"><span class="side-nav-icon">◇</span>全部 Skill</button>
+                  <button class="side-nav-item" onclick="applySideScope('level:个人级', true, this)"><span class="side-nav-icon">♙</span>个人级</button>
+                  <button class="side-nav-item" onclick="applySideScope('level:组织级', true, this)"><span class="side-nav-icon">▦</span>组织级</button>
+                </nav>
+                <div class="side-block">
+                  <div class="side-title">分类 <span class="side-help">?</span></div>
+                  <div class="side-tags" data-side-tags="admin-category">
+                    <button class="side-tag active" onclick="applySideCategory('all', true, this)">全部</button>
+                    <button class="side-tag" onclick="applySideCategory('作业类', true, this)">作业类</button>
+                    <button class="side-tag" onclick="applySideCategory('业务类', true, this)">业务类</button>
+                    <button class="side-tag" onclick="applySideCategory('工具类', true, this)">工具类</button>
+                  </div>
+                </div>
+                <div class="side-block">
+                  <div class="side-title">标签 <span class="side-help">?</span></div>
+                  <div class="side-tags">
+                    <button class="side-tag" onclick="applySideKeyword('pdf', true, this)">pdf</button>
+                    <button class="side-tag" onclick="applySideKeyword('document', true, this)">document</button>
+                    <button class="side-tag" onclick="applySideKeyword('api', true, this)">api</button>
+                    <button class="side-tag" onclick="applySideKeyword('review', true, this)">review</button>
+                    <button class="side-tag" onclick="applySideKeyword('cicd', true, this)">cicd</button>
+                    <button class="side-tag" onclick="applySideKeyword('log', true, this)">log</button>
+                  </div>
+                </div>
+              </aside>
+              <div class="market-content">
+                <div class="filters">
+                  <input id="adminSearchInput" class="input" placeholder="搜索 Skill 名称 / 描述 / 维护方" oninput="renderAdminCards()" />
+                  <select id="adminScopeFilter" class="select" onchange="setMarketScopeFromSelect(true)">
+                    <option value="all">筛选组织</option>
+                    <option value="org:IT装备部">IT装备部</option>
+                    <option value="org:质量工具组">质量工具组</option>
+                    <option value="org:平台工具组">平台工具组</option>
+                    <option value="org:云服务组">云服务组</option>
+                    <option value="org:SRE团队">SRE团队</option>
+                    <option value="org:测试开发组">测试开发组</option>
+                    <option value="org:数据开发组">数据开发组</option>
+                  </select>
+                  <select id="adminDeptLevelFilter" class="select" onchange="updateDeptOptions(true); renderAdminCards()"><option value="all">分层筛选部门</option><option value="一级部门">一级部门</option><option value="二级部门">二级部门</option><option value="三级部门">三级部门</option><option value="四级部门">四级部门</option><option value="五级部门">五级部门</option><option value="六级部门">六级部门</option></select>
+                  <select id="adminDeptFilter" class="select" onchange="renderAdminCards()"><option value="all">选择具体部门</option></select>
+                </div>
+                <div id="adminCards" class="cards"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="admin-my" class="section">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2>我的发布</h2></div>
+            <button class="btn btn-primary" onclick="openModal('upload')">上传 Skill</button>
+          </div>
+          <div class="panel-body">
+            <div class="summary-strip">
+              <span class="summary-item">我维护的 Skill <b>6</b></span>
+              <span class="summary-item">审核中 <b>2</b></span>
+              <span class="summary-item">我的累计下载 <b>2,036</b></span>
+            </div>
+            <div class="section-toolbar">
+              <div class="mini-tabs">
+                <button class="mini-tab active">全部</button>
+                <button class="mini-tab">个人级</button>
+                <button class="mini-tab">组织级</button>
+                <button class="mini-tab">组织审核中</button>
+              </div>
+              <button class="btn btn-sm" onclick="openModal('newVersion')">上传已有 Skill 新版本</button>
+            </div>
+            <table class="table">
+              <thead><tr><th>Skill</th><th>当前层级</th><th>最新版本</th><th>状态</th><th>下载量</th><th>最近动作</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr class="clickable-row" onclick="openSkillDetailInline('自动化巡检 Skill','维护','组织级','IT装备部','1.2.0','当前管理员','980','2026-04-21 10:00','my')"><td><b>自动化巡检 Skill</b><div class="text-muted">工具类 · 作者：当前管理员</div></td><td>组织级<br><span class="text-muted">IT装备部</span></td><td>1.2.0<br><span class="text-muted">2026-04-21 10:00</span></td><td><span class="badge green">组织级</span></td><td>980</td><td>已同步至公司组织</td><td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('syncUpdate')">更新同步</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td></tr>
+                <tr class="clickable-row" onclick="openSkillDetail('skill-design','my')"><td><b>技术方案评审 Skill</b><div class="text-muted">作业类 · 作者：当前管理员</div></td><td>组织级<br><span class="text-muted">架构组</span></td><td>1.0.1<br><span class="text-muted">2026-04-20 16:12</span></td><td><span class="badge green">组织级</span></td><td>712</td><td>已同步至公司组织</td><td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('syncUpdate')">更新同步</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td></tr>
+                <tr class="clickable-row" onclick="openSkillDetailInline('发布检查 Skill','测试','个人级','同步组织审核中','0.8.0','当前管理员','344','2026-04-19 15:06','my')"><td><b>发布检查 Skill</b><div class="text-muted">作业类 · 作者：当前管理员</div></td><td>个人级<br><span class="text-muted">同步组织审核中</span></td><td>0.8.0<br><span class="text-muted">2026-04-19 15:06</span></td><td><span class="badge orange">组织审核中</span></td><td>344</td><td>等待目标组织管理员审核</td><td onclick="event.stopPropagation()"><button class="btn btn-sm" onclick="openModal('newVersion')">新版本</button> <button class="btn btn-sm" onclick="openModal('levelApply')">同步至公司组织</button> <button class="btn btn-sm" onclick="openModal('auditRecord')">记录</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="admin-board" class="section board-section"></section>
+
+      <section id="admin-org" class="section">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2>组织管理</h2><p>配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill 市场的管理员角色。</p></div>
+            <button class="btn btn-primary" onclick="openModal('orgCreate')">新建组织</button>
+          </div>
+          <div class="panel-body">
+            <div class="summary-strip">
+              <span class="summary-item">组织 <b>7</b></span>
+              <span class="summary-item">组织管理员 <b>12</b></span>
+            </div>
+            <table class="table">
+              <thead><tr><th>组织名称</th><th>组织 ID</th><th>组织管理员</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td><b>IT装备部</b></td><td>ORG-IT-001</td><td>it_admin_a,it_admin_b</td><td><span class="badge green">启用</span></td><td><button class="btn btn-sm" onclick="openModal('orgEdit')">配置</button></td></tr>
+                <tr><td><b>质量工具组</b></td><td>ORG-QA-002</td><td>qa_admin_a,qa_admin_b</td><td><span class="badge green">启用</span></td><td><button class="btn btn-sm" onclick="openModal('orgEdit')">配置</button></td></tr>
+                <tr><td><b>平台工具组</b></td><td>ORG-PLAT-003</td><td>plat_admin_a,plat_admin_b</td><td><span class="badge green">启用</span></td><td><button class="btn btn-sm" onclick="openModal('orgEdit')">配置</button></td></tr>
+                <tr><td><b>云服务组</b></td><td>ORG-CLOUD-004</td><td>cloud_admin_a,cloud_admin_b</td><td><span class="badge green">启用</span></td><td><button class="btn btn-sm" onclick="openModal('orgEdit')">配置</button></td></tr>
+                <tr><td><b>SRE团队</b></td><td>ORG-SRE-005</td><td>sre_admin_a,sre_admin_b</td><td><span class="badge green">启用</span></td><td><button class="btn btn-sm" onclick="openModal('orgEdit')">配置</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="admin-approval" class="section">
+        <div class="panel">
+          <div class="panel-header"><div><h2>审核中心</h2><p>个人级同步到组织级时，由目标组织名称的组织管理员审核。审核中心区分待审核和已完成。</p></div></div>
+          <div class="panel-body">
+            <div class="approval-summary">
+              <span class="summary-item">待审核 <b>2</b></span>
+              <span class="summary-item">已完成 <b>3</b></span>
+            </div>
+            <div class="section-toolbar">
+              <div class="mini-tabs">
+                <button class="mini-tab active" data-approval-tab="pending" onclick="switchApprovalTab('pending', this)">待审核</button>
+                <button class="mini-tab" data-approval-tab="done" onclick="switchApprovalTab('done', this)">已完成</button>
+              </div>
+            </div>
+            <div id="approval-pending" class="approval-pane active">
+              <table class="table">
+                <thead><tr><th>申请单</th><th>类型</th><th>目标层级</th><th>目标组织</th><th>申请理由</th><th>当前审核人</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr><td><b>日志分析 Skill</b></td><td>同步至公司组织</td><td>组织级</td><td>SRE团队</td><td>已在个人级完成使用验证，下载 128 次，希望沉淀到 SRE团队统一排障使用。<br><span class="text-muted">首版手动评审；后续接入评测集与代码仓门禁。</span></td><td>SRE团队组织管理员</td><td><button class="btn btn-sm" onclick="openModal('approval')">审核</button></td></tr>
+                  <tr><td><b>接口 Mock 生成 Skill</b></td><td>同步至公司组织</td><td>组织级</td><td>平台工具组</td><td>已在个人级快速验证，可复用到接口联调场景。<br><span class="text-muted">首版手动评审；后续接入评测集与代码仓门禁。</span></td><td>平台工具组组织管理员</td><td><button class="btn btn-sm" onclick="openModal('approval')">审核</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="approval-done" class="approval-pane">
+              <table class="table">
+                <thead><tr><th>申请单</th><th>类型</th><th>目标层级</th><th>目标组织</th><th>审核结果</th><th>审核意见</th><th>完成时间</th></tr></thead>
+                <tbody>
+                  <tr><td><b>接口设计检查 Skill</b></td><td>同步至公司组织</td><td>组织级</td><td>质量工具组</td><td><span class="badge green">通过</span></td><td>复用场景明确，已具备组织级沉淀价值。</td><td>2026-04-22 15:20</td></tr>
+                  <tr><td><b>PDF 表格抽取 Skill</b></td><td>同步至公司组织</td><td>组织级</td><td>PDF处理小组</td><td><span class="badge red">不通过</span></td><td>缺少评测样例和复用数据，需补充后重新提交。</td><td>2026-04-21 18:06</td></tr>
+                  <tr><td><b>会议纪要 Skill</b></td><td>同步至公司组织</td><td>组织级</td><td>产品运营一组</td><td><span class="badge green">通过</span></td><td>适用范围清晰，可先在目标组织内发布。</td><td>2026-04-20 11:42</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header"><h3 id="modalTitle">操作</h3><button class="btn btn-sm" onclick="hideModal()">关闭</button></div>
+      <div id="modalBody" class="modal-body"></div>
+      <div class="modal-footer"><button class="btn" onclick="hideModal()">取消</button><button class="btn btn-primary" onclick="submitModal()">提交</button></div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const existingNames = ['Java 代码 Review 助手','CI/CD 失败分析 Skill','接口设计检查 Skill','迭代周报生成 Skill','日志分析 Skill'];
+    const skills = [
+      {id:'skill-review',name:'Java 代码 Review 助手',desc:'根据部门编码规范进行 MR Review，输出修改建议和测试建议。',level:'组织级',scenario:'开发',org:'IT装备部',dept:'平台工具组',version:'2.0.1',owner:'开发一部',target:'GitLab MR 平台',downloads:'8420',rating:'4.8',badges:['组织级','开发'],companyPublished:true,license:'Apache-2.0',requirements:'需要 JDK 17+ 和 GitLab API Token',category:'code-review',tags:'java review gitlab',relatedSkills:'unit-test-generator api-design-check'},
+      {id:'skill-ci',name:'CI/CD 失败分析 Skill',desc:'自动解析构建日志，识别依赖、编译、测试、镜像构建和部署失败原因。',level:'组织级',scenario:'维护',org:'云服务组',dept:'云服务组',version:'1.6.1',owner:'DevOps 组',target:'Jenkins / ArgoCD',downloads:'6980',rating:'4.6',badges:['组织级','维护'],companyPublished:true,license:'Apache-2.0',requirements:'需要 Jenkins API、Python 3.10+',category:'devops-ci',tags:'cicd jenkins log',relatedSkills:'log-analyzer release-check'},
+      {id:'skill-api',name:'接口设计检查 Skill',desc:'检查接口命名、错误码、分页、幂等性、兼容性和文档完整度。',level:'组织级',scenario:'设计',org:'质量工具组',dept:'质量工具组',version:'1.3.4',owner:'后端服务组',target:'研发工作台 / API 文档平台',downloads:'6210',rating:'4.5',badges:['组织级','设计'],companyPublished:true,license:'Apache-2.0',requirements:'需要 OpenAPI 3.0 文档或接口说明',category:'api-design',tags:'api design review',relatedSkills:'generating-reports mock-generator'},
+      {id:'skill-weekly',name:'迭代周报生成 Skill',desc:'汇总需求、缺陷、风险和发布进度，生成开发部周报与 PDU 例会材料。',level:'组织级',scenario:'办公',org:'平台工具组',dept:'产品运营一组',version:'1.1.0',owner:'项目管理组',target:'研发工作台 / Jira / 禅道',downloads:'3960',rating:'4.4',badges:['组织级','办公'],companyPublished:false,license:'Apache-2.0',requirements:'需要 Jira 或禅道数据导出',category:'office-report',tags:'weekly report jira',relatedSkills:'meeting-summary generating-reports'},
+      {id:'skill-log',name:'日志分析 Skill',desc:'面向日常维护的日志聚类、异常摘要和问题定位辅助能力。',level:'个人级',scenario:'维护',org:'个人空间',companyOrg:'SRE团队',dept:'日志分析小组',version:'1.0.0',owner:'当前用户',target:'本地 / 研发工作台',downloads:'128',rating:'4.2',badges:['个人','维护'],companyPublished:true,license:'Apache-2.0',requirements:'需要 Python 3.10+ 和日志文件访问权限',category:'utility-log',tags:'log ops maintenance',relatedSkills:'cicd-debug release-check'},
+      {id:'skill-design',name:'技术方案评审 Skill',desc:'检查方案完整性、接口影响、数据依赖和发布风险。',level:'组织级',scenario:'设计',org:'架构组',dept:'智能终端产品部',version:'1.0.1',owner:'架构组',target:'研发工作台',downloads:'4250',rating:'4.7',badges:['组织级','设计'],companyPublished:true,license:'Apache-2.0',requirements:'需要技术方案文档或架构设计说明',category:'architecture-review',tags:'architecture design review',relatedSkills:'api-design-check risk-review'},
+      {id:'skill-meeting',name:'会议纪要 Skill',desc:'根据会议录音或会议记录生成结构化纪要、行动项和待跟进事项。',level:'个人级',scenario:'办公',org:'个人空间',dept:'产品运营一组',version:'0.9.0',owner:'当前用户',target:'本地 / 办公文档',downloads:'42',rating:'4.1',badges:['个人','办公'],companyPublished:false,license:'Apache-2.0',requirements:'需要会议文本或语音转写结果',category:'office-meeting',tags:'meeting summary todo',relatedSkills:'weekly-report-generator'},
+      {id:'skill-mock',name:'接口 Mock 生成 Skill',desc:'根据接口说明快速生成 Mock 数据、示例响应和联调说明。',level:'个人级',scenario:'开发',org:'个人空间',dept:'服务端开发组',version:'1.1.0',owner:'当前用户',target:'本地 / API 文档平台',downloads:'236',rating:'4.3',badges:['个人','开发'],companyPublished:false,license:'Apache-2.0',requirements:'需要接口字段定义或 OpenAPI 片段',category:'api-mock',tags:'api mock backend',relatedSkills:'api-design-check'},
+      {id:'skill-pdf-personal',name:'PDF 表格抽取 Skill',desc:'从 PDF 报告中抽取表格并整理成结构化数据，适合个人日常资料处理。',level:'个人级',scenario:'办公',org:'个人空间',dept:'PDF处理小组',version:'0.8.2',owner:'当前用户',target:'本地文件处理',downloads:'76',rating:'4.0',badges:['个人','工具'],companyPublished:false,license:'Apache-2.0',requirements:'需要 Python 3.10+ 和 pdfplumber 库',category:'utility-doc',tags:'pdf table extraction',relatedSkills:'pdf-document-extractor'}
+    ];
+
+    let currentRole = 'user';
+    let modalMode = 'upload';
+    let userSortMode = 'default';
+    let adminSortMode = 'default';
+    let userMarketScope = 'all';
+    let adminMarketScope = 'all';
+    const deptOptionsByLevel = {
+      '一级部门': ['云核装备经营管理部'],
+      '二级部门': ['智能终端产品部','装备运营产品部'],
+      '三级部门': ['物联开发部','质量工具组','平台工具组','云服务组'],
+      '四级部门': ['移动端开发组','服务端开发组','SRE团队','产品运营一组','新业务运营部'],
+      '五级部门': ['测试开发组','数据开发组','开发效能组'],
+      '六级部门': ['PDF处理小组','日志分析小组','API检查小组']
+    };
+
+    const heroConfig = {
+      user: { eyebrow:'Skill Market · 普通用户视角', title:'把你的日常作业经验沉淀成可复用的 Skill', desc:'Skill 是面向日常作业场景的可复用能力包，可以沉淀提示词、流程、脚本、规范和最佳实践，帮助大家更高效地完成开发、测试、维护、设计、办公等各类工作任务。欢迎大家创建、分享和持续优化自己的 Skill。', actions:[['⬆ 上传 Skill','btn btn-primary',"openModal('upload')"]], side:'Skill 流转', path:[['上传压缩包','个人级发布'],['同步至公司组织','组织级'],['管理员审核','对应组织管理员'],['用户下载','手动保存本地'],['新版本','从我的发布上传']] },
+      admin: { eyebrow:'Skill Market · 管理员视角', title:'在普通用户能力基础上增加审核与治理', desc:'管理员也是普通用户，可以上传、下载、查看我的发布和运营看板；同时额外拥有审核、组织管理等治理能力。', actions:[['审核中心','btn btn-primary',"switchTab('admin-approval','admin')"],['市场总览','btn btn-soft',"switchTab('admin-overview','admin')"]], side:'管理员治理路径', path:[['个人级','无需审核'],['同步至公司组织','组织管理员'],['组织级','公司系统归口']] }
+    };
+
+    const orgOptionsByLevel = {
+      all: ['个人空间','IT装备部','质量工具组','平台工具组','云服务组','SRE团队','测试开发组','数据开发组'],
+      '个人级': ['个人空间'],
+      '组织级': ['IT装备部','质量工具组','平台工具组','云服务组','SRE团队','测试开发组','数据开发组']
+    };
+    function fillOrgSelect(selectId, level, includeAll){
+      const select = document.getElementById(selectId);
+      if(!select) return;
+      const list = orgOptionsByLevel[level] || orgOptionsByLevel.all;
+      select.innerHTML = `${includeAll ? '<option value="all">全部组织</option>' : ''}` + list.map(v => `<option value="${v}">${v}</option>`).join('');
+    }
+    function updateOrgCascade(){
+      const level = document.getElementById('levelFilter')?.value || 'all';
+      fillOrgSelect('orgFilter', level, true);
+    }
+    function updateModalOrgCascade(levelSelectId, orgSelectId){
+      const level = document.getElementById(levelSelectId)?.value || '组织级';
+      fillOrgSelect(orgSelectId, level, false);
+    }
+
+    function badgeClass(text){ if(text.includes('组织级')) return 'green'; if(text.includes('个人')) return 'blue'; if(text.includes('审核') || text.includes('待')) return 'orange'; return 'blue'; }
+    function switchRole(role){ currentRole=role; document.querySelectorAll('.role-btn').forEach(b=>b.classList.toggle('active',b.dataset.role===role)); document.querySelectorAll('.role-panel').forEach(p=>p.classList.remove('active')); document.getElementById('role-'+role).classList.add('active'); renderHero(role); renderTopTabs(role, role==='user'?'user-overview':'admin-overview'); if(role==='user') switchTab('user-overview','user'); else switchTab('admin-overview','admin'); renderSkills(); renderAdminCards(); }
+    function renderHero(role){ document.getElementById('heroEyebrow').innerText=''; document.getElementById('heroTitle').innerHTML='把零散的日常作业经验沉淀成可复用的 Skill'; document.getElementById('heroDesc').innerText='Skill 是面向日常作业场景的可复用能力包，可以沉淀提示词、流程、脚本、规范和最佳实践，帮助大家更高效地完成开发、测试、维护、设计、办公等各类工作任务。欢迎大家创建、分享和持续优化自己的 Skill。'; document.getElementById('heroActions').innerHTML='<button class="btn btn-primary" onclick="openModal(\'upload\')">⬆ 上传 Skill</button>'; }
+    function topTabConfig(role){ return role==='user' ? [['市场总览','user-overview'],['我的发布','user-my'],['运营看板','user-board']] : [['市场总览','admin-overview'],['我的发布','admin-my'],['运营看板','admin-board'],['组织管理','admin-org'],['审核中心','admin-approval']]; }
+    function renderTopTabs(role=currentRole, activeId){ const el=document.getElementById('topTabs'); if(!el) return; el.innerHTML=topTabConfig(role).map(([label,id])=>`<button class="top-tab ${id===activeId?'active':''}" onclick="switchTab('${id}','${role}')">${label}</button>`).join(''); }
+    function switchTab(id,scope){ document.querySelectorAll(`.tab[data-scope="${scope}"]`).forEach(t=>t.classList.toggle('active',t.dataset.tab===id)); document.querySelectorAll(`#role-${scope} .section`).forEach(s=>s.classList.toggle('active',s.id===id)); renderTopTabs(scope,id); window.scrollTo({top:0,behavior:'smooth'}); }
+    function switchApprovalTab(type, btn){
+      document.querySelectorAll('#admin-approval .mini-tab').forEach(b=>b.classList.remove('active'));
+      btn?.classList.add('active');
+      document.querySelectorAll('#admin-approval .approval-pane').forEach(p=>p.classList.remove('active'));
+      document.getElementById(type==='done'?'approval-done':'approval-pending')?.classList.add('active');
+    }
+    function skillMenu(s){ return `<button class="menu-item" onclick="enterSkillTrial('${s.name}')">在线试用</button><button class="menu-item" onclick="download('${s.name}')">下载到本地</button>`; }
+    function getSkillFileTree(s){ return `${s.name}/
+├── SKILL.md
+├── skill.yaml
+├── README.md
+├── prompts/
+│   ├── system.md
+│   └── examples.md
+├── scripts/
+│   └── main.py
+├── assets/
+│   └── config.example.json
+└── tests/
+    └── sample_input.json`; }
+    function getCategoryGroup(s){ if(s.categoryGroup) return s.categoryGroup; const c=String(s.category||''); if(c.startsWith('utility-')) return '工具类'; if(c.includes('office') || c.includes('business')) return '业务类'; return '作业类'; }
+    function getSkillMarkdown(s, source='market'){ const isMy = source === 'my'; const actionName = isMy ? '在线调测' : '在线试用'; const actionDesc = isMy ? '进入 Skill 开发调测页面，通过自然语言继续调试 Skill，调试完成后在调测页点击发布。' : '进入在线试用页面，在不下载到本地的情况下体验 Skill 效果。'; return `<h1>${s.name}</h1><p>${s.desc}</p><h2>Metadata</h2><table class="metadata-table"><tr><th>author</th><td>${s.owner || '-'}</td></tr><tr><th>version</th><td>${s.version || '-'}</td></tr><tr><th>category</th><td>${s.category || '-'}</td></tr><tr><th>大类</th><td>${getCategoryGroup(s)}</td></tr><tr><th>requirements</th><td>${s.requirements || '-'}</td></tr><tr><th>tags</th><td>${s.tags || '-'}</td></tr></table><h2>分类信息</h2><ul><li>大类：${getCategoryGroup(s)}</li><li>主分类：${s.category || '-'}</li><li>适用层级：${effectiveLevel(s)} · ${effectiveOrg(s)}</li><li>维护人：${s.owner}</li></ul><h2>能力说明</h2><p>该 Skill 属于${getCategoryGroup(s)}，提供结构化输入、自动分析和结果输出能力。</p><h2>使用方式</h2><ul><li>可点击详情页顶部的 <code>${actionName}</code>。</li><li>${actionDesc}</li><li>也可以下载 Skill 压缩包到本地。</li></ul><h2>输入要求</h2><ul><li>输入内容需要包含任务背景、约束条件和期望输出。</li><li>如涉及代码、日志或设计文档，请提供完整上下文。</li></ul><h2>输出结果</h2><ul><li>结构化分析结果。</li><li>建议动作或修复方案。</li><li>必要时输出可复制的模板或脚本。</li></ul><h2>版本信息</h2><p>当前版本：<code>${s.version}</code>，最新发布时间：<code>${s.latestAt || '2026-04-22 14:30'}</code>。</p>`; }
+    function enterSkillDebug(name){ showToast(`进入 Skill 开发调测页面：${name}，可通过自然语言继续调试，调试完成后点击发布`); }
+    function enterSkillTrial(name){ showToast(`进入在线试用：${name}，可直接体验 Skill 效果`); }
+    function canPublishCompany(s){ return ['组织级'].includes(effectiveLevel(s)); }
+    function effectiveLevel(s){ return s.level==='个人级' && s.companyPublished ? '组织级' : s.level; }
+    function effectiveOrg(s){ return s.level==='个人级' && s.companyPublished ? (s.companyOrg || s.org) : s.org; }
+    function companyTag(s){
+      if(effectiveLevel(s)==='组织级') return `<span class="tag tag-company">组织级 · ${effectiveOrg(s)}</span>`;
+      return '';
+    }
+    function levelOrgTag(s){
+      if(companyTag(s)) return '';
+      if(s.level==='个人级') return '<span class="tag">个人级</span>';
+      return `<span class="tag">${s.level}</span>`;
+    }
+    function publishToCompany(name){ showToast(`已发起同步至公司组织：${name}`); }
+    function openSkillDetailData(s, source='market'){ const isMy = source === 'my'; const actionLabel = isMy ? '在线调测' : '在线试用'; const actionFn = isMy ? 'enterSkillDebug' : 'enterSkillTrial'; const companyAction = isMy && effectiveLevel(s)==='个人级' ? `<button class="btn btn-soft btn-sm" onclick="openModal('levelApply')">同步至公司组织</button>` : ''; modalMode='skillDetail'; document.getElementById('modalTitle').innerText='Skill 详情'; document.getElementById('modalBody').innerHTML=`<div class="detail-head"><div class="detail-meta"><span class="tag">${getCategoryGroup(s)}</span>${levelOrgTag(s)}<span class="tag tag-meta">${s.category || '未分类'}</span><span class="tag">版本 ${s.version}</span><span class="tag">作者 ${s.owner}</span>${companyTag(s)}<span class="meta-download" title="下载量"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="M8 10l4 4 4-4"></path><path d="M4 20h16"></path></svg><span>${s.downloads}</span></span></div><div class="detail-actions"><button class="btn btn-soft btn-sm" onclick="${actionFn}('${s.name}')">${actionLabel}</button>${companyAction}<button class="btn btn-primary btn-sm" onclick="download('${s.name}')">下载到本地</button></div></div><div class="detail-grid"><div class="detail-card"><h4>文件结构</h4><pre class="file-tree">${getSkillFileTree(s)}</pre></div><div class="detail-card"><h4>SKILL.md</h4><div class="markdown-preview">${getSkillMarkdown(s, source)}</div></div></div>`; document.getElementById('modalBackdrop').classList.add('show'); closeMenus({target:document.body}); }
+    function openSkillDetail(id, source='market'){ const s=skills.find(item=>item.id===id); if(!s) return; openSkillDetailData(s, source); }
+    function openSkillDetailInline(name, scenario, level, org, version, owner, downloads, latest, source='my', companyPublished=false){ openSkillDetailData({id:'inline',name,desc:`${name} 的能力说明和使用文档预览。`,level,scenario,org,version,owner,target:'',downloads:String(downloads),latestAt:latest,companyPublished}, source); }
+    function skillIconClass(s){ const c=getCategoryGroup(s); if(c==='业务类') return 'blue'; if(String(s.category||'').includes('api')) return 'green'; if(String(s.category||'').includes('ci')||String(s.category||'').includes('devops')) return 'orange'; if(String(s.category||'').includes('review')) return 'pink'; return 'purple'; }
+    function skillIconText(s){ if(String(s.category||'').includes('pdf')) return 'PDF'; if(String(s.category||'').includes('api')) return 'API'; if(String(s.category||'').includes('ci')) return '↗'; if(getCategoryGroup(s)==='业务类') return '☷'; if(String(s.category||'').includes('log')) return 'LOG'; return 'S'; }
+    function renderCard(s){ const latest=s.latestAt||'2024-05-20 10:30'; return `<article class="skill-card" onclick="openSkillDetail('${s.id}')"><div class="card-top"><div class="skill-icon ${skillIconClass(s)}">${skillIconText(s)}</div><div class="bookmark" title="收藏"><svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4z"></path></svg></div><div class="skill-main"><h3 class="skill-title" title="${s.name}">${s.name}</h3><div class="skill-subline">${s.owner} · ${effectiveOrg(s)}<br/>更新于 ${latest}</div><div class="tag-list"><span class="tag tag-meta">${getCategoryGroup(s)}</span>${levelOrgTag(s)}${companyTag(s)}<span class="meta-download" title="下载量"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="M8 10l4 4 4-4"></path><path d="M4 20h16"></path></svg><span>${s.downloads}</span></span></div></div><div class="menu-wrap" onclick="event.stopPropagation()"><button class="menu-btn" onclick="toggleMenu(event,'${s.id}')">⋯</button><div id="menu-${s.id}" class="menu">${skillMenu(s)}</div></div></div></article>`; }
+    function setQuickActive(btn){ const group=btn?.closest('.quick-entry'); if(!group) return; group.querySelectorAll('.quick-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+    function setSideActive(btn){ const group=btn?.closest('.market-sidebar'); if(!group) return; group.querySelectorAll('.side-nav-item').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+    function setSideTagActive(btn){ const group=btn?.closest('.side-tags'); if(!group) return; group.querySelectorAll('.side-tag').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+    function setMarketScopeFromSelect(isAdmin){ if(isAdmin){ adminMarketScope=document.getElementById('adminScopeFilter')?.value||'all'; renderAdminCards(); } else { userMarketScope=document.getElementById('scopeFilter')?.value||'all'; renderSkills(); } }
+    function updateDeptOptions(isAdmin){
+      const levelSelect=document.getElementById(isAdmin?'adminDeptLevelFilter':'deptLevelFilter');
+      const deptSelect=document.getElementById(isAdmin?'adminDeptFilter':'deptFilter');
+      if(!levelSelect||!deptSelect) return;
+      const level=levelSelect.value;
+      const list=deptOptionsByLevel[level]||[];
+      deptSelect.innerHTML='<option value="all">选择具体部门</option>'+list.map(name=>`<option value="dept:${name}">${name}</option>`).join('');
+    }
+    function applySideScope(scope, isAdmin, btn){ setSideActive(btn); if(isAdmin){ adminSortMode='default'; adminMarketScope=scope; const select=document.getElementById('adminScopeFilter'); if(select && (scope==='all'||scope.startsWith('org:'))) select.value=scope; renderAdminCards(); } else { userSortMode='default'; userMarketScope=scope; const select=document.getElementById('scopeFilter'); if(select && (scope==='all'||scope.startsWith('org:'))) select.value=scope; renderSkills(); } }
+    function applySideCategory(category, isAdmin, btn){ setSideTagActive(btn); const select=document.getElementById(isAdmin?'adminCategoryGroupFilter':'categoryGroupFilter'); if(select) select.value=category; isAdmin ? renderAdminCards() : renderSkills(); }
+    function applySideKeyword(keyword, isAdmin, btn){ const input=document.getElementById(isAdmin?'adminSearchInput':'searchInput'); if(input) input.value=keyword; if(btn){ btn.closest('.side-tags')?.querySelectorAll('.side-tag').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); } isAdmin ? renderAdminCards() : renderSkills(); }
+    function applySideCompany(isAdmin, btn){ setSideActive(btn); const input=document.getElementById(isAdmin?'adminSearchInput':'searchInput'); const scope=document.getElementById(isAdmin?'adminScopeFilter':'scopeFilter'); if(input) input.value='已同步至公司'; if(scope) scope.value='all'; isAdmin ? renderAdminCards() : renderSkills(); }
+    function applyQuickScope(scope, isAdmin, btn){ setQuickActive(btn); if(isAdmin){ adminSortMode='default'; const select=document.getElementById('adminScopeFilter'); if(select) select.value=scope; renderAdminCards(); } else { userSortMode='default'; const select=document.getElementById('scopeFilter'); if(select) select.value=scope; renderSkills(); } }
+    function applyQuickSort(mode, isAdmin, btn){ setQuickActive(btn); if(isAdmin){ adminSortMode=mode; renderAdminCards(); } else { userSortMode=mode; renderSkills(); } }
+    function applySort(list, mode){ const copy=[...list]; if(mode==='downloads') copy.sort((a,b)=>Number(b.downloads)-Number(a.downloads)); if(mode==='recent') copy.sort((a,b)=>String(b.latestAt||'2026-04-22 14:30').localeCompare(String(a.latestAt||'2026-04-22 14:30'))); return copy; }
+    function filteredSkills(){ const q=document.getElementById('searchInput')?.value.trim().toLowerCase()||''; const scope=userMarketScope||'all'; const deptValue=document.getElementById('deptFilter')?.value||'all'; const list=skills.filter(s=>{ const matchQ=!q||[s.name,s.desc,s.owner,s.target,s.org,s.companyOrg,s.dept].join(' ').toLowerCase().includes(q); const matchDept=deptValue==='all'||(`dept:${s.dept}`===deptValue); let matchScope=true; if(scope.startsWith('level:')) matchScope=effectiveLevel(s)===scope.replace('level:',''); if(scope.startsWith('org:')) matchScope=effectiveOrg(s)===scope.replace('org:',''); return matchQ&&matchDept&&matchScope; }); return applySort(list,userSortMode); }
+    function renderSkills(){ const cards=document.getElementById('cards'); if(!cards) return; const fs=filteredSkills(); cards.innerHTML=fs.length?fs.map(renderCard).join(''):'<div class="empty">没有匹配的 Skill，可调整筛选条件。</div>'; }
+    function filteredAdminSkills(){ const q=document.getElementById('adminSearchInput')?.value.trim().toLowerCase()||''; const scope=adminMarketScope||'all'; const deptValue=document.getElementById('adminDeptFilter')?.value||'all'; const list=skills.filter(s=>{ const matchQ=!q||[s.name,s.desc,s.owner,s.target,s.org,s.companyOrg,s.dept].join(' ').toLowerCase().includes(q); const matchDept=deptValue==='all'||(`dept:${s.dept}`===deptValue); let matchScope=true; if(scope.startsWith('level:')) matchScope=effectiveLevel(s)===scope.replace('level:',''); if(scope.startsWith('org:')) matchScope=effectiveOrg(s)===scope.replace('org:',''); return matchQ&&matchDept&&matchScope; }); return applySort(list,adminSortMode); }
+    function renderAdminCards(){ const admin=document.getElementById('adminCards'); if(admin){ const fs=filteredAdminSkills(); admin.innerHTML=fs.length?fs.map(renderCard).join(''):'<div class="empty">没有匹配的 Skill，可调整筛选条件。</div>'; } }
+    function toggleMenu(event,id){ event.stopPropagation(); document.querySelectorAll('.menu').forEach(m=>{ if(m.id!==`menu-${id}`) m.classList.remove('show'); }); document.getElementById(`menu-${id}`).classList.toggle('show'); }
+    function closeMenus(event){ if(event.target.closest('.menu-wrap')) return; document.querySelectorAll('.menu').forEach(m=>m.classList.remove('show')); }
+    function download(name){ showToast(`开始下载：${name}（需手动保存到本地）`); closeMenus({target:document.body}); }
+    function resetFilters(){ const search=document.getElementById('searchInput'); const scope=document.getElementById('scopeFilter'); const deptLevel=document.getElementById('deptLevelFilter'); const dept=document.getElementById('deptFilter'); if(search) search.value=''; if(scope) scope.value='all'; if(deptLevel) deptLevel.value='all'; if(dept) dept.innerHTML='<option value="all">选择具体部门</option>'; userMarketScope='all'; renderSkills(); showToast('筛选条件已重置'); }
+    const deptSkillData = [
+      {level:'一级部门', levelNo:1, dept:'云核装备经营管理部', parent:'-', count:146, downloads:209, top:['Java 代码 Review 助手','CI/CD 失败分析 Skill','接口设计检查 Skill','技术方案评审 Skill','迭代周报生成 Skill']},
+      {level:'二级部门', levelNo:2, dept:'智能终端产品部', parent:'云核装备经营管理部', count:61, downloads:93, top:['Java 代码 Review 助手','接口设计检查 Skill','代码安全检查 Skill','接口 Mock 生成 Skill','单测生成 Skill']},
+      {level:'二级部门', levelNo:2, dept:'装备运营产品部', parent:'云核装备经营管理部', count:4, downloads:4, top:['weekly-report-generator','会议纪要 Skill','需求摘要 Skill','排期风险识别 Skill']},
+      {level:'三级部门', levelNo:3, dept:'物联开发部', parent:'智能终端产品部', count:18, downloads:31, top:['Java 代码 Review 助手','接口 Mock 生成 Skill','单测生成 Skill','代码安全检查 Skill','接口规范 Skill']},
+      {level:'三级部门', levelNo:3, dept:'质量工具组', parent:'智能终端产品部', count:16, downloads:28, top:['接口设计检查 Skill','测试用例生成 Skill','发布检查 Skill','API 兼容性检查 Skill','文档补全 Skill']},
+      {level:'三级部门', levelNo:3, dept:'平台工具组', parent:'智能终端产品部', count:15, downloads:25, top:['Java 代码 Review 助手','代码安全检查 Skill','接口 Mock 生成 Skill','单测生成 Skill','分支合并检查 Skill']},
+      {level:'三级部门', levelNo:3, dept:'云服务组', parent:'智能终端产品部', count:12, downloads:20, top:['CI/CD 失败分析 Skill','服务部署检查 Skill','接口压测辅助 Skill','配置差异比对 Skill','容器日志摘要 Skill']},
+      {level:'四级部门', levelNo:4, dept:'移动端开发组', parent:'物联开发部', count:7, downloads:12, top:['interface-test-automator','端侧日志分析 Skill','Crash 摘要 Skill','版本说明 Skill','接口联调 Skill']},
+      {level:'四级部门', levelNo:4, dept:'服务端开发组', parent:'物联开发部', count:6, downloads:10, top:['api-design-check','sql-query-helper','接口规范 Skill','依赖分析 Skill','发布检查 Skill']},
+      {level:'四级部门', levelNo:4, dept:'SRE团队', parent:'云服务组', count:10, downloads:18, top:['log-analyzer','告警摘要 Skill','根因定位 Skill','巡检报告 Skill','故障复盘 Skill']},
+      {level:'四级部门', levelNo:4, dept:'产品运营一组', parent:'装备运营产品部', count:1, downloads:1, top:['weekly-report-generator']},
+      {level:'四级部门', levelNo:4, dept:'新业务运营部', parent:'装备运营产品部', count:1, downloads:1, top:['流程协同 Skill']},
+      {level:'五级部门', levelNo:5, dept:'测试开发组', parent:'质量工具组', count:9, downloads:14, top:['interface-test-automator','测试用例生成 Skill','自动化脚本 Skill','缺陷摘要 Skill','回归检查 Skill']},
+      {level:'五级部门', levelNo:5, dept:'数据开发组', parent:'云服务组', count:8, downloads:12, top:['sql-query-helper','数据校验 Skill','SQL Review Skill','指标口径 Skill','数据血缘 Skill']},
+      {level:'五级部门', levelNo:5, dept:'开发效能组', parent:'平台工具组', count:7, downloads:11, top:['code-review-assistant','MR 摘要 Skill','编码规范 Skill','依赖升级 Skill','版本说明 Skill']},
+      {level:'六级部门', levelNo:6, dept:'PDF处理小组', parent:'测试开发组', count:5, downloads:8, top:['pdf-document-extractor','表单抽取 Skill','文档合并 Skill','OCR 校验 Skill','报告生成 Skill']},
+      {level:'六级部门', levelNo:6, dept:'日志分析小组', parent:'SRE团队', count:4, downloads:6, top:['log-analyzer','日志聚类 Skill','异常摘要 Skill','错误码分析 Skill']},
+      {level:'六级部门', levelNo:6, dept:'API检查小组', parent:'质量工具组', count:4, downloads:5, top:['api-design-check','接口规范 Skill','OpenAPI 检查 Skill','接口变更 Skill']}
+    ];
+    const orgLevelSkillData = [
+      {org:'IT装备部', count:31, downloads:48, top:['Java 代码 Review 助手','接口设计检查 Skill','接口 Mock 生成 Skill']},
+      {org:'平台工程部', count:24, downloads:38, top:['CI/CD 失败分析 Skill','部署异常定位 Skill','容器日志摘要 Skill']},
+      {org:'质量工具组', count:16, downloads:28, top:['接口设计检查 Skill','测试用例生成 Skill','发布检查 Skill']},
+      {org:'平台工具组', count:15, downloads:25, top:['Java 代码 Review 助手','代码安全检查 Skill','单测生成 Skill']},
+      {org:'云服务组', count:12, downloads:20, top:['CI/CD 失败分析 Skill','服务部署检查 Skill','配置差异比对 Skill']},
+      {org:'SRE团队', count:10, downloads:18, top:['log-analyzer','告警摘要 Skill','根因定位 Skill']},
+      {org:'测试开发组', count:9, downloads:14, top:['interface-test-automator','自动化脚本 Skill','回归检查 Skill']},
+      {org:'数据开发组', count:8, downloads:12, top:['sql-query-helper','数据校验 Skill','SQL Review Skill']}
+    ];
+    const fuyaoSkillData = [
+      {org:'个人级沉淀', count:44, downloads:1280, top:['PDF 表格抽取 Skill','接口 Mock 生成 Skill','会议纪要 Skill']},
+      {org:'快速验证中', count:28, downloads:860, top:['日志分析 Skill','sql-query-helper','code-review-assistant']},
+      {org:'产线验证通过', count:21, downloads:720, top:['api-design-check','weekly-report-generator','CI/CD 失败分析 Skill']},
+      {org:'已同步公司组织', count:12, downloads:460, top:['Java 代码 Review 助手','接口设计检查 Skill','日志分析 Skill']}
+    ];
+    let selectedBoardDept = '云核装备经营管理部';
+    let boardRankMetric = 'count';
+    let boardSystem = 'fuyao';
+    const firstLevelDeptName = deptSkillData.find(d=>d.levelNo===1)?.dept || '云核装备经营管理部';
+    const expandedDeptSet = new Set([firstLevelDeptName]);
+    let selectedBoardTarget = { type:'dept', name:firstLevelDeptName };
+    let selectedBoardOrg = orgLevelSkillData[0]?.org || 'IT装备部';
+    function boardRoot(el){ return el?.closest('.board-section') || document.querySelector('.board-section.active') || document.querySelector('.board-section'); }
+    function updateBoardDeptOptions(el){ return; }
+    function hasDeptChildren(dept){ return deptSkillData.some(item=>item.parent===dept); }
+    function isDeptExpanded(dept){ return expandedDeptSet.has(dept); }
+    function toggleDeptExpand(dept, event){
+      if(event) event.stopPropagation();
+      if(expandedDeptSet.has(dept)) expandedDeptSet.delete(dept);
+      else expandedDeptSet.add(dept);
+      document.querySelectorAll('.board-section').forEach(el=>renderOrgTree(el));
+    }
+    function escapeHtml(str){ return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    function boardSkillRowsFromNames(names, scopeName, baseDownloads){
+      return names.map((name, idx)=>{
+        const matched=skills.find(s=>s.name===name || s.id===name || String(s.name).includes(name) || String(name).includes(s.name));
+        return {
+          name,
+          desc: matched?.desc || `面向${scopeName}场景的 Skill 能力，支撑日常作业提效与经验沉淀。`,
+          owner: matched?.owner || `${scopeName}维护人`,
+          downloads: matched ? Number(matched.downloads || 0) : Math.max(Number(baseDownloads || 0) - idx * 4, 1)
+        };
+      }).sort((a,b)=>b.downloads-a.downloads);
+    }
+    function getDeptBoardRows(){
+      const dept=deptSkillData.find(d=>d.dept===selectedBoardDept) || deptSkillData[0];
+      return {
+        title:`部门 Skill 明细 · ${dept.dept}`,
+        desc:'点击左侧任一部门层级后，当前表格显示该层级 Skill 明细，默认按下载量倒序。',
+        rows:boardSkillRowsFromNames(dept.top, dept.dept, dept.downloads)
+      };
+    }
+    function getOrgBoardRows(){
+      const org=orgLevelSkillData.find(d=>d.org===selectedBoardOrg) || orgLevelSkillData[0];
+      return {
+        title:`组织级 Skill 明细 · ${org.org}`,
+        desc:'点击左侧组织级横线条后，当前表格显示该组织级 Skill 明细，默认按下载量倒序。',
+        rows:boardSkillRowsFromNames(org.top, org.org, org.downloads)
+      };
+    }
+    function renderOneSkillTable(tableEl, detail){
+      if(!tableEl) return;
+      tableEl.innerHTML=`<div class="ops-skill-table-wrap"><table class="table ops-detail-table"><thead><tr><th class="col-name sticky-name"><span class="cell-ellipsis" title="Skill 名称">Skill 名称</span></th><th class="col-desc"><span class="cell-ellipsis" title="描述">描述</span></th><th class="col-owner"><span class="cell-ellipsis" title="发布人">发布人</span></th><th class="col-download sticky-download"><span class="cell-ellipsis" title="下载量">下载量</span></th></tr></thead><tbody>${detail.rows.map((row,idx)=>{ const downloads=Number(row.downloads).toLocaleString(); return `<tr><td class="col-name sticky-name"><div class="skill-name-cell"><span class="skill-row-dot">${idx+1}</span><span class="cell-ellipsis" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span></div></td><td class="col-desc"><span class="cell-ellipsis desc-text" title="${escapeHtml(row.desc)}">${escapeHtml(row.desc)}</span></td><td class="col-owner"><span class="owner-pill" title="${escapeHtml(row.owner)}">${escapeHtml(row.owner)}</span></td><td class="col-download sticky-download"><span class="download-pill" title="${downloads}">${downloads}</span></td></tr>`; }).join('')}</tbody></table></div>`;
+    }
+    function renderSkillDetailTable(root){
+      const deptDetail=getDeptBoardRows();
+      const orgDetail=getOrgBoardRows();
+      renderOneSkillTable(root.querySelector('.ops-dept-skill-table'), deptDetail);
+      renderOneSkillTable(root.querySelector('.ops-org-skill-table'), orgDetail);
+    }
+    function renderTopSkillList(root){
+      const wrap=root.querySelector('.ops-top-list'); if(!wrap) return;
+      const list=[...skills].sort((a,b)=>Number(b.downloads||0)-Number(a.downloads||0)).slice(0,6);
+      wrap.innerHTML=list.map((s,idx)=>`<div class="ops-top-item"><div class="ops-rank">${idx+1}</div><div><b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.owner)} · ${escapeHtml(effectiveOrg(s))}</small></div><div class="ops-download">${Number(s.downloads||0).toLocaleString()}</div></div>`).join('');
+    }
+    function renderOrgLevelBars(root){
+      const wrap=root.querySelector('.ops-org-bars'); if(!wrap) return;
+      const maxValue=Math.max(...orgLevelSkillData.map(d=>d.downloads),1);
+      wrap.innerHTML=orgLevelSkillData.map(d=>{
+        const active=selectedBoardOrg===d.org ? 'active' : '';
+        return `<div class="ops-org-bar ${active}" onclick="selectBoardOrg('${d.org}', this)"><div class="ops-org-bar-top"><b title="${d.org}">${d.org}</b><span>${d.count}个 · ${d.downloads}下载</span></div><div class="ops-bar-track"><span class="ops-bar-fill" style="width:${Math.round(d.downloads/maxValue*100)}%"></span></div></div>`;
+      }).join('');
+    }
+    function renderOrgTree(root){
+      const tree=root.querySelector('.board-org-tree'); if(!tree) return;
+      const childrenMap={};
+      deptSkillData.forEach(item=>{
+        const parent=item.parent || '-';
+        if(!childrenMap[parent]) childrenMap[parent]=[];
+        childrenMap[parent].push(item);
+      });
+      Object.keys(childrenMap).forEach(parent=>childrenMap[parent].sort((a,b)=>b.downloads-a.downloads));
+      function renderNodeList(parent){
+        const list=childrenMap[parent] || [];
+        return list.map(d=>{
+          const hasChildren=hasDeptChildren(d.dept);
+          const expanded=isDeptExpanded(d.dept);
+          const active=selectedBoardDept===d.dept ? 'active' : '';
+          const caret=hasChildren ? `<button class="ops-caret-btn" onclick="toggleDeptExpand('${d.dept}', event)">${expanded?'▾':'▸'}</button>` : `<span class="ops-caret-placeholder">•</span>`;
+          const childrenHtml=(hasChildren && expanded) ? `<div class="ops-tree-children">${renderNodeList(d.dept)}</div>` : '';
+          return `<div class="ops-tree-item"><div class="ops-tree-node lv${d.levelNo} ${active}" onclick="selectBoardDept('${d.dept}', this)">${caret}<span class="ops-tree-name">${d.dept}</span><span class="ops-tree-count">${d.count}个</span><span class="ops-tree-download">${d.downloads}下载</span></div>${childrenHtml}</div>`;
+        }).join('');
+      }
+      tree.innerHTML=renderNodeList('-');
+    }
+    function selectBoardDept(dept, el){ selectedBoardDept=dept; selectedBoardTarget={type:'dept', name:dept}; renderBoardData(el); }
+    function selectBoardOrg(org, el){ selectedBoardOrg=org; renderBoardData(el); }
+    function clearBoardDept(el){ selectedBoardDept=firstLevelDeptName; selectedBoardTarget={type:'dept', name:firstLevelDeptName}; renderBoardData(el); }
+    function setBoardRankMetric(metric, el){ boardRankMetric=metric; renderBoardData(el); }
+    function setBoardSystem(system, el){ boardSystem=system; renderBoardData(el); }
+    function ensureBoardDefaultSelection(){
+      if(!deptSkillData.some(d=>d.dept===selectedBoardDept)){
+        selectedBoardDept=firstLevelDeptName;
+        selectedBoardTarget={type:'dept', name:firstLevelDeptName};
+      }
+      if(!orgLevelSkillData.some(d=>d.org===selectedBoardOrg)) selectedBoardOrg=orgLevelSkillData[0]?.org || '';
+      if(!expandedDeptSet.has(firstLevelDeptName)) expandedDeptSet.add(firstLevelDeptName);
+    }
+    function renderBoardData(el){
+      ensureBoardDefaultSelection();
+      const root=boardRoot(el); if(!root) return;
+      const isCompany=boardSystem==='company';
+      const total=deptSkillData.reduce((sum,d)=>sum+d.count,0);
+      const downloads=deptSkillData.reduce((sum,d)=>sum+d.downloads,0);
+      const orgTotal=orgLevelSkillData.reduce((sum,d)=>sum+d.count,0);
+      const orgDownloads=orgLevelSkillData.reduce((sum,d)=>sum+d.downloads,0);
+      const kpis=root.querySelector('.ops-kpis');
+      if(kpis){
+        kpis.innerHTML=isCompany
+          ? `<div class="ops-kpi"><small>公司系统 Skill 数</small><strong>${orgTotal}</strong><span>目标系统统一管理的组织级 Skill</span></div><div class="ops-kpi"><small>组织级 Skill</small><strong>${orgTotal}</strong><span>已通过产线和公司发布验证</span></div><div class="ops-kpi"><small>关联部门数</small><strong>${orgLevelSkillData.length}</strong><span>组织级 Skill 归属部门</span></div><div class="ops-kpi"><small>累计下载量</small><strong>${orgDownloads.toLocaleString()}</strong><span>公司系统侧累计下载</span></div>`
+          : `<div class="ops-kpi"><small>扶摇 Skill 数</small><strong>${total}</strong><span>平台内沉淀和验证的 Skill 总量</span></div><div class="ops-kpi"><small>个人级 Skill</small><strong>44</strong><span>可灵活发布、沉淀和快速验证</span></div><div class="ops-kpi"><small>产线验证通过</small><strong>21</strong><span>已遵从产线发布验证标准</span></div><div class="ops-kpi"><small>累计下载量</small><strong>${downloads.toLocaleString()}</strong><span>扶摇系统侧累计下载</span></div>`;
+      }
+      root.querySelectorAll('.ops-system-toggle button').forEach(btn=>btn.classList.toggle('active', btn.dataset.system===boardSystem));
+      renderOrgTree(root);
+      renderOrgLevelBars(root);
+      renderSkillDetailTable(root);
+      renderTopSkillList(root);
+    }
+    function renderBoard(){
+      const html=`
+        <div class="ops-dashboard">
+          <div class="ops-title">
+            <div><h2>运营看板</h2><p>扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级 Skill。</p></div>
+            <div class="ops-filter"><div class="ops-toggle ops-system-toggle"><button class="active" data-system="fuyao" onclick="setBoardSystem('fuyao', this)">扶摇系统</button><button data-system="company" onclick="setBoardSystem('company', this)">公司系统</button></div><span class="ops-data-note">数据口径：T+1（统计数据延迟 1 天）</span><button class="btn btn-soft" onclick="openModal('excelImport')">Excel 导入</button></div>
+          </div>
+          <div class="ops-kpis"></div>
+          <div class="ops-main-grid">
+            <div class="ops-board-rows">
+              <div class="ops-pair-row dept-row">
+                <div class="ops-card">
+                  <div class="ops-card-head"><div><h3>部门 Skill 分布详情</h3><p>默认展开一级部门；点击任一部门层级后，右侧显示该层级 Skill 明细。</p></div></div>
+                  <div class="ops-card-body ops-tree board-org-tree"></div>
+                </div>
+                <div class="ops-card ops-detail-table-card">
+                  <div class="ops-card-body"><div class="ops-skill-table ops-dept-skill-table"></div></div>
+                </div>
+              </div>
+              <div class="ops-pair-row org-row">
+                <div class="ops-card">
+                  <div class="ops-card-head"><div><h3>组织级 Skill 分布详情</h3><p>默认选中第一个组织级数据；点击横向条目后，右侧显示该组织级 Skill 列表。</p></div></div>
+                  <div class="ops-card-body"><div class="ops-org-bars"></div></div>
+                </div>
+                <div class="ops-card ops-detail-table-card">
+                  <div class="ops-card-body"><div class="ops-skill-table ops-org-skill-table"></div></div>
+                </div>
+              </div>
+              <div class="ops-card ops-top-card">
+                <div class="ops-card-head"><div><h3>TOP Skill</h3><p>按下载量展示当前市场中使用最集中的 Skill。</p></div></div>
+                <div class="ops-card-body"><div class="ops-top-list"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      document.querySelectorAll('.board-section').forEach(el=>{ el.innerHTML=html; renderBoardData(el); });
+    }
+    function parseUploadOk(){
+      document.getElementById('parsedName').value='pdf-document-extractor';
+      document.getElementById('parsedDescription').value='从 PDF 文件中提取文本和表格、填充表单、合并文档。在处理 PDF 文件或用户提及 PDF、表单或文档提取时使用。';
+      document.getElementById('parsedRequirements').value='需要 Python 3.10+ 和 pdfplumber 库';
+      document.getElementById('parsedAuthor').value='组织名称';
+      document.getElementById('parsedVersion').value='1.0.0';
+      document.getElementById('parsedCategory').value='utility-doc';
+      document.getElementById('parsedTags').value='pdf document extraction';
+      document.getElementById('parsedLevel').value='个人级（默认发布，无需审核）';
+      document.getElementById('parseNotice').className='notice success';
+      document.getElementById('parseNotice').innerHTML='<b>解析成功：</b>已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，名称未重名。';
+    }
+    function parseUploadDuplicate(){
+      document.getElementById('parsedName').value='接口设计检查 Skill';
+      document.getElementById('parsedDescription').value='检查接口命名、错误码、分页、幂等性、兼容性和文档完整度。';
+      document.getElementById('parsedRequirements').value='需要 OpenAPI 3.0 文档或接口说明';
+      document.getElementById('parsedAuthor').value='后端服务组';
+      document.getElementById('parsedVersion').value='1.3.4';
+      document.getElementById('parsedCategory').value='api-design';
+      document.getElementById('parsedTags').value='api design review';
+      document.getElementById('parsedLevel').value='个人级（默认发布，无需审核）';
+      document.getElementById('parseNotice').className='notice error';
+      document.getElementById('parseNotice').innerHTML='<b>重名校验未通过：</b>市场内已存在“接口设计检查 Skill”。请修改 SKILL.md Front Matter 中的 name 后重新上传；如果你是维护人，请从“我的发布”进入“上传新版本”。';
+    }
+    function parseNewVersionOk(){
+      document.getElementById('newVersionParsedName').value='接口设计检查 Skill';
+      document.getElementById('newVersionParsedVersion').value='1.3.5';
+     
+      document.getElementById('newVersionNotice').className='notice success';
+      document.getElementById('newVersionNotice').innerHTML='<b>解析成功：</b>Skill 名称一致，版本号 1.3.5 高于当前最新版本 1.3.4，可提交为新版本。';
+    }
+    function openModal(mode){ modalMode=mode; const title=document.getElementById('modalTitle'); const body=document.getElementById('modalBody');
+      if(mode==='upload'){ title.innerText='上传 Skill'; body.innerHTML=`<div class="notice"><b>个人级上传规则：</b>后端会先解压压缩包并读取 <code>SKILL.md</code> 的 Front Matter，解析 name、description、requirements 以及 metadata 下的 author、version、category、tags。校验通过后，系统会保存压缩包和解析出的元数据，默认发布为个人级 Skill。</div><div class="upload-zone" onclick="parseUploadOk()"><div class="upload-icon">⬆</div><h3>上传 Skill 压缩包</h3><p>系统会自动解析 SKILL.md，回显可展示的基础信息；字段由文件解析生成，不需要用户手填。</p></div><div id="parseNotice" class="notice">等待上传：解析字段会自动回显且禁填。</div><div class="upload-result-card"><div class="upload-result-head"><b>解析结果</b><span>来自 SKILL.md Front Matter</span></div><div class="upload-result-body"><div class="upload-meta-grid"><div class="form-field"><label>name</label><input id="parsedName" class="input readonly" readonly value="等待解析" /></div><div class="form-field"><label>metadata.version</label><input id="parsedVersion" class="input readonly" readonly value="等待解析" /></div><div class="form-field full"><label>description</label><textarea id="parsedDescription" class="textarea readonly" readonly>等待解析</textarea></div><div class="form-field"><label>metadata.author</label><input id="parsedAuthor" class="input readonly" readonly value="等待解析" /></div><div class="form-field"><label>metadata.category</label><input id="parsedCategory" class="input readonly" readonly value="等待解析" /></div><div class="form-field full"><label>requirements</label><input id="parsedRequirements" class="input readonly" readonly value="等待解析" /></div><div class="form-field full"><label>metadata.tags</label><input id="parsedTags" class="input readonly" readonly value="可选，等待解析" /></div><div class="form-field"><label>默认发布层级</label><input id="parsedLevel" class="input readonly" readonly value="个人级（默认发布，无需审核）" /></div></div></div></div><div class="upload-actions"><button class="btn btn-soft" onclick="parseUploadDuplicate()">模拟重名</button></div>`; }
+      else if(mode==='excelImport'){ title.innerText='Excel 导入'; body.innerHTML=`<div class="notice"><b>导入说明：</b>用于批量导入或更新运营看板统计数据。支持导入部门 Skill 数量、下载量、组织级 Skill 数量等基础统计字段；导入后按 T+1 口径进入看板统计。</div><div class="upload-zone" onclick="showToast('已选择 Excel 文件：skill-board-data.xlsx')"><div class="upload-icon">📊</div><h3>上传 Excel 文件</h3><p>支持 .xlsx / .xls 文件，建议包含：部门名称、部门层级、Skill 数量、下载量、组织级 Skill 数量。</p></div><div class="form-grid"><div class="form-field"><label>导入类型</label><select class="select"><option>运营看板统计数据</option><option>部门 Skill 分布数据</option><option>组织级 Skill 分布数据</option></select></div><div class="form-field"><label>数据口径</label><input class="input readonly" readonly value="T+1（统计数据延迟 1 天）" /></div><div class="form-field full"><label>导入备注</label><textarea class="textarea" placeholder="可填写本次导入的数据来源、统计时间或说明"></textarea></div></div>`; }
+      else if(mode==='newVersion'){ title.innerText='上传已有 Skill 新版本'; body.innerHTML=`<div class="notice warning"><b>新版本规则：</b>不允许覆盖已有版本；名称必须和原 Skill 一致，版本号必须高于当前最新版本。新版本默认先发布为个人级，如需更高层级需重新申请升级。</div><div class="upload-zone" onclick="parseNewVersionOk()"><div class="upload-icon">⬆</div><h3>上传新版本压缩包</h3><p>后端解压后读取真实 Skill 名称和版本号，并校验名称一致、版本号提升。</p></div><div id="newVersionNotice" class="notice">等待上传：请上传已有 Skill 的新版本压缩包。</div><div class="form-grid"><div class="form-field"><label>原 Skill</label><input id="newVersionSkillName" class="input readonly" readonly value="接口设计检查 Skill" /></div><div class="form-field"><label>当前最新版本</label><input class="input readonly" readonly value="1.3.4" /></div><div class="form-field"><label>压缩包解析出的 Skill 名称</label><input id="newVersionParsedName" class="input readonly" readonly value="等待解析" /></div><div class="form-field"><label>压缩包解析出的版本</label><input id="newVersionParsedVersion" class="input readonly" readonly value="等待解析" /></div><div class="form-field"><label>默认发布层级</label><input class="input readonly" readonly value="个人级" /></div><div class="form-field full"><label>变更说明</label><textarea class="textarea" placeholder="说明本次新版本修改内容、兼容性影响和使用注意事项"></textarea></div></div>`; }
+      else if(mode==='levelApply'){ title.innerText='同步至公司组织'; body.innerHTML=`<div class="notice"><b>同步规则：</b>个人级 Skill 同步至公司组织后，将作为组织级 Skill 在公司系统中呈现，不再在个人级下重复展示。首版由对应组织管理员手动评审通过 / 不通过；长期预留代码仓门禁能力。</div><div class="form-grid"><div class="form-field"><label>当前 Skill</label><input class="input readonly" readonly value="日志分析 Skill" /></div><div class="form-field"><label>当前层级</label><input class="input readonly" readonly value="个人级" /></div><div class="form-field"><label>目标层级</label><input class="input readonly" readonly value="组织级" /></div><div class="form-field"><label>同步组织</label><select id="levelApplyOrg" class="select"><option>IT装备部</option><option>质量工具组</option><option>平台工具组</option><option>云服务组</option><option>SRE团队</option><option>测试开发组</option><option>数据开发组</option></select></div><div class="form-field"><label>评审方式</label><input class="input readonly" readonly value="首版：组织管理员手动评审" /></div><div class="form-field"><label>长期能力</label><input class="input readonly" readonly value="代码仓门禁" /></div><div class="form-field full"><label>同步说明</label><textarea class="textarea" placeholder="说明复用价值、使用数据、适用范围和维护责任"></textarea></div></div>`; }
+      else if(mode==='publishCompany'){ title.innerText='同步至公司组织'; body.innerHTML=`<div class="notice"><b>同步规则：</b>个人级 Skill 同步至公司组织后，将作为组织级 Skill 在公司系统中呈现，不再在个人级下重复展示。首版由对应组织管理员手动评审通过 / 不通过；后续接入评测集验证、代码仓门禁和安全检查。</div><div class="form-grid"><div class="form-field"><label>当前 Skill</label><select class="select"><option>接口设计检查 Skill</option><option>自动化巡检 Skill</option><option>技术方案评审 Skill</option></select></div><div class="form-field"><label>目标层级</label><input class="input readonly" readonly value="组织级" /></div><div class="form-field"><label>同步组织</label><select class="select"><option>IT装备部</option><option>质量工具组</option><option>平台工具组</option><option>云服务组</option><option>SRE团队</option></select></div><div class="form-field"><label>评审方式</label><input class="input readonly" readonly value="组织管理员手动评审" /></div><div class="form-field full"><label>同步说明</label><textarea class="textarea" placeholder="说明复用价值、使用数据、适用范围和维护责任"></textarea></div></div>`; }
+      else if(mode==='syncUpdate'){ title.innerText='更新同步至公司组织'; body.innerHTML=`<div class="notice"><b>更新同步规则：</b>已同步至公司组织的 Skill，在上传新版本或调整说明后，可将最新版本再次同步到原目标组织。更新同步仍由对应组织管理员评审，通过后更新组织级 Skill 的当前版本展示。</div><div class="form-grid"><div class="form-field"><label>当前 Skill</label><select class="select"><option>接口设计检查 Skill</option><option>日志分析 Skill</option><option>自动化巡检 Skill</option><option>技术方案评审 Skill</option></select></div><div class="form-field"><label>当前层级</label><input class="input readonly" readonly value="组织级" /></div><div class="form-field"><label>已同步组织</label><select class="select"><option>质量工具组</option><option>SRE团队</option><option>IT装备部</option><option>架构组</option></select></div><div class="form-field"><label>同步版本</label><input class="input readonly" readonly value="当前最新版本" /></div><div class="form-field"><label>评审方式</label><input class="input readonly" readonly value="组织管理员手动评审" /></div><div class="form-field"><label>同步类型</label><input class="input readonly" readonly value="更新同步" /></div><div class="form-field full"><label>更新说明</label><textarea class="textarea" placeholder="说明本次更新内容、影响范围、验证结果和是否兼容历史版本"></textarea></div></div>`; }
+      else if(mode==='versionPolicy'){ title.innerText='版本管理规则'; body.innerHTML=`<div class="notice"><b>推荐规则：</b>市场内 Skill 名称全局唯一；已有 Skill 更新必须走“上传新版本”，不支持重名覆盖。</div><table class="table"><thead><tr><th>场景</th><th>处理方式</th></tr></thead><tbody><tr><td>新名称上传</td><td>创建新 Skill，默认发布为个人级，无需审核</td></tr><tr><td>同名但不是维护人</td><td>拒绝，提示修改压缩包内 name 或联系维护人</td></tr><tr><td>同名且是维护人</td><td>从“我的发布”进入上传新版本，版本号必须提升</td></tr><tr><td>已存在版本</td><td>不允许覆盖</td></tr></tbody></table>`; }
+      else if(mode==='approval'){ title.innerText='审核同步申请'; body.innerHTML=`<div class="notice"><b>申请理由：</b>申请人认为该 Skill 已具备组织内复用价值，当前下载量和使用反馈较好，希望同步至目标组织统一维护。<br><b>评审方式：</b>首版为组织管理员手动评审；后续接入评测集验证、代码仓门禁和安全检查。</div><div class="form-grid"><div class="form-field"><label>申请类型</label><input class="input readonly" readonly value="同步至公司组织" /></div><div class="form-field"><label>申请人</label><input class="input readonly" readonly value="张三" /></div><div class="form-field"><label>目标层级</label><input class="input readonly" readonly value="组织级" /></div><div class="form-field"><label>目标组织</label><input class="input readonly" readonly value="SRE团队" /></div><div class="form-field full"><label>申请材料</label><textarea class="textarea readonly" readonly>1. 复用价值：已在个人级验证，可提升团队排障效率。
+2. 使用数据：累计下载 128 次，已有 6 名成员使用。
+3. 维护承诺：申请人继续作为维护人，负责后续版本更新。
+4. 适用范围：建议先在目标组织内发布。
+5. 评审预留：后续接入评测集验证、代码仓门禁和安全检查；首版先由组织管理员手动评审。</textarea></div><div class="form-field full"><label>审核结论</label><select class="select"><option>通过</option><option>不通过</option><option>补充材料</option></select></div><div class="form-field full"><label>审核意见</label><textarea class="textarea" placeholder="填写审核意见，例如通过原因、驳回原因或需补充的材料"></textarea></div></div>`; }
+      else if(mode==='orgCreate'){ title.innerText='新建组织'; body.innerHTML=`<div class="notice"><b>组织管理规则：</b>组织只配置组织名称、组织 ID 和组织管理员；组织管理员可配置多个，使用英文逗号分隔。配置在组织管理员名单内的用户，即拥有本 Skill 市场的管理员角色。</div><div class="form-grid"><div class="form-field"><label>组织名称</label><input class="input" placeholder="例如：IT装备部" /></div><div class="form-field"><label>组织 ID</label><input class="input" placeholder="例如：ORG-IT-001" /></div><div class="form-field full"><label>组织管理员</label><input class="input" placeholder="例如：it_admin_a,it_admin_b" /></div><div class="form-field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div></div>`; }
+      else if(mode==='orgEdit'){ title.innerText='配置组织'; body.innerHTML=`<div class="notice"><b>说明：</b>当前配置与组织管理列表字段保持一致。组织管理员支持配置多个，使用英文逗号分隔；名单内用户即拥有本 Skill 市场管理员角色。</div><div class="form-grid"><div class="form-field"><label>组织名称</label><input class="input" value="IT装备部" /></div><div class="form-field"><label>组织 ID</label><input class="input" value="ORG-IT-001" /></div><div class="form-field full"><label>组织管理员</label><input class="input" value="it_admin_a,it_admin_b" /></div><div class="form-field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div></div>`; }
+      else if(mode==='auditRecord'){ title.innerText='操作记录'; body.innerHTML=`<table class="table"><thead><tr><th>时间</th><th>动作</th><th>处理人</th><th>结果</th></tr></thead><tbody><tr><td>2026-04-22 14:30</td><td>上传新版本</td><td>当前用户</td><td><span class="badge green">成功</span></td></tr><tr><td>2026-04-22 15:10</td><td>同步至公司组织</td><td>组织管理员</td><td><span class="badge orange">组织审核中</span></td></tr><tr><td>2026-04-23 09:20</td><td>同步审核</td><td>SRE团队组织管理员</td><td><span class="badge blue">待处理</span></td></tr></tbody></table>`; }
+      document.getElementById('modalBackdrop').classList.add('show'); closeMenus({target:document.body}); }
+    function closeModal(event){ if(event.target.id==='modalBackdrop') hideModal(); }
+    function hideModal(){ document.getElementById('modalBackdrop').classList.remove('show'); }
+    function submitModal(){ if(modalMode==='upload'){ submitUpload(); return; } hideModal(); const messages={newVersion:'新版本已上传，默认沿用当前 Skill 层级与状态',levelApply:'同步至公司组织申请已提交',approval:'审核操作已保存',orgCreate:'组织已创建',orgEdit:'组织配置已保存',versionPolicy:'版本规则已确认',excelImport:'Excel 导入任务已提交',publishCompany:'同步至公司组织申请已提交',syncUpdate:'更新同步申请已提交',auditRecord:'记录已查看'}; showToast(messages[modalMode]||'已提交'); }
+    function submitUpload(){ const name=document.getElementById('parsedName')?.value||''; if(!name||name==='等待解析'){ showToast('请先上传并解析压缩包'); return; } if(existingNames.includes(name)){ showToast('检测到重名：请改名或从“我的发布”上传新版本'); return; } hideModal(); showToast('上传成功：压缩包已保存到文件服务，metadata 已入库，并默认发布为个人级 Skill'); }
+    function showToast(text){ const toast=document.getElementById('toast'); toast.innerText=text; toast.classList.add('show'); clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>toast.classList.remove('show'),2600); }
+
+    renderHero('user'); renderTopTabs('user','user-overview'); updateDeptOptions(false); updateDeptOptions(true); renderSkills(); renderAdminCards(); renderBoard();
+  </script>
+</body>
+</html>

@@ -1,9 +1,24 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
+import type {
+  OrganizationDto,
+  SkillDownloadSourcePage,
+  SkillListParamsDto,
+  SyncApplicationListItemDto,
+} from '../../services/skillMarket/apiTypes';
+import { apiRecordToSkill, skillListQueryToDto } from '../../services/skillMarket/mappers';
+import type { MarketDeptForestNode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import { mapDepartmentTreeDtoToForest } from '../../services/skillMarket/marketDeptTreeFromApi';
+import {
+  marketRoleCanCreateOrganization,
+  marketRoleShowsOpsAndReview,
+  marketRoleShowsOrgManagement,
+} from '../../services/skillMarket/roleUi';
 import type {
   OverviewQuickFilter,
   Skill,
@@ -11,18 +26,36 @@ import type {
   SkillUploadPayload,
   UserInnerTab,
 } from '../../types/skill';
-import companyOpsDashboardJson from '../../mock/opsDashboardCompanyDefault.json?raw';
-import fuyaoOpsDashboardJson from '../../mock/opsDashboardDefault.json?raw';
-import type { DeptTreeNode, OpsDashboardBundle, OpsSkillDetailRow } from '../../utils/opsExcelImport';
+import { emptyOpsDashboardBundle } from '../../services/skillMarket/mock/opsDashboardUiDefaults';
+import {
+  parseDeptNamePath,
+  type DeptTreeNode,
+  type OpsDashboardBundle,
+  type OpsSkillDetailRow,
+} from '../../utils/opsExcelImport';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 
 const store = useSkillMarketStore();
-const { skills, totalDownloads, totalSkills, downloadsLast30Days, orgCount } = store;
+const {
+  skills,
+  myPublishedSkills,
+  refreshMyPublishedSkills,
+  totalDownloads,
+  totalSkills,
+  downloadsLast30Days,
+  orgCount,
+  marketClient,
+  currentUserRole,
+} = store;
+
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const route = useRoute();
 const router = useRouter();
 
 const OVERVIEW_DEFAULT_VISIBLE_ROWS = 3;
 const OVERVIEW_MAX_PAGE_SIZE = 48;
+/** 标签数超过该值时默认折叠，可点「展开」拉高显示 */
+const OVERVIEW_TAGS_COLLAPSE_THRESHOLD = 10;
 
 const innerTabAliases: Record<string, UserInnerTab> = {
   overview: 'overview',
@@ -37,6 +70,12 @@ const innerTabAliases: Record<string, UserInnerTab> = {
   operation: 'ops',
   dashboard: 'ops',
   '运营看板': 'ops',
+  org: 'org',
+  '组织管理': 'org',
+  organization: 'org',
+  approval: 'approval',
+  '审核中心': 'approval',
+  review: 'approval',
 };
 
 function routeTabFromQuery(value: unknown): UserInnerTab {
@@ -76,19 +115,80 @@ function initialOverviewPageSize(): number {
 const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
 const uploadOpen = ref(false);
 const search = ref('');
-const levelFilter = ref('all'); // publish_name（筛选组织）
-const sceneFilter = ref('all'); // dept_name 层级（级联筛选：1~6）
-const deptFilter = ref('all'); // 当前层级下的具体部门
+/** Mock：组织展示名；HTTP：组织 id 字符串（对接 `orgId`） */
+const levelFilter = ref('all');
+/** 市场部门级联：路径各段对应 `departmentL1`～`departmentL6`（与设计文档 §3.3.3 一致，多字段 AND） */
+const overviewMarketDeptSegments = ref<string[]>([]);
+const overviewDeptCascaderOpen = ref(false);
+const marketDeptCascaderWrapRef = ref<HTMLElement | null>(null);
+const marketDeptCascaderPanelRef = ref<HTMLElement | null>(null);
+/** 级联面板挂到 body + fixed，按触发器靠左且不超出视口，避免撑开页面滚动容器 */
+const marketDeptPanelLayout = ref<{ left: number; top: number; maxWidth: number } | null>(null);
+let deptPanelScrollCleanup: (() => void) | null = null;
 const categoryFilter = ref('all');
 const selectedTags = ref<string[]>([]);
 const quickFilter = ref<OverviewQuickFilter>('all');
+/** 市场总览左侧标签区：标签过多时由用户展开 */
+const overviewTagListExpanded = ref(false);
 const tabPanelRef = ref<HTMLElement | null>(null);
 const tabPanelMinHeight = ref(0);
 const marketContentRef = ref<HTMLElement | null>(null);
 const overviewGridRef = ref<HTMLElement | null>(null);
-const page = ref(1);
+/** Mock / 本地全量筛选后，渐进展示的条数 */
+const overviewVisibleCount = ref(initialOverviewPageSize());
+/** HTTP：分页累加的原始列表（再经与 Mock 一致的筛选/排序） */
+const overviewRemoteItems = ref<Skill[]>([]);
+const overviewRemoteTotal = ref(0);
+const overviewRemoteNextPage = ref(1);
+const overviewRemoteExhausted = ref(false);
+const overviewRemoteLoading = ref(false);
+let overviewRemoteFetchSeq = 0;
+let overviewScrollRaf = 0;
+let overviewLastScrollTriggerMs = 0;
 const pageSize = ref(initialOverviewPageSize());
 const toast = ref('');
+const showAdminModules = computed(() => marketRoleShowsOrgManagement(currentUserRole.value));
+const canCreateOrg = computed(() => marketRoleCanCreateOrganization(currentUserRole.value));
+
+const adminOrganizations = ref<OrganizationDto[]>([]);
+const orgListLoading = ref(false);
+/** `fetchDepartmentsTree` 映射后的森林；成功则级联以全量部门为准，否则回退为当前列表推导 */
+const marketOverviewDeptTreeFromApi = ref<MarketDeptForestNode[] | null>(null);
+const marketOverviewDeptTreeLoading = ref(false);
+const orgModalOpen = ref(false);
+const orgModalMode = ref<'create' | 'edit'>('create');
+const orgForm = ref({
+  id: 0 as number,
+  orgName: '',
+  orgCode: '',
+  admins: '',
+  enabled: true,
+});
+
+const approvalSubTab = ref<'pending' | 'done'>('pending');
+const syncPendingRows = ref<SyncApplicationListItemDto[]>([]);
+const syncDoneRows = ref<SyncApplicationListItemDto[]>([]);
+const syncListLoading = ref(false);
+
+const reviewModalOpen = ref(false);
+const reviewTarget = ref<SyncApplicationListItemDto | null>(null);
+const reviewDecision = ref<'approve' | 'reject'>('approve');
+const reviewComment = ref('');
+const reviewSubmitting = ref(false);
+
+const orgDistinctAdminCount = computed(() => {
+  const set = new Set<string>();
+  for (const o of adminOrganizations.value) {
+    for (const a of o.admins.split(/[,，]/)) {
+      const t = a.trim();
+      if (t) {
+        set.add(t);
+      }
+    }
+  }
+  return set.size;
+});
+
 const versionPanelSkill = ref<Skill | null>(null);
 const detailPanelSkill = ref<Skill | null>(null);
 let overviewPageSizeFrame = 0;
@@ -112,20 +212,37 @@ function toListScope(filter: OverviewQuickFilter): SkillMarketScope {
     : 'all';
 }
 
-function deptSegments(raw: string): string[] {
-  return raw
-    .split('/')
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
+type MarketDeptMutable = { name: string; children: Map<string, MarketDeptMutable> };
 
-function deptAtLevel(skill: Skill, level: string): string {
-  const n = Number(level);
-  if (!Number.isFinite(n) || n <= 0) {
-    return '';
+type MarketDeptNode = MarketDeptForestNode;
+
+function buildMarketOverviewDeptForest(skillList: Skill[]): MarketDeptNode[] {
+  const root: MarketDeptMutable = { name: '', children: new Map() };
+  for (const s of skillList) {
+    const segs = parseDeptNamePath(s.dept_name ?? '');
+    let node = root;
+    for (const seg of segs) {
+      if (!node.children.has(seg)) {
+        node.children.set(seg, { name: seg, children: new Map() });
+      }
+      node = node.children.get(seg)!;
+    }
   }
-  const segs = deptSegments(skill.dept_name ?? '');
-  return segs[n - 1] ?? '';
+  function finalize(m: MarketDeptMutable, parentPath: string, levelNo: number): MarketDeptNode {
+    const path = parentPath ? `${parentPath}/${m.name}` : m.name;
+    const children = [...m.children.values()]
+      .map((c) => finalize(c, path, levelNo + 1))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+    return {
+      name: m.name,
+      path,
+      levelNo,
+      children,
+    };
+  }
+  return [...root.children.values()]
+    .map((n) => finalize(n, '', 1))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
 function matchesScopeFilter(skill: Skill, scope: SkillMarketScope): boolean {
@@ -156,7 +273,21 @@ function matchesKeyword(skill: Skill, q: string): boolean {
 }
 
 function matchesOrgFilter(skill: Skill): boolean {
-  return levelFilter.value === 'all' || (skill.publish_name ?? '').trim() === levelFilter.value;
+  if (levelFilter.value === 'all') {
+    return true;
+  }
+  if (transportIsHttp) {
+    const oid = Number(levelFilter.value);
+    if (!Number.isFinite(oid) || oid <= 0) {
+      return true;
+    }
+    const org = adminOrganizations.value.find((o) => o.id === oid);
+    if (!org) {
+      return true;
+    }
+    return (skill.publish_name ?? '').trim() === org.orgName.trim();
+  }
+  return (skill.publish_name ?? '').trim() === levelFilter.value;
 }
 
 function skillCategory(skill: Skill): string {
@@ -176,27 +307,35 @@ function matchesSelectedTags(skill: Skill): boolean {
     return true;
   }
   const tags = skillTags(skill);
-  return selectedTags.value.every((tag) => tags.includes(tag));
+  return selectedTags.value.some((tag) => tags.includes(tag));
 }
 
-function matchesDeptLevelFilter(skill: Skill): boolean {
-  if (sceneFilter.value === 'all') {
-    return true;
-  }
-  return Boolean(deptAtLevel(skill, sceneFilter.value));
-}
-
-function matchesSpecificDeptFilter(skill: Skill): boolean {
-  return deptFilter.value === 'all' || deptAtLevel(skill, sceneFilter.value) === deptFilter.value;
-}
-
-function matchesPrimaryFilters(skill: Skill, q: string, scope: SkillMarketScope): boolean {
+function matchesPrimaryFiltersSansDept(skill: Skill, q: string, scope: SkillMarketScope): boolean {
   return (
     matchesScopeFilter(skill, scope) &&
     matchesKeyword(skill, q) &&
     matchesOrgFilter(skill) &&
-    matchesCategoryFilter(skill) &&
-    matchesDeptLevelFilter(skill)
+    matchesCategoryFilter(skill)
+  );
+}
+
+function matchesOverviewDeptCascade(skill: Skill): boolean {
+  const path = overviewMarketDeptSegments.value;
+  if (path.length === 0) {
+    return true;
+  }
+  const parts = parseDeptNamePath(skill.dept_name ?? '');
+  for (let i = 0; i < path.length; i++) {
+    if (parts[i] !== path[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function matchesPrimaryFilters(skill: Skill, q: string, scope: SkillMarketScope): boolean {
+  return (
+    matchesPrimaryFiltersSansDept(skill, q, scope) && matchesOverviewDeptCascade(skill)
   );
 }
 
@@ -214,6 +353,210 @@ const orgOptions = computed(() => {
   return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 });
 
+const marketOrgSelectOptions = computed(() =>
+  [...adminOrganizations.value]
+    .filter((o) => o.enabled)
+    .sort((a, b) => a.orgName.localeCompare(b.orgName, 'zh-Hans-CN')),
+);
+
+const skillsForMarketDeptTree = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  const scope = toListScope(quickFilter.value);
+  return skills.value.filter((s) => matchesPrimaryFiltersSansDept(s, q, scope));
+});
+
+const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
+  const apiTree = marketOverviewDeptTreeFromApi.value;
+  if (apiTree && apiTree.length > 0) {
+    return apiTree;
+  }
+  return buildMarketOverviewDeptForest(skillsForMarketDeptTree.value);
+});
+
+function marketOverviewDeptNodeByPartial(segments: string[]): MarketDeptNode | null {
+  let nodes = marketOverviewDeptTree.value;
+  let cur: MarketDeptNode | null = null;
+  for (const seg of segments) {
+    cur = nodes.find((n) => n.name === seg) ?? null;
+    if (!cur) {
+      return null;
+    }
+    nodes = cur.children;
+  }
+  return cur;
+}
+
+function overviewDeptCascadeOptionsAt(levelIndex: number): string[] {
+  const tree = marketOverviewDeptTree.value;
+  if (tree.length === 0) {
+    return [];
+  }
+  const segs = overviewMarketDeptSegments.value;
+  if (levelIndex > segs.length) {
+    return [];
+  }
+  let nodes = tree;
+  for (let i = 0; i < levelIndex; i++) {
+    const name = segs[i];
+    if (!name) {
+      return [];
+    }
+    const hit = nodes.find((n) => n.name === name);
+    if (!hit) {
+      return [];
+    }
+    nodes = hit.children;
+  }
+  return nodes.map((n) => n.name);
+}
+
+const overviewDeptCascaderLabel = computed(() => {
+  const s = overviewMarketDeptSegments.value;
+  if (s.length === 0) {
+    return '全部部门';
+  }
+  return s.join(' / ');
+});
+
+const overviewDeptCascadeColumns = computed(() => {
+  const tree = marketOverviewDeptTree.value;
+  if (tree.length === 0) {
+    return [] as { levelIndex: number; options: string[]; active: string | undefined }[];
+  }
+  const segs = overviewMarketDeptSegments.value;
+  const cols: { levelIndex: number; options: string[]; active: string | undefined }[] = [];
+  for (let level = 0; level < 6; level++) {
+    const opts = overviewDeptCascadeOptionsAt(level);
+    if (opts.length === 0) {
+      break;
+    }
+    cols.push({
+      levelIndex: level,
+      options: opts,
+      active: segs[level],
+    });
+  }
+  return cols;
+});
+
+function toggleOverviewDeptCascader(): void {
+  overviewDeptCascaderOpen.value = !overviewDeptCascaderOpen.value;
+  if (overviewDeptCascaderOpen.value) {
+    updateMarketDeptPanelLayout();
+    void nextTick(() => {
+      updateMarketDeptPanelLayout();
+    });
+  }
+}
+
+function closeOverviewDeptCascader(): void {
+  overviewDeptCascaderOpen.value = false;
+}
+
+function onOverviewDeptCascaderPick(levelIndex: number, name: string): void {
+  onOverviewDeptCascadeChange(levelIndex, name);
+}
+
+function marketOverviewDeptPickHasChildren(levelIndex: number, name: string): boolean {
+  const prefix = [...overviewMarketDeptSegments.value.slice(0, levelIndex), name];
+  const n = marketOverviewDeptNodeByPartial(prefix);
+  return Boolean(n && n.children.length > 0);
+}
+
+function clearOverviewDeptCascader(): void {
+  overviewMarketDeptSegments.value = [];
+  overviewDeptCascaderOpen.value = false;
+}
+
+function onMarketDeptCascaderDocDown(ev: MouseEvent): void {
+  if (!overviewDeptCascaderOpen.value) {
+    return;
+  }
+  const t = ev.target as Node;
+  const root = marketDeptCascaderWrapRef.value;
+  const panel = marketDeptCascaderPanelRef.value;
+  if (root?.contains(t) || panel?.contains(t)) {
+    return;
+  }
+  overviewDeptCascaderOpen.value = false;
+}
+
+function onMarketDeptCascaderKeydown(ev: KeyboardEvent): void {
+  if (!overviewDeptCascaderOpen.value) {
+    return;
+  }
+  if (ev.key === 'Escape') {
+    overviewDeptCascaderOpen.value = false;
+  }
+}
+
+function updateMarketDeptPanelLayout(): void {
+  if (!overviewDeptCascaderOpen.value) {
+    marketDeptPanelLayout.value = null;
+    return;
+  }
+  const wrap = marketDeptCascaderWrapRef.value;
+  if (!wrap) {
+    marketDeptPanelLayout.value = null;
+    return;
+  }
+  const rect = wrap.getBoundingClientRect();
+  const margin = 16;
+  const fromLeft = Math.max(0, rect.left);
+  const usable = Math.max(220, Math.floor(window.innerWidth - fromLeft - margin));
+  marketDeptPanelLayout.value = {
+    left: Math.floor(fromLeft),
+    top: Math.floor(rect.bottom + 4),
+    maxWidth: Math.min(720, usable),
+  };
+}
+
+const marketDeptCascaderPanelStyle = computed((): CSSProperties => {
+  const L = marketDeptPanelLayout.value;
+  if (!L) {
+    return {};
+  }
+  return {
+    position: 'fixed',
+    left: `${L.left}px`,
+    top: `${L.top}px`,
+    maxWidth: `${L.maxWidth}px`,
+    zIndex: 2400,
+  };
+});
+
+watch(overviewDeptCascaderOpen, (open) => {
+  if (deptPanelScrollCleanup) {
+    deptPanelScrollCleanup();
+    deptPanelScrollCleanup = null;
+  }
+  if (open) {
+    void nextTick(() => {
+      updateMarketDeptPanelLayout();
+    });
+    const onScroll = (): void => {
+      updateMarketDeptPanelLayout();
+    };
+    window.addEventListener('scroll', onScroll, true);
+    deptPanelScrollCleanup = (): void => {
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  } else {
+    marketDeptPanelLayout.value = null;
+  }
+});
+
+function onOverviewDeptCascadeChange(levelIndex: number, raw: string): void {
+  if (!raw) {
+    overviewMarketDeptSegments.value = overviewMarketDeptSegments.value.slice(0, levelIndex);
+    return;
+  }
+  overviewMarketDeptSegments.value = [
+    ...overviewMarketDeptSegments.value.slice(0, levelIndex),
+    raw,
+  ];
+}
+
 const categoryOptions = computed(() => {
   const opts = new Set<string>();
   for (const s of skills.value) {
@@ -230,7 +573,7 @@ const tagOptions = computed(() => {
   const scope = toListScope(quickFilter.value);
   const opts = new Set<string>();
   for (const s of skills.value) {
-    if (!matchesPrimaryFilters(s, q, scope) || !matchesSpecificDeptFilter(s)) {
+    if (!matchesPrimaryFilters(s, q, scope)) {
       continue;
     }
     for (const tag of skillTags(s)) {
@@ -240,9 +583,26 @@ const tagOptions = computed(() => {
   return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
 });
 
-const tabPanelFillStyle = computed(() => ({
-  minHeight: tabPanelMinHeight.value > 0 ? `${tabPanelMinHeight.value}px` : undefined,
-}));
+const showOverviewTagExpandToggle = computed(
+  () => tagOptions.value.length > OVERVIEW_TAGS_COLLAPSE_THRESHOLD,
+);
+
+const overviewTagListExpandedUi = computed(() => {
+  if (!showOverviewTagExpandToggle.value) {
+    return true;
+  }
+  return overviewTagListExpanded.value;
+});
+
+const tabPanelFillStyle = computed(() => {
+  const h = tabPanelMinHeight.value > 0 ? `${tabPanelMinHeight.value}px` : undefined;
+  const capOverview = innerTab.value === 'overview';
+  return {
+    minHeight: h,
+    maxHeight: capOverview ? h : undefined,
+    overflow: capOverview ? 'hidden' : undefined,
+  };
+});
 
 function overviewGridColumnCount(grid: HTMLElement): number {
   const columns = window.getComputedStyle(grid).gridTemplateColumns;
@@ -281,7 +641,7 @@ function syncOverviewPageSize(): void {
       const filtersMarginBottom = filters
         ? Number.parseFloat(window.getComputedStyle(filters).marginBottom) || 0
         : 0;
-      const pagerHeight = content.querySelector<HTMLElement>('.pager')?.offsetHeight ?? 0;
+      const footerHeight = content.querySelector<HTMLElement>('.overview-list-footer')?.offsetHeight ?? 0;
       const contentRect = content.getBoundingClientRect();
       const panel = tabPanelRef.value;
       const panelRect = panel?.getBoundingClientRect();
@@ -294,7 +654,7 @@ function syncOverviewPageSize(): void {
           : content.clientHeight;
       const availableHeight = Math.max(
         cardHeight,
-        plannedContentHeight - filtersHeight - filtersMarginBottom - pagerHeight,
+        plannedContentHeight - filtersHeight - filtersMarginBottom - footerHeight,
       );
       const rows = Math.max(
         OVERVIEW_DEFAULT_VISIBLE_ROWS,
@@ -324,94 +684,349 @@ function syncTabPanelMinHeight(): void {
 function syncResponsiveLayout(): void {
   syncTabPanelMinHeight();
   syncOverviewPageSize();
+  updateMarketDeptPanelLayout();
 }
 
 onMounted(() => {
   syncResponsiveLayout();
   window.addEventListener('resize', syncResponsiveLayout);
+  void loadMarketDepartmentsTreeForOverview();
+  if (transportIsHttp) {
+    void loadAdminOrganizations();
+  }
+  if (transportIsHttp && innerTab.value === 'overview') {
+    void startOverviewRemoteFetch();
+  }
+  void (async () => {
+    const [fy, co] = await Promise.all([
+      marketClient.fetchOpsDashboardUi('fuyao'),
+      marketClient.fetchOpsDashboardUi('company'),
+    ]);
+    if (fy.code === 0) {
+      fuyaoOpsDashboardBundleRef.value = fy.data;
+    }
+    if (co.code === 0) {
+      companyOpsDashboardBundleRef.value = co.data;
+    }
+  })();
+  scheduleMaybeFillOverviewViewport();
+  document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
+  document.addEventListener('keydown', onMarketDeptCascaderKeydown);
 });
 
 onBeforeUnmount(() => {
+  deptPanelScrollCleanup?.();
+  deptPanelScrollCleanup = null;
+  document.removeEventListener('mousedown', onMarketDeptCascaderDocDown);
+  document.removeEventListener('keydown', onMarketDeptCascaderKeydown);
+  if (overviewScrollRaf) {
+    window.cancelAnimationFrame(overviewScrollRaf);
+    overviewScrollRaf = 0;
+  }
   if (overviewPageSizeFrame) {
     window.cancelAnimationFrame(overviewPageSizeFrame);
   }
   window.removeEventListener('resize', syncResponsiveLayout);
 });
 
-const deptOptions = computed(() => {
-  if (sceneFilter.value === 'all') {
-    return [];
-  }
+/** 本地（Mock）全量筛选结果，用于渐进展示 */
+const overviewFilteredAll = computed(() => {
   const q = search.value.trim().toLowerCase();
   const scope = toListScope(quickFilter.value);
-  const opts = new Set<string>();
-  for (const s of skills.value) {
-    if (!matchesPrimaryFilters(s, q, scope)) {
-      continue;
-    }
-    const dept = deptAtLevel(s, sceneFilter.value);
-    if (dept) {
-      opts.add(dept);
-    }
-  }
-  return [...opts].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
-});
-
-const listResponse = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  const scope = toListScope(quickFilter.value);
-
   let list = [...skills.value].filter((s) => matchesPrimaryFilters(s, q, scope));
-
-  list = list.filter((s) => matchesSpecificDeptFilter(s) && matchesSelectedTags(s));
-
+  list = list.filter((s) => matchesSelectedTags(s));
   if (quickFilter.value === 'highDl') {
     list.sort((a, b) => (b.download_count ?? 0) - (a.download_count ?? 0));
   } else {
     list.sort((a, b) => (b.skill_id ?? '').localeCompare(a.skill_id ?? ''));
   }
+  return list;
+});
 
-  const total = list.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize.value));
-  const safePage = Math.min(page.value, totalPages);
-  const start = (safePage - 1) * pageSize.value;
+function applyOverviewDisplayFilters(raw: Skill[]): Skill[] {
+  if (transportIsHttp) {
+    let list = [...raw];
+    if (quickFilter.value === 'highDl') {
+      list.sort((a, b) => (b.download_count ?? 0) - (a.download_count ?? 0));
+    } else {
+      list.sort((a, b) => (b.skill_id ?? '').localeCompare(a.skill_id ?? ''));
+    }
+    return list;
+  }
+  const q = search.value.trim().toLowerCase();
+  const scope = toListScope(quickFilter.value);
+  let list = raw.filter(
+    (s) => matchesPrimaryFilters(s, q, scope) && matchesSelectedTags(s),
+  );
+  if (quickFilter.value === 'highDl') {
+    list = [...list].sort((a, b) => (b.download_count ?? 0) - (a.download_count ?? 0));
+  } else {
+    list = [...list].sort((a, b) => (b.skill_id ?? '').localeCompare(a.skill_id ?? ''));
+  }
+  return list;
+}
 
-  return {
-    list: list.slice(start, start + pageSize.value),
-    total,
-    page: safePage,
-    pageSize: pageSize.value,
-    totalPages,
+function mergeOverviewSkillsById(prev: Skill[], batch: Skill[]): Skill[] {
+  const seen = new Set(prev.map((s) => String(s.id ?? s.skill_id)));
+  const out = [...prev];
+  for (const s of batch) {
+    const k = String(s.id ?? s.skill_id);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillListParamsDto {
+  const scope = toListScope(quickFilter.value);
+  const base = skillListQueryToDto({
+    keyword: search.value,
+    page: pageNo,
+    pageSize: fetchSize,
+    scope,
+  });
+  const params: SkillListParamsDto = {
+    ...base,
+    pageNo,
+    pageSize: fetchSize,
   };
+  if (categoryFilter.value !== 'all') {
+    params.categoryGroupName = categoryFilter.value;
+  }
+  const deptPath = overviewMarketDeptSegments.value;
+  const deptKeys = [
+    'departmentL1',
+    'departmentL2',
+    'departmentL3',
+    'departmentL4',
+    'departmentL5',
+    'departmentL6',
+  ] as const;
+  for (let i = 0; i < deptPath.length && i < deptKeys.length; i++) {
+    const v = deptPath[i]?.trim();
+    if (v) {
+      params[deptKeys[i]] = v;
+    }
+  }
+  if (transportIsHttp && levelFilter.value !== 'all') {
+    const oid = Number(levelFilter.value);
+    if (Number.isFinite(oid) && oid > 0) {
+      params.orgId = oid;
+    }
+  }
+  if (selectedTags.value.length > 0) {
+    params.tagList = selectedTags.value.join(',');
+  }
+  return params;
+}
+
+async function startOverviewRemoteFetch(): Promise<void> {
+  if (!transportIsHttp) {
+    return;
+  }
+  overviewRemoteFetchSeq++;
+  const seq = overviewRemoteFetchSeq;
+  overviewRemoteItems.value = [];
+  overviewRemoteNextPage.value = 1;
+  overviewRemoteExhausted.value = false;
+  overviewRemoteTotal.value = 0;
+  await loadOverviewRemoteMore(seq);
+}
+
+async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
+  if (!transportIsHttp) {
+    return;
+  }
+  if (overviewRemoteLoading.value || overviewRemoteExhausted.value) {
+    return;
+  }
+  const seq = expectSeq ?? overviewRemoteFetchSeq;
+  overviewRemoteLoading.value = true;
+  try {
+    const fetchSize = Math.max(12, pageSize.value);
+    const pageNo = overviewRemoteNextPage.value;
+    const params = buildOverviewSkillListParams(pageNo, fetchSize);
+    const env = await marketClient.fetchSkills(params);
+    if (seq !== overviewRemoteFetchSeq) {
+      return;
+    }
+    if (env.code !== 0 || !env.data) {
+      showToast(env.message || '市场列表加载失败');
+      return;
+    }
+    const batch = env.data.records.map((r) => apiRecordToSkill(r));
+    const merged =
+      pageNo === 1 ? batch : mergeOverviewSkillsById(overviewRemoteItems.value, batch);
+    overviewRemoteItems.value = merged;
+    overviewRemoteTotal.value = env.data.total;
+    const received = batch.length;
+    if (
+      received === 0 ||
+      merged.length >= env.data.total ||
+      received < fetchSize
+    ) {
+      overviewRemoteExhausted.value = true;
+    } else {
+      overviewRemoteNextPage.value = pageNo + 1;
+    }
+  } finally {
+    overviewRemoteLoading.value = false;
+    scheduleMaybeFillOverviewViewport();
+  }
+}
+
+function onOverviewMarketScroll(): void {
+  if (innerTab.value !== 'overview') {
+    return;
+  }
+  if (overviewDeptCascaderOpen.value) {
+    updateMarketDeptPanelLayout();
+  }
+  if (overviewScrollRaf) {
+    return;
+  }
+  overviewScrollRaf = window.requestAnimationFrame(() => {
+    overviewScrollRaf = 0;
+    const root = marketContentRef.value;
+    if (!root) {
+      return;
+    }
+    const now = Date.now();
+    if (now - overviewLastScrollTriggerMs < 180) {
+      return;
+    }
+    const { scrollTop, clientHeight, scrollHeight } = root;
+    const thresholdPx = 80;
+    if (scrollHeight - scrollTop - clientHeight > thresholdPx) {
+      return;
+    }
+    overviewLastScrollTriggerMs = now;
+    void handleOverviewScrollNearEnd();
+  });
+}
+
+/** 内容高度不足、没有出现滚动条时，连续拉取直到可滚动或没有更多 */
+function scheduleMaybeFillOverviewViewport(): void {
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      tryFillOverviewUntilScrollable();
+    });
+  });
+}
+
+function tryFillOverviewUntilScrollable(): void {
+  if (innerTab.value !== 'overview') {
+    return;
+  }
+  const root = marketContentRef.value;
+  if (!root) {
+    return;
+  }
+  if (!overviewHasMore.value) {
+    return;
+  }
+  if (transportIsHttp && overviewRemoteLoading.value) {
+    return;
+  }
+  const pad = 8;
+  if (root.scrollHeight > root.clientHeight + pad) {
+    return;
+  }
+  void handleOverviewScrollNearEnd();
+}
+
+async function handleOverviewScrollNearEnd(): Promise<void> {
+  if (innerTab.value !== 'overview') {
+    return;
+  }
+  if (transportIsHttp) {
+    await loadOverviewRemoteMore();
+    return;
+  }
+  if (!overviewHasMoreLocal.value) {
+    return;
+  }
+  overviewVisibleCount.value += Math.max(12, pageSize.value);
+  scheduleMaybeFillOverviewViewport();
+}
+
+const filteredSkills = computed(() => {
+  if (transportIsHttp) {
+    return applyOverviewDisplayFilters(overviewRemoteItems.value);
+  }
+  return overviewFilteredAll.value.slice(0, overviewVisibleCount.value);
 });
 
-const filteredSkills = computed(() => listResponse.value.list);
-const myReleases = computed(() => skills.value.filter((skill) => skill.ownedByUser));
+const overviewHasMoreLocal = computed(
+  () => overviewVisibleCount.value < overviewFilteredAll.value.length,
+);
 
-watch([search, quickFilter, levelFilter, sceneFilter, deptFilter, categoryFilter, selectedTags], () => {
-  page.value = 1;
+const overviewHasMore = computed(() => {
+  if (transportIsHttp) {
+    if (overviewRemoteLoading.value) {
+      return false;
+    }
+    if (overviewRemoteExhausted.value) {
+      return false;
+    }
+    return overviewRemoteItems.value.length < overviewRemoteTotal.value;
+  }
+  return overviewHasMoreLocal.value;
+});
+
+const overviewListFooterHint = computed(() => {
+  const shown = filteredSkills.value.length;
+  if (transportIsHttp) {
+    const total = overviewRemoteTotal.value;
+    if (overviewRemoteLoading.value) {
+      return `加载中…（已展示 ${shown} 条，接口合计 ${total} 条）`;
+    }
+    if (!overviewHasMore.value) {
+      return `已加载全部 ${shown} 条（接口合计 ${total} 条）`;
+    }
+    return `已展示 ${shown} 条 · 接口合计 ${total} 条 · 继续下拉加载更多`;
+  }
+  const total = overviewFilteredAll.value.length;
+  if (!overviewHasMore.value) {
+    return `已展示全部 ${shown} 个 Skill`;
+  }
+  return `已展示 ${shown} / ${total} 个 Skill · 继续下拉加载更多`;
+});
+const myReleases = computed(() => {
+  if (myPublishedSkills.value.length > 0) {
+    return myPublishedSkills.value;
+  }
+  if (!transportIsHttp) {
+    const mine = skills.value.filter((skill) => skill.ownedByUser);
+    if (mine.length > 0) {
+      return mine;
+    }
+    return skills.value.slice(0, 4);
+  }
+  return [];
+});
+
+watch(
+  [search, quickFilter, levelFilter, categoryFilter, selectedTags, overviewMarketDeptSegments],
+  () => {
+  overviewVisibleCount.value = pageSize.value;
+  if (transportIsHttp) {
+    void startOverviewRemoteFetch();
+  }
   syncOverviewPageSize();
-});
-
-watch(page, () => {
-  syncOverviewPageSize();
-});
+  },
+  { deep: true },
+);
 
 watch(
   () => filteredSkills.value.length,
   () => {
     syncOverviewPageSize();
+    scheduleMaybeFillOverviewViewport();
   },
   { flush: 'post' },
-);
-
-watch(
-  () => listResponse.value.totalPages,
-  (totalPages) => {
-    if (page.value > totalPages) {
-      page.value = totalPages;
-    }
-  },
 );
 
 watch(
@@ -421,17 +1036,44 @@ watch(
   },
 );
 
+watch(pageSize, (next, prev) => {
+  if (transportIsHttp) {
+    return;
+  }
+  if (next > prev) {
+    overviewVisibleCount.value = Math.max(overviewVisibleCount.value, next);
+  }
+});
+
 watch(levelFilter, () => {
-  deptFilter.value = 'all';
+  overviewMarketDeptSegments.value = [];
 });
 
-watch(sceneFilter, () => {
-  deptFilter.value = 'all';
+watch(marketOverviewDeptTree, () => {
+  const segs = overviewMarketDeptSegments.value;
+  if (segs.length === 0) {
+    return;
+  }
+  let keep = 0;
+  for (let i = 1; i <= segs.length; i++) {
+    if (marketOverviewDeptNodeByPartial(segs.slice(0, i))) {
+      keep = i;
+    } else {
+      break;
+    }
+  }
+  if (keep < segs.length) {
+    overviewMarketDeptSegments.value = segs.slice(0, keep);
+  }
 });
 
-watch(deptOptions, (options) => {
-  if (deptFilter.value !== 'all' && !options.includes(deptFilter.value)) {
-    deptFilter.value = 'all';
+watch(marketOrgSelectOptions, (opts) => {
+  if (!transportIsHttp || levelFilter.value === 'all') {
+    return;
+  }
+  const id = Number(levelFilter.value);
+  if (!Number.isFinite(id) || !opts.some((o) => o.id === id)) {
+    levelFilter.value = 'all';
   }
 });
 
@@ -469,6 +1111,86 @@ function goTab(tab: UserInnerTab, replace = false): void {
   }
 }
 
+function normalizeSyncRecord(raw: unknown): SyncApplicationListItemDto {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const id = Number(r.id ?? 0);
+  return {
+    id,
+    skillId: r.skillId !== undefined ? Number(r.skillId) : undefined,
+    skillName: String(r.skillName ?? '—'),
+    applyType: String(r.applyType ?? '同步至公司组织'),
+    targetLevel: String(r.targetLevel ?? '组织级'),
+    targetOrgId: r.targetOrgId !== undefined ? Number(r.targetOrgId) : undefined,
+    targetOrgName: String(r.targetOrgName ?? ''),
+    reason: String(r.reason ?? ''),
+    reasonDetail: r.reasonDetail !== undefined ? String(r.reasonDetail) : undefined,
+    approverLabel: String(r.approverLabel ?? '—'),
+    status: String(r.status ?? ''),
+    reviewResult: r.reviewResult !== undefined ? String(r.reviewResult) : undefined,
+    reviewComment: r.reviewComment !== undefined ? String(r.reviewComment) : undefined,
+    completedAt: r.completedAt !== undefined ? String(r.completedAt) : undefined,
+  };
+}
+
+function canEditOrganization(org: OrganizationDto): boolean {
+  const role = currentUserRole.value;
+  if (!role) {
+    return false;
+  }
+  if (role.role === 'SUPER_ADMIN') {
+    return true;
+  }
+  if (role.role === 'ORG_ADMIN') {
+    return role.managedOrgIds.includes(org.id);
+  }
+  return false;
+}
+
+async function loadAdminOrganizations(): Promise<void> {
+  orgListLoading.value = true;
+  try {
+    const r = await marketClient.fetchOrganizations();
+    if (r.code === 0 && Array.isArray(r.data)) {
+      adminOrganizations.value = r.data;
+      orgCount.value = r.data.length;
+    }
+  } finally {
+    orgListLoading.value = false;
+  }
+}
+
+async function loadMarketDepartmentsTreeForOverview(): Promise<void> {
+  marketOverviewDeptTreeLoading.value = true;
+  try {
+    const r = await marketClient.fetchDepartmentsTree();
+    if (r.code === 0 && Array.isArray(r.data) && r.data.length > 0) {
+      marketOverviewDeptTreeFromApi.value = mapDepartmentTreeDtoToForest(r.data);
+    } else {
+      marketOverviewDeptTreeFromApi.value = null;
+    }
+  } finally {
+    marketOverviewDeptTreeLoading.value = false;
+  }
+}
+
+async function loadSyncApplicationRows(): Promise<void> {
+  syncListLoading.value = true;
+  try {
+    const [p, d] = await Promise.all([
+      marketClient.fetchSyncApplications({ tab: 'pending', pageNo: 1, pageSize: 100 }),
+      marketClient.fetchSyncApplications({ tab: 'done', pageNo: 1, pageSize: 100 }),
+    ]);
+    if (p.code === 0 && p.data?.records) {
+      syncPendingRows.value = p.data.records.map((row: unknown) => normalizeSyncRecord(row));
+    }
+    if (d.code === 0 && d.data?.records) {
+      syncDoneRows.value = d.data.records.map((row: unknown) => normalizeSyncRecord(row));
+    }
+  } finally {
+    syncListLoading.value = false;
+  }
+}
+
 watch(
   () => route.query.tab,
   (tab) => {
@@ -479,15 +1201,138 @@ watch(
   },
 );
 
-watch(innerTab, () => {
-  syncTabPanelMinHeight();
-});
+watch(
+  () => [currentUserRole.value, innerTab.value] as const,
+  ([role, tab]) => {
+    if (!role) {
+      return;
+    }
+    if (!marketRoleShowsOrgManagement(role) && (tab === 'org' || tab === 'approval')) {
+      goTab('overview', true);
+    }
+  },
+);
+
+watch(
+  innerTab,
+  (tab) => {
+    if (tab === 'org') {
+      void loadAdminOrganizations();
+    }
+    if (tab === 'approval') {
+      void loadSyncApplicationRows();
+    }
+    if (tab === 'releases') {
+      void refreshMyPublishedSkills();
+    }
+    syncTabPanelMinHeight();
+  },
+  { immediate: true },
+);
 
 function showToast(message: string, ms = 3000): void {
   toast.value = message;
   setTimeout(() => {
     toast.value = '';
   }, ms);
+}
+
+function openOrgCreateModal(): void {
+  orgModalMode.value = 'create';
+  orgForm.value = {
+    id: 0,
+    orgName: '',
+    orgCode: '',
+    admins: '',
+    enabled: true,
+  };
+  orgModalOpen.value = true;
+}
+
+function openOrgEditModal(org: OrganizationDto): void {
+  orgModalMode.value = 'edit';
+  orgForm.value = {
+    id: org.id,
+    orgName: org.orgName,
+    orgCode: org.orgCode,
+    admins: org.admins,
+    enabled: org.enabled,
+  };
+  orgModalOpen.value = true;
+}
+
+function closeOrgModal(): void {
+  orgModalOpen.value = false;
+}
+
+async function submitOrgModal(): Promise<void> {
+  const f = orgForm.value;
+  if (!f.orgName.trim() || !f.orgCode.trim()) {
+    showToast('请填写组织名称与组织 ID');
+    return;
+  }
+  const body = {
+    orgName: f.orgName.trim(),
+    orgCode: f.orgCode.trim(),
+    admins: f.admins.trim(),
+    enabled: f.enabled,
+  };
+  if (orgModalMode.value === 'create') {
+    const r = await marketClient.postOrganization(body);
+    if (r.code !== 0) {
+      showToast(r.message || '新建失败');
+      return;
+    }
+    showToast('已新建组织');
+  } else {
+    const r = await marketClient.putOrganization(f.id, body);
+    if (r.code !== 0) {
+      showToast(r.message || '保存失败');
+      return;
+    }
+    showToast('已保存');
+  }
+  orgModalOpen.value = false;
+  await loadAdminOrganizations();
+}
+
+function openReviewModal(row: SyncApplicationListItemDto): void {
+  reviewTarget.value = row;
+  reviewDecision.value = 'approve';
+  reviewComment.value = '';
+  reviewModalOpen.value = true;
+}
+
+function closeReviewModal(): void {
+  reviewModalOpen.value = false;
+  reviewTarget.value = null;
+}
+
+async function submitReviewModal(): Promise<void> {
+  const row = reviewTarget.value;
+  if (!row) {
+    return;
+  }
+  if (!reviewComment.value.trim()) {
+    showToast('请填写审核意见');
+    return;
+  }
+  reviewSubmitting.value = true;
+  try {
+    const r = await marketClient.postSyncApplicationReview(row.id, {
+      decision: reviewDecision.value,
+      comment: reviewComment.value.trim(),
+    });
+    if (r.code !== 0) {
+      showToast(r.message || '提交失败');
+      return;
+    }
+    showToast('已提交审核');
+    closeReviewModal();
+    await loadSyncApplicationRows();
+  } finally {
+    reviewSubmitting.value = false;
+  }
 }
 
 function skillKey(skill: Skill): string {
@@ -570,16 +1415,54 @@ function skillRequirements(skill: Skill): string {
 }
 
 function skillTagSummary(skill: Skill): string {
-  const deptParts = deptSegments(skill.dept_name ?? '');
+  const deptParts = parseDeptNamePath(skill.dept_name ?? '');
   return [skill.tagFunctional, skill.skill_id, deptParts[deptParts.length - 1]]
     .filter(Boolean)
     .join(' ');
 }
 
-function onUploadSubmit(payload: SkillUploadPayload): void {
+async function parseSkillArchiveForUpload(file: File): Promise<{
+  duplicate: boolean;
+  meta: {
+    name: string;
+    version: string;
+    description: string;
+    author: string;
+    category: string;
+    requirements: string;
+    tags: string;
+    level: string;
+  };
+}> {
+  const env = await marketClient.postSkillUploadParse(file);
+  if (env.code !== 0) {
+    throw new Error(env.message || '解析失败');
+  }
+  const d = env.data;
+  const tags = Array.isArray(d.tags) ? d.tags.join(' ') : String(d.tags ?? '');
+  return {
+    duplicate: Boolean(d.nameExists),
+    meta: {
+      name: d.name,
+      version: d.version,
+      description: d.description,
+      author: d.author,
+      category: d.category,
+      requirements: d.requirements ?? '',
+      tags,
+      level: d.level ?? '个人级（默认发布，无需审核）',
+    },
+  };
+}
+
+async function onUploadSubmit(payload: SkillUploadPayload): Promise<void> {
   try {
-    const result = store.uploadSkill(payload);
-    page.value = 1;
+    const result = await store.uploadSkill(payload);
+    overviewVisibleCount.value = pageSize.value;
+    if (transportIsHttp) {
+      void startOverviewRemoteFetch();
+    }
+    await refreshMyPublishedSkills();
     showToast(
       result.created
         ? `已发布新 Skill「${result.skill.name}」v${result.skill.version}`
@@ -591,18 +1474,47 @@ function onUploadSubmit(payload: SkillUploadPayload): void {
   }
 }
 
-function onDownload(id: string): void {
+function patchSkillsDownloadCountAfterDownload(id: string, skill: Skill): void {
+  const dl = skill.download_count ?? skill.downloads ?? 0;
+  if (transportIsHttp) {
+    overviewRemoteItems.value = overviewRemoteItems.value.map((s) =>
+      skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
+    );
+  }
+  if (detailPanelSkill.value && skillKey(detailPanelSkill.value) === id) {
+    detailPanelSkill.value = { ...detailPanelSkill.value, download_count: dl, downloads: dl };
+  }
+}
+
+async function onDownload(id: string, sourcePage: SkillDownloadSourcePage = 'market'): Promise<void> {
   try {
-    const result = store.downloadSkill(id);
-    const url = URL.createObjectURL(result.blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = result.fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    showToast(`已下载当前版本：${skillTitle(result.skill)} v${skillVersion(result.skill)}`);
+    const result = await store.downloadSkill(id, { sourcePage });
+    patchSkillsDownloadCountAfterDownload(id, result.skill);
+    if (result.blob && result.blob.size > 0) {
+      const url = URL.createObjectURL(result.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast(`已下载当前版本：${skillTitle(result.skill)} v${skillVersion(result.skill)}`);
+      return;
+    }
+    if (result.directDownloadUrl) {
+      const link = document.createElement('a');
+      link.href = result.directDownloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.download = result.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showToast(`正在打开下载链接：${skillTitle(result.skill)} v${skillVersion(result.skill)}`);
+      return;
+    }
+    showToast('下载失败：无可保存的文件');
   } catch (e) {
     showToast(e instanceof Error ? e.message : '下载失败');
   }
@@ -630,7 +1542,7 @@ function onDetailDownload(): void {
   if (!detailPanelSkill.value) {
     return;
   }
-  onDownload(skillKey(detailPanelSkill.value));
+  void onDownload(skillKey(detailPanelSkill.value), 'detail');
 }
 
 function onTrySkill(): void {
@@ -643,23 +1555,6 @@ function onTrySkill(): void {
 function closeVersionPanel(): void {
   versionPanelSkill.value = null;
 }
-
-function prevPage(): void {
-  page.value = Math.max(1, page.value - 1);
-}
-
-function nextPage(): void {
-  page.value = Math.min(listResponse.value.totalPages, page.value + 1);
-}
-
-// 为贴近 UI 设计稿：我的发布指标按稿面数值
-const uiMyStats = {
-  maintained: '8',
-  reviewing: '3',
-  rejected: '1',
-  myTotalDownloads: '1,278',
-  my30DaysDownloads: '326',
-} as const;
 
 const coreQuickEntries: { key: 'all' | 'devDept' | 'pdu' | 'productLine'; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -728,19 +1623,33 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'rejected', label: '组织已驳回' },
 ];
 
-type ReleaseStatusKey = 'published' | 'reviewing-dev' | 'rejected-pdu';
+type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
 
 function statusOf(skill: Skill): ReleaseStatusKey {
+  const ms = (skill.marketStatus ?? '').trim();
+  if (ms.includes('驳回')) {
+    return 'rejected-pdu';
+  }
+  if (ms.includes('审核')) {
+    return 'reviewing-dev';
+  }
   if (skill.id === '2') {
     return 'rejected-pdu';
   }
   if (skill.id === '4') {
     return 'reviewing-dev';
   }
+  const pl = skill.publish_level ?? skill.level ?? '';
+  if (pl.includes('个人')) {
+    return 'personal-live';
+  }
   return 'published';
 }
 
 function statusText(st: ReleaseStatusKey): string {
+  if (st === 'personal-live') {
+    return '个人级';
+  }
   if (st === 'published') {
     return '组织级';
   }
@@ -751,6 +1660,9 @@ function statusText(st: ReleaseStatusKey): string {
 }
 
 function lastActionText(st: ReleaseStatusKey): string {
+  if (st === 'personal-live') {
+    return '已发布为个人级 Skill';
+  }
   if (st === 'published') {
     return '已同步至公司组织';
   }
@@ -800,11 +1712,12 @@ function onReleaseRecord(row: { skill: Skill }): void {
 }
 
 const myReleaseRows = computed(() => {
-  const list = myReleases.value.length > 0 ? myReleases.value : skills.value.slice(0, 4);
-  return list.map((s) => {
+  return myReleases.value.map((s) => {
     const st = statusOf(s);
     const isPersonal =
-      (s.publish_level ?? s.level ?? '').includes('个人') || (s.dept_name ?? s.tagOrg ?? '').includes('个人');
+      st === 'personal-live' ||
+      (s.publish_level ?? s.level ?? '').includes('个人') ||
+      (s.dept_name ?? s.tagOrg ?? '').includes('个人');
     return {
       skill: s,
       statusKey: st,
@@ -816,10 +1729,37 @@ const myReleaseRows = computed(() => {
   });
 });
 
+const uiMyStats = computed(() => {
+  const rows = myReleaseRows.value;
+  if (rows.length === 0) {
+    return {
+      maintained: '0',
+      reviewing: '0',
+      rejected: '0',
+      myTotalDownloads: '0',
+      my30DaysDownloads: '—',
+    };
+  }
+  const maintained = rows.length;
+  const reviewing = rows.filter((x) => x.statusKey === 'reviewing-dev').length;
+  const rejected = rows.filter((x) => x.statusKey === 'rejected-pdu').length;
+  const totalDl = rows.reduce(
+    (sum, x) => sum + (x.skill.download_count ?? x.skill.downloads ?? 0),
+    0,
+  );
+  return {
+    maintained: String(maintained),
+    reviewing: String(reviewing),
+    rejected: String(rejected),
+    myTotalDownloads: totalDl.toLocaleString('zh-CN'),
+    my30DaysDownloads: '—',
+  };
+});
+
 const filteredMyReleaseRows = computed(() => {
   let list = [...myReleaseRows.value];
   if (releaseFilter.value === 'personal') {
-    list = list.filter((x) => x.personal);
+    list = list.filter((x) => x.personal || x.statusKey === 'personal-live');
   }
   if (releaseFilter.value === 'published') {
     list = list.filter((x) => x.statusKey === 'published');
@@ -851,23 +1791,36 @@ function onUploadExistingVersion(): void {
 const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref<HTMLInputElement | null>(null);
-const fuyaoOpsDashboardBundle = JSON.parse(fuyaoOpsDashboardJson) as OpsDashboardBundle;
-const companyOpsDashboardBundle = JSON.parse(companyOpsDashboardJson) as OpsDashboardBundle;
+const fuyaoOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
+const companyOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
 
 const opsBoardSystem = ref<'fuyao' | 'company'>('company');
+/** 公司运营看板「Excel 导入」仅管理员可用；扶摇看板不提供导入 */
+const showOpsExcelImport = computed(
+  () => opsBoardSystem.value === 'company' && marketRoleShowsOpsAndReview(currentUserRole.value),
+);
 const selectedOpsDeptPath = ref('');
 const selectedOpsOrgName = ref('');
-const defaultOpsDashboardBundle = computed(() =>
-  opsBoardSystem.value === 'company' ? companyOpsDashboardBundle : fuyaoOpsDashboardBundle,
-);
+const defaultOpsDashboardBundle = computed(() => {
+  const empty = emptyOpsDashboardBundle();
+  if (opsBoardSystem.value === 'company') {
+    return companyOpsDashboardBundleRef.value ?? empty;
+  }
+  return fuyaoOpsDashboardBundleRef.value ?? empty;
+});
 
-const opsDashboardBundle = computed(() => opsImportedBundle.value ?? defaultOpsDashboardBundle.value);
+const opsDashboardBundle = computed(() => {
+  if (opsBoardSystem.value === 'fuyao') {
+    return defaultOpsDashboardBundle.value;
+  }
+  return opsImportedBundle.value ?? defaultOpsDashboardBundle.value;
+});
 
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
 
 const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
 
-const OPS_DEPT_DISPLAY_START_LEVEL = 3;
+const OPS_DEPT_DISPLAY_START_LEVEL = 4;
 
 type OpsKpiCard = { label: string; value: string; desc: string };
 
@@ -1027,7 +1980,10 @@ const opsKpiCards = computed<OpsKpiCard[]>(() => {
     {
       label: '组织级 Skill',
       value: kpi.activeSkills,
-      desc: '已发布为组织级的 Skill 数量',
+      desc:
+        opsBoardSystem.value === 'fuyao'
+          ? '已同步至公司组织维度、在扶摇市场按组织发布的 Skill 数量'
+          : '已发布为组织级、在公司系统统一治理的 Skill 数量',
     },
     {
       label: '个人级 Skill',
@@ -1054,18 +2010,24 @@ const opsEmptyText = computed(() =>
     : '暂无扶摇系统运营看板数据',
 );
 
-function buildOpsDashboardMockJsonFileName(sourceName: string): string {
+const opsOrgBarsHelpText = computed(() =>
+  opsBoardSystem.value === 'fuyao'
+    ? '与已同步至公司组织维度的组织级 Skill 一致，按发布组织聚合；点击条目查看右侧明细。'
+    : '点击横向条目后，右侧显示该组织级 Skill 列表。',
+);
+
+function buildOpsDashboardExportJsonFileName(sourceName: string): string {
   const baseName = sourceName.replace(/\.[^.]+$/, '').trim() || 'ops-dashboard';
-  return `${baseName}-ops-dashboard-mock.json`;
+  return `${baseName}-ops-dashboard-export.json`;
 }
 
-function downloadOpsDashboardMockJson(sourceName: string, bundle: OpsDashboardBundle): void {
+function downloadOpsDashboardExportJson(sourceName: string, bundle: OpsDashboardBundle): void {
   const json = JSON.stringify(bundle, null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = buildOpsDashboardMockJsonFileName(sourceName);
+  link.download = buildOpsDashboardExportJsonFileName(sourceName);
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -1097,9 +2059,20 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       return;
     }
     const bundle = buildOpsDashboardBundle(rows);
-    opsImportedBundle.value = bundle;
-    downloadOpsDashboardMockJson(file.name, bundle);
-    showToast(`已导入 ${rows.length} 条 Skill，运营看板已更新，默认 mock JSON 已下载`);
+    const system = opsBoardSystem.value;
+
+    if (system === 'company') {
+      opsImportedBundle.value = bundle;
+      downloadOpsDashboardExportJson(file.name, bundle);
+      showToast(
+        `已导入 ${rows.length} 条 Skill，当前页为预览；请用已下载 JSON 手动替换 src/mock/opsDashboardCompanyDefault.json 后重新运行 dev 以生效`,
+      );
+    } else {
+      downloadOpsDashboardExportJson(file.name, bundle);
+      showToast(
+        `已解析 ${rows.length} 条并下载 JSON；扶摇运营看板仅展示接口数据，导入不会更新该页`,
+      );
+    }
   } catch (e) {
     showToast(e instanceof Error ? e.message : 'Excel 解析失败');
   } finally {
@@ -1112,7 +2085,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 <template>
   <div class="user-shell">
 
-    <UploadSkillModal v-model="uploadOpen" @submit="onUploadSubmit" />
+    <UploadSkillModal
+      v-model="uploadOpen"
+      :parse-skill-archive="parseSkillArchiveForUpload"
+      @submit="onUploadSubmit"
+    />
 
     <Teleport to="body">
       <div
@@ -1248,7 +2225,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </section>
 
-    <nav class="sub-tabs" :class="{ 'ops-tabs': innerTab === 'ops' }" aria-label="市场分区">
+    <nav
+      class="sub-tabs"
+      :class="{ 'ops-tabs': innerTab === 'ops' || innerTab === 'org' || innerTab === 'approval' }"
+      aria-label="市场分区"
+    >
       <button
         type="button"
         class="sub-tab"
@@ -1273,6 +2254,24 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         @click="goTab('releases')"
       >
         我的发布
+      </button>
+      <button
+        v-if="showAdminModules"
+        type="button"
+        class="sub-tab"
+        :class="{ on: innerTab === 'org' }"
+        @click="goTab('org')"
+      >
+        组织管理
+      </button>
+      <button
+        v-if="showAdminModules"
+        type="button"
+        class="sub-tab"
+        :class="{ on: innerTab === 'approval' }"
+        @click="goTab('approval')"
+      >
+        审核中心
       </button>
       <button
         type="button"
@@ -1363,7 +2362,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               </button>
             </div>
           </div>
-          <div class="side-block">
+          <div class="side-block side-block--tags">
             <div class="side-title tag-title">
               <span>标签 <span class="side-help">?</span></span>
               <button
@@ -1375,23 +2374,40 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 清除
               </button>
             </div>
-            <div class="side-tags">
-              <button
-                v-for="tag in tagOptions"
-                :key="tag"
-                type="button"
-                class="side-tag"
-                :class="{ active: selectedTags.includes(tag) }"
-                @click="toggleTagFilter(tag)"
-              >
-                {{ tag }}
-              </button>
-              <span v-if="tagOptions.length === 0" class="side-empty">暂无标签</span>
+            <div
+              class="side-tags-collapsible"
+              :class="{ 'is-expanded': overviewTagListExpandedUi }"
+            >
+              <div class="side-tags">
+                <button
+                  v-for="tag in tagOptions"
+                  :key="tag"
+                  type="button"
+                  class="side-tag"
+                  :class="{ active: selectedTags.includes(tag) }"
+                  @click="toggleTagFilter(tag)"
+                >
+                  {{ tag }}
+                </button>
+                <span v-if="tagOptions.length === 0" class="side-empty">暂无标签</span>
+              </div>
             </div>
+            <button
+              v-if="showOverviewTagExpandToggle"
+              type="button"
+              class="side-tags-expand"
+              @click="overviewTagListExpanded = !overviewTagListExpanded"
+            >
+              {{ overviewTagListExpanded ? '收起标签' : '展开全部标签' }}
+            </button>
           </div>
         </aside>
 
-        <div ref="marketContentRef" class="market-content">
+        <div
+          ref="marketContentRef"
+          class="market-content"
+          @scroll.passive="onOverviewMarketScroll"
+        >
           <div class="filters">
             <input
               v-model="search"
@@ -1401,62 +2417,118 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             />
             <select v-model="levelFilter" class="select">
               <option value="all">筛选组织</option>
-              <option v-for="org in orgOptions" :key="org" :value="org">{{ org }}</option>
-            </select>
-            <div class="cascade-selects" aria-label="部门级联筛选">
-              <select v-model="sceneFilter" class="select cascade-level">
-                <option value="all">分层筛选部门</option>
-                <option value="1">一级部门</option>
-                <option value="2">二级部门</option>
-                <option value="3">三级部门</option>
-                <option value="4">四级部门</option>
-                <option value="5">五级部门</option>
-                <option value="6">六级部门</option>
-              </select>
-              <span class="cascade-arrow" aria-hidden="true">›</span>
-              <select
-                v-model="deptFilter"
-                class="select cascade-dept"
-                :disabled="sceneFilter === 'all' || deptOptions.length === 0"
-              >
-                <option value="all">
-                  {{ sceneFilter === 'all' ? '先选择部门层级' : '选择具体部门' }}
+              <template v-if="transportIsHttp">
+                <option
+                  v-for="o in marketOrgSelectOptions"
+                  :key="o.id"
+                  :value="String(o.id)"
+                >
+                  {{ o.orgName }}
                 </option>
-                <option v-for="d in deptOptions" :key="d" :value="d">{{ d }}</option>
-              </select>
-            </div>
-          </div>
-
-          <div v-if="filteredSkills.length > 0" ref="overviewGridRef" class="grid">
-            <SkillCard
-              v-for="s in filteredSkills"
-              :key="s.id ?? s.skill_id"
-              class="market-skill-card"
-              :skill="s"
-              menu-mode="download-only"
-              @download="onDownload"
-              @open-detail="openDetailPanel"
-              @view-versions="onViewVersions"
-            />
-          </div>
-          <p v-else class="empty">没有匹配的 Skill，可调整筛选条件。</p>
-
-          <div class="pager">
-            <span>
-              共 {{ listResponse.total }} 个 Skill · 第 {{ listResponse.page }} /
-              {{ listResponse.totalPages }} 页
-            </span>
-            <div class="pager-actions">
-              <button type="button" class="mini" :disabled="page <= 1" @click="prevPage">上一页</button>
+              </template>
+              <template v-else>
+                <option v-for="org in orgOptions" :key="org" :value="org">{{ org }}</option>
+              </template>
+            </select>
+            <div
+              ref="marketDeptCascaderWrapRef"
+              class="market-dept-cascader"
+              aria-label="部门级联筛选（departmentL1～L6）"
+            >
               <button
                 type="button"
-                class="mini"
-                :disabled="page >= listResponse.totalPages"
-                @click="nextPage"
+                class="market-dept-cascader-trigger"
+                :class="{ 'is-open': overviewDeptCascaderOpen }"
+                aria-haspopup="true"
+                :aria-expanded="overviewDeptCascaderOpen"
+                @click.stop="toggleOverviewDeptCascader"
               >
-                下一页
+                <span class="market-dept-cascader-trigger-text" :title="overviewDeptCascaderLabel">{{
+                  overviewDeptCascaderLabel
+                }}</span>
+                <span class="market-dept-cascader-caret" aria-hidden="true">▾</span>
               </button>
+              <Teleport to="body">
+                <div
+                  v-if="overviewDeptCascaderOpen"
+                  ref="marketDeptCascaderPanelRef"
+                  class="market-dept-cascader-panel"
+                  :style="marketDeptCascaderPanelStyle"
+                  role="listbox"
+                  @mousedown.prevent
+                >
+                <div
+                  v-if="overviewDeptCascadeColumns.length === 0"
+                  class="market-dept-cascader-empty"
+                >
+                  <template v-if="marketOverviewDeptTreeLoading">正在加载部门树…</template>
+                  <template v-else>暂无部门数据（可先调整组织/分类或等待列表加载）</template>
+                </div>
+                  <div v-else class="market-dept-cascader-columns">
+                    <div
+                      v-for="col in overviewDeptCascadeColumns"
+                      :key="'dept-col-' + col.levelIndex"
+                      class="market-dept-cascader-col"
+                      role="presentation"
+                    >
+                      <button
+                        v-for="name in col.options"
+                        :key="col.levelIndex + '-' + name"
+                        type="button"
+                        class="market-dept-cascader-item"
+                        :class="{ 'is-active': col.active === name }"
+                        role="option"
+                        :aria-selected="col.active === name"
+                        @click="onOverviewDeptCascaderPick(col.levelIndex, name)"
+                      >
+                        <span class="market-dept-cascader-item-label">{{ name }}</span>
+                        <span
+                          v-if="marketOverviewDeptPickHasChildren(col.levelIndex, name)"
+                          class="market-dept-cascader-item-chevron"
+                          aria-hidden="true"
+                        >
+                          ›
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="market-dept-cascader-footer">
+                    <button type="button" class="market-dept-cascader-clear" @click="clearOverviewDeptCascader">
+                      清空部门
+                    </button>
+                    <button type="button" class="market-dept-cascader-done" @click="closeOverviewDeptCascader">
+                      完成
+                    </button>
+                  </div>
+                </div>
+              </Teleport>
             </div>
+          </div>
+
+          <p
+            v-if="transportIsHttp && overviewRemoteLoading && overviewRemoteItems.length === 0"
+            class="empty overview-loading-hint"
+          >
+            正在从接口加载市场列表…
+          </p>
+          <template v-else-if="filteredSkills.length > 0">
+            <div ref="overviewGridRef" class="grid">
+              <SkillCard
+                v-for="s in filteredSkills"
+                :key="s.id ?? s.skill_id"
+                class="market-skill-card"
+                :skill="s"
+                menu-mode="download-only"
+                @download="(sid) => onDownload(sid, 'market')"
+                @open-detail="openDetailPanel"
+                @view-versions="onViewVersions"
+              />
+            </div>
+          </template>
+          <p v-else class="empty">没有匹配的 Skill，可调整筛选条件。</p>
+
+          <div class="overview-list-footer" role="status">
+            <span>{{ overviewListFooterHint }}</span>
           </div>
         </div>
       </div>
@@ -1518,7 +2590,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           :skill="s"
           variant="coreHarness"
           menu-mode="full"
-          @download="onDownload"
+          @download="(sid) => onDownload(sid, 'market')"
           @view-versions="onViewVersions"
         />
       </div>
@@ -1640,7 +2712,196 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </div>
 
-    <div v-else class="panel tab-panel ops">
+    <div
+      v-else-if="innerTab === 'org'"
+      ref="tabPanelRef"
+      class="panel tab-panel admin-org-panel"
+      :style="tabPanelFillStyle"
+    >
+      <header class="admin-panel-head">
+        <div>
+          <h2 class="panel-title">组织管理</h2>
+          <p class="panel-help">
+            配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill 市场的管理员角色。
+          </p>
+        </div>
+        <button v-if="canCreateOrg" type="button" class="btn primary" @click="openOrgCreateModal">
+          新建组织
+        </button>
+      </header>
+      <div class="admin-panel-body">
+        <div class="summary-strip admin-summary" role="group" aria-label="组织摘要">
+          <span class="summary-item">组织 <b>{{ adminOrganizations.length }}</b></span>
+          <span class="summary-item">组织管理员账号 <b>{{ orgDistinctAdminCount }}</b></span>
+        </div>
+        <div v-if="orgListLoading" class="admin-loading">加载中…</div>
+        <div v-else class="table-wrap admin-table-wrap">
+          <table class="table admin-table">
+            <thead>
+              <tr>
+                <th>组织名称</th>
+                <th>组织 ID</th>
+                <th>组织管理员</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="org in adminOrganizations" :key="org.id">
+                <td>
+                  <strong>{{ org.orgName }}</strong>
+                </td>
+                <td>{{ org.orgCode }}</td>
+                <td class="cell-admins">{{ org.admins }}</td>
+                <td>
+                  <span class="adm-badge" :class="org.enabled ? 'on' : 'off'">{{
+                    org.enabled ? '启用' : '停用'
+                  }}</span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn outline sm"
+                    :disabled="!canEditOrganization(org)"
+                    @click="openOrgEditModal(org)"
+                  >
+                    配置
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="adminOrganizations.length === 0">
+                <td colspan="5" class="empty-row">暂无组织数据</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-else-if="innerTab === 'approval'"
+      ref="tabPanelRef"
+      class="panel tab-panel admin-approval-panel"
+      :style="tabPanelFillStyle"
+    >
+      <header class="admin-panel-head">
+        <div>
+          <h2 class="panel-title">审核中心</h2>
+          <p class="panel-help">
+            个人级同步到组织级时，由目标组织的组织管理员审核。审核中心区分待审核和已完成。
+          </p>
+        </div>
+      </header>
+      <div class="admin-panel-body">
+        <div class="summary-strip approval-summary" role="group" aria-label="审核摘要">
+          <span class="summary-item">待审核 <b>{{ syncPendingRows.length }}</b></span>
+          <span class="summary-item">已完成 <b>{{ syncDoneRows.length }}</b></span>
+        </div>
+        <div class="section-toolbar admin-mini-toolbar">
+          <div class="mini-tabs" role="tablist" aria-label="审核分区">
+            <button
+              type="button"
+              class="mini-tab"
+              :class="{ active: approvalSubTab === 'pending' }"
+              role="tab"
+              :aria-selected="approvalSubTab === 'pending'"
+              @click="approvalSubTab = 'pending'"
+            >
+              待审核
+            </button>
+            <button
+              type="button"
+              class="mini-tab"
+              :class="{ active: approvalSubTab === 'done' }"
+              role="tab"
+              :aria-selected="approvalSubTab === 'done'"
+              @click="approvalSubTab = 'done'"
+            >
+              已完成
+            </button>
+          </div>
+        </div>
+        <div v-if="syncListLoading" class="admin-loading">加载中…</div>
+        <div v-else-if="approvalSubTab === 'pending'" class="table-wrap admin-table-wrap">
+          <table class="table admin-table">
+            <thead>
+              <tr>
+                <th>申请单</th>
+                <th>类型</th>
+                <th>目标层级</th>
+                <th>目标组织</th>
+                <th>申请理由</th>
+                <th>当前审核人</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in syncPendingRows" :key="row.id">
+                <td>
+                  <strong>{{ row.skillName }}</strong>
+                </td>
+                <td>{{ row.applyType }}</td>
+                <td>{{ row.targetLevel }}</td>
+                <td>{{ row.targetOrgName }}</td>
+                <td class="cell-reason">
+                  <div>{{ row.reason }}</div>
+                  <div v-if="row.reasonDetail" class="reason-detail">{{ row.reasonDetail }}</div>
+                </td>
+                <td>{{ row.approverLabel }}</td>
+                <td>
+                  <button type="button" class="btn outline sm" @click="openReviewModal(row)">
+                    审核
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="syncPendingRows.length === 0">
+                <td colspan="7" class="empty-row">暂无待审核申请</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="table-wrap admin-table-wrap">
+          <table class="table admin-table">
+            <thead>
+              <tr>
+                <th>申请单</th>
+                <th>类型</th>
+                <th>目标层级</th>
+                <th>目标组织</th>
+                <th>审核结果</th>
+                <th>审核意见</th>
+                <th>完成时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in syncDoneRows" :key="row.id">
+                <td>
+                  <strong>{{ row.skillName }}</strong>
+                </td>
+                <td>{{ row.applyType }}</td>
+                <td>{{ row.targetLevel }}</td>
+                <td>{{ row.targetOrgName }}</td>
+                <td>
+                  <span
+                    class="adm-badge"
+                    :class="row.reviewResult === '通过' ? 'ok' : row.reviewResult === '不通过' ? 'bad' : ''"
+                  >
+                    {{ row.reviewResult ?? '—' }}
+                  </span>
+                </td>
+                <td class="cell-reason">{{ row.reviewComment ?? '—' }}</td>
+                <td>{{ row.completedAt ?? '—' }}</td>
+              </tr>
+              <tr v-if="syncDoneRows.length === 0">
+                <td colspan="7" class="empty-row">暂无已完成记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div v-else-if="innerTab === 'ops'" class="panel tab-panel ops">
       <section class="ops-dashboard-card ops-dashboard" aria-label="Skill 运营看板">
         <header class="ops-title">
           <div>
@@ -1672,25 +2933,31 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 公司系统
               </button>
             </div>
-            <span class="ops-data-note" :title="`统计至：${opsAsOfText}`">
+            <span
+              v-if="opsBoardSystem === 'company'"
+              class="ops-data-note"
+              :title="`统计至：${opsAsOfText}`"
+            >
               数据口径：T+1（统计数据延迟 1 天）
             </span>
-            <input
-              ref="opsExcelInputRef"
-              class="visually-hidden"
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              aria-label="选择运营看板 Excel 文件"
-              @change="onOpsExcelFileChange"
-            />
-            <button
-              type="button"
-              class="btn btn-soft ops-import-btn"
-              :disabled="opsImporting"
-              @click="triggerOpsExcelImport"
-            >
-              {{ opsImporting ? '导入中…' : 'Excel 导入' }}
-            </button>
+            <template v-if="showOpsExcelImport">
+              <input
+                ref="opsExcelInputRef"
+                class="visually-hidden"
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                aria-label="选择运营看板 Excel 文件"
+                @change="onOpsExcelFileChange"
+              />
+              <button
+                type="button"
+                class="btn btn-soft ops-import-btn"
+                :disabled="opsImporting"
+                @click="triggerOpsExcelImport"
+              >
+                {{ opsImporting ? '导入中…' : 'Excel 导入' }}
+              </button>
+            </template>
           </div>
         </header>
 
@@ -1709,13 +2976,16 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <div class="ops-card-head">
                   <div>
                     <h3>部门 Skill 分布详情</h3>
-                    <p>从三级部门开始呈现；点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
+                    <p>点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
                   </div>
                 </div>
                 <div class="ops-card-body ops-tree board-org-tree" role="tree">
                   <div v-if="uiDeptFlat.length === 0" class="ops-empty-state">
                     <strong>{{ opsEmptyText }}</strong>
-                    <span>导入 Excel 后会在这里展示三级及以下部门、Skill 数量和下载量。</span>
+                    <span v-if="opsBoardSystem === 'company'">
+                      导入 Excel 后会在这里展示四级及以下部门、Skill 数量和下载量。
+                    </span>
+                    <span v-else>接口未返回部门分布或当前无可展示数据。</span>
                   </div>
                   <div v-for="row in uiDeptFlat" :key="row.path" class="ops-tree-item">
                     <button
@@ -1810,7 +3080,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <div class="ops-card-head">
                   <div>
                     <h3>组织级 Skill 分布详情</h3>
-                    <p>默认选中第一个组织级数据；点击横向条目后，右侧显示该组织级 Skill 列表。</p>
+                    <p>{{ opsOrgBarsHelpText }}</p>
                   </div>
                 </div>
                 <div class="ops-card-body">
@@ -1934,8 +3204,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </section>
     </div>
 
-    <UploadSkillModal v-model="uploadOpen" @submit="onUploadSubmit" />
-
     <Teleport to="body">
       <div v-if="versionPanelSkill" class="overlay" role="presentation" @click.self="closeVersionPanel">
         <div class="v-dialog" role="dialog" aria-modal="true">
@@ -1955,6 +3223,92 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </Teleport>
 
+    <Teleport to="body">
+      <div v-if="orgModalOpen" class="overlay" role="presentation" @click.self="closeOrgModal">
+        <div class="v-dialog v-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="org-modal-title">
+          <div class="v-head">
+            <strong id="org-modal-title">{{ orgModalMode === 'create' ? '新建组织' : '配置组织' }}</strong>
+            <button type="button" class="close-x" aria-label="关闭" @click="closeOrgModal">×</button>
+          </div>
+          <div class="admin-form">
+            <label class="admin-field">
+              <span>组织名称</span>
+              <input v-model="orgForm.orgName" type="text" class="search" placeholder="例如：IT装备部" />
+            </label>
+            <label class="admin-field">
+              <span>组织 ID</span>
+              <input v-model="orgForm.orgCode" type="text" class="search" placeholder="例如：ORG-IT-001" />
+            </label>
+            <label class="admin-field">
+              <span>组织管理员</span>
+              <input
+                v-model="orgForm.admins"
+                type="text"
+                class="search"
+                placeholder="多个账号用英文逗号分隔"
+              />
+            </label>
+            <label class="admin-field admin-check">
+              <input v-model="orgForm.enabled" type="checkbox" />
+              <span>启用</span>
+            </label>
+          </div>
+          <div class="v-actions">
+            <button type="button" class="btn outline sm" @click="closeOrgModal">取消</button>
+            <button type="button" class="btn primary sm" @click="submitOrgModal">保存</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div v-if="reviewModalOpen" class="overlay" role="presentation" @click.self="closeReviewModal">
+        <div class="v-dialog v-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+          <div class="v-head">
+            <strong id="review-modal-title">审核同步申请</strong>
+            <button type="button" class="close-x" aria-label="关闭" @click="closeReviewModal">×</button>
+          </div>
+          <p v-if="reviewTarget" class="v-sub">
+            {{ reviewTarget.skillName }} · {{ reviewTarget.targetOrgName }}
+          </p>
+          <div class="admin-form">
+            <div class="review-decision-row" role="radiogroup" aria-label="审核结论">
+              <label class="admin-radio">
+                <input v-model="reviewDecision" type="radio" value="approve" />
+                <span>通过</span>
+              </label>
+              <label class="admin-radio">
+                <input v-model="reviewDecision" type="radio" value="reject" />
+                <span>驳回</span>
+              </label>
+            </div>
+            <label class="admin-field">
+              <span>审核意见</span>
+              <textarea
+                v-model="reviewComment"
+                class="admin-textarea"
+                rows="4"
+                placeholder="请填写审核意见"
+              />
+            </label>
+          </div>
+          <div class="v-actions">
+            <button type="button" class="btn outline sm" :disabled="reviewSubmitting" @click="closeReviewModal">
+              取消
+            </button>
+            <button
+              type="button"
+              class="btn primary sm"
+              :disabled="reviewSubmitting"
+              @click="submitReviewModal"
+            >
+              提交
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
   </div>
 </template>
@@ -1966,6 +3320,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
   min-width: 0;
   margin: 0;
   padding: 0 clamp(16px, 2vw, 32px) 32px;
+  box-sizing: border-box;
+}
+
+.skill-market-shell {
+  max-width: 100%;
+  overflow-x: hidden;
   box-sizing: border-box;
 }
 
@@ -3118,14 +4478,10 @@ width: 100%;
   align-items: stretch;
 }
 
-.ops-pair-row.dept-row > .ops-card {
+.ops-pair-row.dept-row > .ops-card,
+.ops-pair-row.org-row > .ops-card {
   height: 400px;
   min-height: 400px;
-}
-
-.ops-pair-row.org-row > .ops-card {
-  height: 300px;
-  min-height: 300px;
 }
 
 .ops-card {
@@ -3768,6 +5124,7 @@ width: 100%;
   border: 0;
   padding: 0;
   margin-bottom: 14px;
+  flex-shrink: 0;
 }
 
 .stat-cell {
@@ -4262,14 +5619,10 @@ width: 100%;
   gap: 14px;
 }
 
-.ops-dashboard .ops-pair-row.dept-row > .ops-card {
+.ops-dashboard .ops-pair-row.dept-row > .ops-card,
+.ops-dashboard .ops-pair-row.org-row > .ops-card {
   height: 340px;
   min-height: 340px;
-}
-
-.ops-dashboard .ops-pair-row.org-row > .ops-card {
-  height: 250px;
-  min-height: 250px;
 }
 
 .ops-dashboard .ops-tree.board-org-tree {
@@ -4992,6 +6345,187 @@ width: 100%;
   color: rgba(0, 0, 0, 0.65);
 }
 
+.v-dialog-wide {
+  max-width: 520px;
+}
+
+.v-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.admin-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f8fbff;
+  border: 1px solid #e3ebf7;
+  font-size: 14px;
+  color: #475569;
+}
+
+.summary-strip b {
+  color: #10243e;
+  font-weight: 800;
+}
+
+.admin-mini-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.mini-tabs {
+  display: inline-flex;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mini-tab {
+  border: none;
+  background: transparent;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+}
+
+.mini-tab.active {
+  background: #edf5ff;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.admin-table-wrap {
+  overflow: auto;
+}
+
+.admin-table {
+  min-width: 720px;
+}
+
+.admin-table .cell-admins {
+  max-width: 280px;
+  word-break: break-all;
+  font-size: 13px;
+  color: #475569;
+}
+
+.admin-table .cell-reason {
+  max-width: 320px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.reason-detail {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.admin-loading {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.adm-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.adm-badge.on {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.adm-badge.off {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
+.adm-badge.ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.adm-badge.bad {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.admin-field.admin-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.review-decision-row {
+  display: flex;
+  gap: 20px;
+}
+
+.admin-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+}
+
 .toast {
   position: fixed;
   left: 50%;
@@ -5130,6 +6664,15 @@ width: 100%;
   background: #fff;
 }
 
+.overview-panel .market-sidebar {
+  align-self: start;
+  max-height: min(100%, calc(100vh - 200px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
 .side-nav {
   display: grid;
   gap: 4px;
@@ -5220,6 +6763,39 @@ width: 100%;
   line-height: 1;
 }
 
+.side-tags-collapsible {
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.overview-panel .side-block--tags .side-tags-collapsible:not(.is-expanded) {
+  max-height: 132px;
+}
+
+.overview-panel .side-block--tags .side-tags-collapsible.is-expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+.side-tags-expand {
+  margin-top: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  padding: 6px 0 2px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-tags-expand:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
 .side-tags {
   display: flex;
   flex-wrap: wrap;
@@ -5292,10 +6868,15 @@ width: 100%;
 
 .overview-panel .filters {
   display: grid;
-  grid-template-columns: minmax(300px, 1.25fr) 200px minmax(380px, 0.95fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(120px, 200px) minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 14px;
   align-items: center;
+  min-width: 0;
+}
+
+.overview-panel .filters > * {
+  min-width: 0;
 }
 
 .overview-panel .search,
@@ -5331,42 +6912,182 @@ width: 100%;
   cursor: not-allowed;
 }
 
-.cascade-selects {
-  display: grid;
-  grid-template-columns: minmax(144px, 1fr) 24px minmax(160px, 1.1fr);
-  align-items: center;
-  gap: 8px;
+.market-dept-cascader {
+  position: relative;
   min-width: 0;
-  height: 42px;
-  padding: 0;
+}
+
+.market-dept-cascader-trigger {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 34px 0 14px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background-color: #fff;
+  color: #334155;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.market-dept-cascader-trigger:hover {
+  border-color: #c5d0e0;
+}
+
+.market-dept-cascader-trigger.is-open,
+.market-dept-cascader-trigger:focus {
+  border-color: #1677ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+}
+
+.market-dept-cascader-trigger-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-dept-cascader-caret {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.market-dept-cascader-panel {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 200px;
+  max-width: 720px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+}
+
+.market-dept-cascader-empty {
+  padding: 16px 14px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.market-dept-cascader-columns {
+  display: flex;
+  flex-wrap: nowrap;
+  min-width: 0;
+  width: 100%;
+  max-height: 280px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.market-dept-cascader-col {
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 220px;
+  border-right: 1px solid #eef2f7;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.market-dept-cascader-col:last-of-type {
+  border-right: 0;
+}
+
+.market-dept-cascader-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   border: 0;
   background: transparent;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  text-align: left;
 }
 
-.cascade-selects .select {
-  width: 100%;
-  min-width: 0;
-  height: 42px;
-  border-color: #dbe3ee;
-  background-color: #fff;
+.market-dept-cascader-item:hover {
+  background: #f8fafc;
 }
 
-.cascade-selects .select:focus {
-  border-color: #1677ff;
-}
-
-.cascade-arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
+.market-dept-cascader-item.is-active {
   background: #eaf2ff;
   color: #2563eb;
-  font-size: 18px;
+  font-weight: 750;
+}
+
+.market-dept-cascader-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-dept-cascader-item-chevron {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 14px;
   font-weight: 800;
-  line-height: 1;
+}
+
+.market-dept-cascader-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid #eef2f7;
+  background: #fafbfc;
+}
+
+.market-dept-cascader-clear {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 4px;
+}
+
+.market-dept-cascader-clear:hover {
+  color: #2563eb;
+}
+
+.market-dept-cascader-done {
+  border: 1px solid #dbe3ee;
+  background: #fff;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.market-dept-cascader-done:hover {
+  border-color: #2563eb;
+  color: #2563eb;
 }
 
 .overview-panel .grid {
@@ -5436,9 +7157,22 @@ width: 100%;
   font-size: 12px;
 }
 
-.overview-panel .pager {
+.overview-panel .overview-list-footer {
   margin-top: auto;
   padding-top: 16px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.overview-panel .market-content {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.overview-loading-hint {
+  margin: 24px 0;
 }
 
 .my-release-panel .my-toolbar {
@@ -5668,7 +7402,7 @@ width: 100%;
     grid-template-columns: 1fr 1fr;
   }
 
-  .cascade-selects {
+  .market-dept-cascader {
     grid-column: 1 / -1;
   }
 }
@@ -5689,12 +7423,21 @@ width: 100%;
     position: static;
   }
 
-  .cascade-selects {
-    grid-template-columns: 1fr;
+  .market-dept-cascader-columns {
+    flex-direction: column;
+    max-height: min(60vh, 360px);
   }
 
-  .cascade-arrow {
-    display: none;
+  .market-dept-cascader-col {
+    min-width: 100%;
+    max-width: none;
+    border-right: 0;
+    border-bottom: 1px solid #eef2f7;
+    max-height: 200px;
+  }
+
+  .market-dept-cascader-col:last-of-type {
+    border-bottom: 0;
   }
 }
 </style>

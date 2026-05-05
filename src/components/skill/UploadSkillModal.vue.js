@@ -7,12 +7,20 @@ const note = ref('');
 const file = ref(null);
 const parsed = ref(null);
 const parseState = ref('idle');
+const parsing = ref(false);
+const parseError = ref('');
 const parseNotice = computed(() => {
+    if (parseError.value) {
+        return parseError.value;
+    }
     if (parseState.value === 'success') {
         return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，名称未重名。';
     }
     if (parseState.value === 'duplicate') {
         return '重名校验未通过：市场内已存在同名 Skill。请修改 SKILL.md Front Matter 中的 name 后重新上传；如果你是维护人，请从“我的发布”进入“上传新版本”。';
+    }
+    if (parsing.value) {
+        return '正在请求后端解析压缩包…';
     }
     return '等待上传：解析字段会自动回显且禁填。';
 });
@@ -28,6 +36,8 @@ function reset() {
     file.value = null;
     parsed.value = null;
     parseState.value = 'idle';
+    parsing.value = false;
+    parseError.value = '';
 }
 function close() {
     emit('update:modelValue', false);
@@ -52,9 +62,31 @@ function parseUploadOk(uploadFile) {
     };
     parseState.value = 'success';
 }
-function onFileChange(event) {
+async function onFileChange(event) {
     const input = event.target;
     file.value = input.files?.[0] ?? null;
+    parseError.value = '';
+    parsed.value = null;
+    parseState.value = 'idle';
+    if (!file.value) {
+        return;
+    }
+    if (props.parseSkillArchive) {
+        parsing.value = true;
+        try {
+            const r = await props.parseSkillArchive(file.value);
+            parsed.value = r.meta;
+            parseState.value = r.duplicate ? 'duplicate' : 'success';
+        }
+        catch (e) {
+            parseError.value = e instanceof Error ? e.message : '解析请求失败';
+            parseState.value = 'idle';
+        }
+        finally {
+            parsing.value = false;
+        }
+        return;
+    }
     parseUploadOk(file.value);
 }
 function onSubmit() {
@@ -86,6 +118,7 @@ let __VLS_intrinsics;
 let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['close-x']} */ ;
 /** @type {__VLS_StyleScopedClasses['notice']} */ ;
+/** @type {__VLS_StyleScopedClasses['upload-zone']} */ ;
 /** @type {__VLS_StyleScopedClasses['upload-zone']} */ ;
 /** @type {__VLS_StyleScopedClasses['upload-zone']} */ ;
 /** @type {__VLS_StyleScopedClasses['upload-zone']} */ ;
@@ -160,9 +193,11 @@ if (__VLS_ctx.modelValue) {
     __VLS_asFunctionalElement1(__VLS_intrinsics.code, __VLS_intrinsics.code)({});
     __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
         ...{ class: "upload-zone" },
+        ...{ class: ({ disabled: __VLS_ctx.parsing }) },
         for: "sk-file",
     });
     /** @type {__VLS_StyleScopedClasses['upload-zone']} */ ;
+    /** @type {__VLS_StyleScopedClasses['disabled']} */ ;
     __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
         ...{ class: "upload-icon" },
         'aria-hidden': "true",
@@ -175,10 +210,14 @@ if (__VLS_ctx.modelValue) {
         id: "sk-file",
         type: "file",
         accept: ".zip,application/zip",
+        disabled: (__VLS_ctx.parsing),
     });
     __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
         ...{ class: "parse-notice" },
-        ...{ class: ({ success: __VLS_ctx.parseState === 'success', error: __VLS_ctx.parseState === 'duplicate' }) },
+        ...{ class: ({
+                success: __VLS_ctx.parseState === 'success',
+                error: __VLS_ctx.parseState === 'duplicate' || Boolean(__VLS_ctx.parseError),
+            }) },
     });
     /** @type {__VLS_StyleScopedClasses['parse-notice']} */ ;
     /** @type {__VLS_StyleScopedClasses['success']} */ ;
@@ -343,7 +382,7 @@ if (__VLS_ctx.modelValue) {
     /** @type {__VLS_StyleScopedClasses['primary']} */ ;
 }
 // @ts-ignore
-[modelValue, onOverlayClick, close, close, onFileChange, parseState, parseState, parseNotice, parsed, parsed, parsed, parsed, parsed, parsed, parsed, parsed, note, onSubmit, canSubmit,];
+[modelValue, onOverlayClick, close, close, parsing, parsing, onFileChange, parseState, parseState, parseError, parseNotice, parsed, parsed, parsed, parsed, parsed, parsed, parsed, parsed, note, onSubmit, canSubmit,];
 var __VLS_3;
 // @ts-ignore
 [];

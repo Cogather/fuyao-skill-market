@@ -1,0 +1,44 @@
+/**
+ * 与《Agent Center Skill 市场需求开发设计文档》对齐的接口路径。
+ * 仅描述路径，不含 baseURL，便于切换网关前缀或版本。
+ */
+export const SKILL_MARKET_ENDPOINTS = {
+    userCurrentDepartment: '/api/users/current/department',
+    /** §3.3.10 前端菜单 / 按钮权限 */
+    userCurrentRole: '/api/users/current/role',
+    resourceFileUpload: '/resource/resource-management/v1/storage/file',
+    skillsUpload: '/api/skills/upload',
+    /** 设计文档流程：仅解压解析 SKILL.md，校验元数据与重名，不入库 */
+    skillsUploadParse: '/api/skills/upload/parse',
+    skills: '/api/skills',
+    /** §4.3.1 我的发布列表 */
+    skillsMy: '/api/skills/my',
+    skillById: (id) => `/api/skills/${encodeURIComponent(String(id))}`,
+    /** §3.3.3.2.1 下载到本地：返回临时下载 URL 并累计下载量 */
+    skillDownload: (id) => `/api/skills/${encodeURIComponent(String(id))}/download`,
+    /** §3.3.3.2.2 单 Skill 下载量统计与趋势 */
+    skillDownloadStats: (id) => `/api/skills/${encodeURIComponent(String(id))}/download-stats`,
+    skillVersions: (id) => `/api/skills/${encodeURIComponent(String(id))}/versions`,
+    skillSyncApplications: (id) => `/api/skills/${encodeURIComponent(String(id))}/sync-applications`,
+    skillSyncUpdateApplications: (id) => `/api/skills/${encodeURIComponent(String(id))}/sync-update-applications`,
+    syncApplicationReview: (id) => `/api/sync-applications/${encodeURIComponent(String(id))}/review`,
+    syncApplications: '/api/sync-applications',
+    /**
+     * 全量部门树（L1～L6），供市场筛选级联；设计文档占位，当前 Mock 与 HTTP 客户端均已接好。
+     * 响应：`ApiEnvelope<DepartmentTreeNodeDto[]>`（根为多棵一级部门）。
+     */
+    departmentsTree: '/api/departments/tree',
+    organizations: '/api/organizations',
+    organizationById: (id) => `/api/organizations/${encodeURIComponent(String(id))}`,
+    /** §3.3.12 仅 SUPER_ADMIN */
+    superAdmins: '/api/super-admins',
+    superAdminById: (id) => `/api/super-admins/${encodeURIComponent(String(id))}`,
+    /** §3.3.13 运营看板（扶摇侧 HTTP 由 `fetchOpsDashboardUi('fuyao')` 使用并映射为 UI Bundle） */
+    dashboardOverview: '/api/dashboard/overview',
+    /** 占位；公司看板只读打包 mock JSON，前端不请求 */
+    dashboardOpsUi: (system) => `/api/dashboard/ops-ui?system=${encodeURIComponent(system)}`,
+    skillQualityReviews: '/api/skill-quality-reviews',
+    skillQualityReviewsSave: '/api/skill-quality-reviews/save',
+    skillQualityReviewsArchive: '/api/skill-quality-reviews/archive',
+    dashboardImportExcel: '/api/dashboard/import-excel',
+};

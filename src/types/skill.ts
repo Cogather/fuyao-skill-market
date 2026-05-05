@@ -34,6 +34,8 @@ export interface Skill {
   versions?: SkillVersionEntry[];
   /** 当前登录用户是否曾通过本地上传发布/更新过 */
   ownedByUser?: boolean;
+  /** 接口 `status`：个人级、组织级、组织审核中、组织已驳回 等（我的发布展示用） */
+  marketStatus?: string;
   /** 功能类标签（如：开发、运维、设计、办公） */
   tagFunctional?: string;
   /** 组织/范围类标签 */
@@ -53,7 +55,7 @@ export interface SkillVersionEntry {
 
 export type MarketPerspective = 'user' | 'admin';
 
-export type UserInnerTab = 'overview' | 'core' | 'releases' | 'ops';
+export type UserInnerTab = 'overview' | 'core' | 'releases' | 'org' | 'approval' | 'ops';
 
 /** 市场总览 · 快捷入口 */
 export type OverviewQuickFilter =

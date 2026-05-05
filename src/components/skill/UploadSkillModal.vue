@@ -15,6 +15,8 @@ type ParsedSkillMeta = {
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
+    /** 对接 `POST /api/skills/upload/parse`；不传则保持本地 Mock 解析（仅开发兜底） */
+    parseSkillArchive?: (file: File) => Promise<{ duplicate: boolean; meta: ParsedSkillMeta }>;
   }>(),
   {
     modelValue: false,
@@ -30,13 +32,21 @@ const note = ref('');
 const file = ref<File | null>(null);
 const parsed = ref<ParsedSkillMeta | null>(null);
 const parseState = ref<'idle' | 'success' | 'duplicate'>('idle');
+const parsing = ref(false);
+const parseError = ref('');
 
 const parseNotice = computed(() => {
+  if (parseError.value) {
+    return parseError.value;
+  }
   if (parseState.value === 'success') {
     return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，名称未重名。';
   }
   if (parseState.value === 'duplicate') {
     return '重名校验未通过：市场内已存在同名 Skill。请修改 SKILL.md Front Matter 中的 name 后重新上传；如果你是维护人，请从“我的发布”进入“上传新版本”。';
+  }
+  if (parsing.value) {
+    return '正在请求后端解析压缩包…';
   }
   return '等待上传：解析字段会自动回显且禁填。';
 });
@@ -58,6 +68,8 @@ function reset(): void {
   file.value = null;
   parsed.value = null;
   parseState.value = 'idle';
+  parsing.value = false;
+  parseError.value = '';
 }
 
 function close(): void {
@@ -87,9 +99,29 @@ function parseUploadOk(uploadFile: File | null): void {
   parseState.value = 'success';
 }
 
-function onFileChange(event: Event): void {
+async function onFileChange(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
   file.value = input.files?.[0] ?? null;
+  parseError.value = '';
+  parsed.value = null;
+  parseState.value = 'idle';
+  if (!file.value) {
+    return;
+  }
+  if (props.parseSkillArchive) {
+    parsing.value = true;
+    try {
+      const r = await props.parseSkillArchive(file.value);
+      parsed.value = r.meta;
+      parseState.value = r.duplicate ? 'duplicate' : 'success';
+    } catch (e) {
+      parseError.value = e instanceof Error ? e.message : '解析请求失败';
+      parseState.value = 'idle';
+    } finally {
+      parsing.value = false;
+    }
+    return;
+  }
   parseUploadOk(file.value);
 }
 
@@ -126,14 +158,26 @@ function onSubmit(): void {
           name、description、requirements 以及 metadata 下的 author、version、category、tags。校验通过后，系统会保存压缩包和解析出的元数据，默认发布为个人级 Skill。
         </div>
 
-        <label class="upload-zone" for="sk-file">
+        <label class="upload-zone" :class="{ disabled: parsing }" for="sk-file">
           <span class="upload-icon" aria-hidden="true">↑</span>
           <strong>上传 Skill 压缩包</strong>
           <span>支持 .zip 文件。选择后自动解析并回显基础信息。</span>
-          <input id="sk-file" type="file" accept=".zip,application/zip" @change="onFileChange" />
+          <input
+            id="sk-file"
+            type="file"
+            accept=".zip,application/zip"
+            :disabled="parsing"
+            @change="onFileChange"
+          />
         </label>
 
-        <div class="parse-notice" :class="{ success: parseState === 'success', error: parseState === 'duplicate' }">
+        <div
+          class="parse-notice"
+          :class="{
+            success: parseState === 'success',
+            error: parseState === 'duplicate' || Boolean(parseError),
+          }"
+        >
           {{ parseNotice }}
         </div>
 
@@ -294,6 +338,12 @@ function onSubmit(): void {
 .upload-zone:hover {
   background: #eff6ff;
   transform: translateY(-1px);
+}
+
+.upload-zone.disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 .upload-zone input {
