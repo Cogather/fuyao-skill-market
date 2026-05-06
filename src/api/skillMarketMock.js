@@ -18,7 +18,7 @@ function skillVersion(skill) {
 function skillPublishTime(skill) {
     return skill.latestPublishTime ?? '';
 }
-function matchesScope(skill, scope) {
+export function matchesScope(skill, scope) {
     if (scope === 'all') {
         return true;
     }

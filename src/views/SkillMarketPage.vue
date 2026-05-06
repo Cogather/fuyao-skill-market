@@ -12,6 +12,8 @@ import UserMarketShell from './skill/UserMarketShell.vue';
 .skill-market-page {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   min-height: 100vh;
   box-sizing: border-box;
   background: #f0f2f5;

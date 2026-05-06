@@ -1,4 +1,21 @@
+import { onBeforeUnmount, provide, ref } from 'vue';
 import { RouterView } from 'vue-router';
+/** 父页面 postMessage 下发的部门树；在 setup 中 provide，子组件 inject 同一 Ref 即可响应更新 */
+const departmentList = ref(null);
+provide('departmentList', departmentList);
+function handleEvent(event) {
+    const payload = event.data;
+    if (payload && typeof payload === 'object' && 'departmentList' in payload) {
+        const list = payload.departmentList;
+        if (Array.isArray(list)) {
+            departmentList.value = list;
+        }
+    }
+}
+window.addEventListener('message', handleEvent);
+onBeforeUnmount(() => {
+    window.removeEventListener('message', handleEvent);
+});
 const __VLS_ctx = {
     ...{},
     ...{},

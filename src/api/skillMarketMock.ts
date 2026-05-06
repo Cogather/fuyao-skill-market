@@ -37,7 +37,7 @@ function skillPublishTime(skill: Skill): string {
   return skill.latestPublishTime ?? '';
 }
 
-function matchesScope(skill: Skill, scope: SkillMarketScope): boolean {
+export function matchesScope(skill: Skill, scope: SkillMarketScope): boolean {
   if (scope === 'all') {
     return true;
   }
