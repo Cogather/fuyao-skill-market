@@ -1,6 +1,32 @@
 /**
  * 将后端 / Mock 返回的 `DepartmentTreeNodeDto` 转为市场级联使用的森林（各级名称有序）。
  */
+/**
+ * 将父页面 postMessage 等来源的未知结构尽量规整为 `DepartmentTreeNodeDto`，便于与市场级联共用映射逻辑。
+ */
+export function coerceDepartmentTreeFromUnknown(nodes) {
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+        return [];
+    }
+    const out = [];
+    for (const item of nodes) {
+        if (!item || typeof item !== 'object') {
+            continue;
+        }
+        const o = item;
+        const namePart = o.deptName ?? o.name ?? o.label ?? o.departmentName ?? o.title;
+        const deptName = typeof namePart === 'string' ? namePart.trim() : String(namePart ?? '').trim();
+        const deptLevel = typeof o.deptLevel === 'number' && Number.isFinite(o.deptLevel) ? o.deptLevel : 0;
+        const childRaw = o.children;
+        const children = Array.isArray(childRaw) && childRaw.length > 0 ? coerceDepartmentTreeFromUnknown(childRaw) : [];
+        out.push({
+            deptName,
+            deptLevel,
+            ...(children.length > 0 ? { children, } : {}),
+        });
+    }
+    return out;
+}
 export function mapDepartmentTreeDtoToForest(nodes) {
     if (!nodes?.length) {
         return [];
