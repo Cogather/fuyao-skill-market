@@ -15,7 +15,10 @@ import type {
 } from '../../services/skillMarket/apiTypes';
 import { apiRecordToSkill, skillListQueryToDto } from '../../services/skillMarket/mappers';
 import type { MarketDeptForestNode } from '../../services/skillMarket/marketDeptTreeFromApi';
-import { mapDepartmentTreeDtoToForest } from '../../services/skillMarket/marketDeptTreeFromApi';
+import {
+  coerceDepartmentTreeFromUnknown,
+  mapDepartmentTreeDtoToForest,
+} from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   marketRoleCanCreateOrganization,
   marketRoleShowsOpsAndReview,
@@ -154,8 +157,6 @@ const canCreateOrg = computed(() => marketRoleCanCreateOrganization(currentUserR
 
 const adminOrganizations = ref<OrganizationDto[]>([]);
 const orgListLoading = ref(false);
-/** `fetchDepartmentsTree` 映射后的森林；成功则级联以全量部门为准，否则回退为当前列表推导 */
-const marketOverviewDeptTreeFromApi = ref<MarketDeptForestNode[] | null>(null);
 const marketOverviewDeptTreeLoading = ref(false);
 /** `App.vue` 对父页面 `postMessage` 的 `departmentList` 的 provide（同一 Ref，随消息更新） */
 const departmentListFromParent = inject<Ref<DepartmentTreeNodeDto[] | null> | undefined>('departmentList');
@@ -216,38 +217,7 @@ function toListScope(filter: OverviewQuickFilter): SkillMarketScope {
     : 'all';
 }
 
-type MarketDeptMutable = { name: string; children: Map<string, MarketDeptMutable> };
-
 type MarketDeptNode = MarketDeptForestNode;
-
-function buildMarketOverviewDeptForest(skillList: Skill[]): MarketDeptNode[] {
-  const root: MarketDeptMutable = { name: '', children: new Map() };
-  for (const s of skillList) {
-    const segs = parseDeptNamePath(s.dept_name ?? '');
-    let node = root;
-    for (const seg of segs) {
-      if (!node.children.has(seg)) {
-        node.children.set(seg, { name: seg, children: new Map() });
-      }
-      node = node.children.get(seg)!;
-    }
-  }
-  function finalize(m: MarketDeptMutable, parentPath: string, levelNo: number): MarketDeptNode {
-    const path = parentPath ? `${parentPath}/${m.name}` : m.name;
-    const children = [...m.children.values()]
-      .map((c) => finalize(c, path, levelNo + 1))
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
-    return {
-      name: m.name,
-      path,
-      levelNo,
-      children,
-    };
-  }
-  return [...root.children.values()]
-    .map((n) => finalize(n, '', 1))
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
-}
 
 function matchesScopeFilter(skill: Skill, scope: SkillMarketScope): boolean {
   if (scope === 'all') {
@@ -363,18 +333,9 @@ const marketOrgSelectOptions = computed(() =>
     .sort((a, b) => a.orgName.localeCompare(b.orgName, 'zh-Hans-CN')),
 );
 
-const skillsForMarketDeptTree = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  const scope = toListScope(quickFilter.value);
-  return skills.value.filter((s) => matchesPrimaryFiltersSansDept(s, q, scope));
-});
-
 const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
-  const apiTree = marketOverviewDeptTreeFromApi.value;
-  if (apiTree && apiTree.length > 0) {
-    return apiTree;
-  }
-  return buildMarketOverviewDeptForest(skillsForMarketDeptTree.value);
+  const coerced = coerceDepartmentTreeFromUnknown(departmentListFromParent?.value);
+  return mapDepartmentTreeDtoToForest(coerced);
 });
 
 function marketOverviewDeptNodeByPartial(segments: string[]): MarketDeptNode | null {
@@ -694,7 +655,6 @@ function syncResponsiveLayout(): void {
 onMounted(() => {
   syncResponsiveLayout();
   window.addEventListener('resize', syncResponsiveLayout);
-  void loadMarketDepartmentsTreeForOverview();
   if (transportIsHttp) {
     void loadAdminOrganizations();
   }
@@ -1162,41 +1122,6 @@ async function loadAdminOrganizations(): Promise<void> {
     orgListLoading.value = false;
   }
 }
-
-function applyInjectedDepartmentTreeIfAny(): void {
-  const holder = departmentListFromParent;
-  if (!holder) {
-    return;
-  }
-  const raw = holder.value;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return;
-  }
-  marketOverviewDeptTreeFromApi.value = mapDepartmentTreeDtoToForest(raw);
-}
-
-async function loadMarketDepartmentsTreeForOverview(): Promise<void> {
-  marketOverviewDeptTreeLoading.value = true;
-  try {
-    const r = await marketClient.fetchDepartmentsTree();
-    if (r.code === 0 && Array.isArray(r.data) && r.data.length > 0) {
-      marketOverviewDeptTreeFromApi.value = mapDepartmentTreeDtoToForest(r.data);
-    } else {
-      marketOverviewDeptTreeFromApi.value = null;
-    }
-    applyInjectedDepartmentTreeIfAny();
-  } finally {
-    marketOverviewDeptTreeLoading.value = false;
-  }
-}
-
-watch(
-  () => departmentListFromParent?.value,
-  () => {
-    applyInjectedDepartmentTreeIfAny();
-  },
-  { deep: true, immediate: true, },
-);
 
 async function loadSyncApplicationRows(): Promise<void> {
   syncListLoading.value = true;

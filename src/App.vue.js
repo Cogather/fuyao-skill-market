@@ -1,15 +1,44 @@
 import { onBeforeUnmount, provide, ref } from 'vue';
 import { RouterView } from 'vue-router';
+const mockDepartmentList = [
+    {
+        deptName: '核心网产品线mock',
+        deptLevel: 1,
+        children: [
+            {
+                deptName: '核心网研究部',
+                deptLevel: 2,
+                children: [],
+            },
+        ],
+    },
+];
 /** 父页面 postMessage 下发的部门树；在 setup 中 provide，子组件 inject 同一 Ref 即可响应更新 */
-const departmentList = ref(null);
+const departmentList = ref(mockDepartmentList);
 provide('departmentList', departmentList);
 function handleEvent(event) {
     const payload = event.data;
-    if (payload && typeof payload === 'object' && 'departmentList' in payload) {
-        const list = payload.departmentList;
-        if (Array.isArray(list)) {
-            departmentList.value = list;
+    if (!payload || typeof payload !== 'object') {
+        return;
+    }
+    const p = payload;
+    if (p.type !== 'init') {
+        return;
+    }
+    let list = null;
+    if (Array.isArray(p.departmentList)) {
+        list = p.departmentList;
+    }
+    else if (typeof p.departmentListStr === 'string' && p.departmentListStr.length > 0) {
+        try {
+            list = JSON.parse(p.departmentListStr);
         }
+        catch {
+            list = null;
+        }
+    }
+    if (Array.isArray(list)) {
+        departmentList.value = list;
     }
 }
 window.addEventListener('message', handleEvent);
