@@ -53,6 +53,7 @@ export type SuperAdminUpdateBody = {
 };
 
 export type SkillListParamsDto = {
+  userId?: string;
   keyword?: string;
   level?: string;
   orgId?: number;
@@ -113,6 +114,7 @@ export type SkillListPayloadDto = {
 
 /** §4.3 `GET /api/skills/my` */
 export type MySkillsParams = {
+  userId?: string;
   pageNo: number;
   pageSize: number;
   keyword?: string;
@@ -167,6 +169,7 @@ export type SkillDetailDto = {
 export type SkillDownloadSourcePage = 'market' | 'detail' | 'my-publish';
 
 export type SkillDownloadRequestBody = {
+  userId?: string;
   sourcePage?: SkillDownloadSourcePage;
 };
 
@@ -181,6 +184,7 @@ export type SkillDownloadResultDto = {
 
 /** §3.3.3.2.2 `GET /api/skills/{id}/download-stats` */
 export type SkillDownloadStatsParams = {
+  userId?: string;
   startDate?: string;
   endDate?: string;
   granularity?: 'day';
@@ -234,6 +238,7 @@ export type UploadSkillResultDto = {
 };
 
 export type CreateSkillBody = {
+  userId?: string;
   name: string;
   description: string;
   requirements?: string;
@@ -253,11 +258,13 @@ export type CreateSkillResultDto = {
 };
 
 export type SyncApplicationBody = {
+  userId?: string;
   targetOrgId: number;
   reason: string;
 };
 
 export type SyncUpdateApplicationBody = {
+  userId?: string;
   targetOrgId: number;
   version: string;
   updateReason: string;

@@ -3,6 +3,7 @@ import { SKILL_MARKET_ENDPOINTS } from './endpoints';
 import { joinBaseUrl, readJsonEnvelope } from './httpJson';
 import { emptyOpsDashboardBundle, readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
 import { dashboardOverviewToOpsBundle } from './opsOverviewToBundle';
+import { getSkillMarketRequestUserId } from './requestUserContext';
 import { apiRecordToSkill, mergeSkillFromSkillDownloadDto, skillListQueryToDto, stableNumericId, uploadResultDtoToSkill, } from './mappers';
 function toSearchParams(params) {
     const sp = new URLSearchParams();
@@ -24,6 +25,41 @@ function resolvePackageDownloadUrl(apiBase, downloadUrl) {
         return u;
     }
     return joinBaseUrl(apiBase, u);
+}
+function isSkillsApiPath(path) {
+    const pathOnly = path.split('?')[0] ?? '';
+    return pathOnly === '/api/skills' || pathOnly.startsWith('/api/skills/');
+}
+function appendUserIdToSkillsParams(path) {
+    const userId = getSkillMarketRequestUserId();
+    if (!userId || !isSkillsApiPath(path)) {
+        return path;
+    }
+    const [pathOnly, query = ''] = path.split('?');
+    const sp = new URLSearchParams(query);
+    sp.set('userId', userId);
+    const q = sp.toString();
+    return q ? `${pathOnly}?${q}` : pathOnly;
+}
+function addUserIdToSkillsJsonBody(path, body) {
+    const userId = getSkillMarketRequestUserId();
+    if (!userId || !isSkillsApiPath(path)) {
+        return body;
+    }
+    if (body && typeof body === 'object' && !Array.isArray(body)) {
+        return {
+            ...body,
+            userId,
+        };
+    }
+    return { userId };
+}
+function addUserIdToSkillsForm(path, form) {
+    const userId = getSkillMarketRequestUserId();
+    if (userId && isSkillsApiPath(path)) {
+        form.set('userId', userId);
+    }
+    return form;
 }
 function fileNameFromContentDisposition(header, fallback) {
     if (!header) {
@@ -47,7 +83,7 @@ function fileNameFromContentDisposition(header, fallback) {
 export function createSkillMarketHttpClient(baseUrl) {
     const skills = ref([]);
     async function get(path) {
-        const res = await fetch(joinBaseUrl(baseUrl, path), {
+        const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path)), {
             credentials: 'include',
         });
         return readJsonEnvelope(res);
@@ -57,7 +93,7 @@ export function createSkillMarketHttpClient(baseUrl) {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
         });
         return readJsonEnvelope(res);
     }
@@ -66,7 +102,7 @@ export function createSkillMarketHttpClient(baseUrl) {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
         });
         return readJsonEnvelope(res);
     }
@@ -74,7 +110,7 @@ export function createSkillMarketHttpClient(baseUrl) {
         const res = await fetch(joinBaseUrl(baseUrl, path), {
             method: 'POST',
             credentials: 'include',
-            body: form,
+            body: addUserIdToSkillsForm(path, form),
         });
         return readJsonEnvelope(res);
     }
@@ -236,12 +272,7 @@ export function createSkillMarketHttpClient(baseUrl) {
         async postSkillVersion(id, file) {
             const form = new FormData();
             form.append('file', file);
-            const res = await fetch(joinBaseUrl(baseUrl, SKILL_MARKET_ENDPOINTS.skillVersions(id)), {
-                method: 'POST',
-                credentials: 'include',
-                body: form,
-            });
-            return readJsonEnvelope(res);
+            return postForm(SKILL_MARKET_ENDPOINTS.skillVersions(id), form);
         },
         postSyncApplication(id, body) {
             return postJson(SKILL_MARKET_ENDPOINTS.skillSyncApplications(id), body);

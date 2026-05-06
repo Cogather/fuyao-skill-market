@@ -43,6 +43,7 @@ import { SKILL_MARKET_ENDPOINTS } from './endpoints';
 import { joinBaseUrl, readJsonEnvelope } from './httpJson';
 import { emptyOpsDashboardBundle, readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
 import { dashboardOverviewToOpsBundle } from './opsOverviewToBundle';
+import { getSkillMarketRequestUserId } from './requestUserContext';
 import {
   apiRecordToSkill,
   mergeSkillFromSkillDownloadDto,
@@ -75,6 +76,45 @@ function resolvePackageDownloadUrl(apiBase: string, downloadUrl: string): string
   return joinBaseUrl(apiBase, u);
 }
 
+function isSkillsApiPath(path: string): boolean {
+  const pathOnly = path.split('?')[0] ?? '';
+  return pathOnly === '/api/skills' || pathOnly.startsWith('/api/skills/');
+}
+
+function appendUserIdToSkillsParams(path: string): string {
+  const userId = getSkillMarketRequestUserId();
+  if (!userId || !isSkillsApiPath(path)) {
+    return path;
+  }
+  const [pathOnly, query = ''] = path.split('?');
+  const sp = new URLSearchParams(query);
+  sp.set('userId', userId);
+  const q = sp.toString();
+  return q ? `${pathOnly}?${q}` : pathOnly;
+}
+
+function addUserIdToSkillsJsonBody(path: string, body: unknown): unknown {
+  const userId = getSkillMarketRequestUserId();
+  if (!userId || !isSkillsApiPath(path)) {
+    return body;
+  }
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    return {
+      ...(body as Record<string, unknown>),
+      userId,
+    };
+  }
+  return { userId };
+}
+
+function addUserIdToSkillsForm(path: string, form: FormData): FormData {
+  const userId = getSkillMarketRequestUserId();
+  if (userId && isSkillsApiPath(path)) {
+    form.set('userId', userId);
+  }
+  return form;
+}
+
 function fileNameFromContentDisposition(header: string | null, fallback: string): string {
   if (!header) {
     return fallback;
@@ -98,7 +138,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
   const skills = ref<Skill[]>([]);
 
   async function get<T>(path: string): Promise<ApiEnvelope<T>> {
-    const res = await fetch(joinBaseUrl(baseUrl, path), {
+    const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path)), {
       credentials: 'include',
     });
     return readJsonEnvelope<T>(res);
@@ -109,7 +149,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
     });
     return readJsonEnvelope<T>(res);
   }
@@ -119,7 +159,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
     });
     return readJsonEnvelope<T>(res);
   }
@@ -128,7 +168,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
     const res = await fetch(joinBaseUrl(baseUrl, path), {
       method: 'POST',
       credentials: 'include',
-      body: form,
+      body: addUserIdToSkillsForm(path, form),
     });
     return readJsonEnvelope<T>(res);
   }
@@ -328,12 +368,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
     async postSkillVersion(id: string | number, file: File) {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(joinBaseUrl(baseUrl, SKILL_MARKET_ENDPOINTS.skillVersions(id)), {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
-      });
-      return readJsonEnvelope(res);
+      return postForm(SKILL_MARKET_ENDPOINTS.skillVersions(id), form);
     },
 
     postSyncApplication(id: string | number, body: SyncApplicationBody) {
