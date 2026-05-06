@@ -3,7 +3,6 @@ import { SKILL_MARKET_ENDPOINTS } from './endpoints';
 import { joinBaseUrl, readJsonEnvelope } from './httpJson';
 import { emptyOpsDashboardBundle, readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
 import { dashboardOverviewToOpsBundle } from './opsOverviewToBundle';
-import { getSkillMarketRequestUserId } from './requestUserContext';
 import { apiRecordToSkill, mergeSkillFromSkillDownloadDto, skillListQueryToDto, stableNumericId, uploadResultDtoToSkill, } from './mappers';
 function toSearchParams(params) {
     const sp = new URLSearchParams();
@@ -30,34 +29,35 @@ function isSkillsApiPath(path) {
     const pathOnly = path.split('?')[0] ?? '';
     return pathOnly === '/api/skills' || pathOnly.startsWith('/api/skills/');
 }
-function appendUserIdToSkillsParams(path) {
-    const userId = getSkillMarketRequestUserId();
-    if (!userId || !isSkillsApiPath(path)) {
+function currentInjectedUserId(userId) {
+    return String(userId?.value ?? '').trim();
+}
+function appendUserIdToSkillsParams(path, userId) {
+    if (!isSkillsApiPath(path)) {
         return path;
     }
     const [pathOnly, query = ''] = path.split('?');
     const sp = new URLSearchParams(query);
-    sp.set('userId', userId);
+    sp.set('userId', currentInjectedUserId(userId));
     const q = sp.toString();
     return q ? `${pathOnly}?${q}` : pathOnly;
 }
-function addUserIdToSkillsJsonBody(path, body) {
-    const userId = getSkillMarketRequestUserId();
-    if (!userId || !isSkillsApiPath(path)) {
+function addUserIdToSkillsJsonBody(path, body, userId) {
+    if (!isSkillsApiPath(path)) {
         return body;
     }
+    const injectedUserId = currentInjectedUserId(userId);
     if (body && typeof body === 'object' && !Array.isArray(body)) {
         return {
             ...body,
-            userId,
+            userId: injectedUserId,
         };
     }
-    return { userId };
+    return { userId: injectedUserId };
 }
-function addUserIdToSkillsForm(path, form) {
-    const userId = getSkillMarketRequestUserId();
-    if (userId && isSkillsApiPath(path)) {
-        form.set('userId', userId);
+function addUserIdToSkillsForm(path, form, userId) {
+    if (isSkillsApiPath(path)) {
+        form.set('userId', currentInjectedUserId(userId));
     }
     return form;
 }
@@ -80,10 +80,10 @@ function fileNameFromContentDisposition(header, fallback) {
     }
     return fallback;
 }
-export function createSkillMarketHttpClient(baseUrl) {
+export function createSkillMarketHttpClient(baseUrl, userId) {
     const skills = ref([]);
     async function get(path) {
-        const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path)), {
+        const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path, userId)), {
             credentials: 'include',
         });
         return readJsonEnvelope(res);
@@ -93,7 +93,7 @@ export function createSkillMarketHttpClient(baseUrl) {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
+            body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, userId)),
         });
         return readJsonEnvelope(res);
     }
@@ -102,7 +102,7 @@ export function createSkillMarketHttpClient(baseUrl) {
             method: 'PUT',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
+            body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, userId)),
         });
         return readJsonEnvelope(res);
     }
@@ -110,7 +110,7 @@ export function createSkillMarketHttpClient(baseUrl) {
         const res = await fetch(joinBaseUrl(baseUrl, path), {
             method: 'POST',
             credentials: 'include',
-            body: addUserIdToSkillsForm(path, form),
+            body: addUserIdToSkillsForm(path, form, userId),
         });
         return readJsonEnvelope(res);
     }

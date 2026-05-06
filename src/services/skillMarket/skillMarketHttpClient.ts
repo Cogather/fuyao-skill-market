@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import type { Ref } from 'vue';
 import type {
   Skill,
   SkillListQuery,
@@ -43,7 +44,6 @@ import { SKILL_MARKET_ENDPOINTS } from './endpoints';
 import { joinBaseUrl, readJsonEnvelope } from './httpJson';
 import { emptyOpsDashboardBundle, readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
 import { dashboardOverviewToOpsBundle } from './opsOverviewToBundle';
-import { getSkillMarketRequestUserId } from './requestUserContext';
 import {
   apiRecordToSkill,
   mergeSkillFromSkillDownloadDto,
@@ -81,36 +81,38 @@ function isSkillsApiPath(path: string): boolean {
   return pathOnly === '/api/skills' || pathOnly.startsWith('/api/skills/');
 }
 
-function appendUserIdToSkillsParams(path: string): string {
-  const userId = getSkillMarketRequestUserId();
-  if (!userId || !isSkillsApiPath(path)) {
+function currentInjectedUserId(userId?: Ref<string>): string {
+  return String(userId?.value ?? '').trim();
+}
+
+function appendUserIdToSkillsParams(path: string, userId?: Ref<string>): string {
+  if (!isSkillsApiPath(path)) {
     return path;
   }
   const [pathOnly, query = ''] = path.split('?');
   const sp = new URLSearchParams(query);
-  sp.set('userId', userId);
+  sp.set('userId', currentInjectedUserId(userId));
   const q = sp.toString();
   return q ? `${pathOnly}?${q}` : pathOnly;
 }
 
-function addUserIdToSkillsJsonBody(path: string, body: unknown): unknown {
-  const userId = getSkillMarketRequestUserId();
-  if (!userId || !isSkillsApiPath(path)) {
+function addUserIdToSkillsJsonBody(path: string, body: unknown, userId?: Ref<string>): unknown {
+  if (!isSkillsApiPath(path)) {
     return body;
   }
+  const injectedUserId = currentInjectedUserId(userId);
   if (body && typeof body === 'object' && !Array.isArray(body)) {
     return {
       ...(body as Record<string, unknown>),
-      userId,
+      userId: injectedUserId,
     };
   }
-  return { userId };
+  return { userId: injectedUserId };
 }
 
-function addUserIdToSkillsForm(path: string, form: FormData): FormData {
-  const userId = getSkillMarketRequestUserId();
-  if (userId && isSkillsApiPath(path)) {
-    form.set('userId', userId);
+function addUserIdToSkillsForm(path: string, form: FormData, userId?: Ref<string>): FormData {
+  if (isSkillsApiPath(path)) {
+    form.set('userId', currentInjectedUserId(userId));
   }
   return form;
 }
@@ -134,11 +136,14 @@ function fileNameFromContentDisposition(header: string | null, fallback: string)
   return fallback;
 }
 
-export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient {
+export function createSkillMarketHttpClient(
+  baseUrl: string,
+  userId?: Ref<string>,
+): SkillMarketClient {
   const skills = ref<Skill[]>([]);
 
   async function get<T>(path: string): Promise<ApiEnvelope<T>> {
-    const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path)), {
+    const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path, userId)), {
       credentials: 'include',
     });
     return readJsonEnvelope<T>(res);
@@ -149,7 +154,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
+      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, userId)),
     });
     return readJsonEnvelope<T>(res);
   }
@@ -159,7 +164,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body)),
+      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, userId)),
     });
     return readJsonEnvelope<T>(res);
   }
@@ -168,7 +173,7 @@ export function createSkillMarketHttpClient(baseUrl: string): SkillMarketClient 
     const res = await fetch(joinBaseUrl(baseUrl, path), {
       method: 'POST',
       credentials: 'include',
-      body: addUserIdToSkillsForm(path, form),
+      body: addUserIdToSkillsForm(path, form, userId),
     });
     return readJsonEnvelope<T>(res);
   }

@@ -1,8 +1,8 @@
-import { computed, ref } from 'vue';
+import { computed, inject, ref } from 'vue';
 import { createSkillMarketClient } from '../services/skillMarket';
 import { apiMyRecordToSkill } from '../services/skillMarket/mappers';
-export function createSkillMarketStore() {
-    const client = createSkillMarketClient();
+export function createSkillMarketStore(userId) {
+    const client = createSkillMarketClient(undefined, userId);
     const skills = client.skills;
     const myPublishedSkills = ref([]);
     async function refreshMyPublishedSkills() {
@@ -65,7 +65,8 @@ export function createSkillMarketStore() {
 let singleton = null;
 export function useSkillMarketStore() {
     if (!singleton) {
-        singleton = createSkillMarketStore();
+        const userId = inject('userId', ref(''));
+        singleton = createSkillMarketStore(userId);
     }
     return singleton;
 }

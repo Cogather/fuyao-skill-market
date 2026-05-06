@@ -1,3 +1,4 @@
+import type { Ref } from 'vue';
 import type { Skill } from '../../types/skill';
 import type { SkillMarketClient } from './skillMarketClient.types';
 import { createSkillMarketHttpClient } from './skillMarketHttpClient';
@@ -17,11 +18,14 @@ export type SkillMarketTransport = 'mock' | 'http';
  *   `VITE_SKILL_MARKET_MOCK_ROLE`、`VITE_SKILL_MARKET_MOCK_MANAGED_ORG_IDS`（后两者仅 mock 模块读取）
  * @param initialSkills 仅 Mock 模式有效；不传则使用内置种子数据
  */
-export function createSkillMarketClient(initialSkills?: Skill[]): SkillMarketClient {
+export function createSkillMarketClient(
+  initialSkills?: Skill[],
+  userId?: Ref<string>,
+): SkillMarketClient {
   const mode = (import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock') as SkillMarketTransport;
   const baseUrl = import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '';
   if (mode === 'http') {
-    return createSkillMarketHttpClient(baseUrl);
+    return createSkillMarketHttpClient(baseUrl, userId);
   }
   return createSkillMarketMockClient(initialSkills);
 }

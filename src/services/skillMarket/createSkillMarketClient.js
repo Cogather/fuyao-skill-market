@@ -12,11 +12,11 @@ import { createSkillMarketMockClient } from './skillMarketMockClient';
  *   `VITE_SKILL_MARKET_MOCK_ROLE`、`VITE_SKILL_MARKET_MOCK_MANAGED_ORG_IDS`（后两者仅 mock 模块读取）
  * @param initialSkills 仅 Mock 模式有效；不传则使用内置种子数据
  */
-export function createSkillMarketClient(initialSkills) {
+export function createSkillMarketClient(initialSkills, userId) {
     const mode = (import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock');
     const baseUrl = import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '';
     if (mode === 'http') {
-        return createSkillMarketHttpClient(baseUrl);
+        return createSkillMarketHttpClient(baseUrl, userId);
     }
     return createSkillMarketMockClient(initialSkills);
 }

@@ -4,10 +4,6 @@ import type { Ref } from 'vue';
 import { RouterView } from 'vue-router';
 
 import type { DepartmentTreeNodeDto } from './services/skillMarket/apiTypes';
-import {
-  normalizeSkillMarketRequestUserId,
-  setSkillMarketRequestUserId,
-} from './services/skillMarket/requestUserContext';
 
 const mockDepartmentList: DepartmentTreeNodeDto[] = [
   {
@@ -30,12 +26,6 @@ provide<Ref<DepartmentTreeNodeDto[] | null>>('departmentList', departmentList);
 const userId = ref('');
 provide<Ref<string>>('userId', userId);
 
-function updateUserIdFromParent(value: unknown): void {
-  const next = normalizeSkillMarketRequestUserId(value);
-  userId.value = next;
-  setSkillMarketRequestUserId(next);
-}
-
 function handleEvent(event: MessageEvent): void {
   const payload = event.data;
   if (!payload || typeof payload !== 'object') {
@@ -47,7 +37,7 @@ function handleEvent(event: MessageEvent): void {
   }
 
   if ('userId' in p) {
-    updateUserIdFromParent(p.userId);
+    userId.value = p.userId === null || p.userId === undefined ? '' : String(p.userId).trim();
   }
 
   let list: unknown = null;

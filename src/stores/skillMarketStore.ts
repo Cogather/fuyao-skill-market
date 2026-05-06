@@ -1,4 +1,5 @@
-import { computed, ref } from 'vue';
+import { computed, inject, ref } from 'vue';
+import type { Ref } from 'vue';
 import { createSkillMarketClient } from '../services/skillMarket';
 import type { CurrentUserRoleDto } from '../services/skillMarket/apiTypes';
 import { apiMyRecordToSkill } from '../services/skillMarket/mappers';
@@ -11,8 +12,8 @@ import type {
   SkillUploadResponse,
 } from '../types/skill';
 
-export function createSkillMarketStore() {
-  const client: SkillMarketClient = createSkillMarketClient();
+export function createSkillMarketStore(userId?: Ref<string>) {
+  const client: SkillMarketClient = createSkillMarketClient(undefined, userId);
   const skills = client.skills;
 
   const myPublishedSkills = ref<Skill[]>([]);
@@ -93,7 +94,8 @@ let singleton: SkillMarketStore | null = null;
 
 export function useSkillMarketStore(): SkillMarketStore {
   if (!singleton) {
-    singleton = createSkillMarketStore();
+    const userId = inject<Ref<string>>('userId', ref(''));
+    singleton = createSkillMarketStore(userId);
   }
   return singleton;
 }

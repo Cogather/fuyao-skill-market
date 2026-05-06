@@ -1,6 +1,5 @@
 import { onBeforeUnmount, provide, ref } from 'vue';
 import { RouterView } from 'vue-router';
-import { normalizeSkillMarketRequestUserId, setSkillMarketRequestUserId, } from './services/skillMarket/requestUserContext';
 const mockDepartmentList = [
     {
         deptName: '核心网产品线mock',
@@ -20,11 +19,6 @@ provide('departmentList', departmentList);
 /** 父页面 postMessage 下发的用户 id；接口层读取同一份上下文补到 `/api/skills...` 请求 */
 const userId = ref('');
 provide('userId', userId);
-function updateUserIdFromParent(value) {
-    const next = normalizeSkillMarketRequestUserId(value);
-    userId.value = next;
-    setSkillMarketRequestUserId(next);
-}
 function handleEvent(event) {
     const payload = event.data;
     if (!payload || typeof payload !== 'object') {
@@ -35,7 +29,7 @@ function handleEvent(event) {
         return;
     }
     if ('userId' in p) {
-        updateUserIdFromParent(p.userId);
+        userId.value = p.userId === null || p.userId === undefined ? '' : String(p.userId).trim();
     }
     let list = null;
     if (Array.isArray(p.departmentList)) {
