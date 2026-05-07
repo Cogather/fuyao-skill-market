@@ -1,9 +1,10 @@
-import { computed, inject, ref } from 'vue';
-import type { Ref } from 'vue';
+import { defineStore, storeToRefs } from 'pinia';
+import { computed, ref } from 'vue';
 import { createSkillMarketClient } from '../services/skillMarket';
 import type { CurrentUserRoleDto } from '../services/skillMarket/apiTypes';
 import { apiMyRecordToSkill } from '../services/skillMarket/mappers';
 import type { SkillDownloadOptions, SkillMarketClient } from '../services/skillMarket/skillMarketClient.types';
+import { useAppContextStore } from './appContextStore';
 import type {
   Skill,
   SkillListQuery,
@@ -12,7 +13,9 @@ import type {
   SkillUploadResponse,
 } from '../types/skill';
 
-export function createSkillMarketStore(userId?: Ref<string>) {
+export const useSkillMarketStore = defineStore('skillMarket', () => {
+  const appContextStore = useAppContextStore();
+  const { userId } = storeToRefs(appContextStore);
   const client: SkillMarketClient = createSkillMarketClient(undefined, userId);
   const skills = client.skills;
 
@@ -86,16 +89,6 @@ export function createSkillMarketStore(userId?: Ref<string>) {
     downloadSkill,
     findByName,
   };
-}
+});
 
-export type SkillMarketStore = ReturnType<typeof createSkillMarketStore>;
-
-let singleton: SkillMarketStore | null = null;
-
-export function useSkillMarketStore(): SkillMarketStore {
-  if (!singleton) {
-    const userId = inject<Ref<string>>('userId', ref(''));
-    singleton = createSkillMarketStore(userId);
-  }
-  return singleton;
-}
+export type SkillMarketStore = ReturnType<typeof useSkillMarketStore>;

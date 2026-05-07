@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia';
 import { computed, ref } from 'vue';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 
 const store = useSkillMarketStore();
-const { skills, marketClient } = store;
+const { skills } = storeToRefs(store);
+const { marketClient } = store;
 
 const toast = ref('');
 

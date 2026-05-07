@@ -20,12 +20,12 @@ export type SkillMarketTransport = 'mock' | 'http';
  */
 export function createSkillMarketClient(
   initialSkills?: Skill[],
-  userId?: Ref<string>,
+  currentUserId?: Ref<string>,
 ): SkillMarketClient {
   const mode = (import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock') as SkillMarketTransport;
   const baseUrl = import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '';
   if (mode === 'http') {
-    return createSkillMarketHttpClient(baseUrl, userId);
+    return createSkillMarketHttpClient(baseUrl, currentUserId);
   }
   return createSkillMarketMockClient(initialSkills);
 }

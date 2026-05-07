@@ -1,30 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, provide, ref } from 'vue';
-import type { Ref } from 'vue';
+import { onBeforeUnmount } from 'vue';
 import { RouterView } from 'vue-router';
 
-import type { DepartmentTreeNodeDto } from './services/skillMarket/apiTypes';
+import { useAppContextStore } from './stores/appContextStore';
 
-const mockDepartmentList: DepartmentTreeNodeDto[] = [
-  {
-    deptName: '核心网产品线mock',
-    deptLevel: 1,
-    children: [
-      {
-        deptName: '核心网研究部',
-        deptLevel: 2,
-        children: [],
-      },
-    ],
-  },
-];
-
-/** 父页面 postMessage 下发的部门树；在 setup 中 provide，子组件 inject 同一 Ref 即可响应更新 */
-const departmentList = ref<DepartmentTreeNodeDto[] | null>(mockDepartmentList);
-provide<Ref<DepartmentTreeNodeDto[] | null>>('departmentList', departmentList);
-/** 父页面 postMessage 下发的用户 id；接口层读取同一份上下文补到 `/api/skills...` 请求 */
-const userId = ref('');
-provide<Ref<string>>('userId', userId);
+const appContextStore = useAppContextStore();
 
 function handleEvent(event: MessageEvent): void {
   const payload = event.data;
@@ -36,24 +16,7 @@ function handleEvent(event: MessageEvent): void {
     return;
   }
 
-  if ('userId' in p) {
-    userId.value = p.userId === null || p.userId === undefined ? '' : String(p.userId).trim();
-  }
-
-  let list: unknown = null;
-  if (Array.isArray(p.departmentList)) {
-    list = p.departmentList;
-  } else if (typeof p.departmentListStr === 'string' && p.departmentListStr.length > 0) {
-    try {
-      list = JSON.parse(p.departmentListStr);
-    } catch {
-      list = null;
-    }
-  }
-
-  if (Array.isArray(list)) {
-    departmentList.value = list as DepartmentTreeNodeDto[];
-  }
+  appContextStore.applyInitPayload(p);
 }
 
 window.addEventListener('message', handleEvent);

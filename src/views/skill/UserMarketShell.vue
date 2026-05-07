@@ -1,13 +1,13 @@
 ﻿<script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { Ref } from 'vue';
+import { storeToRefs } from 'pinia';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
+import { useAppContextStore } from '../../stores/appContextStore';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import type {
-  DepartmentTreeNodeDto,
   OrganizationDto,
   SkillDownloadSourcePage,
   SkillListParamsDto,
@@ -41,16 +41,20 @@ import {
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 
 const store = useSkillMarketStore();
+const appContextStore = useAppContextStore();
+const { departmentList } = storeToRefs(appContextStore);
 const {
   skills,
   myPublishedSkills,
-  refreshMyPublishedSkills,
   totalDownloads,
   totalSkills,
   downloadsLast30Days,
   orgCount,
-  marketClient,
   currentUserRole,
+} = storeToRefs(store);
+const {
+  refreshMyPublishedSkills,
+  marketClient,
 } = store;
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
@@ -157,9 +161,6 @@ const canCreateOrg = computed(() => marketRoleCanCreateOrganization(currentUserR
 
 const adminOrganizations = ref<OrganizationDto[]>([]);
 const orgListLoading = ref(false);
-const marketOverviewDeptTreeLoading = ref(false);
-/** `App.vue` 对父页面 `postMessage` 的 `departmentList` 的 provide（同一 Ref，随消息更新） */
-const departmentListFromParent = inject<Ref<DepartmentTreeNodeDto[] | null> | undefined>('departmentList');
 const orgModalOpen = ref(false);
 const orgModalMode = ref<'create' | 'edit'>('create');
 const orgForm = ref({
@@ -334,7 +335,7 @@ const marketOrgSelectOptions = computed(() =>
 );
 
 const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
-  const coerced = coerceDepartmentTreeFromUnknown(departmentListFromParent?.value);
+  const coerced = coerceDepartmentTreeFromUnknown(departmentList.value);
   return mapDepartmentTreeDtoToForest(coerced);
 });
 
@@ -2411,8 +2412,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   v-if="overviewDeptCascadeColumns.length === 0"
                   class="market-dept-cascader-empty"
                 >
-                  <template v-if="marketOverviewDeptTreeLoading">正在加载部门树…</template>
-                  <template v-else>暂无部门数据（可先调整组织/分类或等待列表加载）</template>
+                  暂无部门数据（可先调整组织/分类或等待列表加载）
                 </div>
                   <div v-else class="market-dept-cascader-columns">
                     <div

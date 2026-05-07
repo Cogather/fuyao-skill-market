@@ -81,12 +81,12 @@ function isSkillsApiPath(path: string): boolean {
   return pathOnly === '/api/skills' || pathOnly.startsWith('/api/skills/');
 }
 
-function currentInjectedUserId(userId?: Ref<string>): string {
+function currentContextUserId(userId?: Ref<string>): string {
   return String(userId?.value ?? '').trim();
 }
 
-function waitForInjectedUserId(userId?: Ref<string>): Promise<string> {
-  const current = currentInjectedUserId(userId);
+function waitForContextUserId(userId?: Ref<string>): Promise<string> {
+  const current = currentContextUserId(userId);
   if (current) {
     return Promise.resolve(current);
   }
@@ -109,33 +109,33 @@ function waitForInjectedUserId(userId?: Ref<string>): Promise<string> {
   });
 }
 
-function appendUserIdToSkillsParams(path: string, injectedUserId: string): string {
+function appendUserIdToSkillsParams(path: string, contextUserId: string): string {
   if (!isSkillsApiPath(path)) {
     return path;
   }
   const [pathOnly, query = ''] = path.split('?');
   const sp = new URLSearchParams(query);
-  sp.set('userId', injectedUserId);
+  sp.set('userId', contextUserId);
   const q = sp.toString();
   return q ? `${pathOnly}?${q}` : pathOnly;
 }
 
-function addUserIdToSkillsJsonBody(path: string, body: unknown, injectedUserId: string): unknown {
+function addUserIdToSkillsJsonBody(path: string, body: unknown, contextUserId: string): unknown {
   if (!isSkillsApiPath(path)) {
     return body;
   }
   if (body && typeof body === 'object' && !Array.isArray(body)) {
     return {
       ...(body as Record<string, unknown>),
-      userId: injectedUserId,
+      userId: contextUserId,
     };
   }
-  return { userId: injectedUserId };
+  return { userId: contextUserId };
 }
 
-function addUserIdToSkillsForm(path: string, form: FormData, injectedUserId: string): FormData {
+function addUserIdToSkillsForm(path: string, form: FormData, contextUserId: string): FormData {
   if (isSkillsApiPath(path)) {
-    form.set('userId', injectedUserId);
+    form.set('userId', contextUserId);
   }
   return form;
 }
@@ -166,41 +166,41 @@ export function createSkillMarketHttpClient(
   const skills = ref<Skill[]>([]);
 
   async function get<T>(path: string): Promise<ApiEnvelope<T>> {
-    const injectedUserId = isSkillsApiPath(path) ? await waitForInjectedUserId(userId) : '';
-    const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path, injectedUserId)), {
+    const contextUserId = isSkillsApiPath(path) ? await waitForContextUserId(userId) : '';
+    const res = await fetch(joinBaseUrl(baseUrl, appendUserIdToSkillsParams(path, contextUserId)), {
       credentials: 'include',
     });
     return readJsonEnvelope<T>(res);
   }
 
   async function postJson<T>(path: string, body: unknown): Promise<ApiEnvelope<T>> {
-    const injectedUserId = isSkillsApiPath(path) ? await waitForInjectedUserId(userId) : '';
+    const contextUserId = isSkillsApiPath(path) ? await waitForContextUserId(userId) : '';
     const res = await fetch(joinBaseUrl(baseUrl, path), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, injectedUserId)),
+      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, contextUserId)),
     });
     return readJsonEnvelope<T>(res);
   }
 
   async function putJson<T>(path: string, body: unknown): Promise<ApiEnvelope<T>> {
-    const injectedUserId = isSkillsApiPath(path) ? await waitForInjectedUserId(userId) : '';
+    const contextUserId = isSkillsApiPath(path) ? await waitForContextUserId(userId) : '';
     const res = await fetch(joinBaseUrl(baseUrl, path), {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, injectedUserId)),
+      body: JSON.stringify(addUserIdToSkillsJsonBody(path, body, contextUserId)),
     });
     return readJsonEnvelope<T>(res);
   }
 
   async function postForm<T>(path: string, form: FormData): Promise<ApiEnvelope<T>> {
-    const injectedUserId = isSkillsApiPath(path) ? await waitForInjectedUserId(userId) : '';
+    const contextUserId = isSkillsApiPath(path) ? await waitForContextUserId(userId) : '';
     const res = await fetch(joinBaseUrl(baseUrl, path), {
       method: 'POST',
       credentials: 'include',
-      body: addUserIdToSkillsForm(path, form, injectedUserId),
+      body: addUserIdToSkillsForm(path, form, contextUserId),
     });
     return readJsonEnvelope<T>(res);
   }
