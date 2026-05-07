@@ -3,7 +3,7 @@ import httpRequest from "./request"
 export const skillBaseService = {
 
     // skill压缩包解析接口
-    parseSkillPackage: async (formData: FormData): any => {
+    parseSkillPackage: (formData: FormData): any => {
         return httpRequest.skill<any>({
             url: '/upload/parse',
             method: 'post',
@@ -15,11 +15,12 @@ export const skillBaseService = {
     },
 
     // skill压缩包上传接口
-    uploadSkillPackage: async (formData: FormData): any => {
+    uploadSkillPackage: (formData: FormData, params?: any): any => {
         return httpRequest.skill<any>({
             url: '/upload',
             method: 'post',
             data: formData,
+            params: params,
             headers: {
                 'Content-Type': 'multipart/form-data',
             }
@@ -27,7 +28,7 @@ export const skillBaseService = {
     },
 
     // skill创建接口
-    createSkill: async (body: any): any => {
+    createSkill: (body: any): any => {
         return httpRequest.skill<any>({
             url: '',
             method: 'post',
@@ -36,7 +37,7 @@ export const skillBaseService = {
     },
 
     // skill列表查询接口
-    querySkillList: async (params: any): any => {
+    querySkillList: (params: any): any => {
         return httpRequest.skill<any>({
             url: '',
             method: 'get',
@@ -45,7 +46,7 @@ export const skillBaseService = {
     },
 
     // 我的发布列表查询接口
-    queryMySkills: async (params: any): any => {
+    queryMySkills: (params: any): any => {
         return httpRequest.skill<any>({
             url: '/my',
             method: 'get',
@@ -54,7 +55,7 @@ export const skillBaseService = {
     },
 
     // projSkill发布到市场接口
-    publishProjSkill: async (body: any): any => {
+    publishProjSkill: (body: any): any => {
         return httpRequest.skill<any>({
             url: '/publish-to-market',
             method: 'post',
@@ -63,7 +64,7 @@ export const skillBaseService = {
     },
 
     // skill下载接口
-    downloadSkill: async (body: any, id: string): any => {
+    downloadSkill: (body: any, id: string): any => {
         return httpRequest.skill<any>({
             url: `/${id}/download`,
             method: 'post',
@@ -71,7 +72,7 @@ export const skillBaseService = {
         })
     },
     // 单个skill下载量统计接口
-    downloadSkillStats: async (id: string, params: any): any => {
+    downloadSkillStats: (id: string, params: any): any => {
         return httpRequest.skill<any>({
             url: `/${id}/download-stats`,
             method: 'get',
@@ -80,7 +81,7 @@ export const skillBaseService = {
     },
 
     // skill详情查询接口
-    querySkillDetail: async (id: string): any => {
+    querySkillDetail: (id: string): any => {
         return httpRequest.skill<any>({
             url: `/${id}`,
             method: 'get',
@@ -88,7 +89,7 @@ export const skillBaseService = {
     },
 
     // skill版本上传接口
-    uploadSkillVersion: async (formData: FormData, id: string): any => {
+    uploadSkillVersion: (formData: FormData, id: string): any => {
         return httpRequest.skill<any>({
             url: `/${id}/versions`,
             method: 'post',
@@ -100,7 +101,7 @@ export const skillBaseService = {
     },
 
     // skill发起同步至Agent Center组织接口
-    syncSkillToAgentCenter: async (body: any, id: string): any => {
+    syncSkillToAgentCenter: (body: any, id: string): any => {
         return httpRequest.skill<any>({
             url: `/${id}/sync-applications`,
             method: 'post',
@@ -109,7 +110,7 @@ export const skillBaseService = {
     },
 
     // skill发起更新同步接口
-    syncUpdateSkillToAgentCenter: async (body: any, id: string): any => {
+    syncUpdateSkillToAgentCenter: (body: any, id: string): any => {
         return httpRequest.skill<any>({
             url: `/${id}/sync-update-applications`,
             method: 'post',
@@ -118,7 +119,7 @@ export const skillBaseService = {
     },
 
     // skill审核同步申请接口
-    reviewSyncApplication: async (body: any, id: string): any => {
+    reviewSyncApplication: (body: any, id: string): any => {
         return httpRequest.api<any>({
             url: `/sync-applications/${id}/review`,
             method: 'post',
@@ -127,7 +128,7 @@ export const skillBaseService = {
     },
 
     // 审核中心查询接口
-    querySyncApplicationList: async (params: any): any => {
+    querySyncApplicationList: (params: any): any => {
         return httpRequest.api<any>({
             url: '/sync-applications',
             method: 'get',
@@ -136,7 +137,7 @@ export const skillBaseService = {
     },
 
     // 当前用户角色查询接口
-    queryCurrentUserRole: async (): any => {
+    queryCurrentUserRole: (): any => {
         return httpRequest.api<any>({
             url: '/users/current/role',
             method: 'get',
@@ -144,33 +145,36 @@ export const skillBaseService = {
     },
 
     // 组织查询接口
-    queryOrganizationList: async (): any => {
+    queryOrganizationList: (params?: any): any => {
         return httpRequest.api<any>({
             url: '/organizations',
-            method: 'get',
+            method: 'get',  
+            params,
         })
     },
 
     // 组织创建接口
-    createOrganization: async (body: any): any => {
+    createOrganization: (body: any, params?: any): any => {
         return httpRequest.api<any>({
             url: '/organizations',
             method: 'post',
             data: body,
+            params,
         })
     },
 
     // 组织更新接口
-    updateOrganization: async (body: any, id: string): any => {
+    updateOrganization: (body: any, params: any | undefined, id: string): any => {
         return httpRequest.api<any>({
             url: `/organizations/${id}`,
             method: 'put',
             data: body,
+            params,
         })
     },
 
     // 部门树查询接口
-    queryDepartmentTree: async (): any => {
+    queryDepartmentTree: (): any => {
         return httpRequest.api<any>({
             url: '/departments/tree',
             method: 'get',
@@ -178,7 +182,7 @@ export const skillBaseService = {
     },
 
     // 运营看板接口
-    queryDashboardOverview: async (params: any): any => {
+    queryDashboardOverview: (params: any): any => {
         return httpRequest.api<any>({
             url: '/dashboard/overview',
             method: 'get',
@@ -187,7 +191,7 @@ export const skillBaseService = {
     },
 
     // 质量评审列表查询接口
-    queryQualityReviewList: async (params: any): any => {
+    queryQualityReviewList: (params: any): any => {
         return httpRequest.api<any>({
             url: '/skill-quality-reviews',
             method: 'get',
@@ -196,7 +200,7 @@ export const skillBaseService = {
     },
 
     // 质量评审保存接口
-    saveQualityReview: async (body: any): any => {
+    saveQualityReview: (body: any): any => {
         return httpRequest.api<any>({
             url: '/skill-quality-reviews/save',
             method: 'post',
@@ -205,7 +209,7 @@ export const skillBaseService = {
     },
     
     // 质量评审归档接口
-    archiveQualityReview: async (body: any): any => {
+    archiveQualityReview: (body: any): any => {
         return httpRequest.api<any>({
             url: '/skill-quality-reviews/archive',
             method: 'post',

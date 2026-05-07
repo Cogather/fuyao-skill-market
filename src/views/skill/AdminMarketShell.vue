@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
-const skills = ref([]);
-const marketClient = null;
+import type { Skill } from '../../types/skill';
+import { apiRecordToSkill } from '../../services/skillMarket/mappers';
+import type { SkillListRecordDto } from '../../services/skillMarket/apiTypes';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+
+const skills = ref<Skill[]>([]);
 
 const toast = ref('');
 
@@ -12,19 +16,35 @@ const rows = computed(() =>
   ),
 );
 
+async function loadSkills(): Promise<void> {
+  const r = await skillBaseService.querySkillList({
+    pageNo: 1,
+    pageSize: 50,
+  });
+  if (r.code === 0 && r.data?.records) {
+    skills.value = (r.data.records as SkillListRecordDto[]).map((item) => apiRecordToSkill(item));
+  } else {
+    toast.value = r.message || 'Skill 列表加载失败';
+  }
+}
+
+onMounted(() => {
+  void loadSkills();
+});
+
 async function approve(skillId: string): Promise<void> {
   try {
-    const pending = await marketClient.fetchSyncApplications({
+    const pending = await skillBaseService.querySyncApplicationList({
       tab: 'pending',
       pageNo: 1,
       pageSize: 20,
     });
-    const rec = pending.data.records[0] as { id?: number } | undefined;
+    const rec = pending.data?.records?.[0] as { id?: number } | undefined;
     const applicationId = rec?.id ?? 90_001;
-    const r = await marketClient.postSyncApplicationReview(String(applicationId), {
+    const r = await skillBaseService.reviewSyncApplication({
       decision: 'approve',
       comment: `演示：批准 Skill ${skillId} 同步至组织`,
-    });
+    }, String(applicationId));
     toast.value =
       r.code === 0
         ? `已调用审核接口：申请 #${applicationId}（Skill #${skillId}）`
@@ -57,7 +77,7 @@ async function approve(skillId: string): Promise<void> {
       <h2 class="panel-title">全市场 Skill 列表</h2>
       <p class="panel-help">操作列提供「批准上架到组织层」：将调用 <code>POST /api/sync-applications/:id/review</code>（见 <code>endpoints.ts</code>）。</p>
       <div class="table-wrap">
-        <!-- <table class="table">
+        <table class="table">
           <thead>
             <tr>
               <th>名称</th>
@@ -85,7 +105,7 @@ async function approve(skillId: string): Promise<void> {
               </td>
             </tr>
           </tbody>
-        </table> -->
+        </table>
       </div>
     </div>
 

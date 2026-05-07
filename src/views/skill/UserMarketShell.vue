@@ -1,22 +1,29 @@
 ﻿<script setup lang="ts">
-import { storeToRefs } from 'pinia';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import type {
+  CurrentUserRoleDto,
   OrganizationDto,
   SkillDownloadSourcePage,
+  SkillDownloadResultDto,
   SkillListParamsDto,
+  SkillListRecordDto,
   SyncApplicationListItemDto,
 } from '../../services/skillMarket/apiTypes';
-import { apiRecordToSkill, skillListQueryToDto } from '../../services/skillMarket/mappers';
+import {
+  apiMyRecordToSkill,
+  apiRecordToSkill,
+  mergeSkillFromSkillDownloadDto,
+} from '../../services/skillMarket/mappers';
 import type { MarketDeptForestNode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
 } from '../../services/skillMarket/marketDeptTreeFromApi';
+import { joinBaseUrl } from '../../services/skillMarket/httpJson';
 import {
   marketRoleCanCreateOrganization,
   marketRoleShowsOpsAndReview,
@@ -26,10 +33,10 @@ import type {
   OverviewQuickFilter,
   Skill,
   SkillMarketScope,
-  SkillUploadPayload,
   UserInnerTab,
 } from '../../types/skill';
 import { emptyOpsDashboardBundle } from '../../services/skillMarket/mock/opsDashboardUiDefaults';
+import { dashboardOverviewToOpsBundle } from '../../services/skillMarket/opsOverviewToBundle';
 import {
   parseDeptNamePath,
   type DeptTreeNode,
@@ -44,14 +51,13 @@ const skillMarketStore = useSkillMarketStore();
 const userId = computed(() => skillMarketStore.userId);
 const departmentList = computed(() => skillMarketStore.departmentList);
 
-const skills = ref([]);
-const myPublishedSkills = ref([]);
+const skills = ref<Skill[]>([]);
+const myPublishedSkills = ref<Skill[]>([]);
 const totalDownloads = ref(0);
 const totalSkills = ref(0);
 const downloadsLast30Days = ref(0);
 const orgCount = ref(0);
-const currentUserRole = ref(null);
-const marketClient = null;
+const currentUserRole = ref<CurrentUserRoleDto | null>(null);
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const route = useRoute();
@@ -649,27 +655,103 @@ function syncResponsiveLayout(): void {
   updateMarketDeptPanelLayout();
 }
 
-onMounted(() => {
+
+// 新增userId获取的辅助函数
+function waitForUserId(timeout = 5000): Promise<void> {
+  return new Promise((resolve) => {
+    if(userId.value) {
+      resolve();
+      return;
+    }
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if(userId.value) {
+        clearInterval(timer);
+        resolve();
+        return
+      }
+      if(Date.now() - start > timeout) {
+        clearInterval(timer);
+        resolve();
+      }
+    }, 100)
+  })
+}
+
+function updateMarketStatsFromSkills(list: Skill[], total = list.length): void {
+  totalSkills.value = total;
+  totalDownloads.value = list.reduce(
+    (sum, item) => sum + (item.download_count ?? item.downloads ?? 0),
+    0,
+  );
+}
+
+async function loadCurrentUserRole(): Promise<void> {
+  try {
+    const r = await skillBaseService.queryCurrentUserRole();
+    if (r.code === 0 && r.data) {
+      currentUserRole.value = r.data;
+    }
+  } catch (e) {
+    if (transportIsHttp) {
+      showToast(e instanceof Error ? e.message : '当前用户角色加载失败');
+    }
+  }
+}
+
+async function loadDepartmentTree(): Promise<void> {
+  if (departmentList.value.length > 0) {
+    return;
+  }
+  try {
+    const r = await skillBaseService.queryDepartmentTree();
+    if (r.code === 0 && Array.isArray(r.data)) {
+      skillMarketStore.updateDept(r.data);
+    }
+  } catch (e) {
+    if (transportIsHttp) {
+      showToast(e instanceof Error ? e.message : '部门树加载失败');
+    }
+  }
+}
+
+async function loadOpsDashboardOverview(): Promise<void> {
+  try {
+    const [fy, co] = await Promise.all([
+      skillBaseService.queryDashboardOverview({ system: 'fuyao' }),
+      skillBaseService.queryDashboardOverview({ system: 'company' }),
+    ]);
+    if (fy.code === 0 && fy.data) {
+      fuyaoOpsDashboardBundleRef.value = dashboardOverviewToOpsBundle(fy.data);
+    }
+    if (co.code === 0 && co.data) {
+      companyOpsDashboardBundleRef.value = dashboardOverviewToOpsBundle(co.data);
+      totalSkills.value = co.data.kpis.skillCount;
+      totalDownloads.value = co.data.kpis.downloads;
+      orgCount.value = co.data.rankings?.length ?? orgCount.value;
+    }
+  } catch (e) {
+    if (transportIsHttp) {
+      showToast(e instanceof Error ? e.message : '运营看板加载失败');
+    }
+  }
+}
+
+onMounted(async () => {
   syncResponsiveLayout();
   window.addEventListener('resize', syncResponsiveLayout);
   if (transportIsHttp) {
-    void loadAdminOrganizations();
+    await waitForUserId();
+  }
+  void loadCurrentUserRole();
+  void loadDepartmentTree();
+  if (transportIsHttp) {
+    await loadAdminOrganizations();
   }
   if (transportIsHttp && innerTab.value === 'overview') {
     void startOverviewRemoteFetch();
   }
-  void (async () => {
-    const [fy, co] = await Promise.all([
-      marketClient.fetchOpsDashboardUi('fuyao'),
-      marketClient.fetchOpsDashboardUi('company'),
-    ]);
-    if (fy.code === 0) {
-      fuyaoOpsDashboardBundleRef.value = fy.data;
-    }
-    if (co.code === 0) {
-      companyOpsDashboardBundleRef.value = co.data;
-    }
-  })();
+  void loadOpsDashboardOverview();
   scheduleMaybeFillOverviewViewport();
   document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.addEventListener('keydown', onMarketDeptCascaderKeydown);
@@ -740,49 +822,6 @@ function mergeOverviewSkillsById(prev: Skill[], batch: Skill[]): Skill[] {
   return out;
 }
 
-function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillListParamsDto {
-  const scope = toListScope(quickFilter.value);
-  const base = skillListQueryToDto({
-    keyword: search.value,
-    page: pageNo,
-    pageSize: fetchSize,
-    scope,
-  });
-  const params: SkillListParamsDto = {
-    ...base,
-    pageNo,
-    pageSize: fetchSize,
-  };
-  if (categoryFilter.value !== 'all') {
-    params.categoryGroupName = categoryFilter.value;
-  }
-  const deptPath = overviewMarketDeptSegments.value;
-  const deptKeys = [
-    'departmentL1',
-    'departmentL2',
-    'departmentL3',
-    'departmentL4',
-    'departmentL5',
-    'departmentL6',
-  ] as const;
-  for (let i = 0; i < deptPath.length && i < deptKeys.length; i++) {
-    const v = deptPath[i]?.trim();
-    if (v) {
-      params[deptKeys[i]] = v;
-    }
-  }
-  if (transportIsHttp && levelFilter.value !== 'all') {
-    const oid = Number(levelFilter.value);
-    if (Number.isFinite(oid) && oid > 0) {
-      params.orgId = oid;
-    }
-  }
-  if (selectedTags.value.length > 0) {
-    params.tagList = selectedTags.value.join(',');
-  }
-  return params;
-}
-
 async function startOverviewRemoteFetch(): Promise<void> {
   if (!transportIsHttp) {
     return;
@@ -794,6 +833,40 @@ async function startOverviewRemoteFetch(): Promise<void> {
   overviewRemoteExhausted.value = false;
   overviewRemoteTotal.value = 0;
   await loadOverviewRemoteMore(seq);
+}
+
+function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillListParamsDto {
+  const params: SkillListParamsDto = {
+    userId: userId.value,
+    pageNo,
+    pageSize: fetchSize,
+    keyword: search.value.trim() || undefined,
+  };
+  const scope = toListScope(quickFilter.value);
+  if (scope === 'personal') {
+    params.level = '个人级';
+  } else if (scope !== 'all') {
+    params.level = '组织级';
+  }
+  const orgId = Number(levelFilter.value);
+  if (transportIsHttp && Number.isFinite(orgId) && orgId > 0) {
+    params.orgId = orgId;
+  }
+  if (categoryFilter.value !== 'all') {
+    params.categoryGroupName = categoryFilter.value;
+  }
+  if (selectedTags.value.length > 0) {
+    params.tagList = selectedTags.value.join(',');
+  }
+  const [departmentL1, departmentL2, departmentL3, departmentL4, departmentL5, departmentL6] =
+    overviewMarketDeptSegments.value;
+  if (departmentL1) params.departmentL1 = departmentL1;
+  if (departmentL2) params.departmentL2 = departmentL2;
+  if (departmentL3) params.departmentL3 = departmentL3;
+  if (departmentL4) params.departmentL4 = departmentL4;
+  if (departmentL5) params.departmentL5 = departmentL5;
+  if (departmentL6) params.departmentL6 = departmentL6;
+  return params;
 }
 
 async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
@@ -809,7 +882,7 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
     const fetchSize = Math.max(12, pageSize.value);
     const pageNo = overviewRemoteNextPage.value;
     const params = buildOverviewSkillListParams(pageNo, fetchSize);
-    const env = await marketClient.fetchSkills(params);
+    const env = await skillBaseService.querySkillList(params);
     if (seq !== overviewRemoteFetchSeq) {
       return;
     }
@@ -817,11 +890,14 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
       showToast(env.message || '市场列表加载失败');
       return;
     }
-    const batch = env.data.records.map((r) => apiRecordToSkill(r));
+    const records = (env.data.records ?? []) as SkillListRecordDto[];
+    const batch = records.map((r) => apiRecordToSkill(r));
     const merged =
       pageNo === 1 ? batch : mergeOverviewSkillsById(overviewRemoteItems.value, batch);
     overviewRemoteItems.value = merged;
+    skills.value = merged;
     overviewRemoteTotal.value = env.data.total;
+    updateMarketStatsFromSkills(merged, env.data.total);
     const received = batch.length;
     if (
       received === 0 ||
@@ -1108,9 +1184,13 @@ function canEditOrganization(org: OrganizationDto): boolean {
 }
 
 async function loadAdminOrganizations(): Promise<void> {
+  if (transportIsHttp) {
+    await waitForUserId();
+  }
   orgListLoading.value = true;
   try {
-    const r = await marketClient.fetchOrganizations();
+    const r = await skillBaseService.queryOrganizationList({userId: userId.value});
+    // const r = await marketClient.fetchOrganizations();
     if (r.code === 0 && Array.isArray(r.data)) {
       adminOrganizations.value = r.data;
       orgCount.value = r.data.length;
@@ -1124,8 +1204,8 @@ async function loadSyncApplicationRows(): Promise<void> {
   syncListLoading.value = true;
   try {
     const [p, d] = await Promise.all([
-      marketClient.fetchSyncApplications({ tab: 'pending', pageNo: 1, pageSize: 100 }),
-      marketClient.fetchSyncApplications({ tab: 'done', pageNo: 1, pageSize: 100 }),
+      skillBaseService.querySyncApplicationList({tab: 'pending', pageNo: 1, pageSize: 100}),
+      skillBaseService.querySyncApplicationList({tab: 'done', pageNo: 1, pageSize: 100}),
     ]);
     if (p.code === 0 && p.data?.records) {
       syncPendingRows.value = p.data.records.map((row: unknown) => normalizeSyncRecord(row));
@@ -1136,6 +1216,25 @@ async function loadSyncApplicationRows(): Promise<void> {
   } finally {
     syncListLoading.value = false;
   }
+}
+
+async function loadMyPublishedSkills(): Promise<void> {
+  if (transportIsHttp) {
+    await waitForUserId();
+  }
+  const res = await skillBaseService.queryMySkills({
+    pageNo: 1,
+    pageSize: 200,
+    userId: userId.value,
+  });
+  if (res.code !== 0 || !res.data) {
+    showToast(res.message || '我的发布加载失败');
+    return;
+  }
+  const records = (res.data.records ?? []) as SkillListRecordDto[];
+  const mapped = records.map((row) => apiMyRecordToSkill(row));
+  myPublishedSkills.value = mapped;
+  skills.value = mergeOverviewSkillsById(skills.value, mapped);
 }
 
 watch(
@@ -1162,22 +1261,15 @@ watch(
 
 watch(
   innerTab,
-  (tab) => {
+  async (tab) => {
     if (tab === 'org') {
-      void loadAdminOrganizations();
+      await loadAdminOrganizations();
     }
     if (tab === 'approval') {
       void loadSyncApplicationRows();
     }
     if (tab === 'releases') {
-      // void refreshMyPublishedSkills();
-      skillBaseService.queryMySkills({
-        pageNo: 1,
-        pageSize: 10,
-        userId: skillMarketStore.userId,
-      }).then((res) => {
-        myPublishedSkills.value = res.data;
-      });
+      void loadMyPublishedSkills();
     }
     syncTabPanelMinHeight();
   },
@@ -1232,14 +1324,16 @@ async function submitOrgModal(): Promise<void> {
     enabled: f.enabled,
   };
   if (orgModalMode.value === 'create') {
-    const r = await marketClient.postOrganization(body);
+    // const r = await marketClient.postOrganization(body);
+    const r = await skillBaseService.createOrganization(body, {userId: userId.value});
     if (r.code !== 0) {
       showToast(r.message || '新建失败');
       return;
     }
     showToast('已新建组织');
   } else {
-    const r = await marketClient.putOrganization(f.id, body);
+    // const r = await marketClient.putOrganization(f.id, body);
+    const r = await skillBaseService.updateOrganization(body, {userId: userId.value}, f.id.toString());
     if (r.code !== 0) {
       showToast(r.message || '保存失败');
       return;
@@ -1273,10 +1367,15 @@ async function submitReviewModal(): Promise<void> {
   }
   reviewSubmitting.value = true;
   try {
-    const r = await marketClient.postSyncApplicationReview(row.id, {
+    const body = {
       decision: reviewDecision.value,
       comment: reviewComment.value.trim(),
-    });
+    }
+    const r = await skillBaseService.reviewSyncApplication(body, row.id.toString());
+    // const r = await marketClient.postSyncApplicationReview(row.id, {
+    //   decision: reviewDecision.value,
+    //   comment: reviewComment.value.trim(),
+    // });
     if (r.code !== 0) {
       showToast(r.message || '提交失败');
       return;
@@ -1388,7 +1487,10 @@ async function parseSkillArchiveForUpload(file: File): Promise<{
     level: string;
   };
 }> {
-  const env = await marketClient.postSkillUploadParse(file);
+  // const env = await marketClient.postSkillUploadParse(file);
+  const formData = new FormData();
+  formData.append('file', file);
+  const env = await skillBaseService.parseSkillPackage(formData);
   if (env.code !== 0) {
     throw new Error(env.message || '解析失败');
   }
@@ -1409,27 +1511,33 @@ async function parseSkillArchiveForUpload(file: File): Promise<{
   };
 }
 
-async function onUploadSubmit(payload: SkillUploadPayload): Promise<void> {
-  try {
-    const result = await store.uploadSkill(payload);
-    overviewVisibleCount.value = pageSize.value;
-    if (transportIsHttp) {
-      void startOverviewRemoteFetch();
-    }
-    // await refreshMyPublishedSkills();
-    showToast(
-      result.created
-        ? `已发布新 Skill「${result.skill.name}」v${result.skill.version}`
-        : `同名 Skill 已更新为 v${result.skill.version}（版本追加）`,
-      4000,
-    );
-  } catch (e) {
-    showToast(e instanceof Error ? e.message : '上传失败');
-  }
-}
+// async function onUploadSubmit(payload: SkillUploadPayload): Promise<void> {
+//   try {
+//     const result = await store.uploadSkill(payload);
+//     overviewVisibleCount.value = pageSize.value;
+//     if (transportIsHttp) {
+//       void startOverviewRemoteFetch();
+//     }
+//     // await refreshMyPublishedSkills();
+//     showToast(
+//       result.created
+//         ? `已发布新 Skill「${result.skill.name}」v${result.skill.version}`
+//         : `同名 Skill 已更新为 v${result.skill.version}（版本追加）`,
+//       4000,
+//     );
+//   } catch (e) {
+//     showToast(e instanceof Error ? e.message : '上传失败');
+//   }
+// }
 
 function patchSkillsDownloadCountAfterDownload(id: string, skill: Skill): void {
   const dl = skill.download_count ?? skill.downloads ?? 0;
+  skills.value = skills.value.map((s) =>
+    skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
+  );
+  myPublishedSkills.value = myPublishedSkills.value.map((s) =>
+    skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
+  );
   if (transportIsHttp) {
     overviewRemoteItems.value = overviewRemoteItems.value.map((s) =>
       skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
@@ -1440,35 +1548,85 @@ function patchSkillsDownloadCountAfterDownload(id: string, skill: Skill): void {
   }
 }
 
+function resolvePackageDownloadUrl(downloadUrl: string): string {
+  const u = downloadUrl.trim();
+  if (!u || /^https?:\/\//i.test(u)) {
+    return u;
+  }
+  return joinBaseUrl(import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '', u);
+}
+
+function fileNameFromDownloadResponse(header: string | null, fallback: string): string {
+  if (!header) {
+    return fallback;
+  }
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      return star[1].trim();
+    }
+  }
+  return /filename="?([^";]+)"?/i.exec(header)?.[1]?.trim() ?? fallback;
+}
+
 async function onDownload(id: string, sourcePage: SkillDownloadSourcePage = 'market'): Promise<void> {
   try {
-    const result = await store.downloadSkill(id, { sourcePage });
-    patchSkillsDownloadCountAfterDownload(id, result.skill);
-    if (result.blob && result.blob.size > 0) {
-      const url = URL.createObjectURL(result.blob);
+    const body = {
+      userId: userId.value,
+      sourcePage,
+    }
+    const env = await skillBaseService.downloadSkill(body, id);
+    if (env.code !== 0 || !env.data) {
+      throw new Error(env.message || '下载失败');
+    }
+    const d = env.data as SkillDownloadResultDto;
+    if (!d.downloadUrl?.trim()) {
+      throw new Error(env.message || '下载失败：未返回下载地址');
+    }
+    const prev = skills.value.find((item) => skillKey(item) === id);
+    const skill = mergeSkillFromSkillDownloadDto(prev, d);
+    patchSkillsDownloadCountAfterDownload(id, skill);
+    const defaultFileName = `${d.name}-v${d.version}.zip`;
+    const directDownloadUrl = resolvePackageDownloadUrl(d.downloadUrl);
+    try {
+      const response = await fetch(directDownloadUrl, {
+        credentials: 'include',
+        mode: 'cors',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error('empty blob');
+      }
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = result.fileName;
+      link.download = fileNameFromDownloadResponse(
+        response.headers.get('Content-Disposition'),
+        defaultFileName,
+      );
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      showToast(`已下载当前版本：${skillTitle(result.skill)} v${skillVersion(result.skill)}`);
+      showToast(`已下载当前版本：${skillTitle(skill)} v${skillVersion(skill)}`);
       return;
-    }
-    if (result.directDownloadUrl) {
+    } catch {
       const link = document.createElement('a');
-      link.href = result.directDownloadUrl;
+      link.href = directDownloadUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.download = result.fileName;
+      link.download = defaultFileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      showToast(`正在打开下载链接：${skillTitle(result.skill)} v${skillVersion(result.skill)}`);
+      showToast(`正在打开下载链接：${skillTitle(skill)} v${skillVersion(skill)}`);
       return;
     }
-    showToast('下载失败：无可保存的文件');
   } catch (e) {
     showToast(e instanceof Error ? e.message : '下载失败');
   }
@@ -2042,7 +2200,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <UploadSkillModal
       v-model="uploadOpen"
       :parse-skill-archive="parseSkillArchiveForUpload"
-      @submit="onUploadSubmit"
     />
 
     <Teleport to="body">

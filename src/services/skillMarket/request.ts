@@ -1,31 +1,25 @@
 import axios from 'axios';
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import type { AxiosRequestConfig } from 'axios';
 
-export const enum ResponseStatusEnum {
-    SUCCESS = 200,
-    FORBIDDEN = 403,
-    NOT_FOUND = 404,
-    METHOD_NOT_ALLOWED = 405,
-    INTERNAL_SERVER_ERROR = 500,
-    BAD_GATEWAY = 502,
-    SERVICE_UNAVAILABLE = 503,
-    GATEWAY_TIMEOUT = 504,
+function isSuccessStatus(status: number): boolean {
+    return status >= 200 && status < 300;
 }
 
 const createAxiosConfig = {
     baseURL: '',
     timeout: 50000,
+    withCredentials: true,
 }
 
 const axiosRequest = axios.create(createAxiosConfig);
 
-axiosRequest.interceptors.request.use(
+axiosRequest.interceptors.response.use(
     (response) => {
         // 如果响应是二进制流，直接返回，用于下载文件
         if (response.config.responseType === 'blob') {
             return response;
         }
-        if (response.status === ResponseStatusEnum.SUCCESS) {
+        if (isSuccessStatus(response.status)) {
             return response.data;
         }
         return Promise.reject(response.data);
@@ -35,18 +29,60 @@ axiosRequest.interceptors.request.use(
     }
 )
 
+function normalizeEnvBase(): string {
+    return String(import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '').replace(/\/+$/, '');
+}
+
+function normalizePath(path: unknown): string {
+    const raw = String(path ?? '');
+    if (!raw) {
+        return '';
+    }
+    return raw.startsWith('/') ? raw : `/${raw}`;
+}
+
+function buildBaseUrl(prefix: '/api' | '/api/skills'): string {
+    const base = normalizeEnvBase();
+    if (!base) {
+        return prefix;
+    }
+    if (base.endsWith(prefix)) {
+        return base;
+    }
+    if (prefix === '/api/skills' && base.endsWith('/api')) {
+        return `${base}/skills`;
+    }
+    return `${base}${prefix}`;
+}
+
+function stripPrefix(url: unknown, prefix: '/api' | '/api/skills'): string {
+    const path = normalizePath(url);
+    if (!path) {
+        return '';
+    }
+    if (path === prefix) {
+        return '';
+    }
+    if (path.startsWith(`${prefix}/`) || path.startsWith(`${prefix}?`)) {
+        return path.slice(prefix.length);
+    }
+    return path;
+}
+
 // 请求方法
 const httpRequest = {
     api: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-        return axiosRequest({
+        return axiosRequest.request<T, T>({
             ...config,
-            baseURL: `${import.meta.env.VITE_SKILL_MARKET_API_BASE}/api${config.url || ''}}`
+            baseURL: buildBaseUrl('/api'),
+            url: stripPrefix(config.url, '/api'),
         })
     },
     skill: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-        return axiosRequest({
+        return axiosRequest.request<T, T>({
             ...config,
-            baseURL: `${import.meta.env.VITE_SKILL_MARKET_API_BASE}/api/skills${config.url || ''}}`
+            baseURL: buildBaseUrl('/api/skills'),
+            url: stripPrefix(config.url, '/api/skills'),
         })
     }
 }

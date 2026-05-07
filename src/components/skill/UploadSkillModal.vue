@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { useSkillMarketStore } from '../../stores/skillMarketStore';
+
+const skillMarketStore = useSkillMarketStore();
+const userId = computed(() => skillMarketStore.userId);
+
 type ParsedSkillMeta = {
   name: string;
   version: string;
@@ -125,8 +131,15 @@ async function onFileChange(event: Event): Promise<void> {
   parseUploadOk(file.value);
 }
 
-function onSubmit(): void {
-  if (!parsed.value || parseState.value !== 'success') {
+const onSubmit = async (): Promise<void> => {
+  if (!parsed.value || parseState.value !== 'success' || !file.value) {
+    return;
+  }
+  const formData = new FormData();
+  formData.append('file', file.value);
+  const env = await skillBaseService.uploadSkillPackage(formData, { userId: userId.value });
+  if (env.code !== 0) {
+    parseError.value = env.message || '上传失败';
     return;
   }
   emit('submit', {
