@@ -22,7 +22,12 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean;
     /** 对接 `POST /api/skills/upload/parse`；不传则保持本地 Mock 解析（仅开发兜底） */
-    parseSkillArchive?: (file: File) => Promise<{ duplicate: boolean; meta: ParsedSkillMeta }>;
+    parseSkillArchive?: (file: File) => Promise<{
+      duplicate?: boolean;
+      canSubmit?: boolean;
+      warnings?: string[];
+      meta: ParsedSkillMeta;
+    }>;
   }>(),
   {
     modelValue: false,
@@ -37,19 +42,27 @@ const emit = defineEmits<{
 const note = ref('');
 const file = ref<File | null>(null);
 const parsed = ref<ParsedSkillMeta | null>(null);
-const parseState = ref<'idle' | 'success' | 'duplicate'>('idle');
+const parseState = ref<'idle' | 'success' | 'warning' | 'duplicate'>('idle');
+const parseWarnings = ref<string[]>([]);
 const parsing = ref(false);
+const uploading = ref(false);
 const parseError = ref('');
 
 const parseNotice = computed(() => {
   if (parseError.value) {
     return parseError.value;
   }
+  if (uploading.value) {
+    return '正在保存文件并上传 Skill...';
+  }
+  if (parseState.value === 'warning') {
+    return '解析完成，但存在 warnings，请处理后重新选择文件。';
+  }
   if (parseState.value === 'success') {
     return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，名称未重名。';
   }
   if (parseState.value === 'duplicate') {
-    return '重名校验未通过：市场内已存在同名 Skill。请修改 SKILL.md Front Matter 中的 name 后重新上传；如果你是维护人，请从“我的发布”进入“上传新版本”。';
+    return '有重名的 Skill：市场内已存在同名 Skill。请修改 SKILL.md Front Matter 中的 name 后重新上传；如果你是维护人，请从“我的发布”进入“上传新版本”。';
   }
   if (parsing.value) {
     return '正在请求后端解析压缩包…';
@@ -57,7 +70,7 @@ const parseNotice = computed(() => {
   return '等待上传：解析字段会自动回显且禁填。';
 });
 
-const canSubmit = computed(() => Boolean(parsed.value) && parseState.value === 'success');
+const canSubmit = computed(() => Boolean(parsed.value) && parseState.value === 'success' && !uploading.value);
 
 watch(
   () => props.modelValue,
@@ -74,7 +87,9 @@ function reset(): void {
   file.value = null;
   parsed.value = null;
   parseState.value = 'idle';
+  parseWarnings.value = [];
   parsing.value = false;
+  uploading.value = false;
   parseError.value = '';
 }
 
@@ -105,10 +120,43 @@ function parseUploadOk(uploadFile: File | null): void {
   parseState.value = 'success';
 }
 
+function readEnvelopeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function serviceSucceeded(value: unknown): boolean {
+  const record = readEnvelopeRecord(value);
+  if (record.success === false) {
+    return false;
+  }
+  const code = record.code;
+  return code === undefined || code === 0 || code === 200 || code === '0' || code === '200';
+}
+
+function serviceMessage(value: unknown, fallback: string): string {
+  const record = readEnvelopeRecord(value);
+  const message = record.message ?? record.msg;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
+function storagePathSegment(value: string, fallback: string): string {
+  return value.trim().replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || fallback;
+}
+
+function buildStorageFileDir(meta: ParsedSkillMeta): string {
+  return [
+    'fuyao',
+    'skills',
+    storagePathSegment(meta.name, 'uploaded-skill'),
+    storagePathSegment(meta.version, '1.0.0'),
+  ].join('/');
+}
+
 async function onFileChange(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
   file.value = input.files?.[0] ?? null;
   parseError.value = '';
+  parseWarnings.value = [];
   parsed.value = null;
   parseState.value = 'idle';
   if (!file.value) {
@@ -118,8 +166,18 @@ async function onFileChange(event: Event): Promise<void> {
     parsing.value = true;
     try {
       const r = await props.parseSkillArchive(file.value);
+      const warnings = r.warnings ?? [];
+      if (warnings.length > 0) {
+        parseWarnings.value = warnings;
+        parseState.value = 'warning';
+        return;
+      }
+      if (r.canSubmit === false || r.duplicate) {
+        parseState.value = 'duplicate';
+        return;
+      }
       parsed.value = r.meta;
-      parseState.value = r.duplicate ? 'duplicate' : 'success';
+      parseState.value = 'success';
     } catch (e) {
       parseError.value = e instanceof Error ? e.message : '解析请求失败';
       parseState.value = 'idle';
@@ -132,25 +190,42 @@ async function onFileChange(event: Event): Promise<void> {
 }
 
 const onSubmit = async (): Promise<void> => {
-  if (!parsed.value || parseState.value !== 'success' || !file.value) {
+  if (!parsed.value || parseState.value !== 'success' || !file.value || uploading.value) {
     return;
   }
-  const formData = new FormData();
-  formData.append('file', file.value);
-  const env = await skillBaseService.uploadSkillPackage(formData, { userId: userId.value });
-  if (env.code !== 0) {
-    parseError.value = env.message || '上传失败';
-    return;
+  parseError.value = '';
+  uploading.value = true;
+  try {
+    const storageFormData = new FormData();
+    storageFormData.append('uploadFile', file.value);
+    storageFormData.append('fileDir', buildStorageFileDir(parsed.value));
+    const storageEnv = await skillBaseService.uploadStorageFile(storageFormData);
+    if (!serviceSucceeded(storageEnv)) {
+      parseError.value = serviceMessage(storageEnv, '文件存储失败');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file.value);
+    const env = await skillBaseService.uploadSkillPackage(formData, { userId: userId.value });
+    if (!serviceSucceeded(env)) {
+      parseError.value = serviceMessage(env, '上传失败');
+      return;
+    }
+    emit('submit', {
+      name: parsed.value.name,
+      publisher: parsed.value.author,
+      note: note.value.trim() || parsed.value.description,
+      file: file.value,
+      scopeLabel: '个人级',
+      tagFunctional: parsed.value.category,
+    });
+    close();
+  } catch (e) {
+    parseError.value = e instanceof Error ? e.message : '上传失败';
+  } finally {
+    uploading.value = false;
   }
-  emit('submit', {
-    name: parsed.value.name,
-    publisher: parsed.value.author,
-    note: note.value.trim() || parsed.value.description,
-    file: file.value,
-    scopeLabel: '个人级',
-    tagFunctional: parsed.value.category,
-  });
-  close();
 }
 </script>
 
@@ -188,10 +263,16 @@ const onSubmit = async (): Promise<void> => {
           class="parse-notice"
           :class="{
             success: parseState === 'success',
+            warning: parseState === 'warning',
             error: parseState === 'duplicate' || Boolean(parseError),
           }"
         >
-          {{ parseNotice }}
+          <div>{{ parseNotice }}</div>
+          <ul v-if="parseWarnings.length > 0" class="warning-list">
+            <li v-for="(warning, index) in parseWarnings" :key="`${warning}-${index}`">
+              {{ warning }}
+            </li>
+          </ul>
         </div>
 
         <section class="upload-result-card" aria-label="解析结果">
@@ -244,7 +325,9 @@ const onSubmit = async (): Promise<void> => {
         <footer class="actions">
           <span class="actions-spacer" aria-hidden="true" />
           <button type="button" class="btn ghost" @click="close">取消</button>
-          <button type="button" class="btn primary" :disabled="!canSubmit" @click="onSubmit">确定上传</button>
+          <button type="button" class="btn primary" :disabled="!canSubmit" @click="onSubmit">
+            {{ uploading ? '上传中...' : '确定上传' }}
+          </button>
         </footer>
       </section>
     </div>
@@ -408,10 +491,25 @@ const onSubmit = async (): Promise<void> => {
   color: #166534;
 }
 
+.parse-notice.warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
 .parse-notice.error {
   border-color: #fecaca;
   background: #fef2f2;
   color: #991b1b;
+}
+
+.warning-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.warning-list li + li {
+  margin-top: 4px;
 }
 
 .upload-result-card {

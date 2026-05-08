@@ -1513,8 +1513,34 @@ function readText(value: unknown): string {
   return '';
 }
 
+function readWarningMessages(...sources: unknown[]): string[] {
+  const values = sources.flatMap((source) => {
+    if (Array.isArray(source)) {
+      return source;
+    }
+    return source === undefined || source === null || source === '' ? [] : [source];
+  });
+  return values
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item.trim();
+      }
+      if (typeof item === 'number' || typeof item === 'boolean') {
+        return String(item);
+      }
+      const record = asRecord(item);
+      const message = readText(
+        firstPresent(record.message, record.msg, record.warning, record.reason, record.detail),
+      );
+      return message || (Object.keys(record).length > 0 ? JSON.stringify(record) : '');
+    })
+    .filter(Boolean);
+}
+
 async function parseSkillArchiveForUpload(file: File): Promise<{
-  duplicate: boolean;
+  duplicate?: boolean;
+  canSubmit?: boolean;
+  warnings?: string[];
   meta: {
     name: string;
     version: string;
@@ -1550,8 +1576,21 @@ async function parseSkillArchiveForUpload(file: File): Promise<{
     );
   }
   const tags = readText(firstPresent(metadata.tags, parsedMeta.tags, data.tags));
+  const warnings = readWarningMessages(
+    parsedMeta.warnings,
+    data.warnings,
+    topMeta.warnings,
+    root.warnings,
+  );
+  const canSubmit = readBool(
+    firstPresent(parsedMeta.canSubmit, data.canSubmit, topMeta.canSubmit, root.canSubmit),
+  );
+  const duplicate = canSubmit === false
+    || (readBool(firstPresent(parsedMeta.nameExists, data.nameExists, topMeta.nameExists)) ?? false);
   return {
-    duplicate: readBool(firstPresent(parsedMeta.nameExists, data.nameExists, topMeta.nameExists)) ?? false,
+    duplicate,
+    canSubmit: canSubmit ?? !duplicate,
+    warnings,
     meta: {
       name: readText(firstPresent(parsedMeta.name, data.name)),
       version: readText(firstPresent(metadata.version, parsedMeta.version, data.version)),

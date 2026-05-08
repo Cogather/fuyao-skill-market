@@ -207,7 +207,7 @@ export function createSkillMarketHttpClient(
 
   async function hydrateFromServer(): Promise<void> {
     const env = await get<SkillListPayloadDto>(
-      `${SKILL_MARKET_ENDPOINTS.skills}${toSearchParams({ pageNo: 1, pageSize: 500 })}`,
+      `${SKILL_MARKET_ENDPOINTS.skills}${toSearchParams({ pageNum: 1, pageSize: 500 })}`,
     );
     if (env.code === 0 && env.data?.records) {
       skills.value = env.data.records.map(apiRecordToSkill);
@@ -227,7 +227,7 @@ export function createSkillMarketHttpClient(
       if (env.code !== 0) {
         throw new Error(env.message || '列表接口失败');
       }
-      const page = dto.pageNo;
+      const page = dto.pageNum;
       const pageSize = dto.pageSize;
       const list = env.data.records.map(apiRecordToSkill);
       const total = env.data.total;

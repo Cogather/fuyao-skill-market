@@ -88,7 +88,7 @@ export function skillListQueryToDto(query: SkillListQuery): SkillListParamsDto {
   return {
     keyword: query.keyword,
     level,
-    pageNo: page,
+    pageNum: page,
     pageSize,
   };
 }

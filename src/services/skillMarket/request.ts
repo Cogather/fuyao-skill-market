@@ -1,6 +1,8 @@
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 
+const fuyao = 'https://fuyao.rnd.huawei.com'
+
 function isSuccessStatus(status: number): boolean {
     return status >= 200 && status < 300;
 }
@@ -55,7 +57,12 @@ function buildBaseUrl(prefix: '/api' | '/api/skills'): string {
     return `${base}${prefix}`;
 }
 
-function stripPrefix(url: unknown, prefix: '/api' | '/api/skills'): string {
+function buildResourceBaseUrl(): string {
+    const base = fuyao.replace(/\/+$/, '') + '/resource/resource-management';
+    return base.slice(0, -'/resource/resource-management'.length);
+}
+
+function stripPrefix(url: unknown, prefix: string): string {
     const path = normalizePath(url);
     if (!path) {
         return '';
@@ -83,6 +90,13 @@ const httpRequest = {
             ...config,
             baseURL: buildBaseUrl('/api/skills'),
             url: stripPrefix(config.url, '/api/skills'),
+        })
+    },
+    resource: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+        return axiosRequest.request<T, T>({
+            ...config,
+            baseURL: buildResourceBaseUrl(),
+            url: stripPrefix(config.url, '/resource/resource-management'),
         })
     }
 }

@@ -137,6 +137,8 @@ export type SkillUploadParseResultDto = {
   tags: string[];
   level?: string;
   nameExists?: boolean;
+  canSubmit?: boolean;
+  warnings?: string[];
   fileTree?: string[];
 };
 

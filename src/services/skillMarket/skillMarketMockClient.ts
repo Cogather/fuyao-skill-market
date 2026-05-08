@@ -62,7 +62,7 @@ function paramsToSkillListQuery(params: SkillListParamsDto): SkillListQuery {
   }
   return {
     keyword: params.keyword,
-    page: params.pageNo,
+    page: params.pageNum,
     pageSize: params.pageSize,
     scope,
   };
@@ -458,7 +458,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         }
         return ta < tb ? 1 : -1;
       });
-      const pageNo = Math.max(1, params.pageNo);
+      const pageNo = Math.max(1, params.pageNum);
       const pageSize = Math.max(1, params.pageSize);
       const total = list.length;
       const start = (pageNo - 1) * pageSize;
