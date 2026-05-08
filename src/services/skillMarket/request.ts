@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 
-const fuyao = 'https://fuyao.rnd.huawei.com'
+const fuyao = '/fuyaoDomain'
 
 function isSuccessStatus(status: number): boolean {
     return status >= 200 && status < 300;
@@ -59,7 +59,7 @@ function buildBaseUrl(prefix: '/api' | '/api/skills'): string {
 
 function buildResourceBaseUrl(): string {
     const base = fuyao.replace(/\/+$/, '') + '/resource/resource-management';
-    return base.slice(0, -'/resource/resource-management'.length);
+    return base;
 }
 
 function stripPrefix(url: unknown, prefix: string): string {
