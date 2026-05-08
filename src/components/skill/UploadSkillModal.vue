@@ -28,13 +28,7 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean;
     /** 对接 `POST /api/skills/upload/parse`；不传则保持本地 Mock 解析（仅开发兜底） */
-    parseSkillArchive?: (file: File) => Promise<{
-      duplicate?: boolean;
-      canSubmit?: boolean;
-      warnings?: string[];
-      versionUpgrade?: VersionUpgradeMeta;
-      meta: ParsedSkillMeta;
-    }>;
+    parseSkillArchive?: (file: File) => Promise<any>;
   }>(),
   {
     modelValue: false,
@@ -76,14 +70,11 @@ const parseNotice = computed(() => {
   if (parseState.value === 'warning') {
     return '解析完成，但存在 warnings，请处理后重新选择文件。';
   }
-  if (parseState.value === 'success') {
-    if (versionUpgrade.value) {
-      return `检测到同名 Skill，解析版本 ${versionUpgrade.value.nextVersion} 大于当前版本 ${versionUpgrade.value.existingVersion}，将作为新版本迭代上传并保留历史版本。`;
-    }
-    return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，名称未重名。';
-  }
   if (parseState.value === 'duplicate') {
-    return '有重名的 Skill：市场内已存在同名 Skill。如需作为版本迭代上传，请确保 SKILL.md 中的 version 大于当前已有版本。';
+    return '有重名的 Skill：市场内已存在其他人创建的同名 Skill。';
+  }
+  if (parseState.value === 'success') {
+    return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，如果与已有 Skill 同名，则会将当前作为新版本上传并保留历史版本';
   }
   if (parsing.value) {
     return '正在请求后端解析压缩包…';
@@ -127,17 +118,17 @@ function fileBaseName(uploadFile: File): string {
   return uploadFile.name.replace(/\.[^.]+$/, '').trim() || 'uploaded-skill';
 }
 
-function parseUploadOk(uploadFile: File | null): void {
-  const base = uploadFile ? fileBaseName(uploadFile) : 'pdf-document-extractor';
+function parseUploadOk(uploadFile: File | null, info: any): void {
+  // const base = uploadFile ? fileBaseName(uploadFile) : 'pdf-document-extractor';
   parsed.value = {
-    name: base === 'uploaded-skill' ? 'pdf-document-extractor' : base,
-    version: '1.0.0',
-    description: '从 PDF 文件中提取文本和表格、填充表单、合并文档。在处理 PDF 文件或用户提及 PDF、表单或文档提取时使用。',
-    author: '当前用户',
-    category: 'utility-doc',
-    requirements: '需要 Python 3.10+ 和 pdfplumber 库',
-    tags: 'pdf document extraction',
-    level: '个人级（默认发布，无需审核）',
+    name: info.name,
+    version: info.version,
+    description: info.description,
+    author: info?.author || '',
+    category: info.category,
+    requirements: info?.requirements || '',
+    tags: info?.tags?.join(',') || '',
+    level: info?.level || '个人级',
   };
   parseState.value = 'success';
 }
@@ -195,13 +186,12 @@ async function onFileChange(event: Event): Promise<void> {
         parseState.value = 'warning';
         return;
       }
-      if (r.canSubmit === false || (r.canSubmit !== true && r.duplicate)) {
+      if (!r.canSubmit) {
         parseState.value = 'duplicate';
         return;
       }
-      parsed.value = r.meta;
-      versionUpgrade.value = r.versionUpgrade ?? null;
       parseState.value = 'success';
+      parseUploadOk(file.value, r);
     } catch (e) {
       parseError.value = e instanceof Error ? e.message : '解析请求失败';
       parseState.value = 'idle';
@@ -210,7 +200,6 @@ async function onFileChange(event: Event): Promise<void> {
     }
     return;
   }
-  parseUploadOk(file.value);
 }
 
 const onSubmit = async (): Promise<void> => {

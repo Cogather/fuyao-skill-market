@@ -17,7 +17,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  download: [id: string];
+  download: [];
   'view-versions': [id: string];
   'open-detail': [id: string];
 }>();
@@ -83,7 +83,7 @@ function closeMenu(): void {
 
 function onDownload(): void {
   closeMenu();
-  emit('download', props.skill.id ?? props.skill.skill_id);
+  emit('download');
 }
 
 function onViewVersions(): void {
@@ -92,7 +92,7 @@ function onViewVersions(): void {
 }
 
 function onFooterDownload(): void {
-  emit('download', props.skill.id ?? props.skill.skill_id);
+  emit('download');
 }
 
 function onOpenDetail(): void {

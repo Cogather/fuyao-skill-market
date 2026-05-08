@@ -86,7 +86,7 @@ export type SkillListRecordDto = {
   version: string;
   category: string;
   categoryGroupName: string;
-  tags: string[];
+  tags: string;
   level: string;
   status: string;
   orgId?: number | null;
@@ -176,12 +176,15 @@ export type SkillDownloadRequestBody = {
 };
 
 export type SkillDownloadResultDto = {
-  skillId: number;
+  id: number;
   name: string;
   version: string;
+  currentVersion: string;
+  description: string;
   downloads: number;
   packagePath: string;
   downloadUrl: string;
+  tags: string;
 };
 
 /** §3.3.3.2.2 `GET /api/skills/{id}/download-stats` */
@@ -237,6 +240,12 @@ export type UploadSkillResultDto = {
   skillMdContent: string;
   createdAt: string;
   updatedAt: string;
+  likes: number | null;
+  dislikes: number | null;
+  rating: number | null;
+  qualityMark: any;
+  qualityBadges: any[];
+  scored: boolean;
 };
 
 export type CreateSkillBody = {

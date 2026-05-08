@@ -61,7 +61,7 @@ export function skillToListRecord(skill: Skill, updatedAt: string): SkillListRec
     version: skill.version ?? '1.0.0',
     category,
     categoryGroupName: group,
-    tags: skill.tags ?? [],
+    tags: skill.tags ?? '',
     level: skill.publish_level ?? skill.level ?? '个人级',
     status: skill.marketStatus ?? skill.publish_level ?? skill.level ?? '个人级',
     orgName: skill.tagOrg?.includes('组织') ? skill.publish_name : null,
@@ -218,7 +218,7 @@ export function mergeSkillFromSkillDownloadDto(prev: Skill | undefined, d: Skill
       publish_level: '',
       owner_list: '[]',
       dept_name: '',
-      tags: [],
+      tags: d.tags ?? '',
     };
   }
   return {

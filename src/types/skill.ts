@@ -41,7 +41,7 @@ export interface Skill {
   /** 组织/范围类标签 */
   tagOrg?: string;
   /** 标签集合，用于市场总览左侧标签筛选 */
-  tags: string[];
+  tags: string;
 }
 
 export interface SkillVersionEntry {

@@ -3,11 +3,12 @@ import httpRequest from "./request"
 export const skillBaseService = {
 
     // skill压缩包解析接口
-    parseSkillPackage: (formData: FormData): any => {
+    parseSkillPackage: (formData: FormData, params: any): any => {
         return httpRequest.skill<any>({
             url: '/upload/parse',
             method: 'post',
             data: formData,
+            params: params,
             headers: {
                 'Content-Type': 'multipart/form-data',
             }
@@ -76,11 +77,11 @@ export const skillBaseService = {
     },
 
     // skill下载接口
-    downloadSkill: (body: any, id: string): any => {
+    downloadSkill: (params: any, id: string): any => {
         return httpRequest.skill<any>({
             url: `/${id}/download`,
             method: 'post',
-            data: body
+            params: params
         })
     },
     // 单个skill下载量统计接口

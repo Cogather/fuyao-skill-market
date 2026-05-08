@@ -280,7 +280,7 @@ function matchesCategoryFilter(skill: Skill): boolean {
 }
 
 function skillTags(skill: Skill): string[] {
-  return (skill.tags ?? []).map((tag) => tag.trim()).filter(Boolean);
+  return (skill.tags.split(',').map((iter) => iter.trim()) ?? [])?.map((tag) => tag.trim()).filter(Boolean);
 }
 
 function matchesSelectedTags(skill: Skill): boolean {
@@ -682,14 +682,6 @@ function waitForUserId(timeout = 5000): Promise<void> {
   })
 }
 
-function updateMarketStatsFromSkills(list: Skill[], total = list.length): void {
-  totalSkills.value = total;
-  totalDownloads.value = list.reduce(
-    (sum, item) => sum + (item.download_count ?? item.downloads ?? 0),
-    0,
-  );
-}
-
 async function loadCurrentUserRole(): Promise<void> {
   try {
     const r = await skillBaseService.queryCurrentUserRole({userId: userId.value});
@@ -741,25 +733,21 @@ async function loadOpsDashboardOverview(): Promise<void> {
   }
 }
 
+const filteredMyReleaseRows = ref([])
+
 onMounted(async () => {
   syncResponsiveLayout();
   window.addEventListener('resize', syncResponsiveLayout);
   if (transportIsHttp) {
     await waitForUserId();
   }
-  void loadCurrentUserRole();
-  void loadDepartmentTree();
+  await loadCurrentUserRole();
   if (transportIsHttp) {
     await loadAdminOrganizations();
   }
   if (transportIsHttp && innerTab.value === 'overview') {
     void startOverviewRemoteFetch();
   }
-  if (innerTab.value === 'releases') {
-    void loadMyPublishedSkills();
-  }
-  void loadOpsDashboardOverview();
-  scheduleMaybeFillOverviewViewport();
   document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.addEventListener('keydown', onMarketDeptCascaderKeydown);
 });
@@ -893,22 +881,20 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
     if (seq !== overviewRemoteFetchSeq) {
       return;
     }
-    if (env.code !== 0 || !env.data) {
+    if (!env.meat.success || !env.data) {
       showToast(env.message || '市场列表加载失败');
       return;
     }
-    const records = (env.data.records ?? []) as SkillListRecordDto[];
-    const batch = records.map((r) => apiRecordToSkill(r));
-    const merged =
-      pageNo === 1 ? batch : mergeOverviewSkillsById(overviewRemoteItems.value, batch);
-    overviewRemoteItems.value = merged;
-    skills.value = merged;
+    const batch = (env.data) as SkillListRecordDto[];
+    // const merged =
+    //   pageNo === 1 ? batch : mergeOverviewSkillsById(overviewRemoteItems.value, batch);
+    overviewRemoteItems.value = batch;
+    skills.value = batch;
     overviewRemoteTotal.value = env.data.total;
-    updateMarketStatsFromSkills(merged, env.data.total);
     const received = batch.length;
     if (
       received === 0 ||
-      merged.length >= env.data.total ||
+      batch.length >= env.data.total ||
       received < fetchSize
     ) {
       overviewRemoteExhausted.value = true;
@@ -917,7 +903,7 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
     }
   } finally {
     overviewRemoteLoading.value = false;
-    scheduleMaybeFillOverviewViewport();
+    // scheduleMaybeFillOverviewViewport();
   }
 }
 
@@ -1052,33 +1038,33 @@ const myReleases = computed(() => {
   return [];
 });
 
-watch(
-  [search, quickFilter, levelFilter, categoryFilter, selectedTags, overviewMarketDeptSegments],
-  () => {
-  overviewVisibleCount.value = pageSize.value;
-  if (transportIsHttp) {
-    void startOverviewRemoteFetch();
-  }
-  syncOverviewPageSize();
-  },
-  { deep: true },
-);
+// watch(
+//   [search, quickFilter, levelFilter, categoryFilter, selectedTags, overviewMarketDeptSegments],
+//   () => {
+//   overviewVisibleCount.value = pageSize.value;
+//   if (transportIsHttp) {
+//     void startOverviewRemoteFetch();
+//   }
+//   syncOverviewPageSize();
+//   },
+//   { deep: true },
+// );
 
-watch(
-  () => filteredSkills.value.length,
-  () => {
-    syncOverviewPageSize();
-    scheduleMaybeFillOverviewViewport();
-  },
-  { flush: 'post' },
-);
+// watch(
+//   () => filteredSkills.value.length,
+//   () => {
+//     syncOverviewPageSize();
+//     scheduleMaybeFillOverviewViewport();
+//   },
+//   { flush: 'post' },
+// );
 
-watch(
-  () => skills.value.length,
-  () => {
-    syncOverviewPageSize();
-  },
-);
+// watch(
+//   () => skills.value.length,
+//   () => {
+//     syncOverviewPageSize();
+//   },
+// );
 
 watch(pageSize, (next, prev) => {
   if (transportIsHttp) {
@@ -1225,26 +1211,23 @@ async function loadSyncApplicationRows(): Promise<void> {
   }
 }
 
+const filterObj = ref({
+  pageNo: 1,
+  pageSize: 200,
+})
+
 async function loadMyPublishedSkills(): Promise<void> {
   if (transportIsHttp) {
     await waitForUserId();
   }
-  const res = await skillBaseService.queryMySkills({
-    pageNo: 1,
-    pageSize: 200,
-    userId: userId.value,
-  });
-  if (res.code !== 0 || !res.data) {
+  filterObj.value.userId = userId.value;
+  const res = await skillBaseService.queryMySkills(filterObj.value);
+  if (!res.meta.success || !res.data) {
     showToast(res.message || '我的发布加载失败');
     return;
   }
-  const records = (res.data.records ?? []) as SkillListRecordDto[];
-  const previous = [...myPublishedSkills.value, ...skills.value];
-  const mapped = records
-    .map((row) => apiMyRecordToSkill(row))
-    .map((skill) => mergeSkillVersionHistory(skill, findExistingSkillByName(skillTitle(skill), previous)));
-  myPublishedSkills.value = mapped;
-  skills.value = upsertSkillsPreservingVersions(skills.value, mapped);
+  const records = (res.data ?? []) as SkillListRecordDto[];
+  myPublishedSkills.value = [...records];
 }
 
 watch(
@@ -1272,14 +1255,15 @@ watch(
 watch(
   innerTab,
   async (tab) => {
-    if (tab === 'org') {
-      await loadAdminOrganizations();
-    }
-    if (tab === 'approval') {
-      void loadSyncApplicationRows();
+    if (tab === 'overview') {
+      await startOverviewRemoteFetch();
     }
     if (tab === 'releases') {
-      void loadMyPublishedSkills();
+      await loadMyPublishedSkills();
+      filteredMyReleaseRows.value = [...myPublishedSkills.value];
+    }
+    if (tab === 'ops') {
+      await loadOpsDashboardOverview();
     }
     syncTabPanelMinHeight();
   },
@@ -1382,10 +1366,6 @@ async function submitReviewModal(): Promise<void> {
       comment: reviewComment.value.trim(),
     }
     const r = await skillBaseService.reviewSyncApplication(body, row.id.toString());
-    // const r = await marketClient.postSyncApplicationReview(row.id, {
-    //   decision: reviewDecision.value,
-    //   comment: reviewComment.value.trim(),
-    // });
     if (r.code !== 0) {
       showToast(r.message || '提交失败');
       return;
@@ -1408,102 +1388,6 @@ function skillTitle(skill: Skill): string {
 
 function skillVersion(skill: Skill): string {
   return skill.version ?? '1.0.0';
-}
-
-function normalizeSkillName(name: string): string {
-  return name.trim().toLowerCase();
-}
-
-function skillVersionParts(version: string): Array<number | string> {
-  return version
-    .trim()
-    .replace(/^v/i, '')
-    .split(/[.-]/)
-    .filter(Boolean)
-    .map((part) => (/^\d+$/.test(part) ? Number(part) : part.toLowerCase()));
-}
-
-function compareVersions(left: string, right: string): number {
-  const a = skillVersionParts(left);
-  const b = skillVersionParts(right);
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const av = a[i] ?? 0;
-    const bv = b[i] ?? 0;
-    if (av === bv) {
-      continue;
-    }
-    if (typeof av === 'number' && typeof bv === 'number') {
-      return av > bv ? 1 : -1;
-    }
-    if (typeof av === 'number') {
-      return 1;
-    }
-    if (typeof bv === 'number') {
-      return -1;
-    }
-    const compared = String(av).localeCompare(String(bv), 'en');
-    if (compared !== 0) {
-      return compared > 0 ? 1 : -1;
-    }
-  }
-  return 0;
-}
-
-function findExistingSkillByName(name: string, source?: Skill[]): Skill | undefined {
-  const key = normalizeSkillName(name);
-  const pool = source ?? [
-    ...myPublishedSkills.value,
-    ...skills.value,
-    ...overviewRemoteItems.value,
-  ];
-  return pool.find((skill) => normalizeSkillName(skillTitle(skill)) === key);
-}
-
-function fallbackVersionEntry(skill: Skill): SkillVersionEntry {
-  const version = skillVersion(skill);
-  return {
-    version,
-    publishTime: skill.latestPublishTime ?? '',
-    packageFileName: `${skillTitle(skill)}-v${version}.zip`,
-  };
-}
-
-function mergeSkillVersionHistory(next: Skill, previous?: Skill): Skill {
-  const entries = [
-    ...(previous?.versions ?? []),
-    ...(previous ? [fallbackVersionEntry(previous)] : []),
-    ...(next.versions ?? []),
-    fallbackVersionEntry(next),
-  ];
-  const byVersion = new Map<string, SkillVersionEntry>();
-  for (const entry of entries) {
-    const version = entry.version.trim();
-    if (!version) {
-      continue;
-    }
-    byVersion.set(version, { ...byVersion.get(version), ...entry, version });
-  }
-  const versions = [...byVersion.values()].sort((a, b) => compareVersions(a.version, b.version));
-  return { ...next, versions };
-}
-
-function upsertSkillsPreservingVersions(prev: Skill[], batch: Skill[]): Skill[] {
-  const out = [...prev];
-  for (const skill of batch) {
-    const skillId = skill.id ? String(skill.id) : '';
-    const skillName = normalizeSkillName(skillTitle(skill));
-    const index = out.findIndex((item) => {
-      const itemId = item.id ? String(item.id) : '';
-      return (skillId && itemId === skillId) || normalizeSkillName(skillTitle(item)) === skillName;
-    });
-    if (index >= 0) {
-      out[index] = mergeSkillVersionHistory(skill, out[index]);
-    } else {
-      out.push(skill);
-    }
-  }
-  return out;
 }
 
 function skillAuthor(skill: Skill): string {
@@ -1580,166 +1464,15 @@ function skillTagSummary(skill: Skill): string {
     .join(' ');
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function firstPresent(...values: unknown[]): unknown {
-  return values.find((value) => value !== undefined && value !== null);
-}
-
-function readBool(value: unknown): boolean | undefined {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'number') {
-    if (value === 1) return true;
-    if (value === 0) return false;
-  }
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['true', '1', 'yes', 'success'].includes(normalized)) return true;
-    if (['false', '0', 'no', 'fail', 'failed'].includes(normalized)) return false;
-  }
-  return undefined;
-}
-
-function readText(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value.map((item) => readText(item)).filter(Boolean).join(' ');
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  return '';
-}
-
-function readWarningMessages(...sources: unknown[]): string[] {
-  const values = sources.flatMap((source) => {
-    if (Array.isArray(source)) {
-      return source;
-    }
-    return source === undefined || source === null || source === '' ? [] : [source];
-  });
-  return values
-    .map((item) => {
-      if (typeof item === 'string') {
-        return item.trim();
-      }
-      if (typeof item === 'number' || typeof item === 'boolean') {
-        return String(item);
-      }
-      const record = asRecord(item);
-      const message = readText(
-        firstPresent(record.message, record.msg, record.warning, record.reason, record.detail),
-      );
-      return message || (Object.keys(record).length > 0 ? JSON.stringify(record) : '');
-    })
-    .filter(Boolean);
-}
-
-async function ensureMyPublishedSkillsForVersionCheck(hasExistingName: boolean): Promise<void> {
-  if (!hasExistingName || !transportIsHttp || myPublishedSkills.value.length > 0) {
-    return;
-  }
-  try {
-    await loadMyPublishedSkills();
-  } catch {
-    // 版本比较仍可使用已加载的市场列表；刷新失败时保持解析流程可继续给出拦截提示。
-  }
-}
-
-async function parseSkillArchiveForUpload(file: File): Promise<{
-  duplicate?: boolean;
-  canSubmit?: boolean;
-  warnings?: string[];
-  versionUpgrade?: {
-    name: string;
-    existingVersion: string;
-    nextVersion: string;
-  };
-  meta: {
-    name: string;
-    version: string;
-    description: string;
-    author: string;
-    category: string;
-    requirements: string;
-    tags: string;
-    level: string;
-  };
-}> {
+async function parseSkillArchiveForUpload(file: File): Promise<any> {
   const formData = new FormData();
   formData.append('file', file);
-  const env = await skillBaseService.parseSkillPackage(formData);
-  const root = asRecord(env);
-  const data = asRecord(root.data);
-  const topMeta = asRecord(root.meta);
-  const dataMeta = asRecord(data.meta);
-  const meta = Object.keys(dataMeta).length > 0
-    ? dataMeta
-    : Object.keys(topMeta).length > 0
-      ? topMeta
-      : data;
-  const metaData = asRecord(meta.data);
-  const parsedMeta = Object.keys(metaData).length > 0 ? metaData : meta;
-  const metadata = asRecord(firstPresent(parsedMeta.metadata, data.metadata, topMeta.metadata));
-  const success = readBool(firstPresent(dataMeta.success, topMeta.success, data.success, parsedMeta.success));
-  const code = root.code;
-  const codeSuccess = code === undefined || code === 0 || code === 200 || code === '0' || code === '200';
-  if (success === false || (success !== true && !codeSuccess)) {
-    throw new Error(
-      readText(firstPresent(parsedMeta.message, data.message, topMeta.message, root.message)) || '解析失败',
-    );
+  const env = await skillBaseService.parseSkillPackage(formData, {userId: userId.value});
+  if(!env.meta.success || !env.data) {
+    console.error('上传时解析skill失败')
+    return;
   }
-  const tags = readText(firstPresent(metadata.tags, parsedMeta.tags, data.tags));
-  const warnings = readWarningMessages(
-    parsedMeta.warnings,
-    data.warnings,
-    topMeta.warnings,
-    root.warnings,
-  );
-  const canSubmit = readBool(
-    firstPresent(parsedMeta.canSubmit, data.canSubmit, topMeta.canSubmit, root.canSubmit),
-  );
-  const name = readText(firstPresent(parsedMeta.name, data.name));
-  const version = readText(firstPresent(metadata.version, parsedMeta.version, data.version));
-  const backendNameExists =
-    readBool(firstPresent(parsedMeta.nameExists, data.nameExists, topMeta.nameExists)) ?? false;
-  await ensureMyPublishedSkillsForVersionCheck(backendNameExists || canSubmit === false);
-  const existingSkill = name ? findExistingSkillByName(name) : undefined;
-  const existingVersion = existingSkill ? skillVersion(existingSkill) : '';
-  const versionUpgrade =
-    Boolean(existingSkill && version && compareVersions(version, existingVersion) > 0);
-  const hasExistingName = Boolean(existingSkill) || backendNameExists || canSubmit === false;
-  const duplicate = hasExistingName && !versionUpgrade;
-  return {
-    duplicate,
-    canSubmit: !duplicate,
-    warnings,
-    versionUpgrade: versionUpgrade
-      ? {
-          name,
-          existingVersion,
-          nextVersion: version,
-        }
-      : undefined,
-    meta: {
-      name,
-      version,
-      description: readText(firstPresent(parsedMeta.description, data.description)),
-      author: readText(firstPresent(metadata.author, parsedMeta.author, data.author)),
-      category: readText(firstPresent(metadata.category, parsedMeta.category, data.category)),
-      requirements: readText(firstPresent(parsedMeta.requirements, metadata.requirements, data.requirements)),
-      tags,
-      level: readText(firstPresent(parsedMeta.level, data.level)) || '个人级（默认发布，无需审核）',
-    },
-  };
+  return env.data;
 }
 
 type UploadSubmitPayload = SkillUploadPayload & {
@@ -1806,61 +1539,24 @@ function fileNameFromDownloadResponse(header: string | null, fallback: string): 
   return /filename="?([^";]+)"?/i.exec(header)?.[1]?.trim() ?? fallback;
 }
 
-async function onDownload(id: string, sourcePage: SkillDownloadSourcePage = 'market'): Promise<void> {
+async function onDownload(id: string, version?: string): Promise<void> {
   try {
-    const body = {
+    let params = {
       userId: userId.value,
-      sourcePage,
     }
-    const env = await skillBaseService.downloadSkill(body, id);
-    if (env.code !== 0 || !env.data) {
+    if (version) {
+      params.version = version;
+    }
+    const env = await skillBaseService.downloadSkill(params, id);
+    if (!env.meta.success || !env.data) {
       throw new Error(env.message || '下载失败');
     }
-    const d = env.data as SkillDownloadResultDto;
-    if (!d.downloadUrl?.trim()) {
-      throw new Error(env.message || '下载失败：未返回下载地址');
-    }
-    const prev = skills.value.find((item) => skillKey(item) === id);
-    const skill = mergeSkillFromSkillDownloadDto(prev, d);
-    patchSkillsDownloadCountAfterDownload(id, skill);
-    const defaultFileName = `${d.name}-v${d.version}.zip`;
-    const directDownloadUrl = resolvePackageDownloadUrl(d.downloadUrl);
-    try {
-      const response = await fetch(directDownloadUrl, {
-        credentials: 'include',
-        mode: 'cors',
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const blob = await response.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error('empty blob');
-      }
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileNameFromDownloadResponse(
-        response.headers.get('Content-Disposition'),
-        defaultFileName,
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      showToast(`已下载当前版本：${skillTitle(skill)} v${skillVersion(skill)}`);
-      return;
-    } catch {
-      const link = document.createElement('a');
-      link.href = directDownloadUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      link.download = defaultFileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      showToast(`正在打开下载链接：${skillTitle(skill)} v${skillVersion(skill)}`);
-      return;
+    const d = env.data;
+    window.open(d, '_blank');
+
+    let index = skills.value.findIndex((item) => skillKey(item) === id);
+    if(index >= 0) {
+      skills.value[index]?.downloads = skills.value[index]?.downloads ?? 0 + 1;
     }
   } catch (e) {
     showToast(e instanceof Error ? e.message : '下载失败');
@@ -1889,7 +1585,7 @@ function onDetailDownload(): void {
   if (!detailPanelSkill.value) {
     return;
   }
-  void onDownload(skillKey(detailPanelSkill.value), 'detail');
+  void onDownload(detailPanelSkill.value.id, detailPanelSkill.value.currentVersion);
 }
 
 function onTrySkill(): void {
@@ -1966,8 +1662,8 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'personal', label: '个人级' },
   { key: 'published', label: '组织级' },
-  { key: 'reviewing', label: '组织审核中' },
-  { key: 'rejected', label: '组织已驳回' },
+  // { key: 'reviewing', label: '组织审核中' },
+  // { key: 'rejected', label: '组织已驳回' },
 ];
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
@@ -2118,25 +1814,18 @@ const uiMyStats = computed(() => {
   };
 });
 
-const filteredMyReleaseRows = computed(() => {
-  let list = [...myReleaseRows.value];
-  if (releaseFilter.value === 'personal') {
-    list = list.filter((x) => x.personal || x.statusKey === 'personal-live');
+const onClickFilterRelease = async(key) => {
+  releaseFilter.value = key;
+  if(key === 'all' && 'status' in filterObj.value) {
+    delete filterObj.value.status;
+  } else if(key === 'personal') {
+    filterObj.value.status = '个人级';
+  } else if(key === 'published') {
+    filterObj.value.status = '组织级';
   }
-  if (releaseFilter.value === 'published') {
-    list = list.filter((x) => x.statusKey === 'published');
-  }
-  if (releaseFilter.value === 'reviewing') {
-    list = list.filter((x) => x.statusKey === 'reviewing-dev');
-  }
-  if (releaseFilter.value === 'rejected') {
-    list = list.filter((x) => x.statusKey === 'rejected-pdu');
-  }
-  if (releaseFilter.value === 'coreApply') {
-    list = list.filter((x) => x.coreApply);
-  }
-  return list;
-});
+  await loadMyPublishedSkills();
+  filteredMyReleaseRows.value = [...myPublishedSkills.value];
+}
 
 function toastAction(message: string): void {
   toast.value = message;
@@ -2468,12 +2157,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
           <div class="detail-toolbar">
             <div class="detail-tags">
-              <span class="detail-pill pill-category">{{ detailPanelSkill.tagFunctional }}</span>
-              <span class="detail-pill pill-id">{{ detailPanelSkill.skill_id }}</span>
-              <span class="detail-pill">版本 {{ skillVersion(detailPanelSkill) }}</span>
-              <span class="detail-pill">作者 {{ skillAuthor(detailPanelSkill) }}</span>
+              <span class="detail-pill pill-category">{{ detailPanelSkill.categoryGroupName }}</span>
+              <span class="detail-pill pill-id">{{ detailPanelSkill.name }}</span>
+              <span class="detail-pill">版本 {{ detailPanelSkill.currentVersion }}</span>
+              <span class="detail-pill">作者 {{ detailPanelSkill.author }}</span>
               <span class="detail-pill" :class="skillScopeClass(detailPanelSkill)">
-                {{ skillScopeLabel(detailPanelSkill) }}
+                {{ detailPanelSkill.level }}
               </span>
               <span class="detail-download">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2485,11 +2174,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     stroke-linejoin="round"
                   />
                 </svg>
-                {{ skillDownloadCount(detailPanelSkill) }}
+                {{ detailPanelSkill.downloads }}
               </span>
             </div>
             <div class="detail-actions">
-              <button type="button" class="detail-btn ghost" @click="onTrySkill">在线试用</button>
+              <button v-if="false" type="button" class="detail-btn ghost" @click="onTrySkill">在线试用</button>
               <button type="button" class="detail-btn primary" @click="onDetailDownload">下载到本地</button>
             </div>
           </div>
@@ -2537,11 +2226,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               </div>
             </article>
           </div>
-
-          <footer class="detail-foot">
-            <button type="button" class="detail-btn ghost" @click="closeDetailPanel">取消</button>
-            <button type="button" class="detail-btn primary" @click="onDetailDownload">下载到本地</button>
-          </footer>
         </section>
       </div>
     </Teleport>
@@ -2636,6 +2320,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         审核中心
       </button>
       <button
+        v-if="false"
         type="button"
         class="sub-tab"
         :class="{ on: innerTab === 'ops' }"
@@ -2876,11 +2561,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <div ref="overviewGridRef" class="grid">
               <SkillCard
                 v-for="s in filteredSkills"
-                :key="s.id ?? s.skill_id"
+                :key="s.id"
                 class="market-skill-card"
                 :skill="s"
                 menu-mode="download-only"
-                @download="(sid) => onDownload(sid, 'market')"
+                @download="onDownload(s.id, s.currentVersion)"
                 @open-detail="openDetailPanel"
                 @view-versions="onViewVersions"
               />
@@ -2951,7 +2636,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           :skill="s"
           variant="coreHarness"
           menu-mode="full"
-          @download="(sid) => onDownload(sid, 'market')"
+          @download="onDownload(s.id, s.currentVersion)"
           @view-versions="onViewVersions"
         />
       </div>
@@ -2967,29 +2652,28 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <div>
           <h2>我的发布</h2>
         </div>
-        <button type="button" class="btn primary my-upload-btn" @click="openUpload">上传新 Skill</button>
       </header>
 
-      <div class="my-release-body">
+      <div v-if="false" class="my-release-body">
         <div class="my-stats" role="group" aria-label="我的发布指标">
           <div class="my-cell">
             <span class="my-k">我维护的 Skill</span>
-            <span class="my-v">{{ uiMyStats.maintained }}</span>
+            <span class="my-v">0</span>
           </div>
           <div class="my-div" aria-hidden="true" />
           <div class="my-cell">
             <span class="my-k">审核中</span>
-            <span class="my-v">{{ uiMyStats.reviewing }}</span>
+            <span class="my-v">0</span>
           </div>
           <div class="my-div" aria-hidden="true" />
           <div class="my-cell">
             <span class="my-k">被驳回</span>
-            <span class="my-v">{{ uiMyStats.rejected }}</span>
+            <span class="my-v">0</span>
           </div>
           <div class="my-div" aria-hidden="true" />
           <div class="my-cell">
             <span class="my-k">我的累计下载</span>
-            <span class="my-v">{{ uiMyStats.myTotalDownloads }}</span>
+            <span class="my-v">0</span>
           </div>
         </div>
 
@@ -3001,14 +2685,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               type="button"
               class="seg"
               :class="{ on: releaseFilter === f.key }"
-              @click="releaseFilter = f.key"
+              @click="onClickFilterRelease(f.key)"
             >
               {{ f.label }}
             </button>
           </div>
-          <button type="button" class="btn outline sm" @click="onUploadExistingVersion">
-            上传已有 Skill 新版本
-          </button>
         </div>
 
         <div class="table-wrap my-table-wrap">
@@ -3018,49 +2699,47 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <th class="col-skill">Skill</th>
                 <th class="col-level">当前层级</th>
                 <th class="col-ver">最新版本</th>
-                <th class="col-status">状态</th>
+                <th v-if="false" class="col-status">状态</th>
                 <th class="col-dl">下载量</th>
-                <th class="col-action">最近动作</th>
+                <th v-if="false" class="col-action">最近动作</th>
                 <th class="col-ops">操作</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="row in filteredMyReleaseRows"
-                :key="row.skill.id"
+                v-for="(row, index) in filteredMyReleaseRows"
+                :key="index"
                 class="clickable-row"
-                @click="openDetailPanel(skillKey(row.skill))"
+                @click="openDetailPanel(skillKey(row))"
               >
                 <td>
                   <div class="skill-main">
                     <strong class="skill-name">{{ row.skill.name }}</strong>
                     <div class="skill-sub">
-                      <span>{{ releaseCategoryLabel(row.skill) }} · 作者：{{ row.skill.publisher }}</span>
+                      <span>{{ row.category }} · 作者：{{ row.author }}</span>
                     </div>
                   </div>
                 </td>
                 <td>
-                  <div class="cell-main">{{ releasePrimaryLevel(row.skill) }}</div>
-                  <div class="cell-sub">{{ releaseOrgLabel(row.skill) }}</div>
+                  <div class="cell-main">{{ row.level }}</div>
                 </td>
                 <td>
-                  <div class="cell-main">{{ row.skill.version }}</div>
-                  <div class="cell-sub">{{ releaseVersionSubText(row.skill) }}</div>
+                  <div class="cell-main">{{ row.currentVersion }}</div>
                 </td>
-                <td>
+                <!-- <td>
                   <span class="st" :class="`st-${row.statusKey}`">{{ row.statusLabel }}</span>
-                </td>
+                </td> -->
                 <td class="num">
-                  {{ (row.skill.download_count ?? row.skill.downloads ?? 0).toLocaleString('zh-CN') }}
+                  {{ (row.downloads ?? 0).toLocaleString('zh-CN') }}
                 </td>
-                <td class="cell-sub">{{ row.lastAction }}</td>
+                <!-- <td class="cell-sub">{{ row.lastAction }}</td> -->
                 <td @click.stop>
                   <div class="ops">
-                    <button type="button" class="mini" @click="onReleaseNewVersion(row)">新版本</button>
-                    <button type="button" class="mini" @click="onReleaseSync(row)">
+                    <button type="button" class="mini" @click="openUpload">新版本</button>
+                    <button disabled type="button" class="mini" @click="onReleaseSync(row)">
                       {{ releaseSyncActionText(row) }}
                     </button>
-                    <button type="button" class="mini" @click="onReleaseRecord(row)">记录</button>
+                    <button disabled type="button" class="mini" @click="onReleaseRecord(row)">记录</button>
                   </div>
                 </td>
               </tr>
