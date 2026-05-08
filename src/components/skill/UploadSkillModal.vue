@@ -74,7 +74,7 @@ const parseNotice = computed(() => {
     return '有重名的 Skill：市场内已存在其他人创建的同名 Skill。';
   }
   if (parseState.value === 'success') {
-    return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整，如果与已有 Skill 同名，则会将当前作为新版本上传并保留历史版本';
+    return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整。如果与已有 Skill 同名，则会将当前作为新版本上传并保留历史版本';
   }
   if (parsing.value) {
     return '正在请求后端解析压缩包…';

@@ -745,9 +745,6 @@ onMounted(async () => {
   if (transportIsHttp) {
     await loadAdminOrganizations();
   }
-  if (transportIsHttp && innerTab.value === 'overview') {
-    void startOverviewRemoteFetch();
-  }
   document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.addEventListener('keydown', onMarketDeptCascaderKeydown);
 });
@@ -881,15 +878,15 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
     if (seq !== overviewRemoteFetchSeq) {
       return;
     }
-    if (!env.meat.success || !env.data) {
+    if (!env.meta.success || !env.data) {
       showToast(env.message || '市场列表加载失败');
       return;
     }
     const batch = (env.data) as SkillListRecordDto[];
     // const merged =
     //   pageNo === 1 ? batch : mergeOverviewSkillsById(overviewRemoteItems.value, batch);
-    overviewRemoteItems.value = batch;
-    skills.value = batch;
+    overviewRemoteItems.value = [...batch];
+    skills.value = [...batch];
     overviewRemoteTotal.value = env.data.total;
     const received = batch.length;
     if (
@@ -1037,34 +1034,6 @@ const myReleases = computed(() => {
   }
   return [];
 });
-
-// watch(
-//   [search, quickFilter, levelFilter, categoryFilter, selectedTags, overviewMarketDeptSegments],
-//   () => {
-//   overviewVisibleCount.value = pageSize.value;
-//   if (transportIsHttp) {
-//     void startOverviewRemoteFetch();
-//   }
-//   syncOverviewPageSize();
-//   },
-//   { deep: true },
-// );
-
-// watch(
-//   () => filteredSkills.value.length,
-//   () => {
-//     syncOverviewPageSize();
-//     scheduleMaybeFillOverviewViewport();
-//   },
-//   { flush: 'post' },
-// );
-
-// watch(
-//   () => skills.value.length,
-//   () => {
-//     syncOverviewPageSize();
-//   },
-// );
 
 watch(pageSize, (next, prev) => {
   if (transportIsHttp) {
@@ -2714,7 +2683,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               >
                 <td>
                   <div class="skill-main">
-                    <strong class="skill-name">{{ row.skill.name }}</strong>
+                    <strong class="skill-name">{{ row.name }}</strong>
                     <div class="skill-sub">
                       <span>{{ row.category }} · 作者：{{ row.author }}</span>
                     </div>
@@ -2735,7 +2704,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <!-- <td class="cell-sub">{{ row.lastAction }}</td> -->
                 <td @click.stop>
                   <div class="ops">
-                    <button type="button" class="mini" @click="openUpload">新版本</button>
+                    <button type="button" class="mini" @click="openUpload">更新版本</button>
                     <button disabled type="button" class="mini" @click="onReleaseSync(row)">
                       {{ releaseSyncActionText(row) }}
                     </button>

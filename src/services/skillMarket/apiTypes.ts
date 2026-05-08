@@ -177,6 +177,7 @@ export type SkillDownloadRequestBody = {
 
 export type SkillDownloadResultDto = {
   id: number;
+  skillId: number;
   name: string;
   version: string;
   currentVersion: string;
