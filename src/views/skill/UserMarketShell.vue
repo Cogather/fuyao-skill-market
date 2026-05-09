@@ -151,13 +151,13 @@ const marketContentRef = ref<HTMLElement | null>(null);
 const overviewGridRef = ref<HTMLElement | null>(null);
 /** Mock / 本地全量筛选后，渐进展示的条数 */
 const overviewVisibleCount = ref(initialOverviewPageSize());
-/** HTTP：分页累加的原始列表（再经与 Mock 一致的筛选/排序） */
+/** HTTP：当前页的接口列表（再经与 Mock 一致的排序） */
 const overviewRemoteItems = ref<Skill[]>([]);
 const overviewRemoteTotal = ref(0);
-const overviewRemoteNextPage = ref(1);
-const overviewRemoteExhausted = ref(false);
+const overviewRemotePage = ref(1);
 const overviewRemoteLoading = ref(false);
 let overviewRemoteFetchSeq = 0;
+let overviewRemotePendingPage: number | null = null;
 let overviewScrollRaf = 0;
 let overviewLastScrollTriggerMs = 0;
 const pageSize = ref(initialOverviewPageSize());
@@ -801,44 +801,80 @@ function applyOverviewDisplayFilters(raw: Skill[]): Skill[] {
   return list;
 }
 
-function mergeOverviewSkillsById(prev: Skill[], batch: Skill[]): Skill[] {
-  const seen = new Set(prev.map((s) => String(s.id ?? s.skill_id)));
-  const out = [...prev];
-  for (const s of batch) {
-    const k = String(s.id ?? s.skill_id);
-    if (!seen.has(k)) {
-      seen.add(k);
-      out.push(s);
-    }
-  }
-  return out;
+type OverviewSkillListParams = SkillListParamsDto & {
+  pageNo: number;
+  status?: string;
+};
+
+type OverviewSkillListPayload = {
+  total: number;
+  records: SkillListRecordDto[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
 }
 
-async function startOverviewRemoteFetch(): Promise<void> {
+function overviewApiSuccess(env: unknown): boolean {
+  if (!isRecord(env)) {
+    return false;
+  }
+  const meta = isRecord(env.meta) ? env.meta : null;
+  if (typeof meta?.success === 'boolean') {
+    return meta.success;
+  }
+  return env.code === 0;
+}
+
+function overviewApiMessage(env: unknown, fallback: string): string {
+  if (isRecord(env) && typeof env.message === 'string' && env.message.trim()) {
+    return env.message;
+  }
+  return fallback;
+}
+
+function normalizeOverviewSkillListPayload(data: unknown): OverviewSkillListPayload {
+  if (Array.isArray(data)) {
+    return {
+      total: data.length,
+      records: data as SkillListRecordDto[],
+    };
+  }
+  const rawRecords = isRecord(data) ? data.records : undefined;
+  const records = Array.isArray(rawRecords) ? (rawRecords as SkillListRecordDto[]) : [];
+  const rawTotal = isRecord(data) ? data.total : undefined;
+  const total = typeof rawTotal === 'number' && Number.isFinite(rawTotal) ? rawTotal : records.length;
+  return {
+    total,
+    records,
+  };
+}
+
+async function startOverviewRemoteFetch(pageNo = 1): Promise<void> {
   if (!transportIsHttp) {
     return;
   }
   overviewRemoteFetchSeq++;
   const seq = overviewRemoteFetchSeq;
   overviewRemoteItems.value = [];
-  overviewRemoteNextPage.value = 1;
-  overviewRemoteExhausted.value = false;
+  overviewRemotePage.value = Math.max(1, pageNo);
   overviewRemoteTotal.value = 0;
-  await loadOverviewRemoteMore(seq);
+  await loadOverviewRemotePage(overviewRemotePage.value, seq);
 }
 
-function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillListParamsDto {
-  const params: SkillListParamsDto = {
+function buildOverviewSkillListParams(pageNo: number, fetchSize: number): OverviewSkillListParams {
+  const params: OverviewSkillListParams = {
     userId: userId.value,
+    pageNo,
     pageNum: pageNo,
     pageSize: fetchSize,
     keyword: search.value.trim() || '',
   };
   const scope = toListScope(quickFilter.value);
   if (scope === 'personal') {
-    params.level = '个人级';
+    params.status = '个人级';
   } else if (scope !== 'all') {
-    params.level = '组织级';
+    params.status = '组织级';
   }
   const orgId = Number(levelFilter.value);
   if (transportIsHttp && Number.isFinite(orgId) && orgId > 0) {
@@ -861,47 +897,55 @@ function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillL
   return params;
 }
 
-async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
+async function loadOverviewRemotePage(pageNo: number, expectSeq?: number): Promise<void> {
   if (!transportIsHttp) {
     return;
   }
-  if (overviewRemoteLoading.value || overviewRemoteExhausted.value) {
+  if (overviewRemoteLoading.value) {
+    overviewRemotePendingPage = Math.max(1, pageNo);
     return;
   }
   const seq = expectSeq ?? overviewRemoteFetchSeq;
   overviewRemoteLoading.value = true;
   try {
-    const fetchSize = Math.max(12, pageSize.value);
-    const pageNo = overviewRemoteNextPage.value;
-    const params = buildOverviewSkillListParams(pageNo, fetchSize);
+    const fetchSize = Math.max(1, pageSize.value);
+    const safePageNo = Math.max(1, pageNo);
+    const params = buildOverviewSkillListParams(safePageNo, fetchSize);
     const env = await skillBaseService.querySkillList(params);
     if (seq !== overviewRemoteFetchSeq) {
       return;
     }
-    if (!env.meta.success || !env.data) {
-      showToast(env.message || '市场列表加载失败');
+    if (!overviewApiSuccess(env) || !env.data) {
+      showToast(overviewApiMessage(env, '市场列表加载失败'));
       return;
     }
-    const batch = (env.data) as SkillListRecordDto[];
-    // const merged =
-    //   pageNo === 1 ? batch : mergeOverviewSkillsById(overviewRemoteItems.value, batch);
-    overviewRemoteItems.value = [...batch];
-    skills.value = [...batch];
-    overviewRemoteTotal.value = env.data.total;
-    const received = batch.length;
-    if (
-      received === 0 ||
-      batch.length >= env.data.total ||
-      received < fetchSize
-    ) {
-      overviewRemoteExhausted.value = true;
-    } else {
-      overviewRemoteNextPage.value = pageNo + 1;
-    }
+    const payload = normalizeOverviewSkillListPayload(env.data);
+    const batch = payload.records.map((item) => apiRecordToSkill(item));
+    overviewRemoteItems.value = batch;
+    skills.value = batch;
+    overviewRemoteTotal.value = payload.total;
+    overviewRemotePage.value = safePageNo;
   } finally {
     overviewRemoteLoading.value = false;
+    if (overviewRemotePendingPage != null) {
+      const pendingPage = overviewRemotePendingPage;
+      overviewRemotePendingPage = null;
+      void startOverviewRemoteFetch(pendingPage);
+    }
     // scheduleMaybeFillOverviewViewport();
   }
+}
+
+async function goOverviewPage(pageNo: number): Promise<void> {
+  if (!transportIsHttp) {
+    return;
+  }
+  const nextPage = Math.min(Math.max(1, pageNo), overviewRemoteTotalPages.value);
+  if (nextPage === overviewRemotePage.value && overviewRemoteItems.value.length > 0) {
+    return;
+  }
+  await startOverviewRemoteFetch(nextPage);
+  marketContentRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function onOverviewMarketScroll(): void {
@@ -969,7 +1013,6 @@ async function handleOverviewScrollNearEnd(): Promise<void> {
     return;
   }
   if (transportIsHttp) {
-    await loadOverviewRemoteMore();
     return;
   }
   if (!overviewHasMoreLocal.value) {
@@ -990,15 +1033,36 @@ const overviewHasMoreLocal = computed(
   () => overviewVisibleCount.value < overviewFilteredAll.value.length,
 );
 
+const overviewRemoteTotalPages = computed(() => {
+  const size = Math.max(1, pageSize.value);
+  return Math.max(1, Math.ceil(overviewRemoteTotal.value / size));
+});
+
+const overviewRemoteRangeText = computed(() => {
+  const total = overviewRemoteTotal.value;
+  if (total <= 0) {
+    return '0 / 0';
+  }
+  const size = Math.max(1, pageSize.value);
+  const start = (overviewRemotePage.value - 1) * size + 1;
+  const end = Math.min(total, overviewRemotePage.value * size);
+  return `${start}-${end} / ${total}`;
+});
+
+const overviewCanGoPrev = computed(
+  () => transportIsHttp && !overviewRemoteLoading.value && overviewRemotePage.value > 1,
+);
+
+const overviewCanGoNext = computed(
+  () =>
+    transportIsHttp &&
+    !overviewRemoteLoading.value &&
+    overviewRemotePage.value < overviewRemoteTotalPages.value,
+);
+
 const overviewHasMore = computed(() => {
   if (transportIsHttp) {
-    if (overviewRemoteLoading.value) {
-      return false;
-    }
-    if (overviewRemoteExhausted.value) {
-      return false;
-    }
-    return overviewRemoteItems.value.length < overviewRemoteTotal.value;
+    return overviewCanGoNext.value;
   }
   return overviewHasMoreLocal.value;
 });
@@ -1007,13 +1071,15 @@ const overviewListFooterHint = computed(() => {
   const shown = filteredSkills.value.length;
   if (transportIsHttp) {
     const total = overviewRemoteTotal.value;
+    const page = overviewRemotePage.value;
+    const totalPages = overviewRemoteTotalPages.value;
     if (overviewRemoteLoading.value) {
-      return `加载中…（已展示 ${shown} 条，接口合计 ${total} 条）`;
+      return `加载中…（第 ${page} / ${totalPages} 页，接口合计 ${total} 条）`;
     }
-    if (!overviewHasMore.value) {
-      return `已加载全部 ${shown} 条（接口合计 ${total} 条）`;
+    if (total === 0) {
+      return '接口合计 0 条';
     }
-    return `已展示 ${shown} 条 · 接口合计 ${total} 条 · 继续下拉加载更多`;
+    return `第 ${page} / ${totalPages} 页 · ${overviewRemoteRangeText.value} 条 · 当前展示 ${shown} 条`;
   }
   const total = overviewFilteredAll.value.length;
   if (!overviewHasMore.value) {
@@ -1037,12 +1103,36 @@ const myReleases = computed(() => {
 
 watch(pageSize, (next, prev) => {
   if (transportIsHttp) {
+    if (next !== prev && innerTab.value === 'overview') {
+      void startOverviewRemoteFetch(1);
+    }
     return;
   }
   if (next > prev) {
     overviewVisibleCount.value = Math.max(overviewVisibleCount.value, next);
   }
 });
+
+watch(
+  () => [
+    search.value.trim(),
+    quickFilter.value,
+    levelFilter.value,
+    categoryFilter.value,
+    selectedTags.value.join('\u0001'),
+    overviewMarketDeptSegments.value.join('\u0001'),
+  ],
+  () => {
+    if (transportIsHttp) {
+      if (innerTab.value === 'overview') {
+        void startOverviewRemoteFetch(1);
+      }
+      return;
+    }
+    overviewVisibleCount.value = pageSize.value;
+    scheduleMaybeFillOverviewViewport();
+  },
+);
 
 watch(levelFilter, () => {
   overviewMarketDeptSegments.value = [];
@@ -1525,7 +1615,7 @@ async function onDownload(id: string, version?: string): Promise<void> {
 
     let index = skills.value.findIndex((item) => skillKey(item) === id);
     if(index >= 0) {
-      skills.value[index]?.downloads = skills.value[index]?.downloads ?? 0 + 1;
+      filteredSkills.value[index].downloads += 1;
     }
   } catch (e) {
     showToast(e instanceof Error ? e.message : '下载失败');
@@ -2544,6 +2634,30 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
           <div class="overview-list-footer" role="status">
             <span>{{ overviewListFooterHint }}</span>
+            <div
+              v-if="transportIsHttp"
+              class="overview-pagination"
+              role="navigation"
+              aria-label="市场总览分页"
+            >
+              <button
+                type="button"
+                class="overview-page-btn"
+                :disabled="!overviewCanGoPrev"
+                @click="goOverviewPage(overviewRemotePage - 1)"
+              >
+                上一页
+              </button>
+              <span class="overview-page-index">{{ overviewRemotePage }} / {{ overviewRemoteTotalPages }}</span>
+              <button
+                type="button"
+                class="overview-page-btn"
+                :disabled="!overviewCanGoNext"
+                @click="goOverviewPage(overviewRemotePage + 1)"
+              >
+                下一页
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -7167,11 +7281,65 @@ width: 100%;
 }
 
 .overview-panel .overview-list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: auto;
   padding-top: 16px;
   font-size: 13px;
   color: #64748b;
   line-height: 1.5;
+}
+
+.overview-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.overview-page-btn {
+  height: 30px;
+  min-width: 64px;
+  padding: 0 10px;
+  border: 1px solid #cfe0f5;
+  border-radius: 6px;
+  background: #fff;
+  color: #2563eb;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.overview-page-btn:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #f2f7ff;
+}
+
+.overview-page-btn:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+  background: #f8fafc;
+  opacity: 0.7;
+}
+
+.overview-page-index {
+  min-width: 48px;
+  color: #334155;
+  text-align: center;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .overview-panel .overview-list-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .overview-pagination {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .overview-panel .market-content {
