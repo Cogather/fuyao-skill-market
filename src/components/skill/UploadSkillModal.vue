@@ -135,6 +135,10 @@ function readEnvelopeRecord(value: unknown): Record<string, unknown> {
 
 function serviceSucceeded(value: unknown): boolean {
   const record = readEnvelopeRecord(value);
+  const meta = readEnvelopeRecord(record.meta);
+  if (typeof meta.success === 'boolean') {
+    return meta.success;
+  }
   if (record.success === false) {
     return false;
   }
@@ -144,7 +148,8 @@ function serviceSucceeded(value: unknown): boolean {
 
 function serviceMessage(value: unknown, fallback: string): string {
   const record = readEnvelopeRecord(value);
-  const message = record.message ?? record.msg;
+  const meta = readEnvelopeRecord(record.meta);
+  const message = meta.message ?? record.message ?? record.msg;
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 

@@ -41,15 +41,14 @@ import {
 } from '../../utils/opsExcelImport';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { isSkillMarketApiTransport } from '../../services/skillMarket/transport';
 
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
-import { parse } from 'path';
 const skillMarketStore = useSkillMarketStore();
 const userId = computed(() => skillMarketStore.userId);
 const departmentList = computed(() => skillMarketStore.departmentList);
 
 const skills = ref<any[]>([]);
-const newSkills = ref<any[]>([]);
 const myPublishedSkills = ref<any[]>([]);
 const totalDownloads = ref<any>(0);
 const totalSkills = ref(0);
@@ -57,7 +56,7 @@ const downloadsLast30Days = ref(0);
 const orgCount = ref(0);
 const currentUserRole = ref<CurrentUserRoleDto | null>(null);
 
-const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const transportIsHttp = isSkillMarketApiTransport();
 const route = useRoute();
 const router = useRouter();
 
@@ -124,7 +123,7 @@ function initialOverviewPageSize(): number {
 const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
 const uploadOpen = ref(false);
 const search = ref('');
-/** Mock：组织展示名；HTTP：组织 id 字符串（对接 `orgId`） */
+/** Mock：组织展示名；真实接口：组织 id 字符串（对接 `orgId`） */
 const levelFilter = ref('all');
 /** 市场部门级联：路径各段对应 `departmentL1`～`departmentL6`（与设计文档 §3.3.3 一致，多字段 AND） */
 const overviewMarketDeptSegments = ref<string[]>([]);
@@ -145,18 +144,12 @@ const marketContentRef = ref<HTMLElement | null>(null);
 const overviewGridRef = ref<HTMLElement | null>(null);
 /** Mock / 本地全量筛选后，渐进展示的条数 */
 const overviewVisibleCount = ref(initialOverviewPageSize());
-/** HTTP：当前页的接口列表（再经与 Mock 一致的排序） */
-const overviewFilterObj = ref<any>({
-  keyword: '',
-  pageNum: 1,
-  pageSize: 12,
-  status: '',
-})
 const overviewRemoteItems = ref<any[]>([]);
 const overviewRemoteTotal = ref(0);
 const overviewRemoteNextPage = ref(1);
 const overviewRemoteExhausted = ref(false);
 const overviewRemoteLoading = ref(false);
+const overviewRemoteFetchSize = ref(initialOverviewPageSize());
 let overviewRemoteFetchSeq = 0;
 let overviewScrollRaf = 0;
 let overviewLastScrollTriggerMs = 0;
@@ -587,6 +580,45 @@ function overviewGridColumnCount(grid: HTMLElement): number {
   return overviewColumnCountByViewport();
 }
 
+function measureOverviewPageSize(): number | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const content = marketContentRef.value;
+  if (!content) {
+    return null;
+  }
+  const grid = overviewGridRef.value;
+  const columns = grid ? overviewGridColumnCount(grid) : overviewColumnCountByViewport();
+  const gridStyle = grid ? window.getComputedStyle(grid) : null;
+  const rowGap = Number.parseFloat(gridStyle?.rowGap || gridStyle?.gap || '') || 14;
+  const firstCard = grid?.firstElementChild as HTMLElement | null | undefined;
+  const measuredCardHeight = firstCard?.getBoundingClientRect().height ?? 0;
+  const cardHeight = Math.max(1, measuredCardHeight || 136);
+  const filters = content.querySelector<HTMLElement>('.filters');
+  const filtersHeight = filters?.offsetHeight ?? 0;
+  const filtersMarginBottom = filters
+    ? Number.parseFloat(window.getComputedStyle(filters).marginBottom) || 0
+    : 0;
+  const footerHeight = content.querySelector<HTMLElement>('.overview-list-footer')?.offsetHeight ?? 0;
+  const contentRect = content.getBoundingClientRect();
+  const panel = tabPanelRef.value;
+  const panelRect = panel?.getBoundingClientRect();
+  const panelPaddingBottom = panel
+    ? Number.parseFloat(window.getComputedStyle(panel).paddingBottom) || 0
+    : 0;
+  const plannedContentHeight =
+    panelRect && tabPanelMinHeight.value > 0
+      ? tabPanelMinHeight.value - (contentRect.top - panelRect.top) - panelPaddingBottom
+      : content.clientHeight;
+  const availableHeight = Math.max(
+    cardHeight,
+    plannedContentHeight - filtersHeight - filtersMarginBottom - footerHeight,
+  );
+  const rows = Math.max(1, Math.floor((availableHeight + rowGap) / (cardHeight + rowGap)));
+  return overviewPageSizeByLayout(columns, rows);
+}
+
 function syncOverviewPageSize(): void {
   void nextTick(() => {
     if (overviewPageSizeFrame) {
@@ -597,47 +629,19 @@ function syncOverviewPageSize(): void {
       if (innerTab.value !== 'overview') {
         return;
       }
-      const content = marketContentRef.value;
-      const grid = overviewGridRef.value;
-      if (!content || !grid) {
+      const nextSize = measureOverviewPageSize();
+      if (!nextSize) {
         return;
       }
-      const columns = overviewGridColumnCount(grid);
-      const gridStyle = window.getComputedStyle(grid);
-      const rowGap = Number.parseFloat(gridStyle.rowGap || gridStyle.gap) || 14;
-      const firstCard = grid.firstElementChild as HTMLElement | null;
-      const measuredCardHeight = firstCard?.getBoundingClientRect().height ?? 0;
-      const cardHeight = Math.max(1, measuredCardHeight || 136);
-      const filters = content.querySelector<HTMLElement>('.filters');
-      const filtersHeight = filters?.offsetHeight ?? 0;
-      const filtersMarginBottom = filters
-        ? Number.parseFloat(window.getComputedStyle(filters).marginBottom) || 0
-        : 0;
-      const footerHeight = content.querySelector<HTMLElement>('.overview-list-footer')?.offsetHeight ?? 0;
-      const contentRect = content.getBoundingClientRect();
-      const panel = tabPanelRef.value;
-      const panelRect = panel?.getBoundingClientRect();
-      const panelPaddingBottom = panel
-        ? Number.parseFloat(window.getComputedStyle(panel).paddingBottom) || 0
-        : 0;
-      const plannedContentHeight =
-        panelRect && tabPanelMinHeight.value > 0
-          ? tabPanelMinHeight.value - (contentRect.top - panelRect.top) - panelPaddingBottom
-          : content.clientHeight;
-      const availableHeight = Math.max(
-        cardHeight,
-        plannedContentHeight - filtersHeight - filtersMarginBottom - footerHeight,
-      );
-      const rows = Math.max(
-        OVERVIEW_DEFAULT_VISIBLE_ROWS,
-        Math.floor((availableHeight + rowGap) / (cardHeight + rowGap)),
-      );
-      const nextSize = overviewPageSizeByLayout(columns, rows);
       if (nextSize !== pageSize.value) {
         pageSize.value = nextSize;
       }
     });
   });
+}
+
+function currentOverviewBatchSize(): number {
+  return Math.max(1, measureOverviewPageSize() ?? pageSize.value);
 }
 
 function syncTabPanelMinHeight(): void {
@@ -680,6 +684,27 @@ function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
       }
     }, 100)
   })
+}
+
+function readServiceRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function serviceSucceeded(value: unknown): boolean {
+  const record = readServiceRecord(value);
+  const meta = readServiceRecord(record.meta);
+  if (typeof meta.success === 'boolean') {
+    return meta.success;
+  }
+  const code = record.code;
+  return code === undefined || code === 0 || code === 200 || code === '0' || code === '200';
+}
+
+function serviceMessage(value: unknown, fallback: string): string {
+  const record = readServiceRecord(value);
+  const meta = readServiceRecord(record.meta);
+  const message = meta.message ?? record.message ?? record.msg;
+  return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
 async function loadCurrentUserRole(): Promise<void> {
@@ -786,31 +811,51 @@ function applyOverviewDisplayFilters(raw: Skill[]): Skill[] {
 }
 
 async function startOverviewRemoteFetch(): Promise<void> {
-  overviewRemoteLoading.value = true;
-  const env = await skillBaseService.querySkillList(overviewFilterObj.value);
-  if(env.meta.success && env.data) {
-    newSkills.value = [...env.data]
-    overviewRemoteTotal.value = env.meta.number;
-    totalDownloads.value = newSkills.value.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+  const seq = ++overviewRemoteFetchSeq;
+  const fetchSize = currentOverviewBatchSize();
+  overviewRemoteFetchSize.value = fetchSize;
+  overviewRemoteNextPage.value = 1;
+  overviewRemoteExhausted.value = false;
+  overviewRemoteTotal.value = 0;
+  overviewRemoteItems.value = [];
+  skills.value = [];
+  if (marketContentRef.value) {
+    marketContentRef.value.scrollTop = 0;
   }
-  overviewRemoteLoading.value = false;
+  if (!transportIsHttp) {
+    overviewVisibleCount.value = fetchSize;
+    overviewRemoteLoading.value = true;
+    try {
+      const env = await skillBaseService.querySkillList({
+        ...buildOverviewSkillListParams(1, 10000),
+        pageNum: 1,
+        pageSize: 10000,
+      });
+      if (seq !== overviewRemoteFetchSeq) {
+        return;
+      }
+      if(env.meta.success && env.data) {
+        skills.value = [...env.data];
+      }
+    } finally {
+      if (seq === overviewRemoteFetchSeq) {
+        overviewRemoteLoading.value = false;
+        syncOverviewPageSize();
+        scheduleMaybeFillOverviewViewport();
+      }
+    }
+    return;
+  }
+  await loadOverviewRemoteMore(seq, true);
 }
 
 const changeOverviewTab = async (tabName: string) => {
   quickFilter.value = tabName;
-  if(tabName === 'all') {
-    overviewFilterObj.value.status = '';
-  } else if(tabName === 'personal') {
-    overviewFilterObj.value.status = '个人级';
-  } else if(tabName === 'devDept') {
-    overviewFilterObj.value.status = '组织级';
-  }
   await startOverviewRemoteFetch();
 }
 
 const onSearchKeyWord = async(event: Event) => {
-  const query = (event.target as HTMLInputElement).value;
-  overviewFilterObj.value.keyword = query;
+  search.value = (event.target as HTMLInputElement).value;
   await startOverviewRemoteFetch();
 }
 
@@ -849,17 +894,17 @@ function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillL
   return params;
 }
 
-async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
+async function loadOverviewRemoteMore(expectSeq?: number, force = false): Promise<void> {
   if (!transportIsHttp) {
     return;
   }
-  if (overviewRemoteLoading.value || overviewRemoteExhausted.value) {
+  if (!force && (overviewRemoteLoading.value || overviewRemoteExhausted.value)) {
     return;
   }
   const seq = expectSeq ?? overviewRemoteFetchSeq;
   overviewRemoteLoading.value = true;
   try {
-    const fetchSize = Math.max(12, pageSize.value);
+    const fetchSize = Math.max(1, overviewRemoteFetchSize.value);
     const pageNo = overviewRemoteNextPage.value;
     const params = buildOverviewSkillListParams(pageNo, fetchSize);
     const env = await skillBaseService.querySkillList(params);
@@ -871,19 +916,23 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
       return;
     }
     const batch = env.data;
-    overviewRemoteItems.value = [...batch];
-    skills.value = [...batch];
+    const merged = pageNo <= 1 ? [...batch] : [...overviewRemoteItems.value, ...batch];
+    overviewRemoteItems.value = merged;
+    skills.value = merged;
     overviewRemoteTotal.value = env.meta.number;
     const received = batch.length;
-    if(received === 0 || batch.length >= env.data.total || received < fetchSize) {
+    if(received === 0 || merged.length >= overviewRemoteTotal.value || received < fetchSize) {
       overviewRemoteExhausted.value = true;
     } else {
       overviewRemoteNextPage.value = pageNo + 1;
     }
-    totalDownloads.value = batch.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+    totalDownloads.value = merged.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
   } finally {
-    overviewRemoteLoading.value = false;
-    // scheduleMaybeFillOverviewViewport();
+    if (seq === overviewRemoteFetchSeq) {
+      overviewRemoteLoading.value = false;
+      syncOverviewPageSize();
+      scheduleMaybeFillOverviewViewport();
+    }
   }
 }
 
@@ -958,7 +1007,7 @@ async function handleOverviewScrollNearEnd(): Promise<void> {
   if (!overviewHasMoreLocal.value) {
     return;
   }
-  overviewVisibleCount.value += Math.max(12, pageSize.value);
+  overviewVisibleCount.value += currentOverviewBatchSize();
   scheduleMaybeFillOverviewViewport();
 }
 
@@ -987,7 +1036,7 @@ const overviewHasMore = computed(() => {
 });
 
 const overviewListFooterHint = computed(() => {
-  const shown = newSkills.value.length;
+  const shown = filteredSkills.value.length;
   if (transportIsHttp) {
     const total = overviewRemoteTotal.value;
     if (overviewRemoteLoading.value) {
@@ -1007,6 +1056,13 @@ const overviewListFooterHint = computed(() => {
 
 watch(pageSize, (next, prev) => {
   if (transportIsHttp) {
+    if (
+      next !== overviewRemoteFetchSize.value &&
+      innerTab.value === 'overview' &&
+      overviewRemoteItems.value.length > 0
+    ) {
+      void startOverviewRemoteFetch();
+    }
     return;
   }
   if (next > prev) {
@@ -1017,6 +1073,20 @@ watch(pageSize, (next, prev) => {
 watch(levelFilter, () => {
   overviewMarketDeptSegments.value = [];
 });
+
+watch(
+  () => [
+    levelFilter.value,
+    categoryFilter.value,
+    selectedTags.value.join('\u0001'),
+    overviewMarketDeptSegments.value.join('\u0001'),
+  ],
+  () => {
+    if (innerTab.value === 'overview') {
+      void startOverviewRemoteFetch();
+    }
+  },
+);
 
 watch(marketOverviewDeptTree, () => {
   const segs = overviewMarketDeptSegments.value;
@@ -1047,6 +1117,9 @@ watch(marketOrgSelectOptions, (opts) => {
 });
 
 watch(tagOptions, (options) => {
+  if (overviewRemoteLoading.value) {
+    return;
+  }
   selectedTags.value = selectedTags.value.filter((tag) => options.includes(tag));
 });
 
@@ -1259,16 +1332,16 @@ async function submitOrgModal(): Promise<void> {
   if (orgModalMode.value === 'create') {
     // const r = await marketClient.postOrganization(body);
     const r = await skillBaseService.createOrganization(body, {userId: userId.value});
-    if (r.code !== 0) {
-      showToast(r.message || '新建失败');
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '新建失败'));
       return;
     }
     showToast('已新建组织');
   } else {
     // const r = await marketClient.putOrganization(f.id, body);
     const r = await skillBaseService.updateOrganization(body, {userId: userId.value}, f.id.toString());
-    if (r.code !== 0) {
-      showToast(r.message || '保存失败');
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '保存失败'));
       return;
     }
     showToast('已保存');
@@ -1305,8 +1378,8 @@ async function submitReviewModal(): Promise<void> {
       comment: reviewComment.value.trim(),
     }
     const r = await skillBaseService.reviewSyncApplication(body, row.id.toString());
-    if (r.code !== 0) {
-      showToast(r.message || '提交失败');
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '提交失败'));
       return;
     }
     showToast('已提交审核');
@@ -1463,9 +1536,12 @@ function onViewVersions(id: string): void {
 }
 
 function openDetailPanel(id: string): void {
-  const skill = newSkills.value.find((item) => skillKey(item) === id);
-  detailFileTree(skill)
+  const skill =
+    filteredSkills.value.find((item) => skillKey(item) === id) ??
+    overviewRemoteItems.value.find((item) => skillKey(item) === id) ??
+    skills.value.find((item) => skillKey(item) === id);
   if (skill) {
+    detailFileTree(skill)
     detailPanelSkill.value = skill;
   }
 }
@@ -2279,10 +2355,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           >
             正在从接口加载市场列表…
           </p>
-          <template v-else-if="newSkills.length > 0">
+          <template v-else-if="filteredSkills.length > 0">
             <div ref="overviewGridRef" class="grid">
               <SkillCard
-                v-for="s in newSkills"
+                v-for="s in filteredSkills"
                 :key="s.id"
                 class="market-skill-card"
                 :skill="s"

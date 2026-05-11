@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
+import { maybeHandleSkillBaseMockRequest } from './skillBaseServiceMock';
 
 const fuyao = import.meta.env.VITE_FUYAO_API_BASE || '/fuyaoDomain'
 
@@ -77,24 +78,45 @@ function stripPrefix(url: unknown, prefix: string): string {
 // 请求方法
 const httpRequest = {
     api: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-        return axiosRequest.request<T, T>({
+        const requestConfig = {
             ...config,
             baseURL: buildBaseUrl('/api'),
             url: stripPrefix(config.url, '/api'),
+        };
+        const mock = maybeHandleSkillBaseMockRequest<T>('api', requestConfig);
+        if (mock) {
+            return mock;
+        }
+        return axiosRequest.request<T, T>({
+            ...requestConfig,
         })
     },
     skill: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-        return axiosRequest.request<T, T>({
+        const requestConfig = {
             ...config,
             baseURL: buildBaseUrl('/api/skills'),
             url: stripPrefix(config.url, '/api/skills'),
+        };
+        const mock = maybeHandleSkillBaseMockRequest<T>('skill', requestConfig);
+        if (mock) {
+            return mock;
+        }
+        return axiosRequest.request<T, T>({
+            ...requestConfig,
         })
     },
     fuyao: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-        return axiosRequest.request<T, T>({
+        const requestConfig = {
             ...config,
             baseURL: buildFuyaoBaseUrl(),
             url: stripPrefix(config.url, ''),
+        };
+        const mock = maybeHandleSkillBaseMockRequest<T>('fuyao', requestConfig);
+        if (mock) {
+            return mock;
+        }
+        return axiosRequest.request<T, T>({
+            ...requestConfig,
         })
     }
 }
