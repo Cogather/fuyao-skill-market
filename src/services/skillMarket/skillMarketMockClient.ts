@@ -24,7 +24,6 @@ import type {
   QualityReviewArchiveBody,
   QualityReviewListParams,
   QualityReviewSaveBody,
-  SkillDetailDto,
   SkillListParamsDto,
   SkillListPayloadDto,
   SkillListRecordDto,
@@ -35,7 +34,6 @@ import type {
   SyncApplicationResultDto,
   SyncApplicationsParams,
   SyncReviewBody,
-  UploadSkillResultDto,
   UserDepartmentDto,
   UserMarketRole,
   DepartmentTreeNodeDto,
@@ -109,8 +107,8 @@ function parseTagListParams(params: SkillListParamsDto): string[] {
   return [];
 }
 
-function normSkillTags(s: Skill): string[] {
-  return (s.tags ?? []).map((x) => x.trim()).filter(Boolean);
+function normSkillTags(s: any): string[] {
+  return (s.tags ?? [])?.map((x: string) => x.trim())?.filter(Boolean) ?? [];
 }
 
 function publishTimeForSort(skill: Skill): string {
@@ -501,10 +499,10 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
     async fetchSkillDetail(id: string | number) {
       const skill = findSkillByApiId(id);
       if (!skill) {
-        return ok<SkillDetailDto | null>(null);
+        return ok<any | null>(null);
       }
       const rec = skillToListRecord(skill, skill.latestPublishTime ?? '');
-      const dto: SkillDetailDto = {
+      const dto: any = {
         ...rec,
         requirements: '本地运行环境、Python 3.10+',
         lastReviewComment: null,
@@ -576,7 +574,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       const exists = skills.value.some(
         (s) => (s.name ?? s.skill_id ?? '').toLowerCase() === name.toLowerCase(),
       );
-      const data: SkillUploadParseResultDto = {
+      const data: any = {
         name,
         version: '1.0.0',
         description: `Mock：根据「${file.name}」推断的 description，真实环境由后端解析 SKILL.md`,
@@ -741,22 +739,22 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       for (const s of orgLevelSkills) {
         const key = (s.publish_name ?? '').trim() || '未填写组织';
         const cur = orgRankMap.get(key) ?? { skillCount: 0, downloads: 0 };
-        cur.skillCount += 1;
+        cur.totalSkills += 1;
         cur.downloads += s.download_count ?? s.downloads ?? 0;
         orgRankMap.set(key, cur);
       }
       const rankings = [...orgRankMap.entries()]
         .map(([name, v]) => ({
           name,
-          skillCount: v.skillCount,
+          skillCount: v.totalSkills,
           downloads: v.downloads,
         }))
-        .sort((a, b) => b.downloads - a.downloads || b.skillCount - a.skillCount);
+        .sort((a, b) => b.downloads - a.downloads || b.totalSkills - a.totalSkills);
       const data: DashboardOverviewDto = {
         system: params.system,
         statDate: params.statDate ?? '2026-04-27',
         kpis: {
-          skillCount: skills.value.length,
+          totalSkills: skills.value.length,
           personalSkillCount: skills.value.filter((s) =>
             (s.publish_level ?? '').includes('个人'),
           ).length,

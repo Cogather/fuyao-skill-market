@@ -21,7 +21,7 @@ async function loadSkills(): Promise<void> {
     pageNo: 1,
     pageSize: 50,
   });
-  if (r.code === 0 && r.data?.records) {
+  if (r.meta.success && r.data?.records) {
     skills.value = (r.data.records as SkillListRecordDto[]).map((item) => apiRecordToSkill(item));
   } else {
     toast.value = r.message || 'Skill 列表加载失败';
@@ -46,7 +46,7 @@ async function approve(skillId: string): Promise<void> {
       comment: `演示：批准 Skill ${skillId} 同步至组织`,
     }, String(applicationId));
     toast.value =
-      r.code === 0
+      r.meta.success
         ? `已调用审核接口：申请 #${applicationId}（Skill #${skillId}）`
         : r.message || '审核接口返回异常';
     setTimeout(() => {

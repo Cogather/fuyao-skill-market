@@ -114,11 +114,7 @@ function onOverlayClick(): void {
   close();
 }
 
-function fileBaseName(uploadFile: File): string {
-  return uploadFile.name.replace(/\.[^.]+$/, '').trim() || 'uploaded-skill';
-}
-
-function parseUploadOk(uploadFile: File | null, info: any): void {
+function parseUploadOk(info: any): void {
   // const base = uploadFile ? fileBaseName(uploadFile) : 'pdf-document-extractor';
   parsed.value = {
     name: info.name,
@@ -191,7 +187,7 @@ async function onFileChange(event: Event): Promise<void> {
         return;
       }
       parseState.value = 'success';
-      parseUploadOk(file.value, r);
+      parseUploadOk(r);
     } catch (e) {
       parseError.value = e instanceof Error ? e.message : '解析请求失败';
       parseState.value = 'idle';

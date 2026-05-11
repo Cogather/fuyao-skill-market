@@ -146,7 +146,7 @@ function onOpenDetail(): void {
     </div>
     <p class="meta">发布组织：{{ skill.publish_name ?? skill.publisher }}</p>
     <p class="meta">发布层级：{{ skill.publish_level ?? skill.level }}</p>
-    <p v-if="skill.description" class="meta">描述：{{ skill.description }}</p>
+    <p v-if="skill.description" class="desc">描述：{{ skill.description }}</p>
     <div class="card-foot">
       <div class="tags" :class="{ compact: variant === 'coreHarness' }">
         <span v-if="skill.tagFunctional" class="tag tag-fn">{{ skill.tagFunctional }}</span>
@@ -265,13 +265,21 @@ function onOpenDetail(): void {
   background: #f5f5f5;
 }
 
-.meta {
+.meta, .desc {
   margin: 0;
   font-size: 12px;
   line-height: 1.6;
   color: rgba(0, 0, 0, 0.45);
   display: flex;
   justify-content: start;
+}
+
+.desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tags {

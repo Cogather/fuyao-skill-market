@@ -1,6 +1,5 @@
 import type { Skill, SkillListQuery } from '../../types/skill';
 import type {
-  SkillDetailDto,
   SkillDownloadResultDto,
   SkillListRecordDto,
   SkillListParamsDto,
@@ -103,7 +102,7 @@ export function uploadResultDtoToSkill(d: UploadSkillResultDto): Skill {
     version: d.version,
     category: d.category,
     categoryGroupName: d.categoryGroupName,
-    tags: d.tags,
+    tags: d.tags?.join(',') ?? '',
     level: d.level,
     status: d.status,
     orgName: d.orgName,
@@ -118,7 +117,7 @@ export function uploadResultDtoToSkill(d: UploadSkillResultDto): Skill {
   });
 }
 
-export function skillDetailDtoToSkill(d: SkillDetailDto): Skill {
+export function skillDetailDtoToSkill(d: any): Skill {
   return apiRecordToSkill({
     id: d.id,
     name: d.name,
@@ -127,7 +126,7 @@ export function skillDetailDtoToSkill(d: SkillDetailDto): Skill {
     version: d.version,
     category: d.category,
     categoryGroupName: d.categoryGroupName,
-    tags: d.tags,
+    tags: d.tags?.join(',') ?? '',
     level: d.level,
     status: d.status,
     orgName: d.orgName,

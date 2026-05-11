@@ -14,17 +14,17 @@ export function readOpsDashboardBundleFromJson(system: 'fuyao' | 'company'): Ops
 
 export function emptyOpsDashboardBundle(): OpsDashboardBundle {
   return {
+    topSkills: [],
+    orgBars: [],
+    deptTree: [],
     kpi: {
       totalSkills: '0',
-      activeSkills: '0',
-      personalSkills: '0',
       totalDownloads: '0',
       companyDownloads: '0',
       deptCount: '0',
+      activeSkills: '0',
+      personalSkills: '0',
       orgCount: '0',
     },
-    deptTree: [],
-    orgBars: [],
-    topSkills: [],
   };
 }

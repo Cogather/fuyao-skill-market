@@ -165,7 +165,7 @@ function createExtraMockSkill(seed: ExtraMockSkillSeed, index: number): Skill {
     ownedByUser: seed.ownedByUser,
     tagFunctional: seed.category,
     tagOrg: seed.publishLevel,
-    tags: seed.tags,
+    tags: seed.tags?.join(',') ?? '',
   };
 }
 
@@ -198,7 +198,7 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     ],
     tagFunctional: '作业类',
     tagOrg: '个人级',
-    tags: ['review', 'report'],
+    tags: 'review,report',
   },
   {
     skill_id: 'test2',
@@ -227,7 +227,7 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     ],
     tagFunctional: '工具类',
     tagOrg: '组织级',
-    tags: ['cicd', 'log'],
+    tags: 'cicd,log',
   },
   {
     skill_id: 'test3',
@@ -256,7 +256,7 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     ],
     tagFunctional: '业务类',
     tagOrg: '个人级',
-    tags: [],
+    tags: '',
   },
   ...EXTRA_MOCK_SKILL_SEEDS.map(createExtraMockSkill),
 ];

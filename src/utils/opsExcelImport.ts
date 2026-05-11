@@ -38,7 +38,7 @@ export type OpsExcelRow = {
 };
 
 export type OpsDashboardBundle = {
-  kpi: {
+  kpis: {
     totalSkills: string;
     activeSkills: string;
     personalSkills: string;
@@ -306,7 +306,7 @@ export function buildOpsDashboardBundle(rows: OpsExcelRow[]): OpsDashboardBundle
   }));
 
   return {
-    kpi: {
+    kpis: {
       totalSkills: String(totalSkills),
       activeSkills: String(activeSkills),
       personalSkills: String(personalSkills),

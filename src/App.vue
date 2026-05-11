@@ -19,6 +19,7 @@ function handleEvent(event: MessageEvent): void {
   try {
     const list = JSON.parse(p.departmentListStr as string);
     skillMarketStore.updateDept(list);
+    console.log("是否已存入departmentList", skillMarketStore.departmentList);
   } catch (error) {}
 }
 

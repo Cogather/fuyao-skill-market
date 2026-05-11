@@ -1,42 +1,34 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import PizZip from 'pizzip';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
+import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json';
 import type {
   CurrentUserRoleDto,
   OrganizationDto,
-  SkillDownloadSourcePage,
-  SkillDownloadResultDto,
   SkillListParamsDto,
   SkillListRecordDto,
   SyncApplicationListItemDto,
 } from '../../services/skillMarket/apiTypes';
-import {
-  apiMyRecordToSkill,
-  apiRecordToSkill,
-  mergeSkillFromSkillDownloadDto,
-} from '../../services/skillMarket/mappers';
 import type { MarketDeptForestNode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
 } from '../../services/skillMarket/marketDeptTreeFromApi';
-import { joinBaseUrl } from '../../services/skillMarket/httpJson';
 import {
   marketRoleIsOrgAdmin,
   marketRoleIsSuperAdmin,
   marketRoleCanCreateOrganization,
   marketRoleShowsOpsAndReview,
-  marketRoleShowsOrgManagement,
 } from '../../services/skillMarket/roleUi';
 import type {
   OverviewQuickFilter,
   Skill,
   SkillMarketScope,
   SkillUploadPayload,
-  SkillVersionEntry,
   UserInnerTab,
 } from '../../types/skill';
 import { emptyOpsDashboardBundle } from '../../services/skillMarket/mock/opsDashboardUiDefaults';
@@ -51,13 +43,15 @@ import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExc
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
+import { parse } from 'path';
 const skillMarketStore = useSkillMarketStore();
 const userId = computed(() => skillMarketStore.userId);
 const departmentList = computed(() => skillMarketStore.departmentList);
 
-const skills = ref<Skill[]>([]);
-const myPublishedSkills = ref<Skill[]>([]);
-const totalDownloads = ref(0);
+const skills = ref<any[]>([]);
+const newSkills = ref<any[]>([]);
+const myPublishedSkills = ref<any[]>([]);
+const totalDownloads = ref<any>(0);
 const totalSkills = ref(0);
 const downloadsLast30Days = ref(0);
 const orgCount = ref(0);
@@ -142,7 +136,7 @@ const marketDeptPanelLayout = ref<{ left: number; top: number; maxWidth: number 
 let deptPanelScrollCleanup: (() => void) | null = null;
 const categoryFilter = ref('all');
 const selectedTags = ref<string[]>([]);
-const quickFilter = ref<OverviewQuickFilter>('all');
+const quickFilter = ref<string>('all');
 /** 市场总览左侧标签区：标签过多时由用户展开 */
 const overviewTagListExpanded = ref(false);
 const tabPanelRef = ref<HTMLElement | null>(null);
@@ -152,12 +146,18 @@ const overviewGridRef = ref<HTMLElement | null>(null);
 /** Mock / 本地全量筛选后，渐进展示的条数 */
 const overviewVisibleCount = ref(initialOverviewPageSize());
 /** HTTP：当前页的接口列表（再经与 Mock 一致的排序） */
-const overviewRemoteItems = ref<Skill[]>([]);
+const overviewFilterObj = ref<any>({
+  keyword: '',
+  pageNum: 1,
+  pageSize: 12,
+  status: '',
+})
+const overviewRemoteItems = ref<any[]>([]);
 const overviewRemoteTotal = ref(0);
-const overviewRemotePage = ref(1);
+const overviewRemoteNextPage = ref(1);
+const overviewRemoteExhausted = ref(false);
 const overviewRemoteLoading = ref(false);
 let overviewRemoteFetchSeq = 0;
-let overviewRemotePendingPage: number | null = null;
 let overviewScrollRaf = 0;
 let overviewLastScrollTriggerMs = 0;
 const pageSize = ref(initialOverviewPageSize());
@@ -178,12 +178,12 @@ const orgForm = ref({
 });
 
 const approvalSubTab = ref<'pending' | 'done'>('pending');
-const syncPendingRows = ref<SyncApplicationListItemDto[]>([]);
-const syncDoneRows = ref<SyncApplicationListItemDto[]>([]);
+const syncPendingRows = ref<any[]>([]);
+const syncDoneRows = ref<any[]>([]);
 const syncListLoading = ref(false);
 
 const reviewModalOpen = ref(false);
-const reviewTarget = ref<SyncApplicationListItemDto | null>(null);
+const reviewTarget = ref<any>(null);
 const reviewDecision = ref<'approve' | 'reject'>('approve');
 const reviewComment = ref('');
 const reviewSubmitting = ref(false);
@@ -201,8 +201,8 @@ const orgDistinctAdminCount = computed(() => {
   return set.size;
 });
 
-const versionPanelSkill = ref<Skill | null>(null);
-const detailPanelSkill = ref<Skill | null>(null);
+const versionPanelSkill = ref<any>(null);
+const detailPanelSkill = ref<any>(null);
 let overviewPageSizeFrame = 0;
 
 function formatYmd(date: Date): string {
@@ -279,8 +279,8 @@ function matchesCategoryFilter(skill: Skill): boolean {
   return categoryFilter.value === 'all' || skillCategory(skill) === categoryFilter.value;
 }
 
-function skillTags(skill: Skill): string[] {
-  return (skill.tags.split(',').map((iter) => iter.trim()) ?? [])?.map((tag) => tag.trim()).filter(Boolean);
+function skillTags(skill: any): string[] {
+  return (skill.tags.split(',')?.map((iter: any) => iter.trim()) ?? [])?.map((tag: any) => tag.trim()).filter(Boolean);
 }
 
 function matchesSelectedTags(skill: Skill): boolean {
@@ -660,16 +660,16 @@ function syncResponsiveLayout(): void {
 }
 
 
-// 新增userId获取的辅助函数
-function waitForUserId(timeout = 5000): Promise<void> {
+// 等待 userId 和 departmentList 加载完成
+function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
   return new Promise((resolve) => {
-    if(userId.value) {
+    if(userId.value && departmentList.value.length > 0) {
       resolve();
       return;
     }
     const start = Date.now();
     const timer = setInterval(() => {
-      if(userId.value) {
+      if(userId.value && departmentList.value.length > 0) {
         clearInterval(timer);
         resolve();
         return
@@ -685,7 +685,7 @@ function waitForUserId(timeout = 5000): Promise<void> {
 async function loadCurrentUserRole(): Promise<void> {
   try {
     const r = await skillBaseService.queryCurrentUserRole({userId: userId.value});
-    if (r.code === 0 && r.data) {
+    if (r.meta.success && r.data) {
       currentUserRole.value = r.data;
     }
   } catch (e) {
@@ -695,36 +695,16 @@ async function loadCurrentUserRole(): Promise<void> {
   }
 }
 
-async function loadDepartmentTree(): Promise<void> {
-  if (departmentList.value.length > 0) {
-    return;
-  }
-  try {
-    const r = await skillBaseService.queryDepartmentTree();
-    if (r.code === 0 && Array.isArray(r.data)) {
-      skillMarketStore.updateDept(r.data);
-    }
-  } catch (e) {
-    if (transportIsHttp) {
-      showToast(e instanceof Error ? e.message : '部门树加载失败');
-    }
-  }
-}
-
 async function loadOpsDashboardOverview(): Promise<void> {
   try {
     const [fy, co] = await Promise.all([
       skillBaseService.queryDashboardOverview({ system: 'fuyao' }),
-      skillBaseService.queryDashboardOverview({ system: 'company' }),
     ]);
-    if (fy.code === 0 && fy.data) {
+    if (fy.meta.success && fy.data) {
       fuyaoOpsDashboardBundleRef.value = dashboardOverviewToOpsBundle(fy.data);
-    }
-    if (co.code === 0 && co.data) {
-      companyOpsDashboardBundleRef.value = dashboardOverviewToOpsBundle(co.data);
-      totalSkills.value = co.data.kpis.skillCount;
-      totalDownloads.value = co.data.kpis.downloads;
-      orgCount.value = co.data.rankings?.length ?? orgCount.value;
+      totalSkills.value = fy.data.kpis.skillCount;
+      // 暂时 组织数，要重新从接口拿
+      orgCount.value = fy.data.rankings?.length ?? orgCount.value;
     }
   } catch (e) {
     if (transportIsHttp) {
@@ -733,17 +713,19 @@ async function loadOpsDashboardOverview(): Promise<void> {
   }
 }
 
-const filteredMyReleaseRows = ref([])
+const filteredMyReleaseRows = ref<any>([])
 
 onMounted(async () => {
   syncResponsiveLayout();
   window.addEventListener('resize', syncResponsiveLayout);
   if (transportIsHttp) {
-    await waitForUserId();
+    await waitUserIdAndDepartmentList();
   }
   await loadCurrentUserRole();
   if (transportIsHttp) {
     await loadAdminOrganizations();
+    await startOverviewRemoteFetch();
+    await loadOpsDashboardOverview();
   }
   document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.addEventListener('keydown', onMarketDeptCascaderKeydown);
@@ -801,71 +783,39 @@ function applyOverviewDisplayFilters(raw: Skill[]): Skill[] {
   return list;
 }
 
-type OverviewSkillListParams = SkillListParamsDto & {
-  pageNo: number;
-  status?: string;
-};
-
-type OverviewSkillListPayload = {
-  total: number;
-  records: SkillListRecordDto[];
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
+async function startOverviewRemoteFetch(): Promise<void> {
+  overviewRemoteLoading.value = true;
+  const env = await skillBaseService.querySkillList(overviewFilterObj.value);
+  if(env.meta.success && env.data) {
+    newSkills.value = [...env.data]
+    overviewRemoteTotal.value = env.meta.number;
+    totalDownloads.value = newSkills.value.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+  }
+  overviewRemoteLoading.value = false;
 }
 
-function overviewApiSuccess(env: unknown): boolean {
-  if (!isRecord(env)) {
-    return false;
+const changeOverviewTab = async (tabName: string) => {
+  quickFilter.value = tabName;
+  if(tabName === 'all') {
+    overviewFilterObj.value.status = '';
+  } else if(tabName === 'personal') {
+    overviewFilterObj.value.status = '个人级';
+  } else if(tabName === 'devDept') {
+    overviewFilterObj.value.status = '组织级';
   }
-  const meta = isRecord(env.meta) ? env.meta : null;
-  if (typeof meta?.success === 'boolean') {
-    return meta.success;
-  }
-  return env.code === 0;
+  await startOverviewRemoteFetch();
 }
 
-function overviewApiMessage(env: unknown, fallback: string): string {
-  if (isRecord(env) && typeof env.message === 'string' && env.message.trim()) {
-    return env.message;
-  }
-  return fallback;
+const onSearchKeyWord = async(event: Event) => {
+  const query = (event.target as HTMLInputElement).value;
+  overviewFilterObj.value.keyword = query;
+  await startOverviewRemoteFetch();
 }
 
-function normalizeOverviewSkillListPayload(data: unknown): OverviewSkillListPayload {
-  if (Array.isArray(data)) {
-    return {
-      total: data.length,
-      records: data as SkillListRecordDto[],
-    };
-  }
-  const rawRecords = isRecord(data) ? data.records : undefined;
-  const records = Array.isArray(rawRecords) ? (rawRecords as SkillListRecordDto[]) : [];
-  const rawTotal = isRecord(data) ? data.total : undefined;
-  const total = typeof rawTotal === 'number' && Number.isFinite(rawTotal) ? rawTotal : records.length;
-  return {
-    total,
-    records,
-  };
-}
 
-async function startOverviewRemoteFetch(pageNo = 1): Promise<void> {
-  if (!transportIsHttp) {
-    return;
-  }
-  overviewRemoteFetchSeq++;
-  const seq = overviewRemoteFetchSeq;
-  overviewRemoteItems.value = [];
-  overviewRemotePage.value = Math.max(1, pageNo);
-  overviewRemoteTotal.value = 0;
-  await loadOverviewRemotePage(overviewRemotePage.value, seq);
-}
-
-function buildOverviewSkillListParams(pageNo: number, fetchSize: number): OverviewSkillListParams {
-  const params: OverviewSkillListParams = {
-    userId: userId.value,
-    pageNo,
+function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillListParamsDto {
+  const params: SkillListParamsDto = {
+    // userId: userId.value,
     pageNum: pageNo,
     pageSize: fetchSize,
     keyword: search.value.trim() || '',
@@ -897,41 +847,40 @@ function buildOverviewSkillListParams(pageNo: number, fetchSize: number): Overvi
   return params;
 }
 
-async function loadOverviewRemotePage(pageNo: number, expectSeq?: number): Promise<void> {
+async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
   if (!transportIsHttp) {
     return;
   }
-  if (overviewRemoteLoading.value) {
-    overviewRemotePendingPage = Math.max(1, pageNo);
+  if (overviewRemoteLoading.value || overviewRemoteExhausted.value) {
     return;
   }
   const seq = expectSeq ?? overviewRemoteFetchSeq;
   overviewRemoteLoading.value = true;
   try {
-    const fetchSize = Math.max(1, pageSize.value);
-    const safePageNo = Math.max(1, pageNo);
-    const params = buildOverviewSkillListParams(safePageNo, fetchSize);
+    const fetchSize = Math.max(12, pageSize.value);
+    const pageNo = overviewRemoteNextPage.value;
+    const params = buildOverviewSkillListParams(pageNo, fetchSize);
     const env = await skillBaseService.querySkillList(params);
     if (seq !== overviewRemoteFetchSeq) {
       return;
     }
-    if (!overviewApiSuccess(env) || !env.data) {
-      showToast(overviewApiMessage(env, '市场列表加载失败'));
+    if (!env.meta.success || !env.data) {
+      showToast(env.message || '市场列表加载失败');
       return;
     }
-    const payload = normalizeOverviewSkillListPayload(env.data);
-    const batch = payload.records.map((item) => apiRecordToSkill(item));
-    overviewRemoteItems.value = batch;
-    skills.value = batch;
-    overviewRemoteTotal.value = payload.total;
-    overviewRemotePage.value = safePageNo;
+    const batch = env.data;
+    overviewRemoteItems.value = [...batch];
+    skills.value = [...batch];
+    overviewRemoteTotal.value = env.meta.number;
+    const received = batch.length;
+    if(received === 0 || batch.length >= env.data.total || received < fetchSize) {
+      overviewRemoteExhausted.value = true;
+    } else {
+      overviewRemoteNextPage.value = pageNo + 1;
+    }
+    totalDownloads.value = batch.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
   } finally {
     overviewRemoteLoading.value = false;
-    if (overviewRemotePendingPage != null) {
-      const pendingPage = overviewRemotePendingPage;
-      overviewRemotePendingPage = null;
-      void startOverviewRemoteFetch(pendingPage);
-    }
     // scheduleMaybeFillOverviewViewport();
   }
 }
@@ -1013,6 +962,7 @@ async function handleOverviewScrollNearEnd(): Promise<void> {
     return;
   }
   if (transportIsHttp) {
+    await loadOverviewRemoteMore();
     return;
   }
   if (!overviewHasMoreLocal.value) {
@@ -1033,53 +983,30 @@ const overviewHasMoreLocal = computed(
   () => overviewVisibleCount.value < overviewFilteredAll.value.length,
 );
 
-const overviewRemoteTotalPages = computed(() => {
-  const size = Math.max(1, pageSize.value);
-  return Math.max(1, Math.ceil(overviewRemoteTotal.value / size));
-});
-
-const overviewRemoteRangeText = computed(() => {
-  const total = overviewRemoteTotal.value;
-  if (total <= 0) {
-    return '0 / 0';
-  }
-  const size = Math.max(1, pageSize.value);
-  const start = (overviewRemotePage.value - 1) * size + 1;
-  const end = Math.min(total, overviewRemotePage.value * size);
-  return `${start}-${end} / ${total}`;
-});
-
-const overviewCanGoPrev = computed(
-  () => transportIsHttp && !overviewRemoteLoading.value && overviewRemotePage.value > 1,
-);
-
-const overviewCanGoNext = computed(
-  () =>
-    transportIsHttp &&
-    !overviewRemoteLoading.value &&
-    overviewRemotePage.value < overviewRemoteTotalPages.value,
-);
-
 const overviewHasMore = computed(() => {
   if (transportIsHttp) {
-    return overviewCanGoNext.value;
+    if (overviewRemoteLoading.value) {
+      return false;
+    }
+    if (overviewRemoteExhausted.value) {
+      return false;
+    }
+    return overviewRemoteItems.value.length < overviewRemoteTotal.value;
   }
   return overviewHasMoreLocal.value;
 });
 
 const overviewListFooterHint = computed(() => {
-  const shown = filteredSkills.value.length;
+  const shown = newSkills.value.length;
   if (transportIsHttp) {
     const total = overviewRemoteTotal.value;
-    const page = overviewRemotePage.value;
-    const totalPages = overviewRemoteTotalPages.value;
     if (overviewRemoteLoading.value) {
-      return `加载中…（第 ${page} / ${totalPages} 页，接口合计 ${total} 条）`;
+      return `加载中…（已展示 ${shown} 条，合计 ${total} 条）`;
     }
-    if (total === 0) {
-      return '接口合计 0 条';
+    if (!overviewRemoteExhausted.value) {
+      return `已加载全部 ${shown} 条（合计 ${total} 条）`
     }
-    return `第 ${page} / ${totalPages} 页 · ${overviewRemoteRangeText.value} 条 · 当前展示 ${shown} 条`;
+    return `已展示 ${shown} 条 · 合计 ${total} 条 · 继续下拉加载更多`;
   }
   const total = overviewFilteredAll.value.length;
   if (!overviewHasMore.value) {
@@ -1087,52 +1014,15 @@ const overviewListFooterHint = computed(() => {
   }
   return `已展示 ${shown} / ${total} 个 Skill · 继续下拉加载更多`;
 });
-const myReleases = computed(() => {
-  if (myPublishedSkills.value.length > 0) {
-    return myPublishedSkills.value;
-  }
-  if (!transportIsHttp) {
-    const mine = skills.value.filter((skill) => skill.ownedByUser);
-    if (mine.length > 0) {
-      return mine;
-    }
-    return skills.value.slice(0, 4);
-  }
-  return [];
-});
 
 watch(pageSize, (next, prev) => {
   if (transportIsHttp) {
-    if (next !== prev && innerTab.value === 'overview') {
-      void startOverviewRemoteFetch(1);
-    }
     return;
   }
   if (next > prev) {
     overviewVisibleCount.value = Math.max(overviewVisibleCount.value, next);
   }
 });
-
-watch(
-  () => [
-    search.value.trim(),
-    quickFilter.value,
-    levelFilter.value,
-    categoryFilter.value,
-    selectedTags.value.join('\u0001'),
-    overviewMarketDeptSegments.value.join('\u0001'),
-  ],
-  () => {
-    if (transportIsHttp) {
-      if (innerTab.value === 'overview') {
-        void startOverviewRemoteFetch(1);
-      }
-      return;
-    }
-    overviewVisibleCount.value = pageSize.value;
-    scheduleMaybeFillOverviewViewport();
-  },
-);
 
 watch(levelFilter, () => {
   overviewMarketDeptSegments.value = [];
@@ -1237,15 +1127,15 @@ function canEditOrganization(org: OrganizationDto): boolean {
 
 async function loadAdminOrganizations(): Promise<void> {
   if (transportIsHttp) {
-    await waitForUserId();
+    await waitUserIdAndDepartmentList();
   }
   orgListLoading.value = true;
   try {
     const r = await skillBaseService.queryOrganizationList({userId: userId.value});
     // const r = await marketClient.fetchOrganizations();
-    if (r.code === 0 && Array.isArray(r.data)) {
+    if (r.meta.success && Array.isArray(r.data)) {
       adminOrganizations.value = r.data;
-      orgCount.value = r.data.length;
+      // orgCount.value = r.data.length;
     }
   } finally {
     orgListLoading.value = false;
@@ -1270,14 +1160,14 @@ async function loadSyncApplicationRows(): Promise<void> {
   }
 }
 
-const filterObj = ref({
+const filterObj = ref<any>({
   pageNo: 1,
   pageSize: 200,
 })
 
 async function loadMyPublishedSkills(): Promise<void> {
   if (transportIsHttp) {
-    await waitForUserId();
+    await waitUserIdAndDepartmentList();
   }
   filterObj.value.userId = userId.value;
   const res = await skillBaseService.queryMySkills(filterObj.value);
@@ -1445,26 +1335,6 @@ function skillTitle(skill: Skill): string {
   return skill.name ?? skill.skill_id;
 }
 
-function skillVersion(skill: Skill): string {
-  return skill.version ?? '1.0.0';
-}
-
-function skillAuthor(skill: Skill): string {
-  const raw = skill.owner_list?.trim();
-  if (raw) {
-    try {
-      const owners = JSON.parse(raw) as Array<{ lastName?: string; Account?: string }>;
-      const owner = owners[0];
-      if (owner?.lastName || owner?.Account) {
-        return [owner.lastName, owner.Account].filter(Boolean).join(' ');
-      }
-    } catch {
-      // owner_list can be a free-form string in imported Excel rows.
-    }
-  }
-  return skill.publish_name ?? skill.publisher ?? '当前用户';
-}
-
 function skillScopeLabel(skill: Skill): string {
   const level = (skill.publish_level ?? skill.level ?? skill.tagOrg ?? '').trim();
   if (level.includes('组织')) {
@@ -1479,37 +1349,64 @@ function skillScopeLabel(skill: Skill): string {
 function skillScopeClass(skill: Skill): string {
   return skillScopeLabel(skill).includes('组织') ? 'scope-org' : 'scope-personal';
 }
-
-function skillDownloadCount(skill: Skill): string {
-  return (skill.download_count ?? skill.downloads ?? 0).toLocaleString('zh-CN');
+function formatDirectoryStructure(structure: any, indent = '', i = -1): any[] {
+  let lines: any[] = [];
+  for (const key in structure) {
+    i++;
+    if(!key) {
+      continue;
+    }
+    const value = structure[key];
+    const isLast = i === structure.length - 1;
+    if(!value) {
+      lines.push(`${indent}${isLast ? '└─ ' : '├─ '} ${key}/`);
+    }else if(typeof value === 'object') {
+      const prefix = indent + (isLast ? '   ' : '│  ');
+      lines.push(`${indent}${isLast ? '└─ ' : '├─ '} ${key}/`);
+      lines.push(...formatDirectoryStructure(value, prefix, i));
+    }
+  }
+  return lines;
 }
 
-function detailRows(skill: Skill): { label: string; value: string }[] {
-  return [
-    { label: 'author', value: skillAuthor(skill) },
-    { label: 'version', value: skillVersion(skill) },
-    { label: 'category', value: skill.tagFunctional ?? '-' },
-    { label: 'publish_level', value: skill.publish_level ?? skill.level ?? '-' },
-    { label: 'publish_name', value: skill.publish_name ?? skill.publisher ?? '-' },
-    { label: 'dept_name', value: skill.dept_name || '-' },
-  ];
-}
+const fileTreeObj = ref<any>({});
+const skillMdFile = ref<any>({});
 
-function detailFileTree(skill: Skill): string {
-  const root = skillTitle(skill);
-  return `${root}/
-├─ SKILL.md
-├─ skill.yaml
-├─ README.md
-├─ prompts/
-│  ├─ system.md
-│  └─ examples.md
-├─ scripts/
-│  └─ main.py
-├─ assets/
-│  └─ config.example.json
-└─ tests/
-   └─ sample_input.json`;
+const detailFileTree = async (skill: any) => {
+  let params: any = {
+    userId: userId.value,
+  }
+  params.version = skill.currentVersion;
+  const env = await skillBaseService.downloadSkill(params, skill.id);
+  if(!env.meta.success || !env.data) {
+    throw new Error(env.message || '下载失败');
+  }
+  const d = env.data;
+  
+  // 获取文件目录
+  // 1. 下载 ZIP 文件
+  const reponse = await fetch(d);
+  const arrayBuffer = await reponse.arrayBuffer();
+  const zip = new PizZip(arrayBuffer);
+  const structure = {};
+  for (const [relativePath] of Object.entries(zip.files)) {
+    const parts = relativePath.split('/');
+    let currentLevel: any = structure;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if(!currentLevel[part]) {
+        currentLevel[part] = {};
+      }
+      currentLevel = currentLevel[part];
+    }
+    currentLevel[parts[parts.length - 1]] = null;
+  }
+
+  const result = formatDirectoryStructure(structure);
+  fileTreeObj.value[skill.id] = result.join('\n');
+
+  // 获取 SKILL.md 文件
+  skillMdFile.value[skill.id] = skill.skillMdContent;
 }
 
 function skillRequirements(skill: Skill): string {
@@ -1548,59 +1445,16 @@ async function onUploadSubmit(payload: UploadSubmitPayload): Promise<void> {
       : `已上传新 Skill「${payload.name}」${versionText}`;
   try {
     await loadMyPublishedSkills();
-    if (transportIsHttp && overviewRemoteItems.value.length > 0) {
-      void startOverviewRemoteFetch();
-    }
+    await startOverviewRemoteFetch();
     showToast(message, 4000);
   } catch (e) {
     showToast(e instanceof Error ? `上传成功，但我的发布刷新失败：${e.message}` : '上传成功，但我的发布刷新失败', 4000);
   }
 }
 
-function patchSkillsDownloadCountAfterDownload(id: string, skill: Skill): void {
-  const dl = skill.download_count ?? skill.downloads ?? 0;
-  skills.value = skills.value.map((s) =>
-    skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
-  );
-  myPublishedSkills.value = myPublishedSkills.value.map((s) =>
-    skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
-  );
-  if (transportIsHttp) {
-    overviewRemoteItems.value = overviewRemoteItems.value.map((s) =>
-      skillKey(s) === id ? { ...s, download_count: dl, downloads: dl } : s,
-    );
-  }
-  if (detailPanelSkill.value && skillKey(detailPanelSkill.value) === id) {
-    detailPanelSkill.value = { ...detailPanelSkill.value, download_count: dl, downloads: dl };
-  }
-}
-
-function resolvePackageDownloadUrl(downloadUrl: string): string {
-  const u = downloadUrl.trim();
-  if (!u || /^https?:\/\//i.test(u)) {
-    return u;
-  }
-  return joinBaseUrl(import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '', u);
-}
-
-function fileNameFromDownloadResponse(header: string | null, fallback: string): string {
-  if (!header) {
-    return fallback;
-  }
-  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
-  if (star?.[1]) {
-    try {
-      return decodeURIComponent(star[1].trim());
-    } catch {
-      return star[1].trim();
-    }
-  }
-  return /filename="?([^";]+)"?/i.exec(header)?.[1]?.trim() ?? fallback;
-}
-
 async function onDownload(id: string, version?: string): Promise<void> {
   try {
-    let params = {
+    let params: any = {
       userId: userId.value,
     }
     if (version) {
@@ -1611,9 +1465,9 @@ async function onDownload(id: string, version?: string): Promise<void> {
       throw new Error(env.message || '下载失败');
     }
     const d = env.data;
-    window.open(d, '_blank');
+    window.open(d);
 
-    let index = skills.value.findIndex((item) => skillKey(item) === id);
+    let index = filteredSkills.value.findIndex((item) => skillKey(item) === id);
     if(index >= 0) {
       filteredSkills.value[index].downloads += 1;
     }
@@ -1623,7 +1477,8 @@ async function onDownload(id: string, version?: string): Promise<void> {
 }
 
 function onViewVersions(id: string): void {
-  const skill = skills.value.find((item) => skillKey(item) === id);
+  const skill = newSkills.value.find((item) => skillKey(item) === id);
+  detailFileTree(skill)
   if (skill) {
     versionPanelSkill.value = skill;
   }
@@ -1727,96 +1582,11 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
 
-function statusOf(skill: Skill): ReleaseStatusKey {
-  const ms = (skill.marketStatus ?? '').trim();
-  if (ms.includes('驳回')) {
-    return 'rejected-pdu';
-  }
-  if (ms.includes('审核')) {
-    return 'reviewing-dev';
-  }
-  if (skill.id === '2') {
-    return 'rejected-pdu';
-  }
-  if (skill.id === '4') {
-    return 'reviewing-dev';
-  }
-  const pl = skill.publish_level ?? skill.level ?? '';
-  if (pl.includes('个人')) {
-    return 'personal-live';
-  }
-  return 'published';
-}
-
-function statusText(st: ReleaseStatusKey): string {
-  if (st === 'personal-live') {
-    return '个人级';
-  }
-  if (st === 'published') {
-    return '组织级';
-  }
-  if (st === 'reviewing-dev') {
-    return '组织审核中';
-  }
-  return '组织已驳回';
-}
-
-function lastActionText(st: ReleaseStatusKey): string {
-  if (st === 'personal-live') {
-    return '已发布为个人级 Skill';
-  }
-  if (st === 'published') {
-    return '已同步至公司组织';
-  }
-  if (st === 'reviewing-dev') {
-    return '等待目标组织管理员审核';
-  }
-  return '需补充复现数据和说明文档';
-}
-
-function releaseCategoryLabel(skill: Skill): string {
-  return skill.tagFunctional || '通用类';
-}
-
-function releasePrimaryLevel(skill: Skill): string {
-  if ((skill.publish_level ?? skill.level ?? '').includes('个人')) {
-    return '个人级';
-  }
-  return '组织级';
-}
-
-function releaseOrgLabel(skill: Skill): string {
-  if ((skill.publish_level ?? skill.level ?? '').includes('个人')) {
-    return '个人空间';
-  }
-  return skill.publish_name ?? skill.level ?? '';
-}
-
 function releaseSyncActionText(row: { skill: Skill; statusKey: ReleaseStatusKey; personal: boolean }): string {
   if (row.statusKey === 'published' && !row.personal) {
     return '更新同步';
   }
   return '同步至公司组织';
-}
-
-function releaseVersionCount(skill: Skill): number {
-  const versions = new Set((skill.versions ?? []).map((item) => item.version).filter(Boolean));
-  versions.add(skillVersion(skill));
-  return versions.size;
-}
-
-function releaseVersionSubText(skill: Skill): string {
-  const publishTime = skill.latestPublishTime ?? '';
-  const count = releaseVersionCount(skill);
-  if (count <= 1) {
-    return publishTime;
-  }
-  return publishTime ? `保留 ${count} 个版本 · ${publishTime}` : `保留 ${count} 个版本`;
-}
-
-function onReleaseNewVersion(row: { skill: Skill }): void {
-  toastAction(`新版本（演示）：为「${skillTitle(row.skill)}」追加版本`);
-  openUpload();
 }
 
 function onReleaseSync(row: { skill: Skill; statusKey: ReleaseStatusKey; personal: boolean }): void {
@@ -1828,52 +1598,7 @@ function onReleaseRecord(row: { skill: Skill }): void {
   versionPanelSkill.value = row.skill;
 }
 
-const myReleaseRows = computed(() => {
-  return myReleases.value.map((s) => {
-    const st = statusOf(s);
-    const isPersonal =
-      st === 'personal-live' ||
-      (s.publish_level ?? s.level ?? '').includes('个人') ||
-      (s.dept_name ?? s.tagOrg ?? '').includes('个人');
-    return {
-      skill: s,
-      statusKey: st,
-      statusLabel: statusText(st),
-      lastAction: lastActionText(st),
-      personal: isPersonal,
-      coreApply: s.id === '1' || s.id === '3',
-    };
-  });
-});
-
-const uiMyStats = computed(() => {
-  const rows = myReleaseRows.value;
-  if (rows.length === 0) {
-    return {
-      maintained: '0',
-      reviewing: '0',
-      rejected: '0',
-      myTotalDownloads: '0',
-      my30DaysDownloads: '—',
-    };
-  }
-  const maintained = rows.length;
-  const reviewing = rows.filter((x) => x.statusKey === 'reviewing-dev').length;
-  const rejected = rows.filter((x) => x.statusKey === 'rejected-pdu').length;
-  const totalDl = rows.reduce(
-    (sum, x) => sum + (x.skill.download_count ?? x.skill.downloads ?? 0),
-    0,
-  );
-  return {
-    maintained: String(maintained),
-    reviewing: String(reviewing),
-    rejected: String(rejected),
-    myTotalDownloads: totalDl.toLocaleString('zh-CN'),
-    my30DaysDownloads: '—',
-  };
-});
-
-const onClickFilterRelease = async(key) => {
+const onClickFilterRelease = async(key: any) => {
   releaseFilter.value = key;
   if(key === 'all' && 'status' in filterObj.value) {
     delete filterObj.value.status;
@@ -1893,37 +1618,26 @@ function toastAction(message: string): void {
   }, 2500);
 }
 
-function onUploadExistingVersion(): void {
-  toastAction('上传已有 Skill 新版本（演示）：请在弹窗中选择同名 Skill 以追加版本');
-  openUpload();
-}
-
 const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref<HTMLInputElement | null>(null);
 const fuyaoOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
-const companyOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
 
-const opsBoardSystem = ref<'fuyao' | 'company'>('company');
+const opsBoardSystem = ref<'fuyao' | 'company'>('fuyao');
 /** 公司运营看板「Excel 导入」仅管理员可用；扶摇看板不提供导入 */
 const showOpsExcelImport = computed(
-  () => opsBoardSystem.value === 'company' && marketRoleShowsOpsAndReview(currentUserRole.value),
+  () => {
+    return opsBoardSystem.value === 'company' && currentUserRole.value?.role === 'SUPER_ADMIN';
+  },
 );
 const selectedOpsDeptPath = ref('');
 const selectedOpsOrgName = ref('');
-const defaultOpsDashboardBundle = computed(() => {
-  const empty = emptyOpsDashboardBundle();
-  if (opsBoardSystem.value === 'company') {
-    return companyOpsDashboardBundleRef.value ?? empty;
-  }
-  return fuyaoOpsDashboardBundleRef.value ?? empty;
-});
 
 const opsDashboardBundle = computed(() => {
   if (opsBoardSystem.value === 'fuyao') {
-    return defaultOpsDashboardBundle.value;
+    return fuyaoOpsDashboardBundleRef.value ?? emptyOpsDashboardBundle();
   }
-  return opsImportedBundle.value ?? defaultOpsDashboardBundle.value;
+  return opsImportedBundle.value ?? JSON.parse(companyOpsDashboardJson) ?? defaultOpsDashboardBundle.value;
 });
 
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
@@ -2079,7 +1793,7 @@ const selectedDeptSkillRows = computed(() => selectedDeptNode.value?.skillRows ?
 const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? []);
 
 const opsKpiCards = computed<OpsKpiCard[]>(() => {
-  const kpi = opsDashboardBundle.value.kpi;
+  const kpi = opsDashboardBundle.value.kpis;
   const systemName = opsBoardSystem.value === 'company' ? '公司系统' : '扶摇系统';
   return [
     {
@@ -2089,7 +1803,7 @@ const opsKpiCards = computed<OpsKpiCard[]>(() => {
     },
     {
       label: '组织级 Skill',
-      value: kpi.activeSkills,
+      value: kpi.orgCount,
       desc:
         opsBoardSystem.value === 'fuyao'
           ? '已同步至公司组织维度、在扶摇市场按组织发布的 Skill 数量'
@@ -2245,43 +1959,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           <div class="detail-main">
             <aside class="detail-file-panel">
               <div class="detail-panel-title">文件结构</div>
-              <pre>{{ detailFileTree(detailPanelSkill) }}</pre>
+              <pre>{{ fileTreeObj[detailPanelSkill.id] }}</pre>
             </aside>
             <article class="detail-md-panel">
               <div class="detail-panel-title">SKILL.md</div>
               <div class="detail-md-body">
-                <h3>{{ skillTitle(detailPanelSkill) }} Skill</h3>
-                <p>{{ detailPanelSkill.description || '暂无描述。' }}</p>
-
-                <h4>Metadata</h4>
-                <table class="detail-meta-table">
-                  <tbody>
-                    <tr v-for="row in detailRows(detailPanelSkill)" :key="row.label">
-                      <th>{{ row.label }}</th>
-                      <td>{{ row.value }}</td>
-                    </tr>
-                    <tr>
-                      <th>requirements</th>
-                      <td>{{ skillRequirements(detailPanelSkill) }}</td>
-                    </tr>
-                    <tr>
-                      <th>tags</th>
-                      <td>{{ skillTagSummary(detailPanelSkill) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <h4>分类信息</h4>
-                <ul>
-                  <li>大类：{{ detailPanelSkill.tagFunctional || '-' }}</li>
-                  <li>发布层级：{{ skillScopeLabel(detailPanelSkill) }}</li>
-                  <li>所属部门：{{ detailPanelSkill.dept_name || '-' }}</li>
-                </ul>
-
-                <h4>使用说明</h4>
-                <p>
-                  下载后可在本地 Skill 运行环境中加载使用；组织级 Skill 可在对应组织范围内共享和复用。
-                </p>
+                <h3>{{ detailPanelSkill.name }} Skill</h3>
+                <pre>{{ skillMdFile[detailPanelSkill.id] }}</pre>
               </div>
             </article>
           </div>
@@ -2379,7 +2063,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         审核中心
       </button>
       <button
-        v-if="false"
         type="button"
         class="sub-tab"
         :class="{ on: innerTab === 'ops' }"
@@ -2405,8 +2088,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           <span class="stat-k">累计下载</span>
           <span class="stat-v">{{ totalDownloads.toLocaleString('zh-CN') }}</span>
         </div>
-        <div class="stat-div" aria-hidden="true" />
-        <div class="stat-cell">
+        <div v-if="false" class="stat-cell">
           <span class="stat-k">近 30 天下载</span>
           <span class="stat-v">{{ downloadsLast30Days.toLocaleString('zh-CN') }}</span>
         </div>
@@ -2424,7 +2106,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               type="button"
               class="side-nav-item"
               :class="{ active: quickFilter === 'all' }"
-              @click="quickFilter = 'all'"
+              @click="changeOverviewTab('all')"
             >
               <span class="side-nav-icon">◇</span>全部 Skill
             </button>
@@ -2432,7 +2114,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               type="button"
               class="side-nav-item"
               :class="{ active: quickFilter === 'personal' }"
-              @click="quickFilter = 'personal'"
+              @click="changeOverviewTab('personal')"
             >
               <span class="side-nav-icon">♙</span>个人级
             </button>
@@ -2440,7 +2122,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               type="button"
               class="side-nav-item"
               :class="{ active: quickFilter === 'devDept' }"
-              @click="quickFilter = 'devDept'"
+              @click="changeOverviewTab('devDept')"
             >
               <span class="side-nav-icon">▦</span>组织级
             </button>
@@ -2520,6 +2202,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               class="search"
               type="search"
               placeholder="搜索 Skill 名称"
+              @keydown.enter="onSearchKeyWord"
+              @input="onSearchKeyWord"
             />
             <select v-model="levelFilter" class="select">
               <option value="all">筛选组织</option>
@@ -2616,10 +2300,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           >
             正在从接口加载市场列表…
           </p>
-          <template v-else-if="filteredSkills.length > 0">
+          <template v-else-if="newSkills.length > 0">
             <div ref="overviewGridRef" class="grid">
               <SkillCard
-                v-for="s in filteredSkills"
+                v-for="s in newSkills"
                 :key="s.id"
                 class="market-skill-card"
                 :skill="s"
@@ -2635,7 +2319,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           <div class="overview-list-footer" role="status">
             <span>{{ overviewListFooterHint }}</span>
             <div
-              v-if="transportIsHttp"
+              v-if="false && transportIsHttp"
               class="overview-pagination"
               role="navigation"
               aria-label="市场总览分页"
@@ -2737,8 +2421,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </div>
       </header>
 
-      <div v-if="false" class="my-release-body">
-        <div class="my-stats" role="group" aria-label="我的发布指标">
+      <div class="my-release-body">
+        <div v-if="false" class="my-stats" role="group" aria-label="我的发布指标">
           <div class="my-cell">
             <span class="my-k">我维护的 Skill</span>
             <span class="my-v">0</span>
@@ -2798,9 +2482,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <td>
                   <div class="skill-main">
                     <strong class="skill-name">{{ row.name }}</strong>
-                    <div class="skill-sub">
-                      <span>{{ row.category }} · 作者：{{ row.author }}</span>
-                    </div>
                   </div>
                 </td>
                 <td>
@@ -4548,17 +4229,6 @@ width: 100%;
   border: 1px solid #e6ebf2;
   border-radius: 12px;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
-}
-
-.ops-kpi::after {
-  content: '';
-  position: absolute;
-  right: -20px;
-  top: -20px;
-  width: 74px;
-  height: 74px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(124, 58, 237, 0.08));
 }
 
 .ops-kpi small {
@@ -6318,7 +5988,7 @@ width: 100%;
   border: 1px solid #e2e8f0;
   border-radius: 7px;
   background: #fff;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .detail-panel-title {
@@ -7281,65 +6951,11 @@ width: 100%;
 }
 
 .overview-panel .overview-list-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   margin-top: auto;
   padding-top: 16px;
   font-size: 13px;
   color: #64748b;
   line-height: 1.5;
-}
-
-.overview-pagination {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.overview-page-btn {
-  height: 30px;
-  min-width: 64px;
-  padding: 0 10px;
-  border: 1px solid #cfe0f5;
-  border-radius: 6px;
-  background: #fff;
-  color: #2563eb;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.overview-page-btn:hover:not(:disabled) {
-  border-color: #93c5fd;
-  background: #f2f7ff;
-}
-
-.overview-page-btn:disabled {
-  cursor: not-allowed;
-  color: #94a3b8;
-  background: #f8fafc;
-  opacity: 0.7;
-}
-
-.overview-page-index {
-  min-width: 48px;
-  color: #334155;
-  text-align: center;
-  font-weight: 700;
-}
-
-@media (max-width: 640px) {
-  .overview-panel .overview-list-footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .overview-pagination {
-    width: 100%;
-    justify-content: space-between;
-  }
 }
 
 .overview-panel .market-content {

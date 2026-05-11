@@ -182,7 +182,7 @@ export function uploadSkillApi(
     ownedByUser: true,
     tagFunctional: payload.tagFunctional ?? '通用',
     tagOrg: publishLevel,
-    tags: [],
+    tags: '',
   };
 
   database.unshift(skill);
