@@ -1,7 +1,14 @@
 /** 设计文档统一响应壳 */
+export type ApiMeta = {
+  number?: number;
+  message: string;
+  success: boolean;
+};
+
 export type ApiEnvelope<T> = {
   code: number;
   message: string;
+  meta?: ApiMeta;
   data: T;
 };
 
@@ -356,7 +363,9 @@ export type DashboardOverviewDto = {
   system: string;
   statDate: string;
   kpis: {
-    skillCount: number;
+    totalSkills?: number;
+    /** 兼容部分旧文档里的字段名；优先使用 totalSkills */
+    skillCount?: number;
     personalSkillCount: number;
     verifiedSkillCount: number;
     downloads: number;
@@ -364,11 +373,12 @@ export type DashboardOverviewDto = {
   deptTree: {
     deptName: string;
     deptLevel: number;
-    skillCount: number;
+    totalSkills?: number;
+    skillCount?: number;
     downloads: number;
     children: unknown[];
   }[];
-  rankings: { name: string; skillCount: number; downloads: number }[];
+  rankings: { name: string; totalSkills?: number; skillCount?: number; downloads: number }[];
   topSkills: {
     skillId: number;
     name: string;

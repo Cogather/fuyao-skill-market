@@ -10,7 +10,7 @@ function mapDeptTree(nodes: DashboardOverviewDto['deptTree']): DeptTreeNode[] {
     name: n.deptName,
     path: n.deptName,
     levelNo: n.deptLevel,
-    skills: n.totalSkills,
+    skills: n.totalSkills ?? n.skillCount ?? 0,
     downloads: n.downloads,
     skillRows: [],
     topSkills: [],
@@ -33,7 +33,7 @@ export function dashboardOverviewToOpsBundle(d: DashboardOverviewDto): OpsDashbo
   }));
   return {
     kpis: {
-      totalSkills: String(k.totalSkills),
+      totalSkills: String(k.totalSkills ?? k.skillCount ?? 0),
       /** 与扶摇看板文案一致：已同步至公司侧、按组织发布的组织级 Skill 数；后端应对齐 `verifiedSkillCount` 语义 */
       activeSkills: String(k.verifiedSkillCount),
       personalSkills: String(k.personalSkillCount),
@@ -45,7 +45,7 @@ export function dashboardOverviewToOpsBundle(d: DashboardOverviewDto): OpsDashbo
     deptTree: mapDeptTree(d.deptTree ?? []),
     orgBars: rankings.map((r) => ({
       name: r.name,
-      skills: r.totalSkills,
+      skills: r.totalSkills ?? r.skillCount ?? 0,
       downloads: r.downloads,
       skillRows: [],
       topSkills: [],

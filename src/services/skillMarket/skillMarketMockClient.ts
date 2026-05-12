@@ -735,10 +735,10 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         0,
       );
       const orgLevelSkills = skills.value.filter((s) => (s.publish_level ?? '').trim() === '组织级');
-      const orgRankMap = new Map<string, { skillCount: number; downloads: number }>();
+      const orgRankMap = new Map<string, { totalSkills: number; downloads: number }>();
       for (const s of orgLevelSkills) {
         const key = (s.publish_name ?? '').trim() || '未填写组织';
-        const cur = orgRankMap.get(key) ?? { skillCount: 0, downloads: 0 };
+        const cur = orgRankMap.get(key) ?? { totalSkills: 0, downloads: 0 };
         cur.totalSkills += 1;
         cur.downloads += s.download_count ?? s.downloads ?? 0;
         orgRankMap.set(key, cur);
@@ -746,6 +746,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       const rankings = [...orgRankMap.entries()]
         .map(([name, v]) => ({
           name,
+          totalSkills: v.totalSkills,
           skillCount: v.totalSkills,
           downloads: v.downloads,
         }))
@@ -755,6 +756,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         statDate: params.statDate ?? '2026-04-27',
         kpis: {
           totalSkills: skills.value.length,
+          skillCount: skills.value.length,
           personalSkillCount: skills.value.filter((s) =>
             (s.publish_level ?? '').includes('个人'),
           ).length,

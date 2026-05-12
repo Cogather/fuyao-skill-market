@@ -45,7 +45,8 @@ import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
 const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
-const userId = computed(() => userStore.userInfo?.w3Id);
+// const userId = computed(() => userStore.userInfo?.w3Id);
+const userId = computed(() => skillMarketStore.userId);
 const departmentList = computed(() => skillMarketStore.departmentList);
 
 const skills = ref<any[]>([]);
@@ -682,6 +683,27 @@ function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
   })
 }
 
+function readServiceRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function serviceSucceeded(value: unknown): boolean {
+  const record = readServiceRecord(value);
+  const meta = readServiceRecord(record.meta);
+  if (typeof meta.success === 'boolean') {
+    return meta.success;
+  }
+  const code = record.code;
+  return code === undefined || code === 0 || code === 200 || code === '0' || code === '200';
+}
+
+function serviceMessage(value: unknown, fallback: string): string {
+  const record = readServiceRecord(value);
+  const meta = readServiceRecord(record.meta);
+  const message = meta.message ?? record.message ?? record.msg;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
 async function loadCurrentUserRole(): Promise<void> {
   try {
     const r = await skillBaseService.queryCurrentUserRole({userId: userId.value});
@@ -787,13 +809,21 @@ function applyOverviewDisplayFilters(raw: Skill[]): Skill[] {
 
 async function startOverviewRemoteFetch(): Promise<void> {
   overviewRemoteLoading.value = true;
-  const env = await skillBaseService.querySkillList(overviewFilterObj.value);
-  if(env.meta.success && env.data) {
-    newSkills.value = [...env.data]
-    overviewRemoteTotal.value = env.meta.number;
-    totalDownloads.value = newSkills.value.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+  try {
+    const env = await skillBaseService.querySkillList(overviewFilterObj.value);
+    if(env.meta.success && env.data) {
+      const batch = [...env.data];
+      newSkills.value = batch;
+      overviewRemoteItems.value = batch;
+      skills.value = batch;
+      overviewRemoteTotal.value = env.meta.number;
+      overviewRemoteNextPage.value = 2;
+      overviewRemoteExhausted.value = batch.length === 0 || batch.length >= overviewRemoteTotal.value;
+      totalDownloads.value = newSkills.value.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+    }
+  } finally {
+    overviewRemoteLoading.value = false;
   }
-  overviewRemoteLoading.value = false;
 }
 
 const changeOverviewTab = async (tabName: string) => {
@@ -871,16 +901,18 @@ async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
       return;
     }
     const batch = env.data;
-    overviewRemoteItems.value = [...batch];
-    skills.value = [...batch];
+    const merged = pageNo <= 1 ? [...batch] : [...overviewRemoteItems.value, ...batch];
+    overviewRemoteItems.value = merged;
+    newSkills.value = merged;
+    skills.value = merged;
     overviewRemoteTotal.value = env.meta.number;
     const received = batch.length;
-    if(received === 0 || batch.length >= env.data.total || received < fetchSize) {
+    if(received === 0 || merged.length >= overviewRemoteTotal.value || received < fetchSize) {
       overviewRemoteExhausted.value = true;
     } else {
       overviewRemoteNextPage.value = pageNo + 1;
     }
-    totalDownloads.value = batch.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+    totalDownloads.value = merged.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
   } finally {
     overviewRemoteLoading.value = false;
     // scheduleMaybeFillOverviewViewport();
@@ -1259,16 +1291,16 @@ async function submitOrgModal(): Promise<void> {
   if (orgModalMode.value === 'create') {
     // const r = await marketClient.postOrganization(body);
     const r = await skillBaseService.createOrganization(body, {userId: userId.value});
-    if (r.code !== 0) {
-      showToast(r.message || '新建失败');
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '新建失败'));
       return;
     }
     showToast('已新建组织');
   } else {
     // const r = await marketClient.putOrganization(f.id, body);
     const r = await skillBaseService.updateOrganization(body, {userId: userId.value}, f.id.toString());
-    if (r.code !== 0) {
-      showToast(r.message || '保存失败');
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '保存失败'));
       return;
     }
     showToast('已保存');
@@ -1305,8 +1337,8 @@ async function submitReviewModal(): Promise<void> {
       comment: reviewComment.value.trim(),
     }
     const r = await skillBaseService.reviewSyncApplication(body, row.id.toString());
-    if (r.code !== 0) {
-      showToast(r.message || '提交失败');
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '提交失败'));
       return;
     }
     showToast('已提交审核');
