@@ -1,16 +1,20 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import PizZip from 'pizzip';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
+import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
+import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
   CurrentUserRoleDto,
   OrganizationDto,
+  SkillDetailDto,
+  SkillFileTreeField,
   SkillListParamsDto,
   SkillListRecordDto,
+  SkillVersionListItemDto,
   SyncApplicationListItemDto,
 } from '../../services/skillMarket/apiTypes';
 import type { MarketDeptForestNode } from '../../services/skillMarket/marketDeptTreeFromApi';
@@ -203,7 +207,24 @@ const orgDistinctAdminCount = computed(() => {
 });
 
 const versionPanelSkill = ref<any>(null);
+const versionPanelLoading = ref(false);
+const versionUnpublishing = ref<string | null>(null);
+/** 版本列表「查看」：该版本文件树 + SKILL.md 预览（叠在版本管理之上） */
+const versionPreviewSkill = ref<any>(null);
+/** 市场进入的版本管理不展示「操作」列；与详情是否展示删除同源（我的发布为 true） */
+const versionManageShowOperations = ref(true);
+const deletingMySkillId = ref<string | null>(null);
+const deleteConfirmRow = ref<SkillListRecordDto | null>(null);
+const deleteConfirmStyle = ref<CSSProperties>({});
+let deleteConfirmListenersBound = false;
 const detailPanelSkill = ref<any>(null);
+/** 市场卡片进入的详情不展示删除；我的发布等入口为 true */
+const detailShowDelete = ref(true);
+const detailDeleteConfirmOpen = ref(false);
+const detailDeleteConfirmStyle = ref<CSSProperties>({});
+const detailDeletePendingId = ref<string | null>(null);
+const detailDeletePendingTitle = ref('');
+let detailDeleteConfirmListenersBound = false;
 let overviewPageSizeFrame = 0;
 
 function formatYmd(date: Date): string {
@@ -705,16 +726,30 @@ function serviceMessage(value: unknown, fallback: string): string {
 }
 
 async function loadCurrentUserRole(): Promise<void> {
+  // 始终调用 queryCurrentUserRole：HTTP 走 axios 真实后端；Mock 走 skillBaseServiceMock（与 VITE_SKILL_MARKET_TRANSPORT / VITE_SKILL_BASE_SERVICE_MOCK 一致）
   try {
-    const r = await skillBaseService.queryCurrentUserRole({userId: userId.value});
+    const r = await skillBaseService.queryCurrentUserRole({ userId: userId.value });
     if (r.meta.success && r.data) {
       currentUserRole.value = r.data;
+      const sid = String(skillMarketStore.userId ?? '').trim();
+      if (!sid) {
+        const emp = String(r.data.employeeNo ?? '').trim();
+        // 父级未透传时，用工号/角色接口返回的 employeeNo 回填（HTTP 与 Mock 均为接口数据）
+        if (emp) {
+          skillMarketStore.updateUserId(emp);
+        }
+      }
     }
   } catch (e) {
     if (transportIsHttp) {
       showToast(e instanceof Error ? e.message : '当前用户角色加载失败');
     }
   }
+}
+
+/** 工号：store（含父级透传、或由 loadCurrentUserRole 用工号接口 employeeNo 回填）优先，否则用已缓存角色里的 employeeNo */
+function effectiveSkillUserId(): string {
+  return userId.value?.trim() || currentUserRole.value?.employeeNo?.trim() || '';
 }
 
 async function loadOpsDashboardOverview(): Promise<void> {
@@ -745,6 +780,7 @@ onMounted(async () => {
   }
   console.log('userId', userId.value);
   console.log('departmentList', departmentList.value);
+  // HTTP 与 Mock 均保留一次角色拉取；抢先调用仅见 loadMyPublishedSkills / executeDelete 内对 Mock 的分支
   await loadCurrentUserRole();
   if (transportIsHttp) {
     await loadAdminOrganizations();
@@ -756,6 +792,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  closeDeleteConfirm();
+  closeDetailDeleteConfirm();
   deptPanelScrollCleanup?.();
   deptPanelScrollCleanup = null;
   document.removeEventListener('mousedown', onMarketDeptCascaderDocDown);
@@ -1187,18 +1225,343 @@ const filterObj = ref<any>({
   pageSize: 200,
 })
 
+function normalizeMySkillsPayload(raw: unknown): SkillListRecordDto[] {
+  if (raw == null) {
+    return [];
+  }
+  if (Array.isArray(raw)) {
+    return raw as SkillListRecordDto[];
+  }
+  const o = raw as { records?: unknown };
+  return Array.isArray(o.records) ? (o.records as SkillListRecordDto[]) : [];
+}
+
 async function loadMyPublishedSkills(): Promise<void> {
+  // 抢先拉角色仅用于本地 Mock：避免在真实 HTTP 下多打 /users/current/role 或干扰父级透传时序
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
   }
-  filterObj.value.userId = userId.value;
+  filterObj.value.userId = effectiveSkillUserId();
   const res = await skillBaseService.queryMySkills(filterObj.value);
   if (!res.meta.success || !res.data) {
     showToast(res.message || '我的发布加载失败');
     return;
   }
-  const records = (res.data ?? []) as SkillListRecordDto[];
-  myPublishedSkills.value = [...records];
+  myPublishedSkills.value = normalizeMySkillsPayload(res.data);
+}
+
+function myPublishCurrentLayerText(row: SkillListRecordDto): string {
+  const lvl = `${row.level ?? ''}`.trim();
+  if (lvl.includes('组织级')) {
+    return '组织级';
+  }
+  if (lvl.includes('个人级')) {
+    return '个人级';
+  }
+  return lvl || '—';
+}
+
+function myPublishStatusPill(row: SkillListRecordDto): { label: string; cls: string } {
+  const st = `${row.status ?? ''}`.trim();
+  if (st.includes('组织已驳回') || st.includes('已驳回') || (st.includes('驳回') && !st.includes('审核'))) {
+    return { label: st.includes('组织已驳回') ? '组织已驳回' : st || '组织已驳回', cls: 'st-rejected-pdu' };
+  }
+  if (st.includes('组织审核中') || (st.includes('审核中') && !st.includes('驳回'))) {
+    return { label: st.includes('组织审核中') ? '组织审核中' : '审核中', cls: 'st-reviewing-dev' };
+  }
+  if (st.includes('组织级')) {
+    return { label: '组织级', cls: 'st-published' };
+  }
+  if (st.includes('个人级')) {
+    return { label: '个人级', cls: 'st-personal' };
+  }
+  const lg = myPublishCurrentLayerText(row);
+  if (lg === '组织级') {
+    return { label: '组织级', cls: 'st-published' };
+  }
+  if (lg === '个人级') {
+    return { label: '个人级', cls: 'st-personal' };
+  }
+  return { label: st || lg || '—', cls: 'st-neutral' };
+}
+
+function myPublishReleaseOp(row: SkillListRecordDto): 'upgraded' | 'upgrade' | 'upgrading' {
+  const st = `${row.status ?? ''}`;
+  if (st.includes('组织审核中') || (st.includes('审核中') && !st.includes('驳回'))) {
+    return 'upgrading';
+  }
+  const lv = `${row.level ?? ''}`;
+  if (lv.includes('组织级') || st.includes('组织级')) {
+    return 'upgraded';
+  }
+  return 'upgrade';
+}
+
+async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean): Promise<void> {
+  versionManageShowOperations.value = true;
+  if (syncRoute) {
+    await router.push({
+      name: 'skill-market',
+      query: {
+        ...route.query,
+        tab: 'releases',
+        releaseSkillId: String(row.id),
+        releaseView: 'versions',
+      },
+    });
+  }
+  versionPanelLoading.value = true;
+  versionPanelSkill.value = {
+    name: row.name,
+    skill_id: String(row.id),
+    id: String(row.id),
+    version: row.version,
+    versions: [],
+  };
+  try {
+    const res = await skillBaseService.querySkillVersions(String(row.id));
+    if (res.meta.success && res.data) {
+      const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
+      versionPanelSkill.value = {
+        ...versionPanelSkill.value,
+        version: pickCurrentVersionFromRows(list, String(versionPanelSkill.value.version ?? row.version)),
+        versions: list,
+      };
+    }
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '版本列表加载失败');
+  } finally {
+    versionPanelLoading.value = false;
+  }
+}
+
+function onMyReleaseRowClick(row: SkillListRecordDto): void {
+  void openDetailFromMyRelease(row);
+}
+
+function onReleaseUpgradeToOrg(row: SkillListRecordDto): void {
+  toastAction(`升级为组织级：${row.name}（将对接同步至公司组织流程）`);
+}
+
+function removeDeleteConfirmListeners(): void {
+  if (!deleteConfirmListenersBound) {
+    return;
+  }
+  deleteConfirmListenersBound = false;
+  document.removeEventListener('mousedown', onDeleteConfirmDocDown, true);
+  window.removeEventListener('scroll', closeDeleteConfirm, true);
+  window.removeEventListener('resize', closeDeleteConfirm);
+}
+
+function closeDeleteConfirm(): void {
+  deleteConfirmRow.value = null;
+  deleteConfirmStyle.value = {};
+  removeDeleteConfirmListeners();
+}
+
+function removeDetailDeleteConfirmListeners(): void {
+  if (!detailDeleteConfirmListenersBound) {
+    return;
+  }
+  detailDeleteConfirmListenersBound = false;
+  document.removeEventListener('mousedown', onDetailDeleteConfirmDocDown, true);
+  window.removeEventListener('scroll', closeDetailDeleteConfirm, true);
+  window.removeEventListener('resize', closeDetailDeleteConfirm);
+}
+
+function closeDetailDeleteConfirm(): void {
+  detailDeleteConfirmOpen.value = false;
+  detailDeleteConfirmStyle.value = {};
+  detailDeletePendingId.value = null;
+  detailDeletePendingTitle.value = '';
+  removeDetailDeleteConfirmListeners();
+}
+
+function onDetailDeleteConfirmDocDown(e: MouseEvent): void {
+  for (const n of e.composedPath()) {
+    if (!(n instanceof HTMLElement)) {
+      continue;
+    }
+    if (n.classList.contains('my-delete-popconfirm')) {
+      return;
+    }
+    if (n.classList.contains('detail-delete-trigger')) {
+      return;
+    }
+  }
+  closeDetailDeleteConfirm();
+}
+
+function openDetailDeleteConfirm(evt: MouseEvent): void {
+  evt.stopPropagation();
+  closeDeleteConfirm();
+  const skill = detailPanelSkill.value;
+  if (!skill) {
+    return;
+  }
+  const id = String(skill.id ?? skill.skill_id ?? '').trim();
+  if (!id) {
+    showToast('无法识别 Skill ID');
+    return;
+  }
+  if (detailDeleteConfirmOpen.value && detailDeletePendingId.value === id) {
+    closeDetailDeleteConfirm();
+    return;
+  }
+  detailDeletePendingId.value = id;
+  detailDeletePendingTitle.value = skillTitle(skill as Skill);
+  detailDeleteConfirmOpen.value = true;
+  const el = evt.currentTarget as HTMLElement | null;
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    const panelW = 232;
+    const idealLeft = rect.left + rect.width / 2 - panelW / 2;
+    const left = Math.max(8, Math.min(idealLeft, window.innerWidth - panelW - 8));
+    detailDeleteConfirmStyle.value = {
+      position: 'fixed',
+      top: `${Math.round(rect.bottom + 6)}px`,
+      left: `${Math.round(left)}px`,
+      width: `${panelW}px`,
+      zIndex: 5000,
+    };
+  }
+  void nextTick(() => {
+    setTimeout(() => {
+      if (!detailDeleteConfirmOpen.value) {
+        return;
+      }
+      removeDetailDeleteConfirmListeners();
+      document.addEventListener('mousedown', onDetailDeleteConfirmDocDown, true);
+      window.addEventListener('scroll', closeDetailDeleteConfirm, true);
+      window.addEventListener('resize', closeDetailDeleteConfirm);
+      detailDeleteConfirmListenersBound = true;
+    }, 0);
+  });
+}
+
+async function executeDetailDeleteSkill(): Promise<void> {
+  const id = detailDeletePendingId.value;
+  if (!id) {
+    return;
+  }
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  const uid = effectiveSkillUserId();
+  if (!uid) {
+    showToast('请先配置用户工号');
+    return;
+  }
+  closeDetailDeleteConfirm();
+  deletingMySkillId.value = id;
+  try {
+    const r = await skillBaseService.deleteSkillAll(id, { userId: uid });
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '删除失败'));
+      return;
+    }
+    showToast('已删除');
+    const panelId = String(versionPanelSkill.value?.id ?? versionPanelSkill.value?.skill_id ?? '');
+    if (panelId && panelId === id) {
+      closeVersionPanel();
+    }
+    closeDetailPanel();
+    await startOverviewRemoteFetch();
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '删除失败');
+  } finally {
+    deletingMySkillId.value = null;
+  }
+}
+
+function onDeleteConfirmDocDown(e: MouseEvent): void {
+  for (const n of e.composedPath()) {
+    if (!(n instanceof HTMLElement)) {
+      continue;
+    }
+    if (n.classList.contains('my-delete-popconfirm')) {
+      return;
+    }
+    if (n.classList.contains('my-rel-delete-trigger')) {
+      return;
+    }
+  }
+  closeDeleteConfirm();
+}
+
+function openDeleteConfirm(row: SkillListRecordDto, evt: MouseEvent): void {
+  evt.stopPropagation();
+  closeDetailDeleteConfirm();
+  if (deleteConfirmRow.value && String(deleteConfirmRow.value.id) === String(row.id)) {
+    closeDeleteConfirm();
+    return;
+  }
+  deleteConfirmRow.value = row;
+  const el = evt.currentTarget as HTMLElement | null;
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    const panelW = 232;
+    const idealLeft = rect.left + rect.width / 2 - panelW / 2;
+    const left = Math.max(8, Math.min(idealLeft, window.innerWidth - panelW - 8));
+    deleteConfirmStyle.value = {
+      position: 'fixed',
+      top: `${Math.round(rect.bottom + 6)}px`,
+      left: `${Math.round(left)}px`,
+      width: `${panelW}px`,
+      zIndex: 5000,
+    };
+  }
+  void nextTick(() => {
+    setTimeout(() => {
+      if (!deleteConfirmRow.value) {
+        return;
+      }
+      removeDeleteConfirmListeners();
+      document.addEventListener('mousedown', onDeleteConfirmDocDown, true);
+      window.addEventListener('scroll', closeDeleteConfirm, true);
+      window.addEventListener('resize', closeDeleteConfirm);
+      deleteConfirmListenersBound = true;
+    }, 0);
+  });
+}
+
+async function executeDeleteMyReleaseSkill(): Promise<void> {
+  const row = deleteConfirmRow.value;
+  if (!row) {
+    return;
+  }
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  const uid = effectiveSkillUserId();
+  if (!uid) {
+    showToast('请先配置用户工号');
+    return;
+  }
+  closeDeleteConfirm();
+  deletingMySkillId.value = String(row.id);
+  try {
+    const r = await skillBaseService.deleteSkillAll(String(row.id), { userId: uid });
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '删除失败'));
+      return;
+    }
+    showToast('已删除');
+    const panelId = String(versionPanelSkill.value?.id ?? versionPanelSkill.value?.skill_id ?? '');
+    if (panelId && panelId === String(row.id)) {
+      closeVersionPanel();
+    }
+    await loadMyPublishedSkills();
+    filteredMyReleaseRows.value = [...myPublishedSkills.value];
+    await startOverviewRemoteFetch();
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '删除失败');
+  } finally {
+    deletingMySkillId.value = null;
+  }
 }
 
 watch(
@@ -1226,6 +1589,7 @@ watch(
 watch(
   innerTab,
   async (tab) => {
+    closeDeleteConfirm();
     if (tab === 'overview') {
       await startOverviewRemoteFetch();
     }
@@ -1239,6 +1603,32 @@ watch(
     syncTabPanelMinHeight();
   },
   { immediate: true },
+);
+
+watch(
+  () =>
+    [
+      innerTab.value,
+      route.query.releaseSkillId,
+      route.query.releaseView,
+      myPublishedSkills.value.length,
+    ] as const,
+  async () => {
+    if (innerTab.value !== 'releases') {
+      return;
+    }
+    if (route.query.releaseView !== 'versions') {
+      return;
+    }
+    const sid = String(route.query.releaseSkillId ?? '').trim();
+    if (!sid) {
+      return;
+    }
+    const rec = myPublishedSkills.value.find((r) => String(r.id) === sid);
+    if (rec) {
+      await openMyReleaseVersions(rec, false);
+    }
+  },
 );
 
 function showToast(message: string, ms = 3000): void {
@@ -1357,20 +1747,87 @@ function skillTitle(skill: Skill): string {
   return skill.name ?? skill.skill_id;
 }
 
-function skillScopeLabel(skill: Skill): string {
-  const level = (skill.publish_level ?? skill.level ?? skill.tagOrg ?? '').trim();
-  if (level.includes('组织')) {
-    return skill.publish_name ? `组织级 · ${skill.publish_name}` : '组织级';
+/** 版本历史中的发布时间：本地化可读格式 */
+function formatSkillVersionTime(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) {
+    return '—';
   }
-  if (level.includes('个人')) {
-    return '个人级';
+  const forDate = s.includes('T') ? s : s.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
+  const d = new Date(forDate);
+  if (!Number.isNaN(d.getTime())) {
+    return new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
   }
-  return level || '-';
+  return s;
 }
 
-function skillScopeClass(skill: Skill): string {
-  return skillScopeLabel(skill).includes('组织') ? 'scope-org' : 'scope-personal';
+function semverNumsForVersions(v: string): number[] {
+  return String(v)
+    .split('.')
+    .map((p) => Number.parseInt(p, 10))
+    .map((n) => (Number.isFinite(n) ? n : 0));
 }
+
+function compareSemverDescVersions(a: string, b: string): number {
+  const pa = semverNumsForVersions(a);
+  const pb = semverNumsForVersions(b);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pb[i] ?? 0) - (pa[i] ?? 0);
+    if (d !== 0) {
+      return d;
+    }
+  }
+  return 0;
+}
+
+function isVersionRowDeleted(row: SkillVersionListItemDto): boolean {
+  return Number(row.deleted) === 1;
+}
+
+function pickCurrentVersionFromRows(list: SkillVersionListItemDto[], fallback: string): string {
+  const active = list.filter((r) => !isVersionRowDeleted(r));
+  if (active.length === 0) {
+    return fallback;
+  }
+  return [...active].sort((a, b) => compareSemverDescVersions(a.version, b.version))[0]!.version;
+}
+
+async function reloadVersionPanelList(): Promise<void> {
+  const vs = versionPanelSkill.value;
+  if (!vs) {
+    return;
+  }
+  const id = String(vs.id ?? vs.skill_id ?? '').trim();
+  if (!id) {
+    return;
+  }
+  versionPanelLoading.value = true;
+  try {
+    const res = await skillBaseService.querySkillVersions(id);
+    if (res.meta.success && res.data) {
+      const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
+      const nextCurrent = pickCurrentVersionFromRows(list, String(vs.version ?? ''));
+      versionPanelSkill.value = {
+        ...vs,
+        version: nextCurrent,
+        versions: list,
+      };
+    }
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '版本列表刷新失败');
+  } finally {
+    versionPanelLoading.value = false;
+  }
+}
+
 function formatDirectoryStructure(structure: any, indent = '', i = -1): any[] {
   let lines: any[] = [];
   for (const key in structure) {
@@ -1391,44 +1848,104 @@ function formatDirectoryStructure(structure: any, indent = '', i = -1): any[] {
   return lines;
 }
 
-const fileTreeObj = ref<any>({});
-const skillMdFile = ref<any>({});
-
-const detailFileTree = async (skill: any) => {
-  let params: any = {
-    userId: userId.value,
-  }
-  params.version = skill.currentVersion;
-  const env = await skillBaseService.downloadSkill(params, skill.id);
-  if(!env.meta.success || !env.data) {
-    throw new Error(env.message || '下载失败');
-  }
-  const d = env.data;
-  
-  // 获取文件目录
-  // 1. 下载 ZIP 文件
-  const response = await fetch(d);
-  const arrayBuffer = await response.arrayBuffer();
-  const zip = new PizZip(arrayBuffer);
-  const structure: any = {};
-  for (const [relativePath] of Object.entries(zip.files)) {
-    const parts = relativePath.split('/');
+/** 将详情接口 `fileTree` 路径列表还原为与 ZIP 扫描一致的结构，再走 `formatDirectoryStructure` */
+function fileTreePathsToNested(structure: Record<string, unknown>, paths: string[]): void {
+  for (const raw of paths) {
+    const relativePath = String(raw ?? '')
+      .replace(/\\/g, '/')
+      .trim();
+    if (!relativePath) {
+      continue;
+    }
+    const parts = relativePath.split('/').filter(Boolean);
+    if (parts.length === 0) {
+      continue;
+    }
     let currentLevel: any = structure;
     for (let i = 0; i < parts.length - 1; i++) {
-      const part: any = parts[i];
-      if(!currentLevel[part]) {
+      const part = parts[i] as string;
+      if (!currentLevel[part]) {
         currentLevel[part] = {};
       }
       currentLevel = currentLevel[part];
     }
-    currentLevel[parts[parts.length - 1]] = null;
+    currentLevel[parts[parts.length - 1] as string] = null;
   }
+}
 
-  const result = formatDirectoryStructure(structure);
-  fileTreeObj.value[skill.id] = result.join('\n');
+function formatFileTreeTextFromPaths(paths: string[]): string {
+  const structure: Record<string, unknown> = {};
+  fileTreePathsToNested(structure, paths);
+  if (Object.keys(structure).length === 0) {
+    return '';
+  }
+  return formatDirectoryStructure(structure).join('\n');
+}
 
-  // 获取 SKILL.md 文件
-  skillMdFile.value[skill.id] = skill.skillMdContent;
+function fileTreePayloadIsPresent(raw: unknown): boolean {
+  if (raw == null) {
+    return false;
+  }
+  if (typeof raw === 'string') {
+    return raw.trim().length > 0;
+  }
+  if (Array.isArray(raw)) {
+    return raw.some((x) => String(x ?? '').trim().length > 0);
+  }
+  return false;
+}
+
+/** 将接口 `fileTree`（路径数组、已排版树文本、JSON 数组字符串、换行路径）转为详情左侧展示文本 */
+function normalizeDetailFileTreeToDisplay(raw: unknown): string {
+  if (raw == null) {
+    return '';
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) {
+      return '';
+    }
+    if (/[├└│┌]/.test(t)) {
+      return t;
+    }
+    try {
+      const parsed = JSON.parse(t) as unknown;
+      if (Array.isArray(parsed)) {
+        const paths = parsed.map((x) => String(x)).filter(Boolean);
+        return paths.length > 0 ? formatFileTreeTextFromPaths(paths) : '';
+      }
+    } catch {
+      /* 非 JSON，按行视为路径 */
+    }
+    const lines = t.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    return lines.length > 0 ? formatFileTreeTextFromPaths(lines) : '';
+  }
+  if (Array.isArray(raw)) {
+    const paths = raw.map((x) => String(x)).filter((p) => p.length > 0);
+    return paths.length > 0 ? formatFileTreeTextFromPaths(paths) : '';
+  }
+  return '';
+}
+
+function fileTreeFromDetailDto(raw: unknown): SkillFileTreeField {
+  if (typeof raw === 'string') {
+    return raw;
+  }
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x));
+  }
+  return '';
+}
+
+const fileTreeObj = ref<any>({});
+const skillMdFile = ref<any>({});
+
+function detailFileTree(skill: any): void {
+  const idKey = String(skill.id ?? skill.skill_id ?? '');
+  fileTreeObj.value[idKey] = normalizeDetailFileTreeToDisplay(skill.fileTree);
+
+  skillMdFile.value[idKey] =
+    typeof skill.skillMdContent === 'string' ? skill.skillMdContent : '';
 }
 
 async function parseSkillArchiveForUpload(file: File): Promise<any> {
@@ -1488,22 +2005,157 @@ async function onDownload(id: string, version?: string): Promise<void> {
 }
 
 function onViewVersions(id: string): void {
+  void openVersionPanelFromMarketSkill(id);
+}
+
+async function openVersionPanelFromMarketSkill(id: string): Promise<void> {
+  versionManageShowOperations.value = false;
   const skill = skills.value.find((item) => skillKey(item) === id);
-  if (skill) {
-    versionPanelSkill.value = skill;
+  if (!skill) {
+    return;
+  }
+  const sid = String(skill.id ?? skill.skill_id ?? id);
+  const cur = String(skill.currentVersion ?? skill.version ?? '').trim();
+  versionPanelLoading.value = true;
+  versionPanelSkill.value = {
+    ...skill,
+    id: sid,
+    skill_id: sid,
+    name: skill.name ?? skill.skill_id,
+    version: cur,
+    versions: [],
+  };
+  try {
+    const res = await skillBaseService.querySkillVersions(sid);
+    if (res.meta.success && res.data) {
+      const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
+      versionPanelSkill.value = {
+        ...versionPanelSkill.value,
+        version: pickCurrentVersionFromRows(list, String(versionPanelSkill.value.version ?? cur)),
+        versions: list,
+      };
+    }
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '版本列表加载失败');
+  } finally {
+    versionPanelLoading.value = false;
   }
 }
 
-function openDetailPanel(id: string): void {
+async function openDetailPanel(id: string): Promise<void> {
   const skill = newSkills.value.find((item) => skillKey(item) === id);
-  detailFileTree(skill)
-  if (skill) {
-    detailPanelSkill.value = skill;
+  if (!skill) {
+    return;
   }
+  const hasTree = fileTreePayloadIsPresent(skill.fileTree);
+  const hasMd =
+    typeof skill.skillMdContent === 'string' && skill.skillMdContent.length > 0;
+  if (!hasTree || !hasMd) {
+    const { skillMdContent, fileTree } = await fetchSkillDetailExtras(String(id));
+    if (!hasTree && fileTreePayloadIsPresent(fileTree)) {
+      skill.fileTree = fileTree;
+    }
+    if (!hasMd && typeof skillMdContent === 'string') {
+      skill.skillMdContent = skillMdContent;
+    }
+  }
+  detailFileTree(skill);
+  detailPanelSkill.value = skill;
+  detailShowDelete.value = false;
+}
+
+function mapMyReleaseRowToDetailSkill(row: SkillListRecordDto): Record<string, unknown> {
+  return {
+    id: String(row.id),
+    name: row.name,
+    categoryGroupName: row.categoryGroupName ?? row.category ?? '',
+    author: row.author,
+    level: row.level,
+    publish_level: row.level,
+    downloads: row.downloads ?? 0,
+    currentVersion: row.version,
+    publish_name: row.orgName ?? undefined,
+  };
+}
+
+async function fetchSkillDetailExtras(
+  skillId: string,
+): Promise<{ skillMdContent: string; fileTree: SkillFileTreeField }> {
+  const id = String(skillId ?? '').trim();
+  if (!id) {
+    return { skillMdContent: '', fileTree: '' };
+  }
+  try {
+    const res = await skillBaseService.querySkillDetail(id);
+    if (res.meta.success && res.data) {
+      const d = res.data as SkillDetailDto;
+      return {
+        skillMdContent: typeof d.skillMdContent === 'string' ? d.skillMdContent : '',
+        fileTree: fileTreeFromDetailDto(d.fileTree),
+      };
+    }
+  } catch {
+  }
+  return { skillMdContent: '', fileTree: '' };
+}
+
+async function openDetailFromMyRelease(row: SkillListRecordDto): Promise<void> {
+  const shim = mapMyReleaseRowToDetailSkill(row);
+  const { skillMdContent, fileTree } = await fetchSkillDetailExtras(String(row.id));
+  shim.skillMdContent = skillMdContent;
+  shim.fileTree = fileTree;
+  detailFileTree(shim);
+  detailPanelSkill.value = shim;
+  detailShowDelete.value = true;
 }
 
 function closeDetailPanel(): void {
+  closeDetailDeleteConfirm();
   detailPanelSkill.value = null;
+  detailShowDelete.value = true;
+}
+
+async function onDetailVersionManage(): Promise<void> {
+  const skill = detailPanelSkill.value;
+  if (!skill) {
+    return;
+  }
+  const rowId = String(skill.id ?? skill.skill_id ?? '').trim();
+  if (!rowId) {
+    showToast('无法识别 Skill ID');
+    return;
+  }
+  const showOperations = detailShowDelete.value;
+  closeDetailPanel();
+  versionManageShowOperations.value = showOperations;
+  versionPanelLoading.value = true;
+  versionPanelSkill.value = {
+    name: skill.name,
+    skill_id: rowId,
+    id: rowId,
+    version: skill.currentVersion ?? skill.version,
+    versions: [],
+  };
+  try {
+    const res = await skillBaseService.querySkillVersions(rowId);
+    if (res.meta.success && res.data) {
+      const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
+      versionPanelSkill.value = {
+        ...versionPanelSkill.value,
+        version: pickCurrentVersionFromRows(
+          list,
+          String(versionPanelSkill.value.version ?? skill.currentVersion ?? skill.version ?? ''),
+        ),
+        versions: list,
+      };
+    } else if (transportIsHttp) {
+      showToast(res.message || '版本列表加载失败');
+    }
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '版本列表加载失败');
+  } finally {
+    versionPanelLoading.value = false;
+  }
 }
 
 function onDetailDownload(): void {
@@ -1517,11 +2169,144 @@ function onTrySkill(): void {
   if (!detailPanelSkill.value) {
     return;
   }
-  showToast(`已进入在线试用（演示）：${skillTitle(detailPanelSkill.value)}`);
+  showToast(`已进入在线调测（演示）：${skillTitle(detailPanelSkill.value)}`);
 }
 
 function closeVersionPanel(): void {
+  versionPreviewSkill.value = null;
   versionPanelSkill.value = null;
+  versionUnpublishing.value = null;
+  versionManageShowOperations.value = true;
+  const q: Record<string, unknown> = { ...route.query };
+  if (q.releaseSkillId != null || q.releaseView != null) {
+    delete q.releaseSkillId;
+    delete q.releaseView;
+    void router.replace({ name: 'skill-market', query: q as Record<string, string | string[]> });
+  }
+}
+
+async function onVersionManageBack(): Promise<void> {
+  const vs = versionPanelSkill.value;
+  if (!vs) {
+    return;
+  }
+  const snapshot = {
+    sid: String(vs.id ?? vs.skill_id ?? ''),
+    name: String(vs.name ?? ''),
+    version: String(vs.version ?? ''),
+  };
+  closeVersionPanel();
+  const marketSkill = newSkills.value.find((item) => skillKey(item) === snapshot.sid);
+  if (marketSkill) {
+    await openDetailPanel(snapshot.sid);
+    return;
+  }
+  const { skillMdContent, fileTree } = await fetchSkillDetailExtras(snapshot.sid);
+  const shim: Record<string, unknown> = {
+    id: snapshot.sid,
+    name: snapshot.name,
+    currentVersion: snapshot.version,
+    categoryGroupName: '',
+    author: '',
+    level: '',
+    downloads: 0,
+    skillMdContent,
+    fileTree,
+    publish_level: '',
+  };
+  detailFileTree(shim);
+  detailPanelSkill.value = shim;
+  detailShowDelete.value = true;
+}
+
+function onVersionRowDownload(version: string): void {
+  const vs = versionPanelSkill.value;
+  if (!vs) {
+    return;
+  }
+  const row = (vs.versions ?? []).find((r: SkillVersionListItemDto) => String(r.version) === String(version));
+  if (row && isVersionRowDeleted(row)) {
+    showToast('该版本已下架，无法下载');
+    return;
+  }
+  const id = String(vs.id ?? vs.skill_id ?? '').trim();
+  if (!id) {
+    return;
+  }
+  void onDownload(id, version);
+}
+
+function versionPreviewStorageKey(sid: string, ver: string): string {
+  return `__vprev__${sid}__${ver}`;
+}
+
+function onVersionViewDetail(row: SkillVersionListItemDto): void {
+  const vs = versionPanelSkill.value;
+  if (!vs) {
+    return;
+  }
+  const sid = String(vs.id ?? vs.skill_id ?? '').trim();
+  if (!sid) {
+    return;
+  }
+  const vk = versionPreviewStorageKey(sid, String(row.version));
+  const shim: Record<string, unknown> = {
+    id: vk,
+    name: String(vs.name ?? vs.skill_id ?? sid),
+    skill_id: sid,
+    currentVersion: row.version,
+    version: row.version,
+    author: String(vs.author ?? vs.publisher ?? vs.publish_name ?? ''),
+    categoryGroupName: String(vs.categoryGroupName ?? vs.tagFunctional ?? ''),
+    level: String(vs.level ?? vs.publish_level ?? ''),
+    publish_level: String(vs.publish_level ?? vs.level ?? ''),
+    downloads: vs.downloads ?? vs.download_count ?? 0,
+    fileTree: row.fileTree,
+    skillMdContent: row.skillMdContent,
+  };
+  detailFileTree(shim);
+  versionPreviewSkill.value = shim;
+}
+
+function closeVersionDetailPreview(): void {
+  versionPreviewSkill.value = null;
+}
+
+async function onVersionRowUnpublish(version: string): Promise<void> {
+  if (!window.confirm(`确定下架版本 v${version}？`)) {
+    return;
+  }
+  const vs = versionPanelSkill.value;
+  if (!vs) {
+    return;
+  }
+  const id = String(vs.id ?? vs.skill_id ?? '').trim();
+  if (!id) {
+    return;
+  }
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  const uid = effectiveSkillUserId();
+  if (!uid) {
+    showToast('请先配置用户工号');
+    return;
+  }
+  versionUnpublishing.value = version;
+  try {
+    const r = await skillBaseService.unpublishSkillVersion(id, { version, userId: uid });
+    if (!serviceSucceeded(r)) {
+      showToast(serviceMessage(r, '下架失败'));
+      return;
+    }
+    showToast('已下架该版本');
+    await reloadVersionPanelList();
+    await startOverviewRemoteFetch();
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '下架失败');
+  } finally {
+    versionUnpublishing.value = null;
+  }
 }
 
 const coreQuickEntries: { key: 'all' | 'devDept' | 'pdu' | 'productLine'; label: string }[] = [
@@ -1587,8 +2372,8 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'personal', label: '个人级' },
   { key: 'published', label: '组织级' },
-  // { key: 'reviewing', label: '组织审核中' },
-  // { key: 'rejected', label: '组织已驳回' },
+  { key: 'reviewing', label: '组织审核中' },
+  { key: 'rejected', label: '组织已驳回' },
 ];
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
@@ -1606,7 +2391,10 @@ function onReleaseSync(row: { skill: Skill; statusKey: ReleaseStatusKey; persona
 }
 
 function onReleaseRecord(row: { skill: Skill }): void {
-  versionPanelSkill.value = row.skill;
+  const id = String(row.skill.id ?? row.skill.skill_id ?? '');
+  if (id) {
+    void openVersionPanelFromMarketSkill(id);
+  }
 }
 
 const onClickFilterRelease = async(key: any) => {
@@ -1617,6 +2405,10 @@ const onClickFilterRelease = async(key: any) => {
     filterObj.value.status = '个人级';
   } else if(key === 'published') {
     filterObj.value.status = '组织级';
+  } else if (key === 'reviewing') {
+    filterObj.value.status = '组织审核中';
+  } else if (key === 'rejected') {
+    filterObj.value.status = '组织已驳回';
   }
   await loadMyPublishedSkills();
   filteredMyReleaseRows.value = [...myPublishedSkills.value];
@@ -1926,83 +2718,81 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       @submit="onUploadSubmit"
     />
 
+    <SkillDetailDialog
+      v-if="detailPanelSkill"
+      :skill="detailPanelSkill"
+      :file-tree-text="String(fileTreeObj[detailPanelSkill.id] ?? '')"
+      :skill-md-text="String(skillMdFile[detailPanelSkill.id] ?? '')"
+      :show-delete="detailShowDelete"
+      :deleting-skill-id="deletingMySkillId"
+      @close="closeDetailPanel"
+      @try-skill="onTrySkill"
+      @download="onDetailDownload"
+      @delete-click="openDetailDeleteConfirm"
+      @version-manage="onDetailVersionManage"
+    />
+
+    <SkillVersionManageDialog
+      v-if="versionPanelSkill"
+      :current-version="String(versionPanelSkill.version ?? '')"
+      :versions="(versionPanelSkill.versions ?? []) as SkillVersionListItemDto[]"
+      :loading="versionPanelLoading"
+      :unpublishing-version="versionUnpublishing"
+      :show-operations-column="versionManageShowOperations"
+      @close="closeVersionPanel"
+      @back="onVersionManageBack"
+      @download="onVersionRowDownload"
+      @unpublish="onVersionRowUnpublish"
+      @view-detail="onVersionViewDetail"
+    />
+
+    <SkillDetailDialog
+      v-if="versionPreviewSkill"
+      preview-only
+      :skill="versionPreviewSkill"
+      :file-tree-text="String(fileTreeObj[versionPreviewSkill.id] ?? '')"
+      :skill-md-text="String(skillMdFile[versionPreviewSkill.id] ?? '')"
+      @close="closeVersionDetailPreview"
+    />
+
     <Teleport to="body">
       <div
-        v-if="detailPanelSkill"
-        class="overlay detail-overlay"
-        role="presentation"
-        @click.self="closeDetailPanel"
+        v-if="deleteConfirmRow"
+        class="my-delete-popconfirm"
+        :style="deleteConfirmStyle"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="my-delete-pop-title"
+        @click.stop
       >
-        <section class="skill-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="skill-detail-title">
-          <header class="detail-head">
-            <h2 id="skill-detail-title">Skill 详情</h2>
-            <button type="button" class="detail-close" @click="closeDetailPanel">关闭</button>
-          </header>
-
-          <div class="detail-toolbar">
-            <div class="detail-tags">
-              <span class="detail-pill pill-category">{{ detailPanelSkill.categoryGroupName }}</span>
-              <span class="detail-pill pill-id">{{ detailPanelSkill.name }}</span>
-              <span class="detail-pill">版本 {{ detailPanelSkill.currentVersion }}</span>
-              <span class="detail-pill">作者 {{ detailPanelSkill.author }}</span>
-              <span class="detail-pill" :class="skillScopeClass(detailPanelSkill)">
-                {{ detailPanelSkill.level }}
-              </span>
-              <span class="detail-download">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M12 4v12m0 0 4-4m-4 4-4-4M5 20h14"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                {{ detailPanelSkill.downloads }}
-              </span>
-            </div>
-            <div class="detail-actions">
-              <button v-if="false" type="button" class="detail-btn ghost" @click="onTrySkill">在线试用</button>
-              <button type="button" class="detail-btn primary" @click="onDetailDownload">下载到本地</button>
-            </div>
-          </div>
-
-          <div class="detail-main">
-            <aside class="detail-file-panel">
-              <div class="detail-panel-title">文件结构</div>
-              <pre>{{ fileTreeObj[detailPanelSkill.id] }}</pre>
-            </aside>
-            <article class="detail-md-panel">
-              <div class="detail-panel-title">SKILL.md</div>
-              <div class="detail-md-body">
-                <h3>{{ detailPanelSkill.name }} Skill</h3>
-                <pre>{{ skillMdFile[detailPanelSkill.id] }}</pre>
-              </div>
-            </article>
-          </div>
-        </section>
+        <p id="my-delete-pop-title" class="my-delete-pop-title">
+          确定删除「{{ deleteConfirmRow.name ?? deleteConfirmRow.id }}」及<strong>全部版本</strong>？
+        </p>
+        <p class="my-delete-pop-hint">此操作不可恢复。</p>
+        <div class="my-delete-pop-actions">
+          <button type="button" class="mini" @click="closeDeleteConfirm">取消</button>
+          <button type="button" class="mini my-rel-delete-btn" @click="executeDeleteMyReleaseSkill">确定删除</button>
+        </div>
       </div>
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="versionPanelSkill" class="overlay" role="presentation" @click.self="closeVersionPanel">
-        <div class="v-dialog" role="dialog" aria-modal="true">
-          <div class="v-head">
-            <strong>{{ versionPanelSkill.name ?? versionPanelSkill.skill_id }}</strong>
-            <button type="button" class="close-x" aria-label="关闭" @click="closeVersionPanel">x</button>
-          </div>
-          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version ?? '-' }}</p>
-          <ul class="v-list">
-            <li
-              v-for="version in [...(versionPanelSkill.versions ?? [])].reverse()"
-              :key="version.version + version.publishTime"
-            >
-              <span class="ver">{{ version.version }}</span>
-              <span class="time">{{ version.publishTime }}</span>
-              <span v-if="version.packageFileName" class="note">{{ version.packageFileName }}</span>
-              <span v-if="version.note" class="note">{{ version.note }}</span>
-            </li>
-          </ul>
+      <div
+        v-if="detailDeleteConfirmOpen"
+        class="my-delete-popconfirm"
+        :style="detailDeleteConfirmStyle"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detail-delete-pop-title"
+        @click.stop
+      >
+        <p id="detail-delete-pop-title" class="my-delete-pop-title">
+          确定删除「{{ detailDeletePendingTitle }}」及<strong>全部版本</strong>？
+        </p>
+        <p class="my-delete-pop-hint">此操作不可恢复。</p>
+        <div class="my-delete-pop-actions">
+          <button type="button" class="mini" @click="closeDetailDeleteConfirm">取消</button>
+          <button type="button" class="mini my-rel-delete-btn" @click="executeDetailDeleteSkill">确定删除</button>
         </div>
       </div>
     </Teleport>
@@ -2452,50 +3242,66 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <tr>
                 <th class="col-skill">Skill</th>
                 <th class="col-level">当前层级</th>
-                <th class="col-ver">最新版本</th>
-                <th v-if="false" class="col-status">状态</th>
+                <th class="col-ver">当前版本</th>
+                <th class="col-status">状态</th>
                 <th class="col-dl">下载量</th>
-                <th v-if="false" class="col-action">最近动作</th>
                 <th class="col-ops">操作</th>
               </tr>
             </thead>
             <tbody>
               <tr
                 v-for="(row, index) in filteredMyReleaseRows"
-                :key="index"
-                class="clickable-row"
-                @click="openDetailPanel(skillKey(row))"
+                :key="`${row.id}-${index}`"
+                class="clickable-row my-release-data-row"
+                role="button"
+                tabindex="0"
+                @click="onMyReleaseRowClick(row)"
+                @keydown.enter.prevent="onMyReleaseRowClick(row)"
               >
                 <td>
                   <div class="skill-main">
-                    <strong class="skill-name">{{ row.name }}</strong>
+                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
                   </div>
                 </td>
                 <td>
-                  <div class="cell-main">{{ row.level }}</div>
+                  <div class="cell-main cell-main-plain">{{ myPublishCurrentLayerText(row) }}</div>
                 </td>
                 <td>
-                  <div class="cell-main">{{ row.currentVersion }}</div>
+                  <div class="cell-main cell-main-plain">{{ row.version }}</div>
                 </td>
-                <!-- <td>
-                  <span class="st" :class="`st-${row.statusKey}`">{{ row.statusLabel }}</span>
-                </td> -->
+                <td>
+                  <span class="st" :class="myPublishStatusPill(row).cls">{{ myPublishStatusPill(row).label }}</span>
+                </td>
                 <td class="num">
                   {{ (row.downloads ?? 0).toLocaleString('zh-CN') }}
                 </td>
-                <!-- <td class="cell-sub">{{ row.lastAction }}</td> -->
-                <td @click.stop>
-                  <div class="ops">
-                    <button type="button" class="mini" @click="openUpload">更新版本</button>
-                    <button disabled type="button" class="mini" @click="onReleaseSync(row)">
-                      {{ releaseSyncActionText(row) }}
+                <td class="col-ops-td" @click.stop>
+                  <div class="ops my-release-ops">
+                    <div class="my-rel-primary-wrap">
+                      <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded">已升级</span>
+                      <button
+                        v-else-if="myPublishReleaseOp(row) === 'upgrade'"
+                        type="button"
+                        class="btn primary sm my-rel-upgrade-btn"
+                        @click="onReleaseUpgradeToOrg(row)"
+                      >
+                        升级为组织级
+                      </button>
+                      <button v-else type="button" class="mini my-rel-pending-btn" disabled>升级中</button>
+                    </div>
+                    <button
+                      type="button"
+                      class="mini my-rel-delete-btn my-rel-delete-trigger"
+                      :disabled="deletingMySkillId === String(row.id)"
+                      @click.stop="openDeleteConfirm(row, $event)"
+                    >
+                      {{ deletingMySkillId === String(row.id) ? '删除中…' : '删除' }}
                     </button>
-                    <button disabled type="button" class="mini" @click="onReleaseRecord(row)">记录</button>
                   </div>
                 </td>
               </tr>
               <tr v-if="filteredMyReleaseRows.length === 0">
-                <td colspan="7" class="empty-row">暂无符合条件的数据</td>
+                <td colspan="6" class="empty-row">暂无符合条件的数据</td>
               </tr>
             </tbody>
           </table>
@@ -2994,25 +3800,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </div>
       </section>
     </div>
-
-    <Teleport to="body">
-      <div v-if="versionPanelSkill" class="overlay" role="presentation" @click.self="closeVersionPanel">
-        <div class="v-dialog" role="dialog" aria-modal="true">
-          <div class="v-head">
-            <strong>{{ versionPanelSkill.name ?? versionPanelSkill.skill_id }}</strong>
-            <button type="button" class="close-x" aria-label="关闭" @click="closeVersionPanel">×</button>
-          </div>
-          <p class="v-sub">当前展示版本：{{ versionPanelSkill.version ?? '-' }}</p>
-          <ul class="v-list">
-            <li v-for="v in [...(versionPanelSkill.versions ?? [])].reverse()" :key="v.version + v.publishTime">
-              <span class="ver">{{ v.version }}</span>
-              <span class="time">{{ v.publishTime }}</span>
-              <span v-if="v.note" class="note">{{ v.note }}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </Teleport>
 
     <Teleport to="body">
       <div v-if="orgModalOpen" class="overlay" role="presentation" @click.self="closeOrgModal">
@@ -5825,246 +6612,6 @@ width: 100%;
   padding: 16px;
 }
 
-.detail-overlay {
-  background: rgba(15, 23, 42, 0.48);
-}
-
-.skill-detail-dialog {
-  width: min(67%, calc(100vw - 48px));
-  max-height: calc(100vh - 48px);
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.24);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.detail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 16px 22px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.detail-head h2 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 20px;
-  line-height: 1.25;
-  font-weight: 800;
-}
-
-.detail-close,
-.detail-btn {
-  border: 1px solid #dbe4f0;
-  background: #fff;
-  color: #172033;
-  border-radius: 7px;
-  min-height: 34px;
-  padding: 0 13px;
-  font-size: 13px;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.detail-close:hover,
-.detail-btn.ghost:hover {
-  color: #2563eb;
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.detail-toolbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 18px 22px 12px;
-}
-
-.detail-tags {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.detail-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: #f1f5f9;
-  color: #475569;
-  border: 1px solid #e5eaf1;
-  font-size: 12px;
-  line-height: 1.2;
-}
-
-.detail-pill.pill-category,
-.detail-pill.pill-id {
-  background: #eff6ff;
-  color: #2563eb;
-  border-color: #dbeafe;
-}
-
-.detail-pill.scope-org {
-  background: #dcfce7;
-  color: #15803d;
-  border-color: #bbf7d0;
-  font-weight: 800;
-}
-
-.detail-pill.scope-personal {
-  background: #f1f4f8;
-  color: #3f5f7c;
-  border-color: #edf1f5;
-  font-weight: 800;
-}
-
-.detail-download {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #1e293b;
-  font-size: 13px;
-}
-
-.detail-download svg {
-  width: 16px;
-  height: 16px;
-}
-
-.detail-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.detail-btn.primary {
-  color: #fff;
-  background: #2563eb;
-  border-color: #2563eb;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
-}
-
-.detail-btn.primary:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
-}
-
-.detail-main {
-  display: grid;
-  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 0 22px 18px;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.detail-file-panel,
-.detail-md-panel {
-  min-height: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 7px;
-  background: #fff;
-  overflow: auto;
-}
-
-.detail-panel-title {
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  color: #334155;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.detail-file-panel pre {
-  margin: 0;
-  padding: 16px;
-  white-space: pre-wrap;
-  color: #334155;
-  font-size: 12px;
-  line-height: 1.55;
-  font-family: Consolas, 'Courier New', monospace;
-}
-
-.detail-md-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-.detail-md-body {
-  padding: 18px;
-  overflow: auto;
-  color: #334155;
-  font-size: 13px;
-  line-height: 1.58;
-}
-
-.detail-md-body h3 {
-  margin: 0 0 8px;
-  color: #334155;
-  font-size: 22px;
-  line-height: 1.2;
-}
-
-.detail-md-body h4 {
-  margin: 16px 0 8px;
-  color: #334155;
-  font-size: 16px;
-}
-
-.detail-md-body p,
-.detail-md-body ul {
-  margin: 0 0 12px;
-}
-
-.detail-meta-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.detail-meta-table th,
-.detail-meta-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #e2e8f0;
-  text-align: left;
-  font-size: 13px;
-}
-
-.detail-meta-table tr:last-child th,
-.detail-meta-table tr:last-child td {
-  border-bottom: 0;
-}
-
-.detail-meta-table th {
-  width: 132px;
-  color: #475569;
-  background: #f8fafc;
-  font-weight: 800;
-}
-
-.detail-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 22px 18px;
-  border-top: 1px solid #e5e7eb;
-}
-
 .v-dialog {
   width: 100%;
   max-width: 420px;
@@ -6098,31 +6645,70 @@ width: 100%;
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 280px;
+  max-height: 320px;
   overflow: auto;
-}
-
-.v-list li {
-  display: grid;
-  grid-template-columns: 72px 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  font-size: 13px;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
 }
 
-.v-list .ver {
-  font-weight: 600;
-  color: #1890ff;
+.v-list-item {
+  padding: 10px 12px;
+  border: 1px solid #e8ecf1;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fafbfd 0%, #fff 100%);
+}
+
+.v-list-row-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.v-list .ver-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
 }
 
 .v-list .time {
-  color: rgba(0, 0, 0, 0.45);
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+
+.v-list-meta {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.v-list-meta .note {
+  word-break: break-all;
+}
+
+.v-meta-sep {
+  margin: 0 4px;
+  color: #cbd5e1;
 }
 
 .v-list .note {
-  grid-column: 1 / -1;
-  color: rgba(0, 0, 0, 0.65);
+  grid-column: unset;
+  color: inherit;
 }
 
 .v-dialog-wide {
@@ -6333,33 +6919,6 @@ width: 100%;
   .filter-block,
   .two-col {
     grid-template-columns: 1fr;
-  }
-
-  .skill-detail-dialog {
-    width: calc(100vw - 24px);
-  }
-
-  .detail-toolbar,
-  .detail-main {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .detail-actions,
-  .detail-foot {
-    width: 100%;
-  }
-
-  .detail-btn {
-    flex: 1;
-  }
-
-  .detail-main {
-    overflow: auto;
   }
 }
 
@@ -7084,6 +7643,11 @@ width: 100%;
   min-width: 132px;
 }
 
+.my-release-panel .my-table thead th,
+.my-release-panel .my-table tbody td {
+  vertical-align: middle;
+}
+
 .my-release-panel .col-status {
   min-width: 116px;
 }
@@ -7097,7 +7661,7 @@ width: 100%;
 }
 
 .my-release-panel .col-ops {
-  min-width: 260px;
+  min-width: 220px;
 }
 
 .my-release-panel .skill-name,
@@ -7135,9 +7699,141 @@ width: 100%;
   background: #ffedd5;
 }
 
-.my-release-panel .st-rejected-pdu {
+.my-release-panel .st-personal {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.my-release-panel .st-neutral {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.my-release-panel .cell-main-plain {
+  font-weight: 600;
+  color: #334155;
+}
+
+.my-release-panel .skill-name-link {
+  cursor: pointer;
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.my-release-panel .my-release-data-row {
+  cursor: pointer;
+}
+
+.my-release-panel .my-release-data-row:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+.my-release-panel .my-rel-upgraded {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 6px 12px;
+  min-height: 31px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  background: #f0fdf4;
+}
+
+.my-release-panel .my-rel-upgrade-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.my-release-panel .my-rel-primary-wrap .my-rel-pending-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.my-release-panel .my-rel-pending-btn {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.my-release-panel .my-rel-delete-btn {
+  flex: 0 0 auto;
+  align-self: center;
   color: #b91c1c;
-  background: #fee2e2;
+  border-color: #fecaca;
+  background: #fff;
+}
+
+.my-release-panel .my-rel-delete-btn:hover:not(:disabled) {
+  color: #991b1b;
+  border-color: #f87171;
+  background: #fef2f2;
+}
+
+.my-release-panel .my-rel-delete-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.my-release-panel .col-ops-td {
+  min-width: 0;
+  width: 1%;
+}
+
+.v-loading,
+.v-empty {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.my-delete-popconfirm {
+  padding: 12px 14px 14px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e8ecf1;
+  box-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
+}
+
+.my-delete-pop-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #0f172a;
+}
+
+.my-delete-pop-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.my-delete-pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-delete-pop-actions .mini {
+  min-width: 72px;
 }
 
 .my-release-panel .mini {
@@ -7156,10 +7852,20 @@ width: 100%;
   background: #eff6ff;
 }
 
-.my-release-panel .ops {
+.my-release-panel .ops.my-release-ops {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
+}
+
+.my-release-panel .my-rel-primary-wrap {
+  flex: 0 0 136px;
+  width: 136px;
+  min-width: 136px;
+  max-width: 136px;
+  display: flex;
+  align-items: stretch;
 }
 
 .my-release-panel .num {

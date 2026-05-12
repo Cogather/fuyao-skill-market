@@ -101,6 +101,32 @@ export const skillBaseService = {
         })
     },
 
+    /** `GET /api/skills/{id}/versions` 版本列表 */
+    querySkillVersions: (id: string): any => {
+        return httpRequest.skill<any>({
+            url: `/${id}/versions`,
+            method: 'get',
+        })
+    },
+
+    /** `DELETE /api/skills/{id}/all` 删除 Skill 及全部版本；params 含操作者工号 userId */
+    deleteSkillAll: (id: string, params: any): any => {
+        return httpRequest.skill<any>({
+            url: `/${id}/all`,
+            method: 'delete',
+            params,
+        })
+    },
+
+    /** `DELETE /api/skills/{id}` 下架指定版本；params 含 version、userId */
+    unpublishSkillVersion: (id: string, params: any): any => {
+        return httpRequest.skill<any>({
+            url: `/${id}`,
+            method: 'delete',
+            params,
+        })
+    },
+
     // skill版本上传接口
     uploadSkillVersion: (formData: FormData, id: string): any => {
         return httpRequest.skill<any>({

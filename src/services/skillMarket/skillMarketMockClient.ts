@@ -24,10 +24,13 @@ import type {
   QualityReviewArchiveBody,
   QualityReviewListParams,
   QualityReviewSaveBody,
+  SkillDeleteAllParams,
   SkillListParamsDto,
   SkillListPayloadDto,
   SkillListRecordDto,
+  SkillUnpublishVersionParams,
   SkillUploadParseResultDto,
+  SkillVersionListItemDto,
   SuperAdminCreateBody,
   SuperAdminDto,
   SuperAdminUpdateBody,
@@ -42,6 +45,7 @@ import type {
 } from './apiTypes';
 import { skillToListRecord, stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
+import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
 import { marketSkillsToOpsExcelRows } from './opsBundleFromSkills';
@@ -64,6 +68,26 @@ function paramsToSkillListQuery(params: SkillListParamsDto): SkillListQuery {
     pageSize: params.pageSize,
     scope,
   };
+}
+
+function semverNums(v: string): number[] {
+  return String(v)
+    .split('.')
+    .map((p) => Number.parseInt(p, 10))
+    .map((n) => (Number.isFinite(n) ? n : 0));
+}
+
+function compareSemverDesc(a: string, b: string): number {
+  const pa = semverNums(a);
+  const pb = semverNums(b);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pb[i] ?? 0) - (pa[i] ?? 0);
+    if (d !== 0) {
+      return d;
+    }
+  }
+  return 0;
 }
 
 const ORG_SEED: OrganizationDto[] = [
@@ -340,7 +364,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
 
     async downloadSkill(skillId: string, options?: SkillDownloadOptions): Promise<SkillDownloadResult> {
       void options?.sourcePage;
-      return downloadSkillApi(skills.value, skillId);
+      return downloadSkillApi(skills.value, skillId, { version: options?.version });
     },
 
     async fetchUserDepartment() {
@@ -502,15 +526,81 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         return ok<any | null>(null);
       }
       const rec = skillToListRecord(skill, skill.latestPublishTime ?? '');
+      const fileTree =
+        skill.fileTree != null
+          ? skill.fileTree
+          : (['SKILL.md', 'README.md', 'scripts/main.py'] as const);
+      const skillMdContent =
+        typeof skill.skillMdContent === 'string' && skill.skillMdContent.trim()
+          ? skill.skillMdContent
+          : `# ${rec.name}\n\n## 概述\n\n(Mock)`;
       const dto: any = {
         ...rec,
         requirements: '本地运行环境、Python 3.10+',
         lastReviewComment: null,
         lastReviewedAt: null,
-        fileTree: ['SKILL.md', 'README.md', 'scripts/main.py'],
-        skillMdContent: `# ${rec.name}\n\n## 概述\n\n(Mock)`,
+        fileTree: Array.isArray(fileTree) ? [...fileTree] : fileTree,
+        skillMdContent,
       };
       return ok(dto);
+    },
+
+    async fetchSkillVersions(id: string | number) {
+      const skill = findSkillByApiId(id);
+      if (!skill) {
+        return { code: 40401, message: 'Skill 不存在', data: [] as SkillVersionListItemDto[] };
+      }
+      return ok(mapSkillVersionsToListDto(skill));
+    },
+
+    async deleteSkillAll(id: string | number, params: SkillDeleteAllParams) {
+      void params;
+      const skill = findSkillByApiId(id);
+      if (!skill) {
+        return { code: 40401, message: 'Skill 不存在', data: null as unknown };
+      }
+      skills.value = skills.value.filter((s) => s !== skill);
+      return ok({ ok: true });
+    },
+
+    async unpublishSkillVersion(id: string | number, params: SkillUnpublishVersionParams) {
+      void params.userId;
+      const skill = findSkillByApiId(id);
+      if (!skill) {
+        return { code: 40401, message: 'Skill 不存在', data: null as unknown };
+      }
+      const vers = [...(skill.versions ?? [])];
+      const ix = vers.findIndex((v) => v.version === params.version);
+      if (ix < 0) {
+        return { code: 40401, message: '版本不存在', data: null as unknown };
+      }
+      const cur = vers[ix]!;
+      if ((cur as { unpublished?: boolean }).unpublished) {
+        return { code: 40001, message: '该版本已下架', data: null as unknown };
+      }
+      vers[ix] = { ...cur, unpublished: true };
+      const active = vers.filter((v) => !(v as { unpublished?: boolean }).unpublished);
+      let nextVersion = skill.version;
+      let nextTime = skill.latestPublishTime;
+      if (active.length > 0) {
+        const sorted = [...active].sort((a, b) => compareSemverDesc(a.version, b.version));
+        const head = sorted[0];
+        if (head) {
+          nextVersion = head.version;
+          nextTime = head.publishTime;
+        }
+      }
+      const next: Skill = {
+        ...skill,
+        versions: vers,
+        version: nextVersion,
+        latestPublishTime: nextTime,
+      };
+      const idx = skills.value.findIndex((s) => s === skill);
+      if (idx >= 0) {
+        skills.value[idx] = next;
+      }
+      return ok({ ok: true });
     },
 
     async fetchSkillDownloadStats(id: string | number, params?: SkillDownloadStatsParams) {

@@ -19,6 +19,7 @@ import type {
   QualityReviewArchiveBody,
   QualityReviewListParams,
   QualityReviewSaveBody,
+  SkillDeleteAllParams,
   SkillDetailDto,
   SkillDownloadRequestBody,
   SkillDownloadResultDto,
@@ -27,7 +28,9 @@ import type {
   MySkillsParams,
   SkillListParamsDto,
   SkillListPayloadDto,
+  SkillUnpublishVersionParams,
   SkillUploadParseResultDto,
+  SkillVersionListItemDto,
   SuperAdminCreateBody,
   SuperAdminDto,
   SuperAdminUpdateBody,
@@ -173,6 +176,14 @@ export function createSkillMarketHttpClient(
     return readJsonEnvelope<T>(res);
   }
 
+  async function deleteReq<T>(path: string): Promise<ApiEnvelope<T>> {
+    const res = await fetch(joinBaseUrl(baseUrl, path), {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return readJsonEnvelope<T>(res);
+  }
+
   async function postJson<T>(path: string, body: unknown): Promise<ApiEnvelope<T>> {
     const contextUserId = isSkillsApiPath(path) ? await waitForContextUserId(userId) : '';
     const res = await fetch(joinBaseUrl(baseUrl, path), {
@@ -278,17 +289,23 @@ export function createSkillMarketHttpClient(
 
     async downloadSkill(skillId: string, options?: SkillDownloadOptions): Promise<SkillDownloadResult> {
       const sourcePage = options?.sourcePage ?? 'market';
+      const ver = String(options?.version ?? '').trim();
       const prev = skills.value.find(
         (s) =>
           String(s.id) === String(skillId) ||
           s.skill_id === skillId ||
           String(stableNumericId(s)) === String(skillId),
       );
-      const body: SkillDownloadRequestBody = { sourcePage };
-      const env = await postJson<SkillDownloadResultDto>(
-        SKILL_MARKET_ENDPOINTS.skillDownload(skillId),
-        body,
-      );
+      const downloadPath = `${SKILL_MARKET_ENDPOINTS.skillDownload(skillId)}${
+        ver ? toSearchParams({ version: ver }) : ''
+      }`;
+      const contextUserId = await waitForContextUserId(userId);
+      const pathWithUser = appendUserIdToSkillsParams(downloadPath, contextUserId);
+      const body: SkillDownloadRequestBody = {
+        sourcePage,
+        ...(ver ? { version: ver } : {}),
+      };
+      const env = await postJson<SkillDownloadResultDto>(pathWithUser, body);
       if (env.code !== 0 || !env.data) {
         throw new Error(env.message || '下载失败');
       }
@@ -379,6 +396,23 @@ export function createSkillMarketHttpClient(
 
     fetchSkillDetail(id: string | number) {
       return get<SkillDetailDto | null>(SKILL_MARKET_ENDPOINTS.skillById(id));
+    },
+
+    fetchSkillVersions(id: string | number) {
+      return get<SkillVersionListItemDto[]>(SKILL_MARKET_ENDPOINTS.skillVersions(id));
+    },
+
+    async deleteSkillAll(id: string | number, params: SkillDeleteAllParams) {
+      const uid = String(params.userId ?? '').trim() || (await waitForContextUserId(userId));
+      const path = appendUserIdToSkillsParams(SKILL_MARKET_ENDPOINTS.skillDeleteAll(id), uid);
+      return deleteReq(path);
+    },
+
+    async unpublishSkillVersion(id: string | number, params: SkillUnpublishVersionParams) {
+      const uid = String(params.userId ?? '').trim() || (await waitForContextUserId(userId));
+      const base = `${SKILL_MARKET_ENDPOINTS.skillById(id)}${toSearchParams({ version: params.version })}`;
+      const path = appendUserIdToSkillsParams(base, uid);
+      return deleteReq(path);
     },
 
     async uploadSkillArchive(file: File) {

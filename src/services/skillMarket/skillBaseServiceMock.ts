@@ -4,8 +4,30 @@ import type { Skill, SkillVersionEntry } from '../../types/skill';
 import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
 import { stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
+import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { marketSkillsToOpsExcelRows } from './opsBundleFromSkills';
+
+function semverNums(v: string): number[] {
+  return String(v)
+    .split('.')
+    .map((p) => Number.parseInt(p, 10))
+    .map((n) => (Number.isFinite(n) ? n : 0));
+}
+
+/** 版本号降序（2.0.1 > 1.2.0） */
+function compareSemverDesc(a: string, b: string): number {
+  const pa = semverNums(a);
+  const pb = semverNums(b);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pb[i] ?? 0) - (pa[i] ?? 0);
+    if (d !== 0) {
+      return d;
+    }
+  }
+  return 0;
+}
 
 type MockChannel = 'api' | 'skill' | 'fuyao' | 'direct';
 
@@ -86,7 +108,7 @@ type MockSkillRecord = Skill & {
   requirements: string;
   fileDir: string;
   packagePath: string;
-  fileTree: string[];
+  fileTree: string | string[];
   skillMdContent: string;
   createdAt: string;
   updatedAt: string;
@@ -268,6 +290,43 @@ function readParams(config: AxiosRequestConfig): Record<string, unknown> {
   return params;
 }
 
+/** 开发环境 mock 日志：避免直接打印 FormData/Blob 等不可读内容 */
+function summarizeMockRequestBody(data: unknown): unknown {
+  if (data === undefined || data === null || data === '') {
+    return undefined;
+  }
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    const fields: string[] = [];
+    data.forEach((value, key) => {
+      if (typeof File !== 'undefined' && value instanceof File) {
+        fields.push(`${key}=File(${value.name}, ${value.size}b)`);
+      } else {
+        const s = String(value);
+        fields.push(`${key}=${s.length > 120 ? `${s.slice(0, 120)}…` : s}`);
+      }
+    });
+    return { _type: 'FormData', fields };
+  }
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    return { _type: 'Blob', size: data.size };
+  }
+  if (typeof data === 'string') {
+    const t = data.trim();
+    if (!t) {
+      return undefined;
+    }
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        return JSON.parse(t) as unknown;
+      } catch {
+        return t.length > 500 ? `${t.slice(0, 500)}…` : t;
+      }
+    }
+    return t.length > 500 ? `${t.slice(0, 500)}…` : t;
+  }
+  return data;
+}
+
 function readNumber(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -354,6 +413,27 @@ function makeSkillMd(
   ].join('\n');
 }
 
+const DEFAULT_MOCK_FILE_TREE: string[] = ['SKILL.md', 'README.md', 'scripts/main.py'];
+
+function pickMockFileTreeFromSeed(seed: Skill): string | string[] {
+  const ft = (seed as { fileTree?: unknown }).fileTree;
+  if (typeof ft === 'string' && ft.trim()) {
+    return ft;
+  }
+  if (Array.isArray(ft) && ft.length > 0) {
+    return ft.map((x) => String(x));
+  }
+  return [...DEFAULT_MOCK_FILE_TREE];
+}
+
+function pickMockSkillMdFromSeed(seed: Skill, base: MockSkillRecord): string {
+  const raw = seed.skillMdContent;
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw;
+  }
+  return makeSkillMd(base);
+}
+
 function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const id = skillMockId(seed);
   const level = seed.publish_level ?? seed.level ?? '个人级';
@@ -416,7 +496,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     requirements: '需要 Python 3.10+，可按 Skill 文档安装依赖。',
     fileDir: `fuyao/skills/${seed.name ?? seed.skill_id}/${currentVersion}`,
     packagePath: `fuyao/skills/${seed.name ?? seed.skill_id}/${currentVersion}/skill.zip`,
-    fileTree: ['SKILL.md', 'README.md', 'scripts/main.py'],
+    fileTree: pickMockFileTreeFromSeed(seed),
     skillMdContent: '',
     createdAt: updatedAt,
     updatedAt,
@@ -426,7 +506,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     qualityBadges: (seed.rating ?? 0) >= 4.7 ? ['优秀 Skill', '高分 Skill'] : [],
     scored: (seed.rating ?? 0) > 0,
   };
-  base.skillMdContent = makeSkillMd(base);
+  base.skillMdContent = pickMockSkillMdFromSeed(seed, base);
   return base;
 }
 
@@ -703,8 +783,11 @@ function createSkillFromBody(body: Record<string, unknown>): MockSkillRecord {
   record.requirements = readString(body.requirements, record.requirements);
   record.packagePath = readString(body.packagePath, record.packagePath);
   record.skillMdContent = readString(body.skillMdContent, record.skillMdContent);
-  if (Array.isArray(body.fileTree)) {
-    record.fileTree = body.fileTree.map((x) => String(x));
+  const ftBody = body.fileTree;
+  if (Array.isArray(ftBody)) {
+    record.fileTree = ftBody.map((x) => String(x));
+  } else if (typeof ftBody === 'string' && ftBody.trim()) {
+    record.fileTree = ftBody;
   }
   skillRecords = [record, ...skillRecords];
   return { ...record };
@@ -743,11 +826,31 @@ function handleSkillRequest(method: string, path: string, config: AxiosRequestCo
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  const deleteAllMatch = /^\/([^/]+)\/all$/.exec(path);
+  if (method === 'delete' && deleteAllMatch) {
+    const skill = findSkill(deleteAllMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    skillRecords = skillRecords.filter((s) => s !== skill);
+    return ok({ ok: true });
+  }
+
   const downloadMatch = /^\/([^/]+)\/download$/.exec(path);
   if (method === 'post' && downloadMatch) {
     const skill = findSkill(downloadMatch[1]);
     if (!skill) {
       return fail('Skill 不存在', '');
+    }
+    const reqVersion = String(params.version ?? '').trim();
+    if (reqVersion && !(skill.versions ?? []).some((v) => v.version === reqVersion)) {
+      return fail('指定版本不存在', '');
+    }
+    if (reqVersion) {
+      const v = (skill.versions ?? []).find((x) => x.version === reqVersion);
+      if (v && (v as { unpublished?: boolean }).unpublished) {
+        return fail('该版本已下架，无法下载', '');
+      }
     }
     skill.downloads = (skill.downloads ?? 0) + 1;
     skill.download_count = (skill.download_count ?? 0) + 1;
@@ -773,14 +876,54 @@ function handleSkillRequest(method: string, path: string, config: AxiosRequestCo
   }
 
   const detailMatch = /^\/([^/]+)$/.exec(path);
+  if (method === 'delete' && detailMatch) {
+    const ver = String(params.version ?? '').trim();
+    if (!ver) {
+      return fail('请传入 query.version 以下架指定版本', null, 40001);
+    }
+    const skill = findSkill(detailMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    const list = [...(skill.versions ?? [])];
+    const ix = list.findIndex((x) => x.version === ver);
+    if (ix < 0) {
+      return fail('版本不存在', null, 40401);
+    }
+    const target = list[ix] as SkillVersionEntry & { unpublished?: boolean };
+    if (target.unpublished) {
+      return fail('该版本已下架', null, 40001);
+    }
+    list[ix] = { ...target, unpublished: true };
+    skill.versions = list;
+    const active = list.filter((x) => !(x as { unpublished?: boolean }).unpublished);
+    if (active.length > 0) {
+      const sorted = [...active].sort((a, b) => compareSemverDesc(a.version, b.version));
+      const head = sorted[0];
+      if (head) {
+        skill.version = head.version;
+        skill.currentVersion = head.version;
+      }
+    }
+    skill.updatedAt = nowText();
+    return ok({ ok: true });
+  }
   if (method === 'get' && detailMatch) {
     const skill = findSkill(detailMatch[1]);
     return skill ? ok({ ...skill }) : fail('Skill 不存在', null, 40401);
   }
 
-  const versionMatch = /^\/([^/]+)\/versions$/.exec(path);
-  if (method === 'post' && versionMatch) {
-    const skill = findSkill(versionMatch[1]);
+  const versionsPathMatch = /^\/([^/]+)\/versions$/.exec(path);
+  if (method === 'get' && versionsPathMatch) {
+    const skill = findSkill(versionsPathMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    const rows = mapSkillVersionsToListDto(skill as Skill);
+    return ok(rows);
+  }
+  if (method === 'post' && versionsPathMatch) {
+    const skill = findSkill(versionsPathMatch[1]);
     if (!skill) {
       return fail('Skill 不存在', null, 40401);
     }
@@ -1095,7 +1238,15 @@ export function maybeHandleSkillBaseMockRequest<T>(
   const method = normalizeMethod(config.method);
   const path = normalizePath(config.url);
   if (import.meta.env.DEV) {
-    console.info(`[skillBaseMock] ${channel} ${method.toUpperCase()} ${path || '(empty)'}`);
+    const params = readParams(config);
+    const data = summarizeMockRequestBody(config.data);
+    console.info('[skillBaseMock]', {
+      channel,
+      method: method.toUpperCase(),
+      path: path || '(empty)',
+      params,
+      data,
+    });
   }
 
   if (channel === 'direct') {
@@ -1119,7 +1270,11 @@ export function maybeHandleSkillBaseMockRequest<T>(
       return Promise.resolve(envelope as T);
     }
     if (import.meta.env.DEV) {
-      console.warn('[skillBaseMock] no handler (fuyao)', path);
+      console.warn('[skillBaseMock] no handler (fuyao)', {
+        path,
+        params: readParams(config),
+        data: summarizeMockRequestBody(config.data),
+      });
     }
     return null;
   }

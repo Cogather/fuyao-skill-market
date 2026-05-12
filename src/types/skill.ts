@@ -42,11 +42,19 @@ export interface Skill {
   tagOrg?: string;
   /** 标签集合，用于市场总览左侧标签筛选 */
   tags?: string;
+  /** 详情/联调：列表或详情可能带回的目录树（路径数组或换行分隔路径串） */
+  fileTree?: string | string[];
+  /** 详情/联调：列表或详情可能带回的 SKILL.md 正文 */
+  skillMdContent?: string;
 }
 
 export interface SkillVersionEntry {
   version: string;
   publishTime: string;
+  /** 版本发布人（列表展示） */
+  publisher?: string;
+  /** 为 true 时表示已下架，仍保留在历史列表中 */
+  unpublished?: boolean;
   note?: string;
   packageFileName?: string;
   packageSize?: number;

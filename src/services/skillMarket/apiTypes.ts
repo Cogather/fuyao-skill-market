@@ -119,6 +119,11 @@ export type SkillListPayloadDto = {
   records: SkillListRecordDto[];
 };
 
+/**
+ * 目录树：`string[]` 为相对路径列表；`string` 可为已排版树文本、换行分隔路径或 JSON 数组字符串。
+ */
+export type SkillFileTreeField = string | string[];
+
 /** §4.3 `GET /api/skills/my` */
 export type MySkillsParams = {
   userId?: string;
@@ -146,7 +151,33 @@ export type SkillUploadParseResultDto = {
   nameExists?: boolean;
   canSubmit?: boolean;
   warnings?: string[];
-  fileTree?: string[];
+  fileTree?: SkillFileTreeField;
+};
+
+/** `GET /api/skills/{id}/versions` 单条版本记录（接口返回数组元素） */
+export type SkillVersionListItemDto = {
+  id: number | string;
+  skillId: number | string;
+  version: string;
+  packagePath: string;
+  skillMdContent: string;
+  fileTree: SkillFileTreeField;
+  createBy: string;
+  createdAt: string;
+  /** 0 正常，1 已下架（已下架版本不可下载） */
+  deleted: number;
+};
+
+/** `DELETE /api/skills/{id}/all`：query 传操作者工号 */
+export type SkillDeleteAllParams = {
+  /** 操作者工号；与全局其它 Skill 接口 query 字段一致 */
+  userId: string;
+};
+
+/** `DELETE /api/skills/{id}` 下架指定版本：query 传 `version` 与 `userId` */
+export type SkillUnpublishVersionParams = {
+  version: string;
+  userId: string;
 };
 
 export type SkillDetailDto = {
@@ -170,7 +201,7 @@ export type SkillDetailDto = {
   qualityBadges: string[];
   lastReviewComment: string | null;
   lastReviewedAt: string | null;
-  fileTree: string[];
+  fileTree: SkillFileTreeField;
   skillMdContent: string;
 };
 
@@ -180,6 +211,8 @@ export type SkillDownloadSourcePage = 'market' | 'detail' | 'my-publish';
 export type SkillDownloadRequestBody = {
   userId?: string;
   sourcePage?: SkillDownloadSourcePage;
+  /** 可选；版本页下载时由前端传入，可与 query `version` 同时存在以兼容不同后端 */
+  version?: string;
 };
 
 export type SkillDownloadResultDto = {
@@ -244,7 +277,7 @@ export type UploadSkillResultDto = {
   downloads: number;
   fileDir: string;
   packagePath: string;
-  fileTree: string[];
+  fileTree: SkillFileTreeField;
   skillMdContent: string;
   createdAt: string;
   updatedAt: string;
@@ -267,7 +300,7 @@ export type CreateSkillBody = {
   tags?: string;
   packagePath: string;
   skillMdContent: string;
-  fileTree: string[];
+  fileTree: SkillFileTreeField;
 };
 
 export type CreateSkillResultDto = {

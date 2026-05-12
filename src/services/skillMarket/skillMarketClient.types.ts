@@ -21,12 +21,15 @@ import type {
   QualityReviewListParams,
   QualityReviewSaveBody,
   SkillDetailDto,
+  SkillDeleteAllParams,
   SkillDownloadSourcePage,
   SkillDownloadStatsDto,
   SkillDownloadStatsParams,
   SkillListParamsDto,
   SkillListPayloadDto,
+  SkillUnpublishVersionParams,
   SkillUploadParseResultDto,
+  SkillVersionListItemDto,
   SuperAdminCreateBody,
   SuperAdminDto,
   SuperAdminUpdateBody,
@@ -42,6 +45,8 @@ import type { OpsDashboardBundle } from '../../utils/opsExcelImport';
 
 export type SkillDownloadOptions = {
   sourcePage?: SkillDownloadSourcePage;
+  /** 可选；版本列表页下载指定版本时传入 */
+  version?: string;
 };
 
 /**
@@ -66,6 +71,19 @@ export type SkillMarketClient = {
   uploadSkill(payload: SkillUploadPayload): Promise<SkillUploadResponse>;
   /** §3.3.3.2.1 `POST /api/skills/{id}/download` */
   downloadSkill(skillId: string, options?: SkillDownloadOptions): Promise<SkillDownloadResult>;
+
+  /** `DELETE /api/skills/{id}/all` 删除 Skill 及全部版本 */
+  deleteSkillAll(
+    skillId: string | number,
+    params: SkillDeleteAllParams,
+  ): Promise<ApiEnvelope<unknown>>;
+  /** `GET /api/skills/{id}/versions` 版本列表/详情 */
+  fetchSkillVersions(skillId: string | number): Promise<ApiEnvelope<SkillVersionListItemDto[]>>;
+  /** `DELETE /api/skills/{id}` 下架指定版本（query：`version`、`userId`） */
+  unpublishSkillVersion(
+    skillId: string | number,
+    params: SkillUnpublishVersionParams,
+  ): Promise<ApiEnvelope<unknown>>;
 
   fetchUserDepartment(): Promise<ApiEnvelope<UserDepartmentDto>>;
   /** §3.3.10 初始化菜单与按钮权限 */

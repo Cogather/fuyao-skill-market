@@ -68,9 +68,11 @@ function latestEntry(skill: Skill): SkillVersionEntry {
   );
 }
 
-function toZipFileName(skill: Skill): string {
-  const entry = latestEntry(skill);
-  return entry.packageFileName ?? `${skillName(skill)}-v${skillVersion(skill)}.zip`;
+function toZipFileName(skill: Skill, versionOverride?: string): string {
+  const entry = versionOverride?.trim()
+    ? (skill.versions ?? []).find((v) => v.version === versionOverride.trim()) ?? latestEntry(skill)
+    : latestEntry(skill);
+  return entry.packageFileName ?? `${skillName(skill)}-v${entry.version ?? skillVersion(skill)}.zip`;
 }
 
 export function listSkillsApi(
@@ -189,7 +191,11 @@ export function uploadSkillApi(
   return { created: true, skill };
 }
 
-export function downloadSkillApi(database: Skill[], skillId: string): {
+export function downloadSkillApi(
+  database: Skill[],
+  skillId: string,
+  pick?: { version?: string },
+): {
   blob: Blob;
   fileName: string;
   skill: Skill;
@@ -199,16 +205,28 @@ export function downloadSkillApi(database: Skill[], skillId: string): {
     throw new Error('Skill 不存在');
   }
 
+  const want = pick?.version?.trim();
+  let entry = latestEntry(skill);
+  if (want) {
+    const hit = (skill.versions ?? []).find((v) => v.version === want);
+    if (!hit) {
+      throw new Error('指定版本不存在');
+    }
+    if ((hit as { unpublished?: boolean }).unpublished) {
+      throw new Error('该版本已下架，无法下载');
+    }
+    entry = hit;
+  }
+
   skill.download_count = (skill.download_count ?? 0) + 1;
   skill.downloads = (skill.downloads ?? 0) + 1;
-  const fileName = toZipFileName(skill);
-  const entry = latestEntry(skill);
+  const fileName = toZipFileName(skill, want);
   const content = JSON.stringify(
     {
       id: skill.id ?? skill.skill_id,
       name: skillName(skill),
-      version: skillVersion(skill),
-      publishTime: skillPublishTime(skill),
+      version: entry.version ?? skillVersion(skill),
+      publishTime: entry.publishTime ?? skillPublishTime(skill),
       mock: true,
     },
     null,

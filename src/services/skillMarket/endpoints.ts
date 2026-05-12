@@ -14,6 +14,9 @@ export const SKILL_MARKET_ENDPOINTS = {
   /** §4.3.1 我的发布列表 */
   skillsMy: '/api/skills/my',
   skillById: (id: string | number) => `/api/skills/${encodeURIComponent(String(id))}`,
+  /** 删除 Skill 及其全部版本；query 需带操作者工号（与项目约定字段 `userId` 一致） */
+  skillDeleteAll: (id: string | number) =>
+    `/api/skills/${encodeURIComponent(String(id))}/all`,
   /** §3.3.3.2.1 下载到本地：返回临时下载 URL 并累计下载量 */
   skillDownload: (id: string | number) =>
     `/api/skills/${encodeURIComponent(String(id))}/download`,
