@@ -5,7 +5,7 @@ import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
-import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json';
+import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
   CurrentUserRoleDto,
   OrganizationDto,
@@ -32,7 +32,6 @@ import type {
   UserInnerTab,
 } from '../../types/skill';
 import { emptyOpsDashboardBundle } from '../../services/skillMarket/mock/opsDashboardUiDefaults';
-import { dashboardOverviewToOpsBundle } from '../../services/skillMarket/opsOverviewToBundle';
 import {
   parseDeptNamePath,
   type DeptTreeNode,
@@ -43,9 +42,10 @@ import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExc
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
-import { parse } from 'path';
+import { useProfileStore } from '../../stores/userStore';
 const skillMarketStore = useSkillMarketStore();
-const userId = computed(() => skillMarketStore.userId);
+const userStore = useProfileStore();
+const userId = computed(() => userStore.userInfo?.w3Id);
 const departmentList = computed(() => skillMarketStore.departmentList);
 
 const skills = ref<any[]>([]);
@@ -149,7 +149,7 @@ const overviewVisibleCount = ref(initialOverviewPageSize());
 const overviewFilterObj = ref<any>({
   keyword: '',
   pageNum: 1,
-  pageSize: 12,
+  pageSize: 500,
   status: '',
 })
 const overviewRemoteItems = ref<any[]>([]);

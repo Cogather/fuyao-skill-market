@@ -3,9 +3,11 @@ import { computed, ref, watch } from 'vue';
 
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
+import { useProfileStore } from '../../stores/userStore';
 
 const skillMarketStore = useSkillMarketStore();
-const userId = computed(() => skillMarketStore.userId);
+const userStore = useProfileStore();
+const userId = computed(() => userStore.userInfo?.w3Id);
 
 type ParsedSkillMeta = {
   name: string;

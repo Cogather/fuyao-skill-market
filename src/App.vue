@@ -1,10 +1,23 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue';
+import { onBeforeUnmount, onMounted } from 'vue';
 import { RouterView } from 'vue-router';
 
 import { useSkillMarketStore } from './stores/skillMarketStore';
+import { useProfileStore } from './stores/userStore';
 
 const skillMarketStore = useSkillMarketStore();
+const profileStore = useProfileStore();
+
+onMounted(async () => {
+  await profileStore.initUserInfo()
+  startTokenCheck()
+});
+
+const startTokenCheck = () => {
+  setInterval(() => {
+    profileStore.checkToken()
+  }, 300 * 1000); // 每5分钟检查一次
+}
 
 function handleEvent(event: MessageEvent): void {
   const payload = event.data;

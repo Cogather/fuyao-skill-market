@@ -96,6 +96,13 @@ const httpRequest = {
             baseURL: buildFuyaoBaseUrl(),
             url: stripPrefix(config.url, ''),
         })
+    },
+    direct: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+        return axiosRequest.request<T, T>({
+            ...config,
+            baseURL: '/',
+            url: stripPrefix(config.url, '/'),
+        })
     }
 }
 
