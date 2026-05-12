@@ -1,7 +1,6 @@
 import { reactive, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { managerUserService } from '@/api/user';
-import { relative } from 'path';
 
 interface UserInfo {
     w3Id: string;
@@ -22,7 +21,7 @@ interface UserPermission {
 
 export const useProfileStore = defineStore('userProfile', () => {
     // 子页面状态
-    const loginStatus = ref<boolean>({ isEnd: false });
+    const loginStatus = reactive({ isEnd: false });
 
     function updateCheckLoginStatus(val: boolean): void {
         loginStatus.isEnd = val;
@@ -49,7 +48,7 @@ export const useProfileStore = defineStore('userProfile', () => {
     const isSubPage = reactive({status: false})
 
     // 更新用户信息
-    function updateUserInfo(info: UserInfo): void {
+    function updateUserInfo(info: Partial<UserInfo>): void {
         Object.assign(userInfo, {
             ...info,
             avatar: info.w3Id ? `https://w3.huawei.com/w3lab/rest/yellowpage/face/${info.w3Id.substr(1)}/120` : '',
@@ -158,7 +157,21 @@ export const useProfileStore = defineStore('userProfile', () => {
         localStorage.setItem('userPermission', JSON.stringify({isAdmin: false, owner: false}));
 
         const currHref = document.location.href;
-        window.location.href =  `https://login.huawei.com/login?redirect=${currHref}`;
+        window.location.href = `https://login.huawei.com/login1/?redirect=${currHref}`;
+    }
+
+    const checkUserToken = (): void => {
+        console.log(new Date(), " ,start user login check begin...")
+        managerUserService.getUserInfo().then((res) => {
+            if(!res) {
+                console.log(new Date(), "failed to get user info")
+                clearUserInfo();
+                return;
+            }
+        }).catch((err) => {
+            console.error(err);
+            clearUserInfo();
+        })
     }
 
     return {
@@ -173,5 +186,6 @@ export const useProfileStore = defineStore('userProfile', () => {
         getCheckLoginStatus,
         updateCheckLoginStatus,
         getAdminInfo,
+        checkUserToken
     }
 })

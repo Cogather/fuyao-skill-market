@@ -15,7 +15,7 @@ onMounted(async () => {
 
 const startTokenCheck = () => {
   setInterval(() => {
-    profileStore.checkToken()
+    profileStore.checkUserToken()
   }, 300 * 1000); // 每5分钟检查一次
 }
 
