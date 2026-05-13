@@ -7,31 +7,41 @@ import type {
 } from './apiTypes';
 
 const CATEGORY_BY_GROUP: Record<string, string> = {
-  作业类: 'task-software-dev',
-  业务类: 'domain-database',
-  工具类: 'utility-doc',
+  公共: 'COMMON',
+  设计: 'DESIGN',
+  开发: 'DEVELOPMENT',
+  测试: 'TEST',
+  运维: 'OPERATIONS',
+  维护: 'MAINTENANCE',
+  研究: 'RESEARCH',
+  项目管理: 'PROJECT_MANAGEMENT',
 };
 
-const GROUP_BY_CATEGORY_PREFIX: { prefix: string; group: string }[] = [
-  { prefix: 'task-', group: '作业类' },
-  { prefix: 'domain-', group: '业务类' },
-  { prefix: 'utility-', group: '工具类' },
-];
+const GROUP_BY_CATEGORY_CODE = Object.entries(CATEGORY_BY_GROUP).reduce<Record<string, string>>(
+  (map, [group, code]) => {
+    map[code] = group;
+    return map;
+  },
+  {},
+);
 
 export function categoryGroupNameFromCategory(category: string): string {
-  for (const row of GROUP_BY_CATEGORY_PREFIX) {
-    if (category.startsWith(row.prefix)) {
-      return row.group;
-    }
+  const raw = category.trim();
+  if (CATEGORY_BY_GROUP[raw]) {
+    return raw;
   }
-  return '工具类';
+  const upper = raw.toUpperCase();
+  if (GROUP_BY_CATEGORY_CODE[upper]) {
+    return GROUP_BY_CATEGORY_CODE[upper];
+  }
+  return '公共';
 }
 
 export function defaultCategoryCodeFromGroup(group: string | undefined): string {
   if (!group) {
-    return 'utility-doc';
+    return 'COMMON';
   }
-  return CATEGORY_BY_GROUP[group] ?? 'utility-doc';
+  return CATEGORY_BY_GROUP[group] ?? 'COMMON';
 }
 
 export function stableNumericId(skill: Skill): number {

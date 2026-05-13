@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
+import type { BusinessDimensionDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
@@ -14,9 +15,9 @@ type ParsedSkillMeta = {
   name: string;
   version: string;
   description: string;
-  author: string;
-  category: string;
-  requirements: string;
+  author?: string;
+  category?: string;
+  requirements?: string;
   tags: string;
   level: string;
 };
@@ -62,6 +63,12 @@ const versionUpgrade = ref<VersionUpgradeMeta | null>(null);
 const parsing = ref(false);
 const uploading = ref(false);
 const parseError = ref('');
+const businessDimensions = ref<BusinessDimensionDto[]>([]);
+const businessDimensionLoading = ref(false);
+const selectedBusinessDimension = ref('公共');
+const duplicateChecking = ref(false);
+const duplicateCheckMessage = ref('');
+const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
 
 const parseNotice = computed(() => {
   if (parseError.value) {
@@ -77,20 +84,37 @@ const parseNotice = computed(() => {
     return '有重名的 Skill：市场内已存在其他人创建的同名 Skill。';
   }
   if (parseState.value === 'success') {
-    return '解析成功：已从 SKILL.md Front Matter 中解析基础信息和 metadata，必填项完整。如果与已有 Skill 同名，则会将当前作为新版本上传并保留历史版本';
+    return '解析成功：基础信息和 tags 已自动回显，请确认业务维度后提交。';
   }
   if (parsing.value) {
     return '正在请求后端解析压缩包…';
   }
-  return '等待上传：解析字段会自动回显且禁填。';
+  return '等待上传：解析字段会自动回显；业务维度请手动选择。';
 });
 
-const canSubmit = computed(() => Boolean(parsed.value) && parseState.value === 'success' && !uploading.value);
+const businessDimensionOptions = computed(() =>
+  [...businessDimensions.value]
+    .filter((item) => Number(item.enabled) === 1)
+    .sort(
+      (a, b) =>
+        a.sortNo - b.sortNo ||
+        a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
+    ),
+);
+
+const canSubmit = computed(
+  () =>
+    Boolean(parsed.value) &&
+    parseState.value === 'success' &&
+    Boolean(selectedBusinessDimension.value) &&
+    !uploading.value,
+);
 
 watch(
   () => props.modelValue,
   (open) => {
     if (open) {
+      void loadBusinessDimensions();
       return;
     }
     reset();
@@ -107,6 +131,10 @@ function reset(): void {
   parsing.value = false;
   uploading.value = false;
   parseError.value = '';
+  selectedBusinessDimension.value = '公共';
+  duplicateChecking.value = false;
+  duplicateCheckMessage.value = '';
+  duplicateCheckStatus.value = 'idle';
 }
 
 function close(): void {
@@ -119,6 +147,7 @@ function onOverlayClick(): void {
 
 function parseUploadOk(info: any): void {
   // const base = uploadFile ? fileBaseName(uploadFile) : 'pdf-document-extractor';
+  const rawTags = info?.tags;
   parsed.value = {
     name: info.name,
     version: info.version,
@@ -126,10 +155,17 @@ function parseUploadOk(info: any): void {
     author: info?.author || '',
     category: info.category,
     requirements: info?.requirements || '',
-    tags: info?.tags?.join(',') || '',
+    tags: Array.isArray(rawTags) ? rawTags.join(',') : String(rawTags ?? ''),
     level: info?.level || '个人级',
   };
   parseState.value = 'success';
+  if (info?.nameExists && info?.existingVersion) {
+    versionUpgrade.value = {
+      name: info.name,
+      existingVersion: String(info.existingVersion),
+      nextVersion: String(info.nextVersion ?? info.version ?? ''),
+    };
+  }
 }
 
 function readEnvelopeRecord(value: unknown): Record<string, unknown> {
@@ -156,6 +192,125 @@ function serviceMessage(value: unknown, fallback: string): string {
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
+function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item, index): BusinessDimensionDto | null => {
+      const record = readEnvelopeRecord(item);
+      const dimensionName = String(record.dimensionName ?? '').trim();
+      if (!dimensionName) {
+        return null;
+      }
+      const id = Number(record.id);
+      const sortNo = Number(record.sortNo);
+      return {
+        id: Number.isFinite(id) ? id : index + 1,
+        dimensionCode: String(record.dimensionCode ?? '').trim().toUpperCase(),
+        dimensionName,
+        sortNo: Number.isFinite(sortNo) ? sortNo : index + 1,
+        enabled: record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1,
+        createdAt: String(record.createdAt ?? ''),
+        updatedAt: String(record.updatedAt ?? ''),
+      };
+    })
+    .filter((item): item is BusinessDimensionDto => Boolean(item));
+}
+
+function syncSelectedBusinessDimension(): void {
+  const options = businessDimensionOptions.value;
+  if (options.length === 0) {
+    selectedBusinessDimension.value = selectedBusinessDimension.value || '公共';
+    return;
+  }
+  const current = selectedBusinessDimension.value;
+  if (options.some((item) => item.dimensionName === current)) {
+    return;
+  }
+  selectedBusinessDimension.value =
+    options.find((item) => item.dimensionName === '公共')?.dimensionName ??
+    options[0]?.dimensionName ??
+    '公共';
+}
+
+async function loadBusinessDimensions(): Promise<void> {
+  if (businessDimensionLoading.value || businessDimensions.value.length > 0) {
+    syncSelectedBusinessDimension();
+    return;
+  }
+  businessDimensionLoading.value = true;
+  try {
+    const env = await skillBaseService.queryBusinessDimensions();
+    if (serviceSucceeded(env)) {
+      businessDimensions.value = normalizeBusinessDimensions(readEnvelopeRecord(env).data);
+    }
+  } finally {
+    businessDimensionLoading.value = false;
+    syncSelectedBusinessDimension();
+  }
+}
+
+function skillListRowsFromData(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) {
+    return raw.map(readEnvelopeRecord);
+  }
+  const record = readEnvelopeRecord(raw);
+  if (Array.isArray(record.records)) {
+    return record.records.map(readEnvelopeRecord);
+  }
+  return [];
+}
+
+function skillRowName(row: Record<string, unknown>): string {
+  return String(row.name ?? row.skillName ?? row.skill_id ?? '').trim();
+}
+
+async function checkDuplicateName(): Promise<void> {
+  const name = parsed.value?.name?.trim();
+  duplicateCheckMessage.value = '';
+  duplicateCheckStatus.value = 'idle';
+  if (!name || duplicateChecking.value) {
+    return;
+  }
+  duplicateChecking.value = true;
+  try {
+    const env = await skillBaseService.querySkillList({
+      keyword: name,
+      pageNum: 1,
+      pageSize: 50,
+    });
+    if (!serviceSucceeded(env)) {
+      duplicateCheckStatus.value = 'error';
+      duplicateCheckMessage.value = serviceMessage(env, '重名检索失败');
+      return;
+    }
+    const rows = skillListRowsFromData(readEnvelopeRecord(env).data);
+    const existing = rows.find((row) => skillRowName(row).toLowerCase() === name.toLowerCase());
+    if (existing) {
+      const existingVersion = String(existing.currentVersion ?? existing.version ?? '').trim();
+      duplicateCheckStatus.value = 'found';
+      duplicateCheckMessage.value = existingVersion
+        ? `已检索到同名 Skill，当前版本 ${existingVersion}。`
+        : '已检索到同名 Skill。';
+      versionUpgrade.value = {
+        name,
+        existingVersion,
+        nextVersion: parsed.value?.version ?? '',
+      };
+      return;
+    }
+    duplicateCheckStatus.value = 'none';
+    duplicateCheckMessage.value = '未检索到同名 Skill，可作为新 Skill 上传。';
+    versionUpgrade.value = null;
+  } catch (e) {
+    duplicateCheckStatus.value = 'error';
+    duplicateCheckMessage.value = e instanceof Error ? e.message : '重名检索失败';
+  } finally {
+    duplicateChecking.value = false;
+  }
+}
+
 function storagePathSegment(value: string, fallback: string): string {
   return value.trim().replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || fallback;
 }
@@ -177,6 +332,8 @@ async function onFileChange(event: Event): Promise<void> {
   versionUpgrade.value = null;
   parsed.value = null;
   parseState.value = 'idle';
+  duplicateCheckMessage.value = '';
+  duplicateCheckStatus.value = 'idle';
   if (!file.value) {
     return;
   }
@@ -224,18 +381,21 @@ const onSubmit = async (): Promise<void> => {
 
     const formData = new FormData();
     formData.append('file', file.value);
-    const env = await skillBaseService.uploadSkillPackage(formData, { userId: userId.value });
+    const env = await skillBaseService.uploadSkillPackage(formData, {
+      userId: userId.value,
+      categoryGroupName: selectedBusinessDimension.value,
+    });
     if (!serviceSucceeded(env)) {
       parseError.value = serviceMessage(env, '上传失败');
       return;
     }
     emit('submit', {
       name: parsed.value.name,
-      publisher: parsed.value.author,
+      publisher: parsed.value.author ?? '',
       note: note.value.trim() || parsed.value.description,
       file: file.value,
       scopeLabel: '个人级',
-      tagFunctional: parsed.value.category,
+      tagFunctional: selectedBusinessDimension.value,
       version: parsed.value.version,
       versionUpgrade: Boolean(versionUpgrade.value),
       existingVersion: versionUpgrade.value?.existingVersion,
@@ -256,14 +416,13 @@ const onSubmit = async (): Promise<void> => {
         <header class="dialog-head">
           <div>
             <h2 id="upload-title" class="dialog-title">上传 Skill</h2>
-            <p class="dialog-sub">上传压缩包后自动解析 SKILL.md，解析字段回显且不可手动编辑。</p>
           </div>
-          <button type="button" class="close-x" aria-label="关闭" @click="close">x</button>
+          <button type="button" class="close-x" aria-label="关闭" @click="close">关闭</button>
         </header>
 
         <div class="notice">
-          <b>个人级上传规则：</b>后端会先解压压缩包并读取 <code>SKILL.md</code> 的 Front Matter，解析
-          name、description、requirements 以及 metadata 下的 author、version、category、tags。校验通过后，系统会保存压缩包和解析出的元数据，默认发布为个人级 Skill。
+          系统自动解析 Skill 名称、描述、版本和 tags；业务维度由用户选择，不从
+          <code>SKILL.md</code> 自动带出。
         </div>
 
         <label class="upload-zone" :class="{ disabled: parsing }" for="sk-file">
@@ -295,10 +454,10 @@ const onSubmit = async (): Promise<void> => {
           </ul>
         </div>
 
-        <section class="upload-result-card" aria-label="解析结果">
+        <section class="upload-result-card" aria-label="发布信息">
           <div class="upload-result-head">
-            <b>解析结果</b>
-            <span>来自 SKILL.md Front Matter</span>
+            <b>发布信息</b>
+            <span>基础信息和 tags 自动解析，业务维度手动选择</span>
           </div>
           <div class="upload-result-body">
             <div class="upload-meta-grid">
@@ -307,36 +466,56 @@ const onSubmit = async (): Promise<void> => {
                 <input class="input readonly" readonly :value="parsed?.name ?? '等待解析'" />
               </div>
               <div class="form-field">
-                <label>metadata.version</label>
+                <label>version</label>
                 <input class="input readonly" readonly :value="parsed?.version ?? '等待解析'" />
               </div>
               <div class="form-field full">
                 <label>description</label>
                 <textarea class="textarea readonly" readonly :value="parsed?.description ?? '等待解析'" />
               </div>
-              <div class="form-field">
-                <label>metadata.author</label>
-                <input class="input readonly" readonly :value="parsed?.author ?? '等待解析'" />
-              </div>
-              <div class="form-field">
-                <label>metadata.category</label>
-                <input class="input readonly" readonly :value="parsed?.category ?? '等待解析'" />
-              </div>
               <div class="form-field full">
-                <label>requirements</label>
-                <input class="input readonly" readonly :value="parsed?.requirements ?? '等待解析'" />
+                <label>tags</label>
+                <input class="input readonly" readonly :value="parsed?.tags ?? '等待解析'" />
               </div>
-              <div class="form-field full">
-                <label>metadata.tags</label>
-                <input class="input readonly" readonly :value="parsed?.tags ?? '可选，等待解析'" />
+              <div class="form-field">
+                <label for="sk-business-dimension">业务维度</label>
+                <select
+                  id="sk-business-dimension"
+                  v-model="selectedBusinessDimension"
+                  class="input select-input"
+                >
+                  <option
+                    v-for="dimension in businessDimensionOptions"
+                    :key="dimension.id || dimension.dimensionCode"
+                    :value="dimension.dimensionName"
+                  >
+                    {{ dimension.dimensionName }}
+                  </option>
+                  <option v-if="businessDimensionOptions.length === 0" value="公共">
+                    {{ businessDimensionLoading ? '加载中...' : '公共' }}
+                  </option>
+                </select>
               </div>
               <div class="form-field">
                 <label>默认发布层级</label>
                 <input class="input readonly" readonly :value="parsed?.level ?? '个人级（默认发布，无需审核）'" />
               </div>
-              <div class="form-field full">
-                <label for="sk-note">变更说明</label>
-                <textarea id="sk-note" v-model="note" class="textarea" placeholder="可填写本次上传说明；为空时使用 description" />
+              <div class="duplicate-row full">
+                <span
+                  v-if="duplicateCheckMessage"
+                  class="duplicate-message"
+                  :class="duplicateCheckStatus"
+                >
+                  {{ duplicateCheckMessage }}
+                </span>
+                <button
+                  type="button"
+                  class="btn outline"
+                  :disabled="!parsed?.name || duplicateChecking"
+                  @click="checkDuplicateName"
+                >
+                  {{ duplicateChecking ? '检索中...' : '模拟重名' }}
+                </button>
               </div>
             </div>
           </div>
@@ -403,15 +582,15 @@ const onSubmit = async (): Promise<void> => {
 }
 
 .close-x {
-  width: 30px;
-  height: 30px;
-  border: 0;
+  min-width: 52px;
+  height: 36px;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
-  background: transparent;
-  color: #64748b;
+  background: #fff;
+  color: #0f172a;
   cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .close-x:hover {
@@ -574,6 +753,10 @@ const onSubmit = async (): Promise<void> => {
   grid-column: 1 / -1;
 }
 
+.duplicate-row.full {
+  grid-column: 1 / -1;
+}
+
 .form-field label {
   display: block;
   margin-bottom: 7px;
@@ -601,10 +784,41 @@ const onSubmit = async (): Promise<void> => {
   resize: vertical;
 }
 
+.select-input {
+  min-height: 0;
+  cursor: pointer;
+}
+
 .readonly {
   background: #f8fafc;
   color: #475569;
   cursor: not-allowed;
+}
+
+.duplicate-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.duplicate-message {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.duplicate-message.found {
+  color: #b45309;
+}
+
+.duplicate-message.none {
+  color: #166534;
+}
+
+.duplicate-message.error {
+  color: #b91c1c;
 }
 
 .actions {
@@ -645,6 +859,19 @@ const onSubmit = async (): Promise<void> => {
   color: #fff;
 }
 
+.btn.outline {
+  min-height: 46px;
+  padding: 0 18px;
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.btn.outline:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.btn:disabled,
 .btn.primary:disabled {
   opacity: 0.55;
   cursor: not-allowed;

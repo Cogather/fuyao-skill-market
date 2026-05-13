@@ -9,6 +9,7 @@ import type {
 import type { OpsDashboardBundle } from '../../utils/opsExcelImport';
 import type {
   ApiEnvelope,
+  BusinessDimensionDto,
   CreateSkillBody,
   CreateSkillResultDto,
   CurrentUserRoleDto,
@@ -269,7 +270,7 @@ export function createSkillMarketHttpClient(
         description: payload.note ?? '',
         author: payload.publisher?.trim() || '当前用户',
         version: '1.0.0',
-        category: 'utility-doc',
+        category: 'COMMON',
         tags: '',
         packagePath: `fuyao/skills/${payload.name}/1.0.0/skill.zip`,
         skillMdContent: '',
@@ -465,6 +466,10 @@ export function createSkillMarketHttpClient(
      */
     fetchDepartmentsTree() {
       return get<DepartmentTreeNodeDto[]>(SKILL_MARKET_ENDPOINTS.departmentsTree);
+    },
+
+    fetchBusinessDimensions() {
+      return get<BusinessDimensionDto[]>(SKILL_MARKET_ENDPOINTS.businessDimensions);
     },
 
     fetchOrganizations() {
