@@ -37,6 +37,16 @@ export type CurrentUserRoleDto = {
   organizationScope: OrganizationScope;
 };
 
+export type BusinessDimensionDto = {
+  id: number;
+  dimensionCode: string;
+  dimensionName: string;
+  sortNo: number;
+  enabled: 0 | 1;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** §3.3.12 */
 export type SuperAdminDto = {
   id: number;

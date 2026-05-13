@@ -4,6 +4,7 @@ import type { Skill, SkillVersionEntry } from '../../types/skill';
 import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
 import { stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
+import { getMockBusinessDimensions } from './mock/businessDimensionsDefault';
 import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { marketSkillsToOpsExcelRows } from './opsBundleFromSkills';
@@ -129,16 +130,23 @@ const MOCK_ORGS: MockOrganization[] = [
 ];
 
 const CATEGORY_BY_GROUP: Record<string, string> = {
-  作业类: 'task-software-dev',
-  业务类: 'domain-database',
-  工具类: 'utility-doc',
+  公共: 'COMMON',
+  设计: 'DESIGN',
+  开发: 'DEVELOPMENT',
+  测试: 'TEST',
+  运维: 'OPERATIONS',
+  维护: 'MAINTENANCE',
+  研究: 'RESEARCH',
+  项目管理: 'PROJECT_MANAGEMENT',
 };
 
-const GROUP_BY_CATEGORY_PREFIX: { prefix: string; group: string }[] = [
-  { prefix: 'task-', group: '作业类' },
-  { prefix: 'domain-', group: '业务类' },
-  { prefix: 'utility-', group: '工具类' },
-];
+const GROUP_BY_CATEGORY_CODE = Object.entries(CATEGORY_BY_GROUP).reduce<Record<string, string>>(
+  (map, [group, code]) => {
+    map[code] = group;
+    return map;
+  },
+  {},
+);
 
 const orgStore: MockOrganization[] = MOCK_ORGS.map((o) => ({ ...o }));
 
@@ -354,16 +362,19 @@ function tagsText(value: unknown): string {
 }
 
 function categoryGroupFromCategory(category: string): string {
-  for (const row of GROUP_BY_CATEGORY_PREFIX) {
-    if (category.startsWith(row.prefix)) {
-      return row.group;
-    }
+  const raw = category.trim();
+  if (CATEGORY_BY_GROUP[raw]) {
+    return raw;
   }
-  return '工具类';
+  const upper = raw.toUpperCase();
+  if (GROUP_BY_CATEGORY_CODE[upper]) {
+    return GROUP_BY_CATEGORY_CODE[upper];
+  }
+  return '公共';
 }
 
 function categoryFromGroup(group: string | undefined): string {
-  return CATEGORY_BY_GROUP[group ?? ''] ?? 'utility-doc';
+  return CATEGORY_BY_GROUP[group ?? ''] ?? 'COMMON';
 }
 
 function orgByName(name: string | undefined): MockOrganization | undefined {
@@ -439,7 +450,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const level = seed.publish_level ?? seed.level ?? '个人级';
   const publishName = seed.publish_name ?? seed.publisher ?? (level.includes('个人') ? 'xxx_个人发布商' : '平台工具组');
   const org = level.includes('组织') ? orgByName(publishName) : undefined;
-  const categoryGroupName = seed.tagFunctional || '工具类';
+  const categoryGroupName = categoryGroupFromCategory(seed.tagFunctional || '公共');
   const category = categoryFromGroup(categoryGroupName);
   const updatedAt = seed.latestPublishTime ?? nowText();
   const downloads = seed.download_count ?? seed.downloads ?? 0;
@@ -668,8 +679,8 @@ function parsedSkillFromFile(file: File | undefined): Record<string, unknown> {
     description: `Mock：根据「${file?.name ?? `${name}.zip`}」解析出的 Skill 描述`,
     requirements: '需要 Python 3.10+，可按 SKILL.md 安装依赖。',
     author: '当前用户',
-    category: 'utility-doc',
-    categoryGroupName: '工具类',
+    category: 'COMMON',
+    categoryGroupName: '公共',
     tags: ['mock', 'upload'],
     level: '个人级（默认发布，无需审核）',
     nameExists: Boolean(existing),
@@ -685,9 +696,13 @@ function nextSkillId(): string {
   return String(Math.max(0, ...skillRecords.map((s) => Number(s.id)).filter(Number.isFinite)) + 1);
 }
 
-function upsertUploadedSkill(file: File | undefined): MockSkillRecord {
+function upsertUploadedSkill(
+  file: File | undefined,
+  params: Record<string, unknown> = {},
+): MockSkillRecord {
   const parsed = parsedSkillFromFile(file);
   const name = String(parsed.name);
+  const categoryGroupName = readString(params.categoryGroupName, String(parsed.categoryGroupName));
   const stamp = nowText();
   const existing = skillRecords.find((s) => s.name?.toLowerCase() === name.toLowerCase());
   if (existing) {
@@ -706,6 +721,8 @@ function upsertUploadedSkill(file: File | undefined): MockSkillRecord {
     existing.latestPublishTime = stamp;
     existing.packagePath = `fuyao/skills/${name}/${nextVersion}/skill.zip`;
     existing.fileDir = `fuyao/skills/${name}/${nextVersion}`;
+    existing.tagFunctional = categoryGroupName;
+    existing.categoryGroupName = categoryGroupName;
     existing.skillMdContent = makeSkillMd(existing);
     return { ...existing };
   }
@@ -736,7 +753,7 @@ function upsertUploadedSkill(file: File | undefined): MockSkillRecord {
       },
     ],
     ownedByUser: true,
-    tagFunctional: String(parsed.categoryGroupName),
+    tagFunctional: categoryGroupName,
     tagOrg: '个人级',
     tags: tagsText(parsed.tags),
   });
@@ -747,7 +764,7 @@ function upsertUploadedSkill(file: File | undefined): MockSkillRecord {
 function createSkillFromBody(body: Record<string, unknown>): MockSkillRecord {
   const stamp = nowText();
   const name = readString(body.name, `mock-skill-${Date.now()}`);
-  const category = readString(body.category, 'utility-doc');
+  const category = readString(body.category, 'COMMON');
   const group = categoryGroupFromCategory(category);
   const version = readString(body.version, '1.0.0');
   const record = toMockSkillRecord({
@@ -808,7 +825,7 @@ function handleSkillRequest(method: string, path: string, config: AxiosRequestCo
     return ok(parsedSkillFromFile(fileFromFormData(config.data)));
   }
   if (method === 'post' && path === '/upload') {
-    return ok(upsertUploadedSkill(fileFromFormData(config.data)));
+    return ok(upsertUploadedSkill(fileFromFormData(config.data), params));
   }
   if (method === 'post' && path === '') {
     return ok(createSkillFromBody((config.data ?? {}) as Record<string, unknown>));
@@ -1102,6 +1119,11 @@ function handleApiRequest(method: string, path: string, config: AxiosRequestConf
 
   if (method === 'get' && path === '/departments/tree') {
     return ok(getMockMarketDepartmentsTree());
+  }
+
+  if (method === 'get' && path === '/business-dimensions') {
+    const data = getMockBusinessDimensions();
+    return ok(data, data.length);
   }
 
   if (method === 'get' && path === '/dashboard/overview') {

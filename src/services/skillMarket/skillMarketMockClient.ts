@@ -13,6 +13,7 @@ import type {
 } from '../../types/skill';
 import type {
   ApiEnvelope,
+  BusinessDimensionDto,
   CreateSkillBody,
   CreateSkillResultDto,
   CurrentUserRoleDto,
@@ -45,6 +46,7 @@ import type {
 } from './apiTypes';
 import { skillToListRecord, stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
+import { getMockBusinessDimensions } from './mock/businessDimensionsDefault';
 import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
@@ -624,7 +626,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       const baseName = file.name.replace(/\.zip$/i, '') || 'uploaded-skill';
       const now = new Date();
       const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
-      const category = 'utility-doc';
+      const category = 'COMMON';
       const data: any = {
         skillId: stableNumericId({ skill_id: baseName, name: baseName } as Skill),
         name: baseName,
@@ -633,7 +635,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         author: 'mock-uploader',
         version: '1.0.0',
         category,
-        categoryGroupName: '工具类',
+        categoryGroupName: '公共',
         tags: ['mock'],
         level: '个人级',
         status: '个人级',
@@ -670,8 +672,8 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         description: `Mock：根据「${file.name}」推断的 description，真实环境由后端解析 SKILL.md`,
         requirements: '需要 Python 3.10+ 和 pdfplumber 库',
         author: '当前用户',
-        category: 'utility-doc',
-        categoryGroupName: '工具类',
+        category: 'COMMON',
+        categoryGroupName: '公共',
         tags: ['pdf', 'document'],
         level: '个人级（默认发布，无需审核）',
         nameExists: exists,
@@ -817,6 +819,10 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
 
     async fetchDepartmentsTree(): Promise<ApiEnvelope<DepartmentTreeNodeDto[]>> {
       return ok(getMockMarketDepartmentsTree());
+    },
+
+    async fetchBusinessDimensions(): Promise<ApiEnvelope<BusinessDimensionDto[]>> {
+      return ok(getMockBusinessDimensions());
     },
 
     async fetchDashboardOverview(params: DashboardOverviewParams) {

@@ -8,6 +8,7 @@ import type {
 } from '../../types/skill';
 import type {
   ApiEnvelope,
+  BusinessDimensionDto,
   CreateSkillBody,
   CreateSkillResultDto,
   CurrentUserRoleDto,
@@ -126,6 +127,7 @@ export type SkillMarketClient = {
   ): Promise<ApiEnvelope<{ total: number; records: unknown[] }>>;
   /** 市场等部门级联：全量部门树（设计文档占位路径 `GET /api/departments/tree`） */
   fetchDepartmentsTree(): Promise<ApiEnvelope<DepartmentTreeNodeDto[]>>;
+  fetchBusinessDimensions(): Promise<ApiEnvelope<BusinessDimensionDto[]>>;
   fetchOrganizations(): Promise<ApiEnvelope<OrganizationDto[]>>;
   postOrganization(body: OrganizationUpsertBody): Promise<ApiEnvelope<OrganizationDto>>;
   putOrganization(

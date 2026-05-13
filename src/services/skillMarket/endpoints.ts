@@ -37,6 +37,8 @@ export const SKILL_MARKET_ENDPOINTS = {
    * 响应：`ApiEnvelope<DepartmentTreeNodeDto[]>`（根为多棵一级部门）。
    */
   departmentsTree: '/api/departments/tree',
+  /** 左侧目录栏业务维度筛选项；后端路径暂定，HTTP 模式后续可在这里微调。 */
+  businessDimensions: '/api/business-dimensions',
   organizations: '/api/organizations',
   organizationById: (id: string | number) =>
     `/api/organizations/${encodeURIComponent(String(id))}`,
