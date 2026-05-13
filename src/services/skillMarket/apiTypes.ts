@@ -100,7 +100,7 @@ export type SkillListRecordDto = {
   name: string;
   description: string;
   author: string;
-  createBy?: string;
+  createdBy?: string;
   version: string;
   category: string;
   categoryGroupName: string;
@@ -173,7 +173,7 @@ export type SkillVersionListItemDto = {
   packagePath: string;
   skillMdContent: string;
   fileTree: SkillFileTreeField;
-  createBy: string;
+  createdBy: string;
   createdAt: string;
   /** 0 正常，1 已下架（已下架版本不可下载） */
   deleted: number;
@@ -197,7 +197,7 @@ export type SkillDetailDto = {
   description: string;
   requirements: string;
   author: string;
-  createBy?: string;
+  createdBy?: string;
   version: string;
   category: string;
   categoryGroupName: string;
@@ -270,7 +270,7 @@ export type UploadSkillResultDto = {
   description: string;
   requirements: string;
   author: string;
-  createBy?: string;
+  createdBy?: string;
   version: string;
   category: string;
   categoryGroupName: string;

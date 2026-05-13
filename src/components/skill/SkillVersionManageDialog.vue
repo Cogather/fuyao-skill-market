@@ -126,7 +126,7 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
                       </button>
                     </div>
                   </td>
-                  <td class="col-pub">{{ row.createBy || '—' }}</td>
+                  <td class="col-pub">{{ row.createdBy || '—' }}</td>
                   <td class="col-time">{{ formatPublishTime(row.createdAt) }}</td>
                   <td v-if="showOperationsColumn" class="col-ops">
                     <div class="ver-ops-inline">

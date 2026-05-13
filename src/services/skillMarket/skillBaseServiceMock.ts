@@ -94,7 +94,7 @@ type MockQualityReviewRow = {
 
 type MockSkillRecord = Skill & {
   author: string;
-  createBy: string;
+  createdBy: string;
   currentVersion: string;
   category: string;
   categoryGroupName: string;
@@ -494,7 +494,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     tagOrg: level,
     tags: typeof seed.tags === 'string' ? seed.tags : tagsText(seed.tags),
     author,
-    createBy: seed.createBy ?? author,
+    createdBy: seed.createdBy ?? author,
     category,
     categoryGroupName,
     status: seed.marketStatus ?? level,
@@ -681,7 +681,7 @@ function parsedSkillFromFile(file: File | undefined): Record<string, unknown> {
     description: `Mock：根据「${file?.name ?? `${name}.zip`}」解析出的 Skill 描述`,
     requirements: '需要 Python 3.10+，可按 SKILL.md 安装依赖。',
     author: '当前用户',
-    createBy: '当前用户',
+    createdBy: '当前用户',
     category: 'COMMON',
     categoryGroupName: '公共',
     tags: ['mock', 'upload'],

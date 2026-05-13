@@ -8307,7 +8307,8 @@ width: 100%;
 }
 
 .header-search-icon {
-  font-size: 16px;
+  margin-top: -5px;
+  font-size: 18px;
   transform: translateY(-1px);
 }
 

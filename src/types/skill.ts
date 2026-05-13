@@ -26,7 +26,7 @@ export interface Skill {
   /** 接口字段：Skill 作者 */
   author?: string;
   /** 接口字段：创建人，Skill 卡片作者位置展示使用 */
-  createBy?: string;
+  createdBy?: string;
   /** 接口字段：组织名称，组织级 Skill 卡片展示使用 */
   orgName?: string | null;
   /** 接口字段：部门层级，个人级 Skill 卡片展示最小非空层级 */

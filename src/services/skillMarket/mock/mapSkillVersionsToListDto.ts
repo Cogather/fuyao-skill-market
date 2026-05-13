@@ -45,7 +45,7 @@ export function mapSkillVersionsToListDto(skill: Skill): SkillVersionListItemDto
       packagePath,
       skillMdContent: md,
       fileTree: ft,
-      createBy:
+      createdBy:
         (v as { publisher?: string }).publisher ??
         skill.publisher ??
         skill.publish_name ??
