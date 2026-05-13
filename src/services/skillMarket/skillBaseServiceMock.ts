@@ -100,12 +100,12 @@ type MockSkillRecord = Skill & {
   status: string;
   orgId: number | null;
   orgName: string | null;
-  department_l1: string;
-  department_l2: string;
-  department_l3: string;
-  department_l4: string;
-  department_l5: string;
-  department_l6: string;
+  departmentL1: string;
+  departmentL2: string;
+  departmentL3: string;
+  departmentL4: string;
+  departmentL5: string;
+  departmentL6: string;
   requirements: string;
   fileDir: string;
   packagePath: string;
@@ -388,12 +388,12 @@ function skillMockId(seed: Skill): string {
 
 function skillDeptParts(skill: Skill): string[] {
   const direct = [
-    (skill as any).department_l1,
-    (skill as any).department_l2,
-    (skill as any).department_l3,
-    (skill as any).department_l4,
-    (skill as any).department_l5,
-    (skill as any).department_l6,
+    (skill as any).departmentL1,
+    (skill as any).departmentL2,
+    (skill as any).departmentL3,
+    (skill as any).departmentL4,
+    (skill as any).departmentL5,
+    (skill as any).departmentL6,
   ]
     .map((v) => String(v ?? '').trim())
     .filter(Boolean);
@@ -497,13 +497,13 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     categoryGroupName,
     status: seed.marketStatus ?? level,
     orgId: org?.id ?? null,
-    orgName: org?.orgName ?? null,
-    department_l1: deptParts[0] ?? '',
-    department_l2: deptParts[1] ?? '',
-    department_l3: deptParts[2] ?? '',
-    department_l4: deptParts[3] ?? '',
-    department_l5: deptParts[4] ?? '',
-    department_l6: deptParts[5] ?? '',
+    orgName: org?.orgName ?? (level.includes('组织') ? publishName : null),
+    departmentL1: deptParts[0] ?? '',
+    departmentL2: deptParts[1] ?? '',
+    departmentL3: deptParts[2] ?? '',
+    departmentL4: deptParts[3] ?? '',
+    departmentL5: deptParts[4] ?? '',
+    departmentL6: deptParts[5] ?? '',
     requirements: '需要 Python 3.10+，可按 Skill 文档安装依赖。',
     fileDir: `fuyao/skills/${seed.name ?? seed.skill_id}/${currentVersion}`,
     packagePath: `fuyao/skills/${seed.name ?? seed.skill_id}/${currentVersion}/skill.zip`,
@@ -587,12 +587,12 @@ function matchesDepartmentFields(skill: MockSkillRecord, params: Record<string, 
     params.departmentL6,
   ].map((v) => String(v ?? '').trim());
   const actual = [
-    skill.department_l1,
-    skill.department_l2,
-    skill.department_l3,
-    skill.department_l4,
-    skill.department_l5,
-    skill.department_l6,
+    skill.departmentL1,
+    skill.departmentL2,
+    skill.departmentL3,
+    skill.departmentL4,
+    skill.departmentL5,
+    skill.departmentL6,
   ];
   return expected.every((want, i) => !want || actual[i] === want);
 }
@@ -1167,7 +1167,7 @@ function handleApiRequest(method: string, path: string, config: AxiosRequestConf
           reviewMonth,
           skillId,
           skillName: skill?.name ?? `Skill ${skillId}`,
-          deptName: skill?.department_l4 || skill?.publish_name || '',
+          deptName: skill?.departmentL4 || skill?.publish_name || '',
           score: readNumber(item.score, 0),
           qualityMark: readString(item.qualityMark, ''),
           reviewComment: readString(item.reviewComment, ''),

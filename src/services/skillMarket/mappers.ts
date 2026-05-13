@@ -153,12 +153,12 @@ export function skillDetailDtoToSkill(d: any): Skill {
 
 function departmentPathFromRecord(rec: SkillListRecordDto): string {
   const parts = [
-    rec.department_l1,
-    rec.department_l2,
-    rec.department_l3,
-    rec.department_l4,
-    rec.department_l5,
-    rec.department_l6,
+    rec.departmentL1,
+    rec.departmentL2,
+    rec.departmentL3,
+    rec.departmentL4,
+    rec.departmentL5,
+    rec.departmentL6,
   ]
     .map((s) => (s ?? '').trim())
     .filter(Boolean);
@@ -179,6 +179,8 @@ export function apiRecordToSkill(rec: SkillListRecordDto): Skill {
     id: String(rec.id),
     name: rec.name,
     icon: '📦',
+    author: rec.author,
+    orgName: rec.orgName,
     publisher: rec.author,
     latestPublishTime: rec.updatedAt,
     level: rec.level,
@@ -199,6 +201,12 @@ export function apiRecordToSkill(rec: SkillListRecordDto): Skill {
     tagFunctional: rec.categoryGroupName,
     tagOrg: rec.level,
     tags: rec.tags ?? [],
+    departmentL1: rec.departmentL1,
+    departmentL2: rec.departmentL2,
+    departmentL3: rec.departmentL3,
+    departmentL4: rec.departmentL4,
+    departmentL5: rec.departmentL5,
+    departmentL6: rec.departmentL6,
   };
 }
 

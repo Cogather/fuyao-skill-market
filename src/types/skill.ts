@@ -23,6 +23,17 @@ export interface Skill {
   name?: string;
   /** 用于卡片左侧图标：emoji 或简短标识 */
   icon?: string;
+  /** 接口字段：Skill 作者 */
+  author?: string;
+  /** 接口字段：组织名称，组织级 Skill 卡片展示使用 */
+  orgName?: string | null;
+  /** 接口字段：部门层级，个人级 Skill 卡片展示最小非空层级 */
+  departmentL1?: string;
+  departmentL2?: string;
+  departmentL3?: string;
+  departmentL4?: string;
+  departmentL5?: string;
+  departmentL6?: string;
   publisher?: string;
   latestPublishTime?: string;
   level?: string;

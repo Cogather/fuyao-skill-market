@@ -371,12 +371,12 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
 
     async fetchUserDepartment() {
       const data: UserDepartmentDto = {
-        department_l1: '云核装备经营管理部',
-        department_l2: '智能终端产品部',
-        department_l3: '云服务组',
-        department_l4: 'SRE团队',
-        department_l5: '',
-        department_l6: '',
+        departmentL1: '云核装备经营管理部',
+        departmentL2: '智能终端产品部',
+        departmentL3: '云服务组',
+        departmentL4: 'SRE团队',
+        departmentL5: '',
+        departmentL6: '',
       };
       return ok(data);
     },
@@ -643,12 +643,12 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         orgName: null,
         ownerUser: 'mock',
         ownerName: 'Mock 用户',
-        department_l1: '云核装备经营管理部',
-        department_l2: '智能终端产品部',
-        department_l3: '云服务组',
-        department_l4: 'SRE团队',
-        department_l5: '',
-        department_l6: '',
+        departmentL1: '云核装备经营管理部',
+        departmentL2: '智能终端产品部',
+        departmentL3: '云服务组',
+        departmentL4: 'SRE团队',
+        departmentL5: '',
+        departmentL6: '',
         downloads: 0,
         fileDir: `fuyao/skills/${baseName}/1.0.0`,
         packagePath: `fuyao/skills/${baseName}/1.0.0/skill.zip`,

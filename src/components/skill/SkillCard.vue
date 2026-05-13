@@ -27,23 +27,42 @@ const menuOpen = ref(false);
 const title = computed(() => props.skill.name ?? props.skill.skill_id ?? '未命名 Skill');
 const description = computed(() => props.skill.description || '暂无描述');
 
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function skillLevelText(): string {
+  return text(props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg);
+}
+
 const ownerText = computed(() => {
-  const raw = props.skill.owner_list || props.skill.publisher || props.skill.publish_name || '未配置作者';
-  return String(raw).split(/[,，]/)[0]?.trim() || '未配置作者';
+  return text(props.skill.author) || '未配置作者';
 });
 
 const deptText = computed(() => {
-  const raw = props.skill.dept_name || props.skill.publish_name || props.skill.publisher || '';
+  if (skillLevelText().includes('组织')) {
+    return text(props.skill.orgName) || '未配置组织';
+  }
+  const deptLevels = [
+    props.skill.departmentL6,
+    props.skill.departmentL5,
+    props.skill.departmentL4,
+    props.skill.departmentL3,
+    props.skill.departmentL2,
+    props.skill.departmentL1,
+  ];
+  const directDept = deptLevels.map(text).find(Boolean);
+  if (directDept) {
+    return directDept;
+  }
+  const raw = props.skill.dept_name || '';
   const parts = String(raw).split(/[/>｜|]/).map((item) => item.trim()).filter(Boolean);
   return parts[parts.length - 1] || raw || '未配置部门';
 });
 
 const iconText = computed(() => {
-  if (props.skill.icon) {
-    return props.skill.icon;
-  }
-  const hit = title.value.match(/[A-Za-z0-9\u4e00-\u9fa5]/);
-  return hit ? hit[0].toUpperCase() : 'S';
+  const first = title.value.trim().match(/[A-Za-z\u4e00-\u9fa5]/)?.[0] ?? 'S';
+  return /^[A-Za-z]$/.test(first) ? first.toUpperCase() : first;
 });
 
 const iconClass = computed(() => {
@@ -82,23 +101,23 @@ const orgShort = computed(() => {
 });
 
 const scopeLabel = computed(() => {
-  const rawLevel = (props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg ?? '').trim();
-  if (rawLevel.includes('组织')) {
-    const orgName = (props.skill.publish_name ?? props.skill.publisher ?? '').trim();
+  const level = skillLevelText();
+  if (level.includes('组织')) {
+    const orgName = text(props.skill.orgName ?? props.skill.publish_name);
     return orgName ? `组织级 · ${orgName}` : '组织级';
   }
-  if (rawLevel.includes('个人')) {
+  if (level.includes('个人')) {
     return '个人级';
   }
-  return rawLevel;
+  return level;
 });
 
 const scopeKind = computed(() => {
-  const rawLevel = (props.skill.publish_level ?? props.skill.level ?? props.skill.tagOrg ?? '').trim();
-  if (rawLevel.includes('组织')) {
+  const level = skillLevelText();
+  if (level.includes('组织')) {
     return 'org';
   }
-  if (rawLevel.includes('个人')) {
+  if (level.includes('个人')) {
     return 'personal';
   }
   return 'other';

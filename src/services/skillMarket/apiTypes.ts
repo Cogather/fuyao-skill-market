@@ -13,12 +13,12 @@ export type ApiEnvelope<T> = {
 };
 
 export type UserDepartmentDto = {
-  department_l1: string;
-  department_l2: string;
-  department_l3: string;
-  department_l4: string;
-  department_l5: string;
-  department_l6: string;
+  departmentL1: string;
+  departmentL2: string;
+  departmentL3: string;
+  departmentL4: string;
+  departmentL5: string;
+  departmentL6: string;
 };
 
 /** §3.3.10 / §4.4 */
@@ -74,7 +74,7 @@ export type SkillListParamsDto = {
   keyword?: string;
   level?: string;
   orgId?: number;
-  /** §3.3.3 市场列表：按 `skill.department_l1` 精确过滤，可与 L2～L6 组合 AND */
+  /** §3.3.3 市场列表：按部门层级精确过滤，可与 L2～L6 组合 AND */
   departmentL1?: string;
   departmentL2?: string;
   departmentL3?: string;
@@ -108,12 +108,12 @@ export type SkillListRecordDto = {
   status: string;
   orgId?: number | null;
   orgName: string | null;
-  department_l1?: string;
-  department_l2?: string;
-  department_l3?: string;
-  department_l4?: string;
-  department_l5?: string;
-  department_l6?: string;
+  departmentL1?: string;
+  departmentL2?: string;
+  departmentL3?: string;
+  departmentL4?: string;
+  departmentL5?: string;
+  departmentL6?: string;
   downloads: number;
   likes: number;
   dislikes: number;
@@ -278,12 +278,12 @@ export type UploadSkillResultDto = {
   orgName: string | null;
   ownerUser: string;
   ownerName: string;
-  department_l1: string;
-  department_l2: string;
-  department_l3: string;
-  department_l4: string;
-  department_l5: string;
-  department_l6: string;
+  departmentL1: string;
+  departmentL2: string;
+  departmentL3: string;
+  departmentL4: string;
+  departmentL5: string;
+  departmentL6: string;
   downloads: number;
   fileDir: string;
   packagePath: string;
