@@ -1469,6 +1469,8 @@ async function executeDetailDeleteSkill(): Promise<void> {
       closeVersionPanel();
     }
     closeDetailPanel();
+    await loadMyPublishedSkills();
+    filteredMyReleaseRows.value = [...myPublishedSkills.value];
     await startOverviewRemoteFetch();
   } catch (e) {
     showToast(e instanceof Error ? e.message : '删除失败');

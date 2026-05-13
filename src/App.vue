@@ -9,8 +9,8 @@ const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
 
 onMounted(async () => {
-  // await profileStore.initUserInfo()
-  // startTokenCheck()
+  await profileStore.initUserInfo()
+  startTokenCheck()
 });
 
 const startTokenCheck = () => {

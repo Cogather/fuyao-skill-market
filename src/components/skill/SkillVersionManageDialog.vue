@@ -116,7 +116,12 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
                       <span class="ver-num">{{ row.version }}</span>
                       <span v-if="isCurrent(row) && !isUnpublished(row)" class="badge badge-current">当前</span>
                       <span v-if="isUnpublished(row)" class="badge badge-off">已下架</span>
-                      <button type="button" class="ver-op-link ver-view-link" @click="emit('viewDetail', row)">
+                      <button
+                        v-if="!showOperationsColumn"
+                        type="button"
+                        class="ver-op-link neutral"
+                        @click="emit('viewDetail', row)"
+                      >
                         查看
                       </button>
                     </div>
@@ -124,20 +129,25 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
                   <td class="col-pub">{{ row.createBy || '—' }}</td>
                   <td class="col-time">{{ formatPublishTime(row.createdAt) }}</td>
                   <td v-if="showOperationsColumn" class="col-ops">
-                    <template v-if="!isUnpublished(row)">
-                      <button type="button" class="ver-op-link primary" @click="emit('download', row.version)">
-                        下载
+                    <div class="ver-ops-inline">
+                      <button type="button" class="ver-op-link neutral" @click="emit('viewDetail', row)">
+                        查看
                       </button>
-                      <button
-                        type="button"
-                        class="ver-op-link danger"
-                        :disabled="unpublishingVersion === row.version"
-                        @click="emit('unpublish', row.version)"
-                      >
-                        {{ unpublishingVersion === row.version ? '下架中…' : '下架' }}
-                      </button>
-                    </template>
-                    <button v-else type="button" class="ver-op-pill disabled" disabled>已下架</button>
+                      <template v-if="!isUnpublished(row)">
+                        <button type="button" class="ver-op-link primary" @click="emit('download', row.version)">
+                          下载
+                        </button>
+                        <button
+                          type="button"
+                          class="ver-op-link danger"
+                          :disabled="unpublishingVersion === row.version"
+                          @click="emit('unpublish', row.version)"
+                        >
+                          {{ unpublishingVersion === row.version ? '下架中…' : '下架' }}
+                        </button>
+                      </template>
+                      <button v-else type="button" class="ver-op-pill disabled" disabled>已下架</button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -282,6 +292,11 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
 
 .col-ops {
   width: 24%;
+  white-space: nowrap;
+}
+
+.ver-mgmt-table tbody td.col-ops {
+  vertical-align: middle;
 }
 
 .ver-num {
@@ -296,7 +311,18 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
   gap: 6px 8px;
 }
 
-.ver-view-link {
+.ver-ops-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.ver-ops-inline .ver-op-link {
+  margin-right: 0;
+}
+
+.ver-vercell .ver-op-link {
   margin-right: 0;
 }
 
@@ -323,10 +349,6 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
   border: 1px solid #e2e8f0;
 }
 
-.col-ops {
-  white-space: nowrap;
-}
-
 .ver-op-link {
   margin-right: 12px;
   padding: 5px 12px;
@@ -336,6 +358,17 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
+}
+
+.ver-op-link.neutral {
+  color: #334155;
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.ver-op-link.neutral:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
 }
 
 .ver-op-link.primary {
