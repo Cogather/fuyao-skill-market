@@ -1724,13 +1724,12 @@ watch(
 
 watch(
   innerTab,
-  async (tab, oldTab) => {
+  async (tab) => {
     closeDeleteConfirm();
     if (tab === 'overview') {
       await startOverviewRemoteFetch();
     }
-    // 仅在进入「我的发布」页签时拉 /my；避免挂在市场总览时因 immediate 或路由初始值误触发
-    if (tab === 'releases' && oldTab !== 'releases') {
+    if (tab === 'releases') {
       await loadMyPublishedSkills();
       filteredMyReleaseRows.value = [...myPublishedSkills.value];
     }
