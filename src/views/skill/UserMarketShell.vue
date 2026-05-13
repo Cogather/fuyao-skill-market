@@ -1480,10 +1480,6 @@ function onMyReleaseRowClick(row: SkillListRecordDto): void {
   void openDetailFromMyRelease(row);
 }
 
-function onReleaseUpgradeToOrg(row: SkillListRecordDto): void {
-  toastAction(`升级为组织级：${row.name}（将对接同步至公司组织流程）`);
-}
-
 function removeDeleteConfirmListeners(): void {
   if (!deleteConfirmListenersBound) {
     return;
@@ -3508,7 +3504,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                         v-else-if="myPublishReleaseOp(row) === 'upgrade'"
                         type="button"
                         class="btn primary sm my-rel-upgrade-btn"
-                        @click="onReleaseUpgradeToOrg(row)"
+                        disabled
+                        title="建设中"
                       >
                         升级为组织级
                       </button>
@@ -7980,6 +7977,12 @@ width: 100%;
   box-sizing: border-box;
   text-align: center;
   white-space: nowrap;
+}
+
+.my-release-panel .my-rel-upgrade-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  pointer-events: auto;
 }
 
 .my-release-panel .my-rel-primary-wrap .my-rel-pending-btn {
