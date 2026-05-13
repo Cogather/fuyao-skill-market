@@ -135,7 +135,7 @@ onBeforeUnmount(() => {
             </span>
           </div>
           <div v-if="!previewOnly" class="detail-actions">
-            <button type="button" class="detail-btn ghost" @click="emit('trySkill')">在线调测</button>
+            <button type="button" class="detail-btn ghost" disabled title="建设中">在线调测</button>
             <button type="button" class="detail-btn primary" @click="emit('download')">下载到本地</button>
             <button
               v-if="showDelete"
@@ -251,8 +251,20 @@ onBeforeUnmount(() => {
   border-color: #bfdbfe;
 }
 
+.detail-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
+.detail-btn.ghost:disabled:hover {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
 .detail-close:hover,
-.detail-btn.ghost:hover {
+.detail-btn.ghost:hover:not(:disabled) {
   color: #1d4ed8;
   border-color: #93c5fd;
   background: #dbeafe;
