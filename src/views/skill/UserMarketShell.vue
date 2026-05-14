@@ -72,6 +72,7 @@ const departmentList = computed(() => skillMarketStore.departmentList);
 const skills = ref<any[]>([]);
 const newSkills = ref<any[]>([]);
 const myPublishedSkills = ref<any[]>([]);
+const myReleaseTableWrapRef = ref<HTMLElement | null>(null);
 const totalDownloads = ref<any>(0);
 const totalSkills = ref(0);
 const downloadsLast30Days = ref(0);
@@ -1164,12 +1165,52 @@ async function loadSyncApplicationRows(): Promise<void> {
   }
 }
 
-const filterObj = ref<any>({
-  pageNo: 1,
-  pageSize: 200,
+const myReleasePageNumValue = ref<number>(1);
+const myReleasePageSizeValue = ref<number>(7);
+
+const myReleasePage = reactive<any>({
+  total: 0,
+  pageIndex: myReleasePageNumValue.value,
+  pageSize: myReleasePageSizeValue.value,
+  pageSizeOptions: [10, 20, 50, 100],
+});
+
+const myReleaseFilterObj = ref<any>({
+  pageNo: myReleasePage.pageIndex,
+  pageSize: myReleasePage.pageSize,
 })
 
-async function loadMyPublishedSkills(): Promise<void> {
+let myReleaseLastScrollTop = 0;  // 上一次的滚动位置
+const myReleaseHandleScroll = async () => {
+  const el = myReleaseTableWrapRef.value;
+  if (!el) {
+    return;
+  }
+  const scrollTop = el.scrollTop;
+  if (scrollTop <= myReleaseLastScrollTop - 100) { // 正在向上滚动
+    myReleaseLastScrollTop = scrollTop;
+    return;
+  }
+  const windowHeight = el.clientHeight;
+  const documentHeight = el.scrollHeight;
+  // 判断是否滚动到底部
+  if (scrollTop + windowHeight >= documentHeight) {
+    // 如果还有更多数据，加载下一页
+    if (myReleasePage.pageIndex * myReleasePage.pageSize < myReleasePage.total) {
+      myReleaseFilterObj.value.pageNum += 1;
+      myReleasePage.pageIndex += 1;
+      await loadMyPublishedSkills(true)
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 0);
+    }
+  }
+  myReleaseLastScrollTop = scrollTop;
+}
+
+const debounceMyReleaseScroll = debounce(myReleaseHandleScroll, 200);
+
+async function loadMyPublishedSkills(isPageOver?: boolean): Promise<void> {
   // 抢先拉角色仅用于本地 Mock：避免在真实 HTTP 下多打 /users/current/role 或干扰父级透传时序
   if (!transportIsHttp && !effectiveSkillUserId()) {
     await loadCurrentUserRole();
@@ -1177,13 +1218,14 @@ async function loadMyPublishedSkills(): Promise<void> {
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
   }
-  filterObj.value.userId = effectiveSkillUserId();
-  const res = await skillBaseService.queryMySkills(filterObj.value);
+  myReleaseFilterObj.value.userId = effectiveSkillUserId();
+  const res = await skillBaseService.queryMySkills(myReleaseFilterObj.value);
   if (!res.meta.success || !res.data) {
     showToast(res.message || '我的发布加载失败');
     return;
   }
-  myPublishedSkills.value = res.data;
+  myReleasePage.total = res.meta.number;
+  myPublishedSkills.value = isPageOver ? [...myPublishedSkills.value, ...res.data] : [...res.data];
 }
 
 function myPublishCurrentLayerText(row: SkillListRecordDto): string {
@@ -1519,6 +1561,10 @@ watch(
       await startOverviewRemoteFetch();
     }
     if (tab === 'releases') {
+      const myReleaseEl = myReleaseTableWrapRef.value;
+      if (myReleaseEl) {
+        myReleaseEl.addEventListener('scroll', debounceMyReleaseScroll);
+      }
       await loadMyPublishedSkills();
     }
     if (tab === 'ops') {
@@ -1962,7 +2008,7 @@ const handleDetailItem = async (skill: any, id: any) => {
   detailShowDelete.value = false;
 }
 
-async function openDetailPanel(id: string): Promise<void> {
+async function openDetailPanel(id: any): Promise<void> {
   const skill = newSkills.value.find((item) => skillKey(item) === id);
   if (!skill) {
     return;
@@ -2275,17 +2321,19 @@ function releaseSyncActionText(row: { skill: Skill; statusKey: ReleaseStatusKey;
 
 const onClickFilterRelease = async(key: any) => {
   releaseFilter.value = key;
-  if(key === 'all' && 'status' in filterObj.value) {
-    delete filterObj.value.status;
+  if(key === 'all' && 'status' in myReleaseFilterObj.value) {
+    delete myReleaseFilterObj.value.status;
   } else if(key === 'personal') {
-    filterObj.value.status = '个人级';
+    myReleaseFilterObj.value.status = '个人级';
   } else if(key === 'published') {
-    filterObj.value.status = '组织级';
+    myReleaseFilterObj.value.status = '组织级';
   } else if (key === 'reviewing') {
-    filterObj.value.status = '组织审核中';
+    myReleaseFilterObj.value.status = '组织审核中';
   } else if (key === 'rejected') {
-    filterObj.value.status = '组织已驳回';
+    myReleaseFilterObj.value.status = '组织已驳回';
   }
+  myReleasePage.pageIndex = 1;
+  myReleaseFilterObj.value.pageNo = myReleasePage.pageIndex;
   await loadMyPublishedSkills();
 }
 
@@ -2869,7 +2917,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   @mousedown.prevent
                 >
                   <div
-                    v-if="overviewDeptCascadeColumns.length === 0"
+                    v-if="true || overviewDeptCascadeColumns.length === 0"
                     class="market-dept-cascader-empty"
                   >
                     暂无部门数据（可先调整组织/分类或等待列表加载）
@@ -3038,13 +3086,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               </div>
             </div>
 
+            <div class="overview-list-footer" role="status">
+              <span>{{ overviewListFooterHint }}</span>
+            </div>
             <div
               ref="marketContentRef"
               class="market-list-scroll"
             >
-              <div class="overview-list-footer" role="status">
-                <span>{{ overviewListFooterHint }}</span>
-              </div>
               <p
                 v-if="transportIsHttp && overviewRemoteLoading && overviewRemoteItems.length === 0"
                 class="empty overview-loading-hint"
@@ -3184,7 +3232,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </div>
 
-        <div class="table-wrap my-table-wrap">
+        <div class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
           <table class="table my-table">
             <thead>
               <tr>
@@ -4213,8 +4261,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 }
 
 .table-wrap {
-  overflow-x: auto;
-  height: 445px;
+  overflow: auto;
 }
 
 .table {
@@ -6874,6 +6921,7 @@ width: 100%;
 /* User market visual refresh aligned to supplied prototype */
 .panel.tab-panel.overview-panel,
 .panel.tab-panel.my-release-panel {
+  height: calc(100vh - 320px);
   margin-top: 0;
   padding: 18px 20px 22px;
   border: 1px solid #e2e8f0;
@@ -7893,7 +7941,7 @@ width: 100%;
   min-height: 100vh;
   box-sizing: border-box;
   margin: 0;
-  padding: var(--market-topbar-height) 0 40px;
+  padding: var(--market-topbar-height) 0 0 0;
   background: #f6f8fb;
   color: #0f172a;
   font-family:
