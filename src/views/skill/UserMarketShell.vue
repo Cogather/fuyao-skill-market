@@ -1166,7 +1166,7 @@ async function loadSyncApplicationRows(): Promise<void> {
 }
 
 const myReleasePageNumValue = ref<number>(1);
-const myReleasePageSizeValue = ref<number>(7);
+const myReleasePageSizeValue = ref<number>(12);
 
 const myReleasePage = reactive<any>({
   total: 0,
@@ -1197,8 +1197,8 @@ const myReleaseHandleScroll = async () => {
   if (scrollTop + windowHeight >= documentHeight) {
     // 如果还有更多数据，加载下一页
     if (myReleasePage.pageIndex * myReleasePage.pageSize < myReleasePage.total) {
-      myReleaseFilterObj.value.pageNum += 1;
       myReleasePage.pageIndex += 1;
+      myReleaseFilterObj.value.pageNo += 1;
       await loadMyPublishedSkills(true)
       setTimeout(() => {
         el.scrollTop = el.scrollHeight;
@@ -1561,11 +1561,11 @@ watch(
       await startOverviewRemoteFetch();
     }
     if (tab === 'releases') {
+      await loadMyPublishedSkills();
       const myReleaseEl = myReleaseTableWrapRef.value;
       if (myReleaseEl) {
         myReleaseEl.addEventListener('scroll', debounceMyReleaseScroll);
       }
-      await loadMyPublishedSkills();
     }
     if (tab === 'ops') {
       await loadOpsDashboardOverview();
