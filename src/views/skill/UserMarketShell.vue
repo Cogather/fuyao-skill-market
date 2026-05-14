@@ -142,6 +142,10 @@ function initialOverviewPageSize(): number {
   return overviewPageSizeByLayout(overviewColumnCountByViewport(), OVERVIEW_DEFAULT_VISIBLE_ROWS);
 }
 
+const helpLink = () => {
+  showToast('帮助说明暂未配置');
+}
+
 const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
 const uploadOpen = ref(false);
 const search = ref('');
@@ -1608,10 +1612,6 @@ function showToast(message: string, ms = 3000): void {
   }, ms);
 }
 
-function handleHelpClick(): void {
-  showToast('帮助说明暂未配置');
-}
-
 function openOrgCreateModal(): void {
   orgModalMode.value = 'create';
   orgForm.value = {
@@ -2800,8 +2800,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         />
       </label>
       <span v-else class="header-search header-search--placeholder" aria-hidden="true" />
-
-      <button type="button" class="top-icon" aria-label="帮助" @click="handleHelpClick">?</button>
+      <img src="/public/help.svg" alt="help"
+        style="width: 20px; color: inherit; cursor: pointer;"
+        title="查看skill市场使用指导"
+        @click="helpLink"
+      />
+      <button v-if="false" type="button" class="top-icon" aria-label="通知">🔔</button>
     </header>
 
     <section v-if="innerTab !== 'overview'" class="hero">
