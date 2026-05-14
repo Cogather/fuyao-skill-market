@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import {
   downloadSkillApi,
+  listBusinessDimensionsApi,
   listSkillsApi,
   matchesScope,
   uploadSkillApi,
@@ -46,7 +47,6 @@ import type {
 } from './apiTypes';
 import { skillToListRecord, stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
-import { getMockBusinessDimensions } from './mock/businessDimensionsDefault';
 import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
@@ -824,7 +824,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
     },
 
     async fetchBusinessDimensions(): Promise<ApiEnvelope<BusinessDimensionDto[]>> {
-      return ok(getMockBusinessDimensions());
+      return ok(listBusinessDimensionsApi());
     },
 
     async fetchDashboardOverview(params: DashboardOverviewParams) {

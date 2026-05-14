@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
@@ -13,7 +13,6 @@ import type {
   OrganizationDto,
   SkillDetailDto,
   SkillFileTreeField,
-  SkillListParamsDto,
   SkillListRecordDto,
   SkillVersionListItemDto,
   SyncApplicationListItemDto,
@@ -170,20 +169,30 @@ const overviewGridRef = ref<HTMLElement | null>(null);
 /** Mock / 本地全量筛选后，渐进展示的条数 */
 const overviewVisibleCount = ref(initialOverviewPageSize());
 /** HTTP：当前页的接口列表（再经与 Mock 一致的排序） */
+
+const pageNumValue = ref<number>(1);
+const pageSizeValue = ref<number>(12);
+
+const page = reactive<any>({
+  total: 0,
+  pageIndex: pageNumValue.value,
+  pageSize: pageSizeValue.value,
+  pageSizeOptions: [10, 20, 50, 100],
+})
+
 const overviewFilterObj = ref<any>({
   keyword: '',
-  pageNum: 1,
-  pageSize: 500,
+  pageSize: page.pageSize,
+  pageNum: page.pageIndex,
   status: '',
+  tagList: '',
+  businessDimension: '',
 })
 const overviewRemoteItems = ref<any[]>([]);
 const overviewRemoteTotal = ref(0);
-const overviewRemoteNextPage = ref(1);
 const overviewRemoteExhausted = ref(false);
 const overviewRemoteLoading = ref(false);
-let overviewRemoteFetchSeq = 0;
 let overviewScrollRaf = 0;
-let overviewLastScrollTriggerMs = 0;
 const pageSize = ref(initialOverviewPageSize());
 const toast = ref('');
 const showAdminModules = computed(() => marketRoleShowsOrgManagement(currentUserRole.value));
@@ -378,6 +387,34 @@ function sortOverviewSkills(list: Skill[]): Skill[] {
       String(a.latestPublishTime ?? a.skill_id ?? a.id ?? ''),
     ),
   );
+}
+
+let lastScrollTop = 0;
+const handleScroll = async () => {
+  const el = marketContentRef.value;
+  if (!el) {
+    return;
+  }
+  const scrollTop = el.scrollTop;
+  if (scrollTop > lastScrollTop - 100) {
+    lastScrollTop = scrollTop;
+    return;
+  }
+  const windowHeight = el.clientHeight;
+  const documentHeight = el.scrollHeight;
+  // 判断是否滚动到底部
+  if (scrollTop + windowHeight >= documentHeight) {
+    // 如果还有更多数据，加载下一页
+    if (page.pageIndex * page.pageSize < page.total) {
+      overviewFilterObj.value.pageNum += 1;
+      page.pageIndex += 1;
+      await startOverviewRemoteFetch(true);
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 0)
+    }
+  }
+  lastScrollTop = scrollTop;
 }
 
 const orgOptions = computed(() => {
@@ -604,13 +641,8 @@ const categoryOptions = computed(() =>
 );
 
 const tagOptions = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  const scope = toListScope(quickFilter.value);
-  const opts = new Set<string>();
-  for (const s of skills.value) {
-    if (!matchesPrimaryFilters(s, q, scope)) {
-      continue;
-    }
+  let opts = new Set<string>();
+  for (const s of newSkills.value) {
     for (const tag of skillTags(s)) {
       opts.add(tag);
     }
@@ -639,90 +671,6 @@ const tabPanelFillStyle = computed(() => {
     overflow: capOverview ? 'hidden' : undefined,
   };
 });
-
-function overviewGridColumnCount(grid: HTMLElement): number {
-  const columns = window.getComputedStyle(grid).gridTemplateColumns;
-  if (columns && columns !== 'none') {
-    const count = columns.split(/\s+/).filter(Boolean).length;
-    if (count > 0) {
-      return count;
-    }
-  }
-  return overviewColumnCountByViewport();
-}
-
-function syncOverviewPageSize(): void {
-  void nextTick(() => {
-    if (overviewPageSizeFrame) {
-      window.cancelAnimationFrame(overviewPageSizeFrame);
-    }
-    overviewPageSizeFrame = window.requestAnimationFrame(() => {
-      overviewPageSizeFrame = 0;
-      if (innerTab.value !== 'overview') {
-        return;
-      }
-      const content = marketContentRef.value;
-      const grid = overviewGridRef.value;
-      if (!content || !grid) {
-        return;
-      }
-      const columns = overviewGridColumnCount(grid);
-      const gridStyle = window.getComputedStyle(grid);
-      const rowGap = Number.parseFloat(gridStyle.rowGap || gridStyle.gap) || 14;
-      const firstCard = grid.firstElementChild as HTMLElement | null;
-      const measuredCardHeight = firstCard?.getBoundingClientRect().height ?? 0;
-      const cardHeight = Math.max(1, measuredCardHeight || 136);
-      const filters = content.querySelector<HTMLElement>('.filters');
-      const filtersHeight = filters?.offsetHeight ?? 0;
-      const filtersMarginBottom = filters
-        ? Number.parseFloat(window.getComputedStyle(filters).marginBottom) || 0
-        : 0;
-      const footerHeight = content.querySelector<HTMLElement>('.overview-list-footer')?.offsetHeight ?? 0;
-      const contentRect = content.getBoundingClientRect();
-      const panel = tabPanelRef.value;
-      const panelRect = panel?.getBoundingClientRect();
-      const panelPaddingBottom = panel
-        ? Number.parseFloat(window.getComputedStyle(panel).paddingBottom) || 0
-        : 0;
-      const plannedContentHeight =
-        panelRect && tabPanelMinHeight.value > 0
-          ? tabPanelMinHeight.value - (contentRect.top - panelRect.top) - panelPaddingBottom
-          : content.clientHeight;
-      const availableHeight = Math.max(
-        cardHeight,
-        plannedContentHeight - filtersHeight - filtersMarginBottom - footerHeight,
-      );
-      const rows = Math.max(
-        OVERVIEW_DEFAULT_VISIBLE_ROWS,
-        Math.floor((availableHeight + rowGap) / (cardHeight + rowGap)),
-      );
-      const nextSize = overviewPageSizeByLayout(columns, rows);
-      if (nextSize !== pageSize.value) {
-        pageSize.value = nextSize;
-      }
-    });
-  });
-}
-
-function syncTabPanelMinHeight(): void {
-  void nextTick(() => {
-    const panel = tabPanelRef.value;
-    if (!panel) {
-      return;
-    }
-    const bottomGutter = innerTab.value === 'overview' ? 0 : 32;
-    const top = panel.getBoundingClientRect().top;
-    tabPanelMinHeight.value = Math.max(360, Math.floor(window.innerHeight - top - bottomGutter));
-    syncOverviewPageSize();
-  });
-}
-
-function syncResponsiveLayout(): void {
-  syncTabPanelMinHeight();
-  syncOverviewPageSize();
-  updateMarketDeptPanelLayout();
-}
-
 
 // 等待 userId 和 departmentList 加载完成
 function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
@@ -859,9 +807,21 @@ async function loadOpsDashboardOverview(): Promise<void> {
 
 const filteredMyReleaseRows = ref<any>([])
 
+const debounce = (fn: any, delay: number): any => {
+  let timer: any = null;
+  return () => {
+    if(timer) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => {
+      fn();
+    }, delay);
+  };
+}
+
+const debounceScroll = debounce(handleScroll, 200);
+
 onMounted(async () => {
-  syncResponsiveLayout();
-  window.addEventListener('resize', syncResponsiveLayout);
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
   }
@@ -872,12 +832,23 @@ onMounted(async () => {
   await loadCurrentUserRole();
   if (transportIsHttp) {
     await loadAdminOrganizations();
-    await startOverviewRemoteFetch();
-    await loadOpsDashboardOverview();
+    // await startOverviewRemoteFetch();
+    // await loadOpsDashboardOverview();
+    const el = marketContentRef.value;
+    if (el) {
+      el.addEventListener('scroll',debounceScroll);
+    }
   }
   document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.addEventListener('keydown', onMarketDeptCascaderKeydown);
 });
+
+onUnmounted(() => {
+  const el = marketContentRef.value;
+  if(el) {
+    el.removeEventListener('scroll', debounceScroll);
+  }
+})
 
 onBeforeUnmount(() => {
   closeDeleteConfirm();
@@ -893,7 +864,6 @@ onBeforeUnmount(() => {
   if (overviewPageSizeFrame) {
     window.cancelAnimationFrame(overviewPageSizeFrame);
   }
-  window.removeEventListener('resize', syncResponsiveLayout);
 });
 
 /** 本地（Mock）全量筛选结果，用于渐进展示 */
@@ -917,19 +887,14 @@ function applyOverviewDisplayFilters(raw: Skill[]): Skill[] {
   return sortOverviewSkills(list);
 }
 
-async function startOverviewRemoteFetch(): Promise<void> {
+async function startOverviewRemoteFetch(isPageOVer?: boolean): Promise<void> {
   overviewRemoteLoading.value = true;
   try {
-    const fetchSize = Math.max(12, Number(overviewFilterObj.value.pageSize) || pageSize.value);
-    const env = await skillBaseService.querySkillList(buildOverviewSkillListParams(1, fetchSize));
+    const env = await skillBaseService.querySkillList(overviewFilterObj.value);
     if(env.meta.success && env.data) {
-      const batch = [...env.data];
-      newSkills.value = batch;
-      overviewRemoteItems.value = batch;
-      skills.value = batch;
+      newSkills.value = isPageOVer ? [...newSkills.value, ...env.data] : [...env.data];
       overviewRemoteTotal.value = env.meta.number;
-      overviewRemoteNextPage.value = 2;
-      overviewRemoteExhausted.value = batch.length === 0 || batch.length >= overviewRemoteTotal.value;
+      overviewRemoteExhausted.value = newSkills.value.length === 0 || newSkills.value.length >= overviewRemoteTotal.value;
       totalDownloads.value = newSkills.value.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
     }
   } finally {
@@ -955,163 +920,6 @@ const onSearchKeyWord = async(event: Event) => {
   await startOverviewRemoteFetch();
 }
 
-
-function buildOverviewSkillListParams(pageNo: number, fetchSize: number): SkillListParamsDto {
-  const params: SkillListParamsDto = {
-    // userId: userId.value,
-    pageNum: pageNo,
-    pageSize: fetchSize,
-    keyword: search.value.trim() || '',
-  };
-  const scope = toListScope(quickFilter.value);
-  if (scope === 'personal') {
-    params.status = '个人级';
-  } else if (scope !== 'all') {
-    params.status = '组织级';
-  }
-  const orgId = Number(levelFilter.value);
-  if (transportIsHttp && Number.isFinite(orgId) && orgId > 0) {
-    params.orgId = orgId;
-  }
-  if (categoryFilter.value !== 'all') {
-    params.categoryGroupName = categoryFilter.value;
-  }
-  if (selectedTags.value.length > 0) {
-    params.tagList = selectedTags.value.join(',');
-  }
-  const [departmentL1, departmentL2, departmentL3, departmentL4, departmentL5, departmentL6] =
-    overviewMarketDeptSegments.value;
-  if (departmentL1) params.departmentL1 = departmentL1;
-  if (departmentL2) params.departmentL2 = departmentL2;
-  if (departmentL3) params.departmentL3 = departmentL3;
-  if (departmentL4) params.departmentL4 = departmentL4;
-  if (departmentL5) params.departmentL5 = departmentL5;
-  if (departmentL6) params.departmentL6 = departmentL6;
-  return params;
-}
-
-async function loadOverviewRemoteMore(expectSeq?: number): Promise<void> {
-  if (!transportIsHttp) {
-    return;
-  }
-  if (overviewRemoteLoading.value || overviewRemoteExhausted.value) {
-    return;
-  }
-  const seq = expectSeq ?? overviewRemoteFetchSeq;
-  overviewRemoteLoading.value = true;
-  try {
-    const fetchSize = Math.max(12, pageSize.value);
-    const pageNo = overviewRemoteNextPage.value;
-    const params = buildOverviewSkillListParams(pageNo, fetchSize);
-    const env = await skillBaseService.querySkillList(params);
-    if (seq !== overviewRemoteFetchSeq) {
-      return;
-    }
-    if (!env.meta.success || !env.data) {
-      showToast(env.message || '市场列表加载失败');
-      return;
-    }
-    const batch = env.data;
-    const merged = pageNo <= 1 ? [...batch] : [...overviewRemoteItems.value, ...batch];
-    overviewRemoteItems.value = merged;
-    newSkills.value = merged;
-    skills.value = merged;
-    overviewRemoteTotal.value = env.meta.number;
-    const received = batch.length;
-    if(received === 0 || merged.length >= overviewRemoteTotal.value || received < fetchSize) {
-      overviewRemoteExhausted.value = true;
-    } else {
-      overviewRemoteNextPage.value = pageNo + 1;
-    }
-    totalDownloads.value = merged.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
-  } finally {
-    overviewRemoteLoading.value = false;
-    // scheduleMaybeFillOverviewViewport();
-  }
-}
-
-function onOverviewMarketScroll(): void {
-  if (innerTab.value !== 'overview') {
-    return;
-  }
-  if (overviewDeptCascaderOpen.value) {
-    updateMarketDeptPanelLayout();
-  }
-  if (overviewScrollRaf) {
-    return;
-  }
-  overviewScrollRaf = window.requestAnimationFrame(() => {
-    overviewScrollRaf = 0;
-    const root = marketContentRef.value;
-    if (!root) {
-      return;
-    }
-    const now = Date.now();
-    if (now - overviewLastScrollTriggerMs < 180) {
-      return;
-    }
-    const { scrollTop, clientHeight, scrollHeight } = root;
-    const thresholdPx = 80;
-    if (scrollHeight - scrollTop - clientHeight > thresholdPx) {
-      return;
-    }
-    overviewLastScrollTriggerMs = now;
-    void handleOverviewScrollNearEnd();
-  });
-}
-
-/** 内容高度不足、没有出现滚动条时，连续拉取直到可滚动或没有更多 */
-function scheduleMaybeFillOverviewViewport(): void {
-  void nextTick(() => {
-    requestAnimationFrame(() => {
-      tryFillOverviewUntilScrollable();
-    });
-  });
-}
-
-function tryFillOverviewUntilScrollable(): void {
-  if (innerTab.value !== 'overview') {
-    return;
-  }
-  const root = marketContentRef.value;
-  if (!root) {
-    return;
-  }
-  if (!overviewHasMore.value) {
-    return;
-  }
-  if (transportIsHttp && overviewRemoteLoading.value) {
-    return;
-  }
-  const pad = 8;
-  if (root.scrollHeight > root.clientHeight + pad) {
-    return;
-  }
-  void handleOverviewScrollNearEnd();
-}
-
-async function handleOverviewScrollNearEnd(): Promise<void> {
-  if (innerTab.value !== 'overview') {
-    return;
-  }
-  if (transportIsHttp) {
-    await loadOverviewRemoteMore();
-    return;
-  }
-  if (!overviewHasMoreLocal.value) {
-    return;
-  }
-  overviewVisibleCount.value += Math.max(12, pageSize.value);
-  scheduleMaybeFillOverviewViewport();
-}
-
-const filteredSkills = computed(() => {
-  if (transportIsHttp) {
-    return applyOverviewDisplayFilters(overviewRemoteItems.value);
-  }
-  return overviewFilteredAll.value.slice(0, overviewVisibleCount.value);
-});
-
 const overviewHasMoreLocal = computed(
   () => overviewVisibleCount.value < overviewFilteredAll.value.length,
 );
@@ -1130,22 +938,15 @@ const overviewHasMore = computed(() => {
 });
 
 const overviewListFooterHint = computed(() => {
-  const shown = filteredSkills.value.length;
-  if (transportIsHttp) {
-    const total = overviewRemoteTotal.value;
-    if (overviewRemoteLoading.value) {
-      return `加载中…（已展示 ${shown} 条，合计 ${total} 条）`;
-    }
-    if (!overviewHasMore.value) {
-      return `已加载全部 ${shown} 条（合计 ${total} 条）`
-    }
-    return `已展示 ${shown} 条 · 合计 ${total} 条 · 继续下拉加载更多`;
+  const shown = newSkills.value.length;
+  const total = transportIsHttp ? overviewRemoteTotal.value : overviewFilteredAll.value.length;
+  if (overviewRemoteLoading.value) {
+    return `加载中…（已展示 ${shown} 条，合计 ${total} 条）`;
   }
-  const total = overviewFilteredAll.value.length;
   if (!overviewHasMore.value) {
-    return `已展示全部 ${shown} 个 Skill`;
+    return `已加载全部 ${shown} 条（合计 ${total} 条）`
   }
-  return `已展示 ${shown} / ${total} 个 Skill · 继续下拉加载更多`;
+  return `已展示 ${shown} 条 · 合计 ${total} 条 · 继续下拉加载更多`;
 });
 
 function overviewQuickFilterLabel(value: string): string {
@@ -1251,17 +1052,28 @@ watch(categoryOptions, (options) => {
   }
 });
 
-function setCategoryFilter(value: string): void {
+async function setCategoryFilter(value: string): void {
   categoryFilter.value = value;
   if (transportIsHttp && innerTab.value === 'overview') {
-    void startOverviewRemoteFetch();
+    overviewFilterObj.value.pageNum = 1;
+    page.pageIndex = 1;
+    if (value === 'all') {
+      overviewFilterObj.value.businessDimension = '';
+    } else {
+      overviewFilterObj.value.businessDimension = value;
+    }
+    await startOverviewRemoteFetch();
   }
 }
 
-function toggleTagFilter(tag: string): void {
+async function toggleTagFilter(tag: string): void {
   selectedTags.value = selectedTags.value.includes(tag)
     ? selectedTags.value.filter((item) => item !== tag)
     : [...selectedTags.value, tag];
+  overviewFilterObj.value.tagList = selectedTags.value.join(',');
+  overviewFilterObj.value.pageNum = 1;
+  page.pageIndex = 1;
+  await startOverviewRemoteFetch();
 }
 
 function clearTagFilters(): void {
@@ -1736,7 +1548,6 @@ watch(
     if (tab === 'ops') {
       await loadOpsDashboardOverview();
     }
-    syncTabPanelMinHeight();
   },
   { immediate: true },
 );
@@ -1881,27 +1692,6 @@ function skillKey(skill: Skill): string {
 
 function skillTitle(skill: Skill): string {
   return skill.name ?? skill.skill_id;
-}
-
-/** 版本历史中的发布时间：本地化可读格式 */
-function formatSkillVersionTime(raw: unknown): string {
-  const s = String(raw ?? '').trim();
-  if (!s) {
-    return '—';
-  }
-  const forDate = s.includes('T') ? s : s.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
-  const d = new Date(forDate);
-  if (!Number.isNaN(d.getTime())) {
-    return new Intl.DateTimeFormat('zh-CN', {
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(d);
-  }
-  return s;
 }
 
 function semverNumsForVersions(v: string): number[] {
@@ -2131,9 +1921,9 @@ async function onDownload(id: string, version?: string): Promise<void> {
     const d = env.data;
     window.open(d);
 
-    let index = filteredSkills.value.findIndex((item) => skillKey(item) === id);
+    let index = newSkills.value.findIndex((item) => skillKey(item) === id);
     if(index >= 0) {
-      filteredSkills.value[index].downloads += 1;
+      newSkills.value[index].downloads += 1;
     }
   } catch (e) {
     showToast(e instanceof Error ? e.message : '下载失败');
@@ -2846,7 +2636,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 </script>
 
 <template>
-  <div class="user-shell">
+  <div class="all-iframe">
 
     <UploadSkillModal
       v-model="uploadOpen"
@@ -2936,7 +2726,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
   </div>
-  <!-- <p>--------------------------------这是分界线--------------------------------</p> -->
   <div class="user-shell skill-market-shell" :class="{ 'is-overview-tab': innerTab === 'overview' }">
     <header class="market-topbar">
       <button type="button" class="app-brand" @click="goTab('overview')">
@@ -3319,10 +3108,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               >
                 正在从接口加载市场列表…
               </p>
-              <template v-else-if="filteredSkills.length > 0">
+              <template v-else-if="newSkills.length > 0">
                 <div ref="overviewGridRef" class="grid">
                   <SkillCard
-                    v-for="s in filteredSkills"
+                    v-for="s in newSkills"
                     :key="s.id"
                     class="market-skill-card"
                     :skill="s"
@@ -3334,10 +3123,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </div>
               </template>
               <p v-else class="empty">没有匹配的 Skill，可调整筛选条件。</p>
-
-              <div class="overview-list-footer" role="status">
-                <span>{{ overviewListFooterHint }}</span>
-              </div>
             </div>
           </div>
         </section>

@@ -7,6 +7,7 @@ import type {
   SkillUploadResponse,
   SkillVersionEntry,
 } from '../types/skill';
+import { getMockBusinessDimensions } from '../services/skillMarket/mock/businessDimensionsDefault';
 
 function nowText(): string {
   const now = new Date();
@@ -35,6 +36,10 @@ function skillVersion(skill: Skill): string {
 
 function skillPublishTime(skill: Skill): string {
   return skill.latestPublishTime ?? '';
+}
+
+export function listBusinessDimensionsApi() {
+  return getMockBusinessDimensions();
 }
 
 export function matchesScope(skill: Skill, scope: SkillMarketScope): boolean {

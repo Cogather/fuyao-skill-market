@@ -399,7 +399,7 @@ const onSubmit = async (): Promise<void> => {
     formData.append('file', file.value);
     const env = await skillBaseService.uploadSkillPackage(formData, {
       userId: userId.value,
-      categoryGroupName: selectedBusinessDimension.value,
+      businessDimension: selectedBusinessDimension.value,
     });
     if (!serviceSucceeded(env)) {
       parseError.value = serviceMessage(env, '上传失败');

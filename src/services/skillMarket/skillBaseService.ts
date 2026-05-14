@@ -1,5 +1,4 @@
 import httpRequest from "./request"
-import { SKILL_MARKET_ENDPOINTS } from "./endpoints"
 
 export const skillBaseService = {
 
@@ -224,8 +223,8 @@ export const skillBaseService = {
 
     // 左侧目录栏业务维度查询接口；HTTP 模式下如路径调整，只改 endpoints.businessDimensions 即可
     queryBusinessDimensions: (): any => {
-        return httpRequest.api<any>({
-            url: SKILL_MARKET_ENDPOINTS.businessDimensions,
+        return httpRequest.skill<any>({
+            url: '/business-dimensions',
             method: 'get',
         })
     },

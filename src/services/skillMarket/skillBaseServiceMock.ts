@@ -824,6 +824,10 @@ function createZipUrl(skill: MockSkillRecord): string {
 
 function handleSkillRequest(method: string, path: string, config: AxiosRequestConfig): MockEnvelope<unknown> | null {
   const params = readParams(config);
+  if (method === 'get' && path === '/business-dimensions') {
+    const data = getMockBusinessDimensions();
+    return ok(data, data.length);
+  }
   if (method === 'post' && path === '/upload/parse') {
     return ok(parsedSkillFromFile(fileFromFormData(config.data)));
   }
