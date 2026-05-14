@@ -1608,6 +1608,10 @@ function showToast(message: string, ms = 3000): void {
   }, ms);
 }
 
+function handleHelpClick(): void {
+  showToast('帮助说明暂未配置');
+}
+
 function openOrgCreateModal(): void {
   orgModalMode.value = 'create';
   orgForm.value = {
@@ -2797,7 +2801,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </label>
       <span v-else class="header-search header-search--placeholder" aria-hidden="true" />
 
-      <button type="button" class="top-icon" aria-label="通知">🔔</button>
+      <button type="button" class="top-icon" aria-label="帮助" @click="handleHelpClick">?</button>
     </header>
 
     <section v-if="innerTab !== 'overview'" class="hero">
@@ -8102,17 +8106,19 @@ width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 0;
+  border: 1px solid #cbd5e1;
   border-radius: 999px;
   background: transparent;
-  color: #eab308;
+  color: #475569;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
+  line-height: 1;
 }
 
 .top-icon:hover {
   background: #f8fafc;
+  border-color: #93c5fd;
   color: #2563eb;
 }
 
