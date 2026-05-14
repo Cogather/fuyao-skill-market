@@ -518,23 +518,30 @@ function toggleOverviewDeptCascader(): void {
   }
 }
 
-function closeOverviewDeptCascader(): void {
-  overviewDeptCascaderOpen.value = false;
-}
-
-function onOverviewDeptCascaderPick(levelIndex: number, name: string): void {
-  onOverviewDeptCascadeChange(levelIndex, name);
-}
-
 function marketOverviewDeptPickHasChildren(levelIndex: number, name: string): boolean {
   const prefix = [...overviewMarketDeptSegments.value.slice(0, levelIndex), name];
   const n = marketOverviewDeptNodeByPartial(prefix);
   return Boolean(n && n.children.length > 0);
 }
 
-function clearOverviewDeptCascader(): void {
+const clearOverviewDeptCascader = async () => {
+  for(let i in overviewMarketDeptSegments.value) {
+    const num = Number(i) + 1;
+    const deptField = `departmentL${num}`;
+    overviewFilterObj.value[deptField] = '';
+  }
+  await startOverviewRemoteFetch();
   overviewMarketDeptSegments.value = [];
   overviewDeptCascaderOpen.value = false;
+}
+
+const deptFilterOnChange = async () => {
+  for(let i in overviewMarketDeptSegments.value) {
+    const num = Number(i) + 1;
+    const deptField = `departmentL${num}`;
+    overviewFilterObj.value[deptField] = overviewMarketDeptSegments.value[i];
+  }
+  await startOverviewRemoteFetch();
 }
 
 function onMarketDeptCascaderDocDown(ev: MouseEvent): void {
@@ -804,8 +811,6 @@ async function loadOpsDashboardOverview(): Promise<void> {
     }
   }
 }
-
-const filteredMyReleaseRows = ref<any>([])
 
 const debounce = (fn: any, delay: number): any => {
   let timer: any;
@@ -1164,17 +1169,6 @@ const filterObj = ref<any>({
   pageSize: 200,
 })
 
-function normalizeMySkillsPayload(raw: unknown): SkillListRecordDto[] {
-  if (raw == null) {
-    return [];
-  }
-  if (Array.isArray(raw)) {
-    return raw as SkillListRecordDto[];
-  }
-  const o = raw as { records?: unknown };
-  return Array.isArray(o.records) ? (o.records as SkillListRecordDto[]) : [];
-}
-
 async function loadMyPublishedSkills(): Promise<void> {
   // 抢先拉角色仅用于本地 Mock：避免在真实 HTTP 下多打 /users/current/role 或干扰父级透传时序
   if (!transportIsHttp && !effectiveSkillUserId()) {
@@ -1189,7 +1183,7 @@ async function loadMyPublishedSkills(): Promise<void> {
     showToast(res.message || '我的发布加载失败');
     return;
   }
-  myPublishedSkills.value = normalizeMySkillsPayload(res.data);
+  myPublishedSkills.value = res.data;
 }
 
 function myPublishCurrentLayerText(row: SkillListRecordDto): string {
@@ -1275,10 +1269,6 @@ async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean
   } finally {
     versionPanelLoading.value = false;
   }
-}
-
-function onMyReleaseRowClick(row: SkillListRecordDto): void {
-  void openDetailFromMyRelease(row);
 }
 
 function removeDeleteConfirmListeners(): void {
@@ -1405,7 +1395,6 @@ async function executeDetailDeleteSkill(): Promise<void> {
     }
     closeDetailPanel();
     await loadMyPublishedSkills();
-    filteredMyReleaseRows.value = [...myPublishedSkills.value];
     await startOverviewRemoteFetch();
   } catch (e) {
     showToast(e instanceof Error ? e.message : '删除失败');
@@ -1492,7 +1481,6 @@ async function executeDeleteMyReleaseSkill(): Promise<void> {
       closeVersionPanel();
     }
     await loadMyPublishedSkills();
-    filteredMyReleaseRows.value = [...myPublishedSkills.value];
     await startOverviewRemoteFetch();
   } catch (e) {
     showToast(e instanceof Error ? e.message : '删除失败');
@@ -1532,7 +1520,6 @@ watch(
     }
     if (tab === 'releases') {
       await loadMyPublishedSkills();
-      filteredMyReleaseRows.value = [...myPublishedSkills.value];
     }
     if (tab === 'ops') {
       await loadOpsDashboardOverview();
@@ -1957,11 +1944,7 @@ async function openVersionPanelFromMarketSkill(id: string): Promise<void> {
   }
 }
 
-async function openDetailPanel(id: string): Promise<void> {
-  const skill = newSkills.value.find((item) => skillKey(item) === id);
-  if (!skill) {
-    return;
-  }
+const handleDetailItem = async (skill: any, id: any) => {
   const hasTree = fileTreePayloadIsPresent(skill.fileTree);
   const hasMd =
     typeof skill.skillMdContent === 'string' && skill.skillMdContent.length > 0;
@@ -1979,18 +1962,12 @@ async function openDetailPanel(id: string): Promise<void> {
   detailShowDelete.value = false;
 }
 
-function mapMyReleaseRowToDetailSkill(row: SkillListRecordDto): Record<string, unknown> {
-  return {
-    id: String(row.id),
-    name: row.name,
-    categoryGroupName: row.categoryGroupName ?? row.category ?? '',
-    author: row.author,
-    level: row.level,
-    publish_level: row.level,
-    downloads: row.downloads ?? 0,
-    currentVersion: row.version,
-    publish_name: row.orgName ?? undefined,
-  };
+async function openDetailPanel(id: string): Promise<void> {
+  const skill = newSkills.value.find((item) => skillKey(item) === id);
+  if (!skill) {
+    return;
+  }
+  await handleDetailItem(skill, id);
 }
 
 async function fetchSkillDetailExtras(
@@ -2015,12 +1992,8 @@ async function fetchSkillDetailExtras(
 }
 
 async function openDetailFromMyRelease(row: SkillListRecordDto): Promise<void> {
-  const shim = mapMyReleaseRowToDetailSkill(row);
-  const { skillMdContent, fileTree } = await fetchSkillDetailExtras(String(row.id));
-  shim.skillMdContent = skillMdContent;
-  shim.fileTree = fileTree;
-  detailFileTree(shim);
-  detailPanelSkill.value = shim;
+  await handleDetailItem(row, row.id);
+  detailPanelSkill.value = row;
   detailShowDelete.value = true;
 }
 
@@ -2300,18 +2273,6 @@ function releaseSyncActionText(row: { skill: Skill; statusKey: ReleaseStatusKey;
   return '同步至公司组织';
 }
 
-function onReleaseSync(row: { skill: Skill; statusKey: ReleaseStatusKey; personal: boolean }): void {
-  const action = releaseSyncActionText(row);
-  toastAction(`${action}（演示）：${skillTitle(row.skill)}`);
-}
-
-function onReleaseRecord(row: { skill: Skill }): void {
-  const id = String(row.skill.id ?? row.skill.skill_id ?? '');
-  if (id) {
-    void openVersionPanelFromMarketSkill(id);
-  }
-}
-
 const onClickFilterRelease = async(key: any) => {
   releaseFilter.value = key;
   if(key === 'all' && 'status' in filterObj.value) {
@@ -2326,14 +2287,6 @@ const onClickFilterRelease = async(key: any) => {
     filterObj.value.status = '组织已驳回';
   }
   await loadMyPublishedSkills();
-  filteredMyReleaseRows.value = [...myPublishedSkills.value];
-}
-
-function toastAction(message: string): void {
-  toast.value = message;
-  setTimeout(() => {
-    toast.value = '';
-  }, 2500);
 }
 
 const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
@@ -2936,7 +2889,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                         :class="{ 'is-active': col.active === name }"
                         role="option"
                         :aria-selected="col.active === name"
-                        @click="onOverviewDeptCascaderPick(col.levelIndex, name)"
+                        @click="onOverviewDeptCascadeChange(col.levelIndex, name)"
                       >
                         <span class="market-dept-cascader-item-label">{{ name }}</span>
                         <span
@@ -2953,7 +2906,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     <button type="button" class="market-dept-cascader-clear" @click="clearOverviewDeptCascader">
                       清空部门
                     </button>
-                    <button type="button" class="market-dept-cascader-done" @click="closeOverviewDeptCascader">
+                    <button type="button" class="market-dept-cascader-done" @click="deptFilterOnChange">
                       完成
                     </button>
                   </div>
@@ -3245,13 +3198,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </thead>
             <tbody>
               <tr
-                v-for="(row, index) in filteredMyReleaseRows"
+                v-for="(row, index) in myPublishedSkills"
                 :key="`${row.id}-${index}`"
                 class="clickable-row my-release-data-row"
                 role="button"
                 tabindex="0"
-                @click="onMyReleaseRowClick(row)"
-                @keydown.enter.prevent="onMyReleaseRowClick(row)"
+                @click="openDetailFromMyRelease(row)"
+                @keydown.enter.prevent="openDetailFromMyRelease(row)"
               >
                 <td>
                   <div class="skill-main">
@@ -3259,10 +3212,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   </div>
                 </td>
                 <td>
-                  <div class="cell-main cell-main-plain">{{ myPublishCurrentLayerText(row) }}</div>
+                  <div class="cell-main cell-main-plain">{{ row.level }}</div>
                 </td>
                 <td>
-                  <div class="cell-main cell-main-plain">{{ row.version }}</div>
+                  <div class="cell-main cell-main-plain">{{ row.currentVersion }}</div>
                 </td>
                 <td>
                   <span class="st" :class="myPublishStatusPill(row).cls">{{ myPublishStatusPill(row).label }}</span>
@@ -3296,7 +3249,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   </div>
                 </td>
               </tr>
-              <tr v-if="filteredMyReleaseRows.length === 0">
+              <tr v-if="myPublishedSkills.length === 0">
                 <td colspan="6" class="empty-row">暂无符合条件的数据</td>
               </tr>
             </tbody>
