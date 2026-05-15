@@ -176,7 +176,7 @@ const overviewVisibleCount = ref(initialOverviewPageSize());
 /** HTTP：当前页的接口列表（再经与 Mock 一致的排序） */
 
 const pageNumValue = ref<number>(1);
-const pageSizeValue = ref<number>(12);
+const pageSizeValue = ref<number>(16);
 
 const page = reactive<any>({
   total: 0,
@@ -1182,7 +1182,7 @@ async function loadSyncApplicationRows(): Promise<void> {
 }
 
 const myReleasePageNumValue = ref<number>(1);
-const myReleasePageSizeValue = ref<number>(12);
+const myReleasePageSizeValue = ref<number>(16);
 
 const myReleasePage = reactive<any>({
   total: 0,
