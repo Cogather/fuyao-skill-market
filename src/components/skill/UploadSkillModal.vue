@@ -525,6 +525,7 @@ const onSubmit = async (): Promise<void> => {
                   {{ duplicateCheckMessage }}
                 </span>
                 <button
+                  v-if="false"
                   type="button"
                   class="btn outline"
                   :disabled="!parsed?.name || duplicateChecking"

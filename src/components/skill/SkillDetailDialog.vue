@@ -184,7 +184,7 @@ onBeforeUnmount(() => {
   </Teleport>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .overlay {
   position: fixed;
   inset: 0;

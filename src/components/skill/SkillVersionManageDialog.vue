@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import type { CSSProperties } from 'vue';
 import type { SkillVersionListItemDto } from '../../services/skillMarket/apiTypes';
 
 const props = withDefaults(
   defineProps<{
     /** 当前对外版本（展示「当前」角标） */
-    currentVersion: string;
-    versions: SkillVersionListItemDto[];
+    skill: any;
     loading?: boolean;
     unpublishingVersion?: string | null;
     /** 为 false 时隐藏「操作」列（如从市场详情进入） */
@@ -69,23 +69,73 @@ function formatPublishTime(raw: unknown): string {
   return s;
 }
 
-const sortedVersions = computed(() => [...props.versions].sort((a, b) => compareSemverDesc(a.version, b.version)));
+const sortedVersions = computed(() => [...props.skill?.versions ?? []].sort((a, b) => compareSemverDesc(a.version, b.version)));
 
 function isUnpublished(row: SkillVersionListItemDto): boolean {
   return Number(row.deleted) === 1;
 }
 
 function isCurrent(row: SkillVersionListItemDto): boolean {
-  return String(row.version) === String(props.currentVersion ?? '').trim();
+  return String(row.version) === String(props.skill?.version ?? '').trim();
+}
+
+const deleteConfirmStyle = ref<CSSProperties>({});
+const isShowUnpublish = ref(false);
+const unpublishVersion = ref('')
+async function onVersionRowUnpublish(evt: any, version: string): Promise<void> {
+  unpublishVersion.value = version;
+  const el = evt.currentTarget as HTMLElement | null;
+  if (el && !isShowUnpublish.value) {
+    const rect = el.getBoundingClientRect();
+    const panelW = 232;
+    const idealLeft = rect.left + rect.width / 2 - panelW / 2;
+    const left = Math.max(8, Math.min(idealLeft, window.innerWidth - panelW - 8));
+    deleteConfirmStyle.value = {
+      position: 'fixed',
+      top: `${Math.round(rect.bottom + 6)}px`,
+      left: `${Math.round(left)}px`,
+      width: `${panelW}px`,
+      zIndex: 5000,
+    };
+  }
+  isShowUnpublish.value = true;
+}
+
+const cancelUnpublish = () => {
+  isShowUnpublish.value = false;
+  unpublishVersion.value = '';
+}
+
+const confirmUnpublish = () => {
+  emit('unpublish', unpublishVersion.value);
+  cancelUnpublish();
 }
 </script>
 
 <template>
+  <div
+    v-if="isShowUnpublish"
+    class="my-delete-popconfirm"
+    :style="deleteConfirmStyle"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="my-delete-pop-title"
+    @click.stop
+  >
+    <p id="my-delete-pop-title" class="my-delete-pop-title">
+      确定下架版本 v{{ unpublishVersion }} ？
+    </p>
+    <p class="my-delete-pop-hint">此操作不可恢复。</p>
+    <div class="my-delete-pop-actions">
+      <button type="button" class="mini" @click="cancelUnpublish">取消</button>
+      <button type="button" class="mini my-rel-delete-btn" @click="confirmUnpublish">确定删除</button>
+    </div>
+  </div>
   <Teleport to="body">
     <div class="ver-mgmt-overlay" role="presentation" @click.self="emit('close')">
       <div class="ver-mgmt-dialog" role="dialog" aria-modal="true" aria-labelledby="ver-mgmt-title" @click.stop>
         <header class="ver-mgmt-head">
-          <h2 id="ver-mgmt-title" class="ver-mgmt-title">版本管理</h2>
+          <h2 id="ver-mgmt-title" class="ver-mgmt-title">{{props.skill?.name ?? ''}} 版本管理</h2>
           <div class="ver-mgmt-head-actions">
             <button type="button" class="ver-mgmt-btn ghost" @click="emit('back')">← 返回 Skill 详情</button>
             <button type="button" class="ver-mgmt-btn" @click="emit('close')">关闭</button>
@@ -141,7 +191,7 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
                           type="button"
                           class="ver-op-link danger"
                           :disabled="unpublishingVersion === row.version"
-                          @click="emit('unpublish', row.version)"
+                          @click="onVersionRowUnpublish($event, row.version)"
                         >
                           {{ unpublishingVersion === row.version ? '下架中…' : '下架' }}
                         </button>
@@ -160,7 +210,44 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
   </Teleport>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+// 下架弹框样式
+.my-delete-popconfirm {
+  padding: 12px 14px 14px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e8ecf1;
+  box-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
+}
+
+.my-delete-pop-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #0f172a;
+}
+
+.my-delete-pop-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.my-delete-pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-delete-pop-actions .mini {
+  min-width: 72px;
+}
+
+// 当前文件样式
 .ver-mgmt-overlay {
   position: fixed;
   inset: 0;
