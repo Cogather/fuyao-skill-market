@@ -28,7 +28,10 @@ type MutableNode = {
 function nestPathsToDepartmentDtos(paths: string[]): DepartmentTreeNodeDto[] {
   const root: MutableNode = { name: '', level: 0, children: new Map() };
   for (const line of paths) {
-    const segs = line.split('/').map((s) => s.trim()).filter(Boolean);
+    const segs = line
+      .split('/')
+      .map((s) => s.trim())
+      .filter(Boolean);
     let node = root;
     for (let i = 0; i < segs.length; i++) {
       const name = segs[i];

@@ -57,17 +57,19 @@ const userId = computed(() => {
 
 const emit = defineEmits<{
   'update:modelValue': [v: boolean];
-  submit: [payload: {
-    name: string;
-    publisher: string;
-    note: string;
-    file: File | null;
-    scopeLabel?: string;
-    tagFunctional?: string;
-    version?: string;
-    versionUpgrade?: boolean;
-    existingVersion?: string;
-  }];
+  submit: [
+    payload: {
+      name: string;
+      publisher: string;
+      note: string;
+      file: File | null;
+      scopeLabel?: string;
+      tagFunctional?: string;
+      version?: string;
+      versionUpgrade?: boolean;
+      existingVersion?: string;
+    },
+  ];
 }>();
 
 const note = ref('');
@@ -112,9 +114,7 @@ const businessDimensionOptions = computed(() =>
   [...businessDimensions.value]
     .filter((item) => Number(item.enabled) === 1)
     .sort(
-      (a, b) =>
-        a.sortNo - b.sortNo ||
-        a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
+      (a, b) => a.sortNo - b.sortNo || a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
     ),
 );
 
@@ -223,7 +223,9 @@ function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
       const sortNo = Number(record.sortNo);
       return {
         id: Number.isFinite(id) ? id : index + 1,
-        dimensionCode: String(record.dimensionCode ?? '').trim().toUpperCase(),
+        dimensionCode: String(record.dimensionCode ?? '')
+          .trim()
+          .toUpperCase(),
         dimensionName,
         sortNo: Number.isFinite(sortNo) ? sortNo : index + 1,
         enabled: record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1,
@@ -328,7 +330,12 @@ async function checkDuplicateName(): Promise<void> {
 }
 
 function storagePathSegment(value: string, fallback: string): string {
-  return value.trim().replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || fallback;
+  return (
+    value
+      .trim()
+      .replace(/[\\/:*?"<>|\s]+/g, '-')
+      .replace(/^-+|-+$/g, '') || fallback
+  );
 }
 
 function buildStorageFileDir(meta: ParsedSkillMeta): string {
@@ -386,15 +393,7 @@ const onSubmit = async (): Promise<void> => {
   parseError.value = '';
   uploading.value = true;
   try {
-    const storageFormData = new FormData();
-    storageFormData.append('uploadFile', file.value);
-    storageFormData.append('fileDir', buildStorageFileDir(parsed.value));
-    const storageEnv = await skillBaseService.uploadStorageFile(storageFormData);
-    if (!serviceSucceeded(storageEnv)) {
-      parseError.value = serviceMessage(storageEnv, '文件存储失败');
-      return;
-    }
-
+    // 调用skill的upload接口
     const formData = new FormData();
     formData.append('file', file.value);
     const env = await skillBaseService.uploadSkillPackage(formData, {
@@ -403,6 +402,15 @@ const onSubmit = async (): Promise<void> => {
     });
     if (!serviceSucceeded(env)) {
       parseError.value = serviceMessage(env, '上传失败');
+      return;
+    }
+    // 调用fuyao的uploadStorageFile接口
+    const storageFormData = new FormData();
+    storageFormData.append('uploadFile', file.value);
+    storageFormData.append('fileDir', buildStorageFileDir(parsed.value));
+    const storageEnv = await skillBaseService.uploadStorageFile(storageFormData);
+    if (!serviceSucceeded(storageEnv)) {
+      parseError.value = serviceMessage(storageEnv, '文件存储失败');
       return;
     }
     emit('submit', {
@@ -422,7 +430,7 @@ const onSubmit = async (): Promise<void> => {
   } finally {
     uploading.value = false;
   }
-}
+};
 </script>
 
 <template>
@@ -487,7 +495,11 @@ const onSubmit = async (): Promise<void> => {
               </div>
               <div class="form-field full">
                 <label>description</label>
-                <textarea class="textarea readonly" readonly :value="parsed?.description ?? '等待解析'" />
+                <textarea
+                  class="textarea readonly"
+                  readonly
+                  :value="parsed?.description ?? '等待解析'"
+                />
               </div>
               <div class="form-field full">
                 <label>tags</label>
@@ -514,7 +526,11 @@ const onSubmit = async (): Promise<void> => {
               </div>
               <div class="form-field">
                 <label>默认发布层级</label>
-                <input class="input readonly" readonly :value="parsed?.level ?? '个人级（默认发布，无需审核）'" />
+                <input
+                  class="input readonly"
+                  readonly
+                  :value="parsed?.level ?? '个人级（默认发布，无需审核）'"
+                />
               </div>
               <div class="duplicate-row full">
                 <span

@@ -39,7 +39,9 @@ export async function readJsonEnvelope<T>(response: Response): Promise<ApiEnvelo
   return {
     ...(body as ApiEnvelope<T>),
     meta: {
-      number: Array.isArray((body as ApiEnvelope<T>).data) ? ((body as ApiEnvelope<T>).data as unknown[]).length : undefined,
+      number: Array.isArray((body as ApiEnvelope<T>).data)
+        ? ((body as ApiEnvelope<T>).data as unknown[]).length
+        : undefined,
       message: (body as ApiEnvelope<T>).message,
       success: (body as ApiEnvelope<T>).code === 0,
     },

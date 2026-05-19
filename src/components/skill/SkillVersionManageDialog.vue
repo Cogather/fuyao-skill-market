@@ -69,7 +69,9 @@ function formatPublishTime(raw: unknown): string {
   return s;
 }
 
-const sortedVersions = computed(() => [...props.skill?.versions ?? []].sort((a, b) => compareSemverDesc(a.version, b.version)));
+const sortedVersions = computed(() =>
+  [...(props.skill?.versions ?? [])].sort((a, b) => compareSemverDesc(a.version, b.version)),
+);
 
 function isUnpublished(row: SkillVersionListItemDto): boolean {
   return Number(row.deleted) === 1;
@@ -81,7 +83,7 @@ function isCurrent(row: SkillVersionListItemDto): boolean {
 
 const deleteConfirmStyle = ref<CSSProperties>({});
 const isShowUnpublish = ref(false);
-const unpublishVersion = ref('')
+const unpublishVersion = ref('');
 async function onVersionRowUnpublish(evt: any, version: string): Promise<void> {
   unpublishVersion.value = version;
   const el = evt.currentTarget as HTMLElement | null;
@@ -104,12 +106,12 @@ async function onVersionRowUnpublish(evt: any, version: string): Promise<void> {
 const cancelUnpublish = () => {
   isShowUnpublish.value = false;
   unpublishVersion.value = '';
-}
+};
 
 const confirmUnpublish = () => {
   emit('unpublish', unpublishVersion.value);
   cancelUnpublish();
-}
+};
 </script>
 
 <template>
@@ -123,21 +125,29 @@ const confirmUnpublish = () => {
     @click.stop
   >
     <p id="my-delete-pop-title" class="my-delete-pop-title">
-      确定下架版本 v{{ unpublishVersion }} ？
+      确定下架版本 {{ unpublishVersion }} ？
     </p>
     <p class="my-delete-pop-hint">此操作不可恢复。</p>
     <div class="my-delete-pop-actions">
       <button type="button" class="mini" @click="cancelUnpublish">取消</button>
-      <button type="button" class="mini my-rel-delete-btn" @click="confirmUnpublish">确定删除</button>
+      <button type="button" class="mini my-rel-delete-btn" @click="confirmUnpublish">确定</button>
     </div>
   </div>
   <Teleport to="body">
     <div class="ver-mgmt-overlay" role="presentation" @click.self="emit('close')">
-      <div class="ver-mgmt-dialog" role="dialog" aria-modal="true" aria-labelledby="ver-mgmt-title" @click.stop>
+      <div
+        class="ver-mgmt-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ver-mgmt-title"
+        @click.stop
+      >
         <header class="ver-mgmt-head">
-          <h2 id="ver-mgmt-title" class="ver-mgmt-title">{{props.skill?.name ?? ''}} 版本管理</h2>
+          <h2 id="ver-mgmt-title" class="ver-mgmt-title">{{ props.skill?.name ?? '' }} 版本管理</h2>
           <div class="ver-mgmt-head-actions">
-            <button type="button" class="ver-mgmt-btn ghost" @click="emit('back')">← 返回 Skill 详情</button>
+            <button type="button" class="ver-mgmt-btn ghost" @click="emit('back')">
+              ← 返回 Skill 详情
+            </button>
             <button type="button" class="ver-mgmt-btn" @click="emit('close')">关闭</button>
           </div>
         </header>
@@ -164,7 +174,9 @@ const confirmUnpublish = () => {
                   <td class="col-ver">
                     <div class="ver-vercell">
                       <span class="ver-num">{{ row.version }}</span>
-                      <span v-if="isCurrent(row) && !isUnpublished(row)" class="badge badge-current">当前</span>
+                      <span v-if="isCurrent(row) && !isUnpublished(row)" class="badge badge-current"
+                        >当前</span
+                      >
                       <span v-if="isUnpublished(row)" class="badge badge-off">已下架</span>
                       <button
                         v-if="!showOperationsColumn"
@@ -180,11 +192,19 @@ const confirmUnpublish = () => {
                   <td class="col-time">{{ formatPublishTime(row.createdAt) }}</td>
                   <td v-if="showOperationsColumn" class="col-ops">
                     <div class="ver-ops-inline">
-                      <button type="button" class="ver-op-link neutral" @click="emit('viewDetail', row)">
+                      <button
+                        type="button"
+                        class="ver-op-link neutral"
+                        @click="emit('viewDetail', row)"
+                      >
                         查看
                       </button>
                       <template v-if="!isUnpublished(row)">
-                        <button type="button" class="ver-op-link primary" @click="emit('download', row.version)">
+                        <button
+                          type="button"
+                          class="ver-op-link primary"
+                          @click="emit('download', row.version)"
+                        >
                           下载
                         </button>
                         <button
@@ -196,13 +216,17 @@ const confirmUnpublish = () => {
                           {{ unpublishingVersion === row.version ? '下架中…' : '下架' }}
                         </button>
                       </template>
-                      <button v-else type="button" class="ver-op-pill disabled" disabled>已下架</button>
+                      <button v-else type="button" class="ver-op-pill disabled" disabled>
+                        已下架
+                      </button>
                     </div>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <p v-if="!loading && sortedVersions.length === 0" class="ver-mgmt-empty">暂无版本记录</p>
+            <p v-if="!loading && sortedVersions.length === 0" class="ver-mgmt-empty">
+              暂无版本记录
+            </p>
           </div>
         </div>
       </div>

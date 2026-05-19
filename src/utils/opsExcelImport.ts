@@ -251,7 +251,12 @@ export function parseOpsExcelBuffer(buffer: ArrayBuffer): OpsExcelRow[] {
     const downloadCount =
       typeof dlRaw === 'number' && Number.isFinite(dlRaw)
         ? dlRaw
-        : Number.parseInt(String(dlRaw ?? '').replace(/,/g, '').trim(), 10);
+        : Number.parseInt(
+            String(dlRaw ?? '')
+              .replace(/,/g, '')
+              .trim(),
+            10,
+          );
     out.push({
       skillId,
       description: String(line[col.description] ?? '').trim(),
@@ -275,7 +280,10 @@ export function buildOpsDashboardBundle(rows: OpsExcelRow[]): OpsDashboardBundle
   const orgLevelRows = rows.filter(isOrgLevel);
   const activeSkills = orgLevelRows.length;
   const companyDownloads = orgLevelRows.reduce((s, r) => s + r.downloadCount, 0);
-  const orgAgg = new Map<string, { skills: number; downloads: number; skillRows: OpsSkillDetailRow[] }>();
+  const orgAgg = new Map<
+    string,
+    { skills: number; downloads: number; skillRows: OpsSkillDetailRow[] }
+  >();
   for (const r of orgLevelRows) {
     const deptPath = parseDeptNamePath(r.deptName);
     const key = r.publishName.trim() || deptPath[deptPath.length - 1] || '未填写组织';

@@ -6,12 +6,12 @@ import {
   matchesScope,
   uploadSkillApi,
 } from '../../api/skillMarketMock';
-import { buildOpsDashboardBundle, parseDeptNamePath, type OpsDashboardBundle } from '../../utils/opsExcelImport';
-import type {
-  Skill,
-  SkillListQuery,
-  SkillUploadPayload,
-} from '../../types/skill';
+import {
+  buildOpsDashboardBundle,
+  parseDeptNamePath,
+  type OpsDashboardBundle,
+} from '../../utils/opsExcelImport';
+import type { Skill, SkillListQuery, SkillUploadPayload } from '../../types/skill';
 import type {
   ApiEnvelope,
   BusinessDimensionDto,
@@ -51,7 +51,11 @@ import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
 import { marketSkillsToOpsExcelRows } from './opsBundleFromSkills';
-import type { SkillDownloadOptions, SkillDownloadResult, SkillMarketClient } from './skillMarketClient.types';
+import type {
+  SkillDownloadOptions,
+  SkillDownloadResult,
+  SkillMarketClient,
+} from './skillMarketClient.types';
 
 function ok<T>(data: T): ApiEnvelope<T> {
   return { code: 0, message: 'success', data };
@@ -93,11 +97,41 @@ function compareSemverDesc(a: string, b: string): number {
 }
 
 const ORG_SEED: OrganizationDto[] = [
-  { id: 1, orgName: 'IT装备部', orgCode: 'ORG-IT-001', admins: 'it_admin_a,it_admin_b', enabled: true },
-  { id: 2, orgName: '质量工具组', orgCode: 'ORG-QA-002', admins: 'qa_admin_a,qa_admin_b', enabled: true },
-  { id: 3, orgName: '平台工具组', orgCode: 'ORG-PLAT-003', admins: 'plat_admin_a,plat_admin_b', enabled: true },
-  { id: 4, orgName: '云服务组', orgCode: 'ORG-CLOUD-004', admins: 'cloud_admin_a,cloud_admin_b', enabled: true },
-  { id: 5, orgName: 'SRE团队', orgCode: 'ORG-SRE-005', admins: 'sre_admin_a,sre_admin_b', enabled: true },
+  {
+    id: 1,
+    orgName: 'IT装备部',
+    orgCode: 'ORG-IT-001',
+    admins: 'it_admin_a,it_admin_b',
+    enabled: true,
+  },
+  {
+    id: 2,
+    orgName: '质量工具组',
+    orgCode: 'ORG-QA-002',
+    admins: 'qa_admin_a,qa_admin_b',
+    enabled: true,
+  },
+  {
+    id: 3,
+    orgName: '平台工具组',
+    orgCode: 'ORG-PLAT-003',
+    admins: 'plat_admin_a,plat_admin_b',
+    enabled: true,
+  },
+  {
+    id: 4,
+    orgName: '云服务组',
+    orgCode: 'ORG-CLOUD-004',
+    admins: 'cloud_admin_a,cloud_admin_b',
+    enabled: true,
+  },
+  {
+    id: 5,
+    orgName: 'SRE团队',
+    orgCode: 'ORG-SRE-005',
+    admins: 'sre_admin_a,sre_admin_b',
+    enabled: true,
+  },
 ];
 
 function matchesSkillDepartmentFields(skill: Skill, params: SkillListParamsDto): boolean {
@@ -125,7 +159,10 @@ function matchesSkillDepartmentFields(skill: Skill, params: SkillListParamsDto):
 function parseTagListParams(params: SkillListParamsDto): string[] {
   const raw = params.tagList?.trim();
   if (raw) {
-    return raw.split(',').map((t) => t.trim()).filter(Boolean);
+    return raw
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
   }
   if (params.tag?.trim()) {
     return [params.tag.trim()];
@@ -253,8 +290,7 @@ function organizationsVisibleInMock(orgStore: OrganizationDto[]): OrganizationDt
 }
 
 export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarketClient {
-  const seed =
-    initialSkills && initialSkills.length > 0 ? [...initialSkills] : getBuiltInSkills();
+  const seed = initialSkills && initialSkills.length > 0 ? [...initialSkills] : getBuiltInSkills();
   const skills = ref<Skill[]>(seed);
   const orgStore: OrganizationDto[] = ORG_SEED.map((o) => ({ ...o }));
 
@@ -364,7 +400,10 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       return uploadSkillApi(skills.value, payload);
     },
 
-    async downloadSkill(skillId: string, options?: SkillDownloadOptions): Promise<SkillDownloadResult> {
+    async downloadSkill(
+      skillId: string,
+      options?: SkillDownloadOptions,
+    ): Promise<SkillDownloadResult> {
       void options?.sourcePage;
       return downloadSkillApi(skills.value, skillId, { version: options?.version });
     },
@@ -464,8 +503,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       const next: SuperAdminDto = {
         ...cur,
         enabled: body.enabled ?? cur.enabled,
-        employeeName:
-          body.employeeName !== undefined ? body.employeeName : cur.employeeName,
+        employeeName: body.employeeName !== undefined ? body.employeeName : cur.employeeName,
         remark: body.remark !== undefined ? body.remark : cur.remark,
       };
       superAdminRows = superAdminRows.map((r, i) => (i === idx ? next : r));
@@ -509,9 +547,7 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
       }
       if (params.status?.trim()) {
         const st = params.status.trim();
-        records = records.filter(
-          (r) => r.status.includes(st) || r.level.includes(st),
-        );
+        records = records.filter((r) => r.status.includes(st) || r.level.includes(st));
       }
       const pageNo = Math.max(1, params.pageNo);
       const pageSize = Math.max(1, params.pageSize);
@@ -832,7 +868,9 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         (sum, s) => sum + (s.download_count ?? s.downloads ?? 0),
         0,
       );
-      const orgLevelSkills = skills.value.filter((s) => (s.publish_level ?? '').trim() === '组织级');
+      const orgLevelSkills = skills.value.filter(
+        (s) => (s.publish_level ?? '').trim() === '组织级',
+      );
       const orgRankMap = new Map<string, { totalSkills: number; downloads: number }>();
       for (const s of orgLevelSkills) {
         const key = (s.publish_name ?? '').trim() || '未填写组织';
@@ -855,9 +893,8 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         kpis: {
           totalSkills: skills.value.length,
           skillCount: skills.value.length,
-          personalSkillCount: skills.value.filter((s) =>
-            (s.publish_level ?? '').includes('个人'),
-          ).length,
+          personalSkillCount: skills.value.filter((s) => (s.publish_level ?? '').includes('个人'))
+            .length,
           /** 扶摇侧：已发布为组织级、即同步到公司组织维度的 Skill 数量（与运营看板「组织级」KPI 一致） */
           verifiedSkillCount: orgLevelSkills.length,
           downloads: totalDl,

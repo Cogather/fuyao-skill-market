@@ -30,17 +30,21 @@ export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeN
       typeof o.deptLevel === 'number' && Number.isFinite(o.deptLevel) ? o.deptLevel : 0;
     const childRaw = o.children;
     const children =
-      Array.isArray(childRaw) && childRaw.length > 0 ? coerceDepartmentTreeFromUnknown(childRaw) : [];
+      Array.isArray(childRaw) && childRaw.length > 0
+        ? coerceDepartmentTreeFromUnknown(childRaw)
+        : [];
     out.push({
       deptName,
       deptLevel,
-      ...(children.length > 0 ? { children, } : {}),
+      ...(children.length > 0 ? { children } : {}),
     });
   }
   return out;
 }
 
-export function mapDepartmentTreeDtoToForest(nodes: DepartmentTreeNodeDto[] | undefined): MarketDeptForestNode[] {
+export function mapDepartmentTreeDtoToForest(
+  nodes: DepartmentTreeNodeDto[] | undefined,
+): MarketDeptForestNode[] {
   if (!nodes?.length) {
     return [];
   }
@@ -48,10 +52,17 @@ export function mapDepartmentTreeDtoToForest(nodes: DepartmentTreeNodeDto[] | un
   return mapped.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
-function mapOneDepartmentTreeNode(n: DepartmentTreeNodeDto, parentPath: string): MarketDeptForestNode {
+function mapOneDepartmentTreeNode(
+  n: DepartmentTreeNodeDto,
+  parentPath: string,
+): MarketDeptForestNode {
   const path = parentPath ? `${parentPath}/${n.deptName}` : n.deptName;
   const levelNo =
-    n.deptLevel > 0 ? n.deptLevel : (parentPath ? parentPath.split('/').filter(Boolean).length + 1 : 1);
+    n.deptLevel > 0
+      ? n.deptLevel
+      : parentPath
+        ? parentPath.split('/').filter(Boolean).length + 1
+        : 1;
   const rawChildren = n.children ?? [];
   const children = rawChildren
     .map((c) => mapOneDepartmentTreeNode(c, path))

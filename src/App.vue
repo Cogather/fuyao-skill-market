@@ -9,15 +9,15 @@ const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
 
 onMounted(async () => {
-  await profileStore.initUserInfo()
-  startTokenCheck()
+  await profileStore.initUserInfo();
+  startTokenCheck();
 });
 
 const startTokenCheck = () => {
   setInterval(() => {
-    profileStore.checkUserToken()
+    profileStore.checkUserToken();
   }, 300 * 1000); // 每5分钟检查一次
-}
+};
 
 function handleEvent(event: MessageEvent): void {
   const payload = event.data;
@@ -32,7 +32,7 @@ function handleEvent(event: MessageEvent): void {
   try {
     const list = JSON.parse(p.departmentListStr as string);
     skillMarketStore.updateDept(list);
-    console.log("是否已存入departmentList", skillMarketStore.departmentList);
+    console.log('是否已存入departmentList', skillMarketStore.departmentList);
   } catch (error) {}
 }
 

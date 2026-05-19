@@ -2,14 +2,14 @@
 
 ## 文档信息
 
-| 项目   | 内容                                                      |
-| ---- | ------------------------------------------------------- |
-| 文档名称 | Agent Center Skill 市场需求开发设计文档                           |
+| 项目     | 内容                                                                     |
+| -------- | ------------------------------------------------------------------------ |
+| 文档名称 | Agent Center Skill 市场需求开发设计文档                                  |
 | 系统定位 | Agent Center Skill 市场，作为Agent Center Skill 市场的前置沉淀与验证平台 |
-| 自研平台 | 扶摇系统                                                    |
-| 目标系统 | Agent Center Skill 市场                                   |
-| 当前版本 | V1.0 原型设计版                                              |
-| 适用范围 | SKILL开发人员、产业CMC                                         |
+| 自研平台 | 扶摇系统                                                                 |
+| 目标系统 | Agent Center Skill 市场                                                  |
+| 当前版本 | V1.0 原型设计版                                                          |
+| 适用范围 | SKILL开发人员、产业CMC                                                   |
 
 ---
 
@@ -32,10 +32,10 @@ Agent Center Skill 市场，负责公司层面的组织级 Skill 管理、发布
 
 ## 1.2 系统定位
 
-| 系统                    | 定位                    | 核心职责                           |
-| --------------------- | --------------------- | ------------------------------ |
-| 扶摇系统                  | Agent Center Skill 市场 | 个人级 Skill 发布、沉淀、试用、快速验证、同步前置治理 |
-| Agent Center Skill 市场 | Agent Center Skill 市场 | 组织级 Skill 统一管理、发布验收、安全治理、统一分发  |
+| 系统                    | 定位                    | 核心职责                                              |
+| ----------------------- | ----------------------- | ----------------------------------------------------- |
+| 扶摇系统                | Agent Center Skill 市场 | 个人级 Skill 发布、沉淀、试用、快速验证、同步前置治理 |
+| Agent Center Skill 市场 | Agent Center Skill 市场 | 组织级 Skill 统一管理、发布验收、安全治理、统一分发   |
 
 ## 1.3 建设目标
 
@@ -82,12 +82,12 @@ Agent Center Skill 市场，负责公司层面的组织级 Skill 管理、发布
 
 组织是审核和治理的基本单元。组织配置包含：
 
-| 字段    | 说明                          |
-| ----- | --------------------------- |
-| 组织名称  | 组织展示名称，例如 IT装备部、质量工具组、SRE团队 |
-| 组织 ID | 组织唯一标识，例如 ORG-IT-001        |
-| 组织管理员 | 多个管理员账号或工号，英文逗号分隔              |
-| 状态    | 启用 / 停用                     |
+| 字段       | 说明                                             |
+| ---------- | ------------------------------------------------ |
+| 组织名称   | 组织展示名称，例如 IT装备部、质量工具组、SRE团队 |
+| 组织 ID    | 组织唯一标识，例如 ORG-IT-001                    |
+| 组织管理员 | 多个管理员账号或工号，英文逗号分隔               |
+| 状态       | 启用 / 停用                                      |
 
 ### 1.4.4 超级管理员
 
@@ -97,12 +97,12 @@ Agent Center Skill 市场，负责公司层面的组织级 Skill 管理、发布
 
 超级管理员配置字段：
 
-| 字段 | 说明 |
-| --- | --- |
+| 字段 | 说明                       |
+| ---- | -------------------------- |
 | 工号 | 用户唯一工号，用于权限判定 |
-| 姓名 | 管理员展示名称，可为空 |
-| 状态 | 启用 / 停用 |
-| 备注 | 授权原因或说明 |
+| 姓名 | 管理员展示名称，可为空     |
+| 状态 | 启用 / 停用                |
+| 备注 | 授权原因或说明             |
 
 ## 1.5 用户角色与权限
 
@@ -211,9 +211,9 @@ Agent Center Skill 市场，负责公司层面的组织级 Skill 管理、发布
 
 当前系统发布层级：
 
-| 层级  | 说明                            |
-| --- | ----------------------------- |
-| 个人级 | 用户上传后默认发布，无需审核                |
+| 层级   | 说明                                          |
+| ------ | --------------------------------------------- |
+| 个人级 | 用户上传后默认发布，无需审核                  |
 | 组织级 | 个人级同步至Agent Center 组织并审核通过后形成 |
 
 部门层级用于“分层筛选部门”和运营看板部门树。
@@ -222,12 +222,12 @@ Agent Center Skill 市场，负责公司层面的组织级 Skill 管理、发布
 
 个人级 Skill 的状态包括：
 
-| 状态    | 含义                           | 展示位置 |
-| ----- | ---------------------------- | ---- |
-| 个人级   | 用户上传后默认发布，未同步至组织             | 个人级  |
-| 组织审核中 | 已提交同步至Agent Center 组织申请，等待审核 | 个人级  |
-| 组织已驳回 | 同步申请被组织管理员驳回                 | 个人级  |
-| 组织级   | 审核通过，已同步至Agent Center 组织     | 组织级  |
+| 状态       | 含义                                        | 展示位置 |
+| ---------- | ------------------------------------------- | -------- |
+| 个人级     | 用户上传后默认发布，未同步至组织            | 个人级   |
+| 组织审核中 | 已提交同步至Agent Center 组织申请，等待审核 | 个人级   |
+| 组织已驳回 | 同步申请被组织管理员驳回                    | 个人级   |
+| 组织级     | 审核通过，已同步至Agent Center 组织         | 组织级   |
 
 状态流转：
 
@@ -252,46 +252,46 @@ Agent Center Skill 市场，负责公司层面的组织级 Skill 管理、发布
 
 作业类面向软件工程活动中具体作业环节的 Skill，用于提升各环节效率和质量。
 
-| 子类   | category 标识        | 典型场景                                              |
-| ---- | ------------------ | ------------------------------------------------- |
-| 系统设计 | task-system-design | 需求分析、功能设计、架构设计、DFX设计、设计资产                         |
-| 软件开发 | task-software-dev  | 软件实现设计、软件重构、编码、开发者测试、代码检视、Fuzz测试、架构度量、软件资产、构建     |
+| 子类     | category 标识      | 典型场景                                                                                    |
+| -------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| 系统设计 | task-system-design | 需求分析、功能设计、架构设计、DFX设计、设计资产                                             |
+| 软件开发 | task-software-dev  | 软件实现设计、软件重构、编码、开发者测试、代码检视、Fuzz测试、架构度量、软件资产、构建      |
 | 测试验证 | task-testing       | 测试E2E、测试Spec分析、测试用例设计、测试知识提取工程、测试代码生成、测试执行、测试结果分析 |
 
 ### 1.7.2 业务类 Domain
 
 业务类面向特定产品领域或业务场景的 Skill，封装领域专有知识和操作流程。
 
-| 子类    | category 标识     | 典型场景                  |
-| ----- | --------------- | --------------------- |
-| 网络协议  | domain-network  | OSPF 指令下发、路由配置、协议调试   |
-| 嵌入式系统 | domain-embedded | 固件开发、驱动适配、板级调试        |
-| 云服务   | domain-cloud    | 云资源管理、微服务编排、容器化部署     |
-| 数据库   | domain-database | SQL 优化、数据迁移、Schema 管理 |
-| 安全合规  | domain-security | 漏洞扫描、安全加固、合规检查        |
-| AI/ML | domain-ai       | 模型训练、数据处理、推理优化        |
-| 终端应用  | domain-terminal | 移动开发、桌面应用、UI 自动化      |
+| 子类       | category 标识   | 典型场景                           |
+| ---------- | --------------- | ---------------------------------- |
+| 网络协议   | domain-network  | OSPF 指令下发、路由配置、协议调试  |
+| 嵌入式系统 | domain-embedded | 固件开发、驱动适配、板级调试       |
+| 云服务     | domain-cloud    | 云资源管理、微服务编排、容器化部署 |
+| 数据库     | domain-database | SQL 优化、数据迁移、Schema 管理    |
+| 安全合规   | domain-security | 漏洞扫描、安全加固、合规检查       |
+| AI/ML      | domain-ai       | 模型训练、数据处理、推理优化       |
+| 终端应用   | domain-terminal | 移动开发、桌面应用、UI 自动化      |
 
 ### 1.7.3 工具类 Utility
 
 工具类面向通用工具操作的 Skill，不依赖特定业务领域，可跨团队复用。
 
-| 子类   | category 标识    | 典型场景                         |
-| ---- | -------------- | ---------------------------- |
-| 文档操作 | utility-doc    | PDF/Word/PPT 处理、文档生成、格式转换    |
-| 数据处理 | utility-data   | Excel 处理、CSV 解析、JSON/YAML 转换 |
-| 版本控制 | utility-vcs    | Git 工作流、提交消息生成、PR 管理         |
-| 项目管理 | utility-pm     | 周报生成、进度跟踪、会议纪要               |
-| 开发环境 | utility-devenv | 环境配置、工具链安装、IDE 设置            |
-| 可视化  | utility-viz    | 图表生成、架构图、数据可视化               |
+| 子类     | category 标识  | 典型场景                              |
+| -------- | -------------- | ------------------------------------- |
+| 文档操作 | utility-doc    | PDF/Word/PPT 处理、文档生成、格式转换 |
+| 数据处理 | utility-data   | Excel 处理、CSV 解析、JSON/YAML 转换  |
+| 版本控制 | utility-vcs    | Git 工作流、提交消息生成、PR 管理     |
+| 项目管理 | utility-pm     | 周报生成、进度跟踪、会议纪要          |
+| 开发环境 | utility-devenv | 环境配置、工具链安装、IDE 设置        |
+| 可视化   | utility-viz    | 图表生成、架构图、数据可视化          |
 
 ### 1.7.4 映射规则
 
 | category 前缀 | 一级分类 |
-| ----------- | ---- |
-| task-       | 作业类  |
-| domain-     | 业务类  |
-| utility-    | 工具类  |
+| ------------- | -------- |
+| task-         | 作业类   |
+| domain-       | 业务类   |
+| utility-      | 工具类   |
 
 未识别的 category 标记为未分类，并在上传解析中提示用户修正。
 
@@ -330,16 +330,16 @@ metadata:
 
 ### 1.8.2 上传解析字段
 
-| 字段                | 是否必需 | 说明            |
-| ----------------- | ---- | ------------- |
-| name              | 是    | Skill 名称，全局唯一 |
-| description       | 是    | Skill 描述      |
-| requirements      | 否    | 运行依赖          |
-| metadata.author   | 是    | 作者或团队名称       |
-| metadata.version  | 是    | 语义化版本         |
-| metadata.category | 是    | 主分类标识         |
-| metadata.tags     | 否    | 空格分隔标签        |
-| 默认发布层级            | 系统生成 | 个人级，默认发布，无需审核 |
+| 字段              | 是否必需 | 说明                       |
+| ----------------- | -------- | -------------------------- |
+| name              | 是       | Skill 名称，全局唯一       |
+| description       | 是       | Skill 描述                 |
+| requirements      | 否       | 运行依赖                   |
+| metadata.author   | 是       | 作者或团队名称             |
+| metadata.version  | 是       | 语义化版本                 |
+| metadata.category | 是       | 主分类标识                 |
+| metadata.tags     | 否       | 空格分隔标签               |
+| 默认发布层级      | 系统生成 | 个人级，默认发布，无需审核 |
 
 ### 1.8.3 上传流程
 
@@ -412,12 +412,12 @@ GET /api/users/current/department
 
 字段说明：
 
-| 字段            | 说明           |
-| ------------- | ------------ |
-| department_l1 | 一级部门名称       |
-| department_l2 | 二级部门名称       |
-| department_l3 | 三级部门名称       |
-| department_l4 | 四级部门名称       |
+| 字段          | 说明                     |
+| ------------- | ------------------------ |
+| department_l1 | 一级部门名称             |
+| department_l2 | 二级部门名称             |
+| department_l3 | 三级部门名称             |
+| department_l4 | 四级部门名称             |
 | department_l5 | 五级部门名称，没有则为空 |
 | department_l6 | 六级部门名称，没有则为空 |
 
@@ -430,41 +430,41 @@ Content-Type: multipart/form-data
 
 文件服务请求 Body：
 
-| 参数         | 类型     | 必填 | 说明                                      |
-| ---------- | ------ | -- | --------------------------------------- |
-| uploadFile | file   | 是  | 原始 Skill 压缩包                            |
-| fileDir    | string | 是  | 固定为 `fuyao/skills/{skill名字}/{skill版本号}` |
+| 参数       | 类型   | 必填 | 说明                                            |
+| ---------- | ------ | ---- | ----------------------------------------------- |
+| uploadFile | file   | 是   | 原始 Skill 压缩包                               |
+| fileDir    | string | 是   | 固定为 `fuyao/skills/{skill名字}/{skill版本号}` |
 
 失败规则：
 
-| 场景                    | 失败原因                               |
-| --------------------- | ---------------------------------- |
-| 压缩包解压失败               | 上传失败：压缩包解压失败                       |
-| 未找到 SKILL.md          | 上传失败：未找到 SKILL.md 文件               |
-| 未解析到 name             | 上传失败：SKILL.md 中缺少 name             |
-| 未解析到 metadata.version | 上传失败：SKILL.md 中缺少 metadata.version |
-| version 格式不合法         | 上传失败：metadata.version 不符合语义化版本格式   |
-| category 无法映射         | 上传失败：metadata.category 未匹配到分类映射关系  |
-| name 重名               | 上传失败：Skill 名称已存在                   |
-| 获取用户部门信息失败            | 上传失败：未获取到用户部门信息                    |
+| 场景                      | 失败原因                                         |
+| ------------------------- | ------------------------------------------------ |
+| 压缩包解压失败            | 上传失败：压缩包解压失败                         |
+| 未找到 SKILL.md           | 上传失败：未找到 SKILL.md 文件                   |
+| 未解析到 name             | 上传失败：SKILL.md 中缺少 name                   |
+| 未解析到 metadata.version | 上传失败：SKILL.md 中缺少 metadata.version       |
+| version 格式不合法        | 上传失败：metadata.version 不符合语义化版本格式  |
+| category 无法映射         | 上传失败：metadata.category 未匹配到分类映射关系 |
+| name 重名                 | 上传失败：Skill 名称已存在                       |
+| 获取用户部门信息失败      | 上传失败：未获取到用户部门信息                   |
 
 ## 1.9 功能需求
 
 ### 1.9.1 市场总览
 
-| 功能       | 说明                                 |
-| -------- | ---------------------------------- |
-| Skill 卡片 | 展示名称、作者、组织、更新时间、分类、层级、质量勋章、下载量、点赞量、点踩量 |
-| 搜索       | 按 Skill 名称、描述、维护方搜索                |
-| 层级筛选     | 全部 Skill、个人级、组织级                   |
-| 分类筛选     | 单选分类，支持全部、作业类、业务类、工具类；同一时间仅允许选择一个分类 |
-| 标签筛选     | 多选标签，支持 pdf、document、api、review、cicd、log 等；多个标签按并集查询 |
-| 筛选组织     | 单选组织，只显示具体组织下的 Skill |
-| 分层筛选部门   | 可选传入 `departmentL1` 到 `departmentL6` 任意一个字段；后端按对应部门层级字段精确匹配 |
-| 勋章筛选     | 支持优秀 Skill、推荐复用、待优化、高分 Skill 和未评分筛选 |
-| Skill 详情 | 显示文件结构、SKILL.md 内容、质量勋章、下载量、点赞量、点踩量 |
-| 在线试用     | 市场详情页提供在线试用按钮                      |
-| 下载到本地    | 卡片菜单和详情页支持下载                       |
+| 功能         | 说明                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------- |
+| Skill 卡片   | 展示名称、作者、组织、更新时间、分类、层级、质量勋章、下载量、点赞量、点踩量           |
+| 搜索         | 按 Skill 名称、描述、维护方搜索                                                        |
+| 层级筛选     | 全部 Skill、个人级、组织级                                                             |
+| 分类筛选     | 单选分类，支持全部、作业类、业务类、工具类；同一时间仅允许选择一个分类                 |
+| 标签筛选     | 多选标签，支持 pdf、document、api、review、cicd、log 等；多个标签按并集查询            |
+| 筛选组织     | 单选组织，只显示具体组织下的 Skill                                                     |
+| 分层筛选部门 | 可选传入 `departmentL1` 到 `departmentL6` 任意一个字段；后端按对应部门层级字段精确匹配 |
+| 勋章筛选     | 支持优秀 Skill、推荐复用、待优化、高分 Skill 和未评分筛选                              |
+| Skill 详情   | 显示文件结构、SKILL.md 内容、质量勋章、下载量、点赞量、点踩量                          |
+| 在线试用     | 市场详情页提供在线试用按钮                                                             |
+| 下载到本地   | 卡片菜单和详情页支持下载                                                               |
 
 卡片展示规则：
 
@@ -477,12 +477,12 @@ Content-Type: multipart/form-data
 
 质量勋章类型：
 
-| 勋章 | 含义 | 前端展示 |
-| --- | --- | --- |
-| 优秀 Skill | 质量高、可重点推荐 | 金色星章 |
-| 推荐复用 | 具备跨团队或跨场景复用价值 | 蓝色复用章 |
-| 待优化 | 有价值但文档、效果或维护仍需完善 | 银灰提示章 |
-| 高分 Skill | 综合评分达到高分阈值 | 橙色高分章 |
+| 勋章       | 含义                             | 前端展示   |
+| ---------- | -------------------------------- | ---------- |
+| 优秀 Skill | 质量高、可重点推荐               | 金色星章   |
+| 推荐复用   | 具备跨团队或跨场景复用价值       | 蓝色复用章 |
+| 待优化     | 有价值但文档、效果或维护仍需完善 | 银灰提示章 |
+| 高分 Skill | 综合评分达到高分阈值             | 橙色高分章 |
 
 市场筛选规则：
 
@@ -504,12 +504,12 @@ Content-Type: multipart/form-data
 
 操作规则：
 
-| 状态    | 可用操作                        |
-| ----- | --------------------------- |
-| 个人级   | 上传新版本、同步至Agent Center 组织、记录 |
-| 组织审核中 | 上传新版本、记录                    |
+| 状态       | 可用操作                                  |
+| ---------- | ----------------------------------------- |
+| 个人级     | 上传新版本、同步至Agent Center 组织、记录 |
+| 组织审核中 | 上传新版本、记录                          |
 | 组织已驳回 | 上传新版本、同步至Agent Center 组织、记录 |
-| 组织级   | 上传新版本、更新同步、记录               |
+| 组织级     | 上传新版本、更新同步、记录                |
 
 ### 1.9.3 同步至Agent Center 组织
 
@@ -565,27 +565,27 @@ Content-Type: multipart/form-data
 
 待审核字段：
 
-| 字段    | 说明                        |
-| ----- | ------------------------- |
-| 申请单   | Skill 名称                  |
-| 类型    | 同步至Agent Center 组织 / 更新同步 |
-| 目标层级  | 组织级                       |
-| 目标组织  | 申请同步的组织                   |
-| 申请理由  | 用户填写的同步说明                 |
-| 当前审核人 | 目标组织管理员                   |
-| 操作    | 审核                        |
+| 字段       | 说明                               |
+| ---------- | ---------------------------------- |
+| 申请单     | Skill 名称                         |
+| 类型       | 同步至Agent Center 组织 / 更新同步 |
+| 目标层级   | 组织级                             |
+| 目标组织   | 申请同步的组织                     |
+| 申请理由   | 用户填写的同步说明                 |
+| 当前审核人 | 目标组织管理员                     |
+| 操作       | 审核                               |
 
 已完成字段：
 
-| 字段   | 说明                        |
-| ---- | ------------------------- |
-| 申请单  | Skill 名称                  |
-| 类型   | 同步至Agent Center 组织 / 更新同步 |
-| 目标层级 | 组织级                       |
-| 目标组织 | 申请同步的组织                   |
-| 审核结果 | 通过 / 不通过                  |
-| 审核意见 | 审核说明                      |
-| 完成时间 | 审核完成时间                    |
+| 字段     | 说明                               |
+| -------- | ---------------------------------- |
+| 申请单   | Skill 名称                         |
+| 类型     | 同步至Agent Center 组织 / 更新同步 |
+| 目标层级 | 组织级                             |
+| 目标组织 | 申请同步的组织                     |
+| 审核结果 | 通过 / 不通过                      |
+| 审核意见 | 审核说明                           |
+| 完成时间 | 审核完成时间                       |
 
 ### 1.9.5 组织管理
 
@@ -600,11 +600,11 @@ Content-Type: multipart/form-data
 
 组织管理权限规则：
 
-| 角色 | 组织列表范围 | 新增组织 | 修改组织配置 | 超级管理员配置 |
-| --- | --- | --- | --- | --- |
-| 超级管理员 | 全部组织 | 允许 | 允许修改全部组织 | 允许维护 |
-| 普通管理员 | 自己管理的组织 | 不允许 | 仅允许修改自己管理的组织 | 不允许 |
-| 普通用户 | 不展示组织管理入口 | 不允许 | 不允许 | 不允许 |
+| 角色       | 组织列表范围       | 新增组织 | 修改组织配置             | 超级管理员配置 |
+| ---------- | ------------------ | -------- | ------------------------ | -------------- |
+| 超级管理员 | 全部组织           | 允许     | 允许修改全部组织         | 允许维护       |
+| 普通管理员 | 自己管理的组织     | 不允许   | 仅允许修改自己管理的组织 | 不允许         |
+| 普通用户   | 不展示组织管理入口 | 不允许   | 不允许                   | 不允许         |
 
 组织管理页面展示规则：
 
@@ -654,14 +654,14 @@ Agent Center Skill 市场看板重点：
 
 部门 Skill 明细字段：
 
-| 字段 | 说明 |
-| --- | --- |
+| 字段       | 说明                                         |
+| ---------- | -------------------------------------------- |
 | Skill 名称 | 固定左侧列，超出显示省略号，悬浮展示完整内容 |
-| 描述 | 单行显示，超出显示省略号，悬浮展示完整内容 |
-| 发布人 | Skill 发布人 |
-| 点赞 | 点赞量，右对齐展示 |
-| 点踩 | 点踩量，右对齐展示 |
-| 下载量 | 固定右侧列，右对齐展示 |
+| 描述       | 单行显示，超出显示省略号，悬浮展示完整内容   |
+| 发布人     | Skill 发布人                                 |
+| 点赞       | 点赞量，右对齐展示                           |
+| 点踩       | 点踩量，右对齐展示                           |
+| 下载量     | 固定右侧列，右对齐展示                       |
 
 组织级 Skill 分布详情规则：
 
@@ -680,12 +680,12 @@ TOP Skill 展示：
 
 优秀 Skill 识别展示：
 
-| 指标 | 说明 |
-| --- | --- |
+| 指标         | 说明                        |
+| ------------ | --------------------------- |
 | 已评分 Skill | 已完成质量评审的 Skill 数量 |
-| 优秀 Skill | 被标记为优秀 Skill 的数量 |
-| 推荐复用 | 被标记为推荐复用的数量 |
-| 平均评分 | 已评分 Skill 的平均分 |
+| 优秀 Skill   | 被标记为优秀 Skill 的数量   |
+| 推荐复用     | 被标记为推荐复用的数量      |
+| 平均评分     | 已评分 Skill 的平均分       |
 
 数据口径：
 
@@ -705,27 +705,27 @@ T+1（统计数据延迟 1 天）
 
 筛选条件：
 
-| 筛选项 | 说明 |
-| --- | --- |
-| 月份 | 按月生成或查看评审批次 |
-| 部门层级 | 支持一级到六级部门 |
-| 具体部门 | 查看指定部门下的 Skill |
+| 筛选项   | 说明                         |
+| -------- | ---------------------------- |
+| 月份     | 按月生成或查看评审批次       |
+| 部门层级 | 支持一级到六级部门           |
+| 具体部门 | 查看指定部门下的 Skill       |
 | 评审状态 | 全部、待评审、已评审、未评分 |
-| 搜索 | 按 Skill 名称或发布人搜索 |
+| 搜索     | 按 Skill 名称或发布人搜索    |
 
 评审清单字段：
 
-| 字段 | 说明 |
-| --- | --- |
-| Skill 名称 | Skill 名称，超出显示省略号，悬浮展示完整内容 |
-| 描述 | Skill 描述，超出显示省略号，悬浮展示完整内容 |
-| 发布人 | Skill 发布人 |
-| 部门 | Skill 所属部门 |
-| 下载 / 赞踩 | 下载量、点赞量、点踩量 |
-| 评分 | 管理员选择或填写综合评分 |
-| 勋章 | 优秀 Skill、推荐复用、待优化、无 |
-| 评审说明 | 管理员填写评审依据或优化建议 |
-| 状态 | 待评审 / 已评审 |
+| 字段        | 说明                                         |
+| ----------- | -------------------------------------------- |
+| Skill 名称  | Skill 名称，超出显示省略号，悬浮展示完整内容 |
+| 描述        | Skill 描述，超出显示省略号，悬浮展示完整内容 |
+| 发布人      | Skill 发布人                                 |
+| 部门        | Skill 所属部门                               |
+| 下载 / 赞踩 | 下载量、点赞量、点踩量                       |
+| 评分        | 管理员选择或填写综合评分                     |
+| 勋章        | 优秀 Skill、推荐复用、待优化、无             |
+| 评审说明    | 管理员填写评审依据或优化建议                 |
+| 状态        | 待评审 / 已评审                              |
 
 批量操作：
 
@@ -768,195 +768,195 @@ API Gateway
 
 ## 2.2 架构分层
 
-| 层级      | 职责                                     |
-| ------- | -------------------------------------- |
-| 前端展示层   | 市场总览、我的发布、组织管理、审核中心、运营看板、质量评审、弹窗交互 |
-| API 接入层 | 鉴权、路由、限流、统一错误处理                        |
-| 业务服务层   | Skill 管理、上传解析、同步审核、组织管理、运营统计、质量评审、反馈统计 |
-| 集成服务层   | 文件服务、Agent Center Skill 市场、评测集、代码仓门禁对接 |
-| 数据层     | 关系型数据库、对象存储、缓存、日志                      |
+| 层级       | 职责                                                                   |
+| ---------- | ---------------------------------------------------------------------- |
+| 前端展示层 | 市场总览、我的发布、组织管理、审核中心、运营看板、质量评审、弹窗交互   |
+| API 接入层 | 鉴权、路由、限流、统一错误处理                                         |
+| 业务服务层 | Skill 管理、上传解析、同步审核、组织管理、运营统计、质量评审、反馈统计 |
+| 集成服务层 | 文件服务、Agent Center Skill 市场、评测集、代码仓门禁对接              |
+| 数据层     | 关系型数据库、对象存储、缓存、日志                                     |
 
 ## 2.3 核心服务
 
-| 服务                   | 职责                                                               |
-| -------------------- | ---------------------------------------------------------------- |
-| Skill Service        | Skill 基础信息、市场查询、详情、层级与状态维护、版本查询                                  |
-| Upload Service       | 压缩包上传、解压、SKILL.md 解析、元数据校验、重名校验、文件存储                             |
-| Approval Service     | 同步申请、待审核、已完成、审核操作、状态流转、审核记录                                      |
-| Organization Service | 组织名称、组织 ID、组织管理员、超级管理员配置、组织范围权限校验                                         |
-| Department Service | 基于 Skill 部门字段聚合部门树，提供市场筛选下拉框数据 |
-| Permission Service | 当前用户角色计算、超级管理员判定、普通管理员组织范围计算、菜单权限和接口权限控制 |
-| Dashboard Service    | 扶摇系统看板、Agent Center Skill 市场看板、部门树、数量 / 下载量排行、TOP Skill、优秀 Skill 识别、Excel 导入 |
-| Quality Review Service | 月度质量评审、部门评审批次、评分、勋章标记、未评分筛选、归档 |
-| Integration Service  | 文件服务、Agent Center Skill 市场、评测集、代码仓门禁、安全扫描对接                      |
+| 服务                   | 职责                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Skill Service          | Skill 基础信息、市场查询、详情、层级与状态维护、版本查询                                                     |
+| Upload Service         | 压缩包上传、解压、SKILL.md 解析、元数据校验、重名校验、文件存储                                              |
+| Approval Service       | 同步申请、待审核、已完成、审核操作、状态流转、审核记录                                                       |
+| Organization Service   | 组织名称、组织 ID、组织管理员、超级管理员配置、组织范围权限校验                                              |
+| Department Service     | 基于 Skill 部门字段聚合部门树，提供市场筛选下拉框数据                                                        |
+| Permission Service     | 当前用户角色计算、超级管理员判定、普通管理员组织范围计算、菜单权限和接口权限控制                             |
+| Dashboard Service      | 扶摇系统看板、Agent Center Skill 市场看板、部门树、数量 / 下载量排行、TOP Skill、优秀 Skill 识别、Excel 导入 |
+| Quality Review Service | 月度质量评审、部门评审批次、评分、勋章标记、未评分筛选、归档                                                 |
+| Integration Service    | 文件服务、Agent Center Skill 市场、评测集、代码仓门禁、安全扫描对接                                          |
 
 ## 2.4 数据模型
 
 ### 2.4.1 skill 表
 
-| 字段                  | 类型       | 说明                               |
-| ------------------- | -------- | -------------------------------- |
-| id                  | bigint   | 主键                               |
-| name                | varchar  | Skill 名称，全局唯一                    |
-| description         | text     | 描述                               |
-| requirements        | text     | 运行依赖                             |
-| author              | varchar  | 作者或团队                            |
-| version             | varchar  | 当前版本                             |
-| category            | varchar  | 主分类标识                            |
-| category_group_name | varchar  | 根据 metadata.category 映射得到的一级分类名称 |
-| tags                | varchar  | 空格分隔标签                           |
-| level               | varchar  | 个人级 / 组织级                        |
-| status              | varchar  | 个人级 / 组织级 / 组织审核中 / 组织已驳回        |
-| org_id              | bigint   | 组织 ID，个人级为空                      |
-| owner_user          | varchar  | 维护人                              |
-| package_path        | varchar  | 文件服务路径                           |
-| department_l1       | varchar  | 一级部门名称                           |
-| department_l2       | varchar  | 二级部门名称                           |
-| department_l3       | varchar  | 三级部门名称                           |
-| department_l4       | varchar  | 四级部门名称                           |
-| department_l5       | varchar  | 五级部门名称                           |
-| department_l6       | varchar  | 六级部门名称                           |
-| downloads           | int      | 下载量                              |
-| likes               | int      | 点赞量                              |
-| dislikes            | int      | 点踩量                              |
-| rating              | decimal  | 综合评分                             |
-| quality_mark        | varchar  | 运营标识：优秀 Skill / 推荐复用 / 待优化 / 无 |
-| quality_badges      | varchar / json | 勋章标识集合                       |
-| scored              | boolean  | 是否已评分                           |
-| created_at          | datetime | 创建时间                             |
-| updated_at          | datetime | 更新时间                             |
+| 字段                | 类型           | 说明                                          |
+| ------------------- | -------------- | --------------------------------------------- |
+| id                  | bigint         | 主键                                          |
+| name                | varchar        | Skill 名称，全局唯一                          |
+| description         | text           | 描述                                          |
+| requirements        | text           | 运行依赖                                      |
+| author              | varchar        | 作者或团队                                    |
+| version             | varchar        | 当前版本                                      |
+| category            | varchar        | 主分类标识                                    |
+| category_group_name | varchar        | 根据 metadata.category 映射得到的一级分类名称 |
+| tags                | varchar        | 空格分隔标签                                  |
+| level               | varchar        | 个人级 / 组织级                               |
+| status              | varchar        | 个人级 / 组织级 / 组织审核中 / 组织已驳回     |
+| org_id              | bigint         | 组织 ID，个人级为空                           |
+| owner_user          | varchar        | 维护人                                        |
+| package_path        | varchar        | 文件服务路径                                  |
+| department_l1       | varchar        | 一级部门名称                                  |
+| department_l2       | varchar        | 二级部门名称                                  |
+| department_l3       | varchar        | 三级部门名称                                  |
+| department_l4       | varchar        | 四级部门名称                                  |
+| department_l5       | varchar        | 五级部门名称                                  |
+| department_l6       | varchar        | 六级部门名称                                  |
+| downloads           | int            | 下载量                                        |
+| likes               | int            | 点赞量                                        |
+| dislikes            | int            | 点踩量                                        |
+| rating              | decimal        | 综合评分                                      |
+| quality_mark        | varchar        | 运营标识：优秀 Skill / 推荐复用 / 待优化 / 无 |
+| quality_badges      | varchar / json | 勋章标识集合                                  |
+| scored              | boolean        | 是否已评分                                    |
+| created_at          | datetime       | 创建时间                                      |
+| updated_at          | datetime       | 更新时间                                      |
 
 ### 2.4.2 skill_version 表
 
-| 字段              | 类型       | 说明          |
-| --------------- | -------- | ----------- |
+| 字段            | 类型     | 说明          |
+| --------------- | -------- | ------------- |
 | id              | bigint   | 主键          |
-| skill_id        | bigint   | Skill ID    |
-| version         | varchar  | 版本号         |
-| package_path    | varchar  | 压缩包路径       |
+| skill_id        | bigint   | Skill ID      |
+| version         | varchar  | 版本号        |
+| package_path    | varchar  | 压缩包路径    |
 | parsed_metadata | json     | 解析 metadata |
-| created_by      | varchar  | 上传人         |
-| created_at      | datetime | 创建时间        |
+| created_by      | varchar  | 上传人        |
+| created_at      | datetime | 创建时间      |
 
 ### 2.4.3 organization 表
 
-| 字段         | 类型       | 说明           |
-| ---------- | -------- | ------------ |
-| id         | bigint   | 主键           |
-| org_name   | varchar  | 组织名称         |
-| org_code   | varchar  | 组织 ID        |
+| 字段       | 类型     | 说明                     |
+| ---------- | -------- | ------------------------ |
+| id         | bigint   | 主键                     |
+| org_name   | varchar  | 组织名称                 |
+| org_code   | varchar  | 组织 ID                  |
 | admins     | text     | 组织管理员，英文逗号分隔 |
-| enabled    | boolean  | 是否启用         |
-| created_at | datetime | 创建时间         |
-| updated_at | datetime | 更新时间         |
+| enabled    | boolean  | 是否启用                 |
+| created_at | datetime | 创建时间                 |
+| updated_at | datetime | 更新时间                 |
 
 ### 2.4.4 t_skill_super_admin 表
 
 数据模型表名按 `t_skill_` 前缀落库，超级管理员配置表使用 `t_skill_super_admin`。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | bigint | 主键 |
-| employee_no | varchar | 超级管理员工号，唯一 |
-| employee_name | varchar | 超级管理员姓名，可为空 |
-| enabled | boolean | 是否启用 |
-| remark | varchar | 备注或授权说明 |
-| created_by | varchar | 创建人 |
-| created_at | datetime | 创建时间 |
-| updated_by | varchar | 更新人 |
-| updated_at | datetime | 更新时间 |
+| 字段          | 类型     | 说明                   |
+| ------------- | -------- | ---------------------- |
+| id            | bigint   | 主键                   |
+| employee_no   | varchar  | 超级管理员工号，唯一   |
+| employee_name | varchar  | 超级管理员姓名，可为空 |
+| enabled       | boolean  | 是否启用               |
+| remark        | varchar  | 备注或授权说明         |
+| created_by    | varchar  | 创建人                 |
+| created_at    | datetime | 创建时间               |
+| updated_by    | varchar  | 更新人                 |
+| updated_at    | datetime | 更新时间               |
 
 ### 2.4.5 sync_application 表
 
-| 字段             | 类型       | 说明            |
-| -------------- | -------- | ------------- |
-| id             | bigint   | 主键            |
-| skill_id       | bigint   | Skill ID      |
-| source_level   | varchar  | 个人级           |
-| target_level   | varchar  | 组织级           |
-| target_org_id  | bigint   | 目标组织          |
-| applicant      | varchar  | 申请人           |
-| reason         | text     | 同步说明          |
+| 字段           | 类型     | 说明                 |
+| -------------- | -------- | -------------------- |
+| id             | bigint   | 主键                 |
+| skill_id       | bigint   | Skill ID             |
+| source_level   | varchar  | 个人级               |
+| target_level   | varchar  | 组织级               |
+| target_org_id  | bigint   | 目标组织             |
+| applicant      | varchar  | 申请人               |
+| reason         | text     | 同步说明             |
 | status         | varchar  | 待审核 / 通过 / 驳回 |
-| reviewer       | varchar  | 审核人           |
-| review_comment | text     | 审核意见          |
-| created_at     | datetime | 申请时间          |
-| reviewed_at    | datetime | 审核时间          |
+| reviewer       | varchar  | 审核人               |
+| review_comment | text     | 审核意见             |
+| created_at     | datetime | 申请时间             |
+| reviewed_at    | datetime | 审核时间             |
 
 ### 2.4.6 dashboard_metric 表
 
-| 字段          | 类型      | 说明                           |
-| ----------- | ------- | ---------------------------- |
-| id          | bigint  | 主键                           |
-| stat_date   | date    | 统计日期                         |
+| 字段        | 类型    | 说明                               |
+| ----------- | ------- | ---------------------------------- |
+| id          | bigint  | 主键                               |
+| stat_date   | date    | 统计日期                           |
 | system_type | varchar | 扶摇系统 / Agent Center Skill 市场 |
-| org_id      | bigint  | 组织 ID                        |
-| dept_level  | int     | 部门层级                         |
-| dept_name   | varchar | 部门名称                         |
-| skill_count | int     | Skill 数量                     |
-| downloads   | int     | 下载量                          |
-| likes       | int     | 点赞量                          |
-| dislikes    | int     | 点踩量                          |
-| rated_count | int     | 已评分 Skill 数量               |
+| org_id      | bigint  | 组织 ID                            |
+| dept_level  | int     | 部门层级                           |
+| dept_name   | varchar | 部门名称                           |
+| skill_count | int     | Skill 数量                         |
+| downloads   | int     | 下载量                             |
+| likes       | int     | 点赞量                             |
+| dislikes    | int     | 点踩量                             |
+| rated_count | int     | 已评分 Skill 数量                  |
 
 ### 2.4.7 skill_quality_review 表
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | bigint | 主键 |
-| review_month | varchar | 评审月份，例如 2026-04 |
-| review_dept_level | int | 评审部门层级 |
-| review_dept_name | varchar | 评审部门名称 |
-| skill_id | bigint | Skill ID |
-| score | decimal | 综合评分 |
-| quality_mark | varchar | 优秀 Skill / 推荐复用 / 待优化 / 无 |
-| review_comment | text | 评审说明 |
-| review_status | varchar | 待评审 / 已评审 |
-| reviewer | varchar | 评审管理员 |
-| reviewed_at | datetime | 评审时间 |
-| archived | boolean | 是否归档 |
-| created_at | datetime | 创建时间 |
-| updated_at | datetime | 更新时间 |
+| 字段              | 类型     | 说明                                |
+| ----------------- | -------- | ----------------------------------- |
+| id                | bigint   | 主键                                |
+| review_month      | varchar  | 评审月份，例如 2026-04              |
+| review_dept_level | int      | 评审部门层级                        |
+| review_dept_name  | varchar  | 评审部门名称                        |
+| skill_id          | bigint   | Skill ID                            |
+| score             | decimal  | 综合评分                            |
+| quality_mark      | varchar  | 优秀 Skill / 推荐复用 / 待优化 / 无 |
+| review_comment    | text     | 评审说明                            |
+| review_status     | varchar  | 待评审 / 已评审                     |
+| reviewer          | varchar  | 评审管理员                          |
+| reviewed_at       | datetime | 评审时间                            |
+| archived          | boolean  | 是否归档                            |
+| created_at        | datetime | 创建时间                            |
+| updated_at        | datetime | 更新时间                            |
 
 ### 2.4.8 skill_feedback_stat 表
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | bigint | 主键 |
-| skill_id | bigint | Skill ID |
-| downloads | int | 下载量 |
-| likes | int | 点赞量 |
-| dislikes | int | 点踩量 |
-| stat_date | date | 统计日期 |
+| 字段       | 类型     | 说明     |
+| ---------- | -------- | -------- |
+| id         | bigint   | 主键     |
+| skill_id   | bigint   | Skill ID |
+| downloads  | int      | 下载量   |
+| likes      | int      | 点赞量   |
+| dislikes   | int      | 点踩量   |
+| stat_date  | date     | 统计日期 |
 | updated_at | datetime | 更新时间 |
 
 ## 2.5 接口设计
 
-| 接口                                          | 方法         | 说明                                                     |
-| ------------------------------------------- | ---------- | ------------------------------------------------------ |
+| 接口                                        | 方法       | 说明                                                                                                  |
+| ------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
 | `/api/skills/upload/parse`                  | POST       | 解析 Skill 压缩包；只解压并解析 SKILL.md、校验元数据和返回预览结果，不调用文件服务、不写入 Skill 数据 |
-| `/api/skills/upload`                        | POST       | 上传 Skill 压缩包；后端先解压并解析 SKILL.md，再获取用户部门信息，最后调用文件服务保存压缩包 |
-| `/api/skills`                               | POST       | 创建 Skill 入库处理，由上传接口完成解析和文件服务上传后调用                      |
-| `/api/skills`                               | GET        | 查询市场列表                                                 |
-| `/api/departments/tree`                    | GET        | 查询部门树，用于市场筛选页部门下拉框；按 `department_l1` 到 `department_l6` 聚合生成树结构 |
-| `/api/skills/{id}/download`                 | POST       | Skill 下载接口；前端点击下载时调用，返回下载地址并实时累计下载量 |
-| `/api/skills/{id}/download-stats`           | GET        | 查询单个 Skill 下载量统计，支持按日期范围返回累计下载量和趋势数据 |
-| `/api/skills/{id}`                          | GET        | 查询 Skill 详情                                            |
-| `/api/skills/{id}/versions`                 | POST       | 上传新版本                                                  |
-| `/api/skills/{id}/sync-applications`        | POST       | 发起同步至Agent Center 组织                                   |
-| `/api/skills/{id}/sync-update-applications` | POST       | 已同步组织级 Skill 发起更新同步                                    |
-| `/api/sync-applications/{id}/review`        | POST       | 审核同步申请                                                 |
-| `/api/users/current/role`                   | GET        | 查询当前用户角色、是否超级管理员、可管理组织范围                         |
-| `/api/organizations`                        | GET / POST | 查询或创建组织；超级管理员可创建，普通管理员仅可查询自己管理的组织                                                |
-| `/api/organizations/{id}`                   | PUT        | 更新组织；超级管理员可更新全部组织，普通管理员仅可更新自己管理的组织                                                   |
-| `/api/super-admins`                         | GET / POST | 查询或新增超级管理员工号配置，仅超级管理员可操作                         |
-| `/api/super-admins/{id}`                    | PUT        | 更新超级管理员启停状态或备注，仅超级管理员可操作                         |
-| `/api/dashboard/overview?system=fuyao`      | GET        | 查询扶摇系统看板                                               |
-| `/api/dashboard/overview?system=company`    | GET        | 查询Agent Center Skill 市场看板                              |
-| `/api/dashboard/import-excel`               | POST       | 导入看板统计 Excel                                           |
-| `/api/skill-quality-reviews`                | GET        | 查询月度部门质量评审清单                                      |
-| `/api/skill-quality-reviews/save`           | POST       | 批量保存质量评审结果                                          |
-| `/api/skill-quality-reviews/archive`        | POST       | 提交月度部门质量评审归档                                      |
+| `/api/skills/upload`                        | POST       | 上传 Skill 压缩包；后端先解压并解析 SKILL.md，再获取用户部门信息，最后调用文件服务保存压缩包          |
+| `/api/skills`                               | POST       | 创建 Skill 入库处理，由上传接口完成解析和文件服务上传后调用                                           |
+| `/api/skills`                               | GET        | 查询市场列表                                                                                          |
+| `/api/departments/tree`                     | GET        | 查询部门树，用于市场筛选页部门下拉框；按 `department_l1` 到 `department_l6` 聚合生成树结构            |
+| `/api/skills/{id}/download`                 | POST       | Skill 下载接口；前端点击下载时调用，返回下载地址并实时累计下载量                                      |
+| `/api/skills/{id}/download-stats`           | GET        | 查询单个 Skill 下载量统计，支持按日期范围返回累计下载量和趋势数据                                     |
+| `/api/skills/{id}`                          | GET        | 查询 Skill 详情                                                                                       |
+| `/api/skills/{id}/versions`                 | POST       | 上传新版本                                                                                            |
+| `/api/skills/{id}/sync-applications`        | POST       | 发起同步至Agent Center 组织                                                                           |
+| `/api/skills/{id}/sync-update-applications` | POST       | 已同步组织级 Skill 发起更新同步                                                                       |
+| `/api/sync-applications/{id}/review`        | POST       | 审核同步申请                                                                                          |
+| `/api/users/current/role`                   | GET        | 查询当前用户角色、是否超级管理员、可管理组织范围                                                      |
+| `/api/organizations`                        | GET / POST | 查询或创建组织；超级管理员可创建，普通管理员仅可查询自己管理的组织                                    |
+| `/api/organizations/{id}`                   | PUT        | 更新组织；超级管理员可更新全部组织，普通管理员仅可更新自己管理的组织                                  |
+| `/api/super-admins`                         | GET / POST | 查询或新增超级管理员工号配置，仅超级管理员可操作                                                      |
+| `/api/super-admins/{id}`                    | PUT        | 更新超级管理员启停状态或备注，仅超级管理员可操作                                                      |
+| `/api/dashboard/overview?system=fuyao`      | GET        | 查询扶摇系统看板                                                                                      |
+| `/api/dashboard/overview?system=company`    | GET        | 查询Agent Center Skill 市场看板                                                                       |
+| `/api/dashboard/import-excel`               | POST       | 导入看板统计 Excel                                                                                    |
+| `/api/skill-quality-reviews`                | GET        | 查询月度部门质量评审清单                                                                              |
+| `/api/skill-quality-reviews/save`           | POST       | 批量保存质量评审结果                                                                                  |
+| `/api/skill-quality-reviews/archive`        | POST       | 提交月度部门质量评审归档                                                                              |
 
 上传解析响应示例：
 
@@ -1276,17 +1276,17 @@ VALUES
 
 状态枚举可通过配置中心或字典表管理，首版固定值如下。
 
-| 枚举类型     | 枚举值                                         |
-| -------- | ------------------------------------------- |
-| Skill 层级 | 个人级、组织级                                     |
-| Skill 状态 | 个人级、组织审核中、组织已驳回、组织级                         |
-| 同步申请状态   | 待审核、通过、驳回                                   |
-| 系统类型     | fuyao、company                               |
+| 枚举类型     | 枚举值                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Skill 层级   | 个人级、组织级                                                                                  |
+| Skill 状态   | 个人级、组织审核中、组织已驳回、组织级                                                          |
+| 同步申请状态 | 待审核、通过、驳回                                                                              |
+| 系统类型     | fuyao、company                                                                                  |
 | 操作类型     | 上传、上传新版本、同步至Agent Center 组织、更新同步、审核、下载、在线试用、点赞、点踩、质量评审 |
-| 质量评审状态 | 待评审、已评审 |
-| 质量勋章 | 优秀 Skill、推荐复用、待优化、高分 Skill |
-| 用户角色 | SUPER_ADMIN、ORG_ADMIN、USER |
-| 组织配置权限 | ALL、MANAGED_ORG、NONE |
+| 质量评审状态 | 待评审、已评审                                                                                  |
+| 质量勋章     | 优秀 Skill、推荐复用、待优化、高分 Skill                                                        |
+| 用户角色     | SUPER_ADMIN、ORG_ADMIN、USER                                                                    |
+| 组织配置权限 | ALL、MANAGED_ORG、NONE                                                                          |
 
 ## 3.3 接口明细
 
@@ -1303,9 +1303,9 @@ Content-Type: multipart/form-data
 
 请求参数：
 
-| 参数   | 类型   | 必填 | 说明        |
-| ---- | ---- | -- | --------- |
-| file | file | 是  | Skill 压缩包 |
+| 参数 | 类型 | 必填 | 说明         |
+| ---- | ---- | ---- | ------------ |
+| file | file | 是   | Skill 压缩包 |
 
 核心处理流程：
 
@@ -1402,30 +1402,30 @@ Content-Type: multipart/form-data
 
 失败规则：
 
-| 场景                     | 返回 message                          |
-| ---------------------- | ----------------------------------- |
-| 压缩包为空                  | 解析失败：压缩包不能为空                       |
-| 压缩包解压失败                | 解析失败：压缩包解压失败                       |
-| 未找到 SKILL.md           | 解析失败：未找到 SKILL.md 文件               |
-| 未解析到 name              | 解析失败：SKILL.md 中缺少 name             |
-| 未解析到 metadata.version  | 解析失败：SKILL.md 中缺少 metadata.version |
-| metadata.version 格式不合法 | 解析失败：metadata.version 不符合语义化版本格式   |
-| metadata.category 为空    | 解析失败：SKILL.md 中缺少 metadata.category |
-| category 无法映射          | 解析失败：metadata.category 未匹配到分类映射关系  |
-| name 已存在               | 解析成功但 `duplicate=true`，前端禁止提交或提示用户改名 |
+| 场景                        | 返回 message                                            |
+| --------------------------- | ------------------------------------------------------- |
+| 压缩包为空                  | 解析失败：压缩包不能为空                                |
+| 压缩包解压失败              | 解析失败：压缩包解压失败                                |
+| 未找到 SKILL.md             | 解析失败：未找到 SKILL.md 文件                          |
+| 未解析到 name               | 解析失败：SKILL.md 中缺少 name                          |
+| 未解析到 metadata.version   | 解析失败：SKILL.md 中缺少 metadata.version              |
+| metadata.version 格式不合法 | 解析失败：metadata.version 不符合语义化版本格式         |
+| metadata.category 为空      | 解析失败：SKILL.md 中缺少 metadata.category             |
+| category 无法映射           | 解析失败：metadata.category 未匹配到分类映射关系        |
+| name 已存在                 | 解析成功但 `duplicate=true`，前端禁止提交或提示用户改名 |
 
 与正式上传接口的差异：
 
-| 对比项 | `/api/skills/upload/parse` | `/api/skills/upload` |
-| --- | --- | --- |
-| 目标 | 上传前预解析和预校验 | 正式上传并发布个人级 Skill |
-| 是否调用文件服务 | 否 | 是 |
-| 是否写入 skill | 否 | 是 |
-| 是否写入 skill_version | 否 | 是 |
-| 是否写入操作日志 | 否，最多记录接口访问日志 | 是，写入上传操作日志 |
-| 是否生成正式 package_path | 否 | 是 |
-| 是否改变 Skill 状态 | 否 | 是，默认个人级 |
-| 是否需要重新校验 | 是 | 是，正式上传必须重新解析和校验 |
+| 对比项                    | `/api/skills/upload/parse` | `/api/skills/upload`           |
+| ------------------------- | -------------------------- | ------------------------------ |
+| 目标                      | 上传前预解析和预校验       | 正式上传并发布个人级 Skill     |
+| 是否调用文件服务          | 否                         | 是                             |
+| 是否写入 skill            | 否                         | 是                             |
+| 是否写入 skill_version    | 否                         | 是                             |
+| 是否写入操作日志          | 否，最多记录接口访问日志   | 是，写入上传操作日志           |
+| 是否生成正式 package_path | 否                         | 是                             |
+| 是否改变 Skill 状态       | 否                         | 是，默认个人级                 |
+| 是否需要重新校验          | 是                         | 是，正式上传必须重新解析和校验 |
 
 ### 3.3.1 上传 Skill 接口
 
@@ -1438,9 +1438,9 @@ Content-Type: multipart/form-data
 
 请求参数：
 
-| 参数   | 类型   | 必填 | 说明        |
-| ---- | ---- | -- | --------- |
-| file | file | 是  | Skill 压缩包 |
+| 参数 | 类型 | 必填 | 说明         |
+| ---- | ---- | ---- | ------------ |
+| file | file | 是   | Skill 压缩包 |
 
 核心处理流程：
 
@@ -1485,10 +1485,10 @@ Content-Type: multipart/form-data
 
 文件服务请求 Body：
 
-| 参数         | 类型     | 必填 | 说明                                  |
-| ---------- | ------ | -- | ----------------------------------- |
-| uploadFile | file   | 是  | 原始 Skill 压缩包                        |
-| fileDir    | string | 是  | `fuyao/skills/{skill名字}/{skill版本号}` |
+| 参数       | 类型   | 必填 | 说明                                     |
+| ---------- | ------ | ---- | ---------------------------------------- |
+| uploadFile | file   | 是   | 原始 Skill 压缩包                        |
+| fileDir    | string | 是   | `fuyao/skills/{skill名字}/{skill版本号}` |
 
 fileDir 生成规则：
 
@@ -1554,36 +1554,36 @@ fuyao/skills/pdf-document-extractor/1.0.0
 
 示例：`metadata.category: utility-doc` 映射为 `category=utility-doc`、`categoryGroupName=工具类`。
 
-| 字段                | 说明                                                               | 原型使用位置                          |
-| ----------------- | ---------------------------------------------------------------- | ------------------------------- |
-| skillId           | Skill 主键 ID                                                      | 跳转详情、后续上传新版本、同步至Agent Center 组织 |
-| name              | Skill 名称                                                         | 上传解析结果、市场卡片、我的发布、详情页            |
-| description       | Skill 描述                                                         | 上传解析结果、市场卡片、详情页                 |
-| requirements      | 运行依赖                                                             | 上传解析结果、详情页                      |
-| author            | 作者或团队名称                                                          | 上传解析结果、卡片作者信息、详情页               |
-| version           | 当前版本号                                                            | 上传解析结果、卡片标签、我的发布、详情页            |
-| category          | 直接取自 SKILL.md 的 `metadata.category`，例如 `utility-doc`             | 入库、分类映射                         |
-| categoryGroupName | 后端根据 `metadata.category` 查 `category_mapping` 得到的一级分类名称，例如 `工具类` | 分类筛选、市场卡片、详情页                   |
-| tags              | 标签数组                                                             | 标签筛选、市场卡片、详情页                   |
-| level             | 当前层级                                                             | 市场卡片、我的发布、详情页                   |
-| status            | 当前状态                                                             | 我的发布状态、详情页                      |
-| orgId             | 组织 ID                                                            | 组织级展示、同步后归属组织                   |
-| orgName           | 组织名称                                                             | 市场卡片、我的发布、详情页                   |
-| ownerUser         | 维护人账号                                                            | 权限判断、我的发布                       |
-| ownerName         | 维护人展示名                                                           | 市场卡片、我的发布、详情页                   |
-| department_l1     | 一级部门名称                                                           | 分层筛选部门、运营统计                     |
-| department_l2     | 二级部门名称                                                           | 分层筛选部门、运营统计                     |
-| department_l3     | 三级部门名称                                                           | 分层筛选部门、运营统计                     |
-| department_l4     | 四级部门名称                                                           | 分层筛选部门、运营统计                     |
-| department_l5     | 五级部门名称                                                           | 分层筛选部门、运营统计                     |
-| department_l6     | 六级部门名称                                                           | 分层筛选部门、运营统计                     |
-| downloads         | 下载量                                                              | 市场卡片右侧、详情页、运营统计                 |
-| fileDir           | 文件服务目录                                                           | 后端文件定位                          |
-| packagePath       | 压缩包文件路径                                                          | 下载到本地                           |
-| fileTree          | 压缩包文件结构                                                          | Skill 详情页                       |
-| skillMdContent    | SKILL.md 内容                                                      | Skill 详情页                       |
-| createdAt         | 创建时间                                                             | 我的发布、详情页                        |
-| updatedAt         | 最新更新时间                                                           | 市场卡片、我的发布、详情页                   |
+| 字段              | 说明                                                                                 | 原型使用位置                                      |
+| ----------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| skillId           | Skill 主键 ID                                                                        | 跳转详情、后续上传新版本、同步至Agent Center 组织 |
+| name              | Skill 名称                                                                           | 上传解析结果、市场卡片、我的发布、详情页          |
+| description       | Skill 描述                                                                           | 上传解析结果、市场卡片、详情页                    |
+| requirements      | 运行依赖                                                                             | 上传解析结果、详情页                              |
+| author            | 作者或团队名称                                                                       | 上传解析结果、卡片作者信息、详情页                |
+| version           | 当前版本号                                                                           | 上传解析结果、卡片标签、我的发布、详情页          |
+| category          | 直接取自 SKILL.md 的 `metadata.category`，例如 `utility-doc`                         | 入库、分类映射                                    |
+| categoryGroupName | 后端根据 `metadata.category` 查 `category_mapping` 得到的一级分类名称，例如 `工具类` | 分类筛选、市场卡片、详情页                        |
+| tags              | 标签数组                                                                             | 标签筛选、市场卡片、详情页                        |
+| level             | 当前层级                                                                             | 市场卡片、我的发布、详情页                        |
+| status            | 当前状态                                                                             | 我的发布状态、详情页                              |
+| orgId             | 组织 ID                                                                              | 组织级展示、同步后归属组织                        |
+| orgName           | 组织名称                                                                             | 市场卡片、我的发布、详情页                        |
+| ownerUser         | 维护人账号                                                                           | 权限判断、我的发布                                |
+| ownerName         | 维护人展示名                                                                         | 市场卡片、我的发布、详情页                        |
+| department_l1     | 一级部门名称                                                                         | 分层筛选部门、运营统计                            |
+| department_l2     | 二级部门名称                                                                         | 分层筛选部门、运营统计                            |
+| department_l3     | 三级部门名称                                                                         | 分层筛选部门、运营统计                            |
+| department_l4     | 四级部门名称                                                                         | 分层筛选部门、运营统计                            |
+| department_l5     | 五级部门名称                                                                         | 分层筛选部门、运营统计                            |
+| department_l6     | 六级部门名称                                                                         | 分层筛选部门、运营统计                            |
+| downloads         | 下载量                                                                               | 市场卡片右侧、详情页、运营统计                    |
+| fileDir           | 文件服务目录                                                                         | 后端文件定位                                      |
+| packagePath       | 压缩包文件路径                                                                       | 下载到本地                                        |
+| fileTree          | 压缩包文件结构                                                                       | Skill 详情页                                      |
+| skillMdContent    | SKILL.md 内容                                                                        | Skill 详情页                                      |
+| createdAt         | 创建时间                                                                             | 我的发布、详情页                                  |
+| updatedAt         | 最新更新时间                                                                         | 市场卡片、我的发布、详情页                        |
 
 失败响应示例：
 
@@ -1597,18 +1597,18 @@ fuyao/skills/pdf-document-extractor/1.0.0
 
 失败规则：
 
-| 场景                     | 返回 message                          |
-| ---------------------- | ----------------------------------- |
-| 压缩包解压失败                | 上传失败：压缩包解压失败                        |
-| 未找到 SKILL.md           | 上传失败：未找到 SKILL.md 文件                |
-| 未解析到 name              | 上传失败：SKILL.md 中缺少 name              |
-| 未解析到 metadata.version  | 上传失败：SKILL.md 中缺少 metadata.version  |
-| metadata.version 格式不合法 | 上传失败：metadata.version 不符合语义化版本格式    |
-| metadata.category 为空   | 上传失败：SKILL.md 中缺少 metadata.category |
-| category 无法映射          | 上传失败：metadata.category 未匹配到分类映射关系   |
-| name 重名                | 上传失败：Skill 名称已存在                    |
-| 获取用户部门信息失败             | 上传失败：未获取到用户部门信息                     |
-| 文件服务上传失败               | 上传失败：压缩包保存到文件服务失败                   |
+| 场景                        | 返回 message                                     |
+| --------------------------- | ------------------------------------------------ |
+| 压缩包解压失败              | 上传失败：压缩包解压失败                         |
+| 未找到 SKILL.md             | 上传失败：未找到 SKILL.md 文件                   |
+| 未解析到 name               | 上传失败：SKILL.md 中缺少 name                   |
+| 未解析到 metadata.version   | 上传失败：SKILL.md 中缺少 metadata.version       |
+| metadata.version 格式不合法 | 上传失败：metadata.version 不符合语义化版本格式  |
+| metadata.category 为空      | 上传失败：SKILL.md 中缺少 metadata.category      |
+| category 无法映射           | 上传失败：metadata.category 未匹配到分类映射关系 |
+| name 重名                   | 上传失败：Skill 名称已存在                       |
+| 获取用户部门信息失败        | 上传失败：未获取到用户部门信息                   |
+| 文件服务上传失败            | 上传失败：压缩包保存到文件服务失败               |
 
 入库规则：
 
@@ -1674,36 +1674,36 @@ GET /api/skills
 
 查询参数：
 
-| 参数                | 类型     | 必填 | 说明                            |
-| ----------------- | ------ | -- | ----------------------------- |
-| keyword           | string | 否  | 搜索关键词，按 Skill 名称、描述、作者或维护人模糊查询 |
-| level             | string | 否  | 个人级 / 组织级                     |
-| orgId             | long   | 否  | 组织 ID，单选组织筛选，按 `skill.org_id` 精确过滤 |
-| departmentL1      | string | 否  | 一级部门名称，按 `skill.department_l1` 精确过滤 |
-| departmentL2      | string | 否  | 二级部门名称，按 `skill.department_l2` 精确过滤 |
-| departmentL3      | string | 否  | 三级部门名称，按 `skill.department_l3` 精确过滤 |
-| departmentL4      | string | 否  | 四级部门名称，按 `skill.department_l4` 精确过滤 |
-| departmentL5      | string | 否  | 五级部门名称，按 `skill.department_l5` 精确过滤 |
-| departmentL6      | string | 否  | 六级部门名称，按 `skill.department_l6` 精确过滤 |
-| categoryGroupName | string | 否  | 一级分类名称，单选：作业类 / 业务类 / 工具类 |
-| category          | string | 否  | SKILL.md 中的 `metadata.category`，单选子分类，例如 `utility-doc` |
-| tagList           | array / string | 否 | 多选标签并集筛选，支持 `tagList=pdf,api,review` 或 `tagList=pdf&tagList=api` |
-| tag               | string | 否  | 单个标签筛选，兼容旧参数；新页面优先使用 `tagList` |
-| qualityMark       | string | 否  | 优秀 Skill / 推荐复用 / 待优化       |
-| badge             | string | 否  | 勋章标识                         |
-| scored            | boolean | 否 | 是否已评分，可用于查询未评分 Skill        |
-| minRating         | decimal | 否 | 最低评分                         |
-| pageNo            | int    | 是  | 页码                            |
-| pageSize          | int    | 是  | 每页数量                          |
+| 参数              | 类型           | 必填 | 说明                                                                         |
+| ----------------- | -------------- | ---- | ---------------------------------------------------------------------------- |
+| keyword           | string         | 否   | 搜索关键词，按 Skill 名称、描述、作者或维护人模糊查询                        |
+| level             | string         | 否   | 个人级 / 组织级                                                              |
+| orgId             | long           | 否   | 组织 ID，单选组织筛选，按 `skill.org_id` 精确过滤                            |
+| departmentL1      | string         | 否   | 一级部门名称，按 `skill.department_l1` 精确过滤                              |
+| departmentL2      | string         | 否   | 二级部门名称，按 `skill.department_l2` 精确过滤                              |
+| departmentL3      | string         | 否   | 三级部门名称，按 `skill.department_l3` 精确过滤                              |
+| departmentL4      | string         | 否   | 四级部门名称，按 `skill.department_l4` 精确过滤                              |
+| departmentL5      | string         | 否   | 五级部门名称，按 `skill.department_l5` 精确过滤                              |
+| departmentL6      | string         | 否   | 六级部门名称，按 `skill.department_l6` 精确过滤                              |
+| categoryGroupName | string         | 否   | 一级分类名称，单选：作业类 / 业务类 / 工具类                                 |
+| category          | string         | 否   | SKILL.md 中的 `metadata.category`，单选子分类，例如 `utility-doc`            |
+| tagList           | array / string | 否   | 多选标签并集筛选，支持 `tagList=pdf,api,review` 或 `tagList=pdf&tagList=api` |
+| tag               | string         | 否   | 单个标签筛选，兼容旧参数；新页面优先使用 `tagList`                           |
+| qualityMark       | string         | 否   | 优秀 Skill / 推荐复用 / 待优化                                               |
+| badge             | string         | 否   | 勋章标识                                                                     |
+| scored            | boolean        | 否   | 是否已评分，可用于查询未评分 Skill                                           |
+| minRating         | decimal        | 否   | 最低评分                                                                     |
+| pageNo            | int            | 是   | 页码                                                                         |
+| pageSize          | int            | 是   | 每页数量                                                                     |
 
 筛选语义：
 
-| 筛选维度 | 参数 | 选择方式 | 后端过滤规则 |
-| --- | --- | --- | --- |
-| 组织 | `orgId` | 单选 | `skill.org_id = orgId` |
-| 部门 | `departmentL1` ~ `departmentL6` | 任意一个或多个字段可选 | 传入哪个字段就按对应数据库字段精确过滤，例如 `departmentL3=云服务组` 对应 `skill.department_l3 = '云服务组'` |
-| 分类 | `categoryGroupName` / `category` | 单选 | 一级分类按 `category_group_name` 精确匹配；子分类按 `category` 精确匹配 |
-| 标签 | `tagList` | 多选 | 标签内部按并集查询，命中任一标签即返回 |
+| 筛选维度 | 参数                             | 选择方式               | 后端过滤规则                                                                                                 |
+| -------- | -------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 组织     | `orgId`                          | 单选                   | `skill.org_id = orgId`                                                                                       |
+| 部门     | `departmentL1` ~ `departmentL6`  | 任意一个或多个字段可选 | 传入哪个字段就按对应数据库字段精确过滤，例如 `departmentL3=云服务组` 对应 `skill.department_l3 = '云服务组'` |
+| 分类     | `categoryGroupName` / `category` | 单选                   | 一级分类按 `category_group_name` 精确匹配；子分类按 `category` 精确匹配                                      |
+| 标签     | `tagList`                        | 多选                   | 标签内部按并集查询，命中任一标签即返回                                                                       |
 
 组合规则：
 
@@ -1772,13 +1772,13 @@ GET /api/skills?orgId=5&departmentL3=云服务组&categoryGroupName=工具类&ta
 
 列表返回字段补充说明：
 
-| 字段 | 是否必须返回 | 说明 | 前端使用位置 |
-| --- | --- | --- | --- |
-| downloads | 是 | Skill 累计下载量，取自 `skill.downloads` 实时累计字段 | 市场卡片、市场列表、TOP Skill 排序入口 |
-| likes | 是 | Skill 累计点赞量 | 市场卡片、市场列表 |
-| dislikes | 是 | Skill 累计点踩量 | 市场卡片、市场列表 |
-| rating | 否 | Skill 综合评分，未评分时可为空 | 评分展示、筛选排序 |
-| qualityBadges | 否 | Skill 质量勋章集合，未打标时返回空数组 | 勋章展示、勋章筛选 |
+| 字段          | 是否必须返回 | 说明                                                  | 前端使用位置                           |
+| ------------- | ------------ | ----------------------------------------------------- | -------------------------------------- |
+| downloads     | 是           | Skill 累计下载量，取自 `skill.downloads` 实时累计字段 | 市场卡片、市场列表、TOP Skill 排序入口 |
+| likes         | 是           | Skill 累计点赞量                                      | 市场卡片、市场列表                     |
+| dislikes      | 是           | Skill 累计点踩量                                      | 市场卡片、市场列表                     |
+| rating        | 否           | Skill 综合评分，未评分时可为空                        | 评分展示、筛选排序                     |
+| qualityBadges | 否           | Skill 质量勋章集合，未打标时返回空数组                | 勋章展示、勋章筛选                     |
 
 下载量返回规则：
 
@@ -1817,14 +1817,14 @@ GET /api/departments/tree
 
 查询参数：
 
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| orgId | long | 否 | 组织 ID；传入后仅返回该组织范围下存在 Skill 的部门树 |
-| level | string | 否 | 个人级 / 组织级；用于按 Skill 层级缩小部门树范围 |
-| categoryGroupName | string | 否 | 一级分类名称：作业类 / 业务类 / 工具类；用于分类联动部门下拉框 |
-| category | string | 否 | `metadata.category` 子分类；用于子分类联动部门下拉框 |
-| tagList | array / string | 否 | 多选标签并集筛选，支持 `tagList=pdf,api` 或 `tagList=pdf&tagList=api` |
-| includeEmpty | boolean | 否 | 是否返回空部门节点，默认 `false`；首版建议只返回有 Skill 数据的部门节点 |
+| 参数              | 类型           | 必填 | 说明                                                                    |
+| ----------------- | -------------- | ---- | ----------------------------------------------------------------------- |
+| orgId             | long           | 否   | 组织 ID；传入后仅返回该组织范围下存在 Skill 的部门树                    |
+| level             | string         | 否   | 个人级 / 组织级；用于按 Skill 层级缩小部门树范围                        |
+| categoryGroupName | string         | 否   | 一级分类名称：作业类 / 业务类 / 工具类；用于分类联动部门下拉框          |
+| category          | string         | 否   | `metadata.category` 子分类；用于子分类联动部门下拉框                    |
+| tagList           | array / string | 否   | 多选标签并集筛选，支持 `tagList=pdf,api` 或 `tagList=pdf&tagList=api`   |
+| includeEmpty      | boolean        | 否   | 是否返回空部门节点，默认 `false`；首版建议只返回有 Skill 数据的部门节点 |
 
 示例请求：
 
@@ -1880,14 +1880,14 @@ GET /api/departments/tree?orgId=5&categoryGroupName=工具类&tagList=pdf,api
 
 字段说明：
 
-| 字段 | 说明 |
-| --- | --- |
-| name | 部门名称，用于前端展示 |
-| level | 部门层级，取值 1 到 6 |
-| field | 前端回填到市场列表查询接口的参数名，例如 `departmentL3` |
-| value | 前端回填到市场列表查询接口的参数值 |
-| skillCount | 当前节点及其下级范围内的 Skill 数量 |
-| children | 下级部门节点 |
+| 字段       | 说明                                                    |
+| ---------- | ------------------------------------------------------- |
+| name       | 部门名称，用于前端展示                                  |
+| level      | 部门层级，取值 1 到 6                                   |
+| field      | 前端回填到市场列表查询接口的参数名，例如 `departmentL3` |
+| value      | 前端回填到市场列表查询接口的参数值                      |
+| skillCount | 当前节点及其下级范围内的 Skill 数量                     |
+| children   | 下级部门节点                                            |
 
 前端使用规则：
 
@@ -1932,13 +1932,12 @@ GROUP BY
 
 接口失败规则：
 
-| 场景 | 返回 message |
-| --- | --- |
-| orgId 不存在 | 查询失败：组织不存在 |
-| categoryGroupName 不合法 | 查询失败：分类不存在 |
-| category 不合法 | 查询失败：子分类不存在 |
-| 查询异常 | 查询失败：部门树加载失败 |
-
+| 场景                     | 返回 message             |
+| ------------------------ | ------------------------ |
+| orgId 不存在             | 查询失败：组织不存在     |
+| categoryGroupName 不合法 | 查询失败：分类不存在     |
+| category 不合法          | 查询失败：子分类不存在   |
+| 查询异常                 | 查询失败：部门树加载失败 |
 
 #### 3.3.3.2 Skill 下载与下载量统计接口
 
@@ -1955,10 +1954,10 @@ Content-Type: application/json
 
 请求参数：
 
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| id | long | 是 | Skill ID，位于路径参数中 |
-| sourcePage | string | 否 | 下载来源页面，例如 market、detail、my-publish |
+| 参数       | 类型   | 必填 | 说明                                          |
+| ---------- | ------ | ---- | --------------------------------------------- |
+| id         | long   | 是   | Skill ID，位于路径参数中                      |
+| sourcePage | string | 否   | 下载来源页面，例如 market、detail、my-publish |
 
 请求示例：
 
@@ -1997,12 +1996,12 @@ Content-Type: application/json
 
 失败规则：
 
-| 场景 | 返回 message |
-| --- | --- |
-| Skill 不存在 | 下载失败：Skill 不存在 |
-| Skill 已删除 | 下载失败：Skill 已删除 |
-| 文件路径为空 | 下载失败：Skill 文件不存在 |
-| 文件服务异常 | 下载失败：文件服务暂不可用 |
+| 场景         | 返回 message                 |
+| ------------ | ---------------------------- |
+| Skill 不存在 | 下载失败：Skill 不存在       |
+| Skill 已删除 | 下载失败：Skill 已删除       |
+| 文件路径为空 | 下载失败：Skill 文件不存在   |
+| 文件服务异常 | 下载失败：文件服务暂不可用   |
 | 统计更新异常 | 下载失败：下载量统计更新失败 |
 
 ##### 3.3.3.2.2 单个 Skill 下载量统计接口
@@ -2015,12 +2014,12 @@ GET /api/skills/{id}/download-stats
 
 查询参数：
 
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| id | long | 是 | Skill ID，位于路径参数中 |
-| startDate | string | 否 | 统计开始日期，格式 `yyyy-MM-dd` |
-| endDate | string | 否 | 统计结束日期，格式 `yyyy-MM-dd` |
-| granularity | string | 否 | 统计粒度，默认 `day`，首版支持 day |
+| 参数        | 类型   | 必填 | 说明                               |
+| ----------- | ------ | ---- | ---------------------------------- |
+| id          | long   | 是   | Skill ID，位于路径参数中           |
+| startDate   | string | 否   | 统计开始日期，格式 `yyyy-MM-dd`    |
+| endDate     | string | 否   | 统计结束日期，格式 `yyyy-MM-dd`    |
+| granularity | string | 否   | 统计粒度，默认 `day`，首版支持 day |
 
 示例请求：
 
@@ -2058,11 +2057,11 @@ GET /api/skills/10001/download-stats?startDate=2026-04-01&endDate=2026-04-30&gra
 
 字段说明：
 
-| 字段 | 说明 |
-| --- | --- |
-| totalDownloads | 当前查询时间范围内的下载量合计 |
-| currentDownloads | `skill.downloads` 中记录的当前累计下载量 |
-| trend | 来自 `skill_feedback_stat` 的按日下载量趋势 |
+| 字段             | 说明                                        |
+| ---------------- | ------------------------------------------- |
+| totalDownloads   | 当前查询时间范围内的下载量合计              |
+| currentDownloads | `skill.downloads` 中记录的当前累计下载量    |
+| trend            | 来自 `skill_feedback_stat` 的按日下载量趋势 |
 
 后端统计口径：
 
@@ -2133,9 +2132,9 @@ Content-Type: multipart/form-data
 
 请求参数：
 
-| 参数   | 类型   | 必填 | 说明           |
-| ---- | ---- | -- | ------------ |
-| file | file | 是  | Skill 新版本压缩包 |
+| 参数 | 类型 | 必填 | 说明               |
+| ---- | ---- | ---- | ------------------ |
+| file | file | 是   | Skill 新版本压缩包 |
 
 处理规则：
 
@@ -2257,12 +2256,12 @@ GET /api/sync-applications
 
 查询参数：
 
-| 参数       | 类型     | 必填 | 说明             |
-| -------- | ------ | -- | -------------- |
-| tab      | string | 是  | pending / done |
-| orgId    | long   | 否  | 目标组织 ID        |
-| pageNo   | int    | 是  | 页码             |
-| pageSize | int    | 是  | 每页数量           |
+| 参数     | 类型   | 必填 | 说明           |
+| -------- | ------ | ---- | -------------- |
+| tab      | string | 是   | pending / done |
+| orgId    | long   | 否   | 目标组织 ID    |
+| pageNo   | int    | 是   | 页码           |
+| pageSize | int    | 是   | 每页数量       |
 
 说明：
 
@@ -2299,14 +2298,14 @@ GET /api/users/current/role
 
 返回字段说明：
 
-| 字段 | 说明 |
-| --- | --- |
-| employeeNo | 当前登录用户工号 |
-| role | SUPER_ADMIN / ORG_ADMIN / USER |
-| superAdmin | 是否超级管理员 |
-| orgAdmin | 是否普通管理员 |
-| managedOrgIds | 普通管理员可管理的组织 ID；超级管理员可返回空数组或全部组织 ID |
-| organizationScope | ALL / MANAGED_ORG / NONE |
+| 字段              | 说明                                                           |
+| ----------------- | -------------------------------------------------------------- |
+| employeeNo        | 当前登录用户工号                                               |
+| role              | SUPER_ADMIN / ORG_ADMIN / USER                                 |
+| superAdmin        | 是否超级管理员                                                 |
+| orgAdmin          | 是否普通管理员                                                 |
+| managedOrgIds     | 普通管理员可管理的组织 ID；超级管理员可返回空数组或全部组织 ID |
+| organizationScope | ALL / MANAGED_ORG / NONE                                       |
 
 菜单展示规则：
 
@@ -2381,13 +2380,13 @@ GET /api/dashboard/overview
 
 查询参数：
 
-| 参数        | 类型     | 必填 | 说明                |
-| --------- | ------ | -- | ----------------- |
-| system    | string | 是  | fuyao / company   |
-| statDate  | string | 否  | 统计日期              |
-| deptLevel | int    | 否  | 部门层级              |
-| deptName  | string | 否  | 部门名称              |
-| metric    | string | 否  | count / downloads |
+| 参数      | 类型   | 必填 | 说明              |
+| --------- | ------ | ---- | ----------------- |
+| system    | string | 是   | fuyao / company   |
+| statDate  | string | 否   | 统计日期          |
+| deptLevel | int    | 否   | 部门层级          |
+| deptName  | string | 否   | 部门名称          |
+| metric    | string | 否   | count / downloads |
 
 响应示例：
 
@@ -2445,15 +2444,15 @@ GET /api/skill-quality-reviews
 
 查询参数：
 
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| reviewMonth | string | 是 | 评审月份，例如 2026-04 |
-| deptLevel | int | 否 | 部门层级 |
-| deptName | string | 否 | 部门名称 |
-| reviewStatus | string | 否 | 待评审 / 已评审 / 未评分 |
-| keyword | string | 否 | Skill 名称或发布人 |
-| pageNo | int | 是 | 页码 |
-| pageSize | int | 是 | 每页数量 |
+| 参数         | 类型   | 必填 | 说明                     |
+| ------------ | ------ | ---- | ------------------------ |
+| reviewMonth  | string | 是   | 评审月份，例如 2026-04   |
+| deptLevel    | int    | 否   | 部门层级                 |
+| deptName     | string | 否   | 部门名称                 |
+| reviewStatus | string | 否   | 待评审 / 已评审 / 未评分 |
+| keyword      | string | 否   | Skill 名称或发布人       |
+| pageNo       | int    | 是   | 页码                     |
+| pageSize     | int    | 是   | 每页数量                 |
 
 保存质量评审：
 
@@ -2503,11 +2502,11 @@ Content-Type: multipart/form-data
 
 请求参数：
 
-| 参数       | 类型     | 必填 | 说明              |
-| -------- | ------ | -- | --------------- |
-| file     | file   | 是  | Excel 文件        |
-| system   | string | 是  | fuyao / company |
-| statDate | string | 是  | 统计日期            |
+| 参数     | 类型   | 必填 | 说明            |
+| -------- | ------ | ---- | --------------- |
+| file     | file   | 是   | Excel 文件      |
+| system   | string | 是   | fuyao / company |
+| statDate | string | 是   | 统计日期        |
 
 处理规则：
 
@@ -2602,17 +2601,17 @@ admins 字段解析规则：
 
 ### 3.4.4 Skill 状态更新规则
 
-| 操作        | level | status | org_id        |
-| --------- | ----- | ------ | ------------- |
-| 新上传 Skill | 个人级   | 个人级    | NULL          |
-| 发起同步申请    | 个人级   | 组织审核中  | NULL          |
-| 审核驳回      | 个人级   | 组织已驳回  | NULL          |
-| 审核通过      | 组织级   | 组织级    | target_org_id |
-| 个人级上传新版本  | 保持不变  | 保持不变   | 保持不变          |
-| 组织级上传新版本  | 组织级   | 组织级    | 保持不变          |
-| 组织级发起更新同步 | 组织级   | 组织级    | 保持不变          |
-| 更新同步审核通过  | 组织级   | 组织级    | 保持不变          |
-| 更新同步审核不通过 | 组织级   | 组织级    | 保持不变          |
+| 操作               | level    | status     | org_id        |
+| ------------------ | -------- | ---------- | ------------- |
+| 新上传 Skill       | 个人级   | 个人级     | NULL          |
+| 发起同步申请       | 个人级   | 组织审核中 | NULL          |
+| 审核驳回           | 个人级   | 组织已驳回 | NULL          |
+| 审核通过           | 组织级   | 组织级     | target_org_id |
+| 个人级上传新版本   | 保持不变 | 保持不变   | 保持不变      |
+| 组织级上传新版本   | 组织级   | 组织级     | 保持不变      |
+| 组织级发起更新同步 | 组织级   | 组织级     | 保持不变      |
+| 更新同步审核通过   | 组织级   | 组织级     | 保持不变      |
+| 更新同步审核不通过 | 组织级   | 组织级     | 保持不变      |
 
 ### 3.4.5 文件存储规则
 
@@ -2626,10 +2625,10 @@ POST /resource/resource-management/v1/storage/file
 
 文件服务请求 Body：
 
-| 参数         | 类型     | 必填 | 说明                                  |
-| ---------- | ------ | -- | ----------------------------------- |
-| uploadFile | file   | 是  | 原始 Skill 压缩包                        |
-| fileDir    | string | 是  | `fuyao/skills/{skill名字}/{skill版本号}` |
+| 参数       | 类型   | 必填 | 说明                                     |
+| ---------- | ------ | ---- | ---------------------------------------- |
+| uploadFile | file   | 是   | 原始 Skill 压缩包                        |
+| fileDir    | string | 是   | `fuyao/skills/{skill名字}/{skill版本号}` |
 
 fileDir 规则：
 
@@ -3257,86 +3256,86 @@ Services --> Log
 
 ## 4.1 可用性 Usability
 
-| 设计点    | 说明                                      |
-| ------ | --------------------------------------- |
-| 首页文案   | 明确解释 Skill 是什么，引导用户沉淀日常作业经验             |
+| 设计点       | 说明                                                     |
+| ------------ | -------------------------------------------------------- |
+| 首页文案     | 明确解释 Skill 是什么，引导用户沉淀日常作业经验          |
 | 上传解析回显 | 用户上传后可直接看到从 SKILL.md 解析出的字段             |
-| 重名提示   | 重名时提示修改 name 或从我的发布上传新版本                |
-| 状态口径统一 | 我的发布只展示个人级、组织级、组织审核中、组织已驳回              |
-| 审核中心分栏 | 待审核和已完成分开展示                             |
+| 重名提示     | 重名时提示修改 name 或从我的发布上传新版本               |
+| 状态口径统一 | 我的发布只展示个人级、组织级、组织审核中、组织已驳回     |
+| 审核中心分栏 | 待审核和已完成分开展示                                   |
 | 运营看板切换 | 扶摇系统 / Agent Center Skill 市场页内切换，避免页签过长 |
-| 部门树交互  | 支持展开 / 合并，超出时内部滚动                       |
-| 质量评审 | 管理员按月、按部门集中评审，不依赖单个 Skill 详情页评分 |
-| 勋章展示 | 前台以小尺寸图形化勋章展示质量识别，减少文字噪声 |
+| 部门树交互   | 支持展开 / 合并，超出时内部滚动                          |
+| 质量评审     | 管理员按月、按部门集中评审，不依赖单个 Skill 详情页评分  |
+| 勋章展示     | 前台以小尺寸图形化勋章展示质量识别，减少文字噪声         |
 
 ## 4.2 可靠性 Reliability
 
-| 风险          | 设计措施               |
-| ----------- | ------------------ |
-| 上传包损坏       | 解压失败直接返回错误，不入库     |
-| SKILL.md 缺失 | 上传失败，提示缺少 SKILL.md |
-| 元数据缺失       | 必填字段校验失败，不允许提交     |
-| 重名冲突        | name 全局唯一校验        |
-| 审核状态错乱      | 通过状态机约束状态流转        |
-| 文件上传成功但入库失败 | 使用事务或补偿任务处理        |
-| 看板数据延迟误解    | 明确标注 T+1 数据口径      |
+| 风险                   | 设计措施                     |
+| ---------------------- | ---------------------------- |
+| 上传包损坏             | 解压失败直接返回错误，不入库 |
+| SKILL.md 缺失          | 上传失败，提示缺少 SKILL.md  |
+| 元数据缺失             | 必填字段校验失败，不允许提交 |
+| 重名冲突               | name 全局唯一校验            |
+| 审核状态错乱           | 通过状态机约束状态流转       |
+| 文件上传成功但入库失败 | 使用事务或补偿任务处理       |
+| 看板数据延迟误解       | 明确标注 T+1 数据口径        |
 
 ## 4.3 安全性 Security
 
-| 安全点   | 设计措施                   |
-| ----- | ---------------------- |
-| 文件上传  | 限制文件大小、类型和后缀           |
-| 压缩包解压 | 防止 Zip Slip 路径穿越       |
-| 文件内容  | 仅解析指定 SKILL.md，不执行上传内容 |
-| 权限校验  | 后端统一判断组织管理员和市场管理员权限    |
-| 文件路径  | 文件服务路径通过服务端控制访问        |
-| 审核操作  | 所有审核动作记录审计日志           |
-| 公司发布  | 接入评测集、代码仓门禁和安全扫描       |
+| 安全点     | 设计措施                               |
+| ---------- | -------------------------------------- |
+| 文件上传   | 限制文件大小、类型和后缀               |
+| 压缩包解压 | 防止 Zip Slip 路径穿越                 |
+| 文件内容   | 仅解析指定 SKILL.md，不执行上传内容    |
+| 权限校验   | 后端统一判断组织管理员和市场管理员权限 |
+| 文件路径   | 文件服务路径通过服务端控制访问         |
+| 审核操作   | 所有审核动作记录审计日志               |
+| 公司发布   | 接入评测集、代码仓门禁和安全扫描       |
 
 ## 4.4 可维护性 Maintainability
 
-| 设计点    | 说明                                                     |
-| ------ | ------------------------------------------------------ |
-| 分类映射   | category 前缀映射一级分类，支持配置化                                |
-| 组织配置   | 组织名称、组织 ID、组织管理员解耦                                     |
-| 管理员判定  | 从组织管理员配置统一推导                                           |
+| 设计点       | 说明                                                                 |
+| ------------ | -------------------------------------------------------------------- |
+| 分类映射     | category 前缀映射一级分类，支持配置化                                |
+| 组织配置     | 组织名称、组织 ID、组织管理员解耦                                    |
+| 管理员判定   | 从组织管理员配置统一推导                                             |
 | 外部系统集成 | 通过 Integration Service 封装Agent Center Skill 市场、评测集、代码仓 |
-| 状态流转   | 通过状态机集中维护                                              |
-| 前后端职责  | 前端负责展示，后端负责解析、权限、状态和数据一致性                              |
+| 状态流转     | 通过状态机集中维护                                                   |
+| 前后端职责   | 前端负责展示，后端负责解析、权限、状态和数据一致性                   |
 
 ## 4.5 可扩展性 Extensibility
 
-| 扩展方向                    | 设计预留                                 |
-| ----------------------- | ------------------------------------ |
-| 评测集验证                   | 同步至Agent Center 组织流程中预留评测节点          |
-| 代码仓 MR                  | 同步申请触发 MR                            |
-| 代码仓门禁                   | 用于用例评审、自动评审、安全检查                     |
-| Agent Center Skill 市场对接 | 组织级 Skill 由Agent Center Skill 市场统一管理 |
-| 分类扩展                    | 新增 category 更新映射配置                   |
-| 运营指标扩展                  | 看板支持新增指标、点赞点踩、优秀 Skill 识别和 Excel 导入 |
-| 质量评审扩展                  | 支持勋章规则配置、质量趋势、月度部门评审报告 |
+| 扩展方向                    | 设计预留                                                 |
+| --------------------------- | -------------------------------------------------------- |
+| 评测集验证                  | 同步至Agent Center 组织流程中预留评测节点                |
+| 代码仓 MR                   | 同步申请触发 MR                                          |
+| 代码仓门禁                  | 用于用例评审、自动评审、安全检查                         |
+| Agent Center Skill 市场对接 | 组织级 Skill 由Agent Center Skill 市场统一管理           |
+| 分类扩展                    | 新增 category 更新映射配置                               |
+| 运营指标扩展                | 看板支持新增指标、点赞点踩、优秀 Skill 识别和 Excel 导入 |
+| 质量评审扩展                | 支持勋章规则配置、质量趋势、月度部门评审报告             |
 
 ## 4.6 性能 Performance
 
-| 场景         | 目标                    |
-| ---------- | --------------------- |
-| 市场列表查询     | P95 小于 1 秒            |
-| Skill 详情查询 | P95 小于 1 秒            |
-| 上传解析       | 20MB 以下压缩包 P95 小于 5 秒 |
-| 运营看板查询     | P95 小于 2 秒            |
-| 部门树渲染      | 500 个节点以内前端可流畅展开 / 折叠 |
+| 场景           | 目标                                |
+| -------------- | ----------------------------------- |
+| 市场列表查询   | P95 小于 1 秒                       |
+| Skill 详情查询 | P95 小于 1 秒                       |
+| 上传解析       | 20MB 以下压缩包 P95 小于 5 秒       |
+| 运营看板查询   | P95 小于 2 秒                       |
+| 部门树渲染     | 500 个节点以内前端可流畅展开 / 折叠 |
 
 ## 4.7 可观测性 Observability
 
-| 观测点  | 说明                  |
-| ---- | ------------------- |
-| 上传日志 | 记录上传人、文件名、解析结果、失败原因 |
-| 审核日志 | 记录申请人、审核人、审核结果、审核意见 |
-| 下载日志 | 记录 Skill、版本、用户、时间   |
-| 赞踩日志 | 记录点赞、点踩、用户、时间，支撑反馈统计 |
+| 观测点   | 说明                                       |
+| -------- | ------------------------------------------ |
+| 上传日志 | 记录上传人、文件名、解析结果、失败原因     |
+| 审核日志 | 记录申请人、审核人、审核结果、审核意见     |
+| 下载日志 | 记录 Skill、版本、用户、时间               |
+| 赞踩日志 | 记录点赞、点踩、用户、时间，支撑反馈统计   |
 | 评审日志 | 记录评分、勋章、评审说明、评审人、归档状态 |
-| 同步日志 | 记录目标组织、状态流转、异常信息    |
-| 看板数据 | 明确统计日期和 T+1 口径      |
+| 同步日志 | 记录目标组织、状态流转、异常信息           |
+| 看板数据 | 明确统计日期和 T+1 口径                    |
 
 ---
 
@@ -3344,98 +3343,98 @@ Services --> Log
 
 ## 5.1 功能测试
 
-| 测试项      | 测试点                                        |
-| -------- | ------------------------------------------ |
-| 上传解析     | SKILL.md 存在、缺失、格式错误、字段缺失                   |
-| 重名校验     | 新名称、已有名称、维护人上传新版本                          |
-| 分类映射     | task、domain、utility、未知 category            |
-| 状态流转     | 个人级、组织审核中、组织已驳回、组织级                        |
-| 审核权限     | 非组织管理员不可审核，目标组织管理员可审核                      |
-| 组织管理     | 新建组织、配置组织、多个管理员解析                          |
+| 测试项       | 测试点                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| 上传解析     | SKILL.md 存在、缺失、格式错误、字段缺失                                                       |
+| 重名校验     | 新名称、已有名称、维护人上传新版本                                                            |
+| 分类映射     | task、domain、utility、未知 category                                                          |
+| 状态流转     | 个人级、组织审核中、组织已驳回、组织级                                                        |
+| 审核权限     | 非组织管理员不可审核，目标组织管理员可审核                                                    |
+| 组织管理     | 新建组织、配置组织、多个管理员解析                                                            |
 | 市场筛选     | 支持按组织、`departmentL1` 到 `departmentL6` 任意部门字段、单选分类、多选标签并集进行组合筛选 |
-| 运营看板     | 扶摇系统 / Agent Center Skill 市场切换、按数量 / 下载量切换 |
-| 运营明细表 | Skill 名称固定左列、下载量固定右列、横向滚动正常 |
-| 下载 / 赞踩 | 市场卡片、详情页、运营看板展示一致 |
-| 质量勋章 | 优秀 Skill、推荐复用、待优化、高分 Skill 展示正确 |
-| 勋章筛选 | 按勋章筛选、按未评分筛选结果正确 |
-| 质量评审 | 按月份、部门、评审状态、关键词查询正确 |
-| 质量评审保存 | 多条 Skill 评分、勋章、评审说明可批量保存 |
-| 质量评审归档 | 月度部门评审任务可归档 |
-| Excel 导入 | 文件格式、字段缺失、数据导入成功 / 失败                      |
+| 运营看板     | 扶摇系统 / Agent Center Skill 市场切换、按数量 / 下载量切换                                   |
+| 运营明细表   | Skill 名称固定左列、下载量固定右列、横向滚动正常                                              |
+| 下载 / 赞踩  | 市场卡片、详情页、运营看板展示一致                                                            |
+| 质量勋章     | 优秀 Skill、推荐复用、待优化、高分 Skill 展示正确                                             |
+| 勋章筛选     | 按勋章筛选、按未评分筛选结果正确                                                              |
+| 质量评审     | 按月份、部门、评审状态、关键词查询正确                                                        |
+| 质量评审保存 | 多条 Skill 评分、勋章、评审说明可批量保存                                                     |
+| 质量评审归档 | 月度部门评审任务可归档                                                                        |
+| Excel 导入   | 文件格式、字段缺失、数据导入成功 / 失败                                                       |
 
 ## 5.2 异常测试
 
-| 异常           | 期望结果               |
-| ------------ | ------------------ |
-| 压缩包无法解压      | 上传失败，提示文件无效        |
-| 找不到 SKILL.md | 上传失败，提示缺少 SKILL.md |
-| name 为空      | 上传失败，提示必填          |
-| version 非语义化 | 上传失败，提示版本格式错误      |
-| category 不合法 | 上传失败，提示分类标识不合法     |
-| 审核人无权限       | 拒绝操作               |
-| Excel 格式错误   | 导入失败，提示模板不匹配       |
-| 同步目标组织停用     | 不允许提交同步申请          |
-| 重复提交同步申请     | 提示已有申请处理中          |
+| 异常             | 期望结果                     |
+| ---------------- | ---------------------------- |
+| 压缩包无法解压   | 上传失败，提示文件无效       |
+| 找不到 SKILL.md  | 上传失败，提示缺少 SKILL.md  |
+| name 为空        | 上传失败，提示必填           |
+| version 非语义化 | 上传失败，提示版本格式错误   |
+| category 不合法  | 上传失败，提示分类标识不合法 |
+| 审核人无权限     | 拒绝操作                     |
+| Excel 格式错误   | 导入失败，提示模板不匹配     |
+| 同步目标组织停用 | 不允许提交同步申请           |
+| 重复提交同步申请 | 提示已有申请处理中           |
 
 ## 5.3 权限测试
 
-| 场景                 | 预期 |
-| ------------------ | -- |
-| 普通用户访问市场总览         | 允许 |
-| 普通用户上传个人级 Skill    | 允许 |
-| 普通用户访问组织管理         | 拒绝 |
-| 普通用户访问超级管理员配置       | 拒绝 |
-| 超级管理员新增组织             | 允许 |
-| 普通管理员新增组织             | 拒绝 |
-| 超级管理员修改任意组织配置       | 允许 |
-| 普通管理员修改自己管理的组织配置   | 允许 |
-| 普通管理员修改非本人管理组织配置   | 拒绝 |
-| 超级管理员维护超级管理员工号      | 允许 |
-| 普通管理员维护超级管理员工号      | 拒绝 |
-| 非目标组织管理员审核申请       | 拒绝 |
-| 目标组织管理员审核申请        | 允许 |
-| 超级管理员审核任意组织申请       | 允许 |
-| 组织管理员访问管理员视角       | 允许 |
-| 组织管理员访问质量评审页签     | 允许 |
-| 普通用户访问质量评审页签       | 拒绝 |
-| 普通用户修改评分或勋章         | 拒绝 |
+| 场景                                 | 预期 |
+| ------------------------------------ | ---- |
+| 普通用户访问市场总览                 | 允许 |
+| 普通用户上传个人级 Skill             | 允许 |
+| 普通用户访问组织管理                 | 拒绝 |
+| 普通用户访问超级管理员配置           | 拒绝 |
+| 超级管理员新增组织                   | 允许 |
+| 普通管理员新增组织                   | 拒绝 |
+| 超级管理员修改任意组织配置           | 允许 |
+| 普通管理员修改自己管理的组织配置     | 允许 |
+| 普通管理员修改非本人管理组织配置     | 拒绝 |
+| 超级管理员维护超级管理员工号         | 允许 |
+| 普通管理员维护超级管理员工号         | 拒绝 |
+| 非目标组织管理员审核申请             | 拒绝 |
+| 目标组织管理员审核申请               | 允许 |
+| 超级管理员审核任意组织申请           | 允许 |
+| 组织管理员访问管理员视角             | 允许 |
+| 组织管理员访问质量评审页签           | 允许 |
+| 普通用户访问质量评审页签             | 拒绝 |
+| 普通用户修改评分或勋章               | 拒绝 |
 | 从组织管理员列表移除后访问管理员视角 | 拒绝 |
 
 ## 5.4 状态流转测试
 
-| 初始状态  | 操作                   | 目标状态  |
-| ----- | -------------------- | ----- |
-| 个人级   | 发起同步至Agent Center 组织 | 组织审核中 |
-| 组织审核中 | 审核通过                 | 组织级   |
-| 组织审核中 | 审核不通过                | 组织已驳回 |
-| 组织已驳回 | 重新提交同步申请             | 组织审核中 |
-| 组织级   | 上传新版本                | 组织级   |
-| 组织级   | 发起更新同步               | 组织级   |
-| 组织级   | 更新同步审核通过             | 组织级   |
-| 组织级   | 更新同步审核不通过            | 组织级   |
-| 个人级   | 上传新版本                | 个人级   |
+| 初始状态   | 操作                        | 目标状态   |
+| ---------- | --------------------------- | ---------- |
+| 个人级     | 发起同步至Agent Center 组织 | 组织审核中 |
+| 组织审核中 | 审核通过                    | 组织级     |
+| 组织审核中 | 审核不通过                  | 组织已驳回 |
+| 组织已驳回 | 重新提交同步申请            | 组织审核中 |
+| 组织级     | 上传新版本                  | 组织级     |
+| 组织级     | 发起更新同步                | 组织级     |
+| 组织级     | 更新同步审核通过            | 组织级     |
+| 组织级     | 更新同步审核不通过          | 组织级     |
+| 个人级     | 上传新版本                  | 个人级     |
 
 ## 5.5 性能测试
 
-| 场景         | 测试方法                           | 通过标准       |
-| ---------- | ------------------------------ | ---------- |
-| 市场列表查询     | 模拟 1 万条 Skill 数据分页查询           | P95 小于 1 秒 |
-| Skill 详情查询 | 并发查询详情                         | P95 小于 1 秒 |
-| 上传解析       | 上传 20MB 压缩包                    | P95 小于 5 秒 |
+| 场景           | 测试方法                                  | 通过标准      |
+| -------------- | ----------------------------------------- | ------------- |
+| 市场列表查询   | 模拟 1 万条 Skill 数据分页查询            | P95 小于 1 秒 |
+| Skill 详情查询 | 并发查询详情                              | P95 小于 1 秒 |
+| 上传解析       | 上传 20MB 压缩包                          | P95 小于 5 秒 |
 | 看板查询       | 查询扶摇系统和Agent Center Skill 市场指标 | P95 小于 2 秒 |
-| 部门树渲染      | 500 节点展开 / 折叠                  | 无明显卡顿      |
+| 部门树渲染     | 500 节点展开 / 折叠                       | 无明显卡顿    |
 
 ## 5.6 安全测试
 
-| 测试项      | 说明                            |
-| -------- | ----------------------------- |
-| Zip Slip | 上传包含 `../` 路径的压缩包，验证无法写出目标目录  |
-| 非法文件类型   | 上传非允许格式文件，验证被拒绝               |
-| 超大文件     | 上传超过限制文件，验证被拒绝                |
-| XSS      | description、tags 中包含脚本，验证前端转义 |
-| 越权审核     | 非组织管理员调用审核接口，验证拒绝             |
-| 文件路径访问   | 文件服务路径通过后端鉴权访问                |
-| 重放提交     | 重复提交审核或同步申请，验证幂等处理            |
+| 测试项       | 说明                                              |
+| ------------ | ------------------------------------------------- |
+| Zip Slip     | 上传包含 `../` 路径的压缩包，验证无法写出目标目录 |
+| 非法文件类型 | 上传非允许格式文件，验证被拒绝                    |
+| 超大文件     | 上传超过限制文件，验证被拒绝                      |
+| XSS          | description、tags 中包含脚本，验证前端转义        |
+| 越权审核     | 非组织管理员调用审核接口，验证拒绝                |
+| 文件路径访问 | 文件服务路径通过后端鉴权访问                      |
+| 重放提交     | 重复提交审核或同步申请，验证幂等处理              |
 
 ## 5.7 验收标准
 
@@ -3470,29 +3469,29 @@ Services --> Log
 
 设计文档中的表名已全部添加 `t_` 前缀：
 
-| 设计文档表名 | 实现表名 |
-|-------------|---------|
-| `skill` | `t_skill` |
-| `skill_version` | `t_skill_version` |
-| `skill_operation_log` | `t_skill_operation_log` |
-| `category_mapping` | `t_skill_category_mapping` |
-| `organization` | `t_skill_organization` |
-| `sync_application` | `t_skill_sync_application` |
-| 超级管理员配置表 | `t_skill_super_admin` |
+| 设计文档表名          | 实现表名                   |
+| --------------------- | -------------------------- |
+| `skill`               | `t_skill`                  |
+| `skill_version`       | `t_skill_version`          |
+| `skill_operation_log` | `t_skill_operation_log`    |
+| `category_mapping`    | `t_skill_category_mapping` |
+| `organization`        | `t_skill_organization`     |
+| `sync_application`    | `t_skill_sync_application` |
+| 超级管理员配置表      | `t_skill_super_admin`      |
 
 ### 4.1.2 字段类型调整（JDK8 兼容）
 
 为适配 JDK8 和 MyBatis，所有日期时间字段类型从 `LocalDateTime` 改为 `String`：
 
-| 实体类字段 | 设计文档类型 | 实现类型 |
-|-----------|-------------|---------|
-| `Skill.createdAt` | LocalDateTime | String |
-| `Skill.updatedAt` | LocalDateTime | String |
-| `SkillVersion.createdAt` | LocalDateTime | String |
-| `SkillOperationLog.createdAt` | LocalDateTime | String |
-| `CategoryMapping.createdAt/updatedAt` | LocalDateTime | String |
-| `Organization.createdAt/updatedAt` | LocalDateTime | String |
-| `SuperAdmin.createdAt/updatedAt` | LocalDateTime | String |
+| 实体类字段                            | 设计文档类型  | 实现类型 |
+| ------------------------------------- | ------------- | -------- |
+| `Skill.createdAt`                     | LocalDateTime | String   |
+| `Skill.updatedAt`                     | LocalDateTime | String   |
+| `SkillVersion.createdAt`              | LocalDateTime | String   |
+| `SkillOperationLog.createdAt`         | LocalDateTime | String   |
+| `CategoryMapping.createdAt/updatedAt` | LocalDateTime | String   |
+| `Organization.createdAt/updatedAt`    | LocalDateTime | String   |
+| `SuperAdmin.createdAt/updatedAt`      | LocalDateTime | String   |
 
 数据库存储格式：`yyyy-MM-dd HH:mm:ss`
 
@@ -3500,18 +3499,18 @@ Services --> Log
 
 `fileTree` 字段从 `List<String>` 改为 `String`，存储 JSON 字符串：
 
-| 实体类字段 | 设计文档类型 | 实现类型 |
-|-----------|-------------|---------|
-| `SkillVersion.fileTree` | List<String> | String |
+| 实体类字段              | 设计文档类型 | 实现类型 |
+| ----------------------- | ------------ | -------- |
+| `SkillVersion.fileTree` | List<String> | String   |
 
 ### 4.1.4 新增融合字段
 
 为支持 ProjSkill 项目发布到市场，新增以下字段：
 
-| 表 | 新增字段 | 说明 |
-|---|---------|------|
+| 表        | 新增字段      | 说明                     |
+| --------- | ------------- | ------------------------ |
 | `t_skill` | `source_type` | 来源类型：PROJECT/MARKET |
-| `t_skill` | `project_id` | 关联项目ID |
+| `t_skill` | `project_id`  | 关联项目ID               |
 
 ## 4.2 代码结构
 
@@ -3591,20 +3590,20 @@ controller/skill/
 
 ### 4.3.1 已实现接口
 
-| 接口 | 方法 | 说明 |
-|-----|------|------|
-| `/api/skills` | GET | 查询市场列表 |
-| `/api/skills/{id}` | GET | 查询 Skill 详情 |
-| `/api/skills/publish-to-market` | POST | ProjSkill 发布到市场 |
-| `/api/skills/my` | GET | 我的发布列表查询 |
-| `/api/skill-quality-reviews` | GET | 查询质量评审列表 |
-| `/api/skill-quality-reviews/save` | POST | 批量保存质量评审结果 |
-| `/api/skill-quality-reviews/archive` | POST | 提交质量评审归档 |
-| `/api/users/current/role` | GET | 当前用户角色查询 |
-| `/api/organizations` | GET / POST | 组织查询 / 新增组织 |
-| `/api/organizations/{id}` | PUT | 更新组织配置 |
-| `/api/super-admins` | GET / POST | 超级管理员查询 / 新增 |
-| `/api/super-admins/{id}` | PUT | 超级管理员启停或备注更新 |
+| 接口                                 | 方法       | 说明                     |
+| ------------------------------------ | ---------- | ------------------------ |
+| `/api/skills`                        | GET        | 查询市场列表             |
+| `/api/skills/{id}`                   | GET        | 查询 Skill 详情          |
+| `/api/skills/publish-to-market`      | POST       | ProjSkill 发布到市场     |
+| `/api/skills/my`                     | GET        | 我的发布列表查询         |
+| `/api/skill-quality-reviews`         | GET        | 查询质量评审列表         |
+| `/api/skill-quality-reviews/save`    | POST       | 批量保存质量评审结果     |
+| `/api/skill-quality-reviews/archive` | POST       | 提交质量评审归档         |
+| `/api/users/current/role`            | GET        | 当前用户角色查询         |
+| `/api/organizations`                 | GET / POST | 组织查询 / 新增组织      |
+| `/api/organizations/{id}`            | PUT        | 更新组织配置             |
+| `/api/super-admins`                  | GET / POST | 超级管理员查询 / 新增    |
+| `/api/super-admins/{id}`             | PUT        | 超级管理员启停或备注更新 |
 
 ## 4.4 角色权限实现
 
@@ -3656,10 +3655,10 @@ controller/skill/
 
 ### 4.5.2 来源类型
 
-| source_type | 说明 |
-|-------------|------|
-| `PROJECT` | ProjSkill 项目发布 |
-| `MARKET` | 市场直接上传 |
+| source_type | 说明               |
+| ----------- | ------------------ |
+| `PROJECT`   | ProjSkill 项目发布 |
+| `MARKET`    | 市场直接上传       |
 
 ## 4.6 数据库 SQL
 

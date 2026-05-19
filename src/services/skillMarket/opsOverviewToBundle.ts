@@ -1,5 +1,9 @@
 import type { DashboardOverviewDto } from './apiTypes';
-import type { DeptTreeNode, OpsDashboardBundle, OpsSkillDetailRow } from '../../utils/opsExcelImport';
+import type {
+  DeptTreeNode,
+  OpsDashboardBundle,
+  OpsSkillDetailRow,
+} from '../../utils/opsExcelImport';
 
 /**
  * 将设计文档 §3.3.13 `GET /api/dashboard/overview` 的 `data` 映射为运营看板页使用的 `OpsDashboardBundle`。

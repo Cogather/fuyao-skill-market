@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
@@ -90,21 +99,21 @@ const OVERVIEW_TAGS_COLLAPSE_THRESHOLD = 10;
 const innerTabAliases: Record<string, UserInnerTab> = {
   overview: 'overview',
   market: 'overview',
-  '市场总览': 'overview',
+  市场总览: 'overview',
   core: 'core',
   coreharness: 'core',
   releases: 'releases',
   publish: 'releases',
-  '我的发布': 'releases',
+  我的发布: 'releases',
   ops: 'ops',
   operation: 'ops',
   dashboard: 'ops',
-  '运营看板': 'ops',
+  运营看板: 'ops',
   org: 'org',
-  '组织管理': 'org',
+  组织管理: 'org',
   organization: 'org',
   approval: 'approval',
-  '审核中心': 'approval',
+  审核中心: 'approval',
   review: 'approval',
 };
 
@@ -144,7 +153,7 @@ function initialOverviewPageSize(): number {
 
 const helpLink = () => {
   showToast('帮助说明暂未配置');
-}
+};
 
 const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
 const uploadOpen = ref(false);
@@ -192,7 +201,7 @@ const overviewFilterObj = ref<any>({
   status: '',
   tagList: '',
   businessDimension: '',
-})
+});
 const overviewRemoteItems = ref<any[]>([]);
 const overviewRemoteTotal = ref(0);
 const overviewRemoteExhausted = ref(false);
@@ -212,8 +221,9 @@ const orgForm = ref({
   orgName: '',
   orgCode: '',
   admins: '',
-  enabled: true,
+  enabled: 1,
 });
+const isEnableArr = ref<any>([])
 
 const approvalSubTab = ref<'pending' | 'done'>('pending');
 const syncPendingRows = ref<any[]>([]);
@@ -335,7 +345,9 @@ function matchesCategoryFilter(skill: Skill): boolean {
 }
 
 function skillTags(skill: any): string[] {
-  return (skill.tags?.split(',')?.map((iter: any) => iter.trim()) ?? [])?.map((tag: any) => tag.trim()).filter(Boolean);
+  return (skill.tags?.split(',')?.map((iter: any) => iter.trim()) ?? [])
+    ?.map((tag: any) => tag.trim())
+    .filter(Boolean);
 }
 
 function matchesSelectedTags(skill: Skill): boolean {
@@ -370,15 +382,15 @@ function matchesOverviewDeptCascade(skill: Skill): boolean {
 }
 
 function matchesPrimaryFilters(skill: Skill, q: string, scope: SkillMarketScope): boolean {
-  return (
-    matchesPrimaryFiltersSansDept(skill, q, scope) && matchesOverviewDeptCascade(skill)
-  );
+  return matchesPrimaryFiltersSansDept(skill, q, scope) && matchesOverviewDeptCascade(skill);
 }
 
 function sortOverviewSkills(list: Skill[]): Skill[] {
   const sorted = [...list];
   if (overviewSort.value === 'downloads') {
-    return sorted.sort((a, b) => (b.download_count ?? b.downloads ?? 0) - (a.download_count ?? a.downloads ?? 0));
+    return sorted.sort(
+      (a, b) => (b.download_count ?? b.downloads ?? 0) - (a.download_count ?? a.downloads ?? 0),
+    );
   }
   if (overviewSort.value === 'rating') {
     return sorted.sort(
@@ -394,14 +406,15 @@ function sortOverviewSkills(list: Skill[]): Skill[] {
   );
 }
 
-let lastScrollTop = 0;  // 上一次的滚动位置
+let lastScrollTop = 0; // 上一次的滚动位置
 const handleScroll = async () => {
   const el = marketContentRef.value;
   if (!el) {
     return;
   }
   const scrollTop = el.scrollTop;
-  if (scrollTop <= lastScrollTop - 100) { // 正在向上滚动
+  if (scrollTop <= lastScrollTop - 100) {
+    // 正在向上滚动
     lastScrollTop = scrollTop;
     return;
   }
@@ -413,14 +426,14 @@ const handleScroll = async () => {
     if (page.pageIndex * page.pageSize < page.total) {
       overviewFilterObj.value.pageNum += 1;
       page.pageIndex += 1;
-      await startOverviewRemoteFetch(true)
+      await startOverviewRemoteFetch(true);
       setTimeout(() => {
         el.scrollTop = el.scrollHeight;
       }, 0);
     }
   }
   lastScrollTop = scrollTop;
-}
+};
 
 const orgOptions = computed(() => {
   const opts = new Set<string>();
@@ -438,7 +451,7 @@ const orgOptions = computed(() => {
 
 const marketOrgSelectOptions = computed(() =>
   [...adminOrganizations.value]
-    .filter((o) => o.enabled)
+    .filter((o) => o.enabled === 1)
     .sort((a, b) => a.orgName.localeCompare(b.orgName, 'zh-Hans-CN')),
 );
 
@@ -530,7 +543,7 @@ function marketOverviewDeptPickHasChildren(levelIndex: number, name: string): bo
 }
 
 const clearOverviewDeptCascader = async () => {
-  for(let i in overviewMarketDeptSegments.value) {
+  for (let i in overviewMarketDeptSegments.value) {
     const num = Number(i) + 3;
     const deptField = `departmentL${num}`;
     overviewFilterObj.value[deptField] = '';
@@ -538,17 +551,17 @@ const clearOverviewDeptCascader = async () => {
   await startOverviewRemoteFetch();
   overviewMarketDeptSegments.value = [];
   overviewDeptCascaderOpen.value = false;
-}
+};
 
 const deptFilterOnChange = async () => {
-  for(let i in overviewMarketDeptSegments.value) {
+  for (let i in overviewMarketDeptSegments.value) {
     const num = Number(i) + 3;
     const deptField = `departmentL${num}`;
     overviewFilterObj.value[deptField] = overviewMarketDeptSegments.value[i];
   }
   await startOverviewRemoteFetch();
   overviewDeptCascaderOpen.value = false;
-}
+};
 
 function onMarketDeptCascaderDocDown(ev: MouseEvent): void {
   if (!overviewDeptCascaderOpen.value) {
@@ -643,9 +656,7 @@ const businessDimensionOptions = computed(() =>
   [...businessDimensions.value]
     .filter((item) => Number(item.enabled) === 1)
     .sort(
-      (a, b) =>
-        a.sortNo - b.sortNo ||
-        a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
+      (a, b) => a.sortNo - b.sortNo || a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
     ),
 );
 
@@ -688,23 +699,23 @@ const tabPanelFillStyle = computed(() => {
 // 等待 userId 和 departmentList 加载完成
 function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
   return new Promise((resolve) => {
-    if(userId.value && departmentList.value.length > 0) {
+    if (userId.value && departmentList.value.length > 0) {
       resolve();
       return;
     }
     const start = Date.now();
     const timer = setInterval(() => {
-      if(userId.value && departmentList.value.length > 0) {
+      if (userId.value && departmentList.value.length > 0) {
         clearInterval(timer);
         resolve();
-        return
+        return;
       }
-      if(Date.now() - start > timeout) {
+      if (Date.now() - start > timeout) {
         clearInterval(timer);
         resolve();
       }
-    }, 100)
-  })
+    }, 100);
+  });
 }
 
 function readServiceRecord(value: unknown): Record<string, unknown> {
@@ -741,10 +752,13 @@ function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
       }
       const id = Number(record.id);
       const sortNo = Number(record.sortNo);
-      const enabled = record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1;
+      const enabled =
+        record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1;
       return {
         id: Number.isFinite(id) ? id : index + 1,
-        dimensionCode: String(record.dimensionCode ?? '').trim().toUpperCase(),
+        dimensionCode: String(record.dimensionCode ?? '')
+          .trim()
+          .toUpperCase(),
         dimensionName,
         sortNo: Number.isFinite(sortNo) ? sortNo : index + 1,
         enabled,
@@ -856,7 +870,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   const el = marketContentRef.value;
-  if(el) {
+  if (el) {
     el.removeEventListener('scroll', debounceScroll);
   }
 });
@@ -890,12 +904,16 @@ async function startOverviewRemoteFetch(isPageOver?: boolean): Promise<void> {
   overviewRemoteLoading.value = true;
   try {
     const env = await skillBaseService.querySkillList(overviewFilterObj.value);
-    if(env.meta.success && env.data) {
+    if (env.meta.success && env.data) {
       newSkills.value = isPageOver ? [...newSkills.value, ...env.data] : [...env.data];
       overviewRemoteTotal.value = env.meta.number;
       page.total = env.meta.number;
-      overviewRemoteExhausted.value = newSkills.value.length === 0 || newSkills.value.length >= overviewRemoteTotal.value;
-      totalDownloads.value = newSkills.value.reduce((acc, curr) => acc + parseInt(curr.downloads ?? 0), 0);
+      overviewRemoteExhausted.value =
+        newSkills.value.length === 0 || newSkills.value.length >= overviewRemoteTotal.value;
+      totalDownloads.value = newSkills.value.reduce(
+        (acc, curr) => acc + parseInt(curr.downloads ?? 0),
+        0,
+      );
     }
   } finally {
     overviewRemoteLoading.value = false;
@@ -904,23 +922,23 @@ async function startOverviewRemoteFetch(isPageOver?: boolean): Promise<void> {
 
 const changeOverviewTab = async (tabName: string) => {
   quickFilter.value = tabName;
-  if(tabName === 'all') {
+  if (tabName === 'all') {
     overviewFilterObj.value.status = '';
-  } else if(tabName === 'personal') {
+  } else if (tabName === 'personal') {
     overviewFilterObj.value.status = '个人级';
-  } else if(tabName === 'devDept') {
+  } else if (tabName === 'devDept') {
     overviewFilterObj.value.status = '组织级';
   }
   overviewFilterObj.value.pageNum = 1;
   page.pageIndex = 1;
   await startOverviewRemoteFetch();
-}
+};
 
-const onSearchKeyWord = async(event: Event) => {
+const onSearchKeyWord = async (event: Event) => {
   const query = (event.target as HTMLInputElement).value;
   overviewFilterObj.value.keyword = query;
   await startOverviewRemoteFetch();
-}
+};
 
 const overviewHasMoreLocal = computed(
   () => overviewVisibleCount.value < overviewFilteredAll.value.length,
@@ -946,7 +964,7 @@ const overviewListFooterHint = computed(() => {
     return `加载中…（已展示 ${shown} 条，合计 ${total} 条）`;
   }
   if (!overviewHasMore.value) {
-    return `已加载全部 ${shown} 条（合计 ${total} 条）`
+    return `已加载全部 ${shown} 条（合计 ${total} 条）`;
   }
   return `已展示 ${shown} 条 · 合计 ${total} 条 · 继续下拉加载更多`;
 });
@@ -1008,9 +1026,9 @@ const changeSort = async (type: 'time' | 'downloads' | 'rating') => {
   overviewFilterObj.value.pageNum = 1;
   page.pageIndex = 1;
   overviewFilterObj.value.sortBy = type;
-  overviewFilterObj.value.sortOrder = 'desc'
+  overviewFilterObj.value.sortOrder = 'desc';
   await startOverviewRemoteFetch();
-}
+};
 
 watch(pageSize, (next, prev) => {
   if (transportIsHttp) {
@@ -1152,7 +1170,7 @@ async function loadAdminOrganizations(): Promise<void> {
   }
   orgListLoading.value = true;
   try {
-    const r = await skillBaseService.queryOrganizationList({userId: userId.value});
+    const r = await skillBaseService.queryOrganizationList({ userId: userId.value });
     // const r = await marketClient.fetchOrganizations();
     if (r.meta.success && Array.isArray(r.data)) {
       adminOrganizations.value = r.data;
@@ -1167,8 +1185,8 @@ async function loadSyncApplicationRows(): Promise<void> {
   syncListLoading.value = true;
   try {
     const [p, d] = await Promise.all([
-      skillBaseService.querySyncApplicationList({tab: 'pending', pageNo: 1, pageSize: 100}),
-      skillBaseService.querySyncApplicationList({tab: 'done', pageNo: 1, pageSize: 100}),
+      skillBaseService.querySyncApplicationList({ tab: 'pending', pageNo: 1, pageSize: 100 }),
+      skillBaseService.querySyncApplicationList({ tab: 'done', pageNo: 1, pageSize: 100 }),
     ]);
     if (p.meta.success && p.data) {
       syncPendingRows.value = p.data.map((row: unknown) => normalizeSyncRecord(row));
@@ -1194,16 +1212,17 @@ const myReleasePage = reactive<any>({
 const myReleaseFilterObj = ref<any>({
   pageNo: myReleasePage.pageIndex,
   pageSize: myReleasePage.pageSize,
-})
+});
 
-let myReleaseLastScrollTop = 0;  // 上一次的滚动位置
+let myReleaseLastScrollTop = 0; // 上一次的滚动位置
 const myReleaseHandleScroll = async () => {
   const el = myReleaseTableWrapRef.value;
   if (!el) {
     return;
   }
   const scrollTop = el.scrollTop;
-  if (scrollTop <= myReleaseLastScrollTop - 100) { // 正在向上滚动
+  if (scrollTop <= myReleaseLastScrollTop - 100) {
+    // 正在向上滚动
     myReleaseLastScrollTop = scrollTop;
     return;
   }
@@ -1215,14 +1234,14 @@ const myReleaseHandleScroll = async () => {
     if (myReleasePage.pageIndex * myReleasePage.pageSize < myReleasePage.total) {
       myReleasePage.pageIndex += 1;
       myReleaseFilterObj.value.pageNo += 1;
-      await loadMyPublishedSkills(true)
+      await loadMyPublishedSkills(true);
       setTimeout(() => {
         el.scrollTop = el.scrollHeight;
       }, 0);
     }
   }
   myReleaseLastScrollTop = scrollTop;
-}
+};
 
 const debounceMyReleaseScroll = debounce(myReleaseHandleScroll, 200);
 
@@ -1257,8 +1276,15 @@ function myPublishCurrentLayerText(row: SkillListRecordDto): string {
 
 function myPublishStatusPill(row: SkillListRecordDto): { label: string; cls: string } {
   const st = `${row.status ?? ''}`.trim();
-  if (st.includes('组织已驳回') || st.includes('已驳回') || (st.includes('驳回') && !st.includes('审核'))) {
-    return { label: st.includes('组织已驳回') ? '组织已驳回' : st || '组织已驳回', cls: 'st-rejected-pdu' };
+  if (
+    st.includes('组织已驳回') ||
+    st.includes('已驳回') ||
+    (st.includes('驳回') && !st.includes('审核'))
+  ) {
+    return {
+      label: st.includes('组织已驳回') ? '组织已驳回' : st || '组织已驳回',
+      cls: 'st-rejected-pdu',
+    };
   }
   if (st.includes('组织审核中') || (st.includes('审核中') && !st.includes('驳回'))) {
     return { label: st.includes('组织审核中') ? '组织审核中' : '审核中', cls: 'st-reviewing-dev' };
@@ -1318,7 +1344,10 @@ async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean
       const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
       versionPanelSkill.value = {
         ...versionPanelSkill.value,
-        version: pickCurrentVersionFromRows(list, String(versionPanelSkill.value.version ?? row.version)),
+        version: pickCurrentVersionFromRows(
+          list,
+          String(versionPanelSkill.value.version ?? row.version),
+        ),
         versions: list,
       };
     }
@@ -1630,7 +1659,7 @@ function openOrgCreateModal(): void {
     orgName: '',
     orgCode: '',
     admins: '',
-    enabled: true,
+    enabled: 1,
   };
   orgModalOpen.value = true;
 }
@@ -1653,10 +1682,10 @@ function closeOrgModal(): void {
 
 async function submitOrgModal(): Promise<void> {
   const f = orgForm.value;
-  if (!f.orgName.trim() || !f.orgCode.trim()) {
-    showToast('请填写组织名称与组织 ID');
-    return;
-  }
+  // if (!f.orgName.trim() || !f.orgCode.trim()) {
+  //   showToast('请填写组织名称与组织 ID');
+  //   return;
+  // }
   const body = {
     orgName: f.orgName.trim(),
     orgCode: f.orgCode.trim(),
@@ -1665,7 +1694,7 @@ async function submitOrgModal(): Promise<void> {
   };
   if (orgModalMode.value === 'create') {
     // const r = await marketClient.postOrganization(body);
-    const r = await skillBaseService.createOrganization(body, {userId: userId.value});
+    const r = await skillBaseService.createOrganization(body, { userId: userId.value });
     if (!serviceSucceeded(r)) {
       showToast(serviceMessage(r, '新建失败'));
       return;
@@ -1673,7 +1702,11 @@ async function submitOrgModal(): Promise<void> {
     showToast('已新建组织');
   } else {
     // const r = await marketClient.putOrganization(f.id, body);
-    const r = await skillBaseService.updateOrganization(body, {userId: userId.value}, f.id.toString());
+    const r = await skillBaseService.updateOrganization(
+      body,
+      { userId: userId.value },
+      f.id.toString(),
+    );
     if (!serviceSucceeded(r)) {
       showToast(serviceMessage(r, '保存失败'));
       return;
@@ -1710,7 +1743,7 @@ async function submitReviewModal(): Promise<void> {
     const body = {
       decision: reviewDecision.value,
       comment: reviewComment.value.trim(),
-    }
+    };
     const r = await skillBaseService.reviewSyncApplication(body, row.id.toString());
     if (!serviceSucceeded(r)) {
       showToast(serviceMessage(r, '提交失败'));
@@ -1796,14 +1829,14 @@ function formatDirectoryStructure(structure: any, indent = '', i = -1): any[] {
   let lines: any[] = [];
   for (const key in structure) {
     i++;
-    if(!key) {
+    if (!key) {
       continue;
     }
     const value = structure[key];
     const isLast = i === structure.length - 1;
-    if(!value) {
+    if (!value) {
       lines.push(`${indent}${isLast ? '└─ ' : '├─ '} ${key}/`);
-    }else if(typeof value === 'object') {
+    } else if (typeof value === 'object') {
       const prefix = indent + (isLast ? '   ' : '│  ');
       lines.push(`${indent}${isLast ? '└─ ' : '├─ '} ${key}/`);
       lines.push(...formatDirectoryStructure(value, prefix, i));
@@ -1881,7 +1914,10 @@ function normalizeDetailFileTreeToDisplay(raw: unknown): string {
     } catch {
       /* 非 JSON，按行视为路径 */
     }
-    const lines = t.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const lines = t
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     return lines.length > 0 ? formatFileTreeTextFromPaths(lines) : '';
   }
   if (Array.isArray(raw)) {
@@ -1908,16 +1944,15 @@ function detailFileTree(skill: any): void {
   const idKey = String(skill.id ?? skill.skill_id ?? '');
   fileTreeObj.value[idKey] = normalizeDetailFileTreeToDisplay(skill.fileTree);
 
-  skillMdFile.value[idKey] =
-    typeof skill.skillMdContent === 'string' ? skill.skillMdContent : '';
+  skillMdFile.value[idKey] = typeof skill.skillMdContent === 'string' ? skill.skillMdContent : '';
 }
 
 async function parseSkillArchiveForUpload(file: File): Promise<any> {
   const formData = new FormData();
   formData.append('file', file);
-  const env = await skillBaseService.parseSkillPackage(formData, {userId: userId.value});
-  if(!env.meta.success || !env.data) {
-    console.error('上传时解析skill失败')
+  const env = await skillBaseService.parseSkillPackage(formData, { userId: userId.value });
+  if (!env.meta.success || !env.data) {
+    console.error('上传时解析skill失败');
     return;
   }
   return env.data;
@@ -1940,7 +1975,12 @@ async function onUploadSubmit(payload: UploadSubmitPayload): Promise<void> {
     await startOverviewRemoteFetch();
     showToast(message, 4000);
   } catch (e) {
-    showToast(e instanceof Error ? `上传成功，但我的发布刷新失败：${e.message}` : '上传成功，但我的发布刷新失败', 4000);
+    showToast(
+      e instanceof Error
+        ? `上传成功，但我的发布刷新失败：${e.message}`
+        : '上传成功，但我的发布刷新失败',
+      4000,
+    );
   }
 }
 
@@ -1948,7 +1988,7 @@ async function onDownload(id: string, version?: string): Promise<void> {
   try {
     let params: any = {
       userId: userId.value,
-    }
+    };
     if (version) {
       params.version = version;
     }
@@ -1960,7 +2000,7 @@ async function onDownload(id: string, version?: string): Promise<void> {
     window.open(d);
 
     let index = newSkills.value.findIndex((item) => skillKey(item) === id);
-    if(index >= 0) {
+    if (index >= 0) {
       newSkills.value[index].downloads += 1;
     }
   } catch (e) {
@@ -2008,8 +2048,7 @@ async function openVersionPanelFromMarketSkill(id: string): Promise<void> {
 
 const handleDetailItem = async (skill: any, id: any) => {
   const hasTree = fileTreePayloadIsPresent(skill.fileTree);
-  const hasMd =
-    typeof skill.skillMdContent === 'string' && skill.skillMdContent.length > 0;
+  const hasMd = typeof skill.skillMdContent === 'string' && skill.skillMdContent.length > 0;
   if (!hasTree || !hasMd) {
     const { skillMdContent, fileTree } = await fetchSkillDetailExtras(String(id));
     if (!hasTree && fileTreePayloadIsPresent(fileTree)) {
@@ -2022,7 +2061,7 @@ const handleDetailItem = async (skill: any, id: any) => {
   detailFileTree(skill);
   detailPanelSkill.value = skill;
   detailShowDelete.value = false;
-}
+};
 
 async function openDetailPanel(id: any): Promise<void> {
   const skill = newSkills.value.find((item) => skillKey(item) === id);
@@ -2048,8 +2087,7 @@ async function fetchSkillDetailExtras(
         fileTree: fileTreeFromDetailDto(d.fileTree),
       };
     }
-  } catch {
-  }
+  } catch {}
   return { skillMdContent: '', fileTree: '' };
 }
 
@@ -2174,7 +2212,9 @@ function onVersionRowDownload(version: string): void {
   if (!vs) {
     return;
   }
-  const row = (vs.versions ?? []).find((r: SkillVersionListItemDto) => String(r.version) === String(version));
+  const row = (vs.versions ?? []).find(
+    (r: SkillVersionListItemDto) => String(r.version) === String(version),
+  );
   if (row && isVersionRowDeleted(row)) {
     showToast('该版本已下架，无法下载');
     return;
@@ -2305,13 +2345,7 @@ function onApplyCoreHarness(): void {
   }, 2500);
 }
 
-type ReleaseFilterKey =
-  | 'all'
-  | 'personal'
-  | 'published'
-  | 'reviewing'
-  | 'rejected'
-  | 'coreApply';
+type ReleaseFilterKey = 'all' | 'personal' | 'published' | 'reviewing' | 'rejected' | 'coreApply';
 
 const releaseFilter = ref<ReleaseFilterKey>('all');
 
@@ -2325,20 +2359,24 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
 
-function releaseSyncActionText(row: { skill: Skill; statusKey: ReleaseStatusKey; personal: boolean }): string {
+function releaseSyncActionText(row: {
+  skill: Skill;
+  statusKey: ReleaseStatusKey;
+  personal: boolean;
+}): string {
   if (row.statusKey === 'published' && !row.personal) {
     return '更新同步';
   }
   return '同步至公司组织';
 }
 
-const onClickFilterRelease = async(key: any) => {
+const onClickFilterRelease = async (key: any) => {
   releaseFilter.value = key;
-  if(key === 'all' && 'status' in myReleaseFilterObj.value) {
+  if (key === 'all' && 'status' in myReleaseFilterObj.value) {
     delete myReleaseFilterObj.value.status;
-  } else if(key === 'personal') {
+  } else if (key === 'personal') {
     myReleaseFilterObj.value.status = '个人级';
-  } else if(key === 'published') {
+  } else if (key === 'published') {
     myReleaseFilterObj.value.status = '组织级';
   } else if (key === 'reviewing') {
     myReleaseFilterObj.value.status = '组织审核中';
@@ -2348,7 +2386,7 @@ const onClickFilterRelease = async(key: any) => {
   myReleasePage.pageIndex = 1;
   myReleaseFilterObj.value.pageNo = myReleasePage.pageIndex;
   await loadMyPublishedSkills();
-}
+};
 
 const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
 const opsImporting = ref(false);
@@ -2357,11 +2395,9 @@ const fuyaoOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
 
 const opsBoardSystem = ref<'fuyao' | 'company'>('fuyao');
 /** 公司运营看板「Excel 导入」仅管理员可用；扶摇看板不提供导入 */
-const showOpsExcelImport = computed(
-  () => {
-    return opsBoardSystem.value === 'company' && currentUserRole.value?.role === 'SUPER_ADMIN';
-  },
-);
+const showOpsExcelImport = computed(() => {
+  return opsBoardSystem.value === 'company' && currentUserRole.value?.role === 'SUPER_ADMIN';
+});
 const selectedOpsDeptPath = ref('');
 const selectedOpsOrgName = ref('');
 
@@ -2369,7 +2405,9 @@ const opsDashboardBundle = computed(() => {
   if (opsBoardSystem.value === 'fuyao') {
     return fuyaoOpsDashboardBundleRef.value ?? emptyOpsDashboardBundle();
   }
-  return opsImportedBundle.value ?? JSON.parse(companyOpsDashboardJson) ?? emptyOpsDashboardBundle();
+  return (
+    opsImportedBundle.value ?? JSON.parse(companyOpsDashboardJson) ?? emptyOpsDashboardBundle()
+  );
 });
 
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
@@ -2512,8 +2550,9 @@ const uiOrgBarsSorted = computed(() =>
 
 const uiOrgBarsMax = computed(() => Math.max(1, ...uiOrgBarsSorted.value.map((x) => x.downloads)));
 
-const selectedDeptNode = computed(() =>
-  findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null,
+const selectedDeptNode = computed(
+  () =>
+    findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null,
 );
 
 const selectedOrgBar = computed(
@@ -2561,9 +2600,7 @@ const opsTopTitle = 'TOP Skill';
 const opsTopSubTitle = '按下载量展示当前市场中使用最集中的 Skill。';
 
 const opsEmptyText = computed(() =>
-  opsBoardSystem.value === 'company'
-    ? '暂无公司系统运营看板数据'
-    : '暂无扶摇系统运营看板数据',
+  opsBoardSystem.value === 'company' ? '暂无公司系统运营看板数据' : '暂无扶摇系统运营看板数据',
 );
 
 const opsOrgBarsHelpText = computed(() =>
@@ -2694,12 +2731,16 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         @click.stop
       >
         <p id="my-delete-pop-title" class="my-delete-pop-title">
-          确定删除「{{ deleteConfirmRow.name ?? deleteConfirmRow.id }}」及<strong>全部版本</strong>？
+          确定删除「{{
+            deleteConfirmRow.name ?? deleteConfirmRow.id
+          }}」及<strong>全部版本</strong>？
         </p>
         <p class="my-delete-pop-hint">此操作不可恢复。</p>
         <div class="my-delete-pop-actions">
           <button type="button" class="mini" @click="closeDeleteConfirm">取消</button>
-          <button type="button" class="mini my-rel-delete-btn" @click="executeDeleteMyReleaseSkill">确定删除</button>
+          <button type="button" class="mini my-rel-delete-btn" @click="executeDeleteMyReleaseSkill">
+            确定删除
+          </button>
         </div>
       </div>
     </Teleport>
@@ -2720,14 +2761,19 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <p class="my-delete-pop-hint">此操作不可恢复。</p>
         <div class="my-delete-pop-actions">
           <button type="button" class="mini" @click="closeDetailDeleteConfirm">取消</button>
-          <button type="button" class="mini my-rel-delete-btn" @click="executeDetailDeleteSkill">确定删除</button>
+          <button type="button" class="mini my-rel-delete-btn" @click="executeDetailDeleteSkill">
+            确定删除
+          </button>
         </div>
       </div>
     </Teleport>
 
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>
   </div>
-  <div class="user-shell skill-market-shell" :class="{ 'is-overview-tab': innerTab === 'overview' }">
+  <div
+    class="user-shell skill-market-shell"
+    :class="{ 'is-overview-tab': innerTab === 'overview' }"
+  >
     <header class="market-topbar">
       <button type="button" class="app-brand" @click="goTab('overview')">
         <span class="brand-bolt" aria-hidden="true">⚡</span>
@@ -2807,8 +2853,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         />
       </label>
       <span v-else class="header-search header-search--placeholder" aria-hidden="true" />
-      <img src="/public/help.svg" alt="help"
-        style="width: 20px; color: inherit; cursor: pointer;"
+      <img
+        src="/public/help.svg"
+        alt="help"
+        style="width: 20px; color: inherit; cursor: pointer"
         title="查看skill市场使用指导"
         @click="helpLink"
       />
@@ -2818,9 +2866,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <section v-if="innerTab !== 'overview'" class="hero">
       <div class="hero-inner">
         <h1 class="hero-title">探索原子能力，加速业务交付</h1>
-        <p class="hero-desc">
-          在 Skill 市场发现、共享和复用高质量工程资产，全面提升组织效能。
-        </p>
+        <p class="hero-desc">在 Skill 市场发现、共享和复用高质量工程资产，全面提升组织效能。</p>
         <div class="hero-actions">
           <button type="button" class="btn primary" @click="openUpload">
             <span class="up">+</span> 发布我的 Skill
@@ -2889,11 +2935,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <select v-model="levelFilter" class="select side-select" aria-label="筛选组织">
               <option value="all">全部组织</option>
               <template v-if="transportIsHttp">
-                <option
-                  v-for="o in marketOrgSelectOptions"
-                  :key="o.id"
-                  :value="String(o.id)"
-                >
+                <option v-for="o in marketOrgSelectOptions" :key="o.id" :value="String(o.id)">
                   {{ o.orgName }}
                 </option>
               </template>
@@ -2918,9 +2960,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 :aria-expanded="overviewDeptCascaderOpen"
                 @click.stop="toggleOverviewDeptCascader"
               >
-                <span class="market-dept-cascader-trigger-text" :title="overviewDeptCascaderLabel">{{
-                  overviewDeptCascaderLabel
-                }}</span>
+                <span
+                  class="market-dept-cascader-trigger-text"
+                  :title="overviewDeptCascaderLabel"
+                  >{{ overviewDeptCascaderLabel }}</span
+                >
                 <span class="market-dept-cascader-caret" aria-hidden="true">▾</span>
               </button>
               <Teleport to="body">
@@ -2967,10 +3011,18 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     </div>
                   </div>
                   <div class="market-dept-cascader-footer">
-                    <button type="button" class="market-dept-cascader-clear" @click="clearOverviewDeptCascader">
+                    <button
+                      type="button"
+                      class="market-dept-cascader-clear"
+                      @click="clearOverviewDeptCascader"
+                    >
                       清空部门
                     </button>
-                    <button type="button" class="market-dept-cascader-done" @click="deptFilterOnChange">
+                    <button
+                      type="button"
+                      class="market-dept-cascader-done"
+                      @click="deptFilterOnChange"
+                    >
                       完成
                     </button>
                   </div>
@@ -3105,10 +3157,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <div class="overview-list-footer" role="status">
               <span>{{ overviewListFooterHint }}</span>
             </div>
-            <div
-              ref="marketContentRef"
-              class="market-list-scroll"
-            >
+            <div ref="marketContentRef" class="market-list-scroll">
               <p
                 v-if="transportIsHttp && overviewRemoteLoading && overviewRemoteItems.length === 0"
                 class="empty overview-loading-hint"
@@ -3138,16 +3187,21 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
     <div v-else-if="innerTab === 'core'" class="panel tab-panel core">
       <div class="core-alert" role="note" aria-label="CoreHarness 提示">
-        <strong>CoreHarness</strong> 是独立资产产线，区分开发部级 / PDU / 产品线三个层级。用户不能直接发布
-        CoreHarness，只能申请把自己的 Skill 转为 CoreHarness；申请将到哪一级，就由哪一级管理员审核，审核通过后自动发布。
+        <strong>CoreHarness</strong> 是独立资产产线，区分开发部级 / PDU /
+        产品线三个层级。用户不能直接发布 CoreHarness，只能申请把自己的 Skill 转为
+        CoreHarness；申请将到哪一级，就由哪一级管理员审核，审核通过后自动发布。
       </div>
 
       <div class="core-head">
         <div>
           <h2 class="panel-title">CoreHarness 列表</h2>
-          <p class="panel-help">采用与市场总览一致的卡片形式展示，点击卡片可查看组成、来源 Skill 和发布说明。</p>
+          <p class="panel-help">
+            采用与市场总览一致的卡片形式展示，点击卡片可查看组成、来源 Skill 和发布说明。
+          </p>
         </div>
-        <button type="button" class="btn outline sm" @click="onApplyCoreHarness">申请转为 CoreHarness</button>
+        <button type="button" class="btn outline sm" @click="onApplyCoreHarness">
+          申请转为 CoreHarness
+        </button>
       </div>
 
       <div class="core-levels" role="group" aria-label="CoreHarness 层级统计">
@@ -3282,7 +3336,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   <div class="cell-main cell-main-plain">{{ row.currentVersion }}</div>
                 </td>
                 <td>
-                  <span class="st" :class="myPublishStatusPill(row).cls">{{ myPublishStatusPill(row).label }}</span>
+                  <span class="st" :class="myPublishStatusPill(row).cls">{{
+                    myPublishStatusPill(row).label
+                  }}</span>
                 </td>
                 <td class="num">
                   {{ (row.downloads ?? 0).toLocaleString('zh-CN') }}
@@ -3290,7 +3346,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <td class="col-ops-td" @click.stop>
                   <div class="ops my-release-ops">
                     <div class="my-rel-primary-wrap">
-                      <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded">已升级</span>
+                      <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded"
+                        >已升级</span
+                      >
                       <button
                         v-else-if="myPublishReleaseOp(row) === 'upgrade'"
                         type="button"
@@ -3300,7 +3358,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                       >
                         升级为组织级
                       </button>
-                      <button v-else type="button" class="mini my-rel-pending-btn" disabled>升级中</button>
+                      <button v-else type="button" class="mini my-rel-pending-btn" disabled>
+                        升级中
+                      </button>
                     </div>
                     <button
                       type="button"
@@ -3332,7 +3392,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <div>
           <h2 class="panel-title">组织管理</h2>
           <p class="panel-help">
-            配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill 市场的管理员角色。
+            配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill
+            市场的管理员角色。
           </p>
         </div>
         <button v-if="canCreateOrg" type="button" class="btn primary" @click="openOrgCreateModal">
@@ -3341,8 +3402,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </header>
       <div class="admin-panel-body">
         <div class="summary-strip admin-summary" role="group" aria-label="组织摘要">
-          <span class="summary-item">组织 <b>{{ adminOrganizations.length }}</b></span>
-          <span class="summary-item">组织管理员账号 <b>{{ orgDistinctAdminCount }}</b></span>
+          <span class="summary-item"
+            >组织 <b>{{ adminOrganizations.length }}</b></span
+          >
+          <span class="summary-item"
+            >组织管理员账号 <b>{{ orgDistinctAdminCount }}</b></span
+          >
         </div>
         <div v-if="orgListLoading" class="admin-loading">加载中…</div>
         <div v-else class="table-wrap admin-table-wrap">
@@ -3364,8 +3429,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <td>{{ org.orgCode }}</td>
                 <td class="cell-admins">{{ org.admins }}</td>
                 <td>
-                  <span class="adm-badge" :class="org.enabled ? 'on' : 'off'">{{
-                    org.enabled ? '启用' : '停用'
+                  <span class="adm-badge" :class="org.enabled === 1 ? 'on' : 'off'">{{
+                    org.enabled === 1 ? '启用' : '停用'
                   }}</span>
                 </td>
                 <td>
@@ -3404,8 +3469,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </header>
       <div class="admin-panel-body">
         <div class="summary-strip approval-summary" role="group" aria-label="审核摘要">
-          <span class="summary-item">待审核 <b>{{ syncPendingRows.length }}</b></span>
-          <span class="summary-item">已完成 <b>{{ syncDoneRows.length }}</b></span>
+          <span class="summary-item"
+            >待审核 <b>{{ syncPendingRows.length }}</b></span
+          >
+          <span class="summary-item"
+            >已完成 <b>{{ syncDoneRows.length }}</b></span
+          >
         </div>
         <div class="section-toolbar admin-mini-toolbar">
           <div class="mini-tabs" role="tablist" aria-label="审核分区">
@@ -3494,7 +3563,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <td>
                   <span
                     class="adm-badge"
-                    :class="row.reviewResult === '通过' ? 'ok' : row.reviewResult === '不通过' ? 'bad' : ''"
+                    :class="
+                      row.reviewResult === '通过'
+                        ? 'ok'
+                        : row.reviewResult === '不通过'
+                          ? 'bad'
+                          : ''
+                    "
                   >
                     {{ row.reviewResult ?? '—' }}
                   </span>
@@ -3516,7 +3591,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <header class="ops-title">
           <div>
             <h2>运营看板</h2>
-            <p>扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级 Skill。</p>
+            <p>
+              扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级
+              Skill。
+            </p>
           </div>
           <div class="ops-filter">
             <div class="ops-toggle ops-system-toggle" role="tablist" aria-label="运营看板系统切换">
@@ -3621,7 +3699,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                       <span v-else class="ops-caret-placeholder" aria-hidden="true">•</span>
                       <span class="ops-tree-name" :title="row.path">{{ row.name }}</span>
                       <span class="ops-tree-count">{{ row.skills }}个</span>
-                      <span class="ops-tree-download">{{ formatOpsNumber(row.downloads) }}下载</span>
+                      <span class="ops-tree-download"
+                        >{{ formatOpsNumber(row.downloads) }}下载</span
+                      >
                     </button>
                   </div>
                 </div>
@@ -3630,7 +3710,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <section class="ops-card ops-detail-table-card">
                 <div class="ops-card-body">
                   <div class="ops-skill-table ops-dept-skill-table">
-                    <div v-if="selectedDeptSkillRows.length === 0" class="ops-empty-state ops-detail-empty-state">
+                    <div
+                      v-if="selectedDeptSkillRows.length === 0"
+                      class="ops-empty-state ops-detail-empty-state"
+                    >
                       <strong>暂无 Skill 明细</strong>
                       <span>选择有数据的部门层级后，将展示该层级下的 Skill 列表。</span>
                     </div>
@@ -3641,7 +3724,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                             <th class="col-name sticky-name">
                               <span class="cell-ellipsis" title="Skill 名称">Skill 名称</span>
                             </th>
-                            <th class="col-desc"><span class="cell-ellipsis" title="描述">描述</span></th>
+                            <th class="col-desc">
+                              <span class="cell-ellipsis" title="描述">描述</span>
+                            </th>
                             <th class="col-owner">
                               <span class="cell-ellipsis" title="发布人">发布人</span>
                             </th>
@@ -3725,7 +3810,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <section class="ops-card ops-detail-table-card">
                 <div class="ops-card-body">
                   <div class="ops-skill-table ops-org-skill-table">
-                    <div v-if="selectedOrgSkillRows.length === 0" class="ops-empty-state ops-detail-empty-state">
+                    <div
+                      v-if="selectedOrgSkillRows.length === 0"
+                      class="ops-empty-state ops-detail-empty-state"
+                    >
                       <strong>暂无组织级 Skill 明细</strong>
                       <span>选择有数据的组织条目后，将展示该组织级 Skill 列表。</span>
                     </div>
@@ -3736,7 +3824,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                             <th class="col-name sticky-name">
                               <span class="cell-ellipsis" title="Skill 名称">Skill 名称</span>
                             </th>
-                            <th class="col-desc"><span class="cell-ellipsis" title="描述">描述</span></th>
+                            <th class="col-desc">
+                              <span class="cell-ellipsis" title="描述">描述</span>
+                            </th>
                             <th class="col-owner">
                               <span class="cell-ellipsis" title="发布人">发布人</span>
                             </th>
@@ -3816,19 +3906,40 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
     <Teleport to="body">
       <div v-if="orgModalOpen" class="overlay" role="presentation" @click.self="closeOrgModal">
-        <div class="v-dialog v-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="org-modal-title">
+        <div
+          class="v-dialog v-dialog-wide"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="org-modal-title"
+        >
           <div class="v-head">
-            <strong id="org-modal-title">{{ orgModalMode === 'create' ? '新建组织' : '配置组织' }}</strong>
-            <button type="button" class="close-x" aria-label="关闭" @click="closeOrgModal">×</button>
+            <strong id="org-modal-title">{{
+              orgModalMode === 'create' ? '新建组织' : '配置组织'
+            }}</strong>
+            <button type="button" class="close-x" aria-label="关闭" @click="closeOrgModal">
+              ×
+            </button>
           </div>
           <div class="admin-form">
             <label class="admin-field">
               <span>组织名称</span>
-              <input v-model="orgForm.orgName" type="text" class="search" placeholder="例如：IT装备部" />
+              <input
+                v-model="orgForm.orgName"
+                type="text"
+                :disabled="orgModalMode === 'edit'"
+                class="search"
+                placeholder="例如：IT装备部"
+              />
             </label>
             <label class="admin-field">
               <span>组织 ID</span>
-              <input v-model="orgForm.orgCode" type="text" class="search" placeholder="例如：ORG-IT-001" />
+              <input
+                v-model="orgForm.orgCode"
+                type="text"
+                :disabled="orgModalMode === 'edit'"
+                class="search"
+                placeholder="例如：ORG-IT-001"
+              />
             </label>
             <label class="admin-field">
               <span>组织管理员</span>
@@ -3853,11 +3964,23 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     </Teleport>
 
     <Teleport to="body">
-      <div v-if="reviewModalOpen" class="overlay" role="presentation" @click.self="closeReviewModal">
-        <div class="v-dialog v-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+      <div
+        v-if="reviewModalOpen"
+        class="overlay"
+        role="presentation"
+        @click.self="closeReviewModal"
+      >
+        <div
+          class="v-dialog v-dialog-wide"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="review-modal-title"
+        >
           <div class="v-head">
             <strong id="review-modal-title">审核同步申请</strong>
-            <button type="button" class="close-x" aria-label="关闭" @click="closeReviewModal">×</button>
+            <button type="button" class="close-x" aria-label="关闭" @click="closeReviewModal">
+              ×
+            </button>
           </div>
           <p v-if="reviewTarget" class="v-sub">
             {{ reviewTarget.skillName }} · {{ reviewTarget.targetOrgName }}
@@ -3884,7 +4007,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </label>
           </div>
           <div class="v-actions">
-            <button type="button" class="btn outline sm" :disabled="reviewSubmitting" @click="closeReviewModal">
+            <button
+              type="button"
+              class="btn outline sm"
+              :disabled="reviewSubmitting"
+              @click="closeReviewModal"
+            >
               取消
             </button>
             <button
@@ -3905,5 +4033,5 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 </template>
 
 <style scoped lang="scss">
-@import '@/style/UserMarketShell.scss';
+@use '@/style/UserMarketShell.scss';
 </style>

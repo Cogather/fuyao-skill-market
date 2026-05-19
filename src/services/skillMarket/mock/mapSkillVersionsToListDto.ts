@@ -25,8 +25,7 @@ function versionListFileTree(skill: Skill): SkillFileTreeField {
  */
 export function mapSkillVersionsToListDto(skill: Skill): SkillVersionListItemDto[] {
   const sidNum = Number(skill.id);
-  const skillIdForRow =
-    Number.isFinite(sidNum) && sidNum > 0 ? sidNum : stableNumericId(skill);
+  const skillIdForRow = Number.isFinite(sidNum) && sidNum > 0 ? sidNum : stableNumericId(skill);
   const ft = versionListFileTree(skill);
   const md = typeof skill.skillMdContent === 'string' ? skill.skillMdContent : '';
   const name = skill.name ?? skill.skill_id ?? String(skillIdForRow);
@@ -46,10 +45,7 @@ export function mapSkillVersionsToListDto(skill: Skill): SkillVersionListItemDto
       skillMdContent: md,
       fileTree: ft,
       createdBy:
-        (v as { publisher?: string }).publisher ??
-        skill.publisher ??
-        skill.publish_name ??
-        '',
+        (v as { publisher?: string }).publisher ?? skill.publisher ?? skill.publish_name ?? '',
       createdAt: v.publishTime,
       deleted: unpublished ? 1 : 0,
     };

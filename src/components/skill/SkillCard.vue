@@ -56,7 +56,10 @@ const deptText = computed(() => {
     return directDept;
   }
   const raw = props.skill.dept_name || '';
-  const parts = String(raw).split(/[/>｜|]/).map((item) => item.trim()).filter(Boolean);
+  const parts = String(raw)
+    .split(/[/>｜|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
   return parts[parts.length - 1] || raw || '未配置部门';
 });
 
@@ -93,7 +96,10 @@ const orgShort = computed(() => {
     return '';
   }
   const raw = props.skill.tagOrg || props.skill.level || props.skill.dept_name || '';
-  const parts = raw.split('·').map((s) => s.trim()).filter(Boolean);
+  const parts = raw
+    .split('·')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (parts.length === 0) {
     return raw;
   }
@@ -133,10 +139,16 @@ const displayTags = computed(() => {
 });
 
 const shownTags = computed(() => displayTags.value.slice(0, 2));
-const extraTagCount = computed(() => Math.max(0, displayTags.value.length - shownTags.value.length));
-const downloadCount = computed(() => Number(props.skill.download_count ?? props.skill.downloads ?? 0));
+const extraTagCount = computed(() =>
+  Math.max(0, displayTags.value.length - shownTags.value.length),
+);
+const downloadCount = computed(() =>
+  Number(props.skill.download_count ?? props.skill.downloads ?? 0),
+);
 const ratingValue = computed(() => Number(props.skill.rating ?? 0));
-const ratingLabel = computed(() => (ratingValue.value > 0 ? ratingValue.value.toFixed(1) : '未评分'));
+const ratingLabel = computed(() =>
+  ratingValue.value > 0 ? ratingValue.value.toFixed(1) : '未评分',
+);
 
 const qualityBadges = computed(() => {
   const badges: { label: string; kind: 'gold' | 'blue' | 'gray' }[] = [];
@@ -297,7 +309,10 @@ function onOpenDetail(): void {
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .card:hover {

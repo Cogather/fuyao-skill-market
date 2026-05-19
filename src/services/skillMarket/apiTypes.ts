@@ -377,14 +377,14 @@ export type OrganizationDto = {
   orgName: string;
   orgCode: string;
   admins: string;
-  enabled: boolean;
+  enabled: number;
 };
 
 export type OrganizationUpsertBody = {
   orgName: string;
   orgCode: string;
   admins: string;
-  enabled: boolean;
+  enabled: number;
 };
 
 /**

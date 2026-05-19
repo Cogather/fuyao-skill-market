@@ -11,7 +11,11 @@ export function parseUserMarketRole(value: unknown): UserMarketRole | null {
 }
 
 function roleFlagIsTrue(value: unknown): boolean {
-  return value === true || value === 1 || (typeof value === 'string' && ['1', 'true'].includes(value.trim().toLowerCase()));
+  return (
+    value === true ||
+    value === 1 ||
+    (typeof value === 'string' && ['1', 'true'].includes(value.trim().toLowerCase()))
+  );
 }
 
 export function marketRoleIsSuperAdmin(role: CurrentUserRoleDto | null): boolean {

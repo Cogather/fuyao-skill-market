@@ -75,15 +75,15 @@ function latestEntry(skill: Skill): SkillVersionEntry {
 
 function toZipFileName(skill: Skill, versionOverride?: string): string {
   const entry = versionOverride?.trim()
-    ? (skill.versions ?? []).find((v) => v.version === versionOverride.trim()) ?? latestEntry(skill)
+    ? ((skill.versions ?? []).find((v) => v.version === versionOverride.trim()) ??
+      latestEntry(skill))
     : latestEntry(skill);
-  return entry.packageFileName ?? `${skillName(skill)}-v${entry.version ?? skillVersion(skill)}.zip`;
+  return (
+    entry.packageFileName ?? `${skillName(skill)}-v${entry.version ?? skillVersion(skill)}.zip`
+  );
 }
 
-export function listSkillsApi(
-  database: Skill[],
-  query: SkillListQuery = {},
-): SkillListResponse {
+export function listSkillsApi(database: Skill[], query: SkillListQuery = {}): SkillListResponse {
   const page = Math.max(1, query.page ?? 1);
   const pageSize = Math.max(1, query.pageSize ?? 8);
   const keyword = query.keyword?.trim().toLowerCase();

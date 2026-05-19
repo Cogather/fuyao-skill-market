@@ -41,14 +41,16 @@ async function approve(skillId: string): Promise<void> {
     });
     const rec = pending.data?.records?.[0] as { id?: number } | undefined;
     const applicationId = rec?.id ?? 90_001;
-    const r = await skillBaseService.reviewSyncApplication({
-      decision: 'approve',
-      comment: `演示：批准 Skill ${skillId} 同步至组织`,
-    }, String(applicationId));
-    toast.value =
-      r.meta.success
-        ? `已调用审核接口：申请 #${applicationId}（Skill #${skillId}）`
-        : r.message || '审核接口返回异常';
+    const r = await skillBaseService.reviewSyncApplication(
+      {
+        decision: 'approve',
+        comment: `演示：批准 Skill ${skillId} 同步至组织`,
+      },
+      String(applicationId),
+    );
+    toast.value = r.meta.success
+      ? `已调用审核接口：申请 #${applicationId}（Skill #${skillId}）`
+      : r.message || '审核接口返回异常';
     setTimeout(() => {
       toast.value = '';
     }, 3500);
@@ -68,14 +70,18 @@ async function approve(skillId: string): Promise<void> {
         <span class="badge">Skill Market · 管理员视角</span>
         <h1 class="hero-title">分层发布审批与全市场治理</h1>
         <p class="hero-desc">
-          查看全量 Skill、版本与发布人；审批动作通过 Mock 接口层（与真实后端同契约），切换 HTTP 模式即可联调。
+          查看全量 Skill、版本与发布人；审批动作通过 Mock 接口层（与真实后端同契约），切换 HTTP
+          模式即可联调。
         </p>
       </div>
     </section>
 
     <div class="panel">
       <h2 class="panel-title">全市场 Skill 列表</h2>
-      <p class="panel-help">操作列提供「批准上架到组织层」：将调用 <code>POST /api/sync-applications/:id/review</code>（见 <code>endpoints.ts</code>）。</p>
+      <p class="panel-help">
+        操作列提供「批准上架到组织层」：将调用
+        <code>POST /api/sync-applications/:id/review</code>（见 <code>endpoints.ts</code>）。
+      </p>
       <div class="table-wrap">
         <table class="table">
           <thead>

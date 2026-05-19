@@ -15,16 +15,13 @@ export const SKILL_MARKET_ENDPOINTS = {
   skillsMy: '/api/skills/my',
   skillById: (id: string | number) => `/api/skills/${encodeURIComponent(String(id))}`,
   /** 删除 Skill 及其全部版本；query 需带操作者工号（与项目约定字段 `userId` 一致） */
-  skillDeleteAll: (id: string | number) =>
-    `/api/skills/${encodeURIComponent(String(id))}/all`,
+  skillDeleteAll: (id: string | number) => `/api/skills/${encodeURIComponent(String(id))}/all`,
   /** §3.3.3.2.1 下载到本地：返回临时下载 URL 并累计下载量 */
-  skillDownload: (id: string | number) =>
-    `/api/skills/${encodeURIComponent(String(id))}/download`,
+  skillDownload: (id: string | number) => `/api/skills/${encodeURIComponent(String(id))}/download`,
   /** §3.3.3.2.2 单 Skill 下载量统计与趋势 */
   skillDownloadStats: (id: string | number) =>
     `/api/skills/${encodeURIComponent(String(id))}/download-stats`,
-  skillVersions: (id: string | number) =>
-    `/api/skills/${encodeURIComponent(String(id))}/versions`,
+  skillVersions: (id: string | number) => `/api/skills/${encodeURIComponent(String(id))}/versions`,
   skillSyncApplications: (id: string | number) =>
     `/api/skills/${encodeURIComponent(String(id))}/sync-applications`,
   skillSyncUpdateApplications: (id: string | number) =>
@@ -40,12 +37,10 @@ export const SKILL_MARKET_ENDPOINTS = {
   /** 左侧目录栏业务维度筛选项；后端路径暂定，HTTP 模式后续可在这里微调。 */
   businessDimensions: '/api/business-dimensions',
   organizations: '/api/organizations',
-  organizationById: (id: string | number) =>
-    `/api/organizations/${encodeURIComponent(String(id))}`,
+  organizationById: (id: string | number) => `/api/organizations/${encodeURIComponent(String(id))}`,
   /** §3.3.12 仅 SUPER_ADMIN */
   superAdmins: '/api/super-admins',
-  superAdminById: (id: string | number) =>
-    `/api/super-admins/${encodeURIComponent(String(id))}`,
+  superAdminById: (id: string | number) => `/api/super-admins/${encodeURIComponent(String(id))}`,
   /** §3.3.13 运营看板（扶摇侧 HTTP 由 `fetchOpsDashboardUi('fuyao')` 使用并映射为 UI Bundle） */
   dashboardOverview: '/api/dashboard/overview',
   /** 占位；公司看板只读打包 mock JSON，前端不请求 */

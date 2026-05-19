@@ -46,7 +46,10 @@ import type {
 } from './apiTypes';
 import { SKILL_MARKET_ENDPOINTS } from './endpoints';
 import { joinBaseUrl, readJsonEnvelope } from './httpJson';
-import { emptyOpsDashboardBundle, readOpsDashboardBundleFromJson } from './mock/opsDashboardUiDefaults';
+import {
+  emptyOpsDashboardBundle,
+  readOpsDashboardBundleFromJson,
+} from './mock/opsDashboardUiDefaults';
 import { dashboardOverviewToOpsBundle } from './opsOverviewToBundle';
 import {
   apiRecordToSkill,
@@ -55,7 +58,11 @@ import {
   stableNumericId,
   uploadResultDtoToSkill,
 } from './mappers';
-import type { SkillDownloadOptions, SkillDownloadResult, SkillMarketClient } from './skillMarketClient.types';
+import type {
+  SkillDownloadOptions,
+  SkillDownloadResult,
+  SkillMarketClient,
+} from './skillMarketClient.types';
 
 function toSearchParams(params: Record<string, string | number | boolean | undefined>): string {
   const sp = new URLSearchParams();
@@ -288,7 +295,10 @@ export function createSkillMarketHttpClient(
       return { created: true, skill: found };
     },
 
-    async downloadSkill(skillId: string, options?: SkillDownloadOptions): Promise<SkillDownloadResult> {
+    async downloadSkill(
+      skillId: string,
+      options?: SkillDownloadOptions,
+    ): Promise<SkillDownloadResult> {
       const sourcePage = options?.sourcePage ?? 'market';
       const ver = String(options?.version ?? '').trim();
       const prev = skills.value.find(
@@ -342,7 +352,10 @@ export function createSkillMarketHttpClient(
           throw new Error(`下载文件失败：HTTP ${res.status}`);
         }
         const blob = await res.blob();
-        const fn = fileNameFromContentDisposition(res.headers.get('Content-Disposition'), defaultZipName);
+        const fn = fileNameFromContentDisposition(
+          res.headers.get('Content-Disposition'),
+          defaultZipName,
+        );
         return { blob, fileName: fn, skill: merged };
       } catch {
         return {
@@ -457,7 +470,9 @@ export function createSkillMarketHttpClient(
     },
 
     fetchSyncApplications(params: SyncApplicationsParams) {
-      return get(`${SKILL_MARKET_ENDPOINTS.syncApplications}${toSearchParams(params as unknown as Record<string, string | number | boolean | undefined>)}`);
+      return get(
+        `${SKILL_MARKET_ENDPOINTS.syncApplications}${toSearchParams(params as unknown as Record<string, string | number | boolean | undefined>)}`,
+      );
     },
 
     /**
@@ -524,7 +539,9 @@ export function createSkillMarketHttpClient(
      * - **公司系统**：不请求后端；只读打包的 `src/mock/opsDashboardCompanyDefault.json`（替换文件后需重新 dev/build）。
      * - **扶摇**：`GET /api/dashboard/overview?system=fuyao`（§3.3.13）再映射为 `OpsDashboardBundle`。
      */
-    async fetchOpsDashboardUi(system: 'fuyao' | 'company'): Promise<ApiEnvelope<OpsDashboardBundle>> {
+    async fetchOpsDashboardUi(
+      system: 'fuyao' | 'company',
+    ): Promise<ApiEnvelope<OpsDashboardBundle>> {
       if (system === 'company') {
         return { code: 0, message: 'success', data: readOpsDashboardBundleFromJson('company') };
       }

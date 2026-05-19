@@ -275,7 +275,8 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     tagFunctional: '测试',
     tagOrg: '个人级',
     tags: 'review,report',
-    fileTree: 'test1-skill/\ntest1-skill/SKILL.md\ntest1-skill/cases/smoke.feature\ntest1-skill/config/env.yaml',
+    fileTree:
+      'test1-skill/\ntest1-skill/SKILL.md\ntest1-skill/cases/smoke.feature\ntest1-skill/config/env.yaml',
     skillMdContent:
       '# test1（Mock 接口原文）\n\n内置联调用例包结构；与 test2、test3 的 `fileTree` / 正文均不同。',
   },
@@ -366,7 +367,8 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     tagFunctional: '公共',
     tagOrg: '个人级',
     tags: '',
-    fileTree: 'test3-skill/\ntest3-skill/SKILL.md\ntest3-skill/data/sample.xlsx\ntest3-skill/schema/fields.json',
+    fileTree:
+      'test3-skill/\ntest3-skill/SKILL.md\ntest3-skill/data/sample.xlsx\ntest3-skill/schema/fields.json',
     skillMdContent:
       '# test3（Mock 接口原文）\n\n最小标签 + `data`/`schema` 路径；验证列表项同样携带接口型字段。',
   },

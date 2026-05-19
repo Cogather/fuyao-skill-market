@@ -122,11 +122,41 @@ type MockSkillRecord = Skill & {
 };
 
 const MOCK_ORGS: MockOrganization[] = [
-  { id: 1, orgName: 'IT装备部', orgCode: 'ORG-IT-001', admins: 'it_admin_a,it_admin_b', enabled: true },
-  { id: 2, orgName: '质量工具组', orgCode: 'ORG-QA-002', admins: 'qa_admin_a,qa_admin_b', enabled: true },
-  { id: 3, orgName: '平台工具组', orgCode: 'ORG-PLAT-003', admins: 'plat_admin_a,plat_admin_b', enabled: true },
-  { id: 4, orgName: '云服务组', orgCode: 'ORG-CLOUD-004', admins: 'cloud_admin_a,cloud_admin_b', enabled: true },
-  { id: 5, orgName: 'SRE团队', orgCode: 'ORG-SRE-005', admins: 'sre_admin_a,sre_admin_b', enabled: true },
+  {
+    id: 1,
+    orgName: 'IT装备部',
+    orgCode: 'ORG-IT-001',
+    admins: 'it_admin_a,it_admin_b',
+    enabled: true,
+  },
+  {
+    id: 2,
+    orgName: '质量工具组',
+    orgCode: 'ORG-QA-002',
+    admins: 'qa_admin_a,qa_admin_b',
+    enabled: true,
+  },
+  {
+    id: 3,
+    orgName: '平台工具组',
+    orgCode: 'ORG-PLAT-003',
+    admins: 'plat_admin_a,plat_admin_b',
+    enabled: true,
+  },
+  {
+    id: 4,
+    orgName: '云服务组',
+    orgCode: 'ORG-CLOUD-004',
+    admins: 'cloud_admin_a,cloud_admin_b',
+    enabled: true,
+  },
+  {
+    id: 5,
+    orgName: 'SRE团队',
+    orgCode: 'ORG-SRE-005',
+    admins: 'sre_admin_a,sre_admin_b',
+    enabled: true,
+  },
   { id: 6, orgName: 'DevOps组', orgCode: 'ORG-DEVOPS-006', admins: 'devops_admin', enabled: true },
 ];
 
@@ -238,7 +268,9 @@ let qualityReviews: MockQualityReviewRow[] = [
 
 function nowText(): string {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(
     2,
     '0',
   )} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -449,7 +481,10 @@ function pickMockSkillMdFromSeed(seed: Skill, base: MockSkillRecord): string {
 function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const id = skillMockId(seed);
   const level = seed.publish_level ?? seed.level ?? '个人级';
-  const publishName = seed.publish_name ?? seed.publisher ?? (level.includes('个人') ? 'xxx_个人发布商' : '平台工具组');
+  const publishName =
+    seed.publish_name ??
+    seed.publisher ??
+    (level.includes('个人') ? 'xxx_个人发布商' : '平台工具组');
   const org = level.includes('组织') ? orgByName(publishName) : undefined;
   const categoryGroupName = categoryGroupFromCategory(seed.tagFunctional || '公共');
   const category = categoryFromGroup(categoryGroupName);
@@ -531,12 +566,15 @@ function findSkill(id: string | number | undefined): MockSkillRecord | undefined
     return undefined;
   }
   return skillRecords.find(
-    (s) => s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
+    (s) =>
+      s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
   );
 }
 
 function readMockRole(): 'SUPER_ADMIN' | 'ORG_ADMIN' | 'USER' {
-  const raw = String(import.meta.env.VITE_SKILL_MARKET_MOCK_ROLE ?? '').trim().toUpperCase();
+  const raw = String(import.meta.env.VITE_SKILL_MARKET_MOCK_ROLE ?? '')
+    .trim()
+    .toUpperCase();
   if (raw === 'USER' || raw === 'ORG_ADMIN' || raw === 'SUPER_ADMIN') {
     return raw;
   }
@@ -601,7 +639,9 @@ function matchesDepartmentFields(skill: MockSkillRecord, params: Record<string, 
 
 function filterSkills(params: Record<string, unknown>, source = skillRecords): MockSkillRecord[] {
   let list = [...source];
-  const keyword = String(params.keyword ?? '').trim().toLowerCase();
+  const keyword = String(params.keyword ?? '')
+    .trim()
+    .toLowerCase();
   if (keyword) {
     list = list.filter((s) =>
       [s.id, s.skill_id, s.name, s.description, s.publish_name, s.author, s.dept_name]
@@ -611,7 +651,10 @@ function filterSkills(params: Record<string, unknown>, source = skillRecords): M
   }
   const status = String(params.status ?? params.level ?? '').trim();
   if (status) {
-    list = list.filter((s) => s.status.includes(status) || s.level.includes(status) || s.publish_level.includes(status));
+    list = list.filter(
+      (s) =>
+        s.status.includes(status) || s.level.includes(status) || s.publish_level.includes(status),
+    );
   }
   const orgId = readNumber(params.orgId, 0);
   if (orgId > 0) {
@@ -636,7 +679,10 @@ function filterSkills(params: Record<string, unknown>, source = skillRecords): M
   return list.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
 }
 
-function pageSkills(params: Record<string, unknown>, source = skillRecords): PagedArray<MockSkillRecord> {
+function pageSkills(
+  params: Record<string, unknown>,
+  source = skillRecords,
+): PagedArray<MockSkillRecord> {
   const list = filterSkills(params, source);
   const total = list.length;
   const pageNo = Math.max(1, readNumber(params.pageNo ?? params.pageNum, 1));
@@ -822,7 +868,11 @@ function createZipUrl(skill: MockSkillRecord): string {
   return URL.createObjectURL(blob);
 }
 
-function handleSkillRequest(method: string, path: string, config: AxiosRequestConfig): MockEnvelope<unknown> | null {
+function handleSkillRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
   const params = readParams(config);
   if (method === 'get' && path === '/business-dimensions') {
     const data = getMockBusinessDimensions();
@@ -1023,7 +1073,11 @@ function handleSkillRequest(method: string, path: string, config: AxiosRequestCo
   return null;
 }
 
-function handleApiRequest(method: string, path: string, config: AxiosRequestConfig): MockEnvelope<unknown> | null {
+function handleApiRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
   const params = readParams(config);
   const reviewMatch = /^\/sync-applications\/([^/]+)\/review$/.exec(path);
   if (method === 'post' && reviewMatch) {
@@ -1059,16 +1113,27 @@ function handleApiRequest(method: string, path: string, config: AxiosRequestConf
 
   if (method === 'get' && path === '/users/current/role') {
     const role = readMockRole();
-    const managedIds = role === 'USER' ? [] : role === 'SUPER_ADMIN' ? orgStore.map((o) => o.id) : readManagedOrgIds();
+    const managedIds =
+      role === 'USER'
+        ? []
+        : role === 'SUPER_ADMIN'
+          ? orgStore.map((o) => o.id)
+          : readManagedOrgIds();
     return ok({
       employeeNo: 'mock001',
-      userName: role === 'SUPER_ADMIN' ? '演示超级管理员' : role === 'ORG_ADMIN' ? '演示组织管理员' : '演示普通用户',
+      userName:
+        role === 'SUPER_ADMIN'
+          ? '演示超级管理员'
+          : role === 'ORG_ADMIN'
+            ? '演示组织管理员'
+            : '演示普通用户',
       role,
       superAdmin: role === 'SUPER_ADMIN',
       orgAdmin: role === 'ORG_ADMIN',
       managedOrgIds: managedIds,
       managedOrgNames: orgStore.filter((o) => managedIds.includes(o.id)).map((o) => o.orgName),
-      organizationScope: role === 'SUPER_ADMIN' ? 'ALL' : role === 'ORG_ADMIN' ? 'MANAGED_ORG' : 'NONE',
+      organizationScope:
+        role === 'SUPER_ADMIN' ? 'ALL' : role === 'ORG_ADMIN' ? 'MANAGED_ORG' : 'NONE',
     });
   }
 
@@ -1150,9 +1215,14 @@ function handleApiRequest(method: string, path: string, config: AxiosRequestConf
     if (reviewMonth) {
       rows = rows.filter((r) => r.reviewMonth === reviewMonth);
     }
-    const keyword = String(params.keyword ?? '').trim().toLowerCase();
+    const keyword = String(params.keyword ?? '')
+      .trim()
+      .toLowerCase();
     if (keyword) {
-      rows = rows.filter((r) => r.skillName.toLowerCase().includes(keyword) || r.deptName.toLowerCase().includes(keyword));
+      rows = rows.filter(
+        (r) =>
+          r.skillName.toLowerCase().includes(keyword) || r.deptName.toLowerCase().includes(keyword),
+      );
     }
     const reviewStatus = String(params.reviewStatus ?? '').trim();
     if (reviewStatus) {
@@ -1231,7 +1301,11 @@ function handleFuyaoUserPlainResponse(
   return null;
 }
 
-function handleFuyaoRequest(method: string, path: string, config: AxiosRequestConfig): MockEnvelope<unknown> | null {
+function handleFuyaoRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
   if (method === 'post' && path === '/resource/resource-management/v1/storage/file') {
     const file = fileFromFormData(config.data);
     const form = config.data instanceof FormData ? config.data : undefined;
@@ -1247,7 +1321,9 @@ function handleFuyaoRequest(method: string, path: string, config: AxiosRequestCo
 }
 
 function shouldUseMock(): boolean {
-  const explicit = String(import.meta.env.VITE_SKILL_BASE_SERVICE_MOCK ?? '').trim().toLowerCase();
+  const explicit = String(import.meta.env.VITE_SKILL_BASE_SERVICE_MOCK ?? '')
+    .trim()
+    .toLowerCase();
   if (explicit === 'false' || explicit === '0') {
     return false;
   }

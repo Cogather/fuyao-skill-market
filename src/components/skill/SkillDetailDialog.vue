@@ -106,15 +106,24 @@ onBeforeUnmount(() => {
       role="presentation"
       @click.self="emit('close')"
     >
-      <section class="skill-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="skill-detail-title">
+      <section
+        class="skill-detail-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="skill-detail-title"
+      >
         <header class="detail-head">
-          <h2 id="skill-detail-title">{{ previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情' }}</h2>
+          <h2 id="skill-detail-title">
+            {{ previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情' }}
+          </h2>
           <button type="button" class="detail-close" @click="emit('close')">关闭</button>
         </header>
 
         <div class="detail-toolbar">
           <div class="detail-tags">
-            <span v-if="!previewOnly" class="detail-pill pill-category">{{ skill.categoryGroupName }}</span>
+            <span v-if="!previewOnly" class="detail-pill pill-category">{{
+              skill.categoryGroupName
+            }}</span>
             <span class="detail-pill pill-id">{{ skill.name }}</span>
             <span class="detail-pill">版本 {{ skill.currentVersion ?? skill.version }}</span>
             <span v-if="!previewOnly" class="detail-pill">作者 {{ skill.author }}</span>
@@ -136,7 +145,9 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="!previewOnly" class="detail-actions">
             <button type="button" class="detail-btn ghost" disabled title="建设中">在线调测</button>
-            <button type="button" class="detail-btn primary" @click="emit('download')">下载到本地</button>
+            <button type="button" class="detail-btn primary" @click="emit('download')">
+              下载到本地
+            </button>
             <button
               v-if="showDelete"
               type="button"
@@ -158,7 +169,12 @@ onBeforeUnmount(() => {
                 <span class="detail-more-dots" aria-hidden="true">···</span>
               </button>
               <div v-show="detailMoreMenuOpen" class="detail-more-menu" role="menu" @click.stop>
-                <button type="button" class="detail-more-item" role="menuitem" @click="onVersionMenuClick">
+                <button
+                  type="button"
+                  class="detail-more-item"
+                  role="menuitem"
+                  @click="onVersionMenuClick"
+                >
                   版本管理
                 </button>
               </div>

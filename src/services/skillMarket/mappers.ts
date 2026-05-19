@@ -223,7 +223,10 @@ export function apiMyRecordToSkill(rec: SkillListRecordDto): Skill {
 }
 
 /** `POST /api/skills/{id}/download` 响应合并到前端 `Skill`（用于列表与详情下载量展示） */
-export function mergeSkillFromSkillDownloadDto(prev: Skill | undefined, d: SkillDownloadResultDto): Skill {
+export function mergeSkillFromSkillDownloadDto(
+  prev: Skill | undefined,
+  d: SkillDownloadResultDto,
+): Skill {
   const downloads = d.downloads;
   if (!prev) {
     return {
