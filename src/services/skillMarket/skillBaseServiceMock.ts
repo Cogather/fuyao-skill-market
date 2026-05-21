@@ -1334,7 +1334,7 @@ function shouldUseMock(): boolean {
 }
 
 export function maybeHandleSkillBaseMockRequest<T>(
-  channel: MockChannel,
+  channel: string,
   config: AxiosRequestConfig,
 ): Promise<T> | null {
   if (!shouldUseMock()) {

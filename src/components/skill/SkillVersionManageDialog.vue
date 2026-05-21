@@ -284,7 +284,7 @@ const confirmUnpublish = () => {
 }
 
 .ver-mgmt-dialog {
-  width: min(920px, calc(100vw - 32px));
+  width: min(67%, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
   background: #fff;
   border-radius: 10px;
@@ -390,19 +390,19 @@ const confirmUnpublish = () => {
 }
 
 .col-ver {
-  width: 28%;
+  width: 15%;
 }
 
 .col-pub {
-  width: 22%;
+  width: 15%;
 }
 
 .col-time {
-  width: 26%;
+  width: 18%;
 }
 
 .col-ops {
-  width: 24%;
+  width: 30%;
   white-space: nowrap;
 }
 

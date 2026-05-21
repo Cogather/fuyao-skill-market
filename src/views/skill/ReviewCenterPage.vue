@@ -146,27 +146,6 @@ const activeReviewDimensionDetail = computed(
 <template>
   <div class="review-center-page">
     <div class="review-shell">
-      <section class="ranking-grid" aria-label="排行榜">
-        <article v-for="card in rankingCards" :key="card.title" class="ranking-card">
-          <div class="ranking-card__header">
-            <h2>{{ card.title }}</h2>
-            <button v-if="false" type="button" aria-label="查看详情">···</button>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th v-for="column in card.columns" :key="column">{{ column }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in card.rows" :key="row.join('-')">
-                <td v-for="cell in row" :key="cell">{{ cell }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </article>
-      </section>
-
       <section class="review-board" aria-label="评审任务">
         <div class="board-toolbar">
           <div>
