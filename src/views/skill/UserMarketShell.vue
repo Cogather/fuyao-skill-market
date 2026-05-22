@@ -2776,11 +2776,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     :class="{ 'is-overview-tab': innerTab === 'overview' }"
   >
     <header class="market-topbar">
-      <button type="button" class="app-brand" @click="goTab('overview')">
-        <span class="brand-bolt" aria-hidden="true">⚡</span>
-        <span>Skill Market</span>
-      </button>
-
       <nav
         class="sub-tabs"
         :class="{ 'ops-tabs': innerTab === 'ops' || innerTab === 'org' || innerTab === 'approval' }"

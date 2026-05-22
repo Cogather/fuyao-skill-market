@@ -4097,7 +4097,7 @@
   box-sizing: border-box;
   height: 56px;
   display: grid;
-  grid-template-columns: 242px minmax(360px, 1fr) minmax(320px, 560px) 36px auto;
+  grid-template-columns: minmax(360px, 1fr) minmax(320px, 560px) 36px auto;
   gap: 18px;
   align-items: center;
   padding: 0 22px;
@@ -4105,35 +4105,6 @@
   border-bottom: 1px solid #eef2f7;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
   backdrop-filter: blur(12px);
-}
-
-.app-brand {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: transparent;
-  color: #2563eb;
-  cursor: pointer;
-  font-size: 20px;
-  font-weight: 820;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  padding: 0;
-}
-
-.brand-bolt {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #2563eb;
-  color: #fff;
-  font-size: 14px;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
 }
 
 .market-topbar .sub-tabs {
@@ -4714,7 +4685,7 @@
   .market-topbar {
     height: auto;
     min-height: 56px;
-    grid-template-columns: 170px 1fr auto auto;
+    grid-template-columns: 1fr auto auto;
     padding: 8px 14px;
   }
 

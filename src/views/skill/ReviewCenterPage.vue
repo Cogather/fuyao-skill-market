@@ -1,146 +1,386 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import {
+  loadReviewCenterData,
+  type ComputeChannelRow,
+  type MedalLeaderboardRow,
+  type ReviewCenterData,
+  type ReviewDimensionDetail,
+  type ReviewHistoryRecord,
+  type ReviewRankingCard,
+  type ReviewTaskCard,
+} from '../../services/skillMarket/reviewCenterDataSource';
 
-const rankingCards = [
-  {
-    title: '季度嘉奖实时榜单',
-    columns: ['名称', '作者', '评分', '使用量', '排名'],
-    rows: [
-      ['会议助手', '张三', '4.9', '18,888', '1'],
-      ['接口 Mock 生成', '李四', '4.8', '9,236', '2'],
-      ['SQL 巡检', '王五', '4.7', '7,604', '3'],
-    ],
-  },
-  {
-    title: '5月榜单 TOP 20',
-    columns: ['名称', '作者', 'AI得分', '专家评审得分'],
-    rows: [
-      ['日志分析 Skill', '赵六', '92', '96'],
-      ['需求拆解 Skill', '陈七', '89', '待评'],
-      ['日报生成 Skill', '周八', '88', '91'],
-    ],
-  },
-  {
-    title: '今日新锐榜',
-    columns: ['名称', '作者', 'AI得分', '专家评审得分'],
-    rows: [
-      ['测试用例评审', '吴九', '91', '94'],
-      ['知识库巡检', '郑十', '86', '待评'],
-      ['CI/CD 发布检查', '钱一', '84', '90'],
-    ],
-  },
-  {
-    title: '实时使用量榜单',
-    columns: ['名称', '作者', '使用量', '专家评审得分'],
-    rows: [
-      ['test2 Skill', '张三', '18,888', '95'],
-      ['会议助手', '李四', '12,045', '待评'],
-      ['接口 Mock 生成', '王五', '9,236', '92'],
-    ],
-  },
-];
+const rankingCards = ref<ReviewRankingCard[]>([]);
+const taskCards = reactive<ReviewTaskCard[]>([]);
 
-const taskCards = [
-  {
-    name: 'test2 Skill',
-    owner: '张三',
-    id: 'u10002',
-    team: '平台工具部',
-    active: true,
-    tags: ['开发', '#cicd', '#log'],
-  },
-  {
-    name: '测试用例评审 Skill',
-    owner: '李四',
-    id: 'u10091',
-    team: '质量工具组',
-    active: false,
-    tags: ['测试', '#review', '#test'],
-  },
-  {
-    name: '接口 Mock 生成 Skill',
-    owner: '王五',
-    id: 'u10082',
-    team: '联调工具部',
-    active: false,
-    tags: ['开发', '#mock', '#api'],
-  },
-];
+const selectedTaskId = ref(taskCards[0]?.id ?? '');
 
-const metrics = [
-  { label: '使用量', value: '45', tone: 'blue' },
-  { label: '下载量', value: '13', tone: 'cyan' },
-  { label: 'AI评分', value: '68', tone: 'indigo' },
-  { label: '专家评审得分', value: '75', tone: 'green' },
-];
+const scoreTabs = ref<string[]>([]);
+const computeChannels = reactive<ComputeChannelRow[]>([]);
+const computeChannelTypes = ref<string[]>([]);
+const isComputeChannelModalOpen = ref(false);
+const computeSkillSearchQuery = ref('');
+const selectedComputeSkillId = ref('');
+const selectedComputeChannelType = ref('');
+const computeChannelReason = ref('');
 
-const scoreTabs = ['结构详情', '效果评分', '反馈评分', '影响评分', '专家评审'];
+const medalRows = reactive<MedalLeaderboardRow[]>([]);
+const medalAwardTypes = ref<string[]>([]);
+const isMedalAwardModalOpen = ref(false);
+const skillSearchQuery = ref('');
+const selectedAwardSkillId = ref('');
+const selectedAwardMedalTypes = ref<string[]>([]);
+const awardMedalReason = ref('');
 
-const computeChannels = [
-  { name: '张三', id: 'z00123456', type: '标准算力', status: '启用' },
-  { name: '李四', id: 'l30012345', type: '无限 token', status: '启用' },
-  { name: '王五', id: 'w10088991', type: '低延迟', status: '暂停' },
-];
+const reviewDimensionDetails = reactive<Record<string, ReviewDimensionDetail>>({});
 
-const medalRows = [
-  { name: '会议助手', owner: '张三', count: 5, medals: ['月度', '专业'] },
-  { name: '日志分析 Skill', owner: '李四', count: 4, medals: ['影响', '新锐'] },
-  { name: '接口 Mock 生成', owner: '王五', count: 3, medals: ['效率', '个人'] },
-];
+const medalOptions = ref<string[]>([]);
+const selectedPersonalMedals = ref<string[]>([]);
+const isMedalSelectOpen = ref(false);
+const isHistoryDrawerOpen = ref(false);
+const greenChannelOptions = ref<string[]>([]);
+const selectedGreenChannel = ref(greenChannelOptions.value[0] ?? '');
+const isGreenChannelSelectOpen = ref(false);
+const expertScoreTab = computed(() => scoreTabs.value[scoreTabs.value.length - 1] ?? '');
+const activeScoreTab = ref('');
+const overallReviewDimension = ref('');
+const scoreInputText = ref('');
+const isScoreEditing = ref(false);
+const scoreInputRef = ref<HTMLInputElement | null>(null);
+const reviewHistoryRecords = ref<ReviewHistoryRecord[]>([]);
 
-const reviewDimensions = [
-  '边界覆盖维度',
-  '指令具体性维度',
-  '可执行性维度',
-  '场景匹配维度',
-  '总体评价',
-];
-const reviewDimensionDetails: Record<
-  string,
-  {
-    score: number;
-    summary: string;
-    checks: string[];
-    placeholder: string;
+function replaceReactiveArray<T>(target: T[], source: T[]) {
+  target.splice(0, target.length, ...source);
+}
+
+function replaceReviewDimensionDetails(source: Record<string, ReviewDimensionDetail>) {
+  Object.keys(reviewDimensionDetails).forEach((dimension) => {
+    delete reviewDimensionDetails[dimension];
+  });
+  Object.entries(source).forEach(([dimension, detail]) => {
+    reviewDimensionDetails[dimension] = detail;
+  });
+}
+
+function applyReviewCenterData(data: ReviewCenterData) {
+  rankingCards.value = data.rankingCards;
+  replaceReactiveArray(taskCards, data.taskCards);
+  selectedTaskId.value = taskCards[0]?.id ?? '';
+
+  scoreTabs.value = data.scoreTabs;
+  activeScoreTab.value = scoreTabs.value[0] ?? '';
+
+  replaceReactiveArray(computeChannels, data.computeChannels);
+  computeChannelTypes.value = data.computeChannelTypes;
+
+  replaceReactiveArray(medalRows, data.medalRows);
+  medalAwardTypes.value = data.medalAwardTypes;
+
+  replaceReviewDimensionDetails(data.reviewDimensionDetails);
+  medalOptions.value = data.medalOptions;
+  selectedPersonalMedals.value = [];
+
+  greenChannelOptions.value = data.greenChannelOptions;
+  selectedGreenChannel.value = greenChannelOptions.value[0] ?? '';
+
+  overallReviewDimension.value = data.overallReviewDimension;
+  reviewHistoryRecords.value = data.reviewHistoryRecords;
+
+  if (taskCards[0]) {
+    syncScoreInputFromTask(taskCards[0]);
+  } else {
+    scoreInputText.value = '';
   }
-> = {
-  边界覆盖维度: {
-    score: 86,
-    summary: '检查 Skill 是否覆盖主要业务边界、异常输入和权限限制。',
-    checks: ['核心使用场景完整', '异常输入处理明确', '权限与数据范围有说明'],
-    placeholder: '填写边界覆盖情况、遗漏场景和需要补充的边界条件',
-  },
-  指令具体性维度: {
-    score: 91,
-    summary: '检查 Skill 指令是否清晰、可复现，是否减少执行歧义。',
-    checks: ['目标描述具体', '输入输出格式明确', '步骤顺序清晰'],
-    placeholder: '填写指令具体性评价、模糊描述和推荐改写建议',
-  },
-  可执行性维度: {
-    score: 83,
-    summary: '检查 Skill 是否具备稳定执行所需的依赖、参数和失败兜底。',
-    checks: ['依赖说明完整', '参数示例可直接复用', '失败处理路径明确'],
-    placeholder: '填写可执行性评价、阻塞点和落地风险',
-  },
-  场景匹配维度: {
-    score: 88,
-    summary: '检查 Skill 与目标业务场景、目标用户和交付流程的匹配程度。',
-    checks: ['目标人群清楚', '业务流程匹配', '结果能直接用于交付'],
-    placeholder: '填写场景匹配评价、适用范围和不适用场景',
-  },
-  总体评价: {
-    score: 90,
-    summary: '综合各维度评分、使用数据和专家意见，给出最终评价与授奖建议。',
-    checks: ['综合评分达标', '具备复用价值', '可进入月度评优候选'],
-    placeholder: '输入总体评价、授奖理由与后续改进建议',
-  },
-};
-const activeScoreTab = ref('结构详情');
-const activeReviewDimension = ref('总体评价');
-const isExpertScoreTab = computed(() => activeScoreTab.value === '专家评审');
-const activeReviewDimensionDetail = computed(
-  () => reviewDimensionDetails[activeReviewDimension.value],
+}
+const activeTask = computed(
+  () => taskCards.find((task) => task.id === selectedTaskId.value) ?? taskCards[0],
 );
+const isCurrentTaskReviewed = computed(() => activeTask.value?.hasReviewed === true);
+const activeMetrics = computed(() => {
+  const task = activeTask.value;
+  if (!task) {
+    return [];
+  }
+
+  return [
+    { label: '使用量', value: task.usage, tone: 'blue' },
+    { label: '下载量', value: task.downloads, tone: 'cyan' },
+    {
+      label: '专家评审得分',
+      value: task.expertScore,
+      tone: task.hasReviewed ? 'green' : 'indigo',
+    },
+  ];
+});
+
+function formatOverallScore(score: number): string {
+  const rounded = Math.round(score * 100) / 100;
+  if (Number.isInteger(rounded)) {
+    return String(rounded);
+  }
+
+  return rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function sanitizeScoreInput(raw: string): string {
+  let value = raw.replace(/[^\d.]/g, '');
+  const dotIndex = value.indexOf('.');
+  if (dotIndex !== -1) {
+    const integerPart = value.slice(0, dotIndex);
+    const decimalPart = value.slice(dotIndex + 1).replace(/\./g, '').slice(0, 2);
+    value = `${integerPart}.${decimalPart}`;
+  }
+
+  return value;
+}
+
+function parseOverallScore(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+
+  const clamped = Math.min(100, Math.max(0, parsed));
+  return Math.round(clamped * 100) / 100;
+}
+
+const scoreDisplayText = computed(() => {
+  const text = scoreInputText.value.trim();
+  if (text) {
+    return text;
+  }
+
+  if (isCurrentTaskReviewed.value) {
+    return '0';
+  }
+
+  return '待评';
+});
+
+function syncScoreInputFromTask(task: ReviewTaskCard) {
+  if (task.overallScore != null) {
+    scoreInputText.value = formatOverallScore(task.overallScore);
+    const detail = reviewDimensionDetails[overallReviewDimension.value];
+    if (detail) {
+      detail.score = task.overallScore;
+    }
+  } else {
+    scoreInputText.value = '';
+  }
+}
+
+function commitOverallScore(raw: string) {
+  const task = activeTask.value;
+  if (!task) {
+    return;
+  }
+
+  const parsedScore = parseOverallScore(raw);
+  if (parsedScore == null) {
+    task.overallScore = null;
+    task.hasReviewed = false;
+    task.expertScore = '待评';
+    scoreInputText.value = '';
+    return;
+  }
+
+  task.overallScore = parsedScore;
+  task.hasReviewed = true;
+  task.expertScore = formatOverallScore(parsedScore);
+  scoreInputText.value = formatOverallScore(parsedScore);
+
+  const detail = reviewDimensionDetails[overallReviewDimension.value];
+  if (detail) {
+    detail.score = parsedScore;
+  }
+}
+
+function onScoreInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  scoreInputText.value = sanitizeScoreInput(target.value);
+}
+
+function finishScoreEditing(raw?: string) {
+  commitOverallScore(raw ?? scoreInputText.value);
+  isScoreEditing.value = false;
+}
+
+function onScoreBlur(event: Event) {
+  const target = event.target as HTMLInputElement;
+  finishScoreEditing(target.value);
+}
+
+function onScoreKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    (event.target as HTMLInputElement).blur();
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    const task = activeTask.value;
+    if (task) {
+      syncScoreInputFromTask(task);
+    }
+    isScoreEditing.value = false;
+  }
+}
+
+async function startScoreEditing() {
+  isScoreEditing.value = true;
+  await nextTick();
+  scoreInputRef.value?.focus();
+  scoreInputRef.value?.select();
+}
+
+function selectTask(taskId: string) {
+  isScoreEditing.value = false;
+  selectedTaskId.value = taskId;
+  const task = taskCards.find((item) => item.id === taskId);
+  if (task) {
+    syncScoreInputFromTask(task);
+  }
+}
+
+const isExpertScoreTab = computed(() => activeScoreTab.value === expertScoreTab.value);
+const overallReviewDimensionDetail = computed(
+  () => reviewDimensionDetails[overallReviewDimension.value],
+);
+const selectedPersonalMedalText = computed(() =>
+  selectedPersonalMedals.value.length
+    ? selectedPersonalMedals.value.join('、')
+    : '不授予个人勋章',
+);
+
+function filterTaskCardsByKeyword(keyword: string) {
+  const normalized = keyword.trim().toLowerCase();
+  if (!normalized) {
+    return taskCards;
+  }
+
+  return taskCards.filter((task) => {
+    return (
+      task.name.toLowerCase().includes(normalized) ||
+      task.owner.toLowerCase().includes(normalized) ||
+      task.id.toLowerCase().includes(normalized)
+    );
+  });
+}
+
+const filteredSkillOptions = computed(() => filterTaskCardsByKeyword(skillSearchQuery.value));
+
+const filteredComputeSkillOptions = computed(() =>
+  filterTaskCardsByKeyword(computeSkillSearchQuery.value),
+);
+
+const isMedalAwardFormValid = computed(() => {
+  return (
+    Boolean(selectedAwardSkillId.value) &&
+    selectedAwardMedalTypes.value.length > 0 &&
+    awardMedalReason.value.trim().length > 0
+  );
+});
+
+function openMedalAwardModal() {
+  skillSearchQuery.value = '';
+  selectedAwardSkillId.value = selectedTaskId.value || taskCards[0]?.id || '';
+  selectedAwardMedalTypes.value = [];
+  awardMedalReason.value = '';
+  isMedalAwardModalOpen.value = true;
+}
+
+function closeMedalAwardModal() {
+  isMedalAwardModalOpen.value = false;
+}
+
+function submitMedalAward() {
+  if (!isMedalAwardFormValid.value) {
+    return;
+  }
+
+  const task = taskCards.find((item) => item.id === selectedAwardSkillId.value);
+  if (!task) {
+    return;
+  }
+
+  const existingRow = medalRows.find((row) => row.name === task.name);
+  if (existingRow) {
+    selectedAwardMedalTypes.value.forEach((medalType) => {
+      if (!existingRow.medals.includes(medalType)) {
+        existingRow.medals.push(medalType);
+      }
+    });
+    existingRow.count = existingRow.medals.length;
+    existingRow.owner = task.owner;
+  } else {
+    medalRows.push({
+      name: task.name,
+      owner: task.owner,
+      count: selectedAwardMedalTypes.value.length,
+      medals: [...selectedAwardMedalTypes.value],
+    });
+  }
+
+  closeMedalAwardModal();
+}
+
+const isComputeChannelFormValid = computed(() => {
+  return (
+    Boolean(selectedComputeSkillId.value) &&
+    Boolean(selectedComputeChannelType.value) &&
+    computeChannelReason.value.trim().length > 0
+  );
+});
+
+function openComputeChannelModal() {
+  computeSkillSearchQuery.value = '';
+  selectedComputeSkillId.value = selectedTaskId.value || taskCards[0]?.id || '';
+  selectedComputeChannelType.value = computeChannelTypes.value[0] ?? '';
+  computeChannelReason.value = '';
+  isComputeChannelModalOpen.value = true;
+}
+
+function closeComputeChannelModal() {
+  isComputeChannelModalOpen.value = false;
+}
+
+function submitComputeChannel() {
+  if (!isComputeChannelFormValid.value) {
+    return;
+  }
+
+  const task = taskCards.find((item) => item.id === selectedComputeSkillId.value);
+  if (!task) {
+    return;
+  }
+
+  const existingChannel = computeChannels.find((channel) => channel.id === task.id);
+  if (existingChannel) {
+    existingChannel.name = task.owner;
+    existingChannel.type = selectedComputeChannelType.value;
+    existingChannel.status = '启用';
+  } else {
+    computeChannels.push({
+      name: task.owner,
+      id: task.id,
+      type: selectedComputeChannelType.value,
+      status: '启用',
+    });
+  }
+
+  closeComputeChannelModal();
+}
+
+onMounted(async () => {
+  applyReviewCenterData(await loadReviewCenterData());
+});
 </script>
 
 <template>
@@ -153,16 +393,53 @@ const activeReviewDimensionDetail = computed(
             <p>按状态、月份和评分维度筛选专家待办。</p>
           </div>
           <div class="toolbar-controls">
-            <select aria-label="评审状态">
-              <option>未评审 / 已评审 / 未评分</option>
-              <option>只看待评审</option>
-              <option>只看已完成</option>
-            </select>
-            <select aria-label="月份">
-              <option>2026年05月</option>
-              <option>2026年04月</option>
-            </select>
-            <button type="button">按月度 AI 评分 TOP 排序</button>
+            <label class="toolbar-filter">
+              <span class="toolbar-filter__label">评审状态</span>
+              <select aria-label="评审状态">
+                <option>待评审</option>
+                <option>已评审</option>
+                <option>全部</option>
+              </select>
+            </label>
+            <label class="toolbar-filter">
+              <span class="toolbar-filter__label">月度</span>
+              <select aria-label="月度">
+                <option>2026年05月</option>
+                <option>2026年06月</option>
+                <option>全部</option>
+              </select>
+            </label>
+            <label class="toolbar-filter">
+              <span class="toolbar-filter__label">业务维度</span>
+              <select aria-label="业务维度">
+                <option>公共</option>
+                <option>设计</option>
+                <option>开发</option>
+                <option>测试</option>
+                <option>运维</option>
+                <option>维护</option>
+                <option>研究</option>
+                <option>项目管理</option>
+                <option>全部</option>
+              </select>
+            </label>
+            <label class="toolbar-filter">
+              <span class="toolbar-filter__label">部门</span>
+              <select aria-label="部门">
+                <option>xx部门</option>
+                <option>yy部门</option>
+                <option>zz部门</option>
+              </select>
+            </label>
+            <label class="toolbar-filter">
+              <span class="toolbar-filter__label">排序</span>
+              <select aria-label="排序">
+                <option>按季度得分情况排序</option>
+                <option>按本月得分情况排序</option>
+                <option>按本周得分情况排序</option>
+                <option>按今天得分情况排序</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -172,7 +449,13 @@ const activeReviewDimensionDetail = computed(
               v-for="task in taskCards"
               :key="task.id"
               class="task-card"
-              :class="{ 'is-active': task.active }"
+              :class="{ 'is-active': selectedTaskId === task.id }"
+              role="button"
+              tabindex="0"
+              :aria-pressed="selectedTaskId === task.id"
+              @click="selectTask(task.id)"
+              @keydown.enter.prevent="selectTask(task.id)"
+              @keydown.space.prevent="selectTask(task.id)"
             >
               <div class="task-card__title">{{ task.name }}</div>
               <div class="task-card__meta">{{ task.owner }} {{ task.id }} · {{ task.team }}</div>
@@ -185,7 +468,7 @@ const activeReviewDimensionDetail = computed(
           <section class="skill-detail" aria-label="Skill 详情">
             <div class="metric-row">
               <span
-                v-for="metric in metrics"
+                v-for="metric in activeMetrics"
                 :key="metric.label"
                 :class="['metric-chip', `is-${metric.tone}`]"
               >
@@ -194,7 +477,7 @@ const activeReviewDimensionDetail = computed(
             </div>
 
             <div class="score-tabs" role="tablist" aria-label="评分类型">
-              <button
+              <!-- <button
                 v-for="tab in scoreTabs"
                 :key="tab"
                 :class="{ 'is-active': activeScoreTab === tab }"
@@ -202,10 +485,10 @@ const activeReviewDimensionDetail = computed(
                 @click="activeScoreTab = tab"
               >
                 {{ tab }}
-              </button>
+              </button> -->
             </div>
 
-            <div v-if="!isExpertScoreTab" class="score-tab-pane">
+            <div v-if="false && !isExpertScoreTab" class="score-tab-pane">
               <div class="skill-preview">
                 <div class="file-tree">
                   <strong>文件结构</strong>
@@ -246,7 +529,6 @@ const activeReviewDimensionDetail = computed(
             </div>
 
             <section
-              v-else
               class="expert-review expert-review--inline"
               aria-labelledby="expert-title"
             >
@@ -255,53 +537,145 @@ const activeReviewDimensionDetail = computed(
                   <p class="review-hero__eyebrow">Expert Score Detail</p>
                   <h2 id="expert-title">专家评审打分详情</h2>
                 </div>
-                <button type="button">历史评审记录</button>
-              </div>
-
-              <div class="dimension-tabs" role="tablist" aria-label="专家评分维度">
-                <button
-                  v-for="dimension in reviewDimensions"
-                  :key="dimension"
-                  :class="{ 'is-active': activeReviewDimension === dimension }"
-                  type="button"
-                  @click="activeReviewDimension = dimension"
-                >
-                  {{ dimension }}
-                </button>
+                <button type="button" @click="isHistoryDrawerOpen = true">历史评审记录</button>
               </div>
 
               <div class="expert-editor">
                 <div class="expert-dimension-summary">
-                  <div class="dimension-score">
-                    <strong>{{ activeReviewDimensionDetail.score }}</strong>
-                    <span>分</span>
+                  <div
+                    class="score-input-panel"
+                    :class="{ 'is-pending': !isCurrentTaskReviewed }"
+                  >
+                    <span class="score-input-panel__caption">专家评分</span>
+                    <div class="score-input-panel__field">
+                      <template v-if="isScoreEditing">
+                        <label class="score-input-panel__input-wrap">
+                          <span class="visually-hidden">总体评价分数，满分 100</span>
+                          <input
+                            ref="scoreInputRef"
+                            :value="scoreInputText"
+                            type="text"
+                            inputmode="decimal"
+                            autocomplete="off"
+                            spellcheck="false"
+                            :placeholder="isCurrentTaskReviewed ? '0' : '待评'"
+                            aria-describedby="score-input-hint"
+                            @input="onScoreInput"
+                            @blur="onScoreBlur"
+                            @keydown="onScoreKeydown"
+                          />
+                        </label>
+                        <span class="score-input-panel__unit">分</span>
+                      </template>
+                      <template v-else>
+                        <span
+                          class="score-input-panel__display"
+                          :class="{ 'is-empty': !isCurrentTaskReviewed }"
+                        >
+                          {{ scoreDisplayText }}
+                        </span>
+                        <span class="score-input-panel__unit">分</span>
+                        <button
+                          type="button"
+                          class="score-input-panel__edit-btn"
+                          aria-label="编辑分数"
+                          @click="startScoreEditing"
+                        >
+                          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                            <path
+                              fill="currentColor"
+                              d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
+                            />
+                          </svg>
+                        </button>
+                      </template>
+                    </div>
+                    <span class="score-input-panel__range">满分 100 · 支持两位小数</span>
+                    <p id="score-input-hint" class="score-input-panel__hint">
+                      <template v-if="!isCurrentTaskReviewed">
+                        该 Skill 尚未评审，点击编辑图标输入 0–100 分
+                      </template>
+                      <template v-else>
+                        点击编辑图标修改分数，输入完成后点击空白处保存
+                      </template>
+                    </p>
                   </div>
-                  <div>
-                    <h3>{{ activeReviewDimension }}</h3>
-                    <p>{{ activeReviewDimensionDetail.summary }}</p>
-                  </div>
-                </div>
-
-                <div class="dimension-checks" aria-label="维度检查项">
-                  <span v-for="check in activeReviewDimensionDetail.checks" :key="check">{{
-                    check
-                  }}</span>
                 </div>
 
                 <div class="expert-editor__controls">
-                  <label>
-                    <span>是否授予个人勋章</span>
-                    <input type="checkbox" checked />
-                  </label>
-                  <select aria-label="勋章类型">
-                    <option>选择绿色通道类型（默认无）</option>
-                    <option>月度优秀勋章</option>
-                    <option>专家认可勋章</option>
-                  </select>
+                    <div class="medal-select">
+                      <span class="medal-select__label">是否授予个人勋章</span>
+                      <div class="medal-select__control">
+                        <button
+                          class="medal-select__button"
+                          type="button"
+                          :aria-expanded="isMedalSelectOpen"
+                          aria-haspopup="true"
+                          @click="isMedalSelectOpen = !isMedalSelectOpen"
+                        >
+                          {{ selectedPersonalMedalText }}
+                        </button>
+                        <div
+                          v-if="isMedalSelectOpen"
+                          class="medal-select__menu"
+                          role="group"
+                          aria-label="个人勋章"
+                        >
+                          <label
+                            v-for="option in medalOptions"
+                            :key="option"
+                            class="medal-select__option"
+                          >
+                            <input
+                              v-model="selectedPersonalMedals"
+                              type="checkbox"
+                              :value="option"
+                            />
+                            <span>{{ option }}</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="green-channel-select">
+                      <span class="green-channel-select__label">是否开通绿色通道</span>
+                      <div class="green-channel-select__control">
+                        <button
+                          class="green-channel-select__button"
+                          type="button"
+                          :aria-expanded="isGreenChannelSelectOpen"
+                          aria-haspopup="listbox"
+                          @click="isGreenChannelSelectOpen = !isGreenChannelSelectOpen"
+                        >
+                          {{ selectedGreenChannel }}
+                        </button>
+                        <div
+                          v-if="isGreenChannelSelectOpen"
+                          class="green-channel-select__menu"
+                          role="listbox"
+                          aria-label="绿色通道选择"
+                        >
+                          <button
+                            v-for="option in greenChannelOptions"
+                            :key="option"
+                            type="button"
+                            class="green-channel-select__option"
+                            :class="{ 'is-selected': selectedGreenChannel === option }"
+                            role="option"
+                            :aria-selected="selectedGreenChannel === option"
+                            @click="
+                              selectedGreenChannel = option;
+                              isGreenChannelSelectOpen = false;
+                            "
+                          >
+                            {{ option }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                 </div>
                 <label class="review-textarea">
-                  <span>{{ activeReviewDimension }}详情</span>
-                  <textarea :placeholder="activeReviewDimensionDetail.placeholder"></textarea>
+                  <span>{{ overallReviewDimension }}详情</span>
+                  <textarea :placeholder="overallReviewDimensionDetail?.placeholder"></textarea>
                 </label>
               </div>
             </section>
@@ -311,7 +685,13 @@ const activeReviewDimensionDetail = computed(
             <section class="side-panel">
               <div class="side-panel__header">
                 <h2>算力 / Token 绿色通道</h2>
-                <button type="button" aria-label="新增通道">+</button>
+                <button
+                  type="button"
+                  aria-label="增加算力"
+                  @click="openComputeChannelModal"
+                >
+                  +
+                </button>
               </div>
               <table>
                 <thead>
@@ -336,7 +716,13 @@ const activeReviewDimensionDetail = computed(
             <section class="side-panel">
               <div class="side-panel__header">
                 <h2>勋章榜单</h2>
-                <button type="button" aria-label="查看规则">i</button>
+                <button
+                  type="button"
+                  aria-label="发放勋章"
+                  @click="openMedalAwardModal"
+                >
+                  +
+                </button>
               </div>
               <div class="medal-list">
                 <article v-for="row in medalRows" :key="row.name" class="medal-row">
@@ -354,6 +740,283 @@ const activeReviewDimensionDetail = computed(
         </div>
       </section>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="isComputeChannelModalOpen"
+        class="medal-award-overlay"
+        role="presentation"
+        @click.self="closeComputeChannelModal"
+      >
+        <div
+          class="medal-award-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="compute-channel-title"
+        >
+          <header class="medal-award-dialog__header">
+            <div>
+              <h2 id="compute-channel-title">为 Skill 增加算力</h2>
+              <p>选择 Skill、算力通道类型并填写增加原因</p>
+            </div>
+            <button
+              type="button"
+              class="medal-award-dialog__close"
+              aria-label="关闭"
+              @click="closeComputeChannelModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="medal-award-form" @submit.prevent="submitComputeChannel">
+            <fieldset class="medal-award-field">
+              <legend>选择 Skill <span class="medal-award-field__required">*</span></legend>
+              <input
+                v-model="computeSkillSearchQuery"
+                class="medal-award-search"
+                type="search"
+                placeholder="搜索 Skill 名称或工号"
+                autocomplete="off"
+              />
+              <p v-if="!filteredComputeSkillOptions.length" class="medal-award-empty">
+                未找到匹配的 Skill
+              </p>
+              <ul v-else class="medal-award-skill-list" role="radiogroup" aria-label="Skill 列表">
+                <li v-for="skill in filteredComputeSkillOptions" :key="skill.id">
+                  <label
+                    class="medal-award-skill-option"
+                    :class="{ 'is-selected': selectedComputeSkillId === skill.id }"
+                  >
+                    <input
+                      v-model="selectedComputeSkillId"
+                      type="radio"
+                      name="compute-skill"
+                      :value="skill.id"
+                    />
+                    <span class="medal-award-skill-option__main">
+                      <strong>{{ skill.name }}</strong>
+                      <span>{{ skill.owner }} · {{ skill.id }} · {{ skill.team }}</span>
+                    </span>
+                  </label>
+                </li>
+              </ul>
+            </fieldset>
+
+            <fieldset class="medal-award-field">
+              <legend>算力通道 <span class="medal-award-field__required">*</span></legend>
+              <div class="medal-award-type-list medal-award-type-list--radio">
+                <label
+                  v-for="channelType in computeChannelTypes"
+                  :key="channelType"
+                  class="medal-award-type-option"
+                >
+                  <input
+                    v-model="selectedComputeChannelType"
+                    type="radio"
+                    name="compute-channel-type"
+                    :value="channelType"
+                  />
+                  <span>{{ channelType }}</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label class="medal-award-field medal-award-field--textarea">
+              <span>增加算力原因 <span class="medal-award-field__required">*</span></span>
+              <textarea
+                v-model="computeChannelReason"
+                rows="4"
+                placeholder="请填写为该 Skill 增加算力的原因与说明"
+              ></textarea>
+            </label>
+
+            <div class="medal-award-form__actions">
+              <button
+                type="button"
+                class="medal-award-btn medal-award-btn--ghost"
+                @click="closeComputeChannelModal"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                class="medal-award-btn medal-award-btn--primary"
+                :disabled="!isComputeChannelFormValid"
+              >
+                确认增加
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div
+        v-if="isMedalAwardModalOpen"
+        class="medal-award-overlay"
+        role="presentation"
+        @click.self="closeMedalAwardModal"
+      >
+        <div
+          class="medal-award-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="medal-award-title"
+        >
+          <header class="medal-award-dialog__header">
+            <div>
+              <h2 id="medal-award-title">为 Skill 发放勋章</h2>
+              <p>选择 Skill、勋章类型并填写发放理由</p>
+            </div>
+            <button
+              type="button"
+              class="medal-award-dialog__close"
+              aria-label="关闭"
+              @click="closeMedalAwardModal"
+            >
+              关闭
+            </button>
+          </header>
+
+          <form class="medal-award-form" @submit.prevent="submitMedalAward">
+            <fieldset class="medal-award-field">
+              <legend>选择 Skill <span class="medal-award-field__required">*</span></legend>
+              <input
+                v-model="skillSearchQuery"
+                class="medal-award-search"
+                type="search"
+                placeholder="搜索 Skill 名称或工号"
+                autocomplete="off"
+              />
+              <p v-if="!filteredSkillOptions.length" class="medal-award-empty">未找到匹配的 Skill</p>
+              <ul v-else class="medal-award-skill-list" role="radiogroup" aria-label="Skill 列表">
+                <li v-for="skill in filteredSkillOptions" :key="skill.id">
+                  <label
+                    class="medal-award-skill-option"
+                    :class="{ 'is-selected': selectedAwardSkillId === skill.id }"
+                  >
+                    <input
+                      v-model="selectedAwardSkillId"
+                      type="radio"
+                      name="award-skill"
+                      :value="skill.id"
+                    />
+                    <span class="medal-award-skill-option__main">
+                      <strong>{{ skill.name }}</strong>
+                      <span>{{ skill.owner }} · {{ skill.id }} · {{ skill.team }}</span>
+                    </span>
+                  </label>
+                </li>
+              </ul>
+            </fieldset>
+
+            <fieldset class="medal-award-field">
+              <legend>勋章类型 <span class="medal-award-field__required">*</span></legend>
+              <div class="medal-award-type-list">
+                <label
+                  v-for="medalType in medalAwardTypes"
+                  :key="medalType"
+                  class="medal-award-type-option"
+                >
+                  <input
+                    v-model="selectedAwardMedalTypes"
+                    type="checkbox"
+                    :value="medalType"
+                  />
+                  <span>{{ medalType }}</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label class="medal-award-field medal-award-field--textarea">
+              <span>发勋章理由 <span class="medal-award-field__required">*</span></span>
+              <textarea
+                v-model="awardMedalReason"
+                rows="4"
+                placeholder="请填写发放该勋章的理由与依据"
+              ></textarea>
+            </label>
+
+            <div class="medal-award-form__actions">
+              <button type="button" class="medal-award-btn medal-award-btn--ghost" @click="closeMedalAwardModal">
+                取消
+              </button>
+              <button
+                type="submit"
+                class="medal-award-btn medal-award-btn--primary"
+                :disabled="!isMedalAwardFormValid"
+              >
+                确认发放
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Teleport>
+
+    <div
+      v-if="isHistoryDrawerOpen"
+      class="history-drawer-backdrop"
+      @click="isHistoryDrawerOpen = false"
+    ></div>
+    <aside
+      v-if="isHistoryDrawerOpen"
+      class="history-drawer"
+      aria-label="历史评审记录"
+    >
+      <header class="history-drawer__header">
+        <div>
+          <p>历史评审记录</p>
+          <h2>{{ activeTask.name }}</h2>
+        </div>
+        <button
+          class="history-drawer__close"
+          type="button"
+          aria-label="关闭历史评审记录"
+          @click="isHistoryDrawerOpen = false"
+        >
+          关闭
+        </button>
+      </header>
+
+      <div class="history-drawer__body">
+        <article
+          v-for="record in reviewHistoryRecords"
+          :key="record.id"
+          class="history-record"
+        >
+          <div class="history-record__topline">
+            <strong>{{ record.reviewer }}</strong>
+            <span>{{ record.reviewedAt }}</span>
+          </div>
+          <p>{{ record.summary }}</p>
+          <div class="history-score-list">
+            <div
+              v-for="score in record.scores"
+              :key="score.dimension"
+              class="history-score-item"
+            >
+              <div>
+                <span>{{ score.dimension }}</span>
+                <strong>{{ score.score }}分</strong>
+              </div>
+              <button
+                class="history-suggestion"
+                type="button"
+                :title="score.suggestion"
+              >
+                优化建议
+                <span class="history-suggestion__tip">{{ score.suggestion }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="history-record__medals">
+            <span>个人勋章</span>
+            <strong>{{ record.medals.length ? record.medals.join('、') : '未授予' }}</strong>
+          </div>
+        </article>
+      </div>
+    </aside>
   </div>
 </template>
 
@@ -695,7 +1358,6 @@ th {
 }
 
 .review-board {
-  margin-top: 22px;
   padding: 18px;
 }
 
@@ -714,7 +1376,21 @@ th {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.toolbar-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.toolbar-filter__label {
+  color: #65748f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .toolbar-controls select,
@@ -740,25 +1416,54 @@ th {
 }
 
 .board-layout {
+  --review-workspace-h: 460px;
   display: grid;
   grid-template-columns: 220px minmax(420px, 1fr) 280px;
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .task-list {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  padding-right: 12px;
+  /* max-height: var(--review-workspace-h); */
+  height: 700px;
+  padding-right: 8px;
   border-right: 1px solid #e2e8f0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.task-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.task-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.task-list::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .task-card {
+  flex: 0 0 auto;
   padding: 14px;
   border: 1px solid #dbe5f2;
   border-radius: 8px;
   background: #ffffff;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.task-card:hover {
+  border-color: #93c5fd;
 }
 
 .task-card.is-active {
@@ -838,16 +1543,14 @@ th {
   color: #047857;
 }
 
-.score-tabs,
-.dimension-tabs {
+.score-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 0;
   margin-top: 12px;
 }
 
-.score-tabs button,
-.dimension-tabs button {
+.score-tabs button {
   min-width: 116px;
   height: 34px;
   border: 1px solid #0f172a;
@@ -858,18 +1561,15 @@ th {
   cursor: pointer;
 }
 
-.score-tabs button:first-child,
-.dimension-tabs button:first-child {
+.score-tabs button:first-child {
   border-radius: 8px 0 0 8px;
 }
 
-.score-tabs button:last-child,
-.dimension-tabs button:last-child {
+.score-tabs button:last-child {
   border-radius: 0 8px 8px 0;
 }
 
-.score-tabs button.is-active,
-.dimension-tabs button.is-active {
+.score-tabs button.is-active {
   background: #97d9ff;
   color: #0f3a6b;
 }
@@ -1001,8 +1701,8 @@ input:focus {
 }
 
 .support-column {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
 }
 
@@ -1076,35 +1776,488 @@ input:focus {
 
 .expert-review--inline {
   max-width: none;
-  margin: 16px 0 0;
-  padding: 18px;
-}
-
-.expert-review__header .review-hero__eyebrow {
-  color: #5d78a5;
-}
-
-.expert-review__header h2 {
-  font-size: 20px;
-}
-
-.expert-review__header button {
-  border: 1px solid #0f172a;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 16px 18px 18px;
+  border-color: #e8eef5;
   box-shadow: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.expert-review--inline .expert-review__header {
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.expert-review--inline .expert-review__header .review-hero__eyebrow {
+  margin: 0 0 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.expert-review--inline .expert-review__header h2 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.expert-review--inline .expert-review__header button {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.expert-review--inline .expert-review__header button:hover {
+  border-color: #b8c5d6;
+  background: #f8fafc;
+}
+
+.expert-review--inline .expert-editor {
+  margin-top: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding: 16px;
+  border: 1px solid #e8eef5;
+  border-radius: 10px;
+  background: #fbfcfe;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.expert-review--inline .expert-dimension-summary {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #e8eef5;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.expert-review--inline .score-input-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 18px 24px;
+  border: 1px dashed #bfdbfe;
+  border-radius: 8px;
+  background: #f8fbff;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.expert-review--inline .score-input-panel.is-pending {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.expert-review--inline .score-input-panel__caption {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.expert-review--inline .score-input-panel__field {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.expert-review--inline .score-input-panel__input-wrap {
+  display: inline-flex;
+  margin: 0;
+}
+
+.expert-review--inline .score-input-panel__display {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 56px;
+  padding: 0 10px;
+  color: #1d4ed8;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+.expert-review--inline .score-input-panel__display.is-empty {
+  color: #94a3b8;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.expert-review--inline .score-input-panel.is-pending .score-input-panel__display.is-empty {
+  color: #b45309;
+}
+
+.expert-review--inline .score-input-panel__edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.expert-review--inline .score-input-panel__edit-btn:hover {
+  border-color: #93c5fd;
+  background: #f0f7ff;
+  color: #2563eb;
+}
+
+.expert-review--inline .score-input-panel__edit-btn:focus-visible {
+  outline: 0;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+.expert-review--inline .score-input-panel__field input {
+  width: 120px;
+  height: 56px;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  outline: 0;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.expert-review--inline .score-input-panel.is-pending .score-input-panel__field input {
+  border-color: #fbbf24;
+  color: #b45309;
+}
+
+.expert-review--inline .score-input-panel__field input::placeholder {
+  color: #94a3b8;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.expert-review--inline .score-input-panel__field input:hover {
+  border-color: #60a5fa;
+}
+
+.expert-review--inline .score-input-panel__field input:focus {
+  border-color: #2563eb;
+  box-shadow:
+    inset 0 1px 2px rgba(15, 23, 42, 0.04),
+    0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+.expert-review--inline .score-input-panel__unit {
+  color: #64748b;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.expert-review--inline .score-input-panel__range {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.expert-review--inline .score-input-panel__hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.expert-review--inline .score-input-panel.is-pending .score-input-panel__hint {
+  color: #b45309;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.expert-review--inline .expert-editor__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  width: 100%;
+  margin: 0 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.expert-review--inline .expert-editor__controls .medal-select,
+.expert-review--inline .expert-editor__controls .green-channel-select {
+  display: grid;
+  grid-template-columns: minmax(108px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+  width: 100%;
+}
+
+.expert-review--inline .medal-select__label,
+.expert-review--inline .green-channel-select__label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.expert-review--inline .medal-select__control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.expert-review--inline .medal-select__button {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 30px 0 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.expert-review--inline .medal-select__button:hover {
+  border-color: #b8c5d6;
+  background: #f8fafc;
+}
+
+.expert-review--inline .medal-select__button::after {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid #94a3b8;
+  border-bottom: 1.5px solid #94a3b8;
+  content: '';
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.expert-review--inline .medal-select__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+.expert-review--inline .medal-select__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: #334155;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.expert-review--inline .medal-select__option:hover {
+  background: #f1f5f9;
+}
+
+.expert-review--inline .green-channel-select__control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.expert-review--inline .green-channel-select__button {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 30px 0 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.expert-review--inline .green-channel-select__button:hover {
+  border-color: #b8c5d6;
+  background: #f8fafc;
+}
+
+.expert-review--inline .green-channel-select__button::after {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid #94a3b8;
+  border-bottom: 1.5px solid #94a3b8;
+  content: '';
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.expert-review--inline .green-channel-select__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+.expert-review--inline .green-channel-select__option {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.expert-review--inline .green-channel-select__option:hover,
+.expert-review--inline .green-channel-select__option.is-selected {
+  background: #f1f5f9;
+}
+
+.expert-review--inline .green-channel-select__option.is-selected {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.expert-review--inline .review-textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.expert-review--inline .review-textarea span {
+  display: block;
+  margin-bottom: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.expert-review--inline .review-textarea textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 215px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.6;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.expert-review--inline .review-textarea textarea::placeholder {
+  color: #94a3b8;
 }
 
 .expert-editor {
   margin-top: 0;
+  min-width: 0;
+  max-width: 100%;
   padding: 18px;
-  border: 1px solid #111827;
-  border-radius: 8px;
+  border: 1px solid #e8eef5;
+  border-radius: 10px;
+  background: #fbfcfe;
+  box-sizing: border-box;
+  overflow: auto;
 }
 
 .expert-dimension-summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 14px;
-  align-items: center;
   margin-bottom: 14px;
   padding: 14px;
   border: 1px solid #dfe7f2;
@@ -1124,9 +2277,31 @@ input:focus {
   color: #1d4ed8;
 }
 
+.dimension-score--editable {
+  border: 1px solid transparent;
+}
+
+.dimension-score--editable:focus-within {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.18);
+}
+
 .dimension-score strong {
   font-size: 20px;
   line-height: 1;
+}
+
+.dimension-score input {
+  width: 46px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
 }
 
 .dimension-score span {
@@ -1170,12 +2345,13 @@ input:focus {
 }
 
 .expert-editor__controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  width: 100%;
+  margin: 0 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eef2f7;
 }
 
 .expert-editor__controls label {
@@ -1192,9 +2368,207 @@ input:focus {
   accent-color: #2563eb;
 }
 
+.medal-select {
+  display: grid;
+  grid-template-columns: minmax(108px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+  width: 100%;
+}
+
+.medal-select__label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.medal-select__control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.medal-select__button {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 30px 0 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.medal-select__button:hover {
+  border-color: #b8c5d6;
+  background: #f8fafc;
+}
+
+.medal-select__button::after {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid #94a3b8;
+  border-bottom: 1.5px solid #94a3b8;
+  content: '';
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.medal-select__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #cad6e5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+}
+
+.medal-select__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: #253857;
+  cursor: pointer;
+}
+
+.medal-select__option:hover {
+  background: #eff6ff;
+}
+
+.green-channel-select {
+  display: grid;
+  grid-template-columns: minmax(108px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+  width: 100%;
+}
+
+.green-channel-select__label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.green-channel-select__control {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.green-channel-select__button {
+  position: relative;
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 30px 0 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.green-channel-select__button:hover {
+  border-color: #b8c5d6;
+  background: #f8fafc;
+}
+
+.green-channel-select__button::after {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid #94a3b8;
+  border-bottom: 1.5px solid #94a3b8;
+  content: '';
+  transform: translateY(-65%) rotate(45deg);
+}
+
+.green-channel-select__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
+.green-channel-select__option {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.green-channel-select__option:hover,
+.green-channel-select__option.is-selected {
+  background: #f1f5f9;
+}
+
+.green-channel-select__option.is-selected {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
 .expert-editor select {
   min-width: 260px;
   padding: 0 12px;
+}
+
+.review-textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .review-textarea span {
@@ -1205,7 +2579,453 @@ input:focus {
 }
 
 .review-textarea textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 118px;
+  box-sizing: border-box;
+}
+
+.medal-award-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.medal-award-dialog {
+  width: min(520px, 100%);
+  max-height: min(88vh, 720px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+}
+
+.medal-award-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.medal-award-dialog__header h2 {
+  margin: 0;
+  color: #101828;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.medal-award-dialog__header p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.medal-award-dialog__close {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.medal-award-dialog__close:hover {
+  background: #f8fafc;
+}
+
+.medal-award-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.medal-award-field {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.medal-award-field legend,
+.medal-award-field > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.medal-award-field__required {
+  color: #dc2626;
+}
+
+.medal-award-search {
+  width: 100%;
+  height: 36px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.medal-award-search:focus {
+  border-color: #3b82f6;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+}
+
+.medal-award-empty {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+}
+
+.medal-award-skill-list {
+  display: grid;
+  gap: 8px;
+  max-height: 200px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.medal-award-skill-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.medal-award-skill-option:hover {
+  border-color: #93c5fd;
+  background: #f0f7ff;
+}
+
+.medal-award-skill-option.is-selected {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+
+.medal-award-skill-option input {
+  margin-top: 3px;
+  accent-color: #2563eb;
+}
+
+.medal-award-skill-option__main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.medal-award-skill-option__main strong {
+  color: #101828;
+  font-size: 14px;
+}
+
+.medal-award-skill-option__main span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.medal-award-type-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.medal-award-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.medal-award-type-option:has(input:checked) {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.medal-award-type-option input {
+  accent-color: #2563eb;
+}
+
+.medal-award-type-list--radio .medal-award-type-option {
+  min-width: 120px;
+  justify-content: center;
+}
+
+.medal-award-field--textarea textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0ec;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.medal-award-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.medal-award-btn {
+  min-width: 88px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.medal-award-btn--ghost {
+  border: 1px solid #d7e0ec;
+  background: #ffffff;
+  color: #475569;
+}
+
+.medal-award-btn--ghost:hover {
+  background: #f8fafc;
+}
+
+.medal-award-btn--primary {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.medal-award-btn--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.medal-award-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.history-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.history-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  width: min(430px, calc(100vw - 28px));
+  background: #ffffff;
+  border-right: 1px solid #d9e3f1;
+  box-shadow: 18px 0 42px rgba(15, 23, 42, 0.18);
+}
+
+.history-drawer__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 20px;
+  border-bottom: 1px solid #e5edf7;
+}
+
+.history-drawer__header p {
+  margin: 0 0 8px;
+  color: #5d78a5;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.history-drawer__header h2 {
+  margin: 0;
+  color: #101828;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.history-drawer__close {
+  min-width: 64px;
+  height: 34px;
+  border: 1px solid #cad6e5;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #253857;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.history-drawer__body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.history-record {
+  padding: 14px;
+  border: 1px solid #dfe7f2;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.history-record__topline,
+.history-score-item,
+.history-record__medals {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-record__topline strong {
+  color: #17233d;
+  font-size: 15px;
+}
+
+.history-record__topline span {
+  color: #718096;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.history-record p {
+  margin: 10px 0 12px;
+  color: #52647d;
+  line-height: 1.7;
+}
+
+.history-score-list {
+  display: grid;
+  gap: 8px;
+}
+
+.history-score-item {
+  padding: 10px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.history-score-item span,
+.history-record__medals span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.history-score-item strong,
+.history-record__medals strong {
+  display: block;
+  margin-top: 4px;
+  color: #1d4ed8;
+  font-size: 14px;
+}
+
+.history-suggestion {
+  position: relative;
+  flex: 0 0 auto;
+  height: 30px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e40af;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.history-suggestion__tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 90;
+  width: 240px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.6;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.history-suggestion:hover .history-suggestion__tip,
+.history-suggestion:focus .history-suggestion__tip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.history-record__medals {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #edf1f7;
 }
 
 @media (max-width: 1440px) {
@@ -1218,8 +3038,14 @@ input:focus {
   }
 
   .support-column {
+    flex-direction: row;
+    flex-wrap: wrap;
     grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(260px, 1fr));
+    height: auto;
+  }
+
+  .support-column .side-panel {
+    flex: 1 1 260px;
   }
 }
 
@@ -1271,7 +3097,12 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
+  .board-layout {
+    --review-workspace-h: 360px;
+  }
+
   .task-list {
+    max-height: var(--review-workspace-h);
     padding-right: 0;
     border-right: 0;
   }
@@ -1283,6 +3114,7 @@ input:focus {
   }
 
   .toolbar-controls,
+  .toolbar-filter,
   .toolbar-controls select,
   .toolbar-controls button,
   .primary-action,
@@ -1296,6 +3128,40 @@ input:focus {
 
   .review-hero h1 {
     font-size: 32px;
+  }
+
+  .medal-select,
+  .medal-select__control,
+  .green-channel-select,
+  .green-channel-select__control {
+    width: 100%;
+  }
+
+  .expert-editor__controls,
+  .expert-review--inline .expert-editor__controls {
+    grid-template-columns: 1fr;
+  }
+
+  .expert-editor__controls .medal-select,
+  .expert-editor__controls .green-channel-select,
+  .expert-review--inline .expert-editor__controls .medal-select,
+  .expert-review--inline .expert-editor__controls .green-channel-select {
+    grid-template-columns: 1fr;
+  }
+
+  .expert-review--inline .expert-editor__controls {
+    grid-template-columns: 1fr;
+  }
+
+  .expert-review--inline .expert-editor__controls .medal-select,
+  .expert-review--inline .expert-editor__controls .green-channel-select {
+    grid-template-columns: 1fr;
+  }
+
+  .history-score-item,
+  .history-record__medals {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
