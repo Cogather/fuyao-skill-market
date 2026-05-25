@@ -1318,7 +1318,7 @@ function myPublishReleaseOp(row: SkillListRecordDto): 'upgraded' | 'upgrade' | '
   return 'upgrade';
 }
 
-const releaseToOrganization = async (row: any): Promise<void> => {
+const releaseToOrganization = async (row: any) => {
   let orgObj = {
     pluginType: 4,
     pluginId: '',
@@ -1334,18 +1334,11 @@ const releaseToOrganization = async (row: any): Promise<void> => {
   });
   await skillBaseService.syncSkillToAgentCenter(
     {
-      reson: '测试',
+      reason: '测试',
       targetOrgId: 13,
     },
     row.id,
   );
-
-  const res = await skillBaseService.releaseToOrganization(String(row.id));
-  if (!res.meta.success) {
-    showToast(res.message || '升级失败');
-    return;
-  }
-  showToast('升级成功');
 };
 
 async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean): Promise<void> {
