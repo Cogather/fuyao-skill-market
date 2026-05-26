@@ -826,6 +826,8 @@ async function loadOpsDashboardOverview(): Promise<void> {
       // 暂时 组织数，要重新从接口拿
       orgCount.value = fy.data.rankings?.length ?? orgCount.value;
     }
+    selectedDeptSkillRows.value = [...selectedDeptNode.value?.skillRows] ?? [];
+    selectedDeptIndex.value = 0;
   } catch (e) {
     if (transportIsHttp) {
       showToast(e instanceof Error ? e.message : '运营管理加载失败');
@@ -2417,7 +2419,12 @@ const opsImporting = ref(false);
 const opsExcelInputRef = ref<HTMLInputElement | null>(null);
 const fuyaoOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
 
-const opsBoardSystem = ref<'fuyao' | 'company'>('fuyao');
+const opsBoardSystem = ref<'fuyao' | 'company'>('company');
+const changeSystem = (value: 'fuyao' | 'company') => {
+  opsBoardSystem.value = value;
+  selectedDeptSkillRows.value = [...selectedDeptNode.value?.skillRows] ?? [];
+  selectedDeptIndex.value = 0;
+};
 /** 公司运营管理「Excel 导入」仅管理员可用；扶摇看板不提供导入 */
 const showOpsExcelImport = computed(() => {
   return opsBoardSystem.value === 'company' && currentUserRole.value?.role === 'SUPER_ADMIN';
@@ -2474,9 +2481,9 @@ const opsDeptSkillLevelTabs: { key: OpsDeptSkillLevelFilter; label: string }[] =
   { key: 'org', label: '组织级' },
 ];
 
-function opsSkillLevel(row: OpsSkillDetailRow): string {
-  const raw = row as OpsSkillDetailRow & { level?: unknown; Level?: unknown };
-  return String(raw.publishLevel || raw.level || raw.Level || '').trim();
+const changeSkillLevel = (value: 'all' | 'personal' | 'org') => {
+  opsDeptSkillLevelFilter.value = value;
+  filterOpsDept(slectedDeptIndex.value);
 }
 
 function collectDefaultExpandedDeptPaths(nodes: DeptTreeNode[]): Set<string> {
@@ -2548,18 +2555,36 @@ function toggleDeptExpand(path: string): void {
     next.add(path);
   }
   expandedDeptPaths.value = next;
+  filterOpsDept(slectedDeptIndex.value);
 }
 
-function selectOpsDept(path: string): void {
+const selectedDeptSkillRows = ref<any>([]);
+const selectedDeptIndex = ref(0);
+
+const filterOpsDept = (index: number) => {
+  selectedDeptIndex.value = index;
+  const rows = selectedDeptNode.value?.skillRows ?? [];
+  if(opsDeptSkillLevelFilter.value === 'all') {
+    selectedDeptSkillRows.value = [...rows];
+    return;
+  }
+  const target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
+  let newRows = [];
+  for(const row of rows) {
+    if(row.publishLevel === target) {
+      newRows.push(row);
+    }
+  }
+  selectedDeptSkillRows.value = [...newRows];
+}
+
+function selectOpsDept(path: string, index: number): void {
   selectedOpsDeptPath.value = path;
-}
-
-function selectOpsOrg(name: string): void {
-  selectedOpsOrgName.value = name;
+  filterOpsDept(index);
 }
 
 function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
-  const out: FlatDeptRow[] = [];
+  const out: any[] = [];
   for (const n of nodes) {
     const hasChildren = Boolean(n.children && n.children.length > 0);
     const expanded = hasChildren ? expandedDeptPaths.value.has(n.path) : false;
@@ -2571,6 +2596,7 @@ function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
       downloads: n.downloads,
       hasChildren,
       expanded,
+      skillRows: [...n.skillRows],
     });
     if (hasChildren && expanded) {
       out.push(...flattenDeptTreeVisible(n.children!));
@@ -2589,23 +2615,32 @@ const uiOrgBarsSorted = computed(() =>
 
 const uiOrgBarsMax = computed(() => Math.max(1, ...uiOrgBarsSorted.value.map((x) => x.downloads)));
 
-const selectedDeptNode = computed(
-  () =>
-    findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null,
-);
+const selectedDeptNode = computed(() => {
+  uiDeptFlat.value.map((item, index) => {
+    let downloadsNum = 0;
+    let skillsNum = 0;
+    const isAll = opsDeptSkillLevelFilter.value === 'all';
+    let target = null;
+    if(!isAll) {
+      target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
+    }
+    for(const row of item.skillRows) {
+      if(isAll || (target && row.publishLevel === target)) {
+        downloadsNum += row.downloads;
+        skillsNum += 1;
+      }
+    }
+    if(index !== -1) {
+      uiDeptFlat.value[index].downloads = downloadsNum;
+      uiDeptFlat.value[index].skills = skillsNum;
+    }
+  })
+  return (findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null)
+});
 
 const selectedOrgBar = computed(
   () => uiOrgBars.value.find((row) => row.name === selectedOpsOrgName.value) ?? uiOrgBars.value[0],
 );
-
-const selectedDeptSkillRows = computed(() => {
-  const rows = selectedDeptNode.value?.skillRows ?? [];
-  if (opsDeptSkillLevelFilter.value === 'all') {
-    return rows;
-  }
-  const target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
-  return rows.filter((row) => opsSkillLevel(row) === target);
-});
 
 const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? []);
 
@@ -2620,7 +2655,7 @@ const opsKpiCards = computed<OpsKpiCard[]>(() => {
     },
     {
       label: '组织级 Skill',
-      value: kpi.orgCount,
+      value: kpi.activeSkills,
       desc:
         opsBoardSystem.value === 'fuyao'
           ? '已同步至公司组织维度、在扶摇市场按组织发布的 Skill 数量'
@@ -2720,7 +2755,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 </script>
 
 <template>
-  <div class="all-iframe">
+  <div>
     <UploadSkillModal
       v-model="uploadOpen"
       :operator-user-id="userId"
@@ -3664,7 +3699,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 role="tab"
                 :class="{ active: opsBoardSystem === 'fuyao' }"
                 :aria-selected="opsBoardSystem === 'fuyao'"
-                @click="opsBoardSystem = 'fuyao'"
+                @click="changeSystem('fuyao')"
               >
                 扶摇系统
               </button>
@@ -3675,7 +3710,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 role="tab"
                 :class="{ active: opsBoardSystem === 'company' }"
                 :aria-selected="opsBoardSystem === 'company'"
-                @click="opsBoardSystem = 'company'"
+                @click="changeSystem('company')"
               >
                 公司系统
               </button>
@@ -3734,7 +3769,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                       role="tab"
                       :class="{ active: opsDeptSkillLevelFilter === tab.key }"
                       :aria-selected="opsDeptSkillLevelFilter === tab.key"
-                      @click="opsDeptSkillLevelFilter = tab.key"
+                      @click="changeSkillLevel(tab.key)"
                     >
                       {{ tab.label }}
                     </button>
@@ -3748,7 +3783,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     </span>
                     <span v-else>接口未返回部门分布或当前无可展示数据。</span>
                   </div>
-                  <div v-for="row in uiDeptFlat" :key="row.path" class="ops-tree-item">
+                  <div v-for="(row, index) in uiDeptFlat" :key="row.path" class="ops-tree-item">
                     <button
                       type="button"
                       class="ops-tree-node"
@@ -3757,7 +3792,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                         'lv' + (row.levelNo > 6 ? 6 : row.levelNo),
                       ]"
                       :aria-pressed="selectedOpsDeptPath === row.path"
-                      @click="selectOpsDept(row.path)"
+                      @click="selectOpsDept(row.path, index)"
                     >
                       <span
                         v-if="row.hasChildren"
@@ -3783,7 +3818,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <section class="ops-card ops-detail-table-card">
                 <div class="ops-skill-table ops-dept-skill-table">
                   <div
-                    v-if="selectedDeptSkillRows.length === 0"
+                    v-if="!selectedDeptSkillRows?.length"
                     class="ops-empty-state ops-detail-empty-state"
                   >
                     <strong>暂无 Skill 明细</strong>
@@ -3850,7 +3885,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
 
             <div
-              v-if="uiOrgBarsSorted.length"
+              v-if="false && uiOrgBarsSorted.length"
               class="ops-pair-row org-row"
               :class="{ 'org-row-empty': uiOrgBarsSorted.length === 0 }"
             >
