@@ -76,7 +76,15 @@ export interface SkillVersionEntry {
 
 export type MarketPerspective = 'user' | 'admin';
 
-export type UserInnerTab = 'overview' | 'core' | 'releases' | 'org' | 'approval' | 'ops' | 'review';
+export type UserInnerTab =
+  | 'hot'
+  | 'overview'
+  | 'core'
+  | 'releases'
+  | 'org'
+  | 'approval'
+  | 'ops'
+  | 'review';
 
 /** 市场总览 · 快捷入口 */
 export type OverviewQuickFilter =

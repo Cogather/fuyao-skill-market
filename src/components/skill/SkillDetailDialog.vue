@@ -521,4 +521,144 @@ onBeforeUnmount(() => {
     overflow: auto;
   }
 }
+
+/* Prototype-aligned dialog polish */
+.overlay,
+.detail-overlay {
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.skill-detail-dialog {
+  border: 1px solid rgba(232, 236, 245, 0.92);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 252, 255, 0.98)),
+    #ffffff;
+  box-shadow: 0 28px 70px rgba(22, 34, 51, 0.18);
+}
+
+.detail-head {
+  padding: 18px 24px;
+  border-bottom-color: #e9edf3;
+  background: linear-gradient(180deg, rgba(120, 98, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+.detail-head h2 {
+  color: #15171d;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.detail-close,
+.detail-btn {
+  min-height: 38px;
+  border-color: #e9edf3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #373b45;
+  font-weight: 850;
+  box-shadow: 0 8px 18px rgba(12, 20, 35, 0.05);
+}
+
+.detail-close:hover,
+.detail-btn.ghost:hover:not(:disabled) {
+  color: #2f7df6;
+  border-color: #cfd7e6;
+  background: #fbfcff;
+}
+
+.detail-btn.ghost {
+  color: #2f7df6;
+  background: #eef6ff;
+  border-color: #d8eaff;
+}
+
+.detail-btn.primary {
+  background: #1d1d1f;
+  border-color: #1d1d1f;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+}
+
+.detail-btn.primary:hover {
+  background: #111111;
+  border-color: #111111;
+  transform: translateY(-1px);
+}
+
+.detail-btn.danger {
+  color: #c33d3d;
+  background: #fff2f2;
+  border-color: #ffd8d8;
+}
+
+.detail-more-menu {
+  border-color: #e9edf3;
+  border-radius: 8px;
+  box-shadow: 0 16px 42px rgba(22, 34, 51, 0.14);
+}
+
+.detail-more-item {
+  border-radius: 8px;
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.detail-more-item:hover {
+  color: #2f7df6;
+  background: #eef6ff;
+}
+
+.detail-toolbar {
+  padding: 18px 24px 14px;
+}
+
+.detail-pill {
+  min-height: 26px;
+  border-radius: 999px;
+  background: #f5f7fb;
+  border-color: #edf0f5;
+  color: #6b7280;
+  font-weight: 800;
+}
+
+.detail-pill.pill-category,
+.detail-pill.pill-id {
+  color: #2f7df6;
+  background: #eef6ff;
+  border-color: #d8eaff;
+}
+
+.detail-pill.scope-org {
+  color: #19905b;
+  background: #effaf4;
+  border-color: #d8f0e3;
+}
+
+.detail-pill.scope-personal {
+  color: #2f7df6;
+  background: #eef6ff;
+  border-color: #d8eaff;
+}
+
+.detail-file-panel,
+.detail-md-panel {
+  border-color: #e9edf3;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(22, 34, 51, 0.05);
+}
+
+.detail-panel-title {
+  background: #f8fafc;
+  border-bottom-color: #e9edf3;
+  color: #475569;
+  font-weight: 900;
+}
+
+.detail-md-body h3 {
+  color: #15171d;
+  font-weight: 900;
+  letter-spacing: 0;
+}
 </style>

@@ -935,4 +935,150 @@ const onSubmit = async (): Promise<void> => {
     flex: 1 1 auto;
   }
 }
+
+/* Prototype-aligned upload dialog polish */
+.overlay {
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.dialog {
+  border: 1px solid rgba(232, 236, 245, 0.92);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 252, 255, 0.98)),
+    #ffffff;
+  box-shadow: 0 28px 70px rgba(22, 34, 51, 0.18);
+}
+
+.dialog-head {
+  padding: 18px 24px;
+  border-bottom-color: #e9edf3;
+  background: linear-gradient(180deg, rgba(120, 98, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+.dialog-title {
+  color: #15171d;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.close-x,
+.btn {
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.close-x {
+  border-color: #e9edf3;
+  color: #373b45;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(12, 20, 35, 0.05);
+}
+
+.close-x:hover {
+  color: #2f7df6;
+  border-color: #cfd7e6;
+  background: #fbfcff;
+}
+
+.notice,
+.parse-notice {
+  border-color: #d8eaff;
+  border-radius: 8px;
+  background: #eef6ff;
+  color: #2f61c8;
+}
+
+.upload-zone {
+  border-color: #d8eaff;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(246, 250, 255, 0.86)),
+    linear-gradient(90deg, rgba(47, 125, 246, 0.08), rgba(46, 205, 211, 0.07));
+  box-shadow: 0 8px 24px rgba(22, 34, 51, 0.05);
+}
+
+.upload-zone:hover {
+  background: #f8fbff;
+  border-color: #b8d7ff;
+}
+
+.upload-icon {
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2f7df6, #7552ff);
+  box-shadow: 0 10px 22px rgba(95, 101, 155, 0.18);
+}
+
+.upload-result-card {
+  border-color: #e9edf3;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(22, 34, 51, 0.05);
+}
+
+.upload-result-head {
+  background: #f8fafc;
+  border-bottom-color: #e9edf3;
+}
+
+.upload-result-head b {
+  color: #15171d;
+  font-weight: 900;
+}
+
+.form-field label {
+  color: #7b8396;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.input,
+.textarea {
+  border-color: #e9edf3;
+  border-radius: 8px;
+  color: #15171d;
+  font-weight: 700;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: rgba(47, 125, 246, 0.42);
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.1);
+}
+
+.readonly {
+  background: #f8fafc;
+  color: #626b7c;
+}
+
+.actions {
+  border-top-color: #e9edf3;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.btn.ghost {
+  border-color: #e9edf3;
+  background: #ffffff;
+  color: #373b45;
+}
+
+.btn.primary {
+  background: #1d1d1f;
+  border-color: #1d1d1f;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+}
+
+.btn.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.16);
+}
+
+.btn.outline {
+  border-color: #d8eaff;
+  background: #eef6ff;
+  color: #2f7df6;
+}
 </style>

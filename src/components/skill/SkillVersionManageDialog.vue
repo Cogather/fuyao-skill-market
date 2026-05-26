@@ -523,4 +523,108 @@ const confirmUnpublish = () => {
   text-align: center;
   color: #64748b;
 }
+
+/* Prototype-aligned version dialog polish */
+.my-delete-popconfirm,
+.ver-mgmt-dialog {
+  border: 1px solid rgba(232, 236, 245, 0.92);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 28px 70px rgba(22, 34, 51, 0.18);
+}
+
+.ver-mgmt-overlay {
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.ver-mgmt-head {
+  padding: 18px 24px;
+  border-bottom-color: #e9edf3;
+  background: linear-gradient(180deg, rgba(120, 98, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+.ver-mgmt-title {
+  color: #15171d;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.ver-mgmt-btn,
+.ver-op-link,
+.ver-op-pill.disabled,
+.my-delete-pop-actions .mini {
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.ver-mgmt-btn {
+  border-color: #e9edf3;
+  background: #ffffff;
+  color: #373b45;
+  box-shadow: 0 8px 18px rgba(12, 20, 35, 0.05);
+}
+
+.ver-mgmt-btn:hover {
+  color: #2f7df6;
+  border-color: #cfd7e6;
+  background: #fbfcff;
+}
+
+.ver-mgmt-btn.ghost {
+  color: #2f7df6;
+  border-color: #d8eaff;
+  background: #eef6ff;
+}
+
+.ver-mgmt-table thead th {
+  color: #475569;
+  background: #f8fafc;
+  border-bottom-color: #e9edf3;
+  font-weight: 900;
+}
+
+.ver-mgmt-table tbody td {
+  border-bottom-color: #f1f3f7;
+}
+
+.badge {
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.badge-current {
+  color: #19905b;
+  background: #effaf4;
+  border-color: #d8f0e3;
+}
+
+.badge-off {
+  color: #6b7280;
+  background: #f5f7fb;
+  border-color: #edf0f5;
+}
+
+.ver-op-link.neutral {
+  color: #373b45;
+  border-color: #e9edf3;
+  background: #ffffff;
+}
+
+.ver-op-link.primary {
+  color: #2f7df6;
+  border-color: #d8eaff;
+  background: #eef6ff;
+}
+
+.ver-op-link.danger {
+  color: #c33d3d;
+  border-color: #ffd8d8;
+  background: #fff2f2;
+}
+
+.ver-op-link:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
 </style>
