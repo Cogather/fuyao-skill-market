@@ -2483,8 +2483,8 @@ const opsDeptSkillLevelTabs: { key: OpsDeptSkillLevelFilter; label: string }[] =
 
 const changeSkillLevel = (value: 'all' | 'personal' | 'org') => {
   opsDeptSkillLevelFilter.value = value;
-  filterOpsDept(slectedDeptIndex.value);
-}
+  filterOpsDept(selectedDeptIndex.value);
+};
 
 function collectDefaultExpandedDeptPaths(nodes: DeptTreeNode[]): Set<string> {
   const out = new Set<string>();
@@ -2555,7 +2555,7 @@ function toggleDeptExpand(path: string): void {
     next.add(path);
   }
   expandedDeptPaths.value = next;
-  filterOpsDept(slectedDeptIndex.value);
+  filterOpsDept(selectedDeptIndex.value);
 }
 
 const selectedDeptSkillRows = ref<any>([]);
@@ -2564,23 +2564,27 @@ const selectedDeptIndex = ref(0);
 const filterOpsDept = (index: number) => {
   selectedDeptIndex.value = index;
   const rows = selectedDeptNode.value?.skillRows ?? [];
-  if(opsDeptSkillLevelFilter.value === 'all') {
+  if (opsDeptSkillLevelFilter.value === 'all') {
     selectedDeptSkillRows.value = [...rows];
     return;
   }
   const target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
   let newRows = [];
-  for(const row of rows) {
-    if(row.publishLevel === target) {
+  for (const row of rows) {
+    if (row.publishLevel === target) {
       newRows.push(row);
     }
   }
   selectedDeptSkillRows.value = [...newRows];
-}
+};
 
 function selectOpsDept(path: string, index: number): void {
   selectedOpsDeptPath.value = path;
   filterOpsDept(index);
+}
+
+function selectOpsOrg(name: string): void {
+  selectedOpsOrgName.value = name;
 }
 
 function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
@@ -2621,21 +2625,23 @@ const selectedDeptNode = computed(() => {
     let skillsNum = 0;
     const isAll = opsDeptSkillLevelFilter.value === 'all';
     let target = null;
-    if(!isAll) {
+    if (!isAll) {
       target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
     }
-    for(const row of item.skillRows) {
-      if(isAll || (target && row.publishLevel === target)) {
+    for (const row of item.skillRows) {
+      if (isAll || (target && row.publishLevel === target)) {
         downloadsNum += row.downloads;
         skillsNum += 1;
       }
     }
-    if(index !== -1) {
+    if (index !== -1) {
       uiDeptFlat.value[index].downloads = downloadsNum;
       uiDeptFlat.value[index].skills = skillsNum;
     }
-  })
-  return (findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null)
+  });
+  return (
+    findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null
+  );
 });
 
 const selectedOrgBar = computed(
