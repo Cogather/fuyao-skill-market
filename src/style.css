@@ -216,3 +216,506 @@ code {
     border-right-color: var(--border);
   }
 }
+
+.ops-pair-row.dept-row {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: stretch;
+  min-height: 456px;
+  padding: 18px 20px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+.ops-pair-row.dept-row::before {
+  content: '';
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  justify-self: center;
+  width: 25.2px;
+  height: 188px;
+  background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 48%, #7f8fa6 100%);
+  clip-path: polygon(6% 0, 26% 0, 92% 50%, 26% 100%, 6% 100%, 72% 50%);
+  filter: drop-shadow(0 10px 14px rgba(100, 116, 139, 0.16));
+}
+.ops-pair-row.dept-row > .ops-card {
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  overflow: visible;
+}
+.ops-pair-row.dept-row > .ops-card:first-child {
+  display: contents;
+}
+.ops-pair-row.dept-row > .ops-card:first-child > .ops-card-head {
+  grid-column: 1/-1;
+  grid-row: 1;
+  min-height: auto;
+  padding: 0 0 14px;
+  border-bottom: 1px solid #eef2f7;
+  background: transparent;
+}
+.ops-pair-row.dept-row > .ops-card:first-child > .ops-card-head h3 {
+  font-size: 18px;
+  line-height: 1.25;
+}
+.ops-pair-row.dept-row > .ops-card:first-child > .ops-card-head p {
+  margin-top: 6px;
+}
+.ops-pair-row.dept-row .ops-dept-level-tabs {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #f8fbff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+.ops-pair-row.dept-row .ops-dept-level-tab {
+  min-width: 58px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 12px;
+  white-space: nowrap;
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+.ops-pair-row.dept-row .ops-dept-level-tab:hover {
+  color: #2563eb;
+  background: rgba(219, 234, 254, 0.55);
+}
+.ops-pair-row.dept-row .ops-dept-level-tab.active {
+  color: #1d4ed8;
+  background: #fff;
+  box-shadow:
+    0 7px 16px rgba(37, 99, 235, 0.13),
+    0 0 0 1px #bfdbfe;
+}
+.ops-pair-row.dept-row > .ops-card:first-child > .ops-card-body {
+  grid-column: 1;
+  grid-row: 2;
+}
+.ops-pair-row.dept-row > .ops-detail-table-card {
+  grid-column: 3;
+  grid-row: 2;
+}
+.ops-pair-row.dept-row > .ops-card:first-child > .ops-card-body,
+.ops-pair-row.dept-row > .ops-detail-table-card {
+  height: 360px;
+  margin-top: 16px;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.ops-pair-row.dept-row > .ops-detail-table-card > .ops-card-body {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+.ops-pair-row.dept-row > .ops-card:first-child > .ops-card-body,
+.ops-pair-row.dept-row > .ops-detail-table-card > .ops-card-body > .ops-skill-table,
+.ops-pair-row.dept-row
+  > .ops-detail-table-card
+  > .ops-card-body
+  > .ops-skill-table
+  > .ops-skill-table-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+.ops-pair-row.dept-row > .ops-detail-table-card .ops-empty-state {
+  height: 100%;
+}
+.ops-pair-row.dept-row > .ops-detail-table-card .ops-skill-table-wrap {
+  height: 100%;
+}
+@media (max-width: 980px) {
+  .ops-pair-row.dept-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(260px, auto) 32px minmax(260px, auto);
+    gap: 0;
+  }
+  .ops-pair-row.dept-row::before {
+    grid-column: 1;
+    grid-row: 3;
+    height: 132px;
+    transform: rotate(90deg);
+  }
+  .ops-pair-row.dept-row > .ops-card:first-child > .ops-card-body {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .ops-pair-row.dept-row > .ops-detail-table-card {
+    grid-column: 1;
+    grid-row: 4;
+  }
+  .ops-pair-row.dept-row > .ops-card:first-child > .ops-card-body,
+  .ops-pair-row.dept-row > .ops-detail-table-card {
+    height: 320px;
+  }
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: stretch;
+  min-height: 456px;
+  padding: 18px 20px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row > .ops-card {
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  overflow: visible;
+}
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row > .ops-card:first-child {
+  display: contents;
+}
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-card:first-child
+  > .ops-card-head {
+  grid-column: 1/-1;
+  grid-row: 1;
+  min-height: auto;
+  padding: 0 0 14px;
+  border-bottom: 1px solid #eef2f7;
+  background: transparent;
+}
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-card:first-child
+  > .ops-card-body {
+  grid-column: 1;
+  grid-row: 2;
+}
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row > .ops-detail-table-card {
+  grid-column: 3;
+  grid-row: 2;
+}
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-card:first-child
+  > .ops-card-body,
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row > .ops-detail-table-card {
+  margin-top: 16px;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-detail-table-card
+  > .ops-card-body {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-card:first-child
+  > .ops-card-body,
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-detail-table-card
+  > .ops-card-body
+  > .ops-skill-table,
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.dept-row
+  > .ops-detail-table-card
+  > .ops-card-body
+  > .ops-skill-table
+  > .ops-skill-table-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row .ops-dept-level-tabs {
+  flex: 0 0 auto;
+}
+@media (max-width: 980px) {
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(260px, auto) 32px minmax(260px, auto);
+    gap: 0;
+  }
+  .skill-market-shell
+    .panel.tab-panel.ops
+    .ops-pair-row.dept-row
+    > .ops-card:first-child
+    > .ops-card-body {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row > .ops-detail-table-card {
+    grid-column: 1;
+    grid-row: 4;
+  }
+  .skill-market-shell
+    .panel.tab-panel.ops
+    .ops-pair-row.dept-row
+    > .ops-card:first-child
+    > .ops-card-body,
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.dept-row > .ops-detail-table-card {
+    height: 320px;
+  }
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0 14px;
+  align-items: stretch;
+  min-height: 456px;
+  padding: 18px 20px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row::before {
+  content: '';
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  justify-self: center;
+  width: 25.2px;
+  height: 188px;
+  background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 48%, #7f8fa6 100%);
+  clip-path: polygon(6% 0, 26% 0, 92% 50%, 26% 100%, 6% 100%, 72% 50%);
+  filter: drop-shadow(0 10px 14px rgba(100, 116, 139, 0.16));
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row.org-row-empty {
+  grid-template-columns: 1fr;
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row.org-row-empty::before {
+  display: none;
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row > .ops-card {
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  overflow: visible;
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row > .ops-card:first-child {
+  display: contents;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-card:first-child
+  > .ops-card-head {
+  grid-column: 1/-1;
+  grid-row: 1;
+  min-height: auto;
+  padding: 0 0 14px;
+  border-bottom: 1px solid #eef2f7;
+  background: transparent;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-card:first-child
+  > .ops-card-head
+  h3 {
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-card:first-child
+  > .ops-card-head
+  p {
+  margin-top: 6px;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-card:first-child
+  > .ops-card-body {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row > .ops-detail-table-card {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-card:first-child
+  > .ops-card-body,
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row > .ops-detail-table-card {
+  margin-top: 16px;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-detail-table-card
+  > .ops-card-body {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-card:first-child
+  > .ops-card-body,
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-detail-table-card
+  > .ops-card-body
+  > .ops-skill-table,
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-detail-table-card
+  > .ops-card-body
+  > .ops-skill-table
+  > .ops-skill-table-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-detail-table-card
+  .ops-empty-state {
+  height: 100%;
+}
+
+.skill-market-shell
+  .panel.tab-panel.ops
+  .ops-pair-row.org-row
+  > .ops-detail-table-card
+  .ops-skill-table-wrap {
+  height: 100%;
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row .ops-org-empty-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-height: 360px;
+  margin-top: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #e6ebf2;
+  border-radius: 10px;
+  background: #fff;
+  color: #64748b;
+}
+
+.skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row .ops-org-empty-panel strong {
+  font-size: 15px;
+  font-weight: 850;
+}
+
+@media (max-width: 980px) {
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(260px, auto) 32px minmax(260px, auto);
+    gap: 0;
+  }
+
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row::before {
+    grid-column: 1;
+    grid-row: 3;
+    height: 132px;
+    transform: rotate(90deg);
+  }
+
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row.org-row-empty {
+    grid-template-rows: auto minmax(260px, auto);
+  }
+
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row.org-row-empty::before {
+    display: none;
+  }
+
+  .skill-market-shell
+    .panel.tab-panel.ops
+    .ops-pair-row.org-row
+    > .ops-card:first-child
+    > .ops-card-body {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row > .ops-detail-table-card {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .skill-market-shell
+    .panel.tab-panel.ops
+    .ops-pair-row.org-row
+    > .ops-card:first-child
+    > .ops-card-body,
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row > .ops-detail-table-card {
+    height: 320px;
+  }
+
+  .skill-market-shell .panel.tab-panel.ops .ops-pair-row.org-row .ops-org-empty-panel {
+    min-height: 320px;
+  }
+}

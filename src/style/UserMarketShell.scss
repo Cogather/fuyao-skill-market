@@ -1561,6 +1561,102 @@
   font-weight: 900;
 }
 
+.ops-dept-skill-table .skill-name-cell,
+.ops-org-skill-table .skill-name-cell {
+  gap: 8px;
+}
+
+.ops-dept-skill-table .dept-rank-flame,
+.ops-org-skill-table .dept-rank-flame,
+.ops-top-list .dept-rank-flame {
+  --flame-start: #ff3b4e;
+  --flame-end: #ff9a3d;
+  --flame-core: #ffe7a3;
+  --flame-glow: rgba(255, 79, 68, 0.28);
+  --flame-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 64 82' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M32 80C17.6 80 6 69.4 6 54.8c0-10.1 5.2-17 13.5-24.2-.9 7.5.2 13.6 4.7 16.9 5.5-8.9 1.3-19.9 10.4-31.1 2.3-2.8 4.5-5.8 3.6-11.5C49 13.1 53 22.1 45.7 31.8 55.3 29.8 61 36.4 61 47.4 61 65.5 48 80 32 80Z'/%3E%3C/svg%3E");
+  --flame-core-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 40 52' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 50C10.1 50 3.6 42.3 3.6 32.5c0-7 3.4-12.7 9.2-18.6-.6 5.4.5 9.8 4.1 12.1 2.7-6.2 2-13.3 9.5-22.8 1.4 7.8 7.8 12.5 9.1 21.8C37.7 39.7 30 50 20 50Z'/%3E%3C/svg%3E");
+  position: relative;
+  width: 19px;
+  height: 22px;
+  flex: 0 0 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: -2px;
+  filter: drop-shadow(0 3px 6px var(--flame-glow));
+}
+
+.ops-dept-skill-table .dept-rank-flame::before,
+.ops-org-skill-table .dept-rank-flame::before,
+.ops-top-list .dept-rank-flame::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px 0;
+  background:
+    radial-gradient(circle at 47% 72%, rgba(255, 255, 255, 0.52) 0 12%, transparent 24%),
+    radial-gradient(circle at 33% 30%, rgba(255, 255, 255, 0.22), transparent 30%),
+    linear-gradient(155deg, var(--flame-start) 8%, var(--flame-end) 58%, #ffd44d 100%);
+  mask-image: var(--flame-mask);
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-image: var(--flame-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+}
+
+.ops-dept-skill-table .dept-rank-flame::after,
+.ops-org-skill-table .dept-rank-flame::after,
+.ops-top-list .dept-rank-flame::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  width: 6px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  transform: rotate(22deg);
+  filter: blur(0.2px);
+  opacity: 0.72;
+}
+
+.ops-dept-skill-table .dept-rank-flame-core,
+.ops-org-skill-table .dept-rank-flame-core,
+.ops-top-list .dept-rank-flame-core {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 2px;
+  height: 13px;
+  background: linear-gradient(180deg, #fffef0 8%, var(--flame-core) 72%, rgba(255, 255, 255, 0.78));
+  mask-image: var(--flame-core-mask);
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-image: var(--flame-core-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  opacity: 0.98;
+  z-index: 1;
+}
+
+.ops-dept-skill-table .dept-rank-flame.rank-2,
+.ops-org-skill-table .dept-rank-flame.rank-2,
+.ops-top-list .dept-rank-flame.rank-2 {
+  --flame-start: #f59e0b;
+  --flame-end: #facc15;
+  --flame-core: #fff7ad;
+  --flame-glow: rgba(245, 158, 11, 0.24);
+}
+
+.ops-dept-skill-table .dept-rank-flame.rank-3,
+.ops-org-skill-table .dept-rank-flame.rank-3,
+.ops-top-list .dept-rank-flame.rank-3 {
+  --flame-start: #38bdf8;
+  --flame-end: #6366f1;
+  --flame-core: #c7f0ff;
+  --flame-glow: rgba(56, 189, 248, 0.24);
+}
+
 .desc-text {
   color: #64748b;
 }
@@ -1622,13 +1718,20 @@
 
 .ops-top-item {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
   border: 1px solid #edf2f7;
   border-radius: 10px;
   background: #fff;
+}
+
+.ops-rank-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .ops-rank {

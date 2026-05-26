@@ -2464,6 +2464,21 @@ function opsSkillOwner(row: OpsSkillDetailRow): string {
   return row.owner || row.publishName || '未填写发布人';
 }
 
+type OpsDeptSkillLevelFilter = 'all' | 'personal' | 'org';
+
+const opsDeptSkillLevelFilter = ref<OpsDeptSkillLevelFilter>('all');
+
+const opsDeptSkillLevelTabs: { key: OpsDeptSkillLevelFilter; label: string }[] = [
+  { key: 'all', label: '全部' },
+  { key: 'personal', label: '个人级' },
+  { key: 'org', label: '组织级' },
+];
+
+function opsSkillLevel(row: OpsSkillDetailRow): string {
+  const raw = row as OpsSkillDetailRow & { level?: unknown; Level?: unknown };
+  return String(raw.publishLevel || raw.level || raw.Level || '').trim();
+}
+
 function collectDefaultExpandedDeptPaths(nodes: DeptTreeNode[]): Set<string> {
   const out = new Set<string>();
   for (const n of nodes) {
@@ -2583,7 +2598,14 @@ const selectedOrgBar = computed(
   () => uiOrgBars.value.find((row) => row.name === selectedOpsOrgName.value) ?? uiOrgBars.value[0],
 );
 
-const selectedDeptSkillRows = computed(() => selectedDeptNode.value?.skillRows ?? []);
+const selectedDeptSkillRows = computed(() => {
+  const rows = selectedDeptNode.value?.skillRows ?? [];
+  if (opsDeptSkillLevelFilter.value === 'all') {
+    return rows;
+  }
+  const target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
+  return rows.filter((row) => opsSkillLevel(row) === target);
+});
 
 const selectedOrgSkillRows = computed(() => selectedOrgBar.value?.skillRows ?? []);
 
@@ -2627,10 +2649,8 @@ const opsEmptyText = computed(() =>
   opsBoardSystem.value === 'company' ? '暂无公司系统运营管理数据' : '暂无扶摇系统运营管理数据',
 );
 
-const opsOrgBarsHelpText = computed(() =>
-  opsBoardSystem.value === 'fuyao'
-    ? '与已同步至公司组织维度的组织级 Skill 一致，按发布组织聚合；点击条目查看右侧明细。'
-    : '点击横向条目后，右侧显示该组织级 Skill 列表。',
+const opsOrgBarsHelpText = computed(
+  () => '与已同步至公司组织维度的组织级 Skill 一致，按发布组织聚合；点击条目查看右侧明细。',
 );
 
 function buildOpsDashboardExportJsonFileName(sourceName: string): string {
@@ -3705,6 +3725,20 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     <h3>部门 Skill 分布详情</h3>
                     <p>点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
                   </div>
+                  <div class="ops-dept-level-tabs" role="tablist" aria-label="部门 Skill 级别筛选">
+                    <button
+                      v-for="tab in opsDeptSkillLevelTabs"
+                      :key="tab.key"
+                      type="button"
+                      class="ops-dept-level-tab"
+                      role="tab"
+                      :class="{ active: opsDeptSkillLevelFilter === tab.key }"
+                      :aria-selected="opsDeptSkillLevelFilter === tab.key"
+                      @click="opsDeptSkillLevelFilter = tab.key"
+                    >
+                      {{ tab.label }}
+                    </button>
+                  </div>
                 </div>
                 <div class="ops-card-body ops-tree board-org-tree" role="tree">
                   <div v-if="uiDeptFlat.length === 0" class="ops-empty-state">
@@ -3781,6 +3815,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                           >
                             <td class="col-name sticky-name">
                               <div class="skill-name-cell">
+                                <span
+                                  v-if="idx < 3"
+                                  class="dept-rank-flame"
+                                  :class="`rank-${idx + 1}`"
+                                  aria-hidden="true"
+                                >
+                                  <span class="dept-rank-flame-core" />
+                                </span>
                                 <span class="skill-row-dot">{{ idx + 1 }}</span>
                                 <span class="cell-ellipsis" :title="row.name">{{ row.name }}</span>
                               </div>
@@ -3809,7 +3851,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               </section>
             </div>
 
-            <div class="ops-pair-row org-row">
+            <div
+              class="ops-pair-row org-row"
+              :class="{ 'org-row-empty': uiOrgBarsSorted.length === 0 }"
+            >
               <section class="ops-card">
                 <div class="ops-card-head">
                   <div>
@@ -3817,12 +3862,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     <p>{{ opsOrgBarsHelpText }}</p>
                   </div>
                 </div>
-                <div class="ops-card-body">
+                <div v-if="uiOrgBarsSorted.length === 0" class="ops-org-empty-panel">
+                  <strong>暂无组织级应用</strong>
+                </div>
+                <div v-else class="ops-card-body">
                   <div class="ops-org-bars" role="list" aria-label="组织级 Skill 分布">
-                    <div v-if="uiOrgBarsSorted.length === 0" class="ops-empty-state">
-                      <strong>{{ opsEmptyText }}</strong>
-                      <span>暂无可展示的组织级 Skill 分布。</span>
-                    </div>
                     <button
                       v-for="row in uiOrgBarsSorted"
                       :key="row.name"
@@ -3846,7 +3890,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </div>
               </section>
 
-              <section class="ops-card ops-detail-table-card">
+              <section v-if="uiOrgBarsSorted.length > 0" class="ops-card ops-detail-table-card">
                 <div class="ops-card-body">
                   <div class="ops-skill-table ops-org-skill-table">
                     <div
@@ -3881,6 +3925,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                           >
                             <td class="col-name sticky-name">
                               <div class="skill-name-cell">
+                                <span
+                                  v-if="idx < 3"
+                                  class="dept-rank-flame"
+                                  :class="`rank-${idx + 1}`"
+                                  aria-hidden="true"
+                                >
+                                  <span class="dept-rank-flame-core" />
+                                </span>
                                 <span class="skill-row-dot">{{ idx + 1 }}</span>
                                 <span class="cell-ellipsis" :title="row.name">{{ row.name }}</span>
                               </div>
@@ -3923,12 +3975,22 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     <span>暂无下载排行数据。</span>
                   </div>
                   <div
-                    v-for="item in uiTopSkillsByDl"
+                    v-for="(item, idx) in uiTopSkillsByDl"
                     :key="`${item.rank}-${item.name}-${item.downloads}`"
                     class="ops-top-item"
                     role="listitem"
                   >
-                    <div class="ops-rank">{{ item.rank }}</div>
+                    <div class="ops-rank-wrap">
+                      <span
+                        v-if="idx < 3"
+                        class="dept-rank-flame"
+                        :class="`rank-${idx + 1}`"
+                        aria-hidden="true"
+                      >
+                        <span class="dept-rank-flame-core" />
+                      </span>
+                      <div class="ops-rank">{{ item.rank }}</div>
+                    </div>
                     <div>
                       <b>{{ item.name }}</b>
                       <small :title="item.dept">{{ opsSkillOwner(item) }} · {{ item.dept }}</small>
