@@ -3898,7 +3898,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     <strong>暂无组织级 Skill 明细</strong>
                     <span>选择有数据的组织条目后，将展示该组织级 Skill 列表。</span>
                   </div>
-                  <div v-else class="ops-skill-table-wrap">
+                  <div v-else class="ops-skill-table-wrap" style="height: 393px">
                     <table class="table ops-detail-table">
                       <thead>
                         <tr>
