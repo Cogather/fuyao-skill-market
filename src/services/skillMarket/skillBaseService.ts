@@ -264,4 +264,12 @@ export const skillBaseService = {
       data: body,
     });
   },
+
+  // 热榜数量接口
+  getHotSkillNums: (): any => {
+    return httpRequest.skill<any>({
+      url: '/stat',
+      method: 'get',
+    });
+  },
 };

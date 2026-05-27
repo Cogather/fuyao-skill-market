@@ -533,8 +533,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(232, 236, 245, 0.92);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 252, 255, 0.98)),
-    #ffffff;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 252, 255, 0.98)), #ffffff;
   box-shadow: 0 28px 70px rgba(22, 34, 51, 0.18);
 }
 

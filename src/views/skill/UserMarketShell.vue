@@ -109,16 +109,12 @@ function cloneHotMarketStats(): HotMarketStat[] {
   return HOT_MARKET_STATS_MOCK.map((item) => ({ ...item }));
 }
 
-const hotMarketStats = ref<HotMarketStat[]>(cloneHotMarketStats());
-const hotMarketStatsByKey = computed(() => {
-  return hotMarketStats.value.reduce(
-    (acc, item) => {
-      acc[item.key] = item;
-      return acc;
-    },
-    {} as Record<HotMarketStatKey, HotMarketStat>,
-  );
-});
+const hotMarketStatsByKey = ref<any>({
+  skillCount: {key: 'skillCount', label: 'SKILL', value: '7.4万'},
+  creatorCount: {key: 'creatorCount', label: '创作人数', value: '1.2万'},
+  callCount: {key: 'callCount', label: '调用数', value: '230万'},
+  downloadCount: {key: 'downloadCount', label: '下载数', value: '86万'},
+})
 
 const OVERVIEW_DEFAULT_VISIBLE_ROWS = 3;
 const OVERVIEW_MAX_PAGE_SIZE = 48;
@@ -812,76 +808,6 @@ function readNumberField(record: Record<string, unknown>, keys: string[]): numbe
   return null;
 }
 
-function readDashboardMetric(
-  data: Record<string, unknown>,
-  kpis: Record<string, unknown>,
-  keys: string[],
-): number | null {
-  return readNumberField(kpis, keys) ?? readNumberField(data, keys);
-}
-
-function hotMarketStatValue(key: HotMarketStatKey): string {
-  return (
-    hotMarketStatsByKey.value[key]?.value ??
-    HOT_MARKET_STATS_MOCK.find((s) => s.key === key)?.value ??
-    ''
-  );
-}
-
-async function loadHotMarketStats(): Promise<void> {
-  if (!transportIsHttp) {
-    hotMarketStats.value = cloneHotMarketStats();
-    return;
-  }
-  try {
-    const res = await skillBaseService.queryDashboardOverview({ system: 'fuyao' });
-    if (!serviceSucceeded(res)) {
-      showToast(serviceMessage(res, '热榜数据加载失败'));
-      return;
-    }
-    const data = readServiceRecord(readServiceRecord(res).data);
-    const kpis = readServiceRecord(data.kpis);
-    const metrics: Partial<Record<HotMarketStatKey, number | null>> = {
-      skills: readDashboardMetric(data, kpis, [
-        'totalSkills',
-        'skillCount',
-        'totalSkillCount',
-        'skills',
-      ]),
-      creators: readDashboardMetric(data, kpis, [
-        'creatorCount',
-        'creators',
-        'authorCount',
-        'publisherCount',
-        'userCount',
-      ]),
-      calls: readDashboardMetric(data, kpis, [
-        'callCount',
-        'calls',
-        'invokeCount',
-        'invocationCount',
-        'usageCount',
-      ]),
-      downloads: readDashboardMetric(data, kpis, [
-        'downloads',
-        'totalDownloads',
-        'downloadCount',
-        'downloadTimes',
-      ]),
-    };
-    hotMarketStats.value = HOT_MARKET_STATS_MOCK.map((item) => {
-      const metric = metrics[item.key];
-      const formatted = typeof metric === 'number' ? formatHotStatNumber(metric) : '';
-      return {
-        ...item,
-        value: formatted || item.value,
-      };
-    });
-  } catch (e) {
-    showToast(e instanceof Error ? e.message : '热榜数据加载失败');
-  }
-}
-
 function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -1363,6 +1289,16 @@ async function loadSyncApplicationRows(): Promise<void> {
   }
 }
 
+const loadHotSkillNums = async () => {
+  await skillBaseService.getHotSkillNums().then((res: any) => {
+    if (res.meta.success && res.data) {
+      Object.keys(res.data).map((key) => {
+        hotMarketStatsByKey.value[key].value = res.data[key].toString();
+      });
+    }
+  });
+}
+
 const myReleasePageNumValue = ref<number>(1);
 const myReleasePageSizeValue = ref<number>(16);
 
@@ -1809,7 +1745,7 @@ watch(
   async (tab) => {
     closeDeleteConfirm();
     if (tab === 'hot') {
-      await loadHotMarketStats();
+      await loadHotSkillNums();
     }
     if (tab === 'overview') {
       await startOverviewRemoteFetch();
@@ -3185,7 +3121,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
             <div class="market-stat-meta">
               <div class="market-stat-label">SKILL</div>
-              <div class="market-stat-value">{{ hotMarketStatValue('skills') }}</div>
+              <div class="market-stat-value">{{ hotMarketStatsByKey.skillCount.value }}</div>
             </div>
           </div>
           <div class="market-stat-card">
@@ -3206,7 +3142,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
             <div class="market-stat-meta">
               <div class="market-stat-label">创作人数</div>
-              <div class="market-stat-value">{{ hotMarketStatValue('creators') }}</div>
+              <div class="market-stat-value">{{ hotMarketStatsByKey.creatorCount.value }}</div>
             </div>
           </div>
           <div class="market-stat-card">
@@ -3223,7 +3159,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
             <div class="market-stat-meta">
               <div class="market-stat-label">调用数</div>
-              <div class="market-stat-value">{{ hotMarketStatValue('calls') }}</div>
+              <div class="market-stat-value">{{ hotMarketStatsByKey.callCount.value }}</div>
             </div>
           </div>
           <div class="market-stat-card">
@@ -3240,7 +3176,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
             <div class="market-stat-meta">
               <div class="market-stat-label">下载数</div>
-              <div class="market-stat-value">{{ hotMarketStatValue('downloads') }}</div>
+              <div class="market-stat-value">{{ hotMarketStatsByKey.downloadCount.value }}</div>
             </div>
           </div>
         </div>
@@ -3547,7 +3483,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </section>
     </div>
 
-    <div v-else-if="innerTab === 'core'" class="panel tab-panel core">
+    <div v-else-if="innerTab === 'core'" class="tabs-panel overview-panel core">
       <div class="core-alert" role="note" aria-label="CoreHarness 提示">
         <strong>CoreHarness</strong> 是独立资产产线，区分开发部级 / PDU /
         产品线三个层级。用户不能直接发布 CoreHarness，只能申请把自己的 Skill 转为
@@ -3617,14 +3553,15 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div
       v-else-if="innerTab === 'releases'"
       ref="tabPanelRef"
-      class="panel tab-panel my-release-panel"
+      class="tabs-panel overview-panel my-release-panel"
+      style="padding-top: 108px !important;"
       :style="tabPanelFillStyle"
     >
       <section class="my-release-top">
         <div class="section-title mine-section-title">
           <div>
-            <h1>我的发布</h1>
-            <p class="hero-desc">
+            <h1 style="font-size: 42px;">我的发布</h1>
+            <p class="all-desc">
               管理自己上传的 Skill，默认发布为个人级；可发起发布到组织级申请。
             </p>
           </div>
@@ -3776,13 +3713,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div
       v-else-if="innerTab === 'org'"
       ref="tabPanelRef"
-      class="panel tab-panel admin-org-panel"
+      class="tabs-panel overview-panel admin-org-panel"
       :style="tabPanelFillStyle"
+      style="padding-top: 108px !important;"
     >
       <header class="admin-panel-head management-panel-head">
         <div>
-          <h2 class="panel-title">组织管理</h2>
-          <p class="panel-help">
+          <h2 class="panel-title" style="font-size: 42px;">组织管理</h2>
+          <p class="all-desc">
             配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill
             市场的管理员角色。
           </p>
@@ -3847,13 +3785,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div
       v-else-if="innerTab === 'approval'"
       ref="tabPanelRef"
-      class="panel tab-panel admin-approval-panel"
+      class="tabs-panel overview-panel admin-approval-panel"
+      style="padding-top: 108px !important;"
       :style="tabPanelFillStyle"
     >
       <header class="admin-panel-head management-panel-head">
         <div>
-          <h2 class="panel-title">审核中心</h2>
-          <p class="panel-help">
+          <h2 class="panel-title" style="font-size: 42px;">审核中心</h2>
+          <p class="all-desc">
             个人级同步到组织级时，由目标组织的组织管理员审核。审核中心区分待审核和已完成。
           </p>
         </div>
@@ -3980,8 +3919,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div v-else-if="innerTab === 'ops'" class="panel tab-panel ops">
       <header class="ops-title management-panel-head">
         <div>
-          <h2>运营管理</h2>
-          <p>
+          <h2 style="font-size: 42px;">运营管理</h2>
+          <p class="all-desc">
             扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级
             Skill。
           </p>

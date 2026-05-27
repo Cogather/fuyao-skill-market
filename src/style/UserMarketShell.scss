@@ -478,6 +478,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-top: 80px !important;
 }
 
 .mini {
@@ -7164,9 +7165,7 @@
   --market-purple: #7552ff;
   --market-cyan: #2ecdd3;
   --market-shadow: 0 18px 48px rgba(35, 52, 84, 0.08);
-  --market-shadow-soft:
-    0 10px 28px rgba(35, 52, 84, 0.06),
-    0 1px 0 rgba(255, 255, 255, 0.74) inset;
+  --market-shadow-soft: 0 10px 28px rgba(35, 52, 84, 0.06), 0 1px 0 rgba(255, 255, 255, 0.74) inset;
   background:
     radial-gradient(circle at 8% 0%, rgba(88, 146, 255, 0.13), transparent 26%),
     radial-gradient(circle at 92% 8%, rgba(128, 82, 255, 0.12), transparent 28%),
@@ -7253,8 +7252,7 @@
 .admin-org-panel .admin-panel-body,
 .admin-approval-panel .admin-panel-body,
 .ops-dashboard-card.ops-dashboard {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(251, 252, 255, 0.92) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(251, 252, 255, 0.92) 100%);
 }
 
 .overview-panel .market-sidebar,
@@ -7395,8 +7393,12 @@
   z-index: -1;
   height: calc(var(--market-topbar-height) + 240px);
   pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(239, 244, 255, 0.7) 0%, rgba(246, 250, 255, 0.36) 54%, rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(239, 244, 255, 0.7) 0%,
+    rgba(246, 250, 255, 0.36) 54%,
+    rgba(255, 255, 255, 0) 100%
+  );
 }
 
 .skill-market-shell.is-overview-tab .panel.tab-panel.overview-panel,
@@ -7408,9 +7410,13 @@
   background:
     radial-gradient(circle at 8% 0%, rgba(88, 146, 255, 0.11), transparent 26%),
     radial-gradient(circle at 92% 0%, rgba(128, 82, 255, 0.1), transparent 28%),
-    linear-gradient(180deg, rgba(247, 250, 255, 0.92) 0%, rgba(251, 252, 255, 0.96) 44%, #ffffff 100%);
+    linear-gradient(
+      180deg,
+      rgba(247, 250, 255, 0.92) 0%,
+      rgba(251, 252, 255, 0.96) 44%,
+      #ffffff 100%
+    );
 }
-
 
 .overview-panel {
   padding: 84px 60px 0 48px !important;
@@ -7436,8 +7442,18 @@
 .skill-market-shell::after {
   height: calc(var(--market-topbar-height) + 320px);
   background:
-    linear-gradient(90deg, rgba(232, 240, 255, 0.92) 0%, rgba(255, 255, 255, 0.4) 48%, rgba(241, 232, 255, 0.88) 100%),
-    linear-gradient(180deg, rgba(244, 248, 255, 0.84) 0%, rgba(247, 250, 255, 0.38) 58%, rgba(255, 255, 255, 0) 100%);
+    linear-gradient(
+      90deg,
+      rgba(232, 240, 255, 0.92) 0%,
+      rgba(255, 255, 255, 0.4) 48%,
+      rgba(241, 232, 255, 0.88) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(244, 248, 255, 0.84) 0%,
+      rgba(247, 250, 255, 0.38) 58%,
+      rgba(255, 255, 255, 0) 100%
+    );
 }
 
 .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.my-release-panel {

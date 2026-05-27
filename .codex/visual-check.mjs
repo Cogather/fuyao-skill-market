@@ -11,7 +11,10 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const url = process.argv[2] || 'http://127.0.0.1:5175/skill-market/index.html';
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 920 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({
+  viewport: { width: 1440, height: 920 },
+  deviceScaleFactor: 1,
+});
 const consoleMessages = [];
 page.on('console', (msg) => {
   if (['error', 'warning'].includes(msg.type())) {
@@ -66,8 +69,12 @@ await page.screenshot({ path: path.join(scriptDir, 'skill-market-mobile.png'), f
 const mobileMetrics = await page.evaluate(() => ({
   viewport: `${innerWidth}x${innerHeight}`,
   horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  topbarHeight: Math.round(document.querySelector('.market-topbar')?.getBoundingClientRect().height ?? 0),
-  heroHeight: Math.round(document.querySelector('.market-hero')?.getBoundingClientRect().height ?? 0),
+  topbarHeight: Math.round(
+    document.querySelector('.market-topbar')?.getBoundingClientRect().height ?? 0,
+  ),
+  heroHeight: Math.round(
+    document.querySelector('.market-hero')?.getBoundingClientRect().height ?? 0,
+  ),
   visibleCards: [...document.querySelectorAll('.card')].filter((el) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
