@@ -4,7 +4,6 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
-  onUnmounted,
   reactive,
   ref,
   watch,
@@ -441,33 +440,44 @@ function sortOverviewSkills(list: Skill[]): Skill[] {
   );
 }
 
+const OVERVIEW_BOTTOM_THRESHOLD = 8;
 let lastScrollTop = 0; // 上一次的滚动位置
+let overviewBottomLoadArmed = true;
+
+function resetOverviewScrollState(): void {
+  lastScrollTop = 0;
+  overviewBottomLoadArmed = true;
+}
+
 const handleScroll = async () => {
+  if (!transportIsHttp || overviewRemoteLoading.value) {
+    return;
+  }
   const el = marketContentRef.value;
   if (!el) {
     return;
   }
   const scrollTop = el.scrollTop;
-  if (scrollTop <= lastScrollTop - 100) {
-    // 正在向上滚动
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const isNearBottom = maxScrollTop - scrollTop <= OVERVIEW_BOTTOM_THRESHOLD;
+  if (!isNearBottom) {
+    overviewBottomLoadArmed = true;
     lastScrollTop = scrollTop;
     return;
   }
-  const windowHeight = el.clientHeight;
-  const documentHeight = el.scrollHeight;
-  // 判断是否滚动到底部
-  if (scrollTop + windowHeight >= documentHeight) {
-    // 如果还有更多数据，加载下一页
-    if (page.pageIndex * page.pageSize < page.total) {
-      overviewFilterObj.value.pageNum += 1;
-      page.pageIndex += 1;
-      await startOverviewRemoteFetch(true);
-      setTimeout(() => {
-        el.scrollTop = el.scrollHeight;
-      }, 0);
-    }
+
+  if (!overviewBottomLoadArmed || scrollTop < lastScrollTop) {
+    lastScrollTop = scrollTop;
+    return;
   }
-  lastScrollTop = scrollTop;
+
+  if (page.pageIndex * page.pageSize < page.total) {
+    overviewBottomLoadArmed = false;
+    page.pageIndex += 1;
+    overviewFilterObj.value.pageNum = page.pageIndex;
+    await startOverviewRemoteFetch(true);
+  }
+  lastScrollTop = el.scrollTop;
 };
 
 const orgOptions = computed(() => {
@@ -994,20 +1004,9 @@ onMounted(async () => {
     await loadAdminOrganizations();
     // await startOverviewRemoteFetch();
     // await loadOpsDashboardOverview();
-    const el = marketContentRef.value;
-    if (el) {
-      el.addEventListener('scroll', debounceScroll);
-    }
   }
   document.addEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.addEventListener('keydown', onMarketDeptCascaderKeydown);
-});
-
-onUnmounted(() => {
-  const el = marketContentRef.value;
-  if (el) {
-    el.removeEventListener('scroll', debounceScroll);
-  }
 });
 
 onBeforeUnmount(() => {
@@ -1036,11 +1035,16 @@ const overviewFilteredAll = computed(() => {
 });
 
 async function startOverviewRemoteFetch(isPageOver?: boolean): Promise<void> {
+  if (!isPageOver) {
+    resetOverviewScrollState();
+  }
   overviewRemoteLoading.value = true;
   try {
     const env = await skillBaseService.querySkillList(overviewFilterObj.value);
     if (env.meta.success && env.data) {
-      newSkills.value = isPageOver ? [...newSkills.value, ...env.data] : [...env.data];
+      const nextItems = isPageOver ? [...newSkills.value, ...env.data] : [...env.data];
+      newSkills.value = nextItems;
+      overviewRemoteItems.value = nextItems;
       overviewRemoteTotal.value = env.meta.number;
       page.total = env.meta.number;
       overviewRemoteExhausted.value =
@@ -3114,8 +3118,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </button>
       </nav>
 
-      <span class="header-search header-search--placeholder" aria-hidden="true" />
-      <button type="button" class="top-publish-btn" @click="openUpload">
+      <!-- <span class="header-search header-search--placeholder" aria-hidden="true" /> -->
+      <button type="button" class="top-publish-btn" style="margin-left: auto;" @click="openUpload">
         <span class="top-publish-plus" aria-hidden="true">+</span>
         发布 Skill
       </button>
@@ -3126,7 +3130,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         title="查看skill市场使用指导"
         @click="helpLink"
       />
-      <button v-if="false" type="button" class="top-icon" aria-label="通知">🔔</button>
     </header>
 
     <section v-if="innerTab === 'core'" class="hero">
@@ -3150,7 +3153,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div
       v-if="innerTab === 'hot'"
       ref="tabPanelRef"
-      class="panel tab-panel hot-panel"
+      class="tabs-panel"
       :style="tabPanelFillStyle"
     >
       <section class="hot-hero-simple">
@@ -3247,7 +3250,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div
       v-else-if="innerTab === 'overview'"
       ref="tabPanelRef"
-      class="panel tab-panel overview-panel"
+      class="tabs-panel overview-panel"
       :style="tabPanelFillStyle"
     >
       <section class="all-header">
@@ -3518,7 +3521,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <div class="overview-list-footer" role="status">
           <span>{{ overviewListFooterHint }}</span>
         </div>
-        <div ref="marketContentRef" class="market-list-scroll">
+        <div ref="marketContentRef" class="market-list-scroll" @scroll="debounceScroll">
           <p
             v-if="transportIsHttp && overviewRemoteLoading && overviewRemoteItems.length === 0"
             class="empty overview-loading-hint"
