@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  reactive,
-  ref,
-  watch,
-} from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import SkillCard from '../../components/skill/SkillCard.vue';
@@ -110,11 +102,11 @@ function cloneHotMarketStats(): HotMarketStat[] {
 }
 
 const hotMarketStatsByKey = ref<any>({
-  skillCount: {key: 'skillCount', label: 'SKILL', value: '7.4万'},
-  creatorCount: {key: 'creatorCount', label: '创作人数', value: '1.2万'},
-  callCount: {key: 'callCount', label: '调用数', value: '230万'},
-  downloadCount: {key: 'downloadCount', label: '下载数', value: '86万'},
-})
+  skillCount: { key: 'skillCount', label: 'SKILL', value: '7.4万' },
+  creatorCount: { key: 'creatorCount', label: '创作人数', value: '1.2万' },
+  callCount: { key: 'callCount', label: '调用数', value: '230万' },
+  downloadCount: { key: 'downloadCount', label: '下载数', value: '86万' },
+});
 
 const OVERVIEW_DEFAULT_VISIBLE_ROWS = 3;
 const OVERVIEW_MAX_PAGE_SIZE = 48;
@@ -1297,7 +1289,7 @@ const loadHotSkillNums = async () => {
       });
     }
   });
-}
+};
 
 const myReleasePageNumValue = ref<number>(1);
 const myReleasePageSizeValue = ref<number>(16);
@@ -3055,7 +3047,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </nav>
 
       <!-- <span class="header-search header-search--placeholder" aria-hidden="true" /> -->
-      <button type="button" class="top-publish-btn" style="margin-left: auto;" @click="openUpload">
+      <button type="button" class="top-publish-btn" style="margin-left: auto" @click="openUpload">
         <span class="top-publish-plus" aria-hidden="true">+</span>
         发布 Skill
       </button>
@@ -3086,12 +3078,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </section>
 
-    <div
-      v-if="innerTab === 'hot'"
-      ref="tabPanelRef"
-      class="tabs-panel"
-      :style="tabPanelFillStyle"
-    >
+    <div v-if="innerTab === 'hot'" ref="tabPanelRef" class="tabs-panel" :style="tabPanelFillStyle">
       <section class="hot-hero-simple">
         <h1>发现高价值 <span class="grad-text">Agent Skills</span>，让优秀能力被复用</h1>
         <p class="hero-desc">
@@ -3554,16 +3541,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       v-else-if="innerTab === 'releases'"
       ref="tabPanelRef"
       class="tabs-panel overview-panel my-release-panel"
-      style="padding-top: 108px !important;"
+      style="padding-top: 108px !important"
       :style="tabPanelFillStyle"
     >
       <section class="my-release-top">
         <div class="section-title mine-section-title">
           <div>
-            <h1 style="font-size: 42px;">我的发布</h1>
-            <p class="all-desc">
-              管理自己上传的 Skill，默认发布为个人级；可发起发布到组织级申请。
-            </p>
+            <h1 style="font-size: 42px">我的发布</h1>
+            <p class="all-desc">管理自己上传的 Skill，默认发布为个人级；可发起发布到组织级申请。</p>
           </div>
         </div>
 
@@ -3715,11 +3700,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       ref="tabPanelRef"
       class="tabs-panel overview-panel admin-org-panel"
       :style="tabPanelFillStyle"
-      style="padding-top: 108px !important;"
+      style="padding-top: 108px !important"
     >
       <header class="admin-panel-head management-panel-head">
         <div>
-          <h2 class="panel-title" style="font-size: 42px;">组织管理</h2>
+          <h2 class="panel-title" style="font-size: 42px">组织管理</h2>
           <p class="all-desc">
             配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill
             市场的管理员角色。
@@ -3786,12 +3771,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       v-else-if="innerTab === 'approval'"
       ref="tabPanelRef"
       class="tabs-panel overview-panel admin-approval-panel"
-      style="padding-top: 108px !important;"
+      style="padding-top: 108px !important"
       :style="tabPanelFillStyle"
     >
       <header class="admin-panel-head management-panel-head">
         <div>
-          <h2 class="panel-title" style="font-size: 42px;">审核中心</h2>
+          <h2 class="panel-title" style="font-size: 42px">审核中心</h2>
           <p class="all-desc">
             个人级同步到组织级时，由目标组织的组织管理员审核。审核中心区分待审核和已完成。
           </p>
@@ -3919,7 +3904,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div v-else-if="innerTab === 'ops'" class="panel tab-panel ops">
       <header class="ops-title management-panel-head">
         <div>
-          <h2 style="font-size: 42px;">运营管理</h2>
+          <h2 style="font-size: 42px">运营管理</h2>
           <p class="all-desc">
             扶摇系统侧关注个人级沉淀、快速验证和产线验证；公司系统侧关注目标系统统一管理的组织级
             Skill。
