@@ -41,10 +41,14 @@ export type BusinessDimensionDto = {
   id: number;
   dimensionCode: string;
   dimensionName: string;
+  name?: string;
+  nameEn?: string;
+  level?: number;
   sortNo: number;
   enabled: 0 | 1;
   createdAt: string;
   updatedAt: string;
+  children?: BusinessDimensionDto[];
 };
 
 /** §3.3.12 */

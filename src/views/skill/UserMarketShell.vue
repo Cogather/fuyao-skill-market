@@ -167,6 +167,9 @@ let deptPanelScrollCleanup: (() => void) | null = null;
 let overviewDimensionPanelCleanup: (() => void) | null = null;
 let overviewDimensionResizeFrame = 0;
 const categoryFilter = ref('all');
+const categorySubFilter = ref('all');
+const hoveredBusinessDimensionKey = ref('');
+let businessDimensionPanelCloseTimer: ReturnType<typeof window.setTimeout> | null = null;
 const businessDimensions = ref<BusinessDimensionDto[]>([]);
 const businessDimensionLoading = ref(false);
 const selectedTags = ref<string[]>([]);
@@ -204,6 +207,7 @@ const overviewFilterObj = ref<any>({
   status: '',
   tagList: '',
   businessDimension: '',
+  category: '',
 });
 const overviewRemoteItems = ref<any[]>([]);
 const overviewRemoteTotal = ref(0);
@@ -338,11 +342,23 @@ function matchesOrgFilter(skill: Skill): boolean {
 }
 
 function skillCategory(skill: Skill): string {
-  return (skill.tagFunctional ?? '').trim();
+  return (skill.tagFunctional ?? skill.categoryGroupName ?? skill.category ?? '').trim();
 }
 
 function matchesCategoryFilter(skill: Skill): boolean {
-  return categoryFilter.value === 'all' || skillCategory(skill) === categoryFilter.value;
+  if (categoryFilter.value === 'all') {
+    return true;
+  }
+  const values = [
+    skill.tagFunctional,
+    skill.categoryGroupName,
+    skill.category,
+    (skill as { businessDimension?: unknown }).businessDimension,
+  ]
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean);
+  const target = categorySubFilter.value === 'all' ? categoryFilter.value : categorySubFilter.value;
+  return values.includes(target) || values.includes(categoryFilter.value);
 }
 
 function skillTags(skill: any): string[] {
@@ -725,8 +741,79 @@ const businessDimensionOptions = computed(() =>
 );
 
 const categoryOptions = computed(() =>
-  businessDimensionOptions.value.map((item) => item.dimensionName),
+  businessDimensionOptions.value.flatMap((item) => [
+    item.dimensionName,
+    ...businessDimensionChildren(item).map((child) => child.dimensionName),
+  ]),
 );
+
+function businessDimensionKey(dimension: BusinessDimensionDto): string {
+  return String(dimension.id || dimension.dimensionCode || dimension.dimensionName);
+}
+
+function businessDimensionChildren(dimension: BusinessDimensionDto): BusinessDimensionDto[] {
+  return [...(dimension.children ?? [])]
+    .filter((item) => Number(item.enabled) === 1)
+    .sort(
+      (a, b) => a.sortNo - b.sortNo || a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
+    );
+}
+
+function businessDimensionHasChildren(dimension: BusinessDimensionDto): boolean {
+  return businessDimensionChildren(dimension).length > 0;
+}
+
+function businessDimensionSelectedLabel(dimension: BusinessDimensionDto): string {
+  if (categoryFilter.value !== dimension.dimensionName || categorySubFilter.value === 'all') {
+    return dimension.dimensionName;
+  }
+  return `${dimension.dimensionName} / ${categorySubFilter.value}`;
+}
+
+function showBusinessDimensionPanel(dimension: BusinessDimensionDto): void {
+  if (businessDimensionPanelCloseTimer) {
+    window.clearTimeout(businessDimensionPanelCloseTimer);
+    businessDimensionPanelCloseTimer = null;
+  }
+  hoveredBusinessDimensionKey.value = businessDimensionKey(dimension);
+}
+
+function closeBusinessDimensionPanel(): void {
+  if (businessDimensionPanelCloseTimer) {
+    window.clearTimeout(businessDimensionPanelCloseTimer);
+  }
+  businessDimensionPanelCloseTimer = window.setTimeout(() => {
+    hoveredBusinessDimensionKey.value = '';
+    businessDimensionPanelCloseTimer = null;
+  }, 160);
+}
+
+function keepBusinessDimensionPanelOpen(): void {
+  if (businessDimensionPanelCloseTimer) {
+    window.clearTimeout(businessDimensionPanelCloseTimer);
+    businessDimensionPanelCloseTimer = null;
+  }
+}
+
+function closeBusinessDimensionPanelNow(): void {
+  if (businessDimensionPanelCloseTimer) {
+    window.clearTimeout(businessDimensionPanelCloseTimer);
+    businessDimensionPanelCloseTimer = null;
+  }
+  hoveredBusinessDimensionKey.value = '';
+}
+
+function businessDimensionPanelOpen(dimension: BusinessDimensionDto): boolean {
+  return hoveredBusinessDimensionKey.value === businessDimensionKey(dimension);
+}
+
+async function onBusinessDimensionPrimaryClick(dimension: BusinessDimensionDto): Promise<void> {
+  if (categoryFilter.value === dimension.dimensionName && categorySubFilter.value !== 'all') {
+    showBusinessDimensionPanel(dimension);
+    return;
+  }
+  await setCategoryFilter(dimension.dimensionName, 'all');
+}
 
 function scheduleOverviewDimensionOverflowCheck(): void {
   if (overviewDimensionResizeFrame) {
@@ -831,19 +918,6 @@ function hotSkillDownloadCount(skill: any): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatHotNumber(value: string | number): string {
-  const parsed =
-    typeof value === 'number' ? value : Number.parseInt(String(value).replace(/,/g, ''), 10);
-  if (!Number.isFinite(parsed)) {
-    return String(value ?? '-');
-  }
-  if (parsed >= 10000) {
-    const wan = parsed / 10000;
-    return `${Number.isInteger(wan) ? wan : wan.toFixed(1).replace(/\.0$/, '')}万`;
-  }
-  return parsed.toLocaleString('zh-CN');
-}
-
 function hotSkillName(skill: any): string {
   return String(skill?.name ?? skill?.skill_id ?? '未命名 Skill');
 }
@@ -911,14 +985,6 @@ function hotSkillTags(skill: any): string[] {
   ];
 }
 
-function hotSkillShownTags(skill: any): string[] {
-  return hotSkillTags(skill).slice(0, 2);
-}
-
-function hotSkillExtraTagCount(skill: any): number {
-  return Math.max(0, hotSkillTags(skill).length - hotSkillShownTags(skill).length);
-}
-
 function hotSkillScopeLabel(skill: any): string {
   const level = hotSkillLevelRaw(skill);
   if (level.includes('组织')) {
@@ -929,57 +995,6 @@ function hotSkillScopeLabel(skill: any): string {
     return '个人级';
   }
   return level;
-}
-
-function hotSkillScopeKind(skill: any): 'org' | 'personal' | 'other' {
-  const level = hotSkillLevelRaw(skill);
-  if (level.includes('组织')) {
-    return 'org';
-  }
-  if (level.includes('个人')) {
-    return 'personal';
-  }
-  return 'other';
-}
-
-function hotSkillRatingValue(skill: any): number {
-  const parsed = Number(skill?.rating ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function hotSkillRatingLabel(skill: any): string {
-  const rating = hotSkillRatingValue(skill);
-  return rating > 0 ? rating.toFixed(1) : '未评分';
-}
-
-function hotSkillQualityBadges(skill: any): { label: string; kind: 'gold' | 'blue' | 'gray' }[] {
-  const badges: { label: string; kind: 'gold' | 'blue' | 'gray' }[] = [];
-  const rating = hotSkillRatingValue(skill);
-  const downloads = hotSkillDownloadCount(skill);
-  if (rating >= 4.7) {
-    badges.push({ label: '优秀', kind: 'gold' });
-  }
-  if (downloads >= 1000) {
-    badges.push({ label: '复用', kind: 'blue' });
-  }
-  if (rating > 0 && rating < 4.2) {
-    badges.push({ label: '优化', kind: 'gray' });
-  }
-  return badges;
-}
-
-function hotSkillIconTone(skill: any): string {
-  const text = `${hotSkillCategory(skill)}${skill?.skill_id ?? ''}${hotSkillName(skill)}`;
-  if (/review|评审|检查/i.test(text)) return 'tone-3';
-  if (/log|ops|运维|维护/i.test(text)) return 'tone-4';
-  if (/api|接口|开发/i.test(text)) return 'tone-2';
-  if (/pdf|文档|办公|周报|会议/i.test(text)) return 'tone-1';
-  return 'tone-1';
-}
-
-function hotSkillInitial(skill: any): string {
-  const title = hotSkillName(skill).trim();
-  return title ? title.slice(0, 1).toUpperCase() : 'S';
 }
 
 function hotSkillSearchText(skill: any): string {
@@ -1127,7 +1142,7 @@ function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
   return raw
     .map((item, index): BusinessDimensionDto | null => {
       const record = readServiceRecord(item);
-      const dimensionName = String(record.dimensionName ?? '').trim();
+      const dimensionName = String(record.dimensionName ?? record.name ?? '').trim();
       if (!dimensionName) {
         return null;
       }
@@ -1137,14 +1152,18 @@ function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
         record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1;
       return {
         id: Number.isFinite(id) ? id : index + 1,
-        dimensionCode: String(record.dimensionCode ?? '')
+        dimensionCode: String(record.dimensionCode ?? record.nameEn ?? '')
           .trim()
           .toUpperCase(),
         dimensionName,
+        name: dimensionName,
+        nameEn: String(record.nameEn ?? record.dimensionCode ?? '').trim(),
+        level: Number.isFinite(Number(record.level)) ? Number(record.level) : 0,
         sortNo: Number.isFinite(sortNo) ? sortNo : index + 1,
         enabled,
         createdAt: String(record.createdAt ?? ''),
         updatedAt: String(record.updatedAt ?? ''),
+        children: normalizeBusinessDimensions(record.children),
       };
     })
     .filter((item): item is BusinessDimensionDto => Boolean(item));
@@ -1260,6 +1279,10 @@ onBeforeUnmount(() => {
   deptPanelScrollCleanup = null;
   overviewDimensionPanelCleanup?.();
   overviewDimensionPanelCleanup = null;
+  if (businessDimensionPanelCloseTimer) {
+    window.clearTimeout(businessDimensionPanelCloseTimer);
+    businessDimensionPanelCloseTimer = null;
+  }
   document.removeEventListener('mousedown', onMarketDeptCascaderDocDown);
   document.removeEventListener('keydown', onMarketDeptCascaderKeydown);
   document.removeEventListener('mousedown', onOverviewDimensionDocDown);
@@ -1435,7 +1458,11 @@ const overviewFilterSummary = computed(() => {
     );
   }
   if (categoryFilter.value !== 'all') {
-    parts.push(categoryFilter.value);
+    parts.push(
+      categorySubFilter.value === 'all'
+        ? categoryFilter.value
+        : `${categoryFilter.value} / ${categorySubFilter.value}`,
+    );
   }
   if (selectedTags.value.length > 0) {
     parts.push(selectedTags.value.map((tag) => `#${tag}`).join(' + '));
@@ -1495,25 +1522,42 @@ watch(tagOptions, (options) => {
 watch(categoryOptions, (options) => {
   if (categoryFilter.value !== 'all' && !options.includes(categoryFilter.value)) {
     categoryFilter.value = 'all';
+    categorySubFilter.value = 'all';
+    return;
+  }
+  if (categorySubFilter.value !== 'all' && !options.includes(categorySubFilter.value)) {
+    categorySubFilter.value = 'all';
   }
 });
 
-async function setCategoryFilter(value: string): void {
+async function setCategoryFilter(value: string, subValue = 'all'): Promise<void> {
   categoryFilter.value = value;
+  categorySubFilter.value = value === 'all' ? 'all' : subValue;
   if (transportIsHttp && innerTab.value === 'overview') {
     overviewFilterObj.value.pageNum = 1;
     page.pageIndex = 1;
     if (value === 'all') {
       overviewFilterObj.value.businessDimension = '';
+      overviewFilterObj.value.category = '';
     } else {
       overviewFilterObj.value.businessDimension = value;
+      overviewFilterObj.value.category = subValue === 'all' ? '' : subValue;
     }
     await startOverviewRemoteFetch();
   }
 }
 
 async function setCategoryFilterFromDropdown(value: string): Promise<void> {
-  await setCategoryFilter(value);
+  await setCategoryFilter(value, 'all');
+  closeOverviewDimensionMore();
+}
+
+async function selectBusinessDimensionChild(
+  dimension: BusinessDimensionDto,
+  childValue: string,
+): Promise<void> {
+  await setCategoryFilter(dimension.dimensionName, childValue);
+  closeBusinessDimensionPanelNow();
   closeOverviewDimensionMore();
 }
 
@@ -3575,86 +3619,42 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       <section class="hot-skill-section" aria-label="热门 Skill">
         <div class="hot-section-title">
           <div>
-            <h2><span>热门 Skill</span></h2>
+            <h2>
+              <span class="hot-title-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M5 15.5 9.2 11l3 3L19 6.8"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M15.5 6.8H19v3.5"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+              <p>热门 Skill</p>
+            </h2>
           </div>
           <span v-if="hotSkillsLoading" class="hot-loading">加载中…</span>
         </div>
 
         <div v-if="hotSkillResults.length > 0" class="hot-skill-grid">
-          <button
+          <SkillCard
             v-for="(s, index) in hotSkillResults"
             :key="`${s.id ?? s.skill_id ?? hotSkillName(s)}-${index}`"
-            type="button"
-            class="hot-skill-card"
-            :aria-label="`查看 ${hotSkillName(s)} 详情`"
-            @click="openHotSkillDetail(s)"
-          >
-            <div class="hot-skill-head">
-              <span class="hot-skill-icon" :class="hotSkillIconTone(s)">
-                {{ hotSkillInitial(s) }}
-              </span>
-              <span class="hot-card-more" aria-hidden="true">···</span>
-              <span class="hot-skill-main">
-                <span class="hot-skill-title-row">
-                  <strong class="hot-skill-title">{{ hotSkillName(s) }}</strong>
-                </span>
-                <span class="hot-skill-sub">{{ hotSkillOwner(s) }} · {{ hotSkillDept(s) }}</span>
-              </span>
-            </div>
-
-            <span class="hot-skill-desc">{{ hotSkillDesc(s) }}</span>
-
-            <span class="hot-skill-tags">
-              <span v-if="hotSkillCategory(s)" class="hot-tag hot-tag-fn">
-                {{ hotSkillCategory(s) }}
-              </span>
-              <span v-for="tag in hotSkillShownTags(s)" :key="tag" class="hot-tag hot-tag-skill">
-                #{{ tag }}
-              </span>
-              <span v-if="hotSkillExtraTagCount(s) > 0" class="hot-tag hot-tag-more">
-                +{{ hotSkillExtraTagCount(s) }}
-              </span>
-              <span
-                v-if="hotSkillScopeLabel(s)"
-                class="hot-tag"
-                :class="hotSkillScopeKind(s) === 'personal' ? 'hot-tag-personal' : 'hot-tag-org'"
-              >
-                {{ hotSkillScopeLabel(s) }}
-              </span>
-            </span>
-
-            <span class="hot-skill-foot">
-              <span class="hot-footer-medals" aria-label="质量标识">
-                <span
-                  v-for="badge in hotSkillQualityBadges(s)"
-                  :key="badge.label"
-                  class="hot-quality-badge"
-                  :class="`badge-${badge.kind}`"
-                  :title="badge.label"
-                >
-                  {{ badge.label.slice(0, 1) }}
-                </span>
-                <span v-if="hotSkillQualityBadges(s).length === 0" class="hot-no-medal">—</span>
-              </span>
-              <span class="hot-footer-metrics">
-                <span class="hot-rating-metric" :title="`评分 ${hotSkillRatingLabel(s)}`">
-                  ★ {{ hotSkillRatingLabel(s) }}
-                </span>
-                <span class="hot-download-metric" aria-label="下载量">
-                  <svg class="hot-download-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M12 4v12m0 0l4-4m-4 4L8 12M5 19h14"
-                      stroke="currentColor"
-                      stroke-width="1.75"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                  <span>{{ formatHotNumber(hotSkillDownloadCount(s)) }}</span>
-                </span>
-              </span>
-            </span>
-          </button>
+            :skill="s"
+            class="market-skill-card"
+            menu-mode="download-only"
+            layout="overviewMarket"
+            @download="onDownload(s.id, s.currentVersion)"
+            @open-detail="openHotSkillDetail(s)"
+          />
         </div>
         <p v-else class="empty hot-empty">
           {{ hotSkillsLoading ? '热门 Skill 加载中…' : '暂无匹配的热门 Skill' }}
@@ -3697,16 +3697,61 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             >
               全部
             </button>
-            <button
+            <div
               v-for="dimension in businessDimensionOptions"
               :key="dimension.id || dimension.dimensionCode"
-              type="button"
-              class="all-category-chip"
-              :class="{ active: categoryFilter === dimension.dimensionName }"
-              @click="setCategoryFilter(dimension.dimensionName)"
+              class="all-dimension-item"
+              @mouseenter="showBusinessDimensionPanel(dimension)"
+              @mouseleave="closeBusinessDimensionPanel"
             >
-              {{ dimension.dimensionName }}
-            </button>
+              <button
+                type="button"
+                class="all-category-chip"
+                :class="{ active: categoryFilter === dimension.dimensionName }"
+                @click="onBusinessDimensionPrimaryClick(dimension)"
+              >
+                {{ businessDimensionSelectedLabel(dimension) }}
+                <span v-if="businessDimensionHasChildren(dimension)" class="all-category-arrow">
+                  ▾
+                </span>
+              </button>
+              <div
+                v-if="businessDimensionPanelOpen(dimension)"
+                class="all-sub-dimension-panel"
+                @mousedown.stop
+                @mouseenter="keepBusinessDimensionPanelOpen"
+                @mouseleave="closeBusinessDimensionPanel"
+              >
+                <div class="all-sub-dimension-title">{{ dimension.dimensionName }}</div>
+                <div class="all-sub-dimension-options">
+                  <button
+                    type="button"
+                    class="all-sub-dimension-chip"
+                    :class="{
+                      active:
+                        categoryFilter === dimension.dimensionName && categorySubFilter === 'all',
+                    }"
+                    @click="selectBusinessDimensionChild(dimension, 'all')"
+                  >
+                    全部
+                  </button>
+                  <button
+                    v-for="child in businessDimensionChildren(dimension)"
+                    :key="`dimension-child-${dimension.id}-${child.id || child.dimensionCode}`"
+                    type="button"
+                    class="all-sub-dimension-chip"
+                    :class="{
+                      active:
+                        categoryFilter === dimension.dimensionName &&
+                        categorySubFilter === child.dimensionName,
+                    }"
+                    @click="selectBusinessDimensionChild(dimension, child.dimensionName)"
+                  >
+                    {{ child.dimensionName }}
+                  </button>
+                </div>
+              </div>
+            </div>
             <span
               v-if="businessDimensionLoading && businessDimensionOptions.length === 0"
               class="side-empty"
@@ -3746,17 +3791,62 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             >
               全部
             </button>
-            <button
+            <div
               v-for="dimension in businessDimensionOptions"
               :key="`dimension-menu-${dimension.id || dimension.dimensionCode}`"
-              type="button"
-              class="all-category-chip"
-              :class="{ active: categoryFilter === dimension.dimensionName }"
               role="menuitem"
-              @click="setCategoryFilterFromDropdown(dimension.dimensionName)"
+              class="all-dimension-item"
+              @mouseenter="showBusinessDimensionPanel(dimension)"
+              @mouseleave="closeBusinessDimensionPanel"
             >
-              {{ dimension.dimensionName }}
-            </button>
+              <button
+                type="button"
+                class="all-category-chip"
+                :class="{ active: categoryFilter === dimension.dimensionName }"
+                @click="onBusinessDimensionPrimaryClick(dimension)"
+              >
+                {{ businessDimensionSelectedLabel(dimension) }}
+                <span v-if="businessDimensionHasChildren(dimension)" class="all-category-arrow">
+                  ▾
+                </span>
+              </button>
+              <div
+                v-if="businessDimensionPanelOpen(dimension)"
+                class="all-sub-dimension-panel all-sub-dimension-panel-menu"
+                @mousedown.stop
+                @mouseenter="keepBusinessDimensionPanelOpen"
+                @mouseleave="closeBusinessDimensionPanel"
+              >
+                <div class="all-sub-dimension-title">{{ dimension.dimensionName }}</div>
+                <div class="all-sub-dimension-options">
+                  <button
+                    type="button"
+                    class="all-sub-dimension-chip"
+                    :class="{
+                      active:
+                        categoryFilter === dimension.dimensionName && categorySubFilter === 'all',
+                    }"
+                    @click="selectBusinessDimensionChild(dimension, 'all')"
+                  >
+                    全部
+                  </button>
+                  <button
+                    v-for="child in businessDimensionChildren(dimension)"
+                    :key="`dimension-menu-child-${dimension.id}-${child.id || child.dimensionCode}`"
+                    type="button"
+                    class="all-sub-dimension-chip"
+                    :class="{
+                      active:
+                        categoryFilter === dimension.dimensionName &&
+                        categorySubFilter === child.dimensionName,
+                    }"
+                    @click="selectBusinessDimensionChild(dimension, child.dimensionName)"
+                  >
+                    {{ child.dimensionName }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </Teleport>
       </section>
@@ -4010,6 +4100,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 class="market-skill-card"
                 :skill="s"
                 menu-mode="download-only"
+                layout="overviewMarket"
                 @download="onDownload(s.id, s.currentVersion)"
                 @open-detail="openDetailPanel"
                 @view-versions="onViewVersions"

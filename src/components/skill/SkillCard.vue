@@ -9,10 +9,13 @@ const props = withDefaults(
     menuMode?: 'download-only' | 'full';
     /** CoreHarness Tab：显示更丰富的标签信息 */
     variant?: 'default' | 'coreHarness';
+    /** 全部技能页签专用：更紧凑的市场卡片布局 */
+    layout?: 'default' | 'overviewMarket';
   }>(),
   {
     menuMode: 'full',
     variant: 'default',
+    layout: 'default',
   },
 );
 
@@ -26,6 +29,7 @@ const menuOpen = ref(false);
 
 const title = computed(() => props.skill.name ?? props.skill.skill_id ?? '未命名 Skill');
 const description = computed(() => props.skill.description || '暂无描述');
+const isOverviewMarketLayout = computed(() => props.layout === 'overviewMarket');
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -142,6 +146,21 @@ const shownTags = computed(() => displayTags.value.slice(0, 2));
 const extraTagCount = computed(() =>
   Math.max(0, displayTags.value.length - shownTags.value.length),
 );
+const overviewPrimaryTag = computed(() => displayTags.value[0] ?? '');
+const overviewRestTags = computed(() => displayTags.value.slice(1));
+const overviewLevelLabel = computed(() => {
+  const level = skillLevelText();
+  if (level.includes('组织')) return '组织级';
+  if (level.includes('个人')) return '个人级';
+  return level || '未分级';
+});
+const overviewCategoryLabel = computed(
+  () =>
+    text(props.skill.categoryGroupName) ||
+    text(props.skill.tagFunctional) ||
+    text(props.skill.category) ||
+    '未分类',
+);
 const downloadCount = computed(() =>
   Number(props.skill.download_count ?? props.skill.downloads ?? 0),
 );
@@ -150,8 +169,36 @@ const ratingLabel = computed(() =>
   ratingValue.value > 0 ? ratingValue.value.toFixed(1) : '未评分',
 );
 
+type QualityBadgeKind = 'gold' | 'blue' | 'gray';
+type QualityBadge = { label: string; kind: QualityBadgeKind };
+
+function qualityBadgeKind(label: string): QualityBadgeKind {
+  if (/优秀|高分|优/.test(label)) return 'gold';
+  if (/复用|下载|热门/.test(label)) return 'blue';
+  return 'gray';
+}
+
+function explicitQualityBadges(): QualityBadge[] {
+  const source = props.skill.qualityBadges;
+  const labels = Array.isArray(source)
+    ? source
+    : typeof source === 'string'
+      ? source.split(/[,，;；、\s]+/)
+      : [];
+
+  return [...new Set(labels.map((label) => text(label)).filter(Boolean))].map((label) => ({
+    label,
+    kind: qualityBadgeKind(label),
+  }));
+}
+
 const qualityBadges = computed(() => {
-  const badges: { label: string; kind: 'gold' | 'blue' | 'gray' }[] = [];
+  const explicitBadges = explicitQualityBadges();
+  if (explicitBadges.length > 0) {
+    return explicitBadges;
+  }
+
+  const badges: QualityBadge[] = [];
   if (ratingValue.value >= 4.7) {
     badges.push({ label: '优秀', kind: 'gold' });
   }
@@ -163,6 +210,8 @@ const qualityBadges = computed(() => {
   }
   return badges;
 });
+const overviewShownBadges = computed(() => qualityBadges.value.slice(0, 3));
+const overviewExtraBadgeCount = computed(() => Math.max(0, qualityBadges.value.length - 3));
 
 function skillId(): string {
   return props.skill.id ?? props.skill.skill_id;
@@ -198,6 +247,7 @@ function onOpenDetail(): void {
 <template>
   <article
     class="card"
+    :class="{ 'card-overview-market': isOverviewMarketLayout }"
     role="button"
     tabindex="0"
     @click="onOpenDetail"
@@ -211,7 +261,30 @@ function onOpenDetail(): void {
       <span class="tag tag-status" :class="`st-${statusLabel}`">{{ statusLabel }}</span>
     </div>
 
-    <div class="menu-wrap" @click.stop>
+    <div
+      v-if="isOverviewMarketLayout && qualityBadges.length > 0"
+      class="overview-top-medals"
+      aria-label="质量标识"
+    >
+      <span
+        v-for="badge in overviewShownBadges"
+        :key="badge.label"
+        class="quality-badge overview-quality-badge"
+        :class="`badge-${badge.kind}`"
+        :title="badge.label"
+      >
+        {{ badge.label.slice(0, 1) }}
+      </span>
+      <span
+        v-if="overviewExtraBadgeCount > 0"
+        class="quality-badge overview-quality-more"
+        :title="qualityBadges.map((badge) => badge.label).join('、')"
+      >
+        +{{ overviewExtraBadgeCount }}
+      </span>
+    </div>
+
+    <div v-if="false" class="menu-wrap" @click.stop>
       <button
         type="button"
         class="more"
@@ -252,7 +325,22 @@ function onOpenDetail(): void {
 
     <p class="desc" :title="description">{{ description }}</p>
 
-    <div class="tags" :class="{ compact: variant === 'coreHarness' }">
+    <div v-if="isOverviewMarketLayout" class="tags overview-card-tags">
+      <span class="tag tag-level" :class="scopeKind === 'personal' ? 'tag-personal' : 'tag-org'">
+        {{ overviewLevelLabel }}
+      </span>
+      <span v-if="overviewCategoryLabel" class="tag tag-fn">{{ overviewCategoryLabel }}</span>
+      <span v-if="overviewPrimaryTag" class="tag tag-skill">#{{ overviewPrimaryTag }}</span>
+      <span
+        v-if="overviewRestTags.length > 0"
+        class="tag tag-more"
+        :title="overviewRestTags.map((tag) => `#${tag}`).join('、')"
+      >
+        +{{ overviewRestTags.length }}
+      </span>
+    </div>
+
+    <div v-else class="tags" :class="{ compact: variant === 'coreHarness' }">
       <span v-if="skill.tagFunctional" class="tag tag-fn">{{ skill.tagFunctional }}</span>
       <span v-for="tag in shownTags" :key="tag" class="tag tag-skill">#{{ tag }}</span>
       <span v-if="extraTagCount > 0" class="tag tag-more">+{{ extraTagCount }}</span>
@@ -265,7 +353,31 @@ function onOpenDetail(): void {
       </span>
     </div>
 
-    <footer class="card-market-footer">
+    <footer v-if="isOverviewMarketLayout" class="card-market-footer overview-card-footer">
+      <span class="footer-actions">
+        <button type="button" class="trial-btn" @click.stop="onOpenDetail">在线试用</button>
+        <button type="button" class="download-action-btn" @click.stop="onFooterDownload">
+          下载
+        </button>
+      </span>
+      <span class="footer-right-metrics">
+        <span class="rating-metric" :title="`评分 ${ratingLabel}`">★ {{ ratingLabel }}</span>
+        <span class="download-metric" :title="`下载 ${downloadCount.toLocaleString('zh-CN')}`">
+          <svg class="dl-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M12 4v12m0 0l4-4m-4 4L8 12M5 19h14"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="dl-num">{{ downloadCount.toLocaleString('zh-CN') }}</span>
+        </span>
+      </span>
+    </footer>
+
+    <footer v-else class="card-market-footer">
       <span class="footer-medals" aria-label="质量标识">
         <span
           v-for="badge in qualityBadges"
@@ -326,6 +438,11 @@ function onOpenDetail(): void {
   outline-offset: 2px;
 }
 
+.card-overview-market {
+  min-width: 0;
+  padding: 15px 18px 13px;
+}
+
 .top-tags {
   display: flex;
   flex-wrap: wrap;
@@ -337,6 +454,7 @@ function onOpenDetail(): void {
   position: absolute;
   top: 12px;
   right: 14px;
+  z-index: 3;
 }
 
 .more {
@@ -395,6 +513,11 @@ function onOpenDetail(): void {
   min-width: 0;
   padding-right: 34px;
   margin-bottom: 10px;
+}
+
+.card-overview-market .card-title-row {
+  padding-right: 112px;
+  margin-bottom: 9px;
 }
 
 .skill-icon {
@@ -488,12 +611,48 @@ function onOpenDetail(): void {
   text-overflow: ellipsis;
 }
 
+.card-overview-market .desc {
+  min-height: 38px;
+  -webkit-line-clamp: 2;
+}
+
 .tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
   margin-top: 10px;
+}
+
+.overview-card-tags {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-height: 28px;
+  margin-top: 9px;
+  overflow: hidden;
+}
+
+.overview-card-tags .tag {
+  flex: 0 1 auto;
+  max-width: 116px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.overview-card-tags .tag-level,
+.overview-card-tags .tag-more {
+  flex: 0 0 auto;
+}
+
+.overview-card-tags .tag-fn {
+  max-width: 126px;
+}
+
+.overview-card-tags .tag-skill {
+  max-width: 104px;
 }
 
 .tag {
@@ -568,6 +727,33 @@ function onOpenDetail(): void {
   border-color: #edf1f5;
 }
 
+.overview-top-medals {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  max-width: 76px;
+  overflow: hidden;
+}
+
+.overview-quality-badge,
+.overview-quality-more {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+.overview-quality-more {
+  color: #475569;
+  background: #f8fafc;
+  border-color: #dbe3ee;
+}
+
 .card-market-footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
@@ -583,6 +769,50 @@ function onOpenDetail(): void {
 .footer-right-metrics {
   display: inline-flex;
   align-items: center;
+}
+
+.overview-card-footer {
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 10px;
+  padding-top: 11px;
+}
+
+.footer-actions {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trial-btn,
+.download-action-btn {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dfe7f2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1;
+  padding: 0 11px;
+  white-space: nowrap;
+}
+
+.trial-btn {
+  color: #1d4ed8;
+  border-color: #d8e8ff;
+  background: #f4f8ff;
+}
+
+.download-action-btn:hover,
+.trial-btn:hover {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .footer-medals {
@@ -655,6 +885,16 @@ function onOpenDetail(): void {
 
 .dl-btn:hover {
   color: #1d4ed8;
+}
+
+.download-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #2563eb;
+  font-size: 12.8px;
+  font-weight: 760;
+  line-height: 1;
 }
 
 .dl-icon {

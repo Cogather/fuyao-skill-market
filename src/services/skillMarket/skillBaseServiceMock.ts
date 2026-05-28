@@ -478,6 +478,17 @@ function pickMockSkillMdFromSeed(seed: Skill, base: MockSkillRecord): string {
   return makeSkillMd(base);
 }
 
+function pickQualityBadgesFromSeed(seed: Skill): string[] {
+  const source = seed.qualityBadges;
+  const labels = Array.isArray(source)
+    ? source
+    : typeof source === 'string'
+      ? source.split(/[,，;；、\s]+/)
+      : [];
+
+  return [...new Set(labels.map((label) => String(label).trim()).filter(Boolean))];
+}
+
 function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const id = skillMockId(seed);
   const level = seed.publish_level ?? seed.level ?? '个人级';
@@ -494,6 +505,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const dept = seed.dept_name || '部门1/平台产品线/平台工具组';
   const deptParts = skillDeptParts({ ...seed, dept_name: dept });
   const author = seed.publisher ?? publishName;
+  const qualityBadges = pickQualityBadgesFromSeed(seed);
   const versions = seed.versions?.map((v) => ({ ...v })) ?? [
     {
       version: currentVersion,
@@ -550,8 +562,14 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     updatedAt,
     likes: Math.max(0, Math.floor(downloads * 0.05)),
     dislikes: Math.max(0, Math.floor(downloads * 0.004)),
-    qualityMark: (seed.rating ?? 0) >= 4.7 ? '优秀 Skill' : null,
-    qualityBadges: (seed.rating ?? 0) >= 4.7 ? ['优秀 Skill', '高分 Skill'] : [],
+    qualityMark:
+      seed.qualityMark ?? qualityBadges[0] ?? ((seed.rating ?? 0) >= 4.7 ? '优秀 Skill' : null),
+    qualityBadges:
+      qualityBadges.length > 0
+        ? qualityBadges
+        : (seed.rating ?? 0) >= 4.7
+          ? ['优秀 Skill', '高分 Skill']
+          : [],
     scored: (seed.rating ?? 0) > 0,
   };
   base.skillMdContent = pickMockSkillMdFromSeed(seed, base);

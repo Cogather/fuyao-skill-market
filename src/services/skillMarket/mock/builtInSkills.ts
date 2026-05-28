@@ -12,6 +12,7 @@ type ExtraMockSkillSeed = {
   icon: string;
   version: string;
   tags: string[];
+  qualityBadges?: string[];
   ownedByUser?: boolean;
   /** 与真实联调一致时可传换行路径串或路径数组；不传则走 mock 默认数组 */
   fileTree?: string | string[];
@@ -119,7 +120,8 @@ const EXTRA_MOCK_SKILL_SEEDS: ExtraMockSkillSeed[] = [
     category: '运维',
     icon: 'CI',
     version: '1.3.1',
-    tags: ['cicd', 'release'],
+    tags: ['cicd', 'release', 'ops'],
+    qualityBadges: ['优秀', '复用', '稳定'],
     ownedByUser: true,
     fileTree:
       'cicd-check-skill/\ncicd-check-skill/SKILL.md\ncicd-check-skill/pipelines/validate.sh\ncicd-check-skill/policy/gates.yaml\ncicd-check-skill/helm/values.yaml',
@@ -155,6 +157,7 @@ const EXTRA_MOCK_SKILL_SEEDS: ExtraMockSkillSeed[] = [
     icon: 'SQL',
     version: '2.1.0',
     tags: ['sql', 'ops'],
+    qualityBadges: ['优秀', '高分', '推荐'],
     fileTree:
       'sql-audit-skill/\nsql-audit-skill/SKILL.md\nsql-audit-skill/rules/risk-patterns.sql\nsql-audit-skill/samples/slow-query.log',
     skillMdContent:
@@ -234,6 +237,7 @@ function createExtraMockSkill(seed: ExtraMockSkillSeed, index: number): Skill {
     tagFunctional: seed.category,
     tagOrg: seed.publishLevel,
     tags: seed.tags?.join(',') ?? '',
+    qualityBadges: seed.qualityBadges,
   };
   if (seed.fileTree != null) {
     skill.fileTree = seed.fileTree;
@@ -259,14 +263,23 @@ const GENERATED_MOCK_NAMES = [
   '测试数据生成',
 ];
 
-const GENERATED_MOCK_CATEGORIES = ['公共', '设计', '开发', '测试', '运维', '维护', '研究', '项目管理'];
+const GENERATED_MOCK_CATEGORIES = [
+  '公共',
+  '设计',
+  '开发',
+  '测试',
+  '运维',
+  '维护',
+  '研究',
+  '项目管理',
+];
 const GENERATED_MOCK_TAGS = [
-  ['api', 'review'],
-  ['design', 'requirement'],
-  ['cicd', 'release'],
-  ['test', 'sql'],
-  ['ops', 'log'],
-  ['impact', 'review'],
+  ['api', 'review', 'security'],
+  ['design', 'requirement', 'ux', 'copy', 'flow'],
+  ['cicd', 'release', 'ops'],
+  ['test', 'sql', 'data', 'quality', 'report'],
+  ['ops', 'log', 'alert'],
+  ['impact', 'review', 'risk', 'change', 'scope'],
 ];
 const GENERATED_MOCK_ORGS = ['IT装备部', '质量工具组', '平台工具组', '云服务组', 'SRE团队'];
 const GENERATED_MOCK_DEPTS = [
@@ -291,7 +304,10 @@ function createGeneratedMockSkill(index: number): Skill {
   const day = String((index % 28) + 1).padStart(2, '0');
   const hour = String(8 + (index % 12)).padStart(2, '0');
   const publishTime = `2024-06-${day} ${hour}:20`;
-  const tags = GENERATED_MOCK_TAGS[index % GENERATED_MOCK_TAGS.length];
+  const tags =
+    index === 55
+      ? ['test', 'data', 'generate', 'fixture', 'mock', 'quality', 'case', 'automation']
+      : GENERATED_MOCK_TAGS[index % GENERATED_MOCK_TAGS.length];
   const skillId = `mock-bulk-${String(seq).padStart(3, '0')}`;
 
   return {
@@ -361,6 +377,7 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     tagFunctional: '测试',
     tagOrg: '个人级',
     tags: 'review,report',
+    qualityBadges: ['优秀', '高分', '推荐'],
     fileTree:
       'test1-skill/\ntest1-skill/SKILL.md\ntest1-skill/cases/smoke.feature\ntest1-skill/config/env.yaml',
     skillMdContent:
@@ -418,7 +435,8 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     ],
     tagFunctional: '开发',
     tagOrg: '组织级',
-    tags: 'cicd,log',
+    tags: 'cicd,log,release,ops,monitor',
+    qualityBadges: ['优秀', '复用', '稳定'],
     fileTree:
       'test2-skill/\ntest2-skill/SKILL.md\ntest2-skill/deploy/helm/values.yaml\ntest2-skill/deploy/chart.yaml\ntest2-skill/ci/Jenkinsfile',
     skillMdContent:

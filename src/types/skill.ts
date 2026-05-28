@@ -51,6 +51,12 @@ export interface Skill {
   marketStatus?: string;
   /** 功能类标签（如：开发、运维、设计、办公） */
   tagFunctional?: string;
+  /** 接口/Mock 可能返回的业务维度展示名 */
+  categoryGroupName?: string;
+  /** 接口/Mock 可能返回的二级业务分类 */
+  category?: string;
+  /** 接口/Mock 可能返回的业务维度字段 */
+  businessDimension?: string;
   /** 组织/范围类标签 */
   tagOrg?: string;
   /** 标签集合，用于市场总览左侧标签筛选 */
@@ -59,6 +65,10 @@ export interface Skill {
   fileTree?: string | string[];
   /** 详情/联调：列表或详情可能带回的 SKILL.md 正文 */
   skillMdContent?: string;
+  /** 质量勋章，市场卡片可用于展示右上角徽章 */
+  qualityBadges?: string[] | string;
+  /** 质量标记名称 */
+  qualityMark?: string | null;
 }
 
 export interface SkillVersionEntry {
