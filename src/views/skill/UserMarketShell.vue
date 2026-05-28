@@ -1706,7 +1706,7 @@ async function loadHotSkillCards(): Promise<void> {
   try {
     const res = await skillBaseService.querySkillList({
       pageNum: 1,
-      pageSize: 12,
+      pageSize: 6,
       sortBy: 'downloads',
       sortOrder: 'desc',
     });

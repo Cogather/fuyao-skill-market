@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { Skill } from '../../types/skill';
 
 const props = withDefaults(
   defineProps<{
-    skill: Skill;
+    skill: any;
     /** 市场总览稿：仅「下载」；其他 Tab 可保留查看版本 */
     menuMode?: 'download-only' | 'full';
     /** CoreHarness Tab：显示更丰富的标签信息 */
@@ -162,7 +161,7 @@ const overviewCategoryLabel = computed(
     '未分类',
 );
 const downloadCount = computed(() =>
-  Number(props.skill.download_count ?? props.skill.downloads ?? 0),
+  Number(props.skill.totalDownloads ?? props.skill.downloads ?? 0),
 );
 const ratingValue = computed(() => Number(props.skill.rating ?? 0));
 const ratingLabel = computed(() =>
