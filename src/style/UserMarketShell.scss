@@ -6060,10 +6060,6 @@
   white-space: nowrap;
 }
 
-.all-dimension-inline:has(.all-sub-dimension-panel) {
-  overflow: visible;
-}
-
 .all-dimension-inline .all-category-chip {
   flex: 0 0 auto;
 }
@@ -6081,11 +6077,8 @@
 }
 
 .all-sub-dimension-panel {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 8px);
-  z-index: 3800;
-  width: max-content;
+  position: fixed;
+  z-index: 5200;
   min-width: 520px;
   max-width: min(760px, calc(100vw - 40px));
   padding: 12px 14px 14px;
@@ -6105,7 +6098,7 @@
 }
 
 .all-sub-dimension-panel-menu {
-  z-index: 3900;
+  z-index: 5300;
 }
 
 .all-sub-dimension-title {
@@ -8694,4 +8687,91 @@ span {
     grid-template-columns: 1fr;
     flex-basis: auto;
   }
+}
+
+/* 全部技能空结果时：顶部筛选区保持自然高度，剩余空白留给列表区域。 */
+.skill-market-shell.is-overview-tab .tabs-panel.overview-panel {
+  display: flex !important;
+  flex-direction: column !important;
+  align-content: stretch !important;
+  justify-content: flex-start !important;
+  gap: 0 !important;
+}
+
+.skill-market-shell.is-overview-tab .overview-panel > section:not(.all-results),
+.skill-market-shell.is-overview-tab .overview-panel > .all-search-strip {
+  flex: 0 0 auto !important;
+  flex-grow: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+.skill-market-shell.is-overview-tab .overview-panel > .all-dimension-strip {
+  margin: -10px 0 6px !important;
+  padding: 0 !important;
+  overflow: visible;
+}
+
+.skill-market-shell.is-overview-tab .overview-panel > .all-dimension-strip .all-dimension-row {
+  height: auto !important;
+  min-height: 40px;
+}
+
+.skill-market-shell.is-overview-tab .overview-panel > .all-search-strip {
+  align-self: stretch;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 4px !important;
+  padding-top: 0 !important;
+}
+
+.skill-market-shell.is-overview-tab .overview-panel > .all-results.market-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 14px;
+}
+
+.skill-market-shell.is-overview-tab .all-results .market-list-scroll {
+  flex: 1 1 auto;
+  min-height: 220px;
+}
+
+.skill-market-shell.is-overview-tab .all-results .market-list-scroll > .empty {
+  margin-top: clamp(48px, 10vh, 120px);
+}
+
+/* 全部技能高级筛选：面板高度按标签一行/两行控制，超出后在面板内滚动。 */
+.skill-market-shell.is-overview-tab .all-filter-panel {
+  --all-filter-tag-row-height: 32px;
+  --all-filter-tag-row-gap: 8px;
+  --all-filter-panel-chrome-height: 94px;
+  min-height: calc(var(--all-filter-panel-chrome-height) + var(--all-filter-tag-row-height));
+  max-height: calc(
+    var(--all-filter-panel-chrome-height) + var(--all-filter-tag-row-height) * 2 +
+      var(--all-filter-tag-row-gap)
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.skill-market-shell.is-overview-tab .all-filter-panel .all-advanced .chips-tags,
+.skill-market-shell.is-overview-tab .all-filter-panel .all-advanced .chips-tags.is-expanded,
+.skill-market-shell.is-overview-tab .all-filter-panel .all-advanced .chips-tags:not(.is-expanded) {
+  max-height: none !important;
+  overflow: visible !important;
+  align-content: flex-start;
+}
+
+.skill-market-shell.is-overview-tab .all-filter-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.skill-market-shell.is-overview-tab .all-filter-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.skill-market-shell.is-overview-tab .all-filter-panel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
 }

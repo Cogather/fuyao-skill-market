@@ -169,6 +169,7 @@ let overviewDimensionResizeFrame = 0;
 const categoryFilter = ref('all');
 const categorySubFilter = ref('all');
 const hoveredBusinessDimensionKey = ref('');
+const businessDimensionPanelStyle = ref<CSSProperties>({});
 let businessDimensionPanelCloseTimer: ReturnType<typeof window.setTimeout> | null = null;
 const businessDimensions = ref<BusinessDimensionDto[]>([]);
 const businessDimensionLoading = ref(false);
@@ -770,11 +771,32 @@ function businessDimensionSelectedLabel(dimension: BusinessDimensionDto): string
   return `${dimension.dimensionName} / ${categorySubFilter.value}`;
 }
 
-function showBusinessDimensionPanel(dimension: BusinessDimensionDto): void {
+function updateBusinessDimensionPanelStyle(target: EventTarget | null): void {
+  const el = target instanceof HTMLElement ? target : null;
+  if (!el) {
+    businessDimensionPanelStyle.value = {};
+    return;
+  }
+  const rect = el.getBoundingClientRect();
+  const margin = 16;
+  const width = Math.min(760, Math.max(520, window.innerWidth - margin * 2));
+  const left = Math.min(
+    Math.max(margin, rect.left),
+    Math.max(margin, window.innerWidth - width - margin),
+  );
+  businessDimensionPanelStyle.value = {
+    left: `${Math.floor(left)}px`,
+    top: `${Math.floor(rect.bottom + 8)}px`,
+    width: `${Math.floor(width)}px`,
+  };
+}
+
+function showBusinessDimensionPanel(dimension: BusinessDimensionDto, ev?: MouseEvent): void {
   if (businessDimensionPanelCloseTimer) {
     window.clearTimeout(businessDimensionPanelCloseTimer);
     businessDimensionPanelCloseTimer = null;
   }
+  updateBusinessDimensionPanelStyle(ev?.currentTarget ?? null);
   hoveredBusinessDimensionKey.value = businessDimensionKey(dimension);
 }
 
@@ -784,6 +806,7 @@ function closeBusinessDimensionPanel(): void {
   }
   businessDimensionPanelCloseTimer = window.setTimeout(() => {
     hoveredBusinessDimensionKey.value = '';
+    businessDimensionPanelStyle.value = {};
     businessDimensionPanelCloseTimer = null;
   }, 160);
 }
@@ -801,15 +824,19 @@ function closeBusinessDimensionPanelNow(): void {
     businessDimensionPanelCloseTimer = null;
   }
   hoveredBusinessDimensionKey.value = '';
+  businessDimensionPanelStyle.value = {};
 }
 
 function businessDimensionPanelOpen(dimension: BusinessDimensionDto): boolean {
   return hoveredBusinessDimensionKey.value === businessDimensionKey(dimension);
 }
 
-async function onBusinessDimensionPrimaryClick(dimension: BusinessDimensionDto): Promise<void> {
+async function onBusinessDimensionPrimaryClick(
+  dimension: BusinessDimensionDto,
+  ev?: MouseEvent,
+): Promise<void> {
   if (categoryFilter.value === dimension.dimensionName && categorySubFilter.value !== 'all') {
-    showBusinessDimensionPanel(dimension);
+    showBusinessDimensionPanel(dimension, ev);
     return;
   }
   await setCategoryFilter(dimension.dimensionName, 'all');
@@ -3509,7 +3536,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       <section class="hot-hero-simple">
         <h1>发现高价值 <span class="grad-text">Agent Skills</span>，让优秀能力被复用</h1>
         <p class="hero-desc">
-          按部门、组织、业务维度与标签快速搜索 Skill，沉淀可复用的 AI 能力资产。
+          汇聚创作者打造的优秀 Skill，发现高人气、高质量、值得复用的 Top 能力作品。
         </p>
         <div class="market-stats-row" aria-label="热榜概览指标">
           <div class="market-stat-card">
@@ -3701,56 +3728,59 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               v-for="dimension in businessDimensionOptions"
               :key="dimension.id || dimension.dimensionCode"
               class="all-dimension-item"
-              @mouseenter="showBusinessDimensionPanel(dimension)"
+              @mouseenter="showBusinessDimensionPanel(dimension, $event)"
               @mouseleave="closeBusinessDimensionPanel"
             >
               <button
                 type="button"
                 class="all-category-chip"
                 :class="{ active: categoryFilter === dimension.dimensionName }"
-                @click="onBusinessDimensionPrimaryClick(dimension)"
+                @click="onBusinessDimensionPrimaryClick(dimension, $event)"
               >
                 {{ businessDimensionSelectedLabel(dimension) }}
                 <span v-if="businessDimensionHasChildren(dimension)" class="all-category-arrow">
                   ▾
                 </span>
               </button>
-              <div
-                v-if="businessDimensionPanelOpen(dimension)"
-                class="all-sub-dimension-panel"
-                @mousedown.stop
-                @mouseenter="keepBusinessDimensionPanelOpen"
-                @mouseleave="closeBusinessDimensionPanel"
-              >
-                <div class="all-sub-dimension-title">{{ dimension.dimensionName }}</div>
-                <div class="all-sub-dimension-options">
-                  <button
-                    type="button"
-                    class="all-sub-dimension-chip"
-                    :class="{
-                      active:
-                        categoryFilter === dimension.dimensionName && categorySubFilter === 'all',
-                    }"
-                    @click="selectBusinessDimensionChild(dimension, 'all')"
-                  >
-                    全部
-                  </button>
-                  <button
-                    v-for="child in businessDimensionChildren(dimension)"
-                    :key="`dimension-child-${dimension.id}-${child.id || child.dimensionCode}`"
-                    type="button"
-                    class="all-sub-dimension-chip"
-                    :class="{
-                      active:
-                        categoryFilter === dimension.dimensionName &&
-                        categorySubFilter === child.dimensionName,
-                    }"
-                    @click="selectBusinessDimensionChild(dimension, child.dimensionName)"
-                  >
-                    {{ child.dimensionName }}
-                  </button>
+              <Teleport to="body">
+                <div
+                  v-if="businessDimensionPanelOpen(dimension)"
+                  class="all-sub-dimension-panel"
+                  :style="businessDimensionPanelStyle"
+                  @mousedown.stop
+                  @mouseenter="keepBusinessDimensionPanelOpen"
+                  @mouseleave="closeBusinessDimensionPanel"
+                >
+                  <div class="all-sub-dimension-title">{{ dimension.dimensionName }}</div>
+                  <div class="all-sub-dimension-options">
+                    <button
+                      type="button"
+                      class="all-sub-dimension-chip"
+                      :class="{
+                        active:
+                          categoryFilter === dimension.dimensionName && categorySubFilter === 'all',
+                      }"
+                      @click="selectBusinessDimensionChild(dimension, 'all')"
+                    >
+                      全部
+                    </button>
+                    <button
+                      v-for="child in businessDimensionChildren(dimension)"
+                      :key="`dimension-child-${dimension.id}-${child.id || child.dimensionCode}`"
+                      type="button"
+                      class="all-sub-dimension-chip"
+                      :class="{
+                        active:
+                          categoryFilter === dimension.dimensionName &&
+                          categorySubFilter === child.dimensionName,
+                      }"
+                      @click="selectBusinessDimensionChild(dimension, child.dimensionName)"
+                    >
+                      {{ child.dimensionName }}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </Teleport>
             </div>
             <span
               v-if="businessDimensionLoading && businessDimensionOptions.length === 0"
@@ -3796,56 +3826,59 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               :key="`dimension-menu-${dimension.id || dimension.dimensionCode}`"
               role="menuitem"
               class="all-dimension-item"
-              @mouseenter="showBusinessDimensionPanel(dimension)"
+              @mouseenter="showBusinessDimensionPanel(dimension, $event)"
               @mouseleave="closeBusinessDimensionPanel"
             >
               <button
                 type="button"
                 class="all-category-chip"
                 :class="{ active: categoryFilter === dimension.dimensionName }"
-                @click="onBusinessDimensionPrimaryClick(dimension)"
+                @click="onBusinessDimensionPrimaryClick(dimension, $event)"
               >
                 {{ businessDimensionSelectedLabel(dimension) }}
                 <span v-if="businessDimensionHasChildren(dimension)" class="all-category-arrow">
                   ▾
                 </span>
               </button>
-              <div
-                v-if="businessDimensionPanelOpen(dimension)"
-                class="all-sub-dimension-panel all-sub-dimension-panel-menu"
-                @mousedown.stop
-                @mouseenter="keepBusinessDimensionPanelOpen"
-                @mouseleave="closeBusinessDimensionPanel"
-              >
-                <div class="all-sub-dimension-title">{{ dimension.dimensionName }}</div>
-                <div class="all-sub-dimension-options">
-                  <button
-                    type="button"
-                    class="all-sub-dimension-chip"
-                    :class="{
-                      active:
-                        categoryFilter === dimension.dimensionName && categorySubFilter === 'all',
-                    }"
-                    @click="selectBusinessDimensionChild(dimension, 'all')"
-                  >
-                    全部
-                  </button>
-                  <button
-                    v-for="child in businessDimensionChildren(dimension)"
-                    :key="`dimension-menu-child-${dimension.id}-${child.id || child.dimensionCode}`"
-                    type="button"
-                    class="all-sub-dimension-chip"
-                    :class="{
-                      active:
-                        categoryFilter === dimension.dimensionName &&
-                        categorySubFilter === child.dimensionName,
-                    }"
-                    @click="selectBusinessDimensionChild(dimension, child.dimensionName)"
-                  >
-                    {{ child.dimensionName }}
-                  </button>
+              <Teleport to="body">
+                <div
+                  v-if="businessDimensionPanelOpen(dimension)"
+                  class="all-sub-dimension-panel all-sub-dimension-panel-menu"
+                  :style="businessDimensionPanelStyle"
+                  @mousedown.stop
+                  @mouseenter="keepBusinessDimensionPanelOpen"
+                  @mouseleave="closeBusinessDimensionPanel"
+                >
+                  <div class="all-sub-dimension-title">{{ dimension.dimensionName }}</div>
+                  <div class="all-sub-dimension-options">
+                    <button
+                      type="button"
+                      class="all-sub-dimension-chip"
+                      :class="{
+                        active:
+                          categoryFilter === dimension.dimensionName && categorySubFilter === 'all',
+                      }"
+                      @click="selectBusinessDimensionChild(dimension, 'all')"
+                    >
+                      全部
+                    </button>
+                    <button
+                      v-for="child in businessDimensionChildren(dimension)"
+                      :key="`dimension-menu-child-${dimension.id}-${child.id || child.dimensionCode}`"
+                      type="button"
+                      class="all-sub-dimension-chip"
+                      :class="{
+                        active:
+                          categoryFilter === dimension.dimensionName &&
+                          categorySubFilter === child.dimensionName,
+                      }"
+                      @click="selectBusinessDimensionChild(dimension, child.dimensionName)"
+                    >
+                      {{ child.dimensionName }}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </Teleport>
             </div>
           </div>
         </Teleport>
