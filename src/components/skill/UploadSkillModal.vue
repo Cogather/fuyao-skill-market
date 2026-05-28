@@ -84,6 +84,7 @@ const parseError = ref('');
 const businessDimensions = ref<BusinessDimensionDto[]>([]);
 const businessDimensionLoading = ref(false);
 const selectedBusinessDimension = ref('公共');
+const selectedBusinessCategory = ref('all');
 const duplicateChecking = ref(false);
 const duplicateCheckMessage = ref('');
 const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
@@ -118,6 +119,17 @@ const businessDimensionOptions = computed(() =>
     ),
 );
 
+const selectedBusinessDimensionItem = computed(
+  () =>
+    businessDimensionOptions.value.find(
+      (item) => item.dimensionName === selectedBusinessDimension.value,
+    ) ?? null,
+);
+
+const selectedBusinessCategoryOptions = computed(() =>
+  businessDimensionChildren(selectedBusinessDimensionItem.value),
+);
+
 const canSubmit = computed(
   () =>
     Boolean(parsed.value) &&
@@ -148,6 +160,7 @@ function reset(): void {
   uploading.value = false;
   parseError.value = '';
   selectedBusinessDimension.value = '公共';
+  selectedBusinessCategory.value = 'all';
   duplicateChecking.value = false;
   duplicateCheckMessage.value = '';
   duplicateCheckStatus.value = 'idle';
@@ -215,25 +228,41 @@ function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
   return raw
     .map((item, index): BusinessDimensionDto | null => {
       const record = readEnvelopeRecord(item);
-      const dimensionName = String(record.dimensionName ?? '').trim();
+      const dimensionName = String(record.dimensionName ?? record.name ?? '').trim();
       if (!dimensionName) {
         return null;
       }
       const id = Number(record.id);
       const sortNo = Number(record.sortNo);
+      const enabled =
+        record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1;
       return {
         id: Number.isFinite(id) ? id : index + 1,
-        dimensionCode: String(record.dimensionCode ?? '')
+        dimensionCode: String(record.dimensionCode ?? record.nameEn ?? '')
           .trim()
           .toUpperCase(),
         dimensionName,
+        name: dimensionName,
+        nameEn: String(record.nameEn ?? record.dimensionCode ?? '').trim(),
+        level: Number.isFinite(Number(record.level)) ? Number(record.level) : 0,
         sortNo: Number.isFinite(sortNo) ? sortNo : index + 1,
-        enabled: record.enabled === 0 || record.enabled === '0' || record.enabled === false ? 0 : 1,
+        enabled,
         createdAt: String(record.createdAt ?? ''),
         updatedAt: String(record.updatedAt ?? ''),
+        children: normalizeBusinessDimensions(record.children),
       };
     })
     .filter((item): item is BusinessDimensionDto => Boolean(item));
+}
+
+function businessDimensionChildren(
+  dimension: BusinessDimensionDto | null | undefined,
+): BusinessDimensionDto[] {
+  return [...(dimension?.children ?? [])]
+    .filter((item) => Number(item.enabled) === 1)
+    .sort(
+      (a, b) => a.sortNo - b.sortNo || a.dimensionName.localeCompare(b.dimensionName, 'zh-Hans-CN'),
+    );
 }
 
 function syncSelectedBusinessDimension(): void {
@@ -251,6 +280,19 @@ function syncSelectedBusinessDimension(): void {
     options[0]?.dimensionName ??
     '公共';
 }
+
+watch(selectedBusinessDimension, () => {
+  selectedBusinessCategory.value = 'all';
+});
+
+watch(selectedBusinessCategoryOptions, (options) => {
+  if (selectedBusinessCategory.value === 'all') {
+    return;
+  }
+  if (!options.some((item) => String(item.id) === selectedBusinessCategory.value)) {
+    selectedBusinessCategory.value = 'all';
+  }
+});
 
 async function loadBusinessDimensions(): Promise<void> {
   if (businessDimensionLoading.value || businessDimensions.value.length > 0) {
@@ -396,10 +438,14 @@ const onSubmit = async (): Promise<void> => {
     // 调用skill的upload接口
     const formData = new FormData();
     formData.append('file', file.value);
-    const env = await skillBaseService.uploadSkillPackage(formData, {
+    const uploadParams: Record<string, string> = {
       userId: userId.value,
       businessDimension: selectedBusinessDimension.value,
-    });
+    };
+    if (selectedBusinessCategory.value !== 'all') {
+      uploadParams.category = selectedBusinessCategory.value;
+    }
+    const env = await skillBaseService.uploadSkillPackage(formData, uploadParams);
     if (!serviceSucceeded(env)) {
       parseError.value = serviceMessage(env, '上传失败');
       return;
@@ -507,22 +553,41 @@ const onSubmit = async (): Promise<void> => {
               </div>
               <div class="form-field">
                 <label for="sk-business-dimension">业务维度</label>
-                <select
-                  id="sk-business-dimension"
-                  v-model="selectedBusinessDimension"
-                  class="input select-input"
-                >
-                  <option
-                    v-for="dimension in businessDimensionOptions"
-                    :key="dimension.id || dimension.dimensionCode"
-                    :value="dimension.dimensionName"
+                <div class="dimension-select-group">
+                  <select
+                    id="sk-business-dimension"
+                    v-model="selectedBusinessDimension"
+                    class="input select-input"
+                    aria-label="一级业务维度"
                   >
-                    {{ dimension.dimensionName }}
-                  </option>
-                  <option v-if="businessDimensionOptions.length === 0" value="公共">
-                    {{ businessDimensionLoading ? '加载中...' : '公共' }}
-                  </option>
-                </select>
+                    <option
+                      v-for="dimension in businessDimensionOptions"
+                      :key="dimension.id || dimension.dimensionCode"
+                      :value="dimension.dimensionName"
+                    >
+                      {{ dimension.dimensionName }}
+                    </option>
+                    <option v-if="businessDimensionOptions.length === 0" value="公共">
+                      {{ businessDimensionLoading ? '加载中...' : '公共' }}
+                    </option>
+                  </select>
+                  <select
+                    id="sk-business-category"
+                    v-model="selectedBusinessCategory"
+                    class="input select-input"
+                    :disabled="selectedBusinessCategoryOptions.length === 0"
+                    aria-label="二级业务维度"
+                  >
+                    <option value="all">全部</option>
+                    <option
+                      v-for="category in selectedBusinessCategoryOptions"
+                      :key="category.id || category.dimensionCode"
+                      :value="String(category.id)"
+                    >
+                      {{ category.dimensionName }}
+                    </option>
+                  </select>
+                </div>
               </div>
               <div class="form-field">
                 <label>默认发布层级</label>
@@ -822,6 +887,18 @@ const onSubmit = async (): Promise<void> => {
   cursor: pointer;
 }
 
+.dimension-select-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dimension-select-group .select-input:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .readonly {
   background: #f8fafc;
   color: #475569;
@@ -920,6 +997,10 @@ const onSubmit = async (): Promise<void> => {
   }
 
   .upload-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dimension-select-group {
     grid-template-columns: 1fr;
   }
 
