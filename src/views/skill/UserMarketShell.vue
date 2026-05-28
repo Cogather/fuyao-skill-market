@@ -762,13 +762,17 @@ function updateOverviewDimensionDropdownLayout(): void {
   }
   const rect = row.getBoundingClientRect();
   const margin = 16;
-  const width = Math.min(760, Math.max(360, rect.width));
-  const left = Math.min(Math.max(margin, rect.left), Math.max(margin, window.innerWidth - width - margin));
+  const availableWidth = Math.max(240, window.innerWidth - margin * 2);
+  const width = Math.min(760, availableWidth, Math.max(360, rect.width));
+  const left = Math.min(
+    Math.max(margin, rect.left),
+    Math.max(margin, window.innerWidth - width - margin),
+  );
   const top = Math.min(rect.bottom + 8, window.innerHeight - 220);
   overviewDimensionDropdownStyle.value = {
     position: 'fixed',
     left: `${Math.floor(left)}px`,
-    top: `${Math.floor(Math.max(margin, top))}px`,
+    top: `${Math.floor(Math.max(margin, top)) + 10}px`,
     width: `${Math.floor(width)}px`,
     maxHeight: `${Math.max(220, Math.floor(window.innerHeight - top - margin))}px`,
     zIndex: 3600,
@@ -793,7 +797,10 @@ function onOverviewDimensionDocDown(ev: MouseEvent): void {
     return;
   }
   const t = ev.target as Node;
-  if (overviewDimensionRowRef.value?.contains(t) || overviewDimensionDropdownRef.value?.contains(t)) {
+  if (
+    overviewDimensionRowRef.value?.contains(t) ||
+    overviewDimensionDropdownRef.value?.contains(t)
+  ) {
     return;
   }
   closeOverviewDimensionMore();
@@ -3608,9 +3615,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <span
                 v-if="hotSkillScopeLabel(s)"
                 class="hot-tag"
-                :class="
-                  hotSkillScopeKind(s) === 'personal' ? 'hot-tag-personal' : 'hot-tag-org'
-                "
+                :class="hotSkillScopeKind(s) === 'personal' ? 'hot-tag-personal' : 'hot-tag-org'"
               >
                 {{ hotSkillScopeLabel(s) }}
               </span>
@@ -3661,36 +3666,20 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       class="tabs-panel overview-panel"
       :style="tabPanelFillStyle"
     >
-      <section class="all-header">
-        <div class="all-header-copy">
-          <h1 class="all-title">全部技能</h1>
-          <div class="all-header-meta-row">
-            <p class="all-desc">
-              按部门、组织、业务维度和标签快速发现可复用 Skill
-            </p>
-            <div class="all-header-controls">
-              <label class="all-search-box" aria-label="搜索 Skill、作者、组织或业务">
-                <span class="all-search-icon" aria-hidden="true">⌕</span>
-                <input
-                  id="all-skill-search"
-                  v-model="search"
-                  type="search"
-                  placeholder="搜索名称 / 描述 / 创建者工号"
-                  @keydown.enter="onSearchKeyWord"
-                  @input="onSearchKeyWord"
-                />
-              </label>
-              <button
-                type="button"
-                class="all-advanced-toggle all-advanced-trigger"
-                :class="{ active: overviewAdvancedOpen }"
-                :aria-expanded="overviewAdvancedOpen"
-                aria-controls="all-filter-panel"
-                @click="toggleOverviewAdvancedPanel"
-              >
-                高级筛选 <span aria-hidden="true">⚙</span>
-              </button>
-            </div>
+      <section>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <div class="all-header-copy">
+            <h1 class="all-title">全部技能</h1>
+            <p class="all-desc">按部门、组织、业务维度和标签快速发现可复用 Skill</p>
+          </div>
+          <div class="all-header-art" aria-hidden="true">
+            <span class="all-art-card all-art-card-blue">
+              <i />
+            </span>
+            <span class="all-art-card all-art-card-yellow">
+              <i />
+              <i />
+            </span>
           </div>
         </div>
       </section>
@@ -3770,21 +3759,21 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </Teleport>
       </section>
 
-      <section
-        v-if="overviewAdvancedOpen"
-        id="all-filter-panel"
-        class="all-filter-panel"
-        aria-label="高级筛选面板"
-      >
-        <div class="all-filter-panel-head">
-          <h2 class="all-filter-panel-title">高级筛选</h2>
-          <button type="button" class="all-filter-panel-close" @click="toggleOverviewAdvancedPanel">
-            关闭
-          </button>
-        </div>
+      <div class="all-search-strip all-header-controls">
+        <label class="all-search-box" aria-label="搜索 Skill、作者、组织或业务">
+          <span class="all-search-icon" aria-hidden="true">⌕</span>
+          <input
+            id="all-skill-search"
+            v-model="search"
+            type="search"
+            placeholder="搜索名称 / 描述 / 创建者工号"
+            @keydown.enter="onSearchKeyWord"
+            @input="onSearchKeyWord"
+          />
+        </label>
 
         <section
-          class="all-toolbar"
+          class="all-toolbar all-inline-toolbar"
           :class="{ 'has-org-filter': quickFilter === 'devDept' }"
           aria-label="全部技能筛选"
         >
@@ -3906,6 +3895,31 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </select>
           </label>
         </section>
+
+        <button
+          type="button"
+          class="all-advanced-toggle all-advanced-trigger"
+          :class="{ active: overviewAdvancedOpen }"
+          :aria-expanded="overviewAdvancedOpen"
+          aria-controls="all-filter-panel"
+          @click="toggleOverviewAdvancedPanel"
+        >
+          高级筛选 <span aria-hidden="true">⚙</span>
+        </button>
+      </div>
+
+      <section
+        v-if="overviewAdvancedOpen"
+        id="all-filter-panel"
+        class="all-filter-panel"
+        aria-label="高级筛选面板"
+      >
+        <div class="all-filter-panel-head">
+          <h2 class="all-filter-panel-title">高级筛选</h2>
+          <button type="button" class="all-filter-panel-close" @click="toggleOverviewAdvancedPanel">
+            关闭
+          </button>
+        </div>
 
         <section class="all-advanced open" aria-label="标签筛选">
           <div class="filter-line">
