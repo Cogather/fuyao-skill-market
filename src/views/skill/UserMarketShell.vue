@@ -2456,11 +2456,11 @@ async function onDownload(id: string, version?: string): Promise<void> {
 const agentId = import.meta.env.VITE_SKILL_AGENT_ID;
 
 /**
-* 下载 SKILL 并存入 FormData, key为file
-* @param id skill id
-* @param version 可选版本号
-* @returns 包含下载文件的 FormData, 失败返回 null
-*/
+ * 下载 SKILL 并存入 FormData, key为file
+ * @param id skill id
+ * @param version 可选版本号
+ * @returns 包含下载文件的 FormData, 失败返回 null
+ */
 async function onDownloadToFormData(id: string, version?: string): Promise<FormData | null> {
   try {
     let params: any = {
@@ -2493,12 +2493,12 @@ const updateSkillData = async () => {
   const formData = await onDownloadToFormData(
     detailPanelSkill.value.id,
     detailPanelSkill.value.currentVersion,
-  )
-  if(formData) {
+  );
+  if (formData) {
     const res = await skillBaseService.clearAndUploadWorkspace(formData, userId.value, agentId);
     console.log(res);
   }
-}
+};
 
 function onViewVersions(id: string): void {
   void openVersionPanelFromMarketSkill(id);
@@ -2916,7 +2916,6 @@ type OpsDeptMetric = { skills: number; downloads: number };
 const opsDeptDimensionStats = ref<Map<string, OpsDeptMetric>>(new Map());
 const opsDeptDimensionStatsLoading = ref(false);
 const opsDeptSkillRowsLoading = ref(false);
-const opsDeptSkillRowsAppending = ref(false);
 let opsDeptDimensionStatsRequestSeq = 0;
 let opsDeptSkillRowsRequestSeq = 0;
 
@@ -2934,8 +2933,6 @@ const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
 const uiOrgBars = computed(() => opsDashboardBundle.value.orgBars);
 
 const OPS_DEPT_DISPLAY_START_LEVEL = 4;
-const OPS_DEPT_SKILL_PAGE_SIZE = 30;
-const OPS_DEPT_SKILL_PREFETCH_DISTANCE = 160;
 
 type OpsKpiCard = { label: string; value: string; desc: string };
 
@@ -3112,29 +3109,6 @@ function readSkillListTotal(env: unknown, payload: unknown): number | null {
   );
 }
 
-async function queryOpsSkillRowsPage(
-  baseParams: Record<string, unknown>,
-  pageNum: number,
-  pageSize: number,
-  fallbackDept = '',
-): Promise<{ rows: OpsSkillDetailRow[]; total: number | null }> {
-  const env = await skillBaseService.querySkillList({
-    ...baseParams,
-    pageNum,
-    pageSize,
-  });
-
-  if (!serviceSucceeded(env)) {
-    throw new Error(serviceMessage(env, 'Skill 明细加载失败'));
-  }
-
-  const payload = readServiceRecord(env).data;
-  return {
-    rows: normalizeOpsSkillRowsFromPayload(payload, fallbackDept),
-    total: readSkillListTotal(env, payload),
-  };
-}
-
 async function queryOpsSkillRows(
   baseParams: Record<string, unknown>,
   fallbackDept = '',
@@ -3144,14 +3118,21 @@ async function queryOpsSkillRows(
   let pageNum = 1;
 
   for (let page = 0; page < 20; page += 1) {
-    const { rows: pageRows, total } = await queryOpsSkillRowsPage(
-      baseParams,
+    const env = await skillBaseService.querySkillList({
+      ...baseParams,
       pageNum,
       pageSize,
-      fallbackDept,
-    );
+    });
+
+    if (!serviceSucceeded(env)) {
+      throw new Error(serviceMessage(env, 'Skill 明细加载失败'));
+    }
+
+    const payload = readServiceRecord(env).data;
+    const pageRows = normalizeOpsSkillRowsFromPayload(payload, fallbackDept);
     rows.push(...pageRows);
 
+    const total = readSkillListTotal(env, payload);
     if (
       pageRows.length === 0 ||
       pageRows.length < pageSize ||
@@ -3281,154 +3262,50 @@ function toggleDeptExpand(path: string): void {
 
 const selectedDeptSkillRows = ref<OpsSkillDetailRow[]>([]);
 const selectedDeptIndex = ref(0);
-const opsDeptSkillRowsPage = ref(1);
-const opsDeptSkillRowsTotal = ref(0);
-const opsDeptSkillRowsExhausted = ref(false);
-const opsDeptSkillTableWrapRef = ref<HTMLElement | null>(null);
-let opsDeptSkillRowsScrollRaf = 0;
 
 function localSelectedDeptSkillRows(): OpsSkillDetailRow[] {
   const rows = selectedDeptNode.value?.skillRows ?? [];
   return opsRowsForCurrentLevel(rows);
 }
 
-function opsDeptSkillQueryParams(includeDept: boolean): Record<string, unknown> {
-  const dimension = selectedOpsBusinessDimension.value;
-  const params: Record<string, unknown> = includeDept ? { ...selectedOpsDeptQueryParams() } : {};
-  if (dimension) {
-    params.category = dimension.id;
-  }
-  const level = opsDeptLevelParam();
-  if (level) {
-    params.level = level;
-  }
-  return params;
-}
-
-function resetOpsDeptSkillRowsPaging(): void {
-  if (opsDeptSkillRowsScrollRaf) {
-    window.cancelAnimationFrame(opsDeptSkillRowsScrollRaf);
-    opsDeptSkillRowsScrollRaf = 0;
-  }
-  opsDeptSkillRowsPage.value = 1;
-  opsDeptSkillRowsTotal.value = 0;
-  opsDeptSkillRowsExhausted.value = false;
-  opsDeptSkillRowsAppending.value = false;
-}
-
-function opsDeptSkillRowsNearBottom(): boolean {
-  const el = opsDeptSkillTableWrapRef.value;
-  if (!el) {
-    return false;
-  }
-  return el.scrollHeight - el.clientHeight - el.scrollTop <= OPS_DEPT_SKILL_PREFETCH_DISTANCE;
-}
-
-async function loadNextOpsDeptSkillRowsIfNeeded(): Promise<void> {
-  if (
-    !shouldUseOpsDeptSkillApi.value ||
-    opsDeptSkillRowsLoading.value ||
-    opsDeptSkillRowsAppending.value ||
-    opsDeptSkillRowsExhausted.value ||
-    !opsDeptSkillRowsNearBottom()
-  ) {
-    return;
-  }
-  await appendSelectedDeptSkillRowsByDimension();
-}
-
-function scheduleOpsDeptSkillRowsLoadMoreCheck(): void {
-  if (opsDeptSkillRowsScrollRaf) {
-    return;
-  }
-  opsDeptSkillRowsScrollRaf = window.requestAnimationFrame(() => {
-    opsDeptSkillRowsScrollRaf = 0;
-    void loadNextOpsDeptSkillRowsIfNeeded();
-  });
-}
-
-function handleOpsDeptSkillRowsScroll(): void {
-  scheduleOpsDeptSkillRowsLoadMoreCheck();
-}
-
 async function loadSelectedDeptSkillRowsByDimension(): Promise<void> {
+  const dimension = selectedOpsBusinessDimension.value;
   if (!shouldUseOpsDeptSkillApi.value) {
-    resetOpsDeptSkillRowsPaging();
     selectedDeptSkillRows.value = localSelectedDeptSkillRows();
     return;
   }
   const requestSeq = ++opsDeptSkillRowsRequestSeq;
-  resetOpsDeptSkillRowsPaging();
-  selectedDeptSkillRows.value = [];
   opsDeptSkillRowsLoading.value = true;
   try {
-    const { rows, total } = await queryOpsSkillRowsPage(
-      opsDeptSkillQueryParams(true),
-      1,
-      OPS_DEPT_SKILL_PAGE_SIZE,
-      selectedDeptNode.value?.path ?? '',
-    );
+    const params: Record<string, unknown> = {
+      ...selectedOpsDeptQueryParams(),
+    };
+    if (dimension) {
+      params.category = dimension.id;
+    }
+    const level = opsDeptLevelParam();
+    if (level) {
+      params.level = level;
+    }
+    const rows = await queryOpsSkillRows(params, selectedDeptNode.value?.path ?? '');
     if (requestSeq !== opsDeptSkillRowsRequestSeq) {
       return;
     }
     selectedDeptSkillRows.value = rows;
-    opsDeptSkillRowsPage.value = 1;
-    opsDeptSkillRowsTotal.value = total ?? rows.length;
-    opsDeptSkillRowsExhausted.value =
-      rows.length < OPS_DEPT_SKILL_PAGE_SIZE || (total !== null && rows.length >= total);
   } catch (e) {
     if (requestSeq === opsDeptSkillRowsRequestSeq) {
       selectedDeptSkillRows.value = [];
-      opsDeptSkillRowsExhausted.value = true;
       showToast(e instanceof Error ? e.message : 'Skill 明细加载失败');
     }
   } finally {
     if (requestSeq === opsDeptSkillRowsRequestSeq) {
       opsDeptSkillRowsLoading.value = false;
-      await nextTick();
-      scheduleOpsDeptSkillRowsLoadMoreCheck();
-    }
-  }
-}
-
-async function appendSelectedDeptSkillRowsByDimension(): Promise<void> {
-  if (!shouldUseOpsDeptSkillApi.value || opsDeptSkillRowsExhausted.value) {
-    return;
-  }
-  const requestSeq = opsDeptSkillRowsRequestSeq;
-  const nextPage = opsDeptSkillRowsPage.value + 1;
-  opsDeptSkillRowsAppending.value = true;
-  try {
-    const { rows, total } = await queryOpsSkillRowsPage(
-      opsDeptSkillQueryParams(true),
-      nextPage,
-      OPS_DEPT_SKILL_PAGE_SIZE,
-      selectedDeptNode.value?.path ?? '',
-    );
-    if (requestSeq !== opsDeptSkillRowsRequestSeq) {
-      return;
-    }
-    selectedDeptSkillRows.value = [...selectedDeptSkillRows.value, ...rows];
-    opsDeptSkillRowsPage.value = nextPage;
-    const loadedCount = selectedDeptSkillRows.value.length;
-    opsDeptSkillRowsTotal.value = total ?? Math.max(opsDeptSkillRowsTotal.value, loadedCount);
-    opsDeptSkillRowsExhausted.value =
-      rows.length < OPS_DEPT_SKILL_PAGE_SIZE || (total !== null && loadedCount >= total);
-  } catch (e) {
-    if (requestSeq === opsDeptSkillRowsRequestSeq) {
-      opsDeptSkillRowsExhausted.value = true;
-      showToast(e instanceof Error ? e.message : 'Skill 明细加载失败');
-    }
-  } finally {
-    if (requestSeq === opsDeptSkillRowsRequestSeq) {
-      opsDeptSkillRowsAppending.value = false;
-      await nextTick();
-      scheduleOpsDeptSkillRowsLoadMoreCheck();
     }
   }
 }
 
 async function loadOpsDeptDimensionStats(): Promise<void> {
+  const dimension = selectedOpsBusinessDimension.value;
   const requestSeq = ++opsDeptDimensionStatsRequestSeq;
 
   if (!shouldUseOpsDeptSkillApi.value) {
@@ -3440,7 +3317,15 @@ async function loadOpsDeptDimensionStats(): Promise<void> {
   opsDeptDimensionStatsLoading.value = true;
   opsDeptDimensionStats.value = new Map();
   try {
-    const rows = await queryOpsSkillRows(opsDeptSkillQueryParams(false));
+    const params: Record<string, unknown> = {};
+    if (dimension) {
+      params.category = dimension.id;
+    }
+    const level = opsDeptLevelParam();
+    if (level) {
+      params.level = level;
+    }
+    const rows = await queryOpsSkillRows(params);
     if (requestSeq !== opsDeptDimensionStatsRequestSeq) {
       return;
     }
@@ -3466,8 +3351,7 @@ async function refreshOpsDeptDimensionDerivedData(index = selectedDeptIndex.valu
     return;
   }
 
-  await loadOpsDeptDimensionStats();
-  await filterOpsDept(index);
+  await Promise.all([loadOpsDeptDimensionStats(), filterOpsDept(index)]);
 }
 
 async function filterOpsDept(index: number): Promise<void> {
@@ -3475,7 +3359,6 @@ async function filterOpsDept(index: number): Promise<void> {
   if (!shouldUseOpsDeptSkillApi.value) {
     opsDeptSkillRowsRequestSeq += 1;
     opsDeptSkillRowsLoading.value = false;
-    resetOpsDeptSkillRowsPaging();
     selectedDeptSkillRows.value = localSelectedDeptSkillRows();
     return;
   }
@@ -5133,12 +5016,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     <strong>暂无 Skill 明细</strong>
                     <span>选择有数据的部门层级后，将展示该层级下的 Skill 列表。</span>
                   </div>
-                  <div
-                    v-else
-                    ref="opsDeptSkillTableWrapRef"
-                    class="ops-skill-table-wrap"
-                    @scroll="handleOpsDeptSkillRowsScroll"
-                  >
+                  <div v-else class="ops-skill-table-wrap">
                     <table class="table ops-detail-table">
                       <thead>
                         <tr>
@@ -5193,13 +5071,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                         </tr>
                       </tbody>
                     </table>
-                    <div
-                      v-if="opsDeptSkillRowsAppending"
-                      class="ops-detail-load-more"
-                      role="status"
-                    >
-                      正在加载更多 Skill…
-                    </div>
                   </div>
                 </div>
               </section>
