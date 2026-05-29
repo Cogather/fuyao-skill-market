@@ -2711,6 +2711,21 @@
   box-shadow: none;
 }
 
+.ops-dashboard .ops-detail-load-more {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 760;
+  background: #f8fbff;
+  border-top: 1px solid #e6edf6;
+}
+
 .ops-dashboard .ops-detail-table.table {
   width: 100%;
   min-width: 760px;
