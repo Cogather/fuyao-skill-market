@@ -928,7 +928,7 @@ function handleSkillRequest(
   config: AxiosRequestConfig,
 ): MockEnvelope<unknown> | null {
   const params = readParams(config);
-  if (method === 'get' && path === '/business-dimensions') {
+  if (method === 'get' && (path === '/business-dimensions' || path === '/categories')) {
     const data = getMockBusinessDimensions();
     return ok(data, data.length);
   }
@@ -1247,7 +1247,7 @@ function handleApiRequest(
     return ok(getMockMarketDepartmentsTree());
   }
 
-  if (method === 'get' && path === '/business-dimensions') {
+  if (method === 'get' && (path === '/business-dimensions' || path === '/categories')) {
     const data = getMockBusinessDimensions();
     return ok(data, data.length);
   }

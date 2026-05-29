@@ -204,6 +204,8 @@ const overviewFilterObj = ref<any>({
   tagList: '',
   businessDimension: '',
   category: '',
+  sortBy: 'downloads',
+  sortOrder: 'desc',
 });
 const overviewRemoteItems = ref<any[]>([]);
 const overviewRemoteTotal = ref(0);
@@ -225,7 +227,6 @@ const orgForm = ref({
   admins: '',
   enabled: 1,
 });
-const isEnableArr = ref<any>([]);
 
 const approvalSubTab = ref<'pending' | 'done'>('pending');
 const syncPendingRows = ref<any[]>([]);
@@ -1222,14 +1223,12 @@ function effectiveSkillUserId(): string {
 
 async function loadOpsDashboardOverview(): Promise<void> {
   try {
-    const [fy, co] = await Promise.all([
-      skillBaseService.queryDashboardOverview({ system: 'fuyao' }),
-    ]);
-    if (fy.meta.success && fy.data) {
-      fuyaoOpsDashboardBundleRef.value = fy.data;
-      totalSkills.value = fy.data.kpis.totalSkills;
+    const res = await skillBaseService.queryDashboardOverview({ system: 'company' });
+    if (res.meta.success && res.data) {
+      fuyaoOpsDashboardBundleRef.value = res.data;
+      totalSkills.value = res.data.kpis.totalSkills;
       // 暂时 组织数，要重新从接口拿
-      orgCount.value = fy.data.rankings?.length ?? orgCount.value;
+      orgCount.value = res.data.rankings?.length ?? orgCount.value;
     }
     selectedDeptIndex.value = 0;
     await nextTick();
@@ -2967,7 +2966,7 @@ const opsImporting = ref(false);
 const opsExcelInputRef = ref<HTMLInputElement | null>(null);
 const fuyaoOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
 
-const opsBoardSystem = ref<'fuyao' | 'company'>('company');
+const opsBoardSystem = ref<'fuyao' | 'company'>('fuyao');
 const changeSystem = async (value: 'fuyao' | 'company') => {
   opsBoardSystem.value = value;
   selectedOpsDeptPath.value = '';
@@ -3046,10 +3045,11 @@ const changeSkillLevel = (value: 'all' | 'personal' | 'org') => {
 
 const selectedOpsBusinessDimensionLabel = computed(() => {
   const current = selectedOpsBusinessDimension.value;
+  let str = '已选择：'
   if (!current) {
-    return '全部业务维度';
+    return str + '全部业务维度';
   }
-  return current.parentName ? `${current.parentName} / ${current.name}` : current.name;
+  return current.parentName ? str + `${current.parentName} / ${current.name}` : str + current.name;
 });
 
 function opsBusinessDimensionNodeId(dimension: BusinessDimensionDto): string {
@@ -4734,7 +4734,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </p>
         </div>
         <div class="ops-filter">
-          <div class="ops-toggle ops-system-toggle" role="tablist" aria-label="运营管理系统切换">
+          <div v-if="false" class="ops-toggle ops-system-toggle" role="tablist" aria-label="运营管理系统切换">
             <button
               type="button"
               class="ops-system-btn"
@@ -4775,6 +4775,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               @change="onOpsExcelFileChange"
             />
             <button
+              v-if="false"
               type="button"
               class="btn btn-soft ops-import-btn"
               :disabled="opsImporting"
@@ -4798,17 +4799,33 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <section class="ops-dimension-filter" aria-label="业务维度筛选">
           <div class="ops-dimension-filter-head">
             <div>
-              <h3>业务维度</h3>
+              <h3>业务场景</h3>
               <p>{{ selectedOpsBusinessDimensionLabel }}</p>
             </div>
-            <button
-              v-if="selectedOpsBusinessDimension"
-              type="button"
-              class="ops-dimension-clear"
-              @click="clearOpsBusinessDimension"
-            >
-              清空
-            </button>
+            <div class="ops-dimension-head-actions">
+              <div class="ops-dept-level-tabs" role="tablist" aria-label="部门 Skill 级别筛选">
+                <button
+                  v-for="tab in opsDeptSkillLevelTabs"
+                  :key="tab.key"
+                  type="button"
+                  class="ops-dept-level-tab"
+                  role="tab"
+                  :class="{ active: opsDeptSkillLevelFilter === tab.key }"
+                  :aria-selected="opsDeptSkillLevelFilter === tab.key"
+                  @click="changeSkillLevel(tab.key)"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+              <button
+                v-if="selectedOpsBusinessDimension"
+                type="button"
+                class="ops-dimension-clear"
+                @click="clearOpsBusinessDimension"
+              >
+                清空
+              </button>
+            </div>
           </div>
           <div class="ops-dimension-scroll">
             <div v-if="businessDimensionLoading" class="ops-dimension-loading">
@@ -4862,20 +4879,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   <div>
                     <h3>部门 Skill 分布详情</h3>
                     <p>点击任一部门层级后，右侧显示该层级 Skill 明细。</p>
-                  </div>
-                  <div class="ops-dept-level-tabs" role="tablist" aria-label="部门 Skill 级别筛选">
-                    <button
-                      v-for="tab in opsDeptSkillLevelTabs"
-                      :key="tab.key"
-                      type="button"
-                      class="ops-dept-level-tab"
-                      role="tab"
-                      :class="{ active: opsDeptSkillLevelFilter === tab.key }"
-                      :aria-selected="opsDeptSkillLevelFilter === tab.key"
-                      @click="changeSkillLevel(tab.key)"
-                    >
-                      {{ tab.label }}
-                    </button>
                   </div>
                 </div>
                 <div class="ops-card-body ops-tree board-org-tree" role="tree">
