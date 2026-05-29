@@ -1,5 +1,13 @@
 import httpRequest from '@/services/skillMarket/request';
 
+const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
+
+export const corecode = _corecode_env
+
+const _ai_env = import.meta.env.VITE_SKILL_CORE_CODE_URL;
+
+export const ai = _ai_env;
+
 export const skillBaseService = {
   // skill压缩包解析接口
   parseSkillPackage: (formData: FormData, params: any): any => {
@@ -32,6 +40,19 @@ export const skillBaseService = {
   uploadStorageFile: (formData: FormData): any => {
     return httpRequest.fuyao<any>({
       url: '/resource/resource-management/v1/storage/file',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  // workspace清理并上传接口 (FormData 参数名：flie)
+  clearAndUploadWorkspace: (formData: FormData, userId: string, agentId: string): any => {
+    return httpRequest.direct<any>({
+      baseURL: ai,
+      url: `/aiapp-v2/v1/skills/${userId}/${agentId}/workspace/clear-and-upload`,
       method: 'post',
       data: formData,
       headers: {

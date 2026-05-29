@@ -2452,6 +2452,54 @@ async function onDownload(id: string, version?: string): Promise<void> {
   }
 }
 
+// skill调测用
+const agentId = import.meta.env.VITE_SKILL_AGENT_ID;
+
+/**
+* 下载 SKILL 并存入 FormData, key为file
+* @param id skill id
+* @param version 可选版本号
+* @returns 包含下载文件的 FormData, 失败返回 null
+*/
+async function onDownloadToFormData(id: string, version?: string): Promise<FormData | null> {
+  try {
+    let params: any = {
+      userId: userId.value,
+    };
+    if (version) {
+      params.version = version;
+    }
+    const env = await skillBaseService.downloadSkill(params, id);
+    if (!env.meta.success || !env.data) {
+      throw new Error(env.message || '下载失败');
+    }
+    const d = env.data;
+
+    // 获取 blob 数据
+    const response = await fetch(d);
+    const blob = await response.blob();
+
+    // 创建 FormData 并存入 file
+    const formData = new FormData();
+    formData.append('file', blob, `skill-${id}.zip`);
+
+    return formData;
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '下载失败');
+    return null;
+  }
+}
+const updateSkillData = async () => {
+  const formData = await onDownloadToFormData(
+    detailPanelSkill.value.id,
+    detailPanelSkill.value.currentVersion,
+  )
+  if(formData) {
+    const res = await skillBaseService.clearAndUploadWorkspace(formData, userId.value, agentId);
+    console.log(res);
+  }
+}
+
 function onViewVersions(id: string): void {
   void openVersionPanelFromMarketSkill(id);
 }
@@ -3636,6 +3684,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       @download="onDetailDownload"
       @delete-click="openDetailDeleteConfirm"
       @version-manage="onDetailVersionManage"
+      @update-skill-data="updateSkillData"
     />
 
     <SkillVersionManageDialog
