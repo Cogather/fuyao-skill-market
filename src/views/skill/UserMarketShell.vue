@@ -1596,7 +1596,7 @@ const onSearchHot = async (e: Event | KeyboardEvent) => {
   const value = (e.target as HTMLInputElement).value;
   hotSearch.value = value;
   await loadHotSkillCards();
-}
+};
 
 const myReleasePageNumValue = ref<number>(1);
 const myReleasePageSizeValue = ref<number>(16);
@@ -2921,6 +2921,10 @@ const opsDeptSkillLevelTabs: { key: OpsDeptSkillLevelFilter; label: string }[] =
   { key: 'org', label: '组织级' },
 ];
 
+const shouldUseOpsDeptSkillApi = computed(
+  () => Boolean(selectedOpsBusinessDimension.value) || opsDeptSkillLevelFilter.value !== 'all',
+);
+
 const changeSkillLevel = (value: 'all' | 'personal' | 'org') => {
   opsDeptSkillLevelFilter.value = value;
   void refreshOpsDeptDimensionDerivedData(selectedDeptIndex.value);
@@ -2957,13 +2961,10 @@ async function selectOpsBusinessDimension(
 
 async function clearOpsBusinessDimension(): Promise<void> {
   selectedOpsBusinessDimension.value = null;
-  opsDeptDimensionStatsRequestSeq += 1;
-  opsDeptDimensionStatsLoading.value = false;
-  opsDeptDimensionStats.value = new Map();
-  await filterOpsDept(selectedDeptIndex.value);
+  await refreshOpsDeptDimensionDerivedData(selectedDeptIndex.value);
 }
 
-function opsDeptLevelStatusParam(): string {
+function opsDeptLevelParam(): string {
   if (opsDeptSkillLevelFilter.value === 'personal') {
     return '个人级';
   }
@@ -3221,7 +3222,7 @@ function localSelectedDeptSkillRows(): OpsSkillDetailRow[] {
 
 async function loadSelectedDeptSkillRowsByDimension(): Promise<void> {
   const dimension = selectedOpsBusinessDimension.value;
-  if (!dimension) {
+  if (!shouldUseOpsDeptSkillApi.value) {
     selectedDeptSkillRows.value = localSelectedDeptSkillRows();
     return;
   }
@@ -3229,12 +3230,14 @@ async function loadSelectedDeptSkillRowsByDimension(): Promise<void> {
   opsDeptSkillRowsLoading.value = true;
   try {
     const params: Record<string, unknown> = {
-      category: dimension.id,
       ...selectedOpsDeptQueryParams(),
     };
-    const status = opsDeptLevelStatusParam();
-    if (status) {
-      params.status = status;
+    if (dimension) {
+      params.category = dimension.id;
+    }
+    const level = opsDeptLevelParam();
+    if (level) {
+      params.level = level;
     }
     const rows = await queryOpsSkillRows(params, selectedDeptNode.value?.path ?? '');
     if (requestSeq !== opsDeptSkillRowsRequestSeq) {
@@ -3257,7 +3260,7 @@ async function loadOpsDeptDimensionStats(): Promise<void> {
   const dimension = selectedOpsBusinessDimension.value;
   const requestSeq = ++opsDeptDimensionStatsRequestSeq;
 
-  if (!dimension) {
+  if (!shouldUseOpsDeptSkillApi.value) {
     opsDeptDimensionStats.value = new Map();
     opsDeptDimensionStatsLoading.value = false;
     return;
@@ -3266,12 +3269,13 @@ async function loadOpsDeptDimensionStats(): Promise<void> {
   opsDeptDimensionStatsLoading.value = true;
   opsDeptDimensionStats.value = new Map();
   try {
-    const params: Record<string, unknown> = {
-      category: dimension.id,
-    };
-    const status = opsDeptLevelStatusParam();
-    if (status) {
-      params.status = status;
+    const params: Record<string, unknown> = {};
+    if (dimension) {
+      params.category = dimension.id;
+    }
+    const level = opsDeptLevelParam();
+    if (level) {
+      params.level = level;
     }
     const rows = await queryOpsSkillRows(params);
     if (requestSeq !== opsDeptDimensionStatsRequestSeq) {
@@ -3291,7 +3295,7 @@ async function loadOpsDeptDimensionStats(): Promise<void> {
 }
 
 async function refreshOpsDeptDimensionDerivedData(index = selectedDeptIndex.value): Promise<void> {
-  if (!selectedOpsBusinessDimension.value) {
+  if (!shouldUseOpsDeptSkillApi.value) {
     opsDeptDimensionStatsRequestSeq += 1;
     opsDeptDimensionStats.value = new Map();
     opsDeptDimensionStatsLoading.value = false;
@@ -3304,7 +3308,7 @@ async function refreshOpsDeptDimensionDerivedData(index = selectedDeptIndex.valu
 
 async function filterOpsDept(index: number): Promise<void> {
   selectedDeptIndex.value = index;
-  if (!selectedOpsBusinessDimension.value) {
+  if (!shouldUseOpsDeptSkillApi.value) {
     opsDeptSkillRowsRequestSeq += 1;
     opsDeptSkillRowsLoading.value = false;
     selectedDeptSkillRows.value = localSelectedDeptSkillRows();
@@ -3323,7 +3327,7 @@ function selectOpsOrg(name: string): void {
 }
 
 function metricForDeptNode(node: DeptTreeNode): OpsDeptMetric {
-  if (selectedOpsBusinessDimension.value) {
+  if (shouldUseOpsDeptSkillApi.value) {
     const selectedMetric = opsDeptDimensionStats.value.get(node.path);
     if (selectedMetric) {
       return selectedMetric;
@@ -3810,7 +3814,13 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               />
             </svg>
           </span>
-          <input v-model="hotSearch" type="search" placeholder="搜索热门 Skill / 创建者 / 描述" @keydown.enter="onSearchHot" @input="onSearchHot" />
+          <input
+            v-model="hotSearch"
+            type="search"
+            placeholder="搜索热门 Skill / 创建者 / 描述"
+            @keydown.enter="onSearchHot"
+            @input="onSearchHot"
+          />
         </label>
         <button type="button" class="hot-search-more" @click="goTab('overview')">
           探索全部技能 <span aria-hidden="true">→</span>
