@@ -2978,6 +2978,7 @@ async function clearOpsBusinessDimension(): Promise<void> {
   opsDeptDimensionStatsRequestSeq += 1;
   opsDeptDimensionStatsLoading.value = false;
   opsDeptDimensionStats.value = new Map();
+  selectedDeptIndex.value = 0;
 
   await loadOpsDashboardOverview();
 }
