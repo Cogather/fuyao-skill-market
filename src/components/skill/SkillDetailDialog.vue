@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
                   stroke-linejoin="round"
                 />
               </svg>
-              {{ skill.downloads }}
+              {{ skill.totalDownloads }}
             </span>
           </div>
           <div v-if="!previewOnly" class="detail-actions">
