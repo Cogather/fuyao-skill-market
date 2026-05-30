@@ -4060,7 +4060,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </select>
           </label>
 
-          <label v-if="quickFilter === 'devDept'" class="toolbar-group toolbar-org-group">
+          <label v-if="false && quickFilter === 'devDept'" class="toolbar-group toolbar-org-group">
             <span class="toolbar-label">组织</span>
             <select
               v-model="levelFilter"

@@ -84,7 +84,7 @@ const parseError = ref('');
 const businessDimensions = ref<BusinessDimensionDto[]>([]);
 const businessDimensionLoading = ref(false);
 const selectedBusinessDimension = ref('公共');
-const selectedBusinessCategory = ref('all');
+const selectedBusinessCategory = ref('');
 const duplicateChecking = ref(false);
 const duplicateCheckMessage = ref('');
 const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
@@ -146,11 +146,20 @@ const selectedBusinessCategoryOptions = computed(() =>
   businessDimensionChildren(selectedBusinessDimensionItem.value),
 );
 
+const selectedBusinessCategoryParam = computed(() => {
+  if (selectedBusinessCategory.value) {
+    return selectedBusinessCategory.value;
+  }
+  const dimensionId = selectedBusinessDimensionItem.value?.id;
+  return dimensionId !== undefined && dimensionId !== null ? String(dimensionId) : '';
+});
+
 const canSubmit = computed(
   () =>
     Boolean(parsed.value) &&
     parseState.value === 'success' &&
     Boolean(selectedBusinessDimension.value) &&
+    Boolean(selectedBusinessCategoryParam.value) &&
     !uploading.value,
 );
 
@@ -176,7 +185,7 @@ function reset(): void {
   uploading.value = false;
   parseError.value = '';
   selectedBusinessDimension.value = '公共';
-  selectedBusinessCategory.value = 'all';
+  selectedBusinessCategory.value = '';
   duplicateChecking.value = false;
   duplicateCheckMessage.value = '';
   duplicateCheckStatus.value = 'idle';
@@ -331,15 +340,15 @@ function syncSelectedBusinessDimension(): void {
 }
 
 watch(selectedBusinessDimension, () => {
-  selectedBusinessCategory.value = 'all';
+  selectedBusinessCategory.value = '';
 });
 
 watch(selectedBusinessCategoryOptions, (options) => {
-  if (selectedBusinessCategory.value === 'all') {
+  if (!selectedBusinessCategory.value) {
     return;
   }
   if (!options.some((item) => String(item.id) === selectedBusinessCategory.value)) {
-    selectedBusinessCategory.value = 'all';
+    selectedBusinessCategory.value = '';
   }
 });
 
@@ -490,10 +499,8 @@ const onSubmit = async (): Promise<void> => {
     const uploadParams: Record<string, string> = {
       userId: userId.value,
       businessDimension: selectedBusinessDimension.value,
+      category: selectedBusinessCategoryParam.value,
     };
-    if (selectedBusinessCategory.value !== 'all') {
-      uploadParams.category = selectedBusinessCategory.value;
-    }
     const env = await skillBaseService.uploadSkillPackage(formData, uploadParams);
     if (!serviceSucceeded(env)) {
       parseError.value = serviceMessage(env, '上传失败');
@@ -637,7 +644,9 @@ const onSubmit = async (): Promise<void> => {
                     :disabled="selectedBusinessCategoryOptions.length === 0"
                     aria-label="二级业务维度"
                   >
-                    <option value="all">全部</option>
+                    <option value="">
+                      {{ selectedBusinessCategoryOptions.length === 0 ? '无二级维度' : '空' }}
+                    </option>
                     <option
                       v-for="category in selectedBusinessCategoryOptions"
                       :key="category.id || category.dimensionCode"
