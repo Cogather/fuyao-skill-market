@@ -601,7 +601,7 @@ const clearOverviewDeptCascader = async () => {
     const deptField = `departmentL${num}`;
     overviewFilterObj.value[deptField] = '';
   }
-  await startOverviewRemoteFetch();
+  await reloadOverviewFirstPageFromUserInput();
   overviewMarketDeptSegments.value = [];
   overviewDeptCascaderOpen.value = false;
 };
@@ -612,7 +612,7 @@ const deptFilterOnChange = async () => {
     const deptField = `departmentL${num}`;
     overviewFilterObj.value[deptField] = overviewMarketDeptSegments.value[i];
   }
-  await startOverviewRemoteFetch();
+  await reloadOverviewFirstPageFromUserInput();
   overviewDeptCascaderOpen.value = false;
 };
 
@@ -1249,6 +1249,13 @@ async function startOverviewRemoteFetch(
   }
 }
 
+async function reloadOverviewFirstPageFromUserInput(): Promise<void> {
+  await startOverviewRemoteFetch(false, {
+    resetScroll: true,
+    suppressPostRenderCheck: true,
+  });
+}
+
 const changeOverviewTab = async (tabName: string) => {
   quickFilter.value = tabName;
   if (tabName !== 'devDept') {
@@ -1264,13 +1271,13 @@ const changeOverviewTab = async (tabName: string) => {
   }
   overviewFilterObj.value.pageNum = 1;
   page.pageIndex = 1;
-  await startOverviewRemoteFetch();
+  await reloadOverviewFirstPageFromUserInput();
 };
 
 const onSearchKeyWord = async (event: Event) => {
   const query = (event.target as HTMLInputElement).value;
   overviewFilterObj.value.keyword = query;
-  await startOverviewRemoteFetch();
+  await reloadOverviewFirstPageFromUserInput();
 };
 
 async function onOverviewOrgFilterChange(): Promise<void> {
@@ -1281,7 +1288,7 @@ async function onOverviewOrgFilterChange(): Promise<void> {
     const id = Number(levelFilter.value);
     overviewFilterObj.value.orgId =
       levelFilter.value === 'all' || !Number.isFinite(id) ? undefined : id;
-    await startOverviewRemoteFetch();
+    await reloadOverviewFirstPageFromUserInput();
   }
 }
 
@@ -1377,10 +1384,7 @@ const changeSort = async (type: 'time' | 'downloads' | 'rating') => {
   page.pageIndex = 1;
   overviewFilterObj.value.sortBy = type;
   overviewFilterObj.value.sortOrder = 'desc';
-  await startOverviewRemoteFetch(false, {
-    resetScroll: true,
-    suppressPostRenderCheck: true,
-  });
+  await reloadOverviewFirstPageFromUserInput();
 };
 
 watch(levelFilter, () => {
@@ -1447,7 +1451,7 @@ async function setCategoryFilter(
       overviewFilterObj.value.businessDimension = value;
       overviewFilterObj.value.category = subValue === 'all' ? '' : (categoryParam ?? subValue);
     }
-    await startOverviewRemoteFetch();
+    await reloadOverviewFirstPageFromUserInput();
   }
 }
 
@@ -1476,7 +1480,7 @@ async function toggleTagFilter(tag: string): void {
   overviewFilterObj.value.tagList = [...selectedTags.value].join(',');
   overviewFilterObj.value.pageNum = 1;
   page.pageIndex = 1;
-  await startOverviewRemoteFetch();
+  await reloadOverviewFirstPageFromUserInput();
 }
 
 async function clearTagFilters(): Promise<void> {
@@ -1484,7 +1488,7 @@ async function clearTagFilters(): Promise<void> {
   overviewFilterObj.value.tagList = '';
   overviewFilterObj.value.pageNum = 1;
   page.pageIndex = 1;
-  await startOverviewRemoteFetch();
+  await reloadOverviewFirstPageFromUserInput();
 }
 
 function openUpload(): void {
