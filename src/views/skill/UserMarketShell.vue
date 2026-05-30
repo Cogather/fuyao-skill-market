@@ -76,30 +76,11 @@ const myPublishedSkills = ref<any[]>([]);
 const myReleaseTableWrapRef = ref<HTMLElement | null>(null);
 const totalDownloads = ref<any>(0);
 const totalSkills = ref(0);
-const downloadsLast30Days = ref(0);
 const orgCount = ref(0);
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const route = useRoute();
 const router = useRouter();
-
-type HotMarketStatKey = 'skills' | 'creators' | 'calls' | 'downloads';
-type HotMarketStat = {
-  key: HotMarketStatKey;
-  label: string;
-  value: string;
-};
-
-const HOT_MARKET_STATS_MOCK: readonly HotMarketStat[] = [
-  { key: 'skills', label: 'SKILL', value: '7.4万' },
-  { key: 'creators', label: '创作人数', value: '1.2万' },
-  { key: 'calls', label: '调用数', value: '230万' },
-  { key: 'downloads', label: '下载数', value: '86万' },
-];
-
-function cloneHotMarketStats(): HotMarketStat[] {
-  return HOT_MARKET_STATS_MOCK.map((item) => ({ ...item }));
-}
 
 const hotMarketStatsByKey = ref<any>({
   skillCount: { key: 'skillCount', label: 'SKILL', value: '7.4万' },
@@ -1003,22 +984,6 @@ function formatHotStatNumber(value: number): string {
   return Math.round(value).toLocaleString('zh-CN');
 }
 
-function readNumberField(record: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    const raw = record[key];
-    if (typeof raw === 'number' && Number.isFinite(raw)) {
-      return raw;
-    }
-    if (typeof raw === 'string' && raw.trim()) {
-      const n = Number(raw.replace(/,/g, ''));
-      if (Number.isFinite(n)) {
-        return n;
-      }
-    }
-  }
-  return null;
-}
-
 function normalizeBusinessDimensions(raw: unknown): BusinessDimensionDto[] {
   if (!Array.isArray(raw)) {
     return [];
@@ -1096,25 +1061,6 @@ async function loadCurrentUserRole(): Promise<void> {
 /** 工号：与 `userId` 计算属性同源（保留函数便于与旧调用对齐） */
 function effectiveSkillUserId(): string {
   return userId.value?.trim() || '';
-}
-
-async function loadOpsDashboardOverview(): Promise<void> {
-  try {
-    const res = await skillBaseService.queryDashboardOverview({ system: 'company' });
-    if (res.meta.success && res.data) {
-      fuyaoOpsDashboardBundleRef.value = res.data;
-      totalSkills.value = res.data.kpis.totalSkills;
-      // 暂时 组织数，要重新从接口拿
-      orgCount.value = res.data.rankings?.length ?? orgCount.value;
-    }
-    selectedDeptIndex.value = 0;
-    await nextTick();
-    await refreshOpsDeptDimensionDerivedData(0);
-  } catch (e) {
-    if (transportIsHttp) {
-      showToast(e instanceof Error ? e.message : '运营管理加载失败');
-    }
-  }
 }
 
 const debounce = (fn: any, delay: number): any => {
@@ -2057,6 +2003,7 @@ watch(
       }
     }
     if (tab === 'ops') {
+      selectedDeptIndex.value = 0;
       await loadOpsDashboardOverview();
     }
   },
@@ -2453,8 +2400,7 @@ async function onDownload(id: string, version?: string): Promise<void> {
 }
 
 // skill调测用
-const agentId = import.meta.env.VITE_SKILL_AGENT_ID;
-
+const agentId = import.meta.env.VITE_SKILL_DEV_AGENT_ID;
 /**
  * 下载 SKILL 并存入 FormData, key为file
  * @param id skill id
@@ -2891,8 +2837,6 @@ const onClickFilterRelease = async (key: any) => {
 const opsImportedBundle = ref<OpsDashboardBundle | null>(null);
 const opsImporting = ref(false);
 const opsExcelInputRef = ref<HTMLInputElement | null>(null);
-const fuyaoOpsDashboardBundleRef = ref<OpsDashboardBundle | null>(null);
-
 const opsBoardSystem = ref<'fuyao' | 'company'>('fuyao');
 const changeSystem = async (value: 'fuyao' | 'company') => {
   opsBoardSystem.value = value;
@@ -2919,13 +2863,39 @@ const opsDeptSkillRowsLoading = ref(false);
 let opsDeptDimensionStatsRequestSeq = 0;
 let opsDeptSkillRowsRequestSeq = 0;
 
-const opsDashboardBundle = computed(() => {
-  if (opsBoardSystem.value === 'fuyao') {
-    return fuyaoOpsDashboardBundleRef.value ?? emptyOpsDashboardBundle();
+const opsOverviewFilterObj = ref<any>({
+  system: 'company',
+});
+const overviewData = ref<OpsDashboardBundle | null>(null);
+const getOverviewData = async () => {
+  if (selectedOpsBusinessDimension.value?.id) {
+    opsOverviewFilterObj.value.category = selectedOpsBusinessDimension.value.id;
+  } else {
+    delete opsOverviewFilterObj.value.category;
   }
-  return (
-    opsImportedBundle.value ?? JSON.parse(companyOpsDashboardJson) ?? emptyOpsDashboardBundle()
-  );
+  if (opsDeptSkillLevelFilter.value !== 'all') {
+    opsOverviewFilterObj.value.level =
+      opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
+  } else {
+    delete opsOverviewFilterObj.value.level;
+  }
+  const res = await skillBaseService.queryDashboardOverview(opsOverviewFilterObj.value);
+  if (res.meta.success && res.data) {
+    overviewData.value = res.data;
+    totalSkills.value = res.data.kpis.totalSkills;
+    // 暂时 组织数，要重新从接口拿
+    orgCount.value = res.data.rankings?.length ?? orgCount.value;
+  }
+};
+
+async function loadOpsDashboardOverview(): Promise<void> {
+  await getOverviewData();
+  await nextTick();
+  await refreshOpsDeptDimensionDerivedData(selectedDeptIndex.value);
+}
+
+const opsDashboardBundle = computed(() => {
+  return overviewData.value ?? emptyOpsDashboardBundle();
 });
 
 const uiDeptTree = computed(() => opsDashboardBundle.value.deptTree);
@@ -2969,13 +2939,9 @@ const opsDeptSkillLevelTabs: { key: OpsDeptSkillLevelFilter; label: string }[] =
   { key: 'org', label: '组织级' },
 ];
 
-const shouldUseOpsDeptSkillApi = computed(
-  () => Boolean(selectedOpsBusinessDimension.value) || opsDeptSkillLevelFilter.value !== 'all',
-);
-
-const changeSkillLevel = (value: 'all' | 'personal' | 'org') => {
+const changeSkillLevel = async (value: 'all' | 'personal' | 'org') => {
   opsDeptSkillLevelFilter.value = value;
-  void refreshOpsDeptDimensionDerivedData(selectedDeptIndex.value);
+  await loadOpsDashboardOverview();
 };
 
 const selectedOpsBusinessDimensionLabel = computed(() => {
@@ -3004,188 +2970,16 @@ async function selectOpsBusinessDimension(
     name: dimension.dimensionName,
     parentName: parent?.dimensionName,
   };
-  await refreshOpsDeptDimensionDerivedData(selectedDeptIndex.value);
+  await loadOpsDashboardOverview();
 }
 
 async function clearOpsBusinessDimension(): Promise<void> {
   selectedOpsBusinessDimension.value = null;
-  await refreshOpsDeptDimensionDerivedData(selectedDeptIndex.value);
-}
+  opsDeptDimensionStatsRequestSeq += 1;
+  opsDeptDimensionStatsLoading.value = false;
+  opsDeptDimensionStats.value = new Map();
 
-function opsDeptLevelParam(): string {
-  if (opsDeptSkillLevelFilter.value === 'personal') {
-    return '个人级';
-  }
-  if (opsDeptSkillLevelFilter.value === 'org') {
-    return '组织级';
-  }
-  return '';
-}
-
-function selectedOpsDeptQueryParams(): Record<string, string> {
-  const path = selectedDeptNode.value?.path ?? '';
-  if (!path.trim()) {
-    return {};
-  }
-  const parts = parseDeptNamePath(path).slice(0, 6);
-  const out: Record<string, string> = {};
-  parts.forEach((part, index) => {
-    if (part) {
-      out[`departmentL${index + 1}`] = part;
-    }
-  });
-  return out;
-}
-
-function stringField(record: Record<string, unknown>, keys: string[], fallback = ''): string {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return String(value);
-    }
-  }
-  return fallback;
-}
-
-function departmentPathFromRecord(record: Record<string, unknown>, fallbackDept = ''): string {
-  const deptParts = [
-    record.departmentL1,
-    record.departmentL2,
-    record.departmentL3,
-    record.departmentL4,
-    record.departmentL5,
-    record.departmentL6,
-  ]
-    .map((item) => String(item ?? '').trim())
-    .filter(Boolean);
-  if (deptParts.length > 0) {
-    return deptParts.join('/');
-  }
-  return stringField(record, ['deptName', 'dept_name', 'dept'], fallbackDept);
-}
-
-function apiSkillRecordToOpsRow(raw: unknown, fallbackDept = ''): OpsSkillDetailRow {
-  const record = readServiceRecord(raw);
-  const downloads = readNumberField(record, ['downloads', 'download_count', 'downloadCount']) ?? 0;
-  const publishLevel = stringField(record, ['level', 'status', 'publishLevel', 'publish_level']);
-  const publishName = stringField(record, ['orgName', 'publishName', 'publish_name', 'publisher']);
-  return {
-    name: stringField(record, ['name', 'skillName', 'skill_id', 'skillId'], '未命名 Skill'),
-    description: stringField(record, ['description', 'desc'], '暂无描述'),
-    owner: stringField(record, ['author', 'ownerName', 'createdBy', 'publisher'], publishName),
-    downloads,
-    publishLevel,
-    publishName,
-    dept: departmentPathFromRecord(record, fallbackDept),
-    account: stringField(record, ['ownerUser', 'account', 'Account']),
-  };
-}
-
-function normalizeOpsSkillRowsFromPayload(
-  payload: unknown,
-  fallbackDept = '',
-): OpsSkillDetailRow[] {
-  const record = readServiceRecord(payload);
-  const rows = Array.isArray(payload)
-    ? payload
-    : Array.isArray(record.records)
-      ? record.records
-      : Array.isArray(record.list)
-        ? record.list
-        : [];
-  return rows.map((row) => apiSkillRecordToOpsRow(row, fallbackDept));
-}
-
-function readSkillListTotal(env: unknown, payload: unknown): number | null {
-  const envelope = readServiceRecord(env);
-  const payloadRecord = readServiceRecord(payload);
-  const meta = readServiceRecord(envelope.meta);
-  return (
-    readNumberField(meta, ['number', 'total', 'totalCount']) ??
-    readNumberField(payloadRecord, ['total', 'totalCount'])
-  );
-}
-
-async function queryOpsSkillRows(
-  baseParams: Record<string, unknown>,
-  fallbackDept = '',
-): Promise<OpsSkillDetailRow[]> {
-  const pageSize = 500;
-  const rows: OpsSkillDetailRow[] = [];
-  let pageNum = 1;
-
-  for (let page = 0; page < 20; page += 1) {
-    const env = await skillBaseService.querySkillList({
-      ...baseParams,
-      pageNum,
-      pageSize,
-    });
-
-    if (!serviceSucceeded(env)) {
-      throw new Error(serviceMessage(env, 'Skill 明细加载失败'));
-    }
-
-    const payload = readServiceRecord(env).data;
-    const pageRows = normalizeOpsSkillRowsFromPayload(payload, fallbackDept);
-    rows.push(...pageRows);
-
-    const total = readSkillListTotal(env, payload);
-    if (
-      pageRows.length === 0 ||
-      pageRows.length < pageSize ||
-      (total !== null && rows.length >= total)
-    ) {
-      break;
-    }
-
-    pageNum += 1;
-  }
-
-  return rows;
-}
-
-function opsRowsForCurrentLevel(rows: OpsSkillDetailRow[]): OpsSkillDetailRow[] {
-  if (opsDeptSkillLevelFilter.value === 'all') {
-    return [...rows];
-  }
-  const target = opsDeptSkillLevelFilter.value === 'personal' ? '个人级' : '组织级';
-  return rows.filter((row) => row.publishLevel === target);
-}
-
-function summarizeOpsRows(rows: OpsSkillDetailRow[]): OpsDeptMetric {
-  return rows.reduce(
-    (metric, row) => ({
-      skills: metric.skills + 1,
-      downloads: metric.downloads + row.downloads,
-    }),
-    { skills: 0, downloads: 0 },
-  );
-}
-
-function aggregateOpsDeptMetrics(rows: OpsSkillDetailRow[]): Map<string, OpsDeptMetric> {
-  const out = new Map<string, OpsDeptMetric>();
-
-  for (const row of rows) {
-    const path = row.dept.trim();
-    if (!path) {
-      continue;
-    }
-    const parts = parseDeptNamePath(path);
-
-    parts.forEach((_, index) => {
-      const deptPath = parts.slice(0, index + 1).join('/');
-      const current = out.get(deptPath) ?? { skills: 0, downloads: 0 };
-      out.set(deptPath, {
-        skills: current.skills + 1,
-        downloads: current.downloads + row.downloads,
-      });
-    });
-  }
-
-  return out;
+  await loadOpsDashboardOverview();
 }
 
 function collectDefaultExpandedDeptPaths(nodes: DeptTreeNode[]): Set<string> {
@@ -3227,6 +3021,48 @@ function findDeptNodeByPath(nodes: DeptTreeNode[], path: string): DeptTreeNode |
   return null;
 }
 
+function toggleDeptExpand(path: string): void {
+  const next = new Set(expandedDeptPaths.value);
+  if (next.has(path)) {
+    next.delete(path);
+  } else {
+    next.add(path);
+  }
+  expandedDeptPaths.value = next;
+  void filterOpsDept(selectedDeptIndex.value);
+}
+
+const selectedDeptSkillRows = ref<OpsSkillDetailRow[]>([]);
+const selectedDeptIndex = ref(0);
+
+async function refreshOpsDeptDimensionDerivedData(index = selectedDeptIndex.value): Promise<void> {
+  if (!selectedOpsBusinessDimension.value) {
+    opsDeptDimensionStatsRequestSeq += 1;
+    opsDeptDimensionStats.value = new Map();
+    opsDeptDimensionStatsLoading.value = false;
+    await filterOpsDept(index);
+    return;
+  }
+
+  await filterOpsDept(index);
+}
+
+async function filterOpsDept(index: number): Promise<void> {
+  selectedDeptIndex.value = index;
+  opsDeptSkillRowsRequestSeq += 1;
+  opsDeptSkillRowsLoading.value = false;
+  selectedDeptSkillRows.value = uiDeptFlat.value?.[index]?.skillRows ?? [];
+}
+
+async function selectOpsDept(path: string, index: number): Promise<void> {
+  selectedOpsDeptPath.value = path;
+  await filterOpsDept(index);
+}
+
+function selectOpsOrg(name: string): void {
+  selectedOpsOrgName.value = name;
+}
+
 watch(
   uiDeptTree,
   (tree) => {
@@ -3249,157 +3085,17 @@ watch(
   { immediate: true },
 );
 
-function toggleDeptExpand(path: string): void {
-  const next = new Set(expandedDeptPaths.value);
-  if (next.has(path)) {
-    next.delete(path);
-  } else {
-    next.add(path);
-  }
-  expandedDeptPaths.value = next;
-  void filterOpsDept(selectedDeptIndex.value);
-}
-
-const selectedDeptSkillRows = ref<OpsSkillDetailRow[]>([]);
-const selectedDeptIndex = ref(0);
-
-function localSelectedDeptSkillRows(): OpsSkillDetailRow[] {
-  const rows = selectedDeptNode.value?.skillRows ?? [];
-  return opsRowsForCurrentLevel(rows);
-}
-
-async function loadSelectedDeptSkillRowsByDimension(): Promise<void> {
-  const dimension = selectedOpsBusinessDimension.value;
-  if (!shouldUseOpsDeptSkillApi.value) {
-    selectedDeptSkillRows.value = localSelectedDeptSkillRows();
-    return;
-  }
-  const requestSeq = ++opsDeptSkillRowsRequestSeq;
-  opsDeptSkillRowsLoading.value = true;
-  try {
-    const params: Record<string, unknown> = {
-      ...selectedOpsDeptQueryParams(),
-    };
-    if (dimension) {
-      params.category = dimension.id;
-    }
-    const level = opsDeptLevelParam();
-    if (level) {
-      params.level = level;
-    }
-    const rows = await queryOpsSkillRows(params, selectedDeptNode.value?.path ?? '');
-    if (requestSeq !== opsDeptSkillRowsRequestSeq) {
-      return;
-    }
-    selectedDeptSkillRows.value = rows;
-  } catch (e) {
-    if (requestSeq === opsDeptSkillRowsRequestSeq) {
-      selectedDeptSkillRows.value = [];
-      showToast(e instanceof Error ? e.message : 'Skill 明细加载失败');
-    }
-  } finally {
-    if (requestSeq === opsDeptSkillRowsRequestSeq) {
-      opsDeptSkillRowsLoading.value = false;
-    }
-  }
-}
-
-async function loadOpsDeptDimensionStats(): Promise<void> {
-  const dimension = selectedOpsBusinessDimension.value;
-  const requestSeq = ++opsDeptDimensionStatsRequestSeq;
-
-  if (!shouldUseOpsDeptSkillApi.value) {
-    opsDeptDimensionStats.value = new Map();
-    opsDeptDimensionStatsLoading.value = false;
-    return;
-  }
-
-  opsDeptDimensionStatsLoading.value = true;
-  opsDeptDimensionStats.value = new Map();
-  try {
-    const params: Record<string, unknown> = {};
-    if (dimension) {
-      params.category = dimension.id;
-    }
-    const level = opsDeptLevelParam();
-    if (level) {
-      params.level = level;
-    }
-    const rows = await queryOpsSkillRows(params);
-    if (requestSeq !== opsDeptDimensionStatsRequestSeq) {
-      return;
-    }
-    opsDeptDimensionStats.value = aggregateOpsDeptMetrics(rows);
-  } catch (e) {
-    if (requestSeq === opsDeptDimensionStatsRequestSeq) {
-      opsDeptDimensionStats.value = new Map();
-      showToast(e instanceof Error ? e.message : '部门统计加载失败');
-    }
-  } finally {
-    if (requestSeq === opsDeptDimensionStatsRequestSeq) {
-      opsDeptDimensionStatsLoading.value = false;
-    }
-  }
-}
-
-async function refreshOpsDeptDimensionDerivedData(index = selectedDeptIndex.value): Promise<void> {
-  if (!shouldUseOpsDeptSkillApi.value) {
-    opsDeptDimensionStatsRequestSeq += 1;
-    opsDeptDimensionStats.value = new Map();
-    opsDeptDimensionStatsLoading.value = false;
-    await filterOpsDept(index);
-    return;
-  }
-
-  await Promise.all([loadOpsDeptDimensionStats(), filterOpsDept(index)]);
-}
-
-async function filterOpsDept(index: number): Promise<void> {
-  selectedDeptIndex.value = index;
-  if (!shouldUseOpsDeptSkillApi.value) {
-    opsDeptSkillRowsRequestSeq += 1;
-    opsDeptSkillRowsLoading.value = false;
-    selectedDeptSkillRows.value = localSelectedDeptSkillRows();
-    return;
-  }
-  await loadSelectedDeptSkillRowsByDimension();
-}
-
-async function selectOpsDept(path: string, index: number): Promise<void> {
-  selectedOpsDeptPath.value = path;
-  await filterOpsDept(index);
-}
-
-function selectOpsOrg(name: string): void {
-  selectedOpsOrgName.value = name;
-}
-
-function metricForDeptNode(node: DeptTreeNode): OpsDeptMetric {
-  if (shouldUseOpsDeptSkillApi.value) {
-    const selectedMetric = opsDeptDimensionStats.value.get(node.path);
-    if (selectedMetric) {
-      return selectedMetric;
-    }
-    if (opsDeptDimensionStatsLoading.value && opsDeptDimensionStats.value.size === 0) {
-      return { skills: 0, downloads: 0 };
-    }
-    return { skills: 0, downloads: 0 };
-  }
-  return summarizeOpsRows(opsRowsForCurrentLevel(node.skillRows));
-}
-
 function flattenDeptTreeVisible(nodes: DeptTreeNode[]): FlatDeptRow[] {
   const out: FlatDeptRow[] = [];
   for (const n of nodes) {
     const hasChildren = Boolean(n.children && n.children.length > 0);
     const expanded = hasChildren ? expandedDeptPaths.value.has(n.path) : false;
-    const metric = metricForDeptNode(n);
     out.push({
       path: n.path,
       name: n.name,
       levelNo: Math.max(1, n.levelNo - OPS_DEPT_DISPLAY_START_LEVEL + 1),
-      skills: metric.skills,
-      downloads: metric.downloads,
+      skills: n.skills,
+      downloads: n.downloads,
       hasChildren,
       expanded,
       skillRows: [...n.skillRows],
@@ -3420,11 +3116,6 @@ const uiOrgBarsSorted = computed(() =>
 );
 
 const uiOrgBarsMax = computed(() => Math.max(1, ...uiOrgBarsSorted.value.map((x) => x.downloads)));
-
-const selectedDeptNode = computed(
-  () =>
-    findDeptNodeByPath(uiDeptTree.value, selectedOpsDeptPath.value) ?? uiDeptTree.value[0] ?? null,
-);
 
 const selectedOrgBar = computed(
   () => uiOrgBars.value.find((row) => row.name === selectedOpsOrgName.value) ?? uiOrgBars.value[0],
@@ -3469,7 +3160,7 @@ const opsTopTitle = 'TOP Skill';
 const opsTopSubTitle = '按下载量展示当前市场中使用最集中的 Skill。';
 
 const opsEmptyText = computed(() =>
-  opsBoardSystem.value === 'company' ? '暂无公司系统运营管理数据' : '暂无扶摇系统运营管理数据',
+  opsBoardSystem.value === 'company' ? '暂无系统运营管理数据' : '暂无系统运营管理数据',
 );
 
 const opsOrgBarsHelpText = computed(
@@ -4136,7 +3827,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           aria-label="全部技能筛选"
         >
           <div class="toolbar-group toolbar-dept-group">
-            <span class="toolbar-label">部门</span>
+            <span v-if="false" class="toolbar-label">部门</span>
             <div
               ref="marketDeptCascaderWrapRef"
               class="market-dept-cascader all-dept-cascader"
@@ -4220,7 +3911,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
 
           <label class="toolbar-group toolbar-level-group">
-            <span class="toolbar-label">Skill 级别</span>
+            <span v-if="false" class="toolbar-label">Skill 级别</span>
             <select
               :value="quickFilter"
               class="all-select"
