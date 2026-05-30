@@ -641,7 +641,10 @@ const onSubmit = async (): Promise<void> => {
                       {{ businessDimensionLoading ? '加载中...' : '公共' }}
                     </option>
                   </select>
-                  <div class="category-select-wrap" :class="{ 'has-clear': selectedBusinessCategory }">
+                  <div
+                    class="category-select-wrap"
+                    :class="{ 'has-clear': selectedBusinessCategory }"
+                  >
                     <select
                       id="sk-business-category"
                       v-model="selectedBusinessCategory"
