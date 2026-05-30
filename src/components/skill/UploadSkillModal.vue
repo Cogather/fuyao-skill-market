@@ -207,6 +207,10 @@ function closeSkillGuide(): void {
   skillGuideOpen.value = false;
 }
 
+function clearBusinessCategory(): void {
+  selectedBusinessCategory.value = '';
+}
+
 async function copySkillGuide(): Promise<void> {
   try {
     if (navigator.clipboard?.writeText) {
@@ -637,24 +641,33 @@ const onSubmit = async (): Promise<void> => {
                       {{ businessDimensionLoading ? '加载中...' : '公共' }}
                     </option>
                   </select>
-                  <select
-                    id="sk-business-category"
-                    v-model="selectedBusinessCategory"
-                    class="input select-input"
-                    :disabled="selectedBusinessCategoryOptions.length === 0"
-                    aria-label="二级业务维度"
-                  >
-                    <option value="">
-                      {{ selectedBusinessCategoryOptions.length === 0 ? '无二级维度' : '空' }}
-                    </option>
-                    <option
-                      v-for="category in selectedBusinessCategoryOptions"
-                      :key="category.id || category.dimensionCode"
-                      :value="String(category.id)"
+                  <div class="category-select-wrap" :class="{ 'has-clear': selectedBusinessCategory }">
+                    <select
+                      id="sk-business-category"
+                      v-model="selectedBusinessCategory"
+                      class="input select-input"
+                      :disabled="selectedBusinessCategoryOptions.length === 0"
+                      aria-label="二级业务维度"
                     >
-                      {{ category.dimensionName }}
-                    </option>
-                  </select>
+                      <option
+                        v-for="category in selectedBusinessCategoryOptions"
+                        :key="category.id || category.dimensionCode"
+                        :value="String(category.id)"
+                      >
+                        {{ category.dimensionName }}
+                      </option>
+                    </select>
+                    <button
+                      v-if="selectedBusinessCategory"
+                      type="button"
+                      class="category-clear-btn"
+                      aria-label="清空二级业务维度"
+                      title="清空二级业务维度"
+                      @click="clearBusinessCategory"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               </div>
               <div class="form-field">
@@ -1159,6 +1172,40 @@ const onSubmit = async (): Promise<void> => {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
+}
+
+.category-select-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.category-select-wrap.has-clear .select-input {
+  padding-right: 58px;
+}
+
+.category-clear-btn {
+  position: absolute;
+  top: 50%;
+  right: 34px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.category-clear-btn:hover {
+  background: #e2e8f0;
+  color: #1f2937;
 }
 
 .dimension-select-group .select-input:disabled {
