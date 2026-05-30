@@ -88,6 +88,22 @@ const selectedBusinessCategory = ref('all');
 const duplicateChecking = ref(false);
 const duplicateCheckMessage = ref('');
 const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
+const skillGuideOpen = ref(false);
+const skillGuideCopied = ref(false);
+let skillGuideCopyTimer: number | undefined;
+
+const skillFrontMatterExample = `---
+name: skill-name
+description: 从 PDF 文件中提取文本和表格、填充表单、合并文档。在处理 PDF 文件或用户提及 PDF、表单或文档提取时使用。
+metadata:
+  author: 组织名称
+  version: 1.0.0
+  category: utility-doc
+  tags: pdf document extraction
+---
+
+xxxxxxxxxxxxxxxxxxxxx
+`;
 
 const parseNotice = computed(() => {
   if (parseError.value) {
@@ -172,6 +188,39 @@ function close(): void {
 
 function onOverlayClick(): void {
   close();
+}
+
+function openSkillGuide(): void {
+  skillGuideOpen.value = true;
+}
+
+function closeSkillGuide(): void {
+  skillGuideOpen.value = false;
+}
+
+async function copySkillGuide(): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(skillFrontMatterExample);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = skillFrontMatterExample;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    skillGuideCopied.value = true;
+    window.clearTimeout(skillGuideCopyTimer);
+    skillGuideCopyTimer = window.setTimeout(() => {
+      skillGuideCopied.value = false;
+    }, 1600);
+  } catch (e) {
+    skillGuideCopied.value = false;
+  }
 }
 
 function parseUploadOk(info: any): void {
@@ -516,7 +565,17 @@ const onSubmit = async (): Promise<void> => {
             error: parseState === 'duplicate' || Boolean(parseError),
           }"
         >
-          <div>{{ parseNotice }}</div>
+          <div class="parse-notice-row">
+            <div>{{ parseNotice }}</div>
+            <button
+              v-if="parseWarnings?.some((warning) => warning.includes('metadata.'))"
+              type="button"
+              class="skill-guide-trigger"
+              @click="openSkillGuide"
+            >
+              查看示例
+            </button>
+          </div>
           <ul v-if="parseWarnings.length > 0" class="warning-list">
             <li v-for="(warning, index) in parseWarnings" :key="`${warning}-${index}`">
               {{ warning }}
@@ -626,6 +685,51 @@ const onSubmit = async (): Promise<void> => {
             {{ uploading ? '上传中...' : '确定上传' }}
           </button>
         </footer>
+
+        <div
+          v-if="skillGuideOpen"
+          class="skill-guide-backdrop"
+          role="presentation"
+          @click.self="closeSkillGuide"
+        >
+          <section
+            class="skill-guide-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="skill-guide-title"
+          >
+            <header class="skill-guide-head">
+              <div>
+                <h3 id="skill-guide-title">SKILL.md 前置信息写法</h3>
+                <p>将下面内容放在 SKILL.md 文件开头，并按实际 Skill 信息替换字段值。</p>
+              </div>
+              <button
+                type="button"
+                class="skill-guide-close"
+                aria-label="关闭写法说明"
+                @click="closeSkillGuide"
+              >
+                关闭
+              </button>
+            </header>
+            <div class="skill-guide-code-wrap">
+              <button
+                type="button"
+                class="skill-guide-copy"
+                :aria-label="skillGuideCopied ? '已复制' : '复制写法文本'"
+                :title="skillGuideCopied ? '已复制' : '复制'"
+                @click="copySkillGuide"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="9" width="10" height="10" rx="2" />
+                  <path d="M5 15V7a2 2 0 0 1 2-2h8" />
+                </svg>
+              </button>
+              <span v-if="skillGuideCopied" class="skill-guide-copied">已复制</span>
+              <pre class="skill-guide-code"><code>{{ skillFrontMatterExample }}</code></pre>
+            </div>
+          </section>
+        </div>
       </section>
     </div>
   </Teleport>
@@ -782,6 +886,32 @@ const onSubmit = async (): Promise<void> => {
   line-height: 1.6;
 }
 
+.parse-notice-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skill-guide-trigger {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(146, 64, 14, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #92400e;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.skill-guide-trigger:hover {
+  border-color: rgba(146, 64, 14, 0.4);
+  background: #ffffff;
+}
+
 .parse-notice.success {
   border-color: #bbf7d0;
   background: #f0fdf4;
@@ -807,6 +937,135 @@ const onSubmit = async (): Promise<void> => {
 
 .warning-list li + li {
   margin-top: 4px;
+}
+
+.skill-guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.3);
+}
+
+.skill-guide-panel {
+  width: min(720px, 100%);
+  max-height: min(78vh, 680px);
+  overflow: hidden;
+  border: 1px solid #e9edf3;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.skill-guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #e9edf3;
+  background: linear-gradient(180deg, rgba(47, 125, 246, 0.08), rgba(255, 255, 255, 0));
+}
+
+.skill-guide-head h3 {
+  margin: 0;
+  color: #15171d;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.skill-guide-head p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.skill-guide-close {
+  min-width: 52px;
+  height: 34px;
+  border: 1px solid #e9edf3;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #373b45;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.skill-guide-close:hover {
+  color: #2f7df6;
+  border-color: #cfd7e6;
+  background: #fbfcff;
+}
+
+.skill-guide-code-wrap {
+  position: relative;
+  margin: 18px 20px 20px;
+}
+
+.skill-guide-copy {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.skill-guide-copy:hover {
+  color: #2f7df6;
+  border-color: #b8d7ff;
+}
+
+.skill-guide-copy svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.skill-guide-copied {
+  position: absolute;
+  top: 14px;
+  right: 52px;
+  z-index: 1;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.skill-guide-code {
+  max-height: calc(78vh - 160px);
+  margin: 0;
+  overflow: auto;
+  padding: 18px 18px 18px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: rgb(245,247,251);
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.skill-guide-code code {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
 }
 
 .upload-result-card {
