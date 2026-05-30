@@ -3604,7 +3604,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             layout="overviewMarket"
             @download="onDownload(s.id, s.currentVersion)"
             @open-detail="openHotSkillDetail(s)"
-            @update-skill-data="updateHotSkillData"
+            @update-skill-data="updateSkillData"
           />
         </div>
         <p v-else class="empty hot-empty">
