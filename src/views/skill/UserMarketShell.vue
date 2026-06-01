@@ -328,12 +328,7 @@ function matchesCategoryFilter(skill: Skill): boolean {
   if (categoryFilter.value === 'all') {
     return true;
   }
-  const values = [
-    skill.tagFunctional,
-    skill.categoryGroupName,
-    skill.category,
-    (skill as { businessDimension?: unknown }).businessDimension,
-  ]
+  const values = [skill.tagFunctional, skill.categoryGroupName, skill.category]
     .map((item) => String(item ?? '').trim())
     .filter(Boolean);
   const target = categorySubFilter.value === 'all' ? categoryFilter.value : categorySubFilter.value;
@@ -1443,11 +1438,10 @@ async function setCategoryFilter(
   if (transportIsHttp && innerTab.value === 'overview') {
     overviewFilterObj.value.pageNum = 1;
     page.pageIndex = 1;
-    delete overviewFilterObj.value.businessDimension;
     if (value === 'all') {
-      overviewFilterObj.value.category = '';
+      delete overviewFilterObj.value.category;
     } else {
-      overviewFilterObj.value.category = categoryParam ?? subValue;
+      overviewFilterObj.value.category = categoryParam ?? '';
     }
     await reloadOverviewFirstPageFromUserInput();
   }
