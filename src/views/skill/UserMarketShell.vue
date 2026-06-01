@@ -185,7 +185,6 @@ const overviewFilterObj = ref<any>({
   pageNum: page.pageIndex,
   status: '',
   tagList: '',
-  businessDimension: '',
   category: '',
   sortBy: 'downloads',
   sortOrder: 'desc',
@@ -834,7 +833,7 @@ async function onBusinessDimensionPrimaryClick(
     showBusinessDimensionPanel(dimension, ev);
     return;
   }
-  await setCategoryFilter(dimension.dimensionName, 'all');
+  await setCategoryFilter(dimension.dimensionName, 'all', String(dimension.id));
 }
 
 function scheduleOverviewDimensionOverflowCheck(): void {
@@ -1444,12 +1443,11 @@ async function setCategoryFilter(
   if (transportIsHttp && innerTab.value === 'overview') {
     overviewFilterObj.value.pageNum = 1;
     page.pageIndex = 1;
+    delete overviewFilterObj.value.businessDimension;
     if (value === 'all') {
-      overviewFilterObj.value.businessDimension = '';
       overviewFilterObj.value.category = '';
     } else {
-      overviewFilterObj.value.businessDimension = value;
-      overviewFilterObj.value.category = subValue === 'all' ? '' : (categoryParam ?? subValue);
+      overviewFilterObj.value.category = categoryParam ?? subValue;
     }
     await reloadOverviewFirstPageFromUserInput();
   }
@@ -1465,7 +1463,7 @@ async function selectBusinessDimensionChild(
   child: BusinessDimensionDto | 'all',
 ): Promise<void> {
   if (child === 'all') {
-    await setCategoryFilter(dimension.dimensionName, 'all');
+    await setCategoryFilter(dimension.dimensionName, 'all', String(dimension.id));
   } else {
     await setCategoryFilter(dimension.dimensionName, child.dimensionName, String(child.id));
   }
