@@ -96,9 +96,7 @@ const skillFrontMatterExample = `---
 name: skill-name
 description: 从 PDF 文件中提取文本和表格、填充表单、合并文档。在处理 PDF 文件或用户提及 PDF、表单或文档提取时使用。
 metadata:
-  author: 组织名称
   version: 1.0.0
-  category: utility-doc
   tags: pdf document extraction
 ---
 
@@ -704,6 +702,7 @@ const onSubmit = async (): Promise<void> => {
               </button>
               <span v-if="skillGuideCopied" class="skill-guide-copied">已复制</span>
               <pre class="skill-guide-code"><code>{{ skillFrontMatterExample }}</code></pre>
+              <p>（备注：metaData中version为必填项，tags非必填）</p>
             </div>
           </section>
         </div>
@@ -954,7 +953,8 @@ const onSubmit = async (): Promise<void> => {
   font-weight: 900;
 }
 
-.skill-guide-head p {
+.skill-guide-head p,
+.skill-guide-code-wrap p {
   margin: 6px 0 0;
   color: #64748b;
   font-size: 13px;
