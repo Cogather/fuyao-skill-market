@@ -538,66 +538,66 @@ onMounted(async () => {
     <div class="review-shell">
       <section class="review-board" aria-label="评审任务">
         <div class="board-toolbar">
-          <div>
+          <div class="board-toolbar__title">
             <h2>评审任务</h2>
             <p>按状态、月份和评分维度筛选专家待办。</p>
+          </div>
+
+          <div class="task-filter-panel" aria-label="任务筛选">
+            <div class="toolbar-controls task-filter-controls">
+              <label class="toolbar-filter">
+                <span class="toolbar-filter__label">评审状态</span>
+                <select aria-label="评审状态">
+                  <option>待评审</option>
+                  <option>已评审</option>
+                  <option>全部</option>
+                </select>
+              </label>
+              <label class="toolbar-filter">
+                <span class="toolbar-filter__label">月度</span>
+                <select aria-label="月度">
+                  <option>2026年05月</option>
+                  <option>2026年06月</option>
+                  <option>全部</option>
+                </select>
+              </label>
+              <label class="toolbar-filter">
+                <span class="toolbar-filter__label">业务维度</span>
+                <select aria-label="业务维度">
+                  <option>公共</option>
+                  <option>设计</option>
+                  <option>开发</option>
+                  <option>测试</option>
+                  <option>运维</option>
+                  <option>维护</option>
+                  <option>研究</option>
+                  <option>项目管理</option>
+                  <option>全部</option>
+                </select>
+              </label>
+              <label class="toolbar-filter">
+                <span class="toolbar-filter__label">部门</span>
+                <select aria-label="部门">
+                  <option>xx部门</option>
+                  <option>yy部门</option>
+                  <option>zz部门</option>
+                </select>
+              </label>
+              <label class="toolbar-filter">
+                <span class="toolbar-filter__label">排序</span>
+                <select aria-label="排序">
+                  <option>按季度得分情况排序</option>
+                  <option>按本月得分情况排序</option>
+                  <option>按本周得分情况排序</option>
+                  <option>按今天得分情况排序</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
         <div class="board-layout">
-          <aside class="task-column" aria-label="Skill 筛选与任务列表">
-            <div class="task-filter-panel" aria-label="任务筛选">
-              <div class="toolbar-controls task-filter-controls">
-                <label class="toolbar-filter">
-                  <span class="toolbar-filter__label">评审状态</span>
-                  <select aria-label="评审状态">
-                    <option>待评审</option>
-                    <option>已评审</option>
-                    <option>全部</option>
-                  </select>
-                </label>
-                <label class="toolbar-filter">
-                  <span class="toolbar-filter__label">月度</span>
-                  <select aria-label="月度">
-                    <option>2026年05月</option>
-                    <option>2026年06月</option>
-                    <option>全部</option>
-                  </select>
-                </label>
-                <label class="toolbar-filter">
-                  <span class="toolbar-filter__label">业务维度</span>
-                  <select aria-label="业务维度">
-                    <option>公共</option>
-                    <option>设计</option>
-                    <option>开发</option>
-                    <option>测试</option>
-                    <option>运维</option>
-                    <option>维护</option>
-                    <option>研究</option>
-                    <option>项目管理</option>
-                    <option>全部</option>
-                  </select>
-                </label>
-                <label class="toolbar-filter">
-                  <span class="toolbar-filter__label">部门</span>
-                  <select aria-label="部门">
-                    <option>xx部门</option>
-                    <option>yy部门</option>
-                    <option>zz部门</option>
-                  </select>
-                </label>
-                <label class="toolbar-filter">
-                  <span class="toolbar-filter__label">排序</span>
-                  <select aria-label="排序">
-                    <option>按季度得分情况排序</option>
-                    <option>按本月得分情况排序</option>
-                    <option>按本周得分情况排序</option>
-                    <option>按今天得分情况排序</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
+          <aside class="task-column" aria-label="Skill 任务列表">
             <div class="task-list" aria-label="任务列表">
               <article
                 v-for="task in taskCards"
@@ -1567,9 +1567,17 @@ th {
 }
 
 .board-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   flex: 0 0 auto;
   align-items: flex-start;
+  gap: 18px;
   margin-bottom: 18px;
+}
+
+.board-toolbar__title {
+  min-width: 0;
+  padding-top: 4px;
 }
 
 .board-toolbar p {
@@ -1643,17 +1651,20 @@ th {
 
 .task-filter-panel {
   flex: 0 0 auto;
-  padding: 12px;
-  border: 1px solid #dbe5f2;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid #dbeafe;
   border-radius: 8px;
-  background: #f8fafc;
+  background: linear-gradient(180deg, #fbfdff 0%, #f5f9ff 100%);
 }
 
 .task-filter-controls {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns:
+    minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(150px, 0.9fr)
+    minmax(150px, 0.75fr) minmax(220px, 1.25fr);
   gap: 10px;
-  align-items: stretch;
+  align-items: end;
   justify-content: stretch;
 }
 
@@ -3842,6 +3853,14 @@ input:focus {
     padding: 22px 18px 36px;
   }
 
+  .board-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .task-filter-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .review-hero {
     align-items: flex-start;
     flex-direction: column;
@@ -3863,6 +3882,10 @@ input:focus {
 
   .board-layout {
     --review-workspace-h: 360px;
+  }
+
+  .task-filter-controls {
+    grid-template-columns: 1fr;
   }
 
   .task-column {
