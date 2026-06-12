@@ -94,7 +94,8 @@ export type UserInnerTab =
   | 'org'
   | 'approval'
   | 'ops'
-  | 'review';
+  | 'review'
+  | 'planning';
 
 /** 市场总览 · 快捷入口 */
 export type OverviewQuickFilter =

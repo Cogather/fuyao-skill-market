@@ -8225,7 +8225,8 @@ span {
 /* Management tabs align with the all-skills canvas. */
 .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.ops,
 .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-org-panel,
-.skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel {
+.skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel,
+.skill-market-shell:not(.is-overview-tab) .panel.tab-panel.planning-panel {
   box-sizing: border-box;
   width: 100%;
   min-height: calc(100vh - var(--market-topbar-height));
@@ -8278,7 +8279,8 @@ span {
 @media (max-width: 1180px) {
   .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.ops,
   .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-org-panel,
-  .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel {
+  .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel,
+  .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.planning-panel {
     padding: 22px 24px 30px;
   }
 
@@ -8292,7 +8294,8 @@ span {
 @media (max-width: 640px) {
   .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.ops,
   .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-org-panel,
-  .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel {
+  .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel,
+  .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.planning-panel {
     padding: 18px 14px 24px;
   }
 
@@ -8624,7 +8627,8 @@ span {
 .skill-market-shell.is-hot-tab .tabs-panel.hot-panel,
 .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.ops,
 .skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-org-panel,
-.skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel {
+.skill-market-shell:not(.is-overview-tab) .panel.tab-panel.admin-approval-panel,
+.skill-market-shell:not(.is-overview-tab) .panel.tab-panel.planning-panel {
   background:
     radial-gradient(circle at 8% 0%, rgba(88, 146, 255, 0.11), transparent 26%),
     radial-gradient(circle at 92% 0%, rgba(128, 82, 255, 0.1), transparent 28%),

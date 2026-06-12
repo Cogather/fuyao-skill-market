@@ -7,6 +7,7 @@ import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
+import SkillPlanningPage from '../skill/SkillPlanningPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
   BusinessDimensionDto,
@@ -111,7 +112,13 @@ const innerTabAliases: Record<string, UserInnerTab> = {
   organization: 'org',
   approval: 'approval',
   审核中心: 'approval',
-  review: 'approval',
+  review: 'review',
+  评审中心: 'review',
+  planning: 'planning',
+  skillPlanning: 'planning',
+  'Skill规划': 'planning',
+  'Skill 规划': 'planning',
+  skill规划: 'planning',
 };
 
 function routeTabFromQuery(value: unknown): UserInnerTab {
@@ -3435,7 +3442,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             innerTab === 'ops' ||
             innerTab === 'org' ||
             innerTab === 'approval' ||
-            innerTab === 'review',
+            innerTab === 'review' ||
+            innerTab === 'planning',
         }"
         aria-label="市场分区"
       >
@@ -3506,6 +3514,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           @click="goTab('review')"
         >
           评审中心
+        </button>
+        <button
+          type="button"
+          class="sub-tab"
+          :class="{ on: innerTab === 'planning' }"
+          @click="goTab('planning')"
+        >
+          Skill 规划
         </button>
       </nav>
 
@@ -5022,6 +5038,15 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
     <div v-else-if="innerTab === 'review'" class="tabs-panel overview-panel review-panel">
       <ReviewCenterPage />
+    </div>
+
+    <div
+      v-else-if="innerTab === 'planning'"
+      ref="tabPanelRef"
+      class="panel tab-panel planning-panel"
+      :style="tabPanelFillStyle"
+    >
+      <SkillPlanningPage />
     </div>
 
     <Teleport to="body">
