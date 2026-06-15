@@ -476,7 +476,7 @@ async function startScoreEditing() {
   scoreInputRef.value?.select();
 }
 
-function selectTask(taskId: string) {
+async function selectTask(taskId: string) {
   isScoreEditing.value = false;
   selectedTaskId.value = taskId;
   // const task = taskCards.find((item) => item.skillId === taskId);
