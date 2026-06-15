@@ -11,6 +11,7 @@ import {
   type ReviewRankingCard,
   type ReviewTaskCard,
 } from '../../services/skillMarket/reviewCenterDataSource';
+import { skillBaseService } from '@/services/skillMarket/skillBaseService';
 
 type ReviewDepartmentTreeNode = {
   name: string;
@@ -51,7 +52,7 @@ const awardMedalReason = ref('');
 
 const reviewDimensionDetails = reactive<Record<string, ReviewDimensionDetail>>({});
 
-const medalOptions = ref<string[]>([]);
+const badgeOptions = ref<string[]>([]);
 const selectedPersonalMedals = ref<string[]>([]);
 const isMedalSelectOpen = ref(false);
 const isHistoryModalOpen = ref(false);
@@ -77,7 +78,7 @@ const aiReviewDimensions = [
   {
     key: 'T',
     name: 'Trust',
-    label: '可信任度',
+    label: '技能边界完整性',
     score: 90,
     tone: 'green',
     summary:
@@ -86,7 +87,7 @@ const aiReviewDimensions = [
   {
     key: 'R',
     name: 'Reliability',
-    label: '可靠性',
+    label: '接口规范完整性',
     score: 92,
     tone: 'blue',
     summary: '核心流程稳定，异常输入与失败恢复路径描述较完整，能给新手明确的问题定位与修复指引。',
@@ -94,7 +95,7 @@ const aiReviewDimensions = [
   {
     key: 'A',
     name: 'Adaptability',
-    label: '适用性',
+    label: '异常与边界处理',
     score: 90,
     tone: 'amber',
     summary: '适用场景、触发条件和不适用范围较清晰，支持自动提醒与手动记录两类使用方式。',
@@ -102,7 +103,7 @@ const aiReviewDimensions = [
   {
     key: 'C',
     name: 'Convention',
-    label: '规范性',
+    label: '规则一致性',
     score: 88,
     tone: 'purple',
     summary: '目录结构清晰，模板示例丰富；主文档略密，新用户仍需要更明确的避坑指南。',
@@ -110,11 +111,11 @@ const aiReviewDimensions = [
   {
     key: 'E',
     name: 'Effectiveness',
-    label: '有效性',
+    label: '安全与权限约束',
     score: 94,
     tone: 'red',
     summary: '能把可复用经验沉淀成稳定流程，对减少重复踩坑、沉淀团队知识有直接帮助。',
-  }
+  },
 ];
 
 type RadarPoint = {
@@ -145,7 +146,7 @@ function replaceReviewDimensionDetails(source: Record<string, ReviewDimensionDet
   });
 }
 
-function applyReviewCenterData(data: ReviewCenterData) {
+async function applyReviewCenterData(data: ReviewCenterData) {
   rankingCards.value = data.rankingCards;
   replaceReactiveArray(taskCards, data.taskCards);
   selectedTaskId.value = taskCards[0]?.skillId ?? '';
@@ -157,8 +158,15 @@ function applyReviewCenterData(data: ReviewCenterData) {
   medalAwardTypes.value = data.medalAwardTypes;
 
   replaceReviewDimensionDetails(data.reviewDimensionDetails);
-  medalOptions.value = data.medalOptions;
-  selectedPersonalMedals.value = [];
+
+  await skillBaseService.getReviewBadges().then((res) => {
+    if (res?.meta?.success && res?.data) {
+      badgeOptions.value = res.data;
+    }
+  });
+
+  // badgeOptions.value = data.badgeOptions;
+  // selectedPersonalMedals.value = [];
 
   greenChannelOptions.value = data.greenChannelOptions;
   selectedGreenChannel.value = greenChannelOptions.value[0] ?? '';
@@ -176,6 +184,8 @@ const activeTask = computed(
   () => taskCards.find((task) => task.skillId === selectedTaskId.value) ?? taskCards[0],
 );
 const isCurrentTaskReviewed = computed(() => activeTask.value?.hasReviewed === true);
+
+const selectedSkillDetail = ref<any>({});
 const activeMetrics = computed(() => {
   const task = activeTask.value;
   if (!task) {
@@ -183,13 +193,13 @@ const activeMetrics = computed(() => {
   }
 
   return [
-    { label: '使用量', value: task.usage, tone: 'blue' },
+    // { label: '使用量', value: task.usage, tone: 'blue' },
     { label: '下载量', value: task.downloads, tone: 'cyan' },
-    {
-      label: '专家评审得分',
-      value: task.expertScore,
-      tone: task.hasReviewed ? 'green' : 'indigo',
-    },
+    // {
+    //   label: '专家评审得分',
+    //   value: task.expertScore,
+    //   tone: task.hasReviewed ? 'green' : 'indigo',
+    // },
   ];
 });
 
@@ -469,9 +479,16 @@ async function startScoreEditing() {
 function selectTask(taskId: string) {
   isScoreEditing.value = false;
   selectedTaskId.value = taskId;
-  const task = taskCards.find((item) => item.skillId === taskId);
-  if (task) {
-    syncScoreInputFromTask(task);
+  // const task = taskCards.find((item) => item.skillId === taskId);
+  // if (task) {
+  //   syncScoreInputFromTask(task);
+  // }
+  const skillDetailRes = await skillBaseService.getSkillReviewDetail(taskId, {
+    userId: props.userId,
+  });
+  console.log('skillDetailRes', skillDetailRes);
+  if (skillDetailRes?.meta?.success && skillDetailRes?.data) {
+    selectedSkillDetail.value = skillDetailRes.data;
   }
 }
 
@@ -602,21 +619,30 @@ function submitComputeChannel() {
 }
 
 // 评审列表排序
-const sortType = ref<'按下载量' | '按AI评分'>('按下载量')
-const sortTypeValue = computed(() => reviewSortList.value.find((item) => item.name === sortType.value)?.value ?? sortType.value)
+const sortType = ref<'按下载量' | '按AI评分'>('按下载量');
+const sortTypeValue = computed(
+  () => reviewSortList.value.find((item) => item.name === sortType.value)?.value ?? sortType.value,
+);
 const reviewSortList = ref<any>([
-  {value: 'downloads', name: '按下载量'},
-  {value: 'aiScore', name:'按AI评分'},
-])
+  { value: 'downloads', name: '按下载量' },
+  { value: 'aiScore', name: '按AI评分' },
+]);
 
 // 审批状态相关
-const reviewStatus = ref<'全部' | '待审批' | '已审批'>('待审批')
-const reviewStatusValue = computed(() => reviewStatusList.value.find((item) => item.name === reviewStatus.value)?.value ?? reviewStatus.value)
+const reviewStatus = ref<'全部' | '待审批' | '已审批'>('待审批');
+const reviewStatusValue = computed(
+  () =>
+    reviewStatusList.value.find((item) => item.name === reviewStatus.value)?.value ??
+    reviewStatus.value,
+);
 const reviewStatusList = ref([
-  {value: 'ALL', name: '全部'},
-  {value: 'PENDING', name: '待审批'},
-  {value: 'REVIEWED', name: '已审批'}
-])
+  { value: 'ALL', name: '全部' },
+  { value: 'PENDING', name: '待审批' },
+  { value: 'REVIEWED', name: '已审批' },
+]);
+
+// 勋章列表相关
+const selectedBadges = ref<any>([]);
 
 function formatReviewMonth(date: Date): string {
   const year = date.getFullYear();
@@ -631,77 +657,77 @@ function getPreviousReviewMonth(): string {
 
 const currentReviewYear = new Date().getFullYear();
 const currentReviewMonth = formatReviewMonth(new Date());
-const selectedReviewMonth = ref(getPreviousReviewMonth())
-const reviewMonthPickerOpen = ref(false)
-const reviewMonthViewYear = ref(currentReviewYear)
-const reviewMonthPickerRef = ref<HTMLElement | null>(null)
+const selectedReviewMonth = ref(getPreviousReviewMonth());
+const reviewMonthPickerOpen = ref(false);
+const reviewMonthViewYear = ref(currentReviewYear);
+const reviewMonthPickerRef = ref<HTMLElement | null>(null);
 const reviewMonthOptions = Array.from({ length: 12 }, (_, index) => {
   const value = String(index + 1).padStart(2, '0');
   return {
     value,
     label: `${index + 1}月`,
   };
-})
+});
 const selectedReviewMonthLabel = computed(() => {
   if (!selectedReviewMonth.value) {
-    return ''
+    return '';
   }
 
-  const [year, month] = selectedReviewMonth.value.split('-')
+  const [year, month] = selectedReviewMonth.value.split('-');
   if (!year || !month) {
-    return ''
+    return '';
   }
 
-  return `${year}-${month}`
-})
+  return `${year}-${month}`;
+});
 
 function reviewMonthValue(month: string): string {
-  return `${reviewMonthViewYear.value}-${month}`
+  return `${reviewMonthViewYear.value}-${month}`;
 }
 
 function toggleReviewMonthPicker(): void {
   if (!reviewMonthPickerOpen.value) {
     reviewMonthViewYear.value = selectedReviewMonth.value
       ? Number(selectedReviewMonth.value.slice(0, 4))
-      : currentReviewYear
+      : currentReviewYear;
   }
 
-  reviewMonthPickerOpen.value = !reviewMonthPickerOpen.value
+  reviewMonthPickerOpen.value = !reviewMonthPickerOpen.value;
 }
 
 function changeReviewMonthYear(delta: number): void {
-  reviewMonthViewYear.value += delta
+  reviewMonthViewYear.value += delta;
 }
 
 function selectReviewMonth(month: string): void {
-  selectedReviewMonth.value = reviewMonthValue(month)
-  reviewMonthPickerOpen.value = false
-  void reloadReviewCenterTasks()
+  selectedReviewMonth.value = reviewMonthValue(month);
+  reviewMonthPickerOpen.value = false;
+  void reloadReviewCenterTasks();
 }
 
 function clearReviewMonth(): void {
-  selectedReviewMonth.value = ''
-  reviewMonthViewYear.value = currentReviewYear
-  reviewMonthPickerOpen.value = false
-  void reloadReviewCenterTasks()
+  selectedReviewMonth.value = '';
+  reviewMonthViewYear.value = currentReviewYear;
+  reviewMonthPickerOpen.value = false;
+  void reloadReviewCenterTasks();
 }
 
 function isSelectedReviewMonth(month: string): boolean {
-  return selectedReviewMonth.value === reviewMonthValue(month)
+  return selectedReviewMonth.value === reviewMonthValue(month);
 }
 
 function isCurrentReviewMonth(month: string): boolean {
-  return currentReviewMonth === reviewMonthValue(month)
+  return currentReviewMonth === reviewMonthValue(month);
 }
 
 function handleReviewMonthOutsideClick(event: MouseEvent): void {
-  const target = event.target
+  const target = event.target;
   if (!(target instanceof Node)) {
-    return
+    return;
   }
 
   if (!reviewMonthPickerRef.value?.contains(target)) {
-    reviewMonthPickerOpen.value = false
+    reviewMonthPickerOpen.value = false;
   }
 }
 
@@ -750,7 +776,7 @@ const reviewListFilterObj = reactive<any>({
   DepartmentL4: '',
   DepartmentL5: '',
   DepartmentL6: '',
-})
+});
 
 function syncReviewListFilterObj() {
   const nextParams = {
@@ -765,10 +791,19 @@ function syncReviewListFilterObj() {
   return { ...nextParams };
 }
 
+const isExpertReviewer = ref(false);
+const checkExpert = async () => {
+  await skillBaseService.isReviewer({ userId: props.userId ?? '' }).then((res: any) => {
+    if (res?.meta?.success && res?.data) {
+      isExpertReviewer.value = res.data.isExpert;
+    }
+  });
+};
+
 async function reloadReviewCenterTasks(): Promise<void> {
   const params = syncReviewListFilterObj();
-  const data = await loadReviewCenterData(props.userId ?? '', params);
-  applyReviewCenterData(data);
+  const data = await loadReviewCenterData(params, isExpertReviewer.value);
+  await applyReviewCenterData(data);
 }
 
 function onReviewDepartmentChange(segments: string[]): void {
@@ -787,13 +822,14 @@ async function onReviewDepartmentClear(): Promise<void> {
 }
 
 onMounted(async () => {
+  await checkExpert();
   await reloadReviewCenterTasks();
-  document.addEventListener('mousedown', handleReviewMonthOutsideClick)
+  document.addEventListener('mousedown', handleReviewMonthOutsideClick);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleReviewMonthOutsideClick)
-})
+  document.removeEventListener('mousedown', handleReviewMonthOutsideClick);
+});
 </script>
 
 <template>
@@ -822,7 +858,13 @@ onBeforeUnmount(() => {
                   size="lg"
                   @change="reloadReviewCenterTasks"
                 >
-                  <option v-for="(option, index) in reviewStatusList" :key="index" :value="option.name">{{ option.name }}</option>
+                  <option
+                    v-for="(option, index) in reviewStatusList"
+                    :key="index"
+                    :value="option.name"
+                  >
+                    {{ option.name }}
+                  </option>
                 </select>
               </label>
               <div class="toolbar-filter toolbar-filter--month">
@@ -943,7 +985,13 @@ onBeforeUnmount(() => {
                   size="lg"
                   @change="reloadReviewCenterTasks"
                 >
-                  <option v-for="(option, index) in reviewSortList" :key="index" :value="option.name">{{ option.name }}</option>
+                  <option
+                    v-for="(option, index) in reviewSortList"
+                    :key="index"
+                    :value="option.name"
+                  >
+                    {{ option.name }}
+                  </option>
                 </select>
               </label>
             </div>
@@ -966,9 +1014,9 @@ onBeforeUnmount(() => {
                 @keydown.space.prevent="selectTask(task.skillId)"
               >
                 <div class="task-card__title">{{ task.name }}</div>
-                <div class="task-card__meta">{{ task.ownerName }} {{ task.skillId }} · {{ task.team }}</div>
+                <div class="task-card__meta">{{ task.ownerUser }} · {{ task.DepartmentL6 }}</div>
                 <div class="task-card__tags">
-                  <span v-for="tag in task.tags" :key="tag">{{ tag }}</span>
+                  <span v-for="tag in task.tags?.split(',') ?? []" :key="tag">{{ tag }}</span>
                 </div>
               </article>
             </div>
@@ -1013,12 +1061,11 @@ onBeforeUnmount(() => {
               <div class="ai-review-brief">
                 <div class="ai-review-brief__icon">i</div>
                 <div>
-                  <h2>TRACE 评测维度说明</h2>
-                  <p>{{ aiReviewDimensionDescription }}</p>
-                  <div class="ai-review-brief__meta">
-                    <span>评测主要基于文档结构、任务边界、异常处理和使用反馈生成。</span>
-                    <button type="button">评测建议反馈</button>
-                  </div>
+                  <h2>SKILL 评测维度说明</h2>
+                  <p>
+                    扶摇平台评测体系从技能边界定义完整性、接口规范完整性、异常与边界处理、规则一致性、安全与权限约束六个维度评估
+                    Skill 质量
+                  </p>
                 </div>
               </div>
 
@@ -1058,10 +1105,10 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="ai-review-score">
                   <div>
-                    <strong>{{ aiReviewOverallScore }}</strong>
+                    <strong>{{ selectedSkillDetail.value?.aiScore / 100 }}</strong>
                     <span>/ 100</span>
                   </div>
-                  <em>综合评级：优秀</em>
+                  <em>20-30-20-10-20</em>
                   <p>{{ aiReviewOverallSummary }}</p>
                 </div>
               </div>
@@ -1180,30 +1227,15 @@ onBeforeUnmount(() => {
                   <div class="medal-select">
                     <span class="medal-select__label">是否授予个人勋章</span>
                     <div class="medal-select__control">
-                      <button
-                        class="medal-select__button"
-                        type="button"
-                        :aria-expanded="isMedalSelectOpen"
-                        aria-haspopup="true"
-                        @click="isMedalSelectOpen = !isMedalSelectOpen"
-                      >
-                        {{ selectedPersonalMedalText }}
-                      </button>
-                      <div
-                        v-if="isMedalSelectOpen"
-                        class="medal-select__menu"
-                        role="group"
-                        aria-label="个人勋章"
-                      >
-                        <label
-                          v-for="option in medalOptions"
-                          :key="option"
-                          class="medal-select__option"
+                      <select v-model="selectedBadges" placeholder="选择勋章" multiple size="lg">
+                        <option
+                          v-for="(option, index) in badgeOptions"
+                          :key="index"
+                          :value="option.name"
                         >
-                          <input v-model="selectedPersonalMedals" type="checkbox" :value="option" />
-                          <span>{{ option }}</span>
-                        </label>
-                      </div>
+                          {{ option.name }}
+                        </option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -2162,8 +2194,7 @@ th {
   border-radius: 12px;
   background:
     radial-gradient(circle at 16% 0%, rgba(47, 125, 246, 0.08), transparent 36%),
-    radial-gradient(circle at 88% 10%, rgba(117, 82, 255, 0.1), transparent 34%),
-    #ffffff;
+    radial-gradient(circle at 88% 10%, rgba(117, 82, 255, 0.1), transparent 34%), #ffffff;
   box-shadow:
     0 22px 48px rgba(22, 34, 51, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -2380,6 +2411,7 @@ th {
   padding: 14px;
   border: 1px solid #dbe5f2;
   border-radius: 8px;
+  height: 135px;
   background: #ffffff;
   cursor: pointer;
   transition:
@@ -2448,7 +2480,7 @@ th {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-  min-width: min(315px, 100%);
+  max-width: min(315px, 100%);
   padding: 4px;
   border: 1px solid #dbe5f2;
   border-radius: 8px;
@@ -2650,7 +2682,7 @@ th {
 
 .ai-review-summary-card {
   display: grid;
-  grid-template-columns: minmax(245px, 280px) minmax(280px, 1.15fr);
+  grid-template-columns: minmax(245px, 360px) minmax(360px, 1.15fr);
   gap: 18px;
   padding: 22px;
   border-color: #edf1f7;
@@ -2662,14 +2694,15 @@ th {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 245px;
+  min-height: 245px;
+  max-width: 360px;
 }
 
 .ai-radar__stage {
   position: relative;
   display: grid;
   place-items: center;
-  width: min(288px, 100%);
+  width: min(240px, 100%);
   aspect-ratio: 1;
   overflow: visible;
 }
@@ -2711,7 +2744,7 @@ th {
 }
 
 .ai-review-score {
-  align-self: center;
+  // align-self: center;
   min-width: 0;
 }
 

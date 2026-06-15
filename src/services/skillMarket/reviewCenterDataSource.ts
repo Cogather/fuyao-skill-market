@@ -73,22 +73,17 @@ function createMockReviewCenterData(mockData: ReviewCenterMockModule): ReviewCen
   };
 }
 
-async function loadHttpReviewCenterData(userId: string, listParams: any): Promise<ReviewCenterData> {
-  let isExpertReviewer = false
-  await skillBaseService.isReviewer({userId: userId}).then((res: any) => {
-    if(res?.meta?.success && res?.data) {
-      isExpertReviewer = res.data.isExpert
-    }
-  })
-  if (isExpertReviewer) {
-    await skillBaseService.getSkillReviewList(listParams)
+async function loadHttpReviewCenterData(listParams: any): Promise<ReviewCenterData> {
+  // 评审列表
+  let reviewList = [];
+  const reviewRes = await skillBaseService.getSkillReviewList(listParams);
+  if (reviewRes?.meta?.success && reviewRes?.data) {
+    reviewList = reviewRes.data?.list;
   }
-
-
   // TODO: 后端接口确定后，在 skillBaseService 中补齐评审页查询方法，并在这里组装真实响应数据。
   return {
     rankingCards: [],
-    taskCards: [],
+    taskCards: [...reviewList],
     scoreTabs: [],
     computeChannels: [],
     computeChannelTypes: [],
@@ -107,13 +102,16 @@ async function loadMockReviewCenterData(): Promise<ReviewCenterData> {
   return createMockReviewCenterData(mockData);
 }
 
-export async function loadReviewCenterData(userId: string, listParams: any): Promise<ReviewCenterData> {
+export async function loadReviewCenterData(
+  listParams: any,
+  isExperReviewer: boolean,
+): Promise<ReviewCenterData> {
   const transport = String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock')
     .trim()
     .toLowerCase();
 
   if (transport === 'http') {
-    return loadHttpReviewCenterData(userId, listParams);
+    return isExperReviewer ? loadHttpReviewCenterData(listParams) : loadMockReviewCenterData();
   }
 
   return loadMockReviewCenterData();

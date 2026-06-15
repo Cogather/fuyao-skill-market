@@ -577,7 +577,9 @@ onMounted(() => {
     <header class="planning-hero">
       <div>
         <h2 class="panel-title">Skill 规划</h2>
-        <p class="all-desc">用于统一管理各部门规划建设中的 Skill 清单，支持查询、新增、导入、导出和批量维护。</p>
+        <p class="all-desc">
+          用于统一管理各部门规划建设中的 Skill 清单，支持查询、新增、导入、导出和批量维护。
+        </p>
       </div>
     </header>
 
@@ -702,7 +704,12 @@ onMounted(() => {
             </svg>
             导出
           </button>
-          <button v-if="false" type="button" class="planning-btn planning-btn--soft" @click="openBatchDialog">
+          <button
+            v-if="false"
+            type="button"
+            class="planning-btn planning-btn--soft"
+            @click="openBatchDialog"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 7h10M4 12h8M4 17h6M17 5l2 2-7 7-3 1 1-3 7-7Z" />
             </svg>
@@ -880,13 +887,19 @@ onMounted(() => {
                 </svg>
               </div>
               <div class="import-dropzone__copy">
-                <strong>{{ selectedImportFile ? selectedImportFile.name : '拖拽 Excel 文件到这里' }}</strong>
+                <strong>{{
+                  selectedImportFile ? selectedImportFile.name : '拖拽 Excel 文件到这里'
+                }}</strong>
                 <span v-if="selectedImportFile">
                   {{ selectedImportFileSize }} · 点击可重新选择文件
                 </span>
                 <span v-else>或点击选择文件，支持 .xlsx / .xls</span>
               </div>
-              <button type="button" class="import-dropzone__pick" @click.stop="openImportFilePicker">
+              <button
+                type="button"
+                class="import-dropzone__pick"
+                @click.stop="openImportFilePicker"
+              >
                 选择文件
               </button>
             </div>
@@ -1673,8 +1686,7 @@ onMounted(() => {
   border: 1.5px dashed #b9ccff;
   border-radius: 12px;
   background:
-    linear-gradient(135deg, rgba(47, 125, 246, 0.08) 0%, rgba(117, 82, 255, 0.07) 100%),
-    #f8fbff;
+    linear-gradient(135deg, rgba(47, 125, 246, 0.08) 0%, rgba(117, 82, 255, 0.07) 100%), #f8fbff;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.78),
     0 14px 34px rgba(35, 52, 84, 0.07);
@@ -1690,8 +1702,7 @@ onMounted(() => {
 .import-dropzone.is-dragging {
   border-color: #4f7cff;
   background:
-    linear-gradient(135deg, rgba(47, 125, 246, 0.13) 0%, rgba(117, 82, 255, 0.12) 100%),
-    #f6f9ff;
+    linear-gradient(135deg, rgba(47, 125, 246, 0.13) 0%, rgba(117, 82, 255, 0.12) 100%), #f6f9ff;
   box-shadow:
     0 0 0 4px rgba(79, 124, 255, 0.12),
     0 18px 42px rgba(35, 52, 84, 0.1);
@@ -1703,8 +1714,7 @@ onMounted(() => {
   border-color: #93c5fd;
   background:
     radial-gradient(circle at 16% 18%, rgba(46, 205, 211, 0.12), transparent 30%),
-    linear-gradient(135deg, rgba(47, 125, 246, 0.1) 0%, rgba(117, 82, 255, 0.08) 100%),
-    #ffffff;
+    linear-gradient(135deg, rgba(47, 125, 246, 0.1) 0%, rgba(117, 82, 255, 0.08) 100%), #ffffff;
 }
 
 .import-dropzone__icon {

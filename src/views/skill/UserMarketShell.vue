@@ -117,7 +117,7 @@ const innerTabAliases: Record<string, UserInnerTab> = {
   评审中心: 'review',
   planning: 'planning',
   skillPlanning: 'planning',
-  'Skill规划': 'planning',
+  Skill规划: 'planning',
   'Skill 规划': 'planning',
   skill规划: 'planning',
 };

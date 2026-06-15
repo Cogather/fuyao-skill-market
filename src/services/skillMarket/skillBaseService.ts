@@ -261,8 +261,8 @@ export const skillBaseService = {
   },
 
   /*
-  * skill评审相关接口
-  */
+   * skill评审相关接口
+   */
 
   // 判断是否为专家
   isReviewer: (params: any): any => {
