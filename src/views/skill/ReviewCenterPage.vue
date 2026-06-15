@@ -31,7 +31,7 @@ const props = withDefaults(
 const rankingCards = ref<ReviewRankingCard[]>([]);
 const taskCards = reactive<ReviewTaskCard[]>([]);
 
-const selectedTaskId = ref(taskCards[0]?.id ?? '');
+const selectedTaskId = ref(taskCards[0]?.skillId ?? '');
 
 const computeChannels = reactive<ComputeChannelRow[]>([]);
 const computeChannelTypes = ref<string[]>([]);
@@ -148,7 +148,7 @@ function replaceReviewDimensionDetails(source: Record<string, ReviewDimensionDet
 function applyReviewCenterData(data: ReviewCenterData) {
   rankingCards.value = data.rankingCards;
   replaceReactiveArray(taskCards, data.taskCards);
-  selectedTaskId.value = taskCards[0]?.id ?? '';
+  selectedTaskId.value = taskCards[0]?.skillId ?? '';
 
   replaceReactiveArray(computeChannels, data.computeChannels);
   computeChannelTypes.value = data.computeChannelTypes;
@@ -173,7 +173,7 @@ function applyReviewCenterData(data: ReviewCenterData) {
   }
 }
 const activeTask = computed(
-  () => taskCards.find((task) => task.id === selectedTaskId.value) ?? taskCards[0],
+  () => taskCards.find((task) => task.skillId === selectedTaskId.value) ?? taskCards[0],
 );
 const isCurrentTaskReviewed = computed(() => activeTask.value?.hasReviewed === true);
 const activeMetrics = computed(() => {
@@ -469,7 +469,7 @@ async function startScoreEditing() {
 function selectTask(taskId: string) {
   isScoreEditing.value = false;
   selectedTaskId.value = taskId;
-  const task = taskCards.find((item) => item.id === taskId);
+  const task = taskCards.find((item) => item.skillId === taskId);
   if (task) {
     syncScoreInputFromTask(task);
   }
@@ -491,8 +491,8 @@ function filterTaskCardsByKeyword(keyword: string) {
   return taskCards.filter((task) => {
     return (
       task.name.toLowerCase().includes(normalized) ||
-      task.owner.toLowerCase().includes(normalized) ||
-      task.id.toLowerCase().includes(normalized)
+      task.ownerName.toLowerCase().includes(normalized) ||
+      task.skillId.toLowerCase().includes(normalized)
     );
   });
 }
@@ -513,7 +513,7 @@ const isMedalAwardFormValid = computed(() => {
 
 function openMedalAwardModal() {
   skillSearchQuery.value = '';
-  selectedAwardSkillId.value = selectedTaskId.value || taskCards[0]?.id || '';
+  selectedAwardSkillId.value = selectedTaskId.value || taskCards[0]?.skillId || '';
   selectedAwardMedalTypes.value = [];
   awardMedalReason.value = '';
   isMedalAwardModalOpen.value = true;
@@ -528,7 +528,7 @@ function submitMedalAward() {
     return;
   }
 
-  const task = taskCards.find((item) => item.id === selectedAwardSkillId.value);
+  const task = taskCards.find((item) => item.skillId === selectedAwardSkillId.value);
   if (!task) {
     return;
   }
@@ -541,11 +541,11 @@ function submitMedalAward() {
       }
     });
     existingRow.count = existingRow.medals.length;
-    existingRow.owner = task.owner;
+    existingRow.ownerName = task.ownerName;
   } else {
     medalRows.push({
       name: task.name,
-      owner: task.owner,
+      ownerName: task.ownerName,
       count: selectedAwardMedalTypes.value.length,
       medals: [...selectedAwardMedalTypes.value],
     });
@@ -564,7 +564,7 @@ const isComputeChannelFormValid = computed(() => {
 
 function openComputeChannelModal() {
   computeSkillSearchQuery.value = '';
-  selectedComputeSkillId.value = selectedTaskId.value || taskCards[0]?.id || '';
+  selectedComputeSkillId.value = selectedTaskId.value || taskCards[0]?.skillId || '';
   selectedComputeChannelType.value = computeChannelTypes.value[0] ?? '';
   computeChannelReason.value = '';
   isComputeChannelModalOpen.value = true;
@@ -579,20 +579,20 @@ function submitComputeChannel() {
     return;
   }
 
-  const task = taskCards.find((item) => item.id === selectedComputeSkillId.value);
+  const task = taskCards.find((item) => item.skillId === selectedComputeSkillId.value);
   if (!task) {
     return;
   }
 
-  const existingChannel = computeChannels.find((channel) => channel.id === task.id);
+  const existingChannel = computeChannels.find((channel) => channel.skillId === task.skillId);
   if (existingChannel) {
-    existingChannel.name = task.owner;
+    existingChannel.ownerName = task.ownerName;
     existingChannel.type = selectedComputeChannelType.value;
     existingChannel.status = '启用';
   } else {
     computeChannels.push({
-      name: task.owner,
-      id: task.id,
+      name: task.ownerName,
+      id: task.skillId,
       type: selectedComputeChannelType.value,
       status: '启用',
     });
@@ -955,18 +955,18 @@ onBeforeUnmount(() => {
             <div class="task-list" aria-label="任务列表">
               <article
                 v-for="task in taskCards"
-                :key="task.id"
+                :key="task.skillId"
                 class="task-card"
-                :class="{ 'is-active': selectedTaskId === task.id }"
+                :class="{ 'is-active': selectedTaskId === task.skillId }"
                 role="button"
                 tabindex="0"
-                :aria-pressed="selectedTaskId === task.id"
-                @click="selectTask(task.id)"
-                @keydown.enter.prevent="selectTask(task.id)"
-                @keydown.space.prevent="selectTask(task.id)"
+                :aria-pressed="selectedTaskId === task.skillId"
+                @click="selectTask(task.skillId)"
+                @keydown.enter.prevent="selectTask(task.skillId)"
+                @keydown.space.prevent="selectTask(task.skillId)"
               >
                 <div class="task-card__title">{{ task.name }}</div>
-                <div class="task-card__meta">{{ task.owner }} {{ task.id }} · {{ task.team }}</div>
+                <div class="task-card__meta">{{ task.ownerName }} {{ task.skillId }} · {{ task.team }}</div>
                 <div class="task-card__tags">
                   <span v-for="tag in task.tags" :key="tag">{{ tag }}</span>
                 </div>
@@ -1260,20 +1260,20 @@ onBeforeUnmount(() => {
                 未找到匹配的 Skill
               </p>
               <ul v-else class="medal-award-skill-list" role="radiogroup" aria-label="Skill 列表">
-                <li v-for="skill in filteredComputeSkillOptions" :key="skill.id">
+                <li v-for="skill in filteredComputeSkillOptions" :key="skill.skillId">
                   <label
                     class="medal-award-skill-option"
-                    :class="{ 'is-selected': selectedComputeSkillId === skill.id }"
+                    :class="{ 'is-selected': selectedComputeSkillId === skill.skillId }"
                   >
                     <input
                       v-model="selectedComputeSkillId"
                       type="radio"
                       name="compute-skill"
-                      :value="skill.id"
+                      :value="skill.skillId"
                     />
                     <span class="medal-award-skill-option__main">
                       <strong>{{ skill.name }}</strong>
-                      <span>{{ skill.owner }} · {{ skill.id }} · {{ skill.team }}</span>
+                      <span>{{ skill.ownerName }} · {{ skill.skillId }} · {{ skill.team }}</span>
                     </span>
                   </label>
                 </li>
@@ -1369,20 +1369,20 @@ onBeforeUnmount(() => {
                 未找到匹配的 Skill
               </p>
               <ul v-else class="medal-award-skill-list" role="radiogroup" aria-label="Skill 列表">
-                <li v-for="skill in filteredSkillOptions" :key="skill.id">
+                <li v-for="skill in filteredSkillOptions" :key="skill.skillId">
                   <label
                     class="medal-award-skill-option"
-                    :class="{ 'is-selected': selectedAwardSkillId === skill.id }"
+                    :class="{ 'is-selected': selectedAwardSkillId === skill.skillId }"
                   >
                     <input
                       v-model="selectedAwardSkillId"
                       type="radio"
                       name="award-skill"
-                      :value="skill.id"
+                      :value="skill.skillId"
                     />
                     <span class="medal-award-skill-option__main">
                       <strong>{{ skill.name }}</strong>
-                      <span>{{ skill.owner }} · {{ skill.id }} · {{ skill.team }}</span>
+                      <span>{{ skill.ownerName }} · {{ skill.skillId }} · {{ skill.team }}</span>
                     </span>
                   </label>
                 </li>
