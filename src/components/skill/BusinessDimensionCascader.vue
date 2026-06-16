@@ -22,6 +22,11 @@ type BusinessDimensionSelection = {
 type RawBusinessDimension = BusinessDimensionDto & {
   id?: string | number;
   dimensionName?: string;
+  category?: string;
+  code?: string;
+  label?: string;
+  title?: string;
+  value?: string | number;
 };
 
 const props = withDefaults(
@@ -73,9 +78,17 @@ const selectedCategory = computed(
 
 function normalizeDimension(item: BusinessDimensionDto): BusinessDimensionOption | null {
   const raw = item as RawBusinessDimension;
-  const rawId = raw.categoryId ?? raw.id;
+  const rawId = raw.categoryId ?? raw.id ?? raw.value ?? raw.dimensionCode ?? raw.code;
   const id = rawId === undefined || rawId === null ? '' : String(rawId).trim();
-  const name = String(raw.categoryName ?? raw.dimensionName ?? raw.name ?? '').trim();
+  const name = String(
+    raw.categoryName ??
+      raw.dimensionName ??
+      raw.name ??
+      raw.label ??
+      raw.title ??
+      raw.category ??
+      '',
+  ).trim();
 
   if (!id || !name) {
     return null;
@@ -94,33 +107,72 @@ function normalizeDimension(item: BusinessDimensionDto): BusinessDimensionOption
   };
 }
 
+function isDimensionLike(value: unknown): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  return Boolean(normalizeDimension(value as BusinessDimensionDto));
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
 function readDimensionRows(raw: unknown): BusinessDimensionDto[] {
   if (Array.isArray(raw)) {
-    return raw as BusinessDimensionDto[];
+    return raw.some(isDimensionLike) ? (raw as BusinessDimensionDto[]) : [];
   }
 
   if (!raw || typeof raw !== 'object') {
     return [];
   }
 
-  const record = raw as Record<string, unknown>;
-  if (Array.isArray(record.list)) {
-    return record.list as BusinessDimensionDto[];
+  const record = readRecord(raw);
+  if (isDimensionLike(record)) {
+    return [record as BusinessDimensionDto];
   }
-  if (Array.isArray(record.records)) {
-    return record.records as BusinessDimensionDto[];
+
+  const directKeys = [
+    'data',
+    'list',
+    'records',
+    'categoryStats',
+    'categories',
+    'categoryList',
+    'categoryTree',
+    'businessDimensions',
+    'dimensions',
+    'children',
+  ];
+
+  for (const key of directKeys) {
+    const rows = readDimensionRows(record[key]);
+    if (rows.length > 0) {
+      return rows;
+    }
+  }
+
+  for (const value of Object.values(record)) {
+    const rows = readDimensionRows(value);
+    if (rows.length > 0) {
+      return rows;
+    }
   }
 
   return [];
 }
 
 function serviceSucceeded(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return true;
+  }
   if (!value || typeof value !== 'object') {
     return false;
   }
 
-  const record = value as Record<string, unknown>;
-  const meta = record.meta as Record<string, unknown> | undefined;
+  const record = readRecord(value);
+  const meta = readRecord(record.meta);
   if (typeof meta?.success === 'boolean') {
     return meta.success;
   }
@@ -286,7 +338,6 @@ onMounted(() => {
           :aria-label="`${ariaLabelPrefix}二级`"
           @change="onCategoryChange"
         >
-          <option value=""></option>
           <option
             v-for="category in selectedCategoryOptions"
             :key="category.id"
@@ -302,7 +353,9 @@ onMounted(() => {
           :aria-label="`清空${ariaLabelPrefix}二级`"
           :title="`清空${ariaLabelPrefix}二级`"
           :disabled="disabled"
-          @click="clearCategory"
+          @pointerdown.prevent.stop
+          @mousedown.prevent.stop
+          @click.prevent.stop="clearCategory"
         >
           ×
         </button>

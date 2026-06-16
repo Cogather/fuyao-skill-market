@@ -8,6 +8,66 @@ const _ai_env = import.meta.env.VITE_SKILL_CORE_CODE_URL;
 
 export const ai = _ai_env;
 
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function hasBusinessDimensionRows(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  const record = readRecord(value);
+  return [
+    record.data,
+    record.list,
+    record.records,
+    record.categoryStats,
+    record.categories,
+    record.businessDimensions,
+    record.children,
+  ].some((item) => Array.isArray(item) && item.length > 0);
+}
+
+async function queryBusinessDimensionsWithFallback(params: any): Promise<any> {
+  let firstError: unknown = null;
+
+  try {
+    const res = await httpRequest.api<any>({
+      url: '/dashboard/categoryStats',
+      method: 'get',
+      params,
+    });
+    if (hasBusinessDimensionRows(readRecord(res).data)) {
+      return res;
+    }
+  } catch (error) {
+    firstError = error;
+  }
+
+  try {
+    return await httpRequest.api<any>({
+      url: '/business-dimensions',
+      method: 'get',
+      params,
+    });
+  } catch (error) {
+    if (!firstError) {
+      firstError = error;
+    }
+  }
+
+  try {
+    return await httpRequest.api<any>({
+      url: '/categories',
+      method: 'get',
+      params,
+    });
+  } catch (error) {
+    throw firstError ?? error;
+  }
+}
+
 export const skillBaseService = {
   // skill压缩包解析接口
   parseSkillPackage: (formData: FormData, params: any): any => {
@@ -244,11 +304,7 @@ export const skillBaseService = {
 
   // 左侧目录栏业务维度查询接口；HTTP 模式下如路径调整，只改 endpoints.businessDimensions 即可
   queryBusinessDimensions: (params: any): any => {
-    return httpRequest.api<any>({
-      url: '/dashboard/categoryStats',
-      method: 'get',
-      params,
-    });
+    return queryBusinessDimensionsWithFallback(params);
   },
 
   // 运营管理接口
