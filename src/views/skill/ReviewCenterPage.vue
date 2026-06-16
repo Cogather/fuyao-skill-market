@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
   loadReviewCenterData,
@@ -158,12 +159,6 @@ async function applyReviewCenterData(data: ReviewCenterData) {
   medalAwardTypes.value = data.medalAwardTypes;
 
   replaceReviewDimensionDetails(data.reviewDimensionDetails);
-
-  await skillBaseService.getReviewBadges().then((res) => {
-    if (res?.meta?.success && res?.data) {
-      badgeOptions.value = res.data;
-    }
-  });
 
   // badgeOptions.value = data.badgeOptions;
   // selectedPersonalMedals.value = [];
@@ -640,6 +635,7 @@ const reviewStatusList = ref([
   { value: 'PENDING', name: '待审批' },
   { value: 'REVIEWED', name: '已审批' },
 ]);
+const selectedReviewCategory = ref('');
 
 // 勋章列表相关
 const selectedBadges = ref<any>([]);
@@ -770,6 +766,7 @@ const reviewListFilterObj = reactive<any>({
   reviewStatus: '',
   yearMonth: '',
   sortBy: '',
+  category: '',
   DepartmentL1: '',
   DepartmentL2: '',
   DepartmentL3: '',
@@ -784,6 +781,7 @@ function syncReviewListFilterObj() {
     reviewStatus: reviewStatusValue.value,
     yearMonth: selectedReviewMonthLabel.value,
     sortBy: sortTypeValue.value,
+    category: selectedReviewCategory.value,
     ...reviewDepartmentLevelParams(),
   };
 
@@ -821,9 +819,18 @@ async function onReviewDepartmentClear(): Promise<void> {
   await reloadReviewCenterTasks();
 }
 
+async function onReviewBusinessDimensionChange(): Promise<void> {
+  await reloadReviewCenterTasks();
+}
+
 onMounted(async () => {
   await checkExpert();
   await reloadReviewCenterTasks();
+  await skillBaseService.getReviewBadges().then((res) => {
+    if (res?.meta?.success && res?.data) {
+      badgeOptions.value = res.data;
+    }
+  });
   document.addEventListener('mousedown', handleReviewMonthOutsideClick);
 });
 
@@ -950,20 +957,15 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
               </div>
-              <label class="toolbar-filter">
+              <div class="toolbar-filter toolbar-filter--business">
                 <span class="toolbar-filter__label">业务维度</span>
-                <select aria-label="业务维度">
-                  <option>公共</option>
-                  <option>设计</option>
-                  <option>开发</option>
-                  <option>测试</option>
-                  <option>运维</option>
-                  <option>维护</option>
-                  <option>研究</option>
-                  <option>项目管理</option>
-                  <option>全部</option>
-                </select>
-              </label>
+                <BusinessDimensionCascader
+                  v-model="selectedReviewCategory"
+                  class="review-business-dimension"
+                  aria-label-prefix="评审业务维度"
+                  @change="onReviewBusinessDimensionChange"
+                />
+              </div>
               <div class="toolbar-filter toolbar-filter--dept">
                 <span class="toolbar-filter__label">部门</span>
                 <MarketDeptCascader
@@ -2034,6 +2036,41 @@ th {
   position: relative;
 }
 
+.toolbar-filter--business {
+  min-width: 0;
+}
+
+.review-business-dimension {
+  width: 100%;
+  min-width: 0;
+}
+
+.review-business-dimension :deep(.business-dimension-cascader__select) {
+  min-height: 38px;
+  height: 38px;
+  padding: 0 10px;
+  border-color: #cad6e5;
+  border-radius: 8px;
+  color: #233752;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.review-business-dimension :deep(.business-dimension-cascader__select:hover) {
+  border-color: #b8c5d6;
+  background: #f8fafc;
+}
+
+.review-business-dimension :deep(.business-dimension-cascader__select:focus) {
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+}
+
+.review-business-dimension :deep(.business-dimension-cascader__clear) {
+  right: 30px;
+}
+
 .toolbar-filter--dept {
   min-width: 0;
 }
@@ -2366,8 +2403,8 @@ th {
 .task-filter-controls {
   display: grid;
   grid-template-columns:
-    minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(150px, 0.9fr)
-    minmax(150px, 0.75fr) minmax(220px, 1.25fr);
+    minmax(145px, 0.75fr) minmax(145px, 0.75fr) minmax(260px, 1.25fr)
+    minmax(170px, 0.8fr) minmax(150px, 0.75fr);
   gap: 10px;
   align-items: end;
   justify-content: stretch;

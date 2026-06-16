@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import type { BusinessDimensionDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
+import BusinessDimensionCascader from './BusinessDimensionCascader.vue';
 
 const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
@@ -81,10 +81,8 @@ const versionUpgrade = ref<VersionUpgradeMeta | null>(null);
 const parsing = ref(false);
 const uploading = ref(false);
 const parseError = ref('');
-const businessDimensions = ref<BusinessDimensionDto[]>([]);
-const businessDimensionLoading = ref(false);
-const selectedBusinessDimension = ref('公共');
-const selectedBusinessCategory = ref('');
+const selectedBusinessDimensionName = ref('公共');
+const selectedBusinessCategoryParam = ref('');
 const duplicateChecking = ref(false);
 const duplicateCheckMessage = ref('');
 const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
@@ -125,32 +123,11 @@ const parseNotice = computed(() => {
   return '等待上传：解析字段会自动回显；业务维度请手动选择。';
 });
 
-const businessDimensionOptions = computed(() => [...businessDimensions.value]);
-
-const selectedBusinessDimensionItem = computed(
-  () =>
-    businessDimensionOptions.value.find(
-      (item) => item.categoryName === selectedBusinessDimension.value,
-    ) ?? null,
-);
-
-const selectedBusinessCategoryOptions = computed(() =>
-  businessDimensionChildren(selectedBusinessDimensionItem.value),
-);
-
-const selectedBusinessCategoryParam = computed(() => {
-  if (selectedBusinessCategory.value) {
-    return selectedBusinessCategory.value;
-  }
-  const dimensionId = selectedBusinessDimensionItem.value?.categoryId;
-  return dimensionId !== undefined && dimensionId !== null ? String(dimensionId) : '';
-});
-
 const canSubmit = computed(
   () =>
     Boolean(parsed.value) &&
     parseState.value === 'success' &&
-    Boolean(selectedBusinessDimension.value) &&
+    Boolean(selectedBusinessDimensionName.value) &&
     Boolean(selectedBusinessCategoryParam.value) &&
     !uploading.value,
 );
@@ -158,11 +135,9 @@ const canSubmit = computed(
 watch(
   () => props.modelValue,
   (open) => {
-    if (open) {
-      void loadBusinessDimensions();
-      return;
+    if (!open) {
+      reset();
     }
-    reset();
   },
 );
 
@@ -176,8 +151,8 @@ function reset(): void {
   parsing.value = false;
   uploading.value = false;
   parseError.value = '';
-  selectedBusinessDimension.value = '公共';
-  selectedBusinessCategory.value = '';
+  selectedBusinessDimensionName.value = '公共';
+  selectedBusinessCategoryParam.value = '';
   duplicateChecking.value = false;
   duplicateCheckMessage.value = '';
   duplicateCheckStatus.value = 'idle';
@@ -197,10 +172,6 @@ function openSkillGuide(): void {
 
 function closeSkillGuide(): void {
   skillGuideOpen.value = false;
-}
-
-function clearBusinessCategory(): void {
-  selectedBusinessCategory.value = '';
 }
 
 async function copySkillGuide(): Promise<void> {
@@ -273,58 +244,6 @@ function serviceMessage(value: unknown, fallback: string): string {
   const meta = readEnvelopeRecord(record.meta);
   const message = meta.message ?? record.message ?? record.msg;
   return typeof message === 'string' && message.trim() ? message : fallback;
-}
-
-function businessDimensionChildren(
-  dimension: BusinessDimensionDto | null | undefined,
-): BusinessDimensionDto[] {
-  return [...(dimension?.children ?? [])];
-}
-
-function syncSelectedBusinessDimension(): void {
-  const options = businessDimensionOptions.value;
-  if (options.length === 0) {
-    selectedBusinessDimension.value = selectedBusinessDimension.value || '公共';
-    return;
-  }
-  const current = selectedBusinessDimension.value;
-  if (options.some((item) => item.categoryName === current)) {
-    return;
-  }
-  selectedBusinessDimension.value =
-    options.find((item) => item.categoryName === '公共')?.categoryName ??
-    options[0]?.categoryName ??
-    '公共';
-}
-
-watch(selectedBusinessDimension, () => {
-  selectedBusinessCategory.value = '';
-});
-
-watch(selectedBusinessCategoryOptions, (options) => {
-  if (!selectedBusinessCategory.value) {
-    return;
-  }
-  if (!options.some((item) => String(item.categoryId) === selectedBusinessCategory.value)) {
-    selectedBusinessCategory.value = '';
-  }
-});
-
-async function loadBusinessDimensions(): Promise<void> {
-  if (businessDimensionLoading.value || businessDimensions.value.length > 0) {
-    syncSelectedBusinessDimension();
-    return;
-  }
-  businessDimensionLoading.value = true;
-  try {
-    const env = await skillBaseService.queryBusinessDimensions({ format: 'tree' });
-    if (env?.meta?.success && env?.data) {
-      businessDimensions.value = env.data;
-    }
-  } finally {
-    businessDimensionLoading.value = false;
-    syncSelectedBusinessDimension();
-  }
 }
 
 function skillListRowsFromData(raw: unknown): Record<string, unknown>[] {
@@ -478,7 +397,7 @@ const onSubmit = async (): Promise<void> => {
       note: note.value.trim() || parsed.value.description,
       file: file.value,
       scopeLabel: '个人级',
-      tagFunctional: selectedBusinessDimension.value,
+      tagFunctional: selectedBusinessDimensionName.value,
       version: parsed.value.version,
       versionUpgrade: Boolean(versionUpgrade.value),
       existingVersion: versionUpgrade.value?.existingVersion,
@@ -576,55 +495,13 @@ const onSubmit = async (): Promise<void> => {
               </div>
               <div class="form-field">
                 <label for="sk-business-dimension">业务维度</label>
-                <div class="dimension-select-group">
-                  <select
-                    id="sk-business-dimension"
-                    v-model="selectedBusinessDimension"
-                    class="input select-input"
-                    aria-label="一级业务维度"
-                  >
-                    <option
-                      v-for="dimension in businessDimensionOptions"
-                      :key="dimension.categoryId"
-                      :value="dimension.categoryName"
-                    >
-                      {{ dimension.categoryName }}
-                    </option>
-                    <option v-if="businessDimensionOptions.length === 0" value="公共">
-                      {{ businessDimensionLoading ? '加载中...' : '公共' }}
-                    </option>
-                  </select>
-                  <div
-                    class="category-select-wrap"
-                    :class="{ 'has-clear': selectedBusinessCategory }"
-                  >
-                    <select
-                      id="sk-business-category"
-                      v-model="selectedBusinessCategory"
-                      class="input select-input"
-                      :disabled="selectedBusinessCategoryOptions.length === 0"
-                      aria-label="二级业务维度"
-                    >
-                      <option
-                        v-for="category in selectedBusinessCategoryOptions"
-                        :key="category.categoryId"
-                        :value="String(category.categoryId)"
-                      >
-                        {{ category.categoryName }}
-                      </option>
-                    </select>
-                    <button
-                      v-if="selectedBusinessCategory"
-                      type="button"
-                      class="category-clear-btn"
-                      aria-label="清空二级业务维度"
-                      title="清空二级业务维度"
-                      @click="clearBusinessCategory"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
+                <BusinessDimensionCascader
+                  v-model="selectedBusinessCategoryParam"
+                  v-model:dimension-label="selectedBusinessDimensionName"
+                  first-select-id="sk-business-dimension"
+                  second-select-id="sk-business-category"
+                  aria-label-prefix="业务维度"
+                />
               </div>
               <div class="form-field">
                 <label>默认发布层级</label>
@@ -1121,57 +998,6 @@ const onSubmit = async (): Promise<void> => {
   resize: vertical;
 }
 
-.select-input {
-  min-height: 0;
-  cursor: pointer;
-}
-
-.dimension-select-group {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-}
-
-.category-select-wrap {
-  position: relative;
-  min-width: 0;
-}
-
-.category-select-wrap.has-clear .select-input {
-  padding-right: 58px;
-}
-
-.category-clear-btn {
-  position: absolute;
-  top: 50%;
-  right: 34px;
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: #eef2f7;
-  color: #64748b;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 850;
-  line-height: 1;
-  transform: translateY(-50%);
-}
-
-.category-clear-btn:hover {
-  background: #e2e8f0;
-  color: #1f2937;
-}
-
-.dimension-select-group .select-input:disabled {
-  background: #f8fafc;
-  color: #94a3b8;
-  cursor: not-allowed;
-}
-
 .readonly {
   background: #f8fafc;
   color: #475569;
@@ -1270,10 +1096,6 @@ const onSubmit = async (): Promise<void> => {
   }
 
   .upload-meta-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dimension-select-group {
     grid-template-columns: 1fr;
   }
 
