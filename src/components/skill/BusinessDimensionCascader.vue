@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import type { BusinessDimensionDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
@@ -12,6 +12,54 @@ type BusinessDimensionSelection = {
   categoryName: string;
   level: 0 | 1 | 2;
 };
+
+const mockStamp = '2026-06-16 00:00:00';
+
+function mockDimension(
+  categoryId: string,
+  categoryName: string,
+  children: BusinessDimensionDto[] = [],
+): BusinessDimensionDto {
+  return {
+    categoryId,
+    categoryName,
+    sortNo: 0,
+    enabled: 1,
+    createdAt: mockStamp,
+    updatedAt: mockStamp,
+    children,
+  };
+}
+
+function createMockBusinessDimensions(): BusinessDimensionDto[] {
+  return [
+    mockDimension('SYSTEM_DESIGN', '系统设计', [
+      mockDimension('SYSTEM_DESIGN_REQUIREMENT', '需求分析'),
+      mockDimension('SYSTEM_DESIGN_ARCHITECTURE', '架构设计'),
+      mockDimension('SYSTEM_DESIGN_INTERFACE', '接口设计'),
+      mockDimension('SYSTEM_DESIGN_REVIEW', '设计评审'),
+    ]),
+    mockDimension('DEVELOPMENT', '开发实现', [
+      mockDimension('DEVELOPMENT_CODE_REVIEW', '代码评审'),
+      mockDimension('DEVELOPMENT_API', '接口开发'),
+      mockDimension('DEVELOPMENT_CICD', 'CI/CD'),
+      mockDimension('DEVELOPMENT_REFACTOR', '代码重构'),
+      mockDimension('DEVELOPMENT_DEBUG', '问题定位'),
+    ]),
+    mockDimension('TEST_VERIFICATION', '测试验证', [
+      mockDimension('TEST_VERIFICATION_CASE', '用例生成'),
+      mockDimension('TEST_VERIFICATION_AUTOMATION', '自动化测试'),
+      mockDimension('TEST_VERIFICATION_REGRESSION', '回归分析'),
+      mockDimension('TEST_VERIFICATION_DEFECT', '缺陷归因'),
+    ]),
+    mockDimension('OPS_OPERATION', '运维运营', [
+      mockDimension('OPS_OPERATION_LOG', '日志分析'),
+      mockDimension('OPS_OPERATION_ALERT', '告警处理'),
+      mockDimension('OPS_OPERATION_MONITOR', '监控巡检'),
+      mockDimension('OPS_OPERATION_INCIDENT', '故障复盘'),
+    ]),
+  ];
+}
 
 const props = withDefaults(
   defineProps<{
@@ -45,8 +93,10 @@ const emit = defineEmits<{
 
 const businessDimensions = ref<BusinessDimensionDto[]>([]);
 const businessDimensionLoading = ref(false);
-const selectedBusinessDimension = ref(props.dimensionLabel || props.defaultDimensionName);
+const selectedBusinessDimension = ref('');
 const selectedBusinessCategory = ref('');
+const rootRef = ref<HTMLElement | null>(null);
+const openPanel = ref<'dimension' | 'category' | ''>('');
 
 const businessDimensionOptions = computed(() => [...businessDimensions.value]);
 
@@ -82,6 +132,39 @@ const selectedBusinessCategoryParam = computed(() => {
   return dimensionId !== undefined && dimensionId !== null ? String(dimensionId) : '';
 });
 
+const selectedBusinessCategoryLabel = computed(
+  () => selectedBusinessCategoryItem.value?.categoryName ?? '',
+);
+
+const dimensionTriggerText = computed(() => {
+  if (selectedBusinessDimension.value) {
+    return selectedBusinessDimension.value;
+  }
+  if (businessDimensionLoading.value) {
+    return '加载中...';
+  }
+  return businessDimensionOptions.value.length > 0 ? '请选择一级' : '暂无业务维度';
+});
+
+const categoryTriggerText = computed(() => {
+  if (selectedBusinessCategoryLabel.value) {
+    return selectedBusinessCategoryLabel.value;
+  }
+  if (!selectedBusinessDimensionItem.value) {
+    return '请先选择一级';
+  }
+  return selectedBusinessCategoryOptions.value.length > 0 ? '请选择二级' : '暂无二级维度';
+});
+
+const categoryDisabled = computed(
+  () => disabledOrLoading.value || selectedBusinessCategoryOptions.value.length === 0,
+);
+
+const disabledOrLoading = computed(
+  () =>
+    props.disabled || businessDimensionLoading.value || businessDimensionOptions.value.length === 0,
+);
+
 function emitSelection(emitChange: boolean): void {
   const dimension = selectedBusinessDimensionItem.value;
   const category = selectedBusinessCategoryItem.value;
@@ -111,40 +194,32 @@ function emitSelection(emitChange: boolean): void {
 
 function syncSelectedBusinessDimension(): void {
   const options = businessDimensionOptions.value;
-  if (options.length === 0) {
-    selectedBusinessDimension.value = selectedBusinessDimension.value || props.defaultDimensionName;
+  const modelValue = String(props.modelValue ?? '').trim();
+
+  if (options.length === 0 || !modelValue) {
+    selectedBusinessDimension.value = '';
+    selectedBusinessCategory.value = '';
     return;
   }
 
-  const modelValue = String(props.modelValue ?? '').trim();
-  if (modelValue) {
-    for (const dimension of options) {
-      if (String(dimension.categoryId) === modelValue) {
-        selectedBusinessDimension.value = dimension.categoryName ?? props.defaultDimensionName;
-        selectedBusinessCategory.value = '';
-        return;
-      }
+  for (const dimension of options) {
+    if (String(dimension.categoryId) === modelValue) {
+      selectedBusinessDimension.value = dimension.categoryName ?? '';
+      selectedBusinessCategory.value = '';
+      return;
+    }
 
-      const child = businessDimensionChildren(dimension).find(
-        (item) => String(item.categoryId) === modelValue,
-      );
-      if (child) {
-        selectedBusinessDimension.value = dimension.categoryName ?? props.defaultDimensionName;
-        selectedBusinessCategory.value = String(child.categoryId);
-        return;
-      }
+    const child = businessDimensionChildren(dimension).find(
+      (item) => String(item.categoryId) === modelValue,
+    );
+    if (child) {
+      selectedBusinessDimension.value = dimension.categoryName ?? '';
+      selectedBusinessCategory.value = String(child.categoryId);
+      return;
     }
   }
 
-  const current = selectedBusinessDimension.value;
-  if (options.some((item) => item.categoryName === current)) {
-    return;
-  }
-
-  selectedBusinessDimension.value =
-    options.find((item) => item.categoryName === props.defaultDimensionName)?.categoryName ??
-    options[0]?.categoryName ??
-    props.defaultDimensionName;
+  selectedBusinessDimension.value = '';
   selectedBusinessCategory.value = '';
 }
 
@@ -158,9 +233,13 @@ async function loadBusinessDimensions(): Promise<void> {
   businessDimensionLoading.value = true;
   try {
     const env = await skillBaseService.queryBusinessDimensions({ format: 'tree' });
-    if (env?.meta?.success && env?.data) {
+    if (env?.meta?.success && Array.isArray(env?.data) && env.data.length > 0) {
       businessDimensions.value = env.data;
+    } else {
+      businessDimensions.value = createMockBusinessDimensions();
     }
+  } catch {
+    businessDimensions.value = createMockBusinessDimensions();
   } finally {
     businessDimensionLoading.value = false;
     syncSelectedBusinessDimension();
@@ -168,18 +247,58 @@ async function loadBusinessDimensions(): Promise<void> {
   }
 }
 
-function onDimensionChange(): void {
+function closePanels(): void {
+  openPanel.value = '';
+}
+
+function toggleDimensionPanel(): void {
+  if (disabledOrLoading.value) {
+    return;
+  }
+  openPanel.value = openPanel.value === 'dimension' ? '' : 'dimension';
+}
+
+function toggleCategoryPanel(): void {
+  if (categoryDisabled.value) {
+    return;
+  }
+  openPanel.value = openPanel.value === 'category' ? '' : 'category';
+}
+
+function selectBusinessDimension(dimension: BusinessDimensionDto): void {
+  selectedBusinessDimension.value = dimension.categoryName ?? '';
   selectedBusinessCategory.value = '';
+  closePanels();
   emitSelection(true);
 }
 
-function onCategoryChange(): void {
+function selectBusinessCategory(category: BusinessDimensionDto): void {
+  selectedBusinessCategory.value = String(category.categoryId);
+  closePanels();
   emitSelection(true);
 }
 
 function clearBusinessCategory(): void {
   selectedBusinessCategory.value = '';
+  closePanels();
   emitSelection(true);
+}
+
+function clearBusinessDimension(): void {
+  selectedBusinessDimension.value = '';
+  selectedBusinessCategory.value = '';
+  closePanels();
+  emitSelection(true);
+}
+
+function handleDocumentMouseDown(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Node)) {
+    return;
+  }
+  if (!rootRef.value?.contains(target)) {
+    closePanels();
+  }
 }
 
 watch(selectedBusinessCategoryOptions, (options) => {
@@ -205,53 +324,83 @@ watch(
 
 onMounted(() => {
   void loadBusinessDimensions();
+  document.addEventListener('mousedown', handleDocumentMouseDown);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', handleDocumentMouseDown);
 });
 </script>
 
 <template>
-  <div class="business-dimension-cascader">
+  <div ref="rootRef" class="business-dimension-cascader">
     <div class="business-dimension-cascader__group">
-      <select
-        :id="firstSelectId"
-        v-model="selectedBusinessDimension"
-        class="business-dimension-cascader__select"
-        :disabled="disabled || businessDimensionLoading || businessDimensionOptions.length === 0"
-        :aria-label="`${ariaLabelPrefix}一级`"
-        @change="onDimensionChange"
+      <div
+        class="business-dimension-cascader__control"
+        :class="{ 'has-clear': selectedBusinessDimension }"
       >
-        <option v-if="businessDimensionOptions.length === 0" value="">
-          {{ businessDimensionLoading ? '加载中...' : '暂无业务维度' }}
-        </option>
-        <option
-          v-for="dimension in businessDimensionOptions"
-          :key="dimension.categoryId"
-          :value="dimension.categoryName"
+        <button
+          :id="firstSelectId"
+          type="button"
+          class="business-dimension-cascader__select business-dimension-cascader__trigger"
+          :class="{ 'is-empty': !selectedBusinessDimension }"
+          :disabled="disabledOrLoading"
+          :aria-label="`${ariaLabelPrefix}一级`"
+          :aria-expanded="openPanel === 'dimension'"
+          @click="toggleDimensionPanel"
         >
-          {{ dimension.categoryName }}
-        </option>
-      </select>
+          <span>{{ dimensionTriggerText }}</span>
+          <span class="business-dimension-cascader__caret" aria-hidden="true"></span>
+        </button>
+        <button
+          v-if="selectedBusinessDimension"
+          type="button"
+          class="business-dimension-cascader__clear"
+          :aria-label="`清空${ariaLabelPrefix}一级`"
+          :title="`清空${ariaLabelPrefix}一级`"
+          :disabled="disabled"
+          @click.stop.prevent="clearBusinessDimension"
+        >
+          ×
+        </button>
+        <div
+          v-if="openPanel === 'dimension'"
+          class="business-dimension-cascader__menu"
+          role="listbox"
+          :aria-label="`${ariaLabelPrefix}一级选项`"
+        >
+          <button
+            v-for="dimension in businessDimensionOptions"
+            :key="dimension.categoryId"
+            type="button"
+            class="business-dimension-cascader__option"
+            :class="{ 'is-selected': selectedBusinessDimension === dimension.categoryName }"
+            role="option"
+            :aria-selected="selectedBusinessDimension === dimension.categoryName"
+            @click="selectBusinessDimension(dimension)"
+          >
+            {{ dimension.categoryName }}
+          </button>
+        </div>
+      </div>
 
       <div
-        class="business-dimension-cascader__category"
+        class="business-dimension-cascader__control"
         :class="{ 'has-clear': selectedBusinessCategory }"
       >
-        <select
+        <button
           :id="secondSelectId"
-          v-model="selectedBusinessCategory"
-          class="business-dimension-cascader__select"
-          :disabled="disabled || selectedBusinessCategoryOptions.length === 0"
+          type="button"
+          class="business-dimension-cascader__select business-dimension-cascader__trigger"
+          :class="{ 'is-empty': !selectedBusinessCategory }"
+          :disabled="categoryDisabled"
           :aria-label="`${ariaLabelPrefix}二级`"
-          @change="onCategoryChange"
+          :aria-expanded="openPanel === 'category'"
+          @click="toggleCategoryPanel"
         >
-          <option value="" disabled hidden>请选择二级</option>
-          <option
-            v-for="category in selectedBusinessCategoryOptions"
-            :key="category.categoryId"
-            :value="String(category.categoryId)"
-          >
-            {{ category.categoryName }}
-          </option>
-        </select>
+          <span>{{ categoryTriggerText }}</span>
+          <span class="business-dimension-cascader__caret" aria-hidden="true"></span>
+        </button>
         <button
           v-if="selectedBusinessCategory"
           type="button"
@@ -263,6 +412,25 @@ onMounted(() => {
         >
           ×
         </button>
+        <div
+          v-if="openPanel === 'category'"
+          class="business-dimension-cascader__menu"
+          role="listbox"
+          :aria-label="`${ariaLabelPrefix}二级选项`"
+        >
+          <button
+            v-for="category in selectedBusinessCategoryOptions"
+            :key="category.categoryId"
+            type="button"
+            class="business-dimension-cascader__option"
+            :class="{ 'is-selected': selectedBusinessCategory === String(category.categoryId) }"
+            role="option"
+            :aria-selected="selectedBusinessCategory === String(category.categoryId)"
+            @click="selectBusinessCategory(category)"
+          >
+            {{ category.categoryName }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -283,11 +451,12 @@ onMounted(() => {
 }
 
 .business-dimension-cascader__select {
+  position: relative;
   width: 100%;
   min-width: 0;
   min-height: 42px;
   box-sizing: border-box;
-  padding: 10px 12px;
+  padding: 10px 34px 10px 12px;
   border: 1px solid #e9edf3;
   border-radius: 8px;
   outline: 0;
@@ -297,6 +466,24 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.business-dimension-cascader__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.business-dimension-cascader__trigger span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.business-dimension-cascader__trigger.is-empty {
+  color: #8a98ad;
 }
 
 .business-dimension-cascader__select:focus {
@@ -310,22 +497,23 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-.business-dimension-cascader__category {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
+.business-dimension-cascader__control {
+  position: relative;
   min-width: 0;
 }
 
-.business-dimension-cascader__category.has-clear {
-  grid-template-columns: minmax(0, 1fr) 28px;
+.business-dimension-cascader__control.has-clear .business-dimension-cascader__select {
+  padding-right: 62px;
 }
 
 .business-dimension-cascader__clear {
+  position: absolute;
+  top: 50%;
+  right: 31px;
+  z-index: 3;
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   padding: 0;
   border: 0;
@@ -336,6 +524,7 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 850;
   line-height: 1;
+  transform: translateY(-50%);
 }
 
 .business-dimension-cascader__clear:hover:not(:disabled) {
@@ -346,6 +535,55 @@ onMounted(() => {
 .business-dimension-cascader__clear:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.business-dimension-cascader__caret {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.7px solid #64748b;
+  border-bottom: 1.7px solid #64748b;
+  transform: translateY(-68%) rotate(45deg);
+}
+
+.business-dimension-cascader__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 80;
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #cad6e5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.14);
+}
+
+.business-dimension-cascader__option {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #253857;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.business-dimension-cascader__option:hover,
+.business-dimension-cascader__option.is-selected {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 @media (max-width: 760px) {

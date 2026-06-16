@@ -635,7 +635,7 @@ const reviewStatusList = ref([
   { value: 'PENDING', name: '待审批' },
   { value: 'REVIEWED', name: '已审批' },
 ]);
-const selectedReviewCategory = ref('');
+const selectedReviewCategoryId = ref('');
 
 // 勋章列表相关
 const selectedBadges = ref<any>([]);
@@ -766,7 +766,7 @@ const reviewListFilterObj = reactive<any>({
   reviewStatus: '',
   yearMonth: '',
   sortBy: '',
-  category: '',
+  categoryId: null,
   DepartmentL1: '',
   DepartmentL2: '',
   DepartmentL3: '',
@@ -781,7 +781,7 @@ function syncReviewListFilterObj() {
     reviewStatus: reviewStatusValue.value,
     yearMonth: selectedReviewMonthLabel.value,
     sortBy: sortTypeValue.value,
-    category: selectedReviewCategory.value,
+    categoryId: selectedReviewCategoryId.value || null,
     ...reviewDepartmentLevelParams(),
   };
 
@@ -960,7 +960,7 @@ onBeforeUnmount(() => {
               <div class="toolbar-filter toolbar-filter--business">
                 <span class="toolbar-filter__label">业务维度</span>
                 <BusinessDimensionCascader
-                  v-model="selectedReviewCategory"
+                  v-model="selectedReviewCategoryId"
                   class="review-business-dimension"
                   aria-label-prefix="评审业务维度"
                   @change="onReviewBusinessDimensionChange"
@@ -2048,12 +2048,17 @@ th {
 .review-business-dimension :deep(.business-dimension-cascader__select) {
   min-height: 38px;
   height: 38px;
-  padding: 0 10px;
+  padding: 0 34px 0 12px;
   border-color: #cad6e5;
   border-radius: 8px;
   color: #233752;
   font-size: 13px;
   font-weight: 700;
+}
+
+.review-business-dimension
+  :deep(.business-dimension-cascader__control.has-clear .business-dimension-cascader__select) {
+  padding-right: 62px;
 }
 
 .review-business-dimension :deep(.business-dimension-cascader__select:hover) {
@@ -2065,10 +2070,6 @@ th {
   border-color: #3b82f6;
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
-}
-
-.review-business-dimension :deep(.business-dimension-cascader__clear) {
-  right: 30px;
 }
 
 .toolbar-filter--dept {

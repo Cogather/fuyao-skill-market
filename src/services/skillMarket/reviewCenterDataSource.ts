@@ -52,14 +52,57 @@ function cloneReviewHistoryRecords(records: ReviewHistoryRecord[]) {
   }));
 }
 
-function createMockReviewCenterData(mockData: ReviewCenterMockModule): ReviewCenterData {
+function toNumber(value: string | number | null | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function filterMockTaskCards(taskCards: ReviewTaskCard[], listParams: any): ReviewTaskCard[] {
+  let filtered = taskCards.map((task) => ({ ...task }));
+
+  const categoryId = String(listParams?.categoryId ?? '').trim();
+  if (categoryId) {
+    filtered = filtered.filter(
+      (task) => task.dimensionId === categoryId || task.categoryId === categoryId,
+    );
+  }
+
+  const reviewStatus = String(listParams?.reviewStatus ?? '')
+    .trim()
+    .toUpperCase();
+  if (reviewStatus === 'PENDING') {
+    filtered = filtered.filter((task) => !task.hasReviewed);
+  } else if (reviewStatus === 'REVIEWED') {
+    filtered = filtered.filter((task) => task.hasReviewed);
+  }
+
+  const sortBy = String(listParams?.sortBy ?? '').trim();
+  if (sortBy === 'downloads') {
+    filtered.sort((left, right) => toNumber(right.downloads) - toNumber(left.downloads));
+  } else if (sortBy === 'aiScore') {
+    filtered.sort((left, right) => {
+      const scoreDiff = toNumber(right.overallScore) - toNumber(left.overallScore);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      return toNumber(right.downloads) - toNumber(left.downloads);
+    });
+  }
+
+  return filtered;
+}
+
+function createMockReviewCenterData(
+  mockData: ReviewCenterMockModule,
+  listParams?: any,
+): ReviewCenterData {
   return {
     rankingCards: mockData.mockReviewRankingCards.map((card) => ({
       ...card,
       columns: [...card.columns],
       rows: card.rows.map((row) => [...row]),
     })),
-    taskCards: mockData.mockReviewTaskCards.map((task) => ({ ...task, tags: [...task.tags] })),
+    taskCards: filterMockTaskCards(mockData.mockReviewTaskCards, listParams),
     scoreTabs: [...mockData.mockReviewScoreTabs],
     computeChannels: mockData.mockReviewComputeChannels.map((channel) => ({ ...channel })),
     computeChannelTypes: [...mockData.mockReviewComputeChannelTypes],
@@ -97,9 +140,9 @@ async function loadHttpReviewCenterData(listParams: any): Promise<ReviewCenterDa
   };
 }
 
-async function loadMockReviewCenterData(): Promise<ReviewCenterData> {
+async function loadMockReviewCenterData(listParams: any): Promise<ReviewCenterData> {
   const mockData = await import('./mock/reviewCenterData');
-  return createMockReviewCenterData(mockData);
+  return createMockReviewCenterData(mockData, listParams);
 }
 
 export async function loadReviewCenterData(
@@ -111,8 +154,8 @@ export async function loadReviewCenterData(
     .toLowerCase();
 
   if (transport === 'http') {
-    return isExperReviewer ? loadHttpReviewCenterData(listParams) : loadMockReviewCenterData();
+    return isExperReviewer ? loadHttpReviewCenterData(listParams) : loadMockReviewCenterData(listParams);
   }
 
-  return loadMockReviewCenterData();
+  return loadMockReviewCenterData(listParams);
 }

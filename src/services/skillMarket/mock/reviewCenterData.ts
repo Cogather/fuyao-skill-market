@@ -6,15 +6,23 @@ export type ReviewRankingCard = {
 
 export type ReviewTaskCard = {
   id: string;
+  skillId: string;
   name: string;
   owner: string;
+  ownerName: string;
+  ownerUser: string;
   team: string;
-  tags: string[];
+  DepartmentL6: string;
+  tags: string;
   usage: string;
   downloads: string;
   expertScore: string;
   hasReviewed: boolean;
   overallScore: number | null;
+  dimensionId: string;
+  dimensionName: string;
+  categoryId: string;
+  categoryName: string;
 };
 
 export type ComputeChannelRow = {
@@ -128,16 +136,64 @@ const MOCK_REVIEW_TEAMS = [
   '安全合规部',
 ];
 
-const MOCK_REVIEW_TAG_SETS = [
-  ['开发', '#cicd', '#log'],
-  ['测试', '#review', '#test'],
-  ['开发', '#mock', '#api'],
-  ['运维', '#deploy', '#k8s'],
-  ['设计', '#proto', '#ux'],
-  ['研究', '#nlp', '#rag'],
-  ['项目管理', '#plan', '#risk'],
-  ['公共', '#share', '#doc'],
-];
+const MOCK_REVIEW_BUSINESS_CATEGORIES = [
+  {
+    dimensionId: 'SYSTEM_DESIGN',
+    dimensionName: '系统设计',
+    categoryId: 'SYSTEM_DESIGN_REVIEW',
+    categoryName: '设计评审',
+    tags: ['系统设计', '#review', '#design'],
+  },
+  {
+    dimensionId: 'SYSTEM_DESIGN',
+    dimensionName: '系统设计',
+    categoryId: 'SYSTEM_DESIGN_INTERFACE',
+    categoryName: '接口设计',
+    tags: ['系统设计', '#api', '#spec'],
+  },
+  {
+    dimensionId: 'DEVELOPMENT',
+    dimensionName: '开发实现',
+    categoryId: 'DEVELOPMENT_CODE_REVIEW',
+    categoryName: '代码评审',
+    tags: ['开发实现', '#review', '#code'],
+  },
+  {
+    dimensionId: 'DEVELOPMENT',
+    dimensionName: '开发实现',
+    categoryId: 'DEVELOPMENT_API',
+    categoryName: '接口开发',
+    tags: ['开发实现', '#mock', '#api'],
+  },
+  {
+    dimensionId: 'TEST_VERIFICATION',
+    dimensionName: '测试验证',
+    categoryId: 'TEST_VERIFICATION_CASE',
+    categoryName: '用例生成',
+    tags: ['测试验证', '#test', '#case'],
+  },
+  {
+    dimensionId: 'TEST_VERIFICATION',
+    dimensionName: '测试验证',
+    categoryId: 'TEST_VERIFICATION_REGRESSION',
+    categoryName: '回归分析',
+    tags: ['测试验证', '#review', '#regression'],
+  },
+  {
+    dimensionId: 'OPS_OPERATION',
+    dimensionName: '运维运营',
+    categoryId: 'OPS_OPERATION_LOG',
+    categoryName: '日志分析',
+    tags: ['运维运营', '#log', '#ops'],
+  },
+  {
+    dimensionId: 'OPS_OPERATION',
+    dimensionName: '运维运营',
+    categoryId: 'OPS_OPERATION_INCIDENT',
+    categoryName: '故障复盘',
+    tags: ['运维运营', '#incident', '#ops'],
+  },
+] as const;
 
 export const mockReviewTaskCards: ReviewTaskCard[] = MOCK_REVIEW_TASK_NAMES.map((name, index) => {
   const usage = 12 + ((index * 17) % 180);
@@ -146,18 +202,32 @@ export const mockReviewTaskCards: ReviewTaskCard[] = MOCK_REVIEW_TASK_NAMES.map(
   const overallScore = hasReviewed
     ? Math.min(100, Math.round((72 + ((index * 5) % 24) + 6) * 10) / 10)
     : null;
+  const owner = MOCK_REVIEW_OWNERS[index % MOCK_REVIEW_OWNERS.length] ?? '未知';
+  const team = MOCK_REVIEW_TEAMS[index % MOCK_REVIEW_TEAMS.length] ?? '未知部门';
+  const category =
+    MOCK_REVIEW_BUSINESS_CATEGORIES[index % MOCK_REVIEW_BUSINESS_CATEGORIES.length] ??
+    MOCK_REVIEW_BUSINESS_CATEGORIES[0];
+  const skillId = `review-skill-${10002 + index}`;
 
   return {
     id: `u${10002 + index}`,
+    skillId,
     name,
-    owner: MOCK_REVIEW_OWNERS[index % MOCK_REVIEW_OWNERS.length] ?? '未知',
-    team: MOCK_REVIEW_TEAMS[index % MOCK_REVIEW_TEAMS.length] ?? '未知部门',
-    tags: MOCK_REVIEW_TAG_SETS[index % MOCK_REVIEW_TAG_SETS.length] ?? ['公共'],
+    owner,
+    ownerName: owner,
+    ownerUser: owner,
+    team,
+    DepartmentL6: team,
+    tags: category.tags.join(','),
     usage: String(usage),
     downloads: String(downloads),
     hasReviewed,
     overallScore,
     expertScore: hasReviewed && overallScore != null ? String(overallScore) : '待评',
+    dimensionId: category.dimensionId,
+    dimensionName: category.dimensionName,
+    categoryId: category.categoryId,
+    categoryName: category.categoryName,
   };
 });
 

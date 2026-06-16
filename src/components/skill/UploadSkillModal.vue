@@ -81,7 +81,7 @@ const versionUpgrade = ref<VersionUpgradeMeta | null>(null);
 const parsing = ref(false);
 const uploading = ref(false);
 const parseError = ref('');
-const selectedBusinessDimensionName = ref('公共');
+const selectedBusinessDimensionName = ref('');
 const selectedBusinessCategoryParam = ref('');
 const duplicateChecking = ref(false);
 const duplicateCheckMessage = ref('');
@@ -151,7 +151,7 @@ function reset(): void {
   parsing.value = false;
   uploading.value = false;
   parseError.value = '';
-  selectedBusinessDimensionName.value = '公共';
+  selectedBusinessDimensionName.value = '';
   selectedBusinessCategoryParam.value = '';
   duplicateChecking.value = false;
   duplicateCheckMessage.value = '';

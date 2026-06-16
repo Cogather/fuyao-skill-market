@@ -712,7 +712,7 @@ function filterSkills(params: Record<string, unknown>, source = skillRecords): M
   if (categoryGroupName) {
     list = list.filter((s) => s.categoryGroupName === categoryGroupName);
   }
-  const category = String(params.category ?? '').trim();
+  const category = String(params.categoryId ?? params.category ?? '').trim();
   if (category) {
     const categoryCandidates = categoryCandidatesFromParam(category);
     list = list.filter(
