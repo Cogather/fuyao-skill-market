@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -12,6 +12,11 @@ import {
   type ReviewRankingCard,
   type ReviewTaskCard,
 } from '../../services/skillMarket/reviewCenterDataSource';
+import type {
+  ExpertReviewDimensionDto,
+  ReviewBadgeDto,
+  SkillExpertReviewDetailDto,
+} from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '@/services/skillMarket/skillBaseService';
 
 type ReviewDepartmentTreeNode = {
@@ -53,24 +58,40 @@ const awardMedalReason = ref('');
 
 const reviewDimensionDetails = reactive<Record<string, ReviewDimensionDetail>>({});
 
-const badgeOptions = ref<string[]>([]);
-const selectedPersonalMedals = ref<string[]>([]);
-const isMedalSelectOpen = ref(false);
+const badgeOptions = ref<ReviewBadgeDto[]>([]);
+const expertReviewDimensions = ref<ExpertReviewDimensionDto[]>([]);
+const expertDimensionForms = reactive<ExpertDimensionFormState[]>([]);
+const selectedReviewBadgeIds = ref<string[]>([]);
+const selectedReviewBadgeReason = ref('');
+const selectedReviewBadgeReasonError = ref('');
+const expertReviewId = ref('');
+const expertReviewStatus = ref<'pending' | 'draft' | 'submitted'>('pending');
+const expertReviewUpdatedAt = ref('');
+const expertReviewMetaLoaded = ref(false);
+const expertReviewLoading = ref(false);
+const expertReviewSaving = ref(false);
+const expertReviewSubmitting = ref(false);
+const toast = ref('');
+let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
 const isHistoryModalOpen = ref(false);
 const isVersionHistoryModalOpen = ref(false);
 const greenChannelOptions = ref<string[]>([]);
 const selectedGreenChannel = ref(greenChannelOptions.value[0] ?? '');
 const isGreenChannelSelectOpen = ref(false);
 const overallReviewDimension = ref('');
-const scoreInputText = ref('');
-const isScoreEditing = ref(false);
-const scoreInputRef = ref<HTMLInputElement | null>(null);
 const reviewHistoryRecords = ref<ReviewHistoryRecord[]>([]);
 const reviewDetailTabs = ['AI评审', '专家评审'] as const;
 type ReviewDetailTab = (typeof reviewDetailTabs)[number];
 type ReviewVersionHistoryGroup = {
   version: string;
   records: ReviewHistoryRecord[];
+};
+
+type ExpertDimensionFormState = ExpertReviewDimensionDto & {
+  scoreText: string;
+  reason: string;
+  scoreError: string;
+  reasonError: string;
 };
 const activeReviewDetailTab = ref<ReviewDetailTab>('AI评审');
 
@@ -147,6 +168,154 @@ function replaceReviewDimensionDetails(source: Record<string, ReviewDimensionDet
   });
 }
 
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function serviceSucceeded(value: unknown): boolean {
+  const record = readRecord(value);
+  const meta = readRecord(record.meta);
+  if (typeof meta.success === 'boolean') {
+    return meta.success;
+  }
+  if (record.success === false) {
+    return false;
+  }
+  const code = record.code;
+  return code === undefined || code === 0 || code === 200 || code === '0' || code === '200';
+}
+
+function serviceMessage(value: unknown, fallback: string): string {
+  const record = readRecord(value);
+  const meta = readRecord(record.meta);
+  const message = meta.message ?? record.message ?? record.msg;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
+function showToast(message: string, ms = 3000): void {
+  toast.value = message;
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+  }
+  toastTimer = window.setTimeout(() => {
+    toast.value = '';
+    toastTimer = null;
+  }, ms);
+}
+
+function roundToTwo(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function formatFixedTwo(value: number): string {
+  return value.toFixed(2);
+}
+
+function formatScoreInput(value: number): string {
+  const rounded = roundToTwo(value);
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatWeightPercent(weight: number): string {
+  const percent = roundToTwo(weight * 100);
+  return Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(2)}%`;
+}
+
+function sanitizeReviewScoreInput(raw: string): string {
+  let value = raw.replace(/[^\d.]/g, '');
+  const firstDotIndex = value.indexOf('.');
+  if (firstDotIndex !== -1) {
+    const integerPart = value.slice(0, firstDotIndex);
+    const decimalPart = value
+      .slice(firstDotIndex + 1)
+      .replace(/\./g, '')
+      .slice(0, 2);
+    value = `${integerPart}.${decimalPart}`;
+  }
+  return value;
+}
+
+function parseReviewScore(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return roundToTwo(parsed);
+}
+
+function resetExpertReviewErrors(): void {
+  expertDimensionForms.forEach((dimension) => {
+    dimension.scoreError = '';
+    dimension.reasonError = '';
+  });
+  selectedReviewBadgeReasonError.value = '';
+}
+
+function buildExpertDimensionForms(
+  dimensions: ExpertReviewDimensionDto[],
+  detail?: SkillExpertReviewDetailDto | null,
+): ExpertDimensionFormState[] {
+  const scoreMap = new Map(
+    (detail?.dimensionScores ?? []).map((item) => [item.dimensionId, item]),
+  );
+
+  return dimensions.map((dimension) => {
+    const item = scoreMap.get(dimension.dimensionId);
+    return {
+      ...dimension,
+      scoreText: typeof item?.score === 'number' ? formatScoreInput(item.score) : '',
+      reason: String(item?.reason ?? ''),
+      scoreError: '',
+      reasonError: '',
+    };
+  });
+}
+
+function applyExpertReviewDetail(detail?: SkillExpertReviewDetailDto | null): void {
+  const currentTaskId = activeTask.value?.skillId ?? '';
+  expertReviewId.value = detail?.reviewId ?? (currentTaskId ? `review-${currentTaskId}` : '');
+  expertReviewStatus.value = detail?.reviewStatus ?? 'pending';
+  expertReviewUpdatedAt.value = detail?.updatedAt ?? '';
+  selectedReviewBadgeIds.value = [...(detail?.badgeIds ?? [])];
+  selectedReviewBadgeReason.value = String(detail?.badgeReason ?? '');
+  selectedReviewBadgeReasonError.value = '';
+  replaceReactiveArray(expertDimensionForms, buildExpertDimensionForms(expertReviewDimensions.value, detail));
+
+  const task = activeTask.value;
+  if (task && detail?.reviewStatus === 'submitted' && typeof detail.totalScore === 'number') {
+    const roundedTotal = roundToTwo(detail.totalScore);
+    task.overallScore = roundedTotal;
+    task.expertScore = formatFixedTwo(roundedTotal);
+    task.hasReviewed = true;
+  }
+}
+
+async function loadExpertReviewMeta(force = false): Promise<void> {
+  if (expertReviewMetaLoaded.value && !force) {
+    return;
+  }
+
+  const [dimensionRes, badgeRes] = await Promise.all([
+    skillBaseService.getExpertReviewDimension(),
+    skillBaseService.getReviewBadges(),
+  ]);
+
+  if (!serviceSucceeded(dimensionRes) || !Array.isArray(dimensionRes?.data)) {
+    throw new Error(serviceMessage(dimensionRes, '专家评审维度加载失败'));
+  }
+  if (!serviceSucceeded(badgeRes) || !Array.isArray(badgeRes?.data)) {
+    throw new Error(serviceMessage(badgeRes, '勋章列表加载失败'));
+  }
+
+  expertReviewDimensions.value = dimensionRes.data;
+  badgeOptions.value = badgeRes.data;
+  expertReviewMetaLoaded.value = true;
+}
+
 async function applyReviewCenterData(data: ReviewCenterData) {
   rankingCards.value = data.rankingCards;
   replaceReactiveArray(taskCards, data.taskCards);
@@ -169,16 +338,22 @@ async function applyReviewCenterData(data: ReviewCenterData) {
   overallReviewDimension.value = data.overallReviewDimension;
   reviewHistoryRecords.value = data.reviewHistoryRecords;
 
-  if (taskCards[0]) {
-    syncScoreInputFromTask(taskCards[0]);
+  if (taskCards[0]?.skillId) {
+    await loadActiveTaskReviewContext(taskCards[0].skillId);
   } else {
-    scoreInputText.value = '';
+    selectedSkillDetail.value = {};
+    expertReviewId.value = '';
+    expertReviewStatus.value = 'pending';
+    expertReviewUpdatedAt.value = '';
+    selectedReviewBadgeIds.value = [];
+    selectedReviewBadgeReason.value = '';
+    selectedReviewBadgeReasonError.value = '';
+    replaceReactiveArray(expertDimensionForms, []);
   }
 }
 const activeTask = computed(
   () => taskCards.find((task) => task.skillId === selectedTaskId.value) ?? taskCards[0],
 );
-const isCurrentTaskReviewed = computed(() => activeTask.value?.hasReviewed === true);
 
 const selectedSkillDetail = ref<any>({});
 const activeMetrics = computed(() => {
@@ -351,148 +526,277 @@ function historyRecordTotalScore(record: ReviewHistoryRecord): string {
   return formatOverallScore(average);
 }
 
-function sanitizeScoreInput(raw: string): string {
-  let value = raw.replace(/[^\d.]/g, '');
-  const dotIndex = value.indexOf('.');
-  if (dotIndex !== -1) {
-    const integerPart = value.slice(0, dotIndex);
-    const decimalPart = value
-      .slice(dotIndex + 1)
-      .replace(/\./g, '')
-      .slice(0, 2);
-    value = `${integerPart}.${decimalPart}`;
-  }
-
-  return value;
-}
-
-function parseOverallScore(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (!trimmed) {
+const expertReviewTotalScore = computed(() => {
+  if (expertDimensionForms.length === 0) {
     return null;
   }
 
-  const parsed = Number(trimmed);
-  if (Number.isNaN(parsed)) {
-    return null;
+  let total = 0;
+  let hasScore = false;
+  expertDimensionForms.forEach((dimension) => {
+    const score = parseReviewScore(dimension.scoreText);
+    if (score == null) {
+      return;
+    }
+    hasScore = true;
+    total += score * dimension.weight;
+  });
+
+  return hasScore ? roundToTwo(total) : null;
+});
+
+const expertReviewTotalScoreText = computed(() => {
+  return expertReviewTotalScore.value == null ? '待评' : formatFixedTwo(expertReviewTotalScore.value);
+});
+
+const expertReviewStatusText = computed(() => {
+  if (expertReviewStatus.value === 'submitted') {
+    return '已提交';
   }
-
-  const clamped = Math.min(100, Math.max(0, parsed));
-  return Math.round(clamped * 100) / 100;
-}
-
-const scoreDisplayText = computed(() => {
-  const text = scoreInputText.value.trim();
-  if (text) {
-    return text;
+  if (expertReviewStatus.value === 'draft') {
+    return '草稿中';
   }
-
-  if (isCurrentTaskReviewed.value) {
-    return '0';
-  }
-
   return '待评';
 });
 
-function syncScoreInputFromTask(task: ReviewTaskCard) {
-  if (task.overallScore != null) {
-    scoreInputText.value = formatOverallScore(task.overallScore);
-    const detail = reviewDimensionDetails[overallReviewDimension.value];
-    if (detail) {
-      detail.score = task.overallScore;
-    }
+function currentTaskReviewId(): string {
+  return expertReviewId.value || (activeTask.value?.skillId ? `review-${activeTask.value.skillId}` : '');
+}
+
+function onExpertDimensionScoreInput(dimensionId: string, event: Event): void {
+  const target = event.target as HTMLInputElement;
+  const dimension = expertDimensionForms.find((item) => item.dimensionId === dimensionId);
+  if (!dimension) {
+    return;
+  }
+  dimension.scoreText = sanitizeReviewScoreInput(target.value);
+  dimension.scoreError = '';
+}
+
+function toggleReviewBadge(badgeId: string): void {
+  if (selectedReviewBadgeIds.value.includes(badgeId)) {
+    selectedReviewBadgeIds.value = selectedReviewBadgeIds.value.filter((item) => item !== badgeId);
   } else {
-    scoreInputText.value = '';
+    selectedReviewBadgeIds.value = [...selectedReviewBadgeIds.value, badgeId];
+  }
+  if (selectedReviewBadgeIds.value.length === 0 || selectedReviewBadgeReason.value.trim()) {
+    selectedReviewBadgeReasonError.value = '';
   }
 }
 
-function commitOverallScore(raw: string) {
-  const task = activeTask.value;
-  if (!task) {
-    return;
-  }
+function buildExpertReviewDraftPayload() {
+  const badgeIds = [...selectedReviewBadgeIds.value];
+  const badgeReason = badgeIds.length > 0 ? selectedReviewBadgeReason.value.trim() : '';
+  return {
+    reviewId: currentTaskReviewId(),
+    totalScore: expertReviewTotalScore.value,
+    dimensionScores: expertDimensionForms.flatMap((dimension) => {
+      const score = parseReviewScore(dimension.scoreText);
+      const reason = dimension.reason.trim();
+      if (score == null && !reason) {
+        return [];
+      }
 
-  const parsedScore = parseOverallScore(raw);
-  if (parsedScore == null) {
-    task.overallScore = null;
-    task.hasReviewed = false;
-    task.expertScore = '待评';
-    scoreInputText.value = '';
-    return;
-  }
-
-  task.overallScore = parsedScore;
-  task.hasReviewed = true;
-  task.expertScore = formatOverallScore(parsedScore);
-  scoreInputText.value = formatOverallScore(parsedScore);
-
-  const detail = reviewDimensionDetails[overallReviewDimension.value];
-  if (detail) {
-    detail.score = parsedScore;
-  }
+      return [
+        {
+          dimensionId: dimension.dimensionId,
+          ...(score != null ? { score } : {}),
+          ...(reason ? { reason } : {}),
+        },
+      ];
+    }),
+    badgeIds,
+    ...(badgeReason ? { badgeReason } : {}),
+  };
 }
 
-function onScoreInput(event: Event) {
-  const target = event.target as HTMLInputElement;
-  scoreInputText.value = sanitizeScoreInput(target.value);
-}
+function validateExpertReviewSubmission(): boolean {
+  resetExpertReviewErrors();
 
-function finishScoreEditing(raw?: string) {
-  commitOverallScore(raw ?? scoreInputText.value);
-  isScoreEditing.value = false;
-}
+  let hasMissing = false;
+  let hasInvalidScore = false;
+  let hasShortReason = false;
 
-function onScoreBlur(event: Event) {
-  const target = event.target as HTMLInputElement;
-  finishScoreEditing(target.value);
-}
+  expertDimensionForms.forEach((dimension) => {
+    const scoreRaw = dimension.scoreText.trim();
+    const reason = dimension.reason.trim();
+    const parsedScore = parseReviewScore(scoreRaw);
 
-function onScoreKeydown(event: KeyboardEvent) {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    (event.target as HTMLInputElement).blur();
-    return;
-  }
-
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    const task = activeTask.value;
-    if (task) {
-      syncScoreInputFromTask(task);
+    if (!scoreRaw || !reason) {
+      hasMissing = true;
+      if (!scoreRaw) {
+        dimension.scoreError = '请填写该维度评分';
+      }
+      if (!reason) {
+        dimension.reasonError = '请填写评分理由';
+      }
+      return;
     }
-    isScoreEditing.value = false;
+
+    if (parsedScore == null || parsedScore < 0 || parsedScore > 100) {
+      hasInvalidScore = true;
+      dimension.scoreError = '评分必须在0~100之间';
+    }
+
+    if (reason.length < 10) {
+      hasShortReason = true;
+      dimension.reasonError = '评分理由不少于10个字';
+    }
+  });
+
+  if (hasMissing) {
+    showToast('请完成所有评审维度的评分与评分理由');
+    return false;
   }
+  if (hasInvalidScore) {
+    showToast('评分必须在0~100之间');
+    return false;
+  }
+  if (hasShortReason) {
+    showToast('评分理由不少于10个字');
+    return false;
+  }
+  if (selectedReviewBadgeIds.value.length > 0 && !selectedReviewBadgeReason.value.trim()) {
+    selectedReviewBadgeReasonError.value = '请选择勋章时请填写推荐理由';
+    showToast('请选择勋章时请填写推荐理由');
+    return false;
+  }
+  return true;
 }
 
-async function startScoreEditing() {
-  isScoreEditing.value = true;
-  await nextTick();
-  scoreInputRef.value?.focus();
-  scoreInputRef.value?.select();
+function buildExpertReviewSubmitPayload() {
+  const totalScore = expertReviewTotalScore.value ?? 0;
+  const badgeIds = [...selectedReviewBadgeIds.value];
+  const badgeReason = badgeIds.length > 0 ? selectedReviewBadgeReason.value.trim() : '';
+  return {
+    reviewId: currentTaskReviewId(),
+    totalScore,
+    dimensionScores: expertDimensionForms.map((dimension) => ({
+      dimensionId: dimension.dimensionId,
+      score: parseReviewScore(dimension.scoreText) ?? 0,
+      reason: dimension.reason.trim(),
+    })),
+    badgeIds,
+    ...(badgeReason ? { badgeReason } : {}),
+  };
+}
+
+function prependExpertReviewHistory(detail: SkillExpertReviewDetailDto): void {
+  const badgeNames = detail.badgeIds.map(
+    (badgeId) => badgeOptions.value.find((badge) => badge.badgeId === badgeId)?.name ?? badgeId,
+  );
+  const summaryParts = expertDimensionForms.map(
+    (dimension) => `${dimension.name}：${dimension.reason.trim()}`,
+  );
+  if (badgeNames.length > 0 && detail.badgeReason?.trim()) {
+    summaryParts.push(`勋章推荐：${badgeNames.join('、')}；理由：${detail.badgeReason.trim()}`);
+  }
+  const scores = expertDimensionForms.map((dimension) => ({
+    dimension: dimension.name,
+    score: parseReviewScore(dimension.scoreText) ?? 0,
+    suggestion: dimension.reason.trim(),
+  }));
+
+  reviewHistoryRecords.value = [
+    {
+      id: `${detail.reviewId}-${detail.updatedAt ?? Date.now()}`,
+      reviewType: '专家评审',
+      reviewer: props.userId || '当前专家',
+      reviewedAt: detail.updatedAt ?? new Date().toLocaleString('zh-CN', { hour12: false }),
+      summary: summaryParts.join('；'),
+      medals: badgeNames,
+      totalScore: detail.totalScore ?? undefined,
+      scores,
+    },
+    ...reviewHistoryRecords.value,
+  ];
+}
+
+async function loadActiveTaskReviewContext(taskId: string): Promise<void> {
+  if (!taskId) {
+    return;
+  }
+
+  expertReviewLoading.value = true;
+  try {
+    await loadExpertReviewMeta();
+    const skillDetailRes = await skillBaseService.getSkillReviewDetail(taskId, {
+      userId: props.userId,
+    });
+    if (!serviceSucceeded(skillDetailRes) || !skillDetailRes?.data) {
+      throw new Error(serviceMessage(skillDetailRes, '评审详情加载失败'));
+    }
+    selectedSkillDetail.value = skillDetailRes.data;
+    applyExpertReviewDetail(skillDetailRes.data as SkillExpertReviewDetailDto);
+  } catch (e) {
+    selectedSkillDetail.value = {};
+    applyExpertReviewDetail(null);
+    showToast(e instanceof Error ? e.message : '评审详情加载失败');
+  } finally {
+    expertReviewLoading.value = false;
+  }
 }
 
 async function selectTask(taskId: string) {
-  isScoreEditing.value = false;
   selectedTaskId.value = taskId;
-  // const task = taskCards.find((item) => item.skillId === taskId);
-  // if (task) {
-  //   syncScoreInputFromTask(task);
-  // }
-  const skillDetailRes = await skillBaseService.getSkillReviewDetail(taskId, {
-    userId: props.userId,
-  });
-  console.log('skillDetailRes', skillDetailRes);
-  if (skillDetailRes?.meta?.success && skillDetailRes?.data) {
-    selectedSkillDetail.value = skillDetailRes.data;
+  await loadActiveTaskReviewContext(taskId);
+}
+
+async function saveExpertReviewDraft(): Promise<void> {
+  if (!activeTask.value || expertReviewLoading.value || expertReviewSaving.value) {
+    return;
+  }
+
+  expertReviewSaving.value = true;
+  resetExpertReviewErrors();
+  try {
+    const response = await skillBaseService.saveExpertReviewDraft(
+      activeTask.value.skillId,
+      buildExpertReviewDraftPayload(),
+    );
+    if (!serviceSucceeded(response) || !response?.data) {
+      showToast(serviceMessage(response, '草稿保存失败'));
+      return;
+    }
+    selectedSkillDetail.value = response.data;
+    applyExpertReviewDetail(response.data as SkillExpertReviewDetailDto);
+    showToast('已保存草稿');
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '草稿保存失败');
+  } finally {
+    expertReviewSaving.value = false;
   }
 }
 
-const overallReviewDimensionDetail = computed(
-  () => reviewDimensionDetails[overallReviewDimension.value],
-);
-const selectedPersonalMedalText = computed(() =>
-  selectedPersonalMedals.value.length ? selectedPersonalMedals.value.join('、') : '不授予个人勋章',
-);
+async function submitExpertReview(): Promise<void> {
+  if (!activeTask.value || expertReviewLoading.value || expertReviewSubmitting.value) {
+    return;
+  }
+  if (!validateExpertReviewSubmission()) {
+    return;
+  }
+
+  expertReviewSubmitting.value = true;
+  try {
+    const response = await skillBaseService.submitExpertReview(
+      activeTask.value.skillId,
+      buildExpertReviewSubmitPayload(),
+    );
+    if (!serviceSucceeded(response) || !response?.data) {
+      showToast(serviceMessage(response, '提交失败'));
+      return;
+    }
+    const detail = response.data as SkillExpertReviewDetailDto;
+    selectedSkillDetail.value = detail;
+    applyExpertReviewDetail(detail);
+    prependExpertReviewHistory(detail);
+    showToast('已提交评审意见');
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '提交失败');
+  } finally {
+    expertReviewSubmitting.value = false;
+  }
+}
 
 function filterTaskCardsByKeyword(keyword: string) {
   const normalized = keyword.trim().toLowerCase();
@@ -636,9 +940,6 @@ const reviewStatusList = ref([
   { value: 'REVIEWED', name: '已审批' },
 ]);
 const selectedReviewCategoryId = ref('');
-
-// 勋章列表相关
-const selectedBadges = ref<any>([]);
 
 function formatReviewMonth(date: Date): string {
   const year = date.getFullYear();
@@ -826,16 +1127,15 @@ async function onReviewBusinessDimensionChange(): Promise<void> {
 onMounted(async () => {
   await checkExpert();
   await reloadReviewCenterTasks();
-  await skillBaseService.getReviewBadges().then((res) => {
-    if (res?.meta?.success && res?.data) {
-      badgeOptions.value = res.data;
-    }
-  });
   document.addEventListener('mousedown', handleReviewMonthOutsideClick);
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleReviewMonthOutsideClick);
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+    toastTimer = null;
+  }
 });
 </script>
 
@@ -1161,96 +1461,168 @@ onBeforeUnmount(() => {
                     历史版本评审记录
                   </button>
                   <button type="button" @click="isHistoryModalOpen = true">历史评审记录</button>
-                  <button type="button" class="expert-review__action-btn--draft">保存草稿</button>
-                  <button type="button" class="expert-review__action-btn--primary">
-                    提交评审意见
+                  <button
+                    type="button"
+                    class="expert-review__action-btn--draft"
+                    :disabled="expertReviewLoading || expertReviewSaving"
+                    @click="saveExpertReviewDraft"
+                  >
+                    {{ expertReviewSaving ? '保存中...' : '保存草稿' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="expert-review__action-btn--primary"
+                    :disabled="expertReviewLoading || expertReviewSubmitting"
+                    @click="submitExpertReview"
+                  >
+                    {{ expertReviewSubmitting ? '提交中...' : '提交评审意见' }}
                   </button>
                 </div>
               </div>
 
               <div class="expert-editor">
-                <div class="expert-dimension-summary">
-                  <div class="score-input-panel" :class="{ 'is-pending': !isCurrentTaskReviewed }">
-                    <span class="score-input-panel__caption">专家评分</span>
-                    <div class="score-input-panel__field">
-                      <template v-if="isScoreEditing">
-                        <label class="score-input-panel__input-wrap">
-                          <span class="visually-hidden">总体评价分数，满分 100</span>
+                <div v-if="expertReviewLoading" class="expert-review-state">评审详情加载中...</div>
+                <div v-else-if="!expertDimensionForms.length" class="expert-review-state is-empty">
+                  暂无评审维度，请稍后重试
+                </div>
+                <template v-else>
+                  <div class="expert-score-summary">
+                    <div class="expert-score-card">
+                      <span class="expert-score-card__label">专家最终评分</span>
+                      <div class="expert-score-card__value">
+                        <strong>{{ expertReviewTotalScoreText }}</strong>
+                        <span>分</span>
+                      </div>
+                      <p>系统按各维度得分与权重实时自动计算总分，专家不可手工修改。</p>
+                    </div>
+                    <dl class="expert-score-meta">
+                      <div>
+                        <dt>评审状态</dt>
+                        <dd>{{ expertReviewStatusText }}</dd>
+                      </div>
+                      <div>
+                        <dt>评审单号</dt>
+                        <dd>{{ currentTaskReviewId() || '—' }}</dd>
+                      </div>
+                      <div>
+                        <dt>最近保存</dt>
+                        <dd>{{ expertReviewUpdatedAt || '未保存' }}</dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <div class="expert-dimension-list">
+                    <article
+                      v-for="dimension in expertDimensionForms"
+                      :key="dimension.dimensionId"
+                      class="expert-dimension-card"
+                    >
+                      <header class="expert-dimension-card__header">
+                        <div>
+                          <h3>{{ dimension.name }}</h3>
+                          <p>{{ dimension.description }}</p>
+                        </div>
+                        <span class="expert-dimension-card__weight">
+                          权重 {{ formatWeightPercent(dimension.weight) }}
+                        </span>
+                      </header>
+
+                      <div class="expert-dimension-card__body">
+                        <label class="expert-field">
+                          <span class="expert-field__label">评分</span>
                           <input
-                            ref="scoreInputRef"
-                            :value="scoreInputText"
+                            :id="`expert-score-${dimension.dimensionId}`"
+                            :value="dimension.scoreText"
                             type="text"
                             inputmode="decimal"
                             autocomplete="off"
                             spellcheck="false"
-                            :placeholder="isCurrentTaskReviewed ? '0' : '待评'"
-                            aria-describedby="score-input-hint"
-                            @input="onScoreInput"
-                            @blur="onScoreBlur"
-                            @keydown="onScoreKeydown"
+                            placeholder="请输入 0~100"
+                            @input="onExpertDimensionScoreInput(dimension.dimensionId, $event)"
                           />
+                          <span class="expert-field__hint">0 ~ 100，支持两位小数</span>
+                          <span v-if="dimension.scoreError" class="expert-field__error">
+                            {{ dimension.scoreError }}
+                          </span>
                         </label>
-                        <span class="score-input-panel__unit">分</span>
-                      </template>
-                      <template v-else>
-                        <span
-                          class="score-input-panel__display"
-                          :class="{ 'is-empty': !isCurrentTaskReviewed }"
-                        >
-                          {{ scoreDisplayText }}
-                        </span>
-                        <span class="score-input-panel__unit">分</span>
-                        <button
-                          type="button"
-                          class="score-input-panel__edit-btn"
-                          aria-label="编辑分数"
-                          @click="startScoreEditing"
-                        >
-                          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                            <path
-                              fill="currentColor"
-                              d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92L5.92 20.08zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
-                            />
-                          </svg>
-                        </button>
-                      </template>
-                    </div>
-                    <span class="score-input-panel__range">满分 100 · 支持两位小数</span>
-                    <p id="score-input-hint" class="score-input-panel__hint">
-                      <template v-if="!isCurrentTaskReviewed">
-                        该 Skill 尚未评审，点击编辑图标输入 0–100 分
-                      </template>
-                      <template v-else> 点击编辑图标修改分数，输入完成后点击空白处保存 </template>
-                    </p>
-                  </div>
-                </div>
 
-                <div class="expert-editor__controls">
-                  <div class="medal-select">
-                    <span class="medal-select__label">是否授予个人勋章</span>
-                    <div class="medal-select__control">
-                      <select v-model="selectedBadges" placeholder="选择勋章" multiple size="lg">
-                        <option
-                          v-for="(option, index) in badgeOptions"
-                          :key="index"
-                          :value="option.name"
-                        >
-                          {{ option.name }}
-                        </option>
-                      </select>
-                    </div>
+                        <label class="expert-field expert-field--reason">
+                          <span class="expert-field__label">评分理由</span>
+                          <textarea
+                            :id="`expert-reason-${dimension.dimensionId}`"
+                            v-model="dimension.reason"
+                            placeholder="请说明该维度的评分依据、亮点与不足，至少 10 个字"
+                            @input="dimension.reasonError = ''"
+                          ></textarea>
+                          <span class="expert-field__hint">
+                            不少于 10 个字，用于说明为什么给出该分数
+                          </span>
+                          <span v-if="dimension.reasonError" class="expert-field__error">
+                            {{ dimension.reasonError }}
+                          </span>
+                        </label>
+                      </div>
+                    </article>
                   </div>
-                </div>
-                <label class="review-textarea">
-                  <span>{{ overallReviewDimension }}详情</span>
-                  <textarea :placeholder="overallReviewDimensionDetail?.placeholder"></textarea>
-                </label>
+
+                  <section class="expert-badge-panel" aria-labelledby="expert-badge-title">
+                    <div class="expert-badge-panel__header">
+                      <div>
+                        <h3 id="expert-badge-title">勋章推荐</h3>
+                        <p>支持多选，也可以不推荐勋章。</p>
+                      </div>
+                      <span class="expert-badge-panel__count">
+                        已选 {{ selectedReviewBadgeIds.length }} 个
+                      </span>
+                    </div>
+
+                    <div v-if="badgeOptions.length" class="expert-badge-grid">
+                      <button
+                        v-for="badge in badgeOptions"
+                        :key="badge.badgeId"
+                        type="button"
+                        class="expert-badge-card"
+                        :class="{ 'is-selected': selectedReviewBadgeIds.includes(badge.badgeId) }"
+                        :aria-pressed="selectedReviewBadgeIds.includes(badge.badgeId)"
+                        @click="toggleReviewBadge(badge.badgeId)"
+                      >
+                        <span class="expert-badge-card__mark" aria-hidden="true">
+                          {{ selectedReviewBadgeIds.includes(badge.badgeId) ? '✓' : '○' }}
+                        </span>
+                        <strong>{{ badge.name }}</strong>
+                        <p>{{ badge.description }}</p>
+                      </button>
+                    </div>
+                    <p v-else class="expert-review-state is-empty">暂无可推荐勋章</p>
+
+                    <label class="expert-field expert-badge-panel__reason">
+                      <span class="expert-field__label">勋章推荐理由</span>
+                      <textarea
+                        v-model="selectedReviewBadgeReason"
+                        :disabled="selectedReviewBadgeIds.length === 0"
+                        :placeholder="
+                          selectedReviewBadgeIds.length > 0
+                            ? '请填写本次勋章推荐的整体理由；即使选择多个勋章，也只需填写一条理由'
+                            : '选择至少一个勋章后再填写推荐理由'
+                        "
+                        @input="selectedReviewBadgeReasonError = ''"
+                      ></textarea>
+                      <span class="expert-field__hint">
+                        选择 1 个或多个勋章时，共用同一条推荐理由；未选择勋章则无需填写。
+                      </span>
+                      <span v-if="selectedReviewBadgeReasonError" class="expert-field__error">
+                        {{ selectedReviewBadgeReasonError }}
+                      </span>
+                    </label>
+                  </section>
+                </template>
               </div>
             </section>
           </section>
         </div>
       </section>
     </div>
+    <div v-if="toast" class="review-toast" role="status" aria-live="polite">{{ toast }}</div>
 
     <Teleport to="body">
       <div
@@ -4008,6 +4380,380 @@ input:focus {
   box-sizing: border-box;
 }
 
+.expert-review--inline .expert-review__actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.expert-review-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 24px;
+  border: 1px dashed #d7e3f3;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  color: #5b6f8f;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.expert-review-state.is-empty {
+  min-height: 140px;
+}
+
+.expert-score-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.expert-score-card {
+  padding: 20px 22px;
+  border: 1px solid #dbe8f8;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 34%),
+    linear-gradient(180deg, #fefefe 0%, #f4f8ff 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.expert-score-card__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #2156d8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.expert-score-card__value {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  color: #0f4ad8;
+}
+
+.expert-score-card__value strong {
+  font-size: 50px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.expert-score-card__value span {
+  padding-bottom: 6px;
+  color: #4c6aa3;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.expert-score-card p {
+  margin: 14px 0 0;
+  color: #5f7292;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.expert-score-meta {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.expert-score-meta div {
+  padding: 16px 18px;
+  border: 1px solid #e5edf7;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.expert-score-meta dt {
+  margin: 0 0 8px;
+  color: #6b7f9f;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.expert-score-meta dd {
+  margin: 0;
+  color: #172554;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.expert-dimension-list {
+  display: grid;
+  gap: 16px;
+}
+
+.expert-dimension-card {
+  padding: 18px;
+  border: 1px solid #e3ebf6;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(148, 163, 184, 0.08);
+}
+
+.expert-dimension-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.expert-dimension-card__header h3 {
+  margin: 0;
+  color: #12213f;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.expert-dimension-card__header p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.expert-dimension-card__weight {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.expert-dimension-card__body {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.expert-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expert-field__label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.expert-field input,
+.expert-field textarea {
+  width: 100%;
+  border: 1px solid #d5e0ee;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.expert-field input {
+  height: 46px;
+  padding: 0 14px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.expert-field textarea {
+  min-height: 128px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.expert-field input::placeholder,
+.expert-field textarea::placeholder {
+  color: #94a3b8;
+}
+
+.expert-field input:hover,
+.expert-field textarea:hover {
+  border-color: #bfd0e6;
+}
+
+.expert-field input:disabled,
+.expert-field textarea:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.expert-field textarea:disabled::placeholder {
+  color: #94a3b8;
+}
+
+.expert-field input:focus,
+.expert-field textarea:focus {
+  outline: 0;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.expert-field__hint {
+  color: #7b8ba7;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.expert-field__error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.expert-badge-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #e3ebf6;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+}
+
+.expert-badge-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.expert-badge-panel__header h3 {
+  margin: 0;
+  color: #12213f;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.expert-badge-panel__header p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.expert-badge-panel__count {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #edf5ff;
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.expert-badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.expert-badge-panel__reason {
+  margin-top: 16px;
+}
+
+.expert-badge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #d9e5f4;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.expert-badge-card:hover {
+  border-color: #9ec5ff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(148, 163, 184, 0.16);
+}
+
+.expert-badge-card.is-selected {
+  border-color: #2563eb;
+  background: linear-gradient(180deg, #f3f8ff 0%, #ffffff 100%);
+  box-shadow: 0 12px 20px rgba(37, 99, 235, 0.12);
+}
+
+.expert-badge-card__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.expert-badge-card strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.expert-badge-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.review-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 120;
+  min-width: 240px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 13px 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.24);
+}
+
 .medal-award-overlay {
   position: fixed;
   inset: 0;
@@ -4730,6 +5476,28 @@ input:focus {
   .expert-review--inline .expert-editor__controls .medal-select,
   .expert-review--inline .expert-editor__controls .green-channel-select {
     grid-template-columns: 1fr;
+  }
+
+  .expert-score-summary,
+  .expert-dimension-card__body {
+    grid-template-columns: 1fr;
+  }
+
+  .expert-badge-panel__header,
+  .expert-dimension-card__header {
+    flex-direction: column;
+  }
+
+  .expert-score-card__value strong {
+    font-size: 40px;
+  }
+
+  .review-toast {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    min-width: 0;
+    max-width: none;
   }
 
   .history-modal-overlay {

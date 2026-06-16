@@ -315,6 +315,24 @@ export const skillBaseService = {
     });
   },
 
+  // 保存专家评审草稿
+  saveExpertReviewDraft: (skillId: string, body: any): any => {
+    return httpRequest.skill<any>({
+      url: `/review/${skillId}/draft`,
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // 提交专家评审结果
+  submitExpertReview: (skillId: string, body: any): any => {
+    return httpRequest.skill<any>({
+      url: `/review/${skillId}/submit`,
+      method: 'post',
+      data: body,
+    });
+  },
+
   // 质量评审列表查询接口
   queryQualityReviewList: (params: any): any => {
     return httpRequest.api<any>({

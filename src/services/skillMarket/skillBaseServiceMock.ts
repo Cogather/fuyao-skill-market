@@ -92,6 +92,37 @@ type MockQualityReviewRow = {
   reviewStatus: string;
 };
 
+type MockExpertReviewDimension = {
+  dimensionId: string;
+  name: string;
+  description: string;
+  weight: number;
+};
+
+type MockReviewBadge = {
+  badgeId: string;
+  name: string;
+  description: string;
+};
+
+type MockExpertReviewDimensionScore = {
+  dimensionId: string;
+  score?: number;
+  reason?: string;
+};
+
+type MockSkillReviewDetail = {
+  reviewId: string;
+  skillId: string;
+  aiScore: number;
+  reviewStatus: 'pending' | 'draft' | 'submitted';
+  totalScore: number | null;
+  dimensionScores: MockExpertReviewDimensionScore[];
+  badgeIds: string[];
+  badgeReason?: string;
+  updatedAt?: string;
+};
+
 type MockSkillRecord = Skill & {
   author: string;
   createdBy: string;
@@ -266,6 +297,47 @@ let qualityReviews: MockQualityReviewRow[] = [
   },
 ];
 
+const MOCK_EXPERT_REVIEW_DIMENSIONS: MockExpertReviewDimension[] = [
+  {
+    dimensionId: 'dim-001',
+    name: '问题定义准确性',
+    description: '是否准确识别并抓住核心问题',
+    weight: 0.4,
+  },
+  {
+    dimensionId: 'dim-002',
+    name: '解决方案创新性',
+    description: '方案是否具有创新性和突破性',
+    weight: 0.3,
+  },
+  {
+    dimensionId: 'dim-003',
+    name: '工程落地能力',
+    description: '方案是否具备实际落地价值',
+    weight: 0.3,
+  },
+];
+
+const MOCK_REVIEW_BADGES: MockReviewBadge[] = [
+  {
+    badgeId: 'badge-001',
+    name: '破局先锋',
+    description: '在问题解决方面具有突破性贡献',
+  },
+  {
+    badgeId: 'badge-002',
+    name: '创新引领者',
+    description: '方案创新性突出',
+  },
+  {
+    badgeId: 'badge-003',
+    name: '工程典范',
+    description: '工程质量与落地效果优秀',
+  },
+];
+
+const expertReviewDetailStore: Record<string, MockSkillReviewDetail> = {};
+
 function nowText(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
@@ -274,6 +346,163 @@ function nowText(): string {
     2,
     '0',
   )} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function roundToTwo(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function mockSeedFromSkillId(skillId: string): number {
+  const numeric = Number(String(skillId).replace(/[^\d]/g, ''));
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric;
+  }
+  return Array.from(skillId).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function clampReviewScore(value: number): number {
+  return roundToTwo(Math.min(100, Math.max(0, value)));
+}
+
+function computeWeightedTotal(dimensionScores: MockExpertReviewDimensionScore[]): number | null {
+  if (!dimensionScores.length) {
+    return null;
+  }
+
+  let total = 0;
+  let hasScore = false;
+
+  for (const dimension of MOCK_EXPERT_REVIEW_DIMENSIONS) {
+    const item = dimensionScores.find((score) => score.dimensionId === dimension.dimensionId);
+    if (typeof item?.score !== 'number' || Number.isNaN(item.score)) {
+      continue;
+    }
+    hasScore = true;
+    total += item.score * dimension.weight;
+  }
+
+  return hasScore ? roundToTwo(total) : null;
+}
+
+function defaultReasonForDimension(name: string, score: number): string {
+  return `${name}表现较好，评分为${score.toFixed(2)}分，优势明确且仍有进一步优化空间。`;
+}
+
+function createSubmittedDimensionScores(seed: number): MockExpertReviewDimensionScore[] {
+  return MOCK_EXPERT_REVIEW_DIMENSIONS.map((dimension, index) => {
+    const score = clampReviewScore(82 + ((seed + index * 7) % 15) + index * 1.25);
+    return {
+      dimensionId: dimension.dimensionId,
+      score,
+      reason: defaultReasonForDimension(dimension.name, score),
+    };
+  });
+}
+
+function createDraftDimensionScores(seed: number): MockExpertReviewDimensionScore[] {
+  const firstDimension = MOCK_EXPERT_REVIEW_DIMENSIONS[0];
+  if (!firstDimension) {
+    return [];
+  }
+
+  const score = clampReviewScore(84 + (seed % 10) * 0.5);
+  return [
+    {
+      dimensionId: firstDimension.dimensionId,
+      score,
+      reason: `${firstDimension.name}分析较完整，先记录初步判断，后续补全其他维度。`,
+    },
+  ];
+}
+
+function normalizeDraftDimensionScores(raw: unknown): MockExpertReviewDimensionScore[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((item) => {
+      const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      if (!record) {
+        return null;
+      }
+
+      const dimensionId = String(record.dimensionId ?? '').trim();
+      if (!dimensionId) {
+        return null;
+      }
+
+      const nextItem: MockExpertReviewDimensionScore = { dimensionId };
+      const score = record.score;
+      if (typeof score === 'number' && Number.isFinite(score)) {
+        nextItem.score = roundToTwo(score);
+      } else if (typeof score === 'string' && score.trim()) {
+        const parsed = Number(score);
+        if (Number.isFinite(parsed)) {
+          nextItem.score = roundToTwo(parsed);
+        }
+      }
+
+      const reason = String(record.reason ?? '').trim();
+      if (reason) {
+        nextItem.reason = reason;
+      }
+
+      return nextItem;
+    })
+    .filter((item): item is MockExpertReviewDimensionScore => {
+      return Boolean(item && (item.reason || item.score != null));
+    });
+}
+
+function normalizeBadgeIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return [...new Set(raw.map((item) => String(item ?? '').trim()).filter(Boolean))];
+}
+
+function normalizeBadgeReason(raw: unknown, badgeIds: string[]): string {
+  if (badgeIds.length === 0) {
+    return '';
+  }
+  return readString(raw, '').trim();
+}
+
+function ensureExpertReviewDetail(skillId: string): MockSkillReviewDetail {
+  const key = String(skillId).trim();
+  const existing = expertReviewDetailStore[key];
+  if (existing) {
+    return existing;
+  }
+
+  const seed = mockSeedFromSkillId(key);
+  const submitted = seed % 3 !== 1;
+  const drafted = !submitted && seed % 2 === 0;
+  const dimensionScores = submitted
+    ? createSubmittedDimensionScores(seed)
+    : drafted
+      ? createDraftDimensionScores(seed)
+      : [];
+  const detail: MockSkillReviewDetail = {
+    reviewId: `review-${key}`,
+    skillId: key,
+    aiScore: 8600 + (seed % 1200),
+    reviewStatus: submitted ? 'submitted' : drafted ? 'draft' : 'pending',
+    totalScore: computeWeightedTotal(dimensionScores),
+    dimensionScores,
+    badgeIds: submitted ? [MOCK_REVIEW_BADGES[seed % MOCK_REVIEW_BADGES.length]?.badgeId ?? ''] : [],
+    badgeReason: '',
+    updatedAt: nowText(),
+  };
+
+  detail.badgeIds = detail.badgeIds.filter(Boolean);
+  if (detail.badgeIds.length > 0) {
+    detail.badgeReason = `推荐授予${detail.badgeIds.length}项勋章，Skill 在对应能力维度上表现突出。`;
+  }
+  expertReviewDetailStore[key] = detail;
+  return detail;
 }
 
 function ok<T>(data: T, number?: number): MockEnvelope<T> {
@@ -952,6 +1181,61 @@ function handleSkillRequest(
   }
   if (method === 'post' && path === '/publish-to-market') {
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
+  }
+
+  if (method === 'get' && path === '/review/expert/check') {
+    return ok({ isExpert: true });
+  }
+
+  if (method === 'get' && path === '/review/dimensions') {
+    return ok(MOCK_EXPERT_REVIEW_DIMENSIONS, MOCK_EXPERT_REVIEW_DIMENSIONS.length);
+  }
+
+  if (method === 'get' && path === '/review/badges') {
+    return ok(MOCK_REVIEW_BADGES, MOCK_REVIEW_BADGES.length);
+  }
+
+  const reviewDetailMatch = /^\/review\/([^/]+)\/detail$/.exec(path);
+  if (method === 'get' && reviewDetailMatch) {
+    return ok({ ...ensureExpertReviewDetail(reviewDetailMatch[1]) });
+  }
+
+  const reviewDraftMatch = /^\/review\/([^/]+)\/draft$/.exec(path);
+  if (method === 'post' && reviewDraftMatch) {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const detail = ensureExpertReviewDetail(reviewDraftMatch[1]);
+    detail.reviewId = readString(body.reviewId, detail.reviewId);
+    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores);
+    detail.badgeIds = normalizeBadgeIds(body.badgeIds);
+    detail.badgeReason = normalizeBadgeReason(body.badgeReason, detail.badgeIds);
+    const totalScore = body.totalScore;
+    if (typeof totalScore === 'number' && Number.isFinite(totalScore)) {
+      detail.totalScore = roundToTwo(totalScore);
+    } else {
+      detail.totalScore = computeWeightedTotal(detail.dimensionScores);
+    }
+    detail.reviewStatus = 'draft';
+    detail.updatedAt = nowText();
+    return ok({ ...detail });
+  }
+
+  const reviewSubmitMatch = /^\/review\/([^/]+)\/submit$/.exec(path);
+  if (method === 'post' && reviewSubmitMatch) {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const detail = ensureExpertReviewDetail(reviewSubmitMatch[1]);
+    detail.reviewId = readString(body.reviewId, detail.reviewId);
+    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores);
+    detail.badgeIds = normalizeBadgeIds(body.badgeIds);
+    detail.badgeReason = normalizeBadgeReason(body.badgeReason, detail.badgeIds);
+    const totalScore = body.totalScore;
+    if (typeof totalScore === 'number' && Number.isFinite(totalScore)) {
+      detail.totalScore = roundToTwo(totalScore);
+    } else {
+      detail.totalScore = computeWeightedTotal(detail.dimensionScores);
+    }
+    detail.reviewStatus = 'submitted';
+    detail.updatedAt = nowText();
+    return ok({ ...detail });
   }
 
   const deleteAllMatch = /^\/([^/]+)\/all$/.exec(path);

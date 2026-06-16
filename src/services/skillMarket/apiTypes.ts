@@ -467,3 +467,54 @@ export type QualityReviewArchiveBody = {
   deptLevel?: number;
   deptName?: string;
 };
+
+export type ExpertReviewDimensionDto = {
+  dimensionId: string;
+  name: string;
+  description: string;
+  weight: number;
+};
+
+export type ReviewBadgeDto = {
+  badgeId: string;
+  name: string;
+  description: string;
+};
+
+export type ExpertReviewDimensionScoreDto = {
+  dimensionId: string;
+  score?: number;
+  reason?: string;
+};
+
+export type SkillExpertReviewDetailDto = {
+  reviewId: string;
+  skillId: string;
+  aiScore: number;
+  reviewStatus: 'pending' | 'draft' | 'submitted';
+  totalScore: number | null;
+  dimensionScores: ExpertReviewDimensionScoreDto[];
+  badgeIds: string[];
+  badgeReason?: string;
+  updatedAt?: string;
+};
+
+export type ExpertReviewDraftBody = {
+  reviewId?: string;
+  totalScore?: number | null;
+  dimensionScores: ExpertReviewDimensionScoreDto[];
+  badgeIds: string[];
+  badgeReason?: string;
+};
+
+export type ExpertReviewSubmitBody = {
+  reviewId: string;
+  totalScore: number;
+  dimensionScores: {
+    dimensionId: string;
+    score: number;
+    reason: string;
+  }[];
+  badgeIds: string[];
+  badgeReason?: string;
+};
