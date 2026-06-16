@@ -1082,7 +1082,7 @@ function syncReviewListFilterObj() {
     reviewStatus: reviewStatusValue.value,
     yearMonth: selectedReviewMonthLabel.value,
     sortBy: sortTypeValue.value,
-    categoryId: selectedReviewCategoryId.value || null,
+    categoryId: selectedReviewCategoryId.value ?? '',
     ...reviewDepartmentLevelParams(),
   };
 
@@ -1117,10 +1117,6 @@ async function onReviewDepartmentDone(segments: string[]): Promise<void> {
 async function onReviewDepartmentClear(): Promise<void> {
   reviewDepartmentSegments.value = [];
   syncReviewDepartmentLevels([]);
-  await reloadReviewCenterTasks();
-}
-
-async function onReviewBusinessDimensionChange(): Promise<void> {
   await reloadReviewCenterTasks();
 }
 
@@ -1263,7 +1259,7 @@ onBeforeUnmount(() => {
                   v-model="selectedReviewCategoryId"
                   class="review-business-dimension"
                   aria-label-prefix="评审业务维度"
-                  @change="onReviewBusinessDimensionChange"
+                  @change="reloadReviewCenterTasks"
                 />
               </div>
               <div class="toolbar-filter toolbar-filter--dept">

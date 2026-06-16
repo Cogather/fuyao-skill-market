@@ -272,6 +272,13 @@ function selectBusinessDimension(dimension: BusinessDimensionDto): void {
   emitSelection(true);
 }
 
+function clearBusinessDimension(): void {
+  selectedBusinessDimension.value = '';
+  selectedBusinessCategory.value = '';
+  closePanels();
+  emitSelection(true);
+}
+
 function selectBusinessCategory(category: BusinessDimensionDto): void {
   selectedBusinessCategory.value = String(category.categoryId);
   closePanels();
@@ -279,13 +286,6 @@ function selectBusinessCategory(category: BusinessDimensionDto): void {
 }
 
 function clearBusinessCategory(): void {
-  selectedBusinessCategory.value = '';
-  closePanels();
-  emitSelection(true);
-}
-
-function clearBusinessDimension(): void {
-  selectedBusinessDimension.value = '';
   selectedBusinessCategory.value = '';
   closePanels();
   emitSelection(true);
