@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -37,6 +37,21 @@ const props = withDefaults(
 
 const rankingCards = ref<ReviewRankingCard[]>([]);
 const taskCards = reactive<ReviewTaskCard[]>([]);
+const reviewTaskListRef = ref<HTMLElement | null>(null);
+const reviewTransportIsHttp = String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock')
+  .trim()
+  .toLowerCase() === 'http';
+const reviewTaskPageNo = ref(0);
+const reviewTaskTotal = ref(0);
+const reviewTaskLoading = ref(false);
+let reviewTaskScrollRaf = 0;
+let reviewTaskPostRenderTimer: ReturnType<typeof window.setTimeout> | null = null;
+let reviewTaskRequestToken = 0;
+
+const REVIEW_TASK_PAGE_SIZE = 10;
+const REVIEW_TASK_PREFETCH_MIN_DISTANCE = 180;
+const REVIEW_TASK_PREFETCH_VIEWPORT_RATIO = 0.6;
+const REVIEW_TASK_POST_RENDER_CHECK_DELAY = 80;
 
 const selectedTaskId = ref(taskCards[0]?.skillId ?? '');
 
@@ -324,10 +339,8 @@ async function loadExpertReviewMeta(force = false): Promise<void> {
   expertReviewMetaLoaded.value = true;
 }
 
-async function applyReviewCenterData(data: ReviewCenterData) {
+function applyReviewCenterShellData(data: ReviewCenterData): void {
   rankingCards.value = data.rankingCards;
-  replaceReactiveArray(taskCards, data.taskCards);
-  selectedTaskId.value = taskCards[0]?.skillId ?? '';
 
   replaceReactiveArray(computeChannels, data.computeChannels);
   computeChannelTypes.value = data.computeChannelTypes;
@@ -345,21 +358,301 @@ async function applyReviewCenterData(data: ReviewCenterData) {
 
   overallReviewDimension.value = data.overallReviewDimension;
   reviewHistoryRecords.value = data.reviewHistoryRecords;
+}
 
-  if (taskCards[0]?.skillId) {
-    await loadActiveTaskReviewContext(taskCards[0].skillId);
-  } else {
-    selectedSkillDetail.value = {};
-    expertReviewId.value = '';
-    expertReviewStatus.value = 'pending';
-    expertReviewUpdatedAt.value = '';
-    selectedReviewBadgeIds.value = [];
-    selectedReviewBadgeReason.value = '';
-    selectedReviewBadgeReasonError.value = '';
-    expertOverallOpinion.value = '';
-    expertOverallOpinionError.value = '';
-    replaceReactiveArray(expertDimensionForms, []);
+function clearActiveTaskReviewContext(): void {
+  selectedSkillDetail.value = {};
+  expertReviewId.value = '';
+  expertReviewStatus.value = 'pending';
+  expertReviewUpdatedAt.value = '';
+  selectedReviewBadgeIds.value = [];
+  selectedReviewBadgeReason.value = '';
+  selectedReviewBadgeReasonError.value = '';
+  expertOverallOpinion.value = '';
+  expertOverallOpinionError.value = '';
+  replaceReactiveArray(expertDimensionForms, []);
+}
+
+function normalizeReviewTaskTags(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+      .join(',');
   }
+
+  return String(value ?? '')
+    .split(/[，,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(',');
+}
+
+function normalizeReviewTaskCard(task: unknown, fallbackIndex: number): ReviewTaskCard {
+  const record = readRecord(task);
+  const skillId = String(record.skillId ?? record.id ?? `review-skill-${fallbackIndex}`);
+  const name = String(record.name ?? record.skillName ?? skillId);
+  const owner = String(record.owner ?? record.ownerName ?? record.ownerUser ?? record.createdBy ?? '');
+  const ownerUser = String(record.ownerUser ?? record.ownerName ?? record.owner ?? owner);
+  const department = String(
+    record.DepartmentL6 ??
+      record.departmentL6 ??
+      record.team ??
+      record.department ??
+      record.deptName ??
+      '',
+  );
+  const rawScore = Number(record.overallScore ?? record.totalScore ?? record.expertScore);
+  const statusText = String(record.reviewStatus ?? record.status ?? '').trim().toLowerCase();
+  const hasReviewed =
+    typeof record.hasReviewed === 'boolean'
+      ? record.hasReviewed
+      : Number.isFinite(rawScore) ||
+        ['submitted', 'reviewed', 'done', 'completed', 'approved', '已审批', '已评审'].includes(
+          statusText,
+        );
+  const overallScore = hasReviewed && Number.isFinite(rawScore) ? roundToTwo(rawScore) : null;
+
+  return {
+    id: String(record.id ?? skillId),
+    skillId,
+    name,
+    owner,
+    ownerName: String(record.ownerName ?? owner),
+    ownerUser,
+    team: department,
+    DepartmentL6: department,
+    tags: normalizeReviewTaskTags(record.tags),
+    usage: String(record.usage ?? record.useCount ?? ''),
+    downloads: String(record.downloads ?? record.downloadCount ?? 0),
+    expertScore:
+      typeof record.expertScore === 'string' && record.expertScore.trim()
+        ? record.expertScore.trim()
+        : overallScore != null
+          ? formatOverallScore(overallScore)
+          : '待评',
+    hasReviewed,
+    overallScore,
+    dimensionId: String(record.dimensionId ?? record.businessDimensionId ?? ''),
+    dimensionName: String(record.dimensionName ?? record.businessDimensionName ?? ''),
+    categoryId: String(record.categoryId ?? record.businessCategoryId ?? ''),
+    categoryName: String(record.categoryName ?? record.businessCategoryName ?? ''),
+  };
+}
+
+function replaceReviewTasks(list: ReviewTaskCard[]): void {
+  replaceReactiveArray(taskCards, list);
+}
+
+function appendReviewTasks(list: ReviewTaskCard[]): void {
+  const existingIds = new Set(taskCards.map((task) => task.skillId));
+  list.forEach((task) => {
+    if (!existingIds.has(task.skillId)) {
+      taskCards.push(task);
+      existingIds.add(task.skillId);
+    }
+  });
+}
+
+function resetReviewTaskScrollState(): void {
+  if (reviewTaskScrollRaf) {
+    window.cancelAnimationFrame(reviewTaskScrollRaf);
+    reviewTaskScrollRaf = 0;
+  }
+  if (reviewTaskPostRenderTimer) {
+    window.clearTimeout(reviewTaskPostRenderTimer);
+    reviewTaskPostRenderTimer = null;
+  }
+}
+
+function resetReviewTaskListScrollPosition(): void {
+  if (reviewTaskListRef.value) {
+    reviewTaskListRef.value.scrollTop = 0;
+  }
+}
+
+function reviewTaskRemainingScrollDistance(): number {
+  const el = reviewTaskListRef.value;
+  if (!el) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return el.scrollHeight - el.clientHeight - el.scrollTop;
+}
+
+function reviewTaskNearBottom(): boolean {
+  const el = reviewTaskListRef.value;
+  if (!el) {
+    return false;
+  }
+  const prefetchDistance = Math.max(
+    REVIEW_TASK_PREFETCH_MIN_DISTANCE,
+    Math.floor(el.clientHeight * REVIEW_TASK_PREFETCH_VIEWPORT_RATIO),
+  );
+  return reviewTaskRemainingScrollDistance() <= prefetchDistance;
+}
+
+const reviewTaskHasMore = computed(() => taskCards.length < reviewTaskTotal.value);
+const reviewTaskFooterHint = computed(() => {
+  if (reviewTaskLoading.value && taskCards.length === 0) {
+    return '正在加载评审 Skill...';
+  }
+  if (taskCards.length === 0) {
+    return '暂无符合条件的评审 Skill';
+  }
+  if (reviewTaskLoading.value && taskCards.length > 0) {
+    return `已加载 ${taskCards.length} 条 / 共 ${reviewTaskTotal.value} 条，正在加载更多...`;
+  }
+  if (reviewTaskHasMore.value) {
+    return `已加载 ${taskCards.length} 条 / 共 ${reviewTaskTotal.value} 条，继续下拉加载更多`;
+  }
+  return `已加载全部 ${taskCards.length} 条评审 Skill`;
+});
+
+type ReviewTaskPageResult = {
+  data?: ReviewCenterData;
+  list: ReviewTaskCard[];
+  total: number;
+};
+
+async function fetchReviewTaskPage(pageNo: number): Promise<ReviewTaskPageResult> {
+  const params = syncReviewListFilterObj();
+
+  if (reviewTransportIsHttp) {
+    const response = await skillBaseService.getSkillReviewList({
+      ...params,
+      pageNo,
+      pageSize: REVIEW_TASK_PAGE_SIZE,
+    });
+    if (!serviceSucceeded(response)) {
+      throw new Error(serviceMessage(response, '评审 Skill 列表加载失败'));
+    }
+
+    const payload = response?.data;
+    const payloadRecord = readRecord(payload);
+    const rawList = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payloadRecord.list)
+        ? payloadRecord.list
+        : Array.isArray(payloadRecord.records)
+          ? payloadRecord.records
+          : [];
+    const total = Number(payloadRecord.total ?? response?.meta?.number ?? rawList.length);
+
+    return {
+      list: rawList.map((item, index) =>
+        normalizeReviewTaskCard(item, (pageNo - 1) * REVIEW_TASK_PAGE_SIZE + index),
+      ),
+      total: Number.isFinite(total) ? total : rawList.length,
+    };
+  }
+
+  const data = await loadReviewCenterData(params, isExpertReviewer.value);
+  const start = (pageNo - 1) * REVIEW_TASK_PAGE_SIZE;
+  return {
+    data,
+    list: data.taskCards.slice(start, start + REVIEW_TASK_PAGE_SIZE).map((task) => ({ ...task })),
+    total: data.taskCards.length,
+  };
+}
+
+async function syncSelectedTaskAfterListChange(previousSelectedTaskId: string): Promise<void> {
+  const nextSelectedTaskId = taskCards.some((task) => task.skillId === previousSelectedTaskId)
+    ? previousSelectedTaskId
+    : taskCards[0]?.skillId ?? '';
+
+  const shouldReloadDetail =
+    Boolean(nextSelectedTaskId) &&
+    (selectedTaskId.value !== nextSelectedTaskId ||
+      String(selectedSkillDetail.value?.skillId ?? '') !== nextSelectedTaskId);
+
+  selectedTaskId.value = nextSelectedTaskId;
+
+  if (!nextSelectedTaskId) {
+    clearActiveTaskReviewContext();
+    return;
+  }
+
+  if (shouldReloadDetail) {
+    await loadActiveTaskReviewContext(nextSelectedTaskId);
+  }
+}
+
+async function loadReviewTaskPage(
+  append = false,
+  options: { resetScroll?: boolean } = {},
+): Promise<void> {
+  const requestToken = ++reviewTaskRequestToken;
+  const targetPageNo = append ? reviewTaskPageNo.value + 1 : 1;
+  const previousSelectedTaskId = selectedTaskId.value;
+
+  if (!append) {
+    resetReviewTaskScrollState();
+  }
+
+  reviewTaskLoading.value = true;
+  try {
+    const result = await fetchReviewTaskPage(targetPageNo);
+    if (requestToken !== reviewTaskRequestToken) {
+      return;
+    }
+
+    if (result.data && !append) {
+      applyReviewCenterShellData(result.data);
+    }
+
+    if (append) {
+      appendReviewTasks(result.list);
+    } else {
+      replaceReviewTasks(result.list);
+    }
+
+    reviewTaskPageNo.value = targetPageNo;
+    reviewTaskTotal.value = Math.max(result.total, taskCards.length);
+
+    await syncSelectedTaskAfterListChange(previousSelectedTaskId);
+  } catch (error) {
+    if (requestToken === reviewTaskRequestToken) {
+      showToast(error instanceof Error ? error.message : '评审 Skill 列表加载失败');
+    }
+  } finally {
+    if (requestToken !== reviewTaskRequestToken) {
+      return;
+    }
+    reviewTaskLoading.value = false;
+    await nextTick();
+
+    if (!append && options.resetScroll) {
+      resetReviewTaskListScrollPosition();
+    }
+
+    if (reviewTaskHasMore.value) {
+      reviewTaskPostRenderTimer = window.setTimeout(() => {
+        reviewTaskPostRenderTimer = null;
+        scheduleReviewTaskLoadMoreCheck();
+      }, REVIEW_TASK_POST_RENDER_CHECK_DELAY);
+    }
+  }
+}
+
+async function loadNextReviewTaskPageIfNeeded(): Promise<void> {
+  if (reviewTaskLoading.value || !reviewTaskHasMore.value || !reviewTaskNearBottom()) {
+    return;
+  }
+  await loadReviewTaskPage(true);
+}
+
+function scheduleReviewTaskLoadMoreCheck(): void {
+  if (reviewTaskScrollRaf) {
+    return;
+  }
+  reviewTaskScrollRaf = window.requestAnimationFrame(() => {
+    reviewTaskScrollRaf = 0;
+    void loadNextReviewTaskPageIfNeeded();
+  });
+}
+
+function onReviewTaskListScroll(): void {
+  scheduleReviewTaskLoadMoreCheck();
 }
 const activeTask = computed(
   () => taskCards.find((task) => task.skillId === selectedTaskId.value) ?? taskCards[0],
@@ -1128,9 +1421,7 @@ const checkExpert = async () => {
 };
 
 async function reloadReviewCenterTasks(): Promise<void> {
-  const params = syncReviewListFilterObj();
-  const data = await loadReviewCenterData(params, isExpertReviewer.value);
-  await applyReviewCenterData(data);
+  await loadReviewTaskPage(false, { resetScroll: true });
 }
 
 function onReviewDepartmentChange(segments: string[]): void {
@@ -1156,6 +1447,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleReviewMonthOutsideClick);
+  resetReviewTaskScrollState();
   if (toastTimer) {
     window.clearTimeout(toastTimer);
     toastTimer = null;
@@ -1326,7 +1618,12 @@ onBeforeUnmount(() => {
 
         <div class="board-layout">
           <aside class="task-column" aria-label="Skill 任务列表">
-            <div class="task-list" aria-label="任务列表">
+            <div
+              ref="reviewTaskListRef"
+              class="task-list"
+              aria-label="任务列表"
+              @scroll="onReviewTaskListScroll"
+            >
               <article
                 v-for="task in taskCards"
                 :key="task.skillId"
@@ -1338,13 +1635,21 @@ onBeforeUnmount(() => {
                 @click="selectTask(task.skillId)"
                 @keydown.enter.prevent="selectTask(task.skillId)"
                 @keydown.space.prevent="selectTask(task.skillId)"
-              >
+                >
                 <div class="task-card__title">{{ task.name }}</div>
                 <div class="task-card__meta">{{ task.ownerUser }} · {{ task.DepartmentL6 }}</div>
                 <div class="task-card__tags">
-                  <span v-for="tag in task.tags?.split(',') ?? []" :key="tag">{{ tag }}</span>
+                  <span
+                    v-for="tag in task.tags ? task.tags.split(',').filter(Boolean) : []"
+                    :key="tag"
+                  >
+                    {{ tag }}
+                  </span>
                 </div>
               </article>
+              <p class="task-list__status" role="status">
+                {{ reviewTaskFooterHint }}
+              </p>
             </div>
           </aside>
 
@@ -2863,6 +3168,16 @@ th {
 
 .task-list::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.task-list__status {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 2px 6px;
+  color: #6b7b92;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
 }
 
 .task-card {
