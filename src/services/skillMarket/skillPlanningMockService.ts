@@ -296,29 +296,6 @@ export async function deleteSkillPlanning(id: string): Promise<void> {
   skillPlanningItems = skillPlanningItems.filter((item) => item.id !== id);
 }
 
-export async function batchUpdateSkillPlanning(
-  ids: string[],
-  patch: SkillPlanningBatchPatch,
-): Promise<number> {
-  const idSet = new Set(ids);
-  let count = 0;
-  skillPlanningItems = skillPlanningItems.map((item) => {
-    if (!idSet.has(item.id)) {
-      return item;
-    }
-
-    count += 1;
-    return {
-      ...item,
-      ...Object.fromEntries(
-        Object.entries(patch).filter(([, value]) => normalizeText(value).length > 0),
-      ),
-      status: patch.status ? normalizeProgress(patch.status) : item.status,
-    };
-  });
-  return count;
-}
-
 export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
   const idSet = new Set(ids);
   const before = skillPlanningItems.length;

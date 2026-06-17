@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
   batchDeleteSkillPlanning,
-  batchUpdateSkillPlanning,
   createSkillPlanning,
   deleteSkillPlanning,
   exportSkillPlanningToExcel,
@@ -135,7 +134,6 @@ const editingId = ref('');
 const formErrors = reactive<Partial<Record<keyof SkillPlanningPayload, string>>>({});
 const planningForm = reactive<SkillPlanningPayload>(createEmptyPlanningForm());
 
-const batchDialogOpen = ref(false);
 const batchForm = reactive<SkillPlanningBatchPatch>({
   department: '',
   status: undefined,
@@ -558,42 +556,6 @@ async function exportCurrentData() {
   showToast('已导出当前筛选结果');
 }
 
-function openBatchDialog() {
-  if (!hasSelectedRows.value) {
-    showToast('请先勾选需要批量修改的数据');
-    return;
-  }
-  Object.assign(batchForm, {
-    department: '',
-    status: undefined,
-    plannedCompleteDate: '',
-    developer: '',
-  });
-  batchDialogOpen.value = true;
-}
-
-function closeBatchDialog() {
-  batchDialogOpen.value = false;
-}
-
-async function submitBatchUpdate() {
-  const patch: SkillPlanningBatchPatch = {
-    department: batchForm.department,
-    status: batchForm.status,
-    plannedCompleteDate: batchForm.plannedCompleteDate,
-    developer: batchForm.developer,
-  };
-  const hasPatch = Object.values(patch).some((value) => String(value ?? '').trim().length > 0);
-  if (!hasPatch) {
-    showToast('请至少填写一个批量修改字段');
-    return;
-  }
-  const count = await batchUpdateSkillPlanning(selectedIds.value, patch);
-  showToast(`已批量修改 ${count} 条数据`);
-  closeBatchDialog();
-  await reloadList();
-}
-
 function openConfirmDialog(
   title: string,
   message: string,
@@ -851,17 +813,6 @@ onBeforeUnmount(() => {
               <path d="M12 20V10m0 10 4-4m-4 4-4-4M5 7V5h14v2" />
             </svg>
             导出
-          </button>
-          <button
-            v-if="false"
-            type="button"
-            class="planning-btn planning-btn--soft"
-            @click="openBatchDialog"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h10M4 12h8M4 17h6M17 5l2 2-7 7-3 1 1-3 7-7Z" />
-            </svg>
-            批量修改
           </button>
           <button
             type="button"
@@ -1532,66 +1483,6 @@ onBeforeUnmount(() => {
               type="button"
               class="planning-btn planning-btn--primary"
               @click="submitPlanningForm"
-            >
-              保存
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <Teleport to="body">
-      <div
-        v-if="batchDialogOpen"
-        class="planning-overlay"
-        role="presentation"
-        @click.self="closeBatchDialog"
-      >
-        <div class="planning-dialog" role="dialog" aria-modal="true">
-          <div class="planning-dialog__head">
-            <div>
-              <strong>批量修改</strong>
-              <p>仅会更新已填写的字段，未填写字段保持原值。</p>
-            </div>
-            <button type="button" class="dialog-close" aria-label="关闭" @click="closeBatchDialog">
-              ×
-            </button>
-          </div>
-          <div class="batch-form">
-            <label class="planning-field">
-              <span>归属部门</span>
-              <input v-model.trim="batchForm.department" type="text" />
-            </label>
-            <label class="planning-field">
-              <span>当前进展</span>
-              <select v-model="batchForm.status">
-                <option :value="undefined">不修改</option>
-                <option v-for="item in progressOptions" :key="item" :value="item">
-                  {{ item }}
-                </option>
-              </select>
-            </label>
-            <label class="planning-field">
-              <span>计划完成时间</span>
-              <input v-model="batchForm.plannedCompleteDate" type="date" />
-            </label>
-            <label class="planning-field">
-              <span>开发责任人</span>
-              <input v-model.trim="batchForm.developer" type="text" />
-            </label>
-          </div>
-          <div class="planning-dialog__actions">
-            <button
-              type="button"
-              class="planning-btn planning-btn--ghost"
-              @click="closeBatchDialog"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              class="planning-btn planning-btn--primary"
-              @click="submitBatchUpdate"
             >
               保存
             </button>

@@ -260,9 +260,26 @@ export const skillBaseService = {
     });
   },
 
-  /*
-   * Skill 规划相关接口
+  /**
+   *
+   * skill 规划相关接口
    */
+  // skill查询接口
+  querySkillConfig: (body: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/query',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // 查询枚举列表
+  getPlanningOption: (): any => {
+    return httpRequest.skill<any>({
+      url: '/config/query_option_config',
+      method: 'get',
+    });
+  },
 
   querySkillPlanningFilterOptions: (): any => {
     return httpRequest.skill<any>({
@@ -281,46 +298,39 @@ export const skillBaseService = {
 
   createSkillPlanning: (body: any): any => {
     return httpRequest.skill<any>({
-      url: '/planning',
+      url: '/config/add',
       method: 'post',
       data: body,
     });
   },
 
-  updateSkillPlanning: (id: string, body: any): any => {
+  updateSkillPlanning: (body: any): any => {
     return httpRequest.skill<any>({
-      url: `/planning/${id}`,
+      url: `/config/update`,
       method: 'put',
       data: body,
     });
   },
 
-  deleteSkillPlanning: (id: string): any => {
+  deleteSkillPlanning: (params: any): any => {
     return httpRequest.skill<any>({
-      url: `/planning/${id}`,
+      url: `/config/singel_delete`,
       method: 'delete',
-    });
-  },
-
-  batchUpdateSkillPlanning: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: '/planning/batch-update',
-      method: 'post',
-      data: body,
+      params,
     });
   },
 
   batchDeleteSkillPlanning: (body: any): any => {
     return httpRequest.skill<any>({
-      url: '/planning/batch-delete',
-      method: 'post',
+      url: '/config/batch_delete',
+      method: 'delete',
       data: body,
     });
   },
 
   importSkillPlanning: (formData: FormData): any => {
     return httpRequest.skill<any>({
-      url: '/planning/import',
+      url: '/config/import',
       method: 'post',
       data: formData,
       headers: {
@@ -329,6 +339,20 @@ export const skillBaseService = {
     });
   },
 
+  exportSkillPlanning: (body: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/export',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  downloadSkillPlanning: (): any => {
+    return httpRequest.skill<any>({
+      url: '/config/download_template',
+      method: 'get',
+    });
+  },
   /*
    * skill评审相关接口
    */
@@ -423,19 +447,6 @@ export const skillBaseService = {
   archiveQualityReview: (body: any): any => {
     return httpRequest.api<any>({
       url: '/skill-quality-reviews/archive',
-      method: 'post',
-      data: body,
-    });
-  },
-
-  /**
-   *
-   * skill 规划相关接口
-   */
-  // skill查询接口
-  querySkillConfig: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/query',
       method: 'post',
       data: body,
     });

@@ -230,22 +230,6 @@ export async function deleteSkillPlanning(id: string): Promise<void> {
   await skillBaseService.deleteSkillPlanning(id);
 }
 
-export async function batchUpdateSkillPlanning(
-  ids: string[],
-  patch: SkillPlanningBatchPatch,
-): Promise<number> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).batchUpdateSkillPlanning(ids, patch);
-  }
-
-  const response = await skillBaseService.batchUpdateSkillPlanning({
-    ids,
-    ...patch,
-    status: patch.status ? normalizeProgress(patch.status) : undefined,
-  });
-  return normalizeHttpCount(response);
-}
-
 export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
   if (!useHttpTransport()) {
     return (await loadMockService()).batchDeleteSkillPlanning(ids);
