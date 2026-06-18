@@ -9,7 +9,7 @@ import {
   importSkillPlanningFromExcel,
   querySkillPlanningFilterOptions,
   queryAllSkillPlanningList,
-  querySkillPlanningList,
+  querySkillConfig,
   updateSkillPlanning,
   type SkillPlanningBatchPatch,
   type SkillPlanningFilterOptions,
@@ -252,6 +252,12 @@ async function applyPlanningTableFilters(): Promise<void> {
   await reloadList();
 }
 
+async function onSearchKeyword() {
+  queryFilterObj.keyword = filterForm.keyword;
+  queryFilterObj.pageNum = 1;
+  await reloadList();
+}
+
 async function toggleHeaderFilterOption(
   key: PlanningHeaderFilterKey,
   option: string,
@@ -340,12 +346,12 @@ const queryFilterObj = reactive({
 async function reloadList() {
   loading.value = true;
   try {
-    const result = await querySkillPlanningList(queryFilterObj);
+    const result = await querySkillConfig(queryFilterObj);
     rows.value = result.list;
     total.value = result.total;
     if (pageNum.value > totalPages.value) {
       pageNum.value = totalPages.value;
-      const nextResult = await querySkillPlanningList(queryFilterObj);
+      const nextResult = await querySkillConfig(queryFilterObj);
       rows.value = nextResult.list;
       total.value = nextResult.total;
     }
@@ -758,8 +764,10 @@ onBeforeUnmount(() => {
           <span>关键词</span>
           <input
             v-model.trim="filterForm.keyword"
-            type="text"
+            type="search"
             placeholder="按 Skill 名称、说明、责任Owner、开发责任人查询"
+            @keydown.enter="onSearchKeyword"
+            @input="onSearchKeyword"
           />
         </label>
         <div class="filter-actions">
@@ -1230,7 +1238,7 @@ onBeforeUnmount(() => {
               </td>
               <td>{{ row.level }}</td>
               <td>{{ row.owner }}</td>
-              <td>{{ row.department }}</td>
+              <td>{{ row.deptName }}</td>
               <td>{{ row.owner }}</td>
               <td>{{ row.planedCompleteDate }}</td>
               <td>

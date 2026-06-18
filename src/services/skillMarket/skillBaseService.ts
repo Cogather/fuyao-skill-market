@@ -281,21 +281,6 @@ export const skillBaseService = {
     });
   },
 
-  querySkillPlanningFilterOptions: (): any => {
-    return httpRequest.skill<any>({
-      url: '/planning/filter-options',
-      method: 'get',
-    });
-  },
-
-  querySkillPlanningList: (params: any): any => {
-    return httpRequest.skill<any>({
-      url: '/planning',
-      method: 'get',
-      params,
-    });
-  },
-
   createSkillPlanning: (body: any): any => {
     return httpRequest.skill<any>({
       url: '/config/add',
@@ -423,6 +408,14 @@ export const skillBaseService = {
       url: `/review/${skillId}/submit`,
       method: 'post',
       data: body,
+    });
+  },
+
+  // 评审历史记录
+  getReviewHistory: (skillId: string): any => {
+    return httpRequest.skill<any>({
+      url: `/review/${skillId}/history`,
+      method: 'get',
     });
   },
 

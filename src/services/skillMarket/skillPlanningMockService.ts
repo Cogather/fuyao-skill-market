@@ -232,7 +232,7 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   });
 }
 
-export async function querySkillPlanningFilterOptions(): Promise<SkillPlanningFilterOptions> {
+export async function getPlanningOption(): Promise<SkillPlanningFilterOptions> {
   return {
     firstScene: distinctValuesInOrder(skillPlanningItems.map((item) => item.firstScene)),
     secondScene: distinctValuesInOrder(skillPlanningItems.map((item) => item.secondScene)),
@@ -247,7 +247,7 @@ export async function querySkillPlanningFilterOptions(): Promise<SkillPlanningFi
   };
 }
 
-export async function querySkillPlanningList(
+export async function guerySkillConfig(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   const pageNum = Math.max(1, Number(query.pageNum ?? 1));

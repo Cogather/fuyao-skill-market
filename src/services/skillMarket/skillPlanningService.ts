@@ -64,46 +64,23 @@ function pickArray(record: Record<string, unknown>, keys: string[]): unknown[] {
   return [];
 }
 
-function normalizeHttpFilterOptions(response: unknown): SkillPlanningFilterOptions {
-  const data = unwrapResponseData<unknown>(response);
-  const record =
-    data && typeof data === 'object'
-      ? (data as Record<string, unknown>)
-      : ({} as Record<string, unknown>);
+function normalizeHttpFilterOptions(response: unknown): {} | SkillPlanningFilterOptions {
+  const record = response?.data ?? {};
 
-  return {
-    firstScene: normalizeTextArray(record.firstScene ?? record.firstScenes),
-    secondScene: normalizeTextArray(record.secondScene ?? record.secondaryScenes),
-    activityNodeName: normalizeTextArray(record.activityNodeName ?? record.activities),
-    subActivityNodeName: normalizeTextArray(record.subActivityNodeName ?? record.subActivities),
-    level: normalizeTextArray(record.level ?? record.levels),
-    status: normalizeTextArray(record.status ?? record.progresses),
-  };
+  return JSON.stringify(record) === '{}'
+    ? {}
+    : {
+        firstScene: record.skillSceneVoList,
+        activityNodeName: record.skillActivityVoList,
+        level: record.levelList,
+        status: record.statusList,
+      };
 }
 
 function normalizeHttpListResult(response: unknown): SkillPlanningListResult {
-  const data = unwrapResponseData<unknown>(response);
-
-  if (Array.isArray(data)) {
-    const list = Array.isArray((data as { records?: unknown[] }).records)
-      ? ((data as { records?: unknown[] }).records ?? [])
-      : data;
-    const total = readNumber((data as { total?: unknown }).total, list.length);
-    return {
-      list: list.map(normalizeSkillPlanningItem),
-      total,
-    };
-  }
-
-  const record =
-    data && typeof data === 'object'
-      ? (data as Record<string, unknown>)
-      : ({} as Record<string, unknown>);
-  const list = pickArray(record, ['list', 'records', 'rows', 'items']);
-
   return {
-    list: list.map(normalizeSkillPlanningItem),
-    total: readNumber(record.total, list.length),
+    list: response?.data ?? [],
+    total: response?.meta?.number ?? 0,
   };
 }
 
@@ -146,21 +123,21 @@ function normalizeHttpItem(response: unknown): SkillPlanningItem {
 
 export async function querySkillPlanningFilterOptions(): Promise<SkillPlanningFilterOptions> {
   if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillPlanningFilterOptions();
+    return (await loadMockService()).getPlanningOption();
   }
 
-  const response = await skillBaseService.querySkillPlanningFilterOptions();
+  const response = await skillBaseService.getPlanningOption();
   return normalizeHttpFilterOptions(response);
 }
 
-export async function querySkillPlanningList(
+export async function querySkillConfig(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillPlanningList(query);
+    return (await loadMockService()).querySkillConfig(query);
   }
 
-  const response = await skillBaseService.querySkillPlanningList(query);
+  const response = await skillBaseService.querySkillConfig(query);
   return normalizeHttpListResult(response);
 }
 
@@ -181,7 +158,7 @@ export async function queryAllSkillPlanningList(
   let total = Number.POSITIVE_INFINITY;
 
   while (rows.length < total) {
-    const result = await querySkillPlanningList({
+    const result = await querySkillConfig({
       ...nextQuery,
       pageNum: nextPage,
       pageSize,
@@ -227,7 +204,7 @@ export async function deleteSkillPlanning(id: string): Promise<void> {
     return (await loadMockService()).deleteSkillPlanning(id);
   }
 
-  await skillBaseService.deleteSkillPlanning(id);
+  await skillBaseService.deleteSkillPlanning({ id });
 }
 
 export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
@@ -235,7 +212,7 @@ export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
     return (await loadMockService()).batchDeleteSkillPlanning(ids);
   }
 
-  const response = await skillBaseService.batchDeleteSkillPlanning({ ids });
+  const response = await skillBaseService.batchDeleteSkillPlanning(ids);
   return normalizeHttpCount(response);
 }
 

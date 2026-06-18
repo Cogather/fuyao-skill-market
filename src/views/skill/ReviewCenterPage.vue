@@ -116,45 +116,34 @@ const activeReviewDetailTab = ref<ReviewDetailTab>('AI评审');
 const maxAiReviewScore = 100;
 const aiReviewDimensions = [
   {
-    key: 'T',
-    name: 'Trust',
+    key: 'D1',
     label: '技能边界完整性',
-    score: 90,
     tone: 'green',
-    summary:
-      '双实验室交叉验证，未发现 P0/P1 级安全风险，文档全量英文可读；建议补齐中文说明和权限边界。',
+    max_score: 20,
   },
   {
-    key: 'R',
-    name: 'Reliability',
+    key: 'D2',
     label: '接口规范完整性',
-    score: 92,
     tone: 'blue',
-    summary: '核心流程稳定，异常输入与失败恢复路径描述较完整，能给新手明确的问题定位与修复指引。',
+    max_score: 30,
   },
   {
-    key: 'A',
-    name: 'Adaptability',
+    key: 'D3',
     label: '异常与边界处理',
-    score: 90,
     tone: 'amber',
-    summary: '适用场景、触发条件和不适用范围较清晰，支持自动提醒与手动记录两类使用方式。',
+    max_score: 20,
   },
   {
-    key: 'C',
-    name: 'Convention',
+    key: 'D4',
     label: '规则一致性',
-    score: 88,
     tone: 'purple',
-    summary: '目录结构清晰，模板示例丰富；主文档略密，新用户仍需要更明确的避坑指南。',
+    max_score: 10,
   },
   {
-    key: 'E',
-    name: 'Effectiveness',
+    key: 'D5',
     label: '安全与权限约束',
-    score: 94,
     tone: 'red',
-    summary: '能把可复用经验沉淀成稳定流程，对减少重复踩坑、沉淀团队知识有直接帮助。',
+    max_score: 20,
   },
 ];
 
@@ -318,11 +307,7 @@ function applyExpertReviewDetail(detail?: SkillExpertReviewDetailDto | null): vo
   }
 }
 
-async function loadExpertReviewMeta(force = false): Promise<void> {
-  if (expertReviewMetaLoaded.value && !force) {
-    return;
-  }
-
+async function loadExpertReviewMeta(taskId: string): Promise<void> {
   const [dimensionRes, badgeRes] = await Promise.all([
     skillBaseService.getExpertReviewDimension(),
     skillBaseService.getReviewBadges(),
@@ -338,6 +323,12 @@ async function loadExpertReviewMeta(force = false): Promise<void> {
   expertReviewDimensions.value = dimensionRes.data;
   badgeOptions.value = badgeRes.data;
   expertReviewMetaLoaded.value = true;
+
+  await skillBaseService.getReviewHistory(taskId).then((res) => {
+    if (res?.meta?.success && res?.data) {
+      reviewHistoryRecords.value = res.data;
+    }
+  })
 }
 
 function applyReviewCenterShellData(data: ReviewCenterData): void {
@@ -358,7 +349,7 @@ function applyReviewCenterShellData(data: ReviewCenterData): void {
   selectedGreenChannel.value = greenChannelOptions.value[0] ?? '';
 
   overallReviewDimension.value = data.overallReviewDimension;
-  reviewHistoryRecords.value = data.reviewHistoryRecords;
+  // reviewHistoryRecords.value = data.reviewHistoryRecords;
 }
 
 function clearActiveTaskReviewContext(): void {
@@ -387,6 +378,25 @@ function normalizeReviewTaskTags(value: unknown): string {
     .map((item) => item.trim())
     .filter(Boolean)
     .join(',');
+}
+
+function reviewTaskTagList(task: Pick<ReviewTaskCard, 'tags'>): string[] {
+  return String(task.tags ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function reviewTaskVisibleTags(task: Pick<ReviewTaskCard, 'tags'>): string[] {
+  return reviewTaskTagList(task).slice(0, 2);
+}
+
+function reviewTaskHiddenTags(task: Pick<ReviewTaskCard, 'tags'>): string[] {
+  return reviewTaskTagList(task).slice(2);
+}
+
+function reviewTaskHiddenTagText(task: Pick<ReviewTaskCard, 'tags'>): string {
+  return reviewTaskHiddenTags(task).join('、');
 }
 
 function normalizeReviewTaskCard(task: unknown, fallbackIndex: number): ReviewTaskCard {
@@ -567,7 +577,7 @@ async function syncSelectedTaskAfterListChange(previousSelectedTaskId: string): 
   }
 
   if (shouldReloadDetail) {
-    await loadActiveTaskReviewContext(nextSelectedTaskId);
+    await loadActiveTaskReviewContext(nextSelectedTaskId, taskCards.find((task) => task.skillId === nextSelectedTaskId).version);
   }
 }
 
@@ -712,13 +722,18 @@ function radarLabelTransform(index: number, total: number): string {
 
 const aiReviewRadarGrid = computed(() => [0.25, 0.5, 0.75, 1].map(buildRadarPoints));
 const aiReviewRadarPoints = computed(() =>
-  aiReviewDimensions
+  const dimensionArr = selectedSkillDetail.value.aiScore?.dimensionScores
+    ? [...selectedSkillDetail.value?.aiScore?.dimensionScores]
+    : [];
+  return (
+    dimensionArr
     .map((dimension, index) => {
-      const scale = dimension.score / maxAiReviewScore;
+      const scale = dimension.score / aiReviewDimensions[index]?.max_score;
       const point = buildRadarPoint(index, aiReviewDimensions.length, 34 * scale);
       return `${point.x},${point.y}`;
     })
-    .join(' '),
+    .join(' ') ?? []
+  );
 );
 const aiReviewRadarAxes = computed<RadarAxis[]>(() =>
   aiReviewDimensions.map((dimension, index) => ({
@@ -734,25 +749,6 @@ const aiReviewRadarLabels = computed<RadarLabel[]>(() =>
     ...buildRadarPoint(index, aiReviewDimensions.length, 43),
   })),
 );
-const aiReviewOverallScore = computed(() => {
-  if (aiReviewDimensions.length === 0) {
-    return '0';
-  }
-
-  const total = aiReviewDimensions.reduce((sum, dimension) => sum + dimension.score, 0);
-  const score = Math.round((total / aiReviewDimensions.length) * 10) / 10;
-  return Number.isInteger(score) ? String(score) : score.toFixed(1);
-});
-const aiReviewDimensionDescription = computed(() => {
-  const dimensionText = aiReviewDimensions
-    .map((dimension) => `${dimension.label}（${dimension.name}）`)
-    .join('、');
-  return `SkillHub TRACE 评测体系当前包含 ${aiReviewDimensions.length} 个维度：${dimensionText}，用于评估 Skill 质量。当前结果为 AI 自动化检测 mock 数据，仅供专家评审前参考。`;
-});
-const aiReviewOverallSummary = computed(() => {
-  const skillName = activeTask.value?.name ?? '该 Skill';
-  return `${skillName} 的功能边界和使用流程比较完整，质量良好。主要优点是文档详细、使用灵活、支持多种 AI 工具协作；不足是部分辅助脚本仍偏简单，说明文本可以再贴近中文用户。`;
-});
 
 function formatOverallScore(score: number): string {
   const rounded = Math.round(score * 100) / 100;
@@ -763,100 +759,29 @@ function formatOverallScore(score: number): string {
   return rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function historyRecordVersion(record: ReviewHistoryRecord, index: number): string {
-  return record.reviewVersion ?? `v${Math.max(1, reviewHistoryRecords.value.length - index)}.0`;
-}
-
 const reviewVersionHistoryGroups = computed<ReviewVersionHistoryGroup[]>(() => {
-  const groups: ReviewVersionHistoryGroup[] = [];
-  const groupMap = new Map<string, ReviewVersionHistoryGroup>();
+  let groupMap = new Map<string, ReviewVersionHistoryGroup>();
 
-  reviewHistoryRecords.value.forEach((record, index) => {
-    const version = historyRecordVersion(record, index);
+  reviewHistoryRecords.value?.versionDetails?.forEach((record, index) => {
+    const version = record.version;
     let group = groupMap.get(version);
 
     if (!group) {
-      group = { version, records: [] };
-      groupMap.set(version, group);
-      groups.push(group);
+      groupMap.set(version, record);
     }
-
-    group.records.push(record);
   });
 
-  return groups;
-});
-
-function historyRecordType(record: ReviewHistoryRecord): string {
-  if (record.reviewType) {
-    return record.reviewType;
-  }
-
-  return record.reviewer.toLowerCase().includes('ai') ? 'AI评审' : '专家评审';
-}
-
-function historyRecordScores(record: ReviewHistoryRecord): string {
-  return record.scores.map((score) => `${score.dimension} ${score.score}分`).join(' / ');
-}
-
-function historyRecordMedals(record: ReviewHistoryRecord): string {
-  return record.medals.length ? record.medals.join('、') : '未获得';
-}
-
-function historyRecordTotalScore(record: ReviewHistoryRecord): string {
-  if (record.totalScore != null) {
-    return formatOverallScore(record.totalScore);
-  }
-
-  const totalScore = record.scores.find(
-    (score) => score.dimension === overallReviewDimension.value || score.dimension.includes('总体'),
-  )?.score;
-  if (totalScore != null) {
-    return formatOverallScore(totalScore);
-  }
-
-  if (!record.scores.length) {
-    return '—';
-  }
-
-  const average =
-    record.scores.reduce((scoreTotal, score) => scoreTotal + score.score, 0) / record.scores.length;
-  return formatOverallScore(average);
-}
-
-const expertReviewTotalScore = computed(() => {
-  if (expertDimensionForms.length === 0) {
-    return null;
-  }
-
-  let total = 0;
-  let hasScore = false;
-  expertDimensionForms.forEach((dimension) => {
-    const score = parseReviewScore(dimension.scoreText);
-    if (score == null) {
-      return;
-    }
-    hasScore = true;
-    total += score * dimension.weight;
-  });
-
-  return hasScore ? roundToTwo(total) : null;
+  return Array.from(groupMap);
 });
 
 const expertReviewTotalScoreText = computed(() => {
-  return expertReviewTotalScore.value == null
-    ? '待评'
-    : formatFixedTwo(expertReviewTotalScore.value);
+  return selectedSkillDetail.value?.currentUserReview
+    ? (selectedSkillDetail.value.currentUserReview?.overallScore ?? 0)
+    : '待评';
 });
 
 const expertReviewStatusText = computed(() => {
-  if (expertReviewStatus.value === 'submitted') {
-    return '已提交';
-  }
-  if (expertReviewStatus.value === 'draft') {
-    return '草稿中';
-  }
-  return '待评';
+  return selectedSkillDetail.value?.currentUserReview ? '已评' : '待评';
 });
 
 function currentTaskReviewId(): string {
@@ -884,34 +809,6 @@ function toggleReviewBadge(badgeId: string): void {
   if (selectedReviewBadgeIds.value.length === 0 || selectedReviewBadgeReason.value.trim()) {
     selectedReviewBadgeReasonError.value = '';
   }
-}
-
-function buildExpertReviewDraftPayload() {
-  const badgeIds = [...selectedReviewBadgeIds.value];
-  const badgeReason = badgeIds.length > 0 ? selectedReviewBadgeReason.value.trim() : '';
-  const overallOpinion = expertOverallOpinion.value.trim();
-  return {
-    reviewId: currentTaskReviewId(),
-    totalScore: expertReviewTotalScore.value,
-    dimensionScores: expertDimensionForms.flatMap((dimension) => {
-      const score = parseReviewScore(dimension.scoreText);
-      const reason = dimension.reason.trim();
-      if (score == null && !reason) {
-        return [];
-      }
-
-      return [
-        {
-          dimensionId: dimension.dimensionId,
-          ...(score != null ? { score } : {}),
-          ...(reason ? { reason } : {}),
-        },
-      ];
-    }),
-    badgeIds,
-    ...(badgeReason ? { badgeReason } : {}),
-    overallOpinion,
-  };
 }
 
 function validateExpertReviewSubmission(): boolean {
@@ -978,7 +875,7 @@ function buildExpertReviewSubmitPayload() {
   const badgeReason = badgeIds.length > 0 ? selectedReviewBadgeReason.value.trim() : '';
   return {
     userId: props.userId,
-    version: '0.0.1', // 暂时先写死
+    version: selectedSkillDetail.value.skillInfo.version,
     dimensions: expertDimensionForms.map((dimension) => ({
       dimensionId: dimension.dimensionId,
       score: parseReviewScore(dimension.scoreText) ?? 0,
@@ -1036,7 +933,7 @@ async function loadActiveTaskReviewContext(taskId: string, version: string): Pro
 
   expertReviewLoading.value = true;
   try {
-    await loadExpertReviewMeta();
+    await loadExpertReviewMeta(taskId);
     const skillDetailRes = await skillBaseService.getSkillReviewDetail(taskId, {
       userId: props.userId,
       version: version,
@@ -1045,12 +942,6 @@ async function loadActiveTaskReviewContext(taskId: string, version: string): Pro
       throw new Error(serviceMessage(skillDetailRes, '评审详情加载失败'));
     }
     selectedSkillDetail.value = skillDetailRes.data;
-    if (!selectedSkillDetail.value?.aiScore) {
-      // 判断到没有AI评分，就去触发AI评审
-      await skillBaseService.refreshAIReview().then((res) => {
-        console.log('触发AI评审res', res);
-      });
-    }
     applyExpertReviewDetail(skillDetailRes.data as SkillExpertReviewDetailDto);
   } catch (e) {
     selectedSkillDetail.value = {};
@@ -1064,31 +955,6 @@ async function loadActiveTaskReviewContext(taskId: string, version: string): Pro
 async function selectTask(task: any) {
   selectedTaskId.value = task.skillId;
   await loadActiveTaskReviewContext(task.skillId, task.version);
-}
-
-async function saveExpertReviewDraft(): Promise<void> {
-  // if (!activeTask.value || expertReviewLoading.value || expertReviewSaving.value) {
-  //   return;
-  // }
-  // expertReviewSaving.value = true;
-  // resetExpertReviewErrors();
-  // try {
-  //   const response = await skillBaseService.saveExpertReviewDraft(
-  //     activeTask.value.skillId,
-  //     buildExpertReviewDraftPayload(),
-  //   );
-  //   if (!serviceSucceeded(response) || !response?.data) {
-  //     showToast(serviceMessage(response, '草稿保存失败'));
-  //     return;
-  //   }
-  //   selectedSkillDetail.value = response.data;
-  //   applyExpertReviewDetail(response.data as SkillExpertReviewDetailDto);
-  //   showToast('已保存草稿');
-  // } catch (e) {
-  //   showToast(e instanceof Error ? e.message : '草稿保存失败');
-  // } finally {
-  //   expertReviewSaving.value = false;
-  // }
 }
 
 async function submitExpertReview(): Promise<void> {
@@ -1149,14 +1015,6 @@ const isMedalAwardFormValid = computed(() => {
     awardMedalReason.value.trim().length > 0
   );
 });
-
-function openMedalAwardModal() {
-  skillSearchQuery.value = '';
-  selectedAwardSkillId.value = selectedTaskId.value || taskCards[0]?.skillId || '';
-  selectedAwardMedalTypes.value = [];
-  awardMedalReason.value = '';
-  isMedalAwardModalOpen.value = true;
-}
 
 function closeMedalAwardModal() {
   isMedalAwardModalOpen.value = false;
@@ -1413,6 +1271,14 @@ function syncReviewListFilterObj() {
   return { ...nextParams };
 }
 
+const dimensionField = ref({
+  D1: '技能边界完整性',
+  D2: '接口规范完整性',
+  D3: '异常与边界处理',
+  D4: '规范一致性',
+  D5: '安全与权限约束',
+})
+
 const isExpertReviewer = ref(false);
 const checkExpert = async () => {
   await skillBaseService.isReviewer({ userId: props.userId ?? '' }).then((res: any) => {
@@ -1642,10 +1508,35 @@ onBeforeUnmount(() => {
                 <div class="task-card__meta">{{ task.ownerUser }} · {{ task.departmentL6 }}</div>
                 <div class="task-card__tags">
                   <span
-                    v-for="tag in task.tags ? task.tags.split(',').filter(Boolean) : []"
+                    v-for="tag in reviewTaskVisibleTags(task)"
                     :key="tag"
+                    class="task-card__tag"
                   >
                     {{ tag }}
+                  </span>
+                  <span
+                    v-if="reviewTaskHiddenTags(task).length > 0"
+                    class="task-card__tag-more-wrap"
+                  >
+                    <button
+                      type="button"
+                      class="task-card__tag task-card__tag--more"
+                      :aria-label="`更多标签：${reviewTaskHiddenTagText(task)}`"
+                      @click.stop.prevent
+                      @keydown.enter.stop.prevent
+                      @keydown.space.stop.prevent
+                    >
+                      +{{ reviewTaskHiddenTags(task).length }}
+                    </button>
+                    <span class="task-card__tag-tooltip" role="tooltip">
+                      <span
+                        v-for="tag in reviewTaskHiddenTags(task)"
+                        :key="`${task.skillId}-${tag}`"
+                        class="task-card__tag task-card__tag--tooltip"
+                      >
+                        {{ tag }}
+                      </span>
+                    </span>
                   </span>
                 </div>
               </article>
@@ -1741,32 +1632,48 @@ onBeforeUnmount(() => {
                     <strong>{{ selectedSkillDetail?.aiScore?.aiScore ?? '暂无评分' }}</strong>
                     <span>/ 100</span>
                   </div>
-                  <em>20-30-20-10-20</em>
-                  <p>{{ aiReviewOverallSummary }}</p>
+                  <em>{{
+                    selectedSkillDetail?.aiScore?.dimensionScores
+                      .map((item) => item.score)
+                      .join('-')
+                  }}</em>
+                  <p>
+                    {{
+                      'SKILL.md文件中' + selectedSkillDetail?.aiScore?.advices?.['SKILL.md'] ??
+                      '' +
+                        ' references: ' +
+                        selectedSkillDetail?.aiScore?.advices?.['references'] ??
+                      '' + ' scripts: ' + selectedSkillDetail?.aiScore?.advices?.['scripts'] ??
+                      ''
+                    }}
+                  </p>
                 </div>
               </div>
 
               <div class="ai-review-detail-card">
                 <h2>评测详情</h2>
                 <article
-                  v-for="dimension in aiReviewDimensions"
-                  :key="dimension.key"
-                  :class="['ai-dimension-row', `is-${dimension.tone}`]"
+                  v-for="(dimension, index) in selectedSkillDetail?.aiScore?.dimensionScores ?? []"
+                  :key="dimension.dimensionId"
+                  :class="['ai-dimension-row', `is-${aiReviewDimensions[index].tone}`]"
                 >
                   <div class="ai-dimension-row__header">
-                    <span class="ai-dimension-row__icon">{{ dimension.key }}</span>
-                    <strong>{{ dimension.key }} · {{ dimension.name }}</strong>
-                    <em>{{ dimension.label }}</em>
+                    <span class="ai-dimension-row__icon">{{ index + 1 }}</span>
+                    <strong>{{ aiReviewDimensions[index].label }}</strong>
                   </div>
                   <div class="ai-dimension-row__score">
                     <div class="ai-dimension-row__bar">
                       <span
-                        :style="{ width: `${(dimension.score / maxAiReviewScore) * 100}%` }"
+                        :style="{
+                          width: `${(dimension.score / aiReviewDimensions[index].max_score) * 100}%`,
+                        }"
                       ></span>
                     </div>
-                    <strong>{{ dimension.score }} / 100</strong>
+                    <strong
+                      >{{ dimension.score }} / {{ aiReviewDimensions[index].max_score }}</strong
+                    >
                   </div>
-                  <p>{{ dimension.summary }}</p>
+                  <p>{{ dimension.deductionBreakdown }}</p>
                 </article>
               </div>
             </section>
@@ -1790,16 +1697,6 @@ onBeforeUnmount(() => {
                     @click="isVersionHistoryModalOpen = true"
                   >
                     历史版本评审记录
-                  </button>
-                  <button type="button" @click="isHistoryModalOpen = true">历史评审记录</button>
-                  <button
-                    v-if="false"
-                    type="button"
-                    class="expert-review__action-btn--draft"
-                    :disabled="expertReviewLoading || expertReviewSaving"
-                    @click="saveExpertReviewDraft"
-                  >
-                    {{ expertReviewSaving ? '保存中...' : '保存草稿' }}
                   </button>
                   <button
                     type="button"
@@ -1832,11 +1729,11 @@ onBeforeUnmount(() => {
                         <dt>评审状态</dt>
                         <dd>{{ expertReviewStatusText }}</dd>
                       </div>
-                      <div>
+                      <div v-if="false">
                         <dt>评审单号</dt>
                         <dd>{{ currentTaskReviewId() || '—' }}</dd>
                       </div>
-                      <div>
+                      <div v-if="false">
                         <dt>最近保存</dt>
                         <dd>{{ expertReviewUpdatedAt || '未保存' }}</dd>
                       </div>
@@ -1909,7 +1806,7 @@ onBeforeUnmount(() => {
                       <span class="expert-field__label">整体评审意见</span>
                       <textarea
                         v-model="expertOverallOpinion"
-                        placeholder="请从整体价值、成熟度、推广建议等角度填写本次专家评审意见"
+                        placeholder="请从整体角度填写本次专家评审意见"
                         @input="expertOverallOpinionError = ''"
                       ></textarea>
                       <span class="expert-field__hint">
@@ -2196,74 +2093,6 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <div
-      v-if="isHistoryModalOpen"
-      class="history-modal-overlay"
-      role="presentation"
-      @click.self="isHistoryModalOpen = false"
-    >
-      <section
-        class="history-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="history-modal-title"
-      >
-        <header class="history-modal__header">
-          <div>
-            <p>历史评审记录</p>
-            <h2 id="history-modal-title">{{ activeTask?.name ?? 'Skill' }}</h2>
-          </div>
-          <button
-            class="history-modal__close"
-            type="button"
-            aria-label="关闭历史评审记录"
-            @click="isHistoryModalOpen = false"
-          >
-            关闭
-          </button>
-        </header>
-
-        <div class="history-modal__table-wrap">
-          <table class="history-table">
-            <thead>
-              <tr>
-                <th>评审版本号</th>
-                <th>评审时间</th>
-                <th>评审人</th>
-                <th>各维度评分</th>
-                <th>获得的勋章类型</th>
-                <th>总分</th>
-                <th>整体评审意见</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(record, index) in reviewHistoryRecords" :key="record.id">
-                <td>
-                  <strong class="history-version">{{ historyRecordVersion(record, index) }}</strong>
-                </td>
-                <td class="history-time">{{ record.reviewedAt }}</td>
-                <td>
-                  <div class="history-reviewer-cell">
-                    <strong>{{ record.reviewer }}</strong>
-                    <span>{{ historyRecordType(record) }}</span>
-                  </div>
-                </td>
-                <td class="history-dimension-scores">{{ historyRecordScores(record) }}</td>
-                <td>{{ historyRecordMedals(record) }}</td>
-                <td>
-                  <strong class="history-total-score">{{ historyRecordTotalScore(record) }}</strong>
-                </td>
-                <td class="history-summary-cell">{{ record.summary }}</td>
-              </tr>
-              <tr v-if="reviewHistoryRecords.length === 0">
-                <td colspan="7" class="history-empty-cell">暂无历史评审记录</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <div
       v-if="isVersionHistoryModalOpen"
       class="history-modal-overlay"
       role="presentation"
@@ -2297,12 +2126,17 @@ onBeforeUnmount(() => {
 
           <section
             v-for="group in reviewVersionHistoryGroups"
-            :key="group.version"
+            :key="group[0]"
             class="version-history-group"
           >
             <div class="version-history-group__header">
-              <h3>{{ group.version }}</h3>
-              <span>{{ group.records.length }} 条记录</span>
+              <h3>{{ group[0] }}</h3>
+              <span
+                >{{
+                  parseInt(group[1]?.expertReviews?.length + (group[1]?.aiScore?.aiModel ? 1 : 0))
+                }}
+                条记录</span
+              >
             </div>
             <table class="version-history-table">
               <thead>
@@ -2316,22 +2150,61 @@ onBeforeUnmount(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="record in group.records" :key="record.id">
+                <tr>
                   <td>
                     <div class="history-reviewer-cell">
-                      <strong>{{ record.reviewer }}</strong>
-                      <span>{{ historyRecordType(record) }}</span>
+                      <strong>{{ group[1].aiScore.aiModel }}</strong>
+                      <span>AI评审</span>
                     </div>
                   </td>
-                  <td class="history-time">{{ record.reviewedAt }}</td>
-                  <td class="history-dimension-scores">{{ historyRecordScores(record) }}</td>
-                  <td>{{ historyRecordMedals(record) }}</td>
-                  <td>
-                    <strong class="history-total-score">{{
-                      historyRecordTotalScore(record)
-                    }}</strong>
+                  <td class="history-time">{{ group[1].aiScore.evaluateTime }}</td>
+                  <td class="history-dimension-scores">
+                    <pre>{{
+                      group[1].aiScore.dimensionScores.reduce(
+                        (pre, curr) =>
+                          pre +
+                          `${dimensionField[currentReviewMonth.dimensionId]}维度得分: ${curr.score} \n`,
+                        '',
+                      )
+                    }}</pre>
                   </td>
-                  <td class="history-summary-cell">{{ record.summary }}</td>
+                  <td>-</td>
+                  <td>
+                    <strong class="history-total-score">{{ group[1].aiScore.aiScore }}</strong>
+                  </td>
+                  <td class="history-summary-cell">
+                    <pre>{{
+                      `SKILL.md: ${group[1].aiScore.advices['SKILL.md']}\nreferences: ${group[1].aiScore.advices['references']}\nscripts:${group[1].aiScore.advices['scripts']}`
+                    }}</pre>
+                  </td>
+                </tr>
+                <tr v-for="(expertReview, index) in group[1].expertReviews" :key="index">
+                  <td>
+                    <div class="history-reviewer-cell">
+                      <strong>{{ expertReview.expertUserId }}</strong>
+                      <span>专家评审</span>
+                    </div>
+                  </td>
+                  <td class="history-time">{{ expertReview.reviewedAt }}</td>
+                  <td class="history-dimension-scores">
+                    <pre>{{
+                      expertReview.dimension.reduce(
+                        (pre, curr) =>
+                          pre +
+                          `${expertReviewDimensions.find((iter) => iter.dimensionId === currentReviewMonth.dimensionId)?.name ?? ''}维度得分: ${curr.score} \n`,
+                        '',
+                      )
+                    }}</pre>
+                  </td>
+                  <td>
+                    <pre>{{
+                      expertReview.badges.badgeIds?.split(',')?.join('\n') ?? '未授予勋章'
+                    }}</pre>
+                  </td>
+                  <td>
+                    <strong class="history-total-score">{{ expertReview.overallScore }}</strong>
+                  </td>
+                  <td class="history-summary-cell">{{ expertReview.reviewComment }}</td>
                 </tr>
               </tbody>
             </table>
@@ -3223,13 +3096,51 @@ th {
   margin-top: 12px;
 }
 
-.task-card__tags span {
+.task-card__tag {
+  display: inline-flex;
+  align-items: center;
   padding: 4px 8px;
   border-radius: 7px;
   background: #f1f5f9;
   color: #475569;
   font-size: 12px;
   font-weight: 800;
+}
+
+.task-card__tag-more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.task-card__tag--more {
+  border: 0;
+  cursor: default;
+}
+
+.task-card__tag-tooltip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: max-content;
+  max-width: 220px;
+  padding: 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.14);
+}
+
+.task-card__tag-more-wrap:hover .task-card__tag-tooltip,
+.task-card__tag-more-wrap:focus-within .task-card__tag-tooltip {
+  display: inline-flex;
+}
+
+.task-card__tag--tooltip {
+  white-space: nowrap;
 }
 
 .skill-detail {
