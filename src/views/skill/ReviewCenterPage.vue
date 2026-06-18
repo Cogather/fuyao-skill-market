@@ -87,15 +87,12 @@ const expertReviewStatus = ref<'pending' | 'draft' | 'submitted'>('pending');
 const expertReviewUpdatedAt = ref('');
 const expertReviewMetaLoaded = ref(false);
 const expertReviewLoading = ref(false);
-const expertReviewSaving = ref(false);
 const expertReviewSubmitting = ref(false);
 const toast = ref('');
 let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
-const isHistoryModalOpen = ref(false);
 const isVersionHistoryModalOpen = ref(false);
 const greenChannelOptions = ref<string[]>([]);
 const selectedGreenChannel = ref(greenChannelOptions.value[0] ?? '');
-const isGreenChannelSelectOpen = ref(false);
 const overallReviewDimension = ref('');
 const reviewHistoryRecords = ref<ReviewHistoryRecord[]>([]);
 const reviewDetailTabs = ['AI评审', '专家评审'] as const;
@@ -328,7 +325,7 @@ async function loadExpertReviewMeta(taskId: string): Promise<void> {
     if (res?.meta?.success && res?.data) {
       reviewHistoryRecords.value = res.data;
     }
-  })
+  });
 }
 
 function applyReviewCenterShellData(data: ReviewCenterData): void {
@@ -378,81 +375,6 @@ function normalizeReviewTaskTags(value: unknown): string {
     .map((item) => item.trim())
     .filter(Boolean)
     .join(',');
-}
-
-function reviewTaskTagList(task: Pick<ReviewTaskCard, 'tags'>): string[] {
-  return String(task.tags ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function reviewTaskVisibleTags(task: Pick<ReviewTaskCard, 'tags'>): string[] {
-  return reviewTaskTagList(task).slice(0, 2);
-}
-
-function reviewTaskHiddenTags(task: Pick<ReviewTaskCard, 'tags'>): string[] {
-  return reviewTaskTagList(task).slice(2);
-}
-
-function reviewTaskHiddenTagText(task: Pick<ReviewTaskCard, 'tags'>): string {
-  return reviewTaskHiddenTags(task).join('、');
-}
-
-function normalizeReviewTaskCard(task: unknown, fallbackIndex: number): ReviewTaskCard {
-  const record = readRecord(task);
-  const skillId = String(record.skillId ?? record.id ?? `review-skill-${fallbackIndex}`);
-  const name = String(record.name ?? record.skillName ?? skillId);
-  const owner = String(
-    record.owner ?? record.ownerName ?? record.ownerUser ?? record.createdBy ?? '',
-  );
-  const ownerUser = String(record.ownerUser ?? record.ownerName ?? record.owner ?? owner);
-  const department = String(
-    record.DepartmentL6 ??
-      record.departmentL6 ??
-      record.team ??
-      record.department ??
-      record.deptName ??
-      '',
-  );
-  const rawScore = Number(record.overallScore ?? record.totalScore ?? record.expertScore);
-  const statusText = String(record.reviewStatus ?? record.status ?? '')
-    .trim()
-    .toLowerCase();
-  const hasReviewed =
-    typeof record.hasReviewed === 'boolean'
-      ? record.hasReviewed
-      : Number.isFinite(rawScore) ||
-        ['submitted', 'reviewed', 'done', 'completed', 'approved', '已审批', '已评审'].includes(
-          statusText,
-        );
-  const overallScore = hasReviewed && Number.isFinite(rawScore) ? roundToTwo(rawScore) : null;
-
-  return {
-    id: String(record.id ?? skillId),
-    skillId,
-    name,
-    owner,
-    ownerName: String(record.ownerName ?? owner),
-    ownerUser,
-    team: department,
-    DepartmentL6: department,
-    tags: normalizeReviewTaskTags(record.tags),
-    usage: String(record.usage ?? record.useCount ?? ''),
-    downloads: String(record.downloads ?? record.downloadCount ?? 0),
-    expertScore:
-      typeof record.expertScore === 'string' && record.expertScore.trim()
-        ? record.expertScore.trim()
-        : overallScore != null
-          ? formatOverallScore(overallScore)
-          : '待评',
-    hasReviewed,
-    overallScore,
-    dimensionId: String(record.dimensionId ?? record.businessDimensionId ?? ''),
-    dimensionName: String(record.dimensionName ?? record.businessDimensionName ?? ''),
-    categoryId: String(record.categoryId ?? record.businessCategoryId ?? ''),
-    categoryName: String(record.categoryName ?? record.businessCategoryName ?? ''),
-  };
 }
 
 function replaceReviewTasks(list: ReviewTaskCard[]): void {
@@ -577,7 +499,10 @@ async function syncSelectedTaskAfterListChange(previousSelectedTaskId: string): 
   }
 
   if (shouldReloadDetail) {
-    await loadActiveTaskReviewContext(nextSelectedTaskId, taskCards.find((task) => task.skillId === nextSelectedTaskId).version);
+    await loadActiveTaskReviewContext(
+      nextSelectedTaskId,
+      taskCards.find((task) => task.skillId === nextSelectedTaskId).version,
+    );
   }
 }
 
@@ -721,20 +646,20 @@ function radarLabelTransform(index: number, total: number): string {
 }
 
 const aiReviewRadarGrid = computed(() => [0.25, 0.5, 0.75, 1].map(buildRadarPoints));
-const aiReviewRadarPoints = computed(() =>
+const aiReviewRadarPoints = computed(() => {
   const dimensionArr = selectedSkillDetail.value.aiScore?.dimensionScores
     ? [...selectedSkillDetail.value?.aiScore?.dimensionScores]
     : [];
   return (
     dimensionArr
-    .map((dimension, index) => {
-      const scale = dimension.score / aiReviewDimensions[index]?.max_score;
-      const point = buildRadarPoint(index, aiReviewDimensions.length, 34 * scale);
-      return `${point.x},${point.y}`;
-    })
-    .join(' ') ?? []
+      .map((dimension, index) => {
+        const scale = dimension.score / aiReviewDimensions[index]?.max_score;
+        const point = buildRadarPoint(index, aiReviewDimensions.length, 34 * scale);
+        return `${point.x},${point.y}`;
+      })
+      .join(' ') ?? []
   );
-);
+});
 const aiReviewRadarAxes = computed<RadarAxis[]>(() =>
   aiReviewDimensions.map((dimension, index) => ({
     key: dimension.key,
@@ -1059,14 +984,6 @@ const isComputeChannelFormValid = computed(() => {
   );
 });
 
-function openComputeChannelModal() {
-  computeSkillSearchQuery.value = '';
-  selectedComputeSkillId.value = selectedTaskId.value || taskCards[0]?.skillId || '';
-  selectedComputeChannelType.value = computeChannelTypes.value[0] ?? '';
-  computeChannelReason.value = '';
-  isComputeChannelModalOpen.value = true;
-}
-
 function closeComputeChannelModal() {
   isComputeChannelModalOpen.value = false;
 }
@@ -1275,9 +1192,9 @@ const dimensionField = ref({
   D1: '技能边界完整性',
   D2: '接口规范完整性',
   D3: '异常与边界处理',
-  D4: '规范一致性',
+  D4: '规则一致性',
   D5: '安全与权限约束',
-})
+});
 
 const isExpertReviewer = ref(false);
 const checkExpert = async () => {
@@ -2162,8 +2079,7 @@ onBeforeUnmount(() => {
                     <pre>{{
                       group[1].aiScore.dimensionScores.reduce(
                         (pre, curr) =>
-                          pre +
-                          `${dimensionField[currentReviewMonth.dimensionId]}维度得分: ${curr.score} \n`,
+                          pre + `${dimensionField[curr.dimensionId]}维度得分: ${curr.score} \n`,
                         '',
                       )
                     }}</pre>
@@ -2188,10 +2104,10 @@ onBeforeUnmount(() => {
                   <td class="history-time">{{ expertReview.reviewedAt }}</td>
                   <td class="history-dimension-scores">
                     <pre>{{
-                      expertReview.dimension.reduce(
+                      expertReview.dimensions.reduce(
                         (pre, curr) =>
                           pre +
-                          `${expertReviewDimensions.find((iter) => iter.dimensionId === currentReviewMonth.dimensionId)?.name ?? ''}维度得分: ${curr.score} \n`,
+                          `${expertReviewDimensions.find((iter) => iter.dimensionId === curr.dimensionId)?.name ?? ''}维度得分: ${curr.score} \n`,
                         '',
                       )
                     }}</pre>

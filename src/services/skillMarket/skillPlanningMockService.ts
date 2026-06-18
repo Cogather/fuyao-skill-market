@@ -247,7 +247,7 @@ export async function getPlanningOption(): Promise<SkillPlanningFilterOptions> {
   };
 }
 
-export async function guerySkillConfig(
+export async function querySkillConfig(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   const pageNum = Math.max(1, Number(query.pageNum ?? 1));
