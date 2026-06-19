@@ -5,6 +5,7 @@ import {
   batchDeleteSkillPlanning,
   createSkillPlanning,
   deleteSkillPlanning,
+  downloadSkillPlanningTemplate,
   exportSkillPlanningToExcel,
   importSkillPlanningFromExcel,
   querySkillPlanningFilterOptions,
@@ -123,6 +124,7 @@ const importInputRef = ref<HTMLInputElement | null>(null);
 const importDialogOpen = ref(false);
 const importDragging = ref(false);
 const importSubmitting = ref(false);
+const templateDownloadPending = ref(false);
 const selectedImportFile = ref<File | null>(null);
 const importError = ref('');
 const toast = ref('');
@@ -518,6 +520,28 @@ function handleImportFile(event: Event) {
 function handleImportDrop(event: DragEvent) {
   importDragging.value = false;
   selectImportFile(event.dataTransfer?.files?.[0]);
+}
+
+async function handleDownloadImportTemplate() {
+  if (templateDownloadPending.value) {
+    return;
+  }
+
+  try {
+    templateDownloadPending.value = true;
+    const downloadUrl = await downloadSkillPlanningTemplate();
+    if (typeof downloadUrl === 'string' && downloadUrl.trim()) {
+      const openedWindow = window.open(downloadUrl, '_blank', 'noopener');
+      if (!openedWindow) {
+        window.location.href = downloadUrl;
+      }
+    }
+    showToast('已开始下载导入模板');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '导入模板下载失败，请稍后重试');
+  } finally {
+    templateDownloadPending.value = false;
+  }
 }
 
 async function submitImportFile() {
@@ -1362,15 +1386,23 @@ onBeforeUnmount(() => {
 
             <p v-if="importError" class="import-dialog__error">{{ importError }}</p>
 
-            <div class="import-dialog__tips">
-              <div>
-                <strong>字段校验</strong>
-                <span>表头需与规划清单字段保持一致，缺失字段会在导入前提示。</span>
-              </div>
-              <div>
-                <strong>支持字段</strong>
-                <span>一级场景、二级场景、归属活动、归属子活动、Skill 名称、Skill 说明等。</span>
-              </div>
+            <div class="import-dialog__template">
+              <button
+                type="button"
+                class="import-template-link"
+                :disabled="templateDownloadPending"
+                @click="handleDownloadImportTemplate"
+              >
+                <span class="import-template-link__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 4v10m0 0 4-4m-4 4-4-4" />
+                    <path d="M5 18h14" />
+                  </svg>
+                </span>
+                <span>{{
+                  templateDownloadPending ? '下载导入模板中...' : '下载导入模板'
+                }}</span>
+              </button>
             </div>
           </div>
 
@@ -2364,31 +2396,52 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
-.import-dialog__tips {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.import-dialog__template {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
 }
 
-.import-dialog__tips > div {
-  display: grid;
-  gap: 6px;
-  padding: 14px;
-  border: 1px solid #e6edf7;
-  border-radius: 10px;
-  background: #ffffff;
-}
-
-.import-dialog__tips strong {
-  color: #253857;
-  font-size: 13px;
+.import-template-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 14px;
   font-weight: 900;
+  cursor: pointer;
+  transition: color 0.18s ease;
 }
 
-.import-dialog__tips span {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.6;
+.import-template-link:hover {
+  color: #1e40af;
+}
+
+.import-template-link:disabled {
+  color: #94a3b8;
+  cursor: wait;
+}
+
+.import-template-link__icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.import-template-link__icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .import-dialog__actions {
@@ -2525,8 +2578,5 @@ onBeforeUnmount(() => {
     white-space: normal;
   }
 
-  .import-dialog__tips {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

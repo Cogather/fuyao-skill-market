@@ -117,6 +117,27 @@ function normalizeHttpImportResult(response: unknown): SkillPlanningImportResult
   };
 }
 
+function normalizeHttpDownloadUrl(response: unknown): string {
+  const data = unwrapResponseData<unknown>(response);
+  if (typeof data === 'string') {
+    const text = data.trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  const record =
+    data && typeof data === 'object'
+      ? (data as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const url = record.url ?? record.link ?? record.downloadUrl ?? record.href;
+  const text = typeof url === 'string' ? url.trim() : '';
+  if (!text) {
+    throw new Error('未获取到导入模板下载链接');
+  }
+  return text;
+}
+
 function normalizeHttpItem(response: unknown): SkillPlanningItem {
   return normalizeSkillPlanningItem(unwrapResponseData<unknown>(response));
 }
@@ -225,4 +246,13 @@ export async function importSkillPlanningFromExcel(file: File): Promise<SkillPla
   formData.append('file', file);
   const response = await skillBaseService.importSkillPlanning(formData);
   return normalizeHttpImportResult(response);
+}
+
+export async function downloadSkillPlanningTemplate(): Promise<string | void> {
+  if (!useHttpTransport()) {
+    return (await loadMockService()).downloadSkillPlanningTemplate();
+  }
+
+  const response = await skillBaseService.downloadSkillPlanning();
+  return normalizeHttpDownloadUrl(response);
 }

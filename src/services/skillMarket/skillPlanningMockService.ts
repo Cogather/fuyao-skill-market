@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import {
   cloneSkillPlanningItem,
+  exportSkillPlanningTemplateToExcel,
   normalizeProgress,
   normalizeSkillPlanningPayload,
   normalizeText,
@@ -301,6 +302,10 @@ export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
   const before = skillPlanningItems.length;
   skillPlanningItems = skillPlanningItems.filter((item) => !idSet.has(item.id));
   return before - skillPlanningItems.length;
+}
+
+export async function downloadSkillPlanningTemplate(): Promise<void> {
+  await exportSkillPlanningTemplateToExcel();
 }
 
 export async function importSkillPlanningFromExcel(file: File): Promise<SkillPlanningImportResult> {

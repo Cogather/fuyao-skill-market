@@ -223,6 +223,15 @@ export function itemToSkillPlanningExportRow(item: SkillPlanningItem): Record<st
   };
 }
 
+export async function exportSkillPlanningTemplateToExcel(
+  filename = 'Skill规划导入模板.xlsx',
+): Promise<void> {
+  const sheet = XLSX.utils.aoa_to_sheet([[...skillPlanningExportHeaders]]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Skill规划模板');
+  XLSX.writeFile(workbook, filename);
+}
+
 export async function exportSkillPlanningToExcel(
   rows: SkillPlanningItem[],
   filename = 'Skill规划清单.xlsx',
