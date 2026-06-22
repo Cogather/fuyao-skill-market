@@ -2682,48 +2682,51 @@ type AiEvolutionStatus = 'pending' | 'approved' | 'rejected';
 type AiEvolutionSkillRow = {
   id: string;
   name: string;
-  baseSkillName: string;
-  baseVersion: string;
-  proposedVersion: string;
-  evolutionReason: string;
+  sessionId: string;
+  summary: string;
   generatedAt: string;
   status: AiEvolutionStatus;
-  changeSummary: string;
+  version: string;
+  skillMdContent: string;
+  fileTree: string;
 };
 
 const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([
   {
     id: 'ai-evo-001',
     name: '智能日报汇总（自进化）',
-    baseSkillName: '智能日报汇总',
-    baseVersion: 'v1.2.0',
-    proposedVersion: 'v1.3.0',
-    evolutionReason: '近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支',
+    sessionId: 'sess-20260621-7f3a9c1d',
+    summary: '近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支，新增空数据兜底与字段缺失校验。',
     generatedAt: '2026-06-21 09:14',
     status: 'pending',
-    changeSummary: '新增空数据兜底、优化分段总结提示词、补充字段缺失校验。',
+    version: 'v1.3.0',
+    skillMdContent:
+      '# 智能日报汇总（自进化）\n\n## 简介\n自动汇总团队每日工作进展，生成结构化日报。\n\n## 本次自进化变更\n- 新增空数据兜底逻辑\n- 优化分段总结提示词\n- 补充字段缺失校验\n\n## 触发原因\n近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支。',
+    fileTree: 'SKILL.md\nprompts/\n  summary.md\n  fallback.md\nscripts/\n  collect.py',
   },
   {
     id: 'ai-evo-002',
     name: '会议纪要生成器（自进化）',
-    baseSkillName: '会议纪要生成器',
-    baseVersion: 'v2.0.1',
-    proposedVersion: 'v2.1.0',
-    evolutionReason: '用户反馈显示长会议截断率上升，触发上下文窗口策略升级',
+    sessionId: 'sess-20260620-2b8e45af',
+    summary: '用户反馈显示长会议截断率上升，触发上下文窗口策略升级，引入分块摘要 + 二次合并。',
     generatedAt: '2026-06-20 17:42',
     status: 'pending',
-    changeSummary: '引入分块摘要 + 二次合并；适配 200k 上下文窗口模型。',
+    version: 'v2.1.0',
+    skillMdContent:
+      '# 会议纪要生成器（自进化）\n\n## 简介\n将会议录音转写文本整理为结构化纪要与待办。\n\n## 本次自进化变更\n- 引入分块摘要 + 二次合并\n- 适配 200k 上下文窗口模型\n\n## 触发原因\n用户反馈显示长会议截断率上升，触发上下文窗口策略升级。',
+    fileTree: 'SKILL.md\nprompts/\n  chunk.md\n  merge.md\nconfig.json',
   },
   {
     id: 'ai-evo-003',
     name: '客户工单分类器（自进化）',
-    baseSkillName: '客户工单分类器',
-    baseVersion: 'v0.9.4',
-    proposedVersion: 'v1.0.0',
-    evolutionReason: '准确率从 87% 提升至 94%，可发起一次正式版本升级',
+    sessionId: 'sess-20260619-c0d172e6',
+    summary: '准确率从 87% 提升至 94%，引入新一轮标注数据，调整分类阈值与少样本提示。',
     generatedAt: '2026-06-19 22:08',
     status: 'pending',
-    changeSummary: '引入新一轮标注数据，调整分类阈值与少样本提示。',
+    version: 'v1.0.0',
+    skillMdContent:
+      '# 客户工单分类器（自进化）\n\n## 简介\n根据工单内容自动分类并路由到对应处理队列。\n\n## 本次自进化变更\n- 引入新一轮标注数据\n- 调整分类阈值与少样本提示\n\n## 触发原因\n准确率从 87% 提升至 94%，可发起一次正式版本升级。',
+    fileTree: 'SKILL.md\ndata/\n  labels.csv\nprompts/\n  classify.md',
   },
 ]);
 
@@ -2761,6 +2764,25 @@ async function rejectAiEvolutionSkill(row: AiEvolutionSkillRow): Promise<void> {
   row.status = 'rejected';
   processingAiEvolutionId.value = '';
   showToast(`已驳回「${row.name}」的自进化审批（演示）`);
+}
+
+function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
+  const skill = {
+    id: row.id,
+    name: row.name,
+    currentVersion: row.version,
+    version: row.version,
+    categoryGroupName: '自进化',
+    author: 'AI 自进化',
+    level: '自进化候选',
+    totalDownloads: 0,
+    publish_level: '',
+    fileTree: row.fileTree,
+    skillMdContent: row.skillMdContent,
+  };
+  detailFileTree(skill);
+  detailPanelSkill.value = skill;
+  detailShowDelete.value = false;
 }
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
@@ -4198,9 +4220,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <thead>
               <tr>
                 <th class="col-skill">Skill</th>
-                <th class="col-ver">基线版本</th>
-                <th class="col-ver">候选版本</th>
-                <th>自进化原因</th>
+                <th class="col-session">Session ID</th>
+                <th class="col-time">时间</th>
+                <th>简介</th>
                 <th class="col-status">状态</th>
                 <th class="col-ops ai-evo-col-ops">操作</th>
               </tr>
@@ -4209,39 +4231,40 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <tr
                 v-for="row in aiEvolutionSkills"
                 :key="row.id"
-                class="ai-evolution-row"
+                class="ai-evolution-row clickable-row"
+                role="button"
+                tabindex="0"
+                @click="openAiEvolutionDetail(row)"
+                @keydown.enter.prevent="openAiEvolutionDetail(row)"
               >
                 <td>
                   <div class="skill-main">
-                    <strong class="skill-name">{{ row.name }}</strong>
-                    <div class="ai-evolution-sub">
-                      <span>基于「{{ row.baseSkillName }}」</span>
-                      <span class="ai-evolution-time">{{ row.generatedAt }}</span>
-                    </div>
+                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
                   </div>
                 </td>
                 <td>
-                  <div class="cell-main cell-main-plain">{{ row.baseVersion }}</div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-next-ver">
-                    {{ row.proposedVersion }}
+                  <div class="cell-main cell-main-plain ai-evolution-session">
+                    {{ row.sessionId }}
                   </div>
                 </td>
                 <td>
-                  <div class="ai-evolution-reason">{{ row.evolutionReason }}</div>
-                  <div class="ai-evolution-summary">变更摘要：{{ row.changeSummary }}</div>
+                  <div class="cell-main cell-main-plain ai-evolution-time">
+                    {{ row.generatedAt }}
+                  </div>
+                </td>
+                <td>
+                  <div class="ai-evolution-reason">{{ row.summary }}</div>
                 </td>
                 <td>
                   <span class="st" :class="aiEvolutionDetailMap[row.status].cls">{{
                     aiEvolutionDetailMap[row.status].label
                   }}</span>
                 </td>
-                <td class="col-ops-td">
+                <td class="col-ops-td" @click.stop>
                   <div class="ops ai-evolution-ops">
                     <button
                       type="button"
-                      class="btn primary sm ai-evo-approve-btn"
+                      class="ai-evo-btn ai-evo-approve-btn"
                       :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
                       @click="approveAiEvolutionSkill(row)"
                     >
@@ -4255,7 +4278,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     </button>
                     <button
                       type="button"
-                      class="mini ai-evo-reject-btn"
+                      class="ai-evo-btn ai-evo-reject-btn"
                       :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
                       @click="rejectAiEvolutionSkill(row)"
                     >
