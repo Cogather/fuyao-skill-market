@@ -53,6 +53,7 @@ const REVIEW_TASK_PAGE_SIZE = 10;
 const REVIEW_TASK_PREFETCH_MIN_DISTANCE = 180;
 const REVIEW_TASK_PREFETCH_VIEWPORT_RATIO = 0.6;
 const REVIEW_TASK_POST_RENDER_CHECK_DELAY = 80;
+const REVIEW_TASK_VISIBLE_TAG_LIMIT = 2;
 
 const selectedTaskId = ref(taskCards[0]?.skillId ?? '');
 
@@ -377,6 +378,34 @@ function normalizeReviewTaskTags(value: unknown): string {
     .join(',');
 }
 
+function reviewTaskTags(task: ReviewTaskCard): string[] {
+  return normalizeReviewTaskTags(readRecord(task).tags)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function reviewTaskVisibleTags(task: ReviewTaskCard): string[] {
+  return reviewTaskTags(task).slice(0, REVIEW_TASK_VISIBLE_TAG_LIMIT);
+}
+
+function reviewTaskHiddenTags(task: ReviewTaskCard): string[] {
+  return reviewTaskTags(task).slice(REVIEW_TASK_VISIBLE_TAG_LIMIT);
+}
+
+function reviewTaskHiddenTagText(task: ReviewTaskCard): string {
+  return reviewTaskHiddenTags(task).join('、');
+}
+
+function reviewTaskDepartmentLabel(task: ReviewTaskCard): string {
+  const record = readRecord(task);
+  return String(record.departmentL6 ?? record.DepartmentL6 ?? task.team ?? '').trim();
+}
+
+function reviewTaskMetaText(task: ReviewTaskCard): string {
+  const owner = String(task.ownerUser || task.ownerName || task.owner || '').trim();
+  return [owner, reviewTaskDepartmentLabel(task)].filter(Boolean).join(' · ');
+}
 function replaceReviewTasks(list: ReviewTaskCard[]): void {
   replaceReactiveArray(taskCards, list);
 }
@@ -1422,7 +1451,7 @@ onBeforeUnmount(() => {
                 @keydown.space.prevent="selectTask(task)"
               >
                 <div class="task-card__title">{{ task.name }}</div>
-                <div class="task-card__meta">{{ task.ownerUser }} · {{ task.departmentL6 }}</div>
+                <div class="task-card__meta">{{ reviewTaskMetaText(task) }}</div>
                 <div class="task-card__tags">
                   <span
                     v-for="tag in reviewTaskVisibleTags(task)"
