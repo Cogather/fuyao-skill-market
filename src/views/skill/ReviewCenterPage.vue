@@ -1558,6 +1558,7 @@ onBeforeUnmount(() => {
                       type="button"
                       class="review-month-picker__clear"
                       aria-label="清除月度"
+                      :disabled="reviewMonthSelectionLocked"
                       @click.stop="clearReviewMonth"
                     >
                       ×
@@ -1605,7 +1606,13 @@ onBeforeUnmount(() => {
                       </button>
                     </div>
                     <div class="review-month-picker__foot">
-                      <button type="button" @click="clearReviewMonth">清除</button>
+                      <button
+                        type="button"
+                        :disabled="reviewMonthSelectionLocked"
+                        @click="clearReviewMonth"
+                      >
+                        清除
+                      </button>
                       <button type="button" @click="reviewMonthPickerOpen = false">关闭</button>
                     </div>
                   </div>
