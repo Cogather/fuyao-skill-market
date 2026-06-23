@@ -2750,7 +2750,7 @@ async function approveAiEvolutionSkill(row: AiEvolutionSkillRow): Promise<void> 
   }
   processingAiEvolutionId.value = row.id;
   await new Promise((resolve) => setTimeout(resolve, 300));
-  row.status = 'approved';
+  aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
   processingAiEvolutionId.value = '';
   showToast(`已通过「${row.name}」的自进化审批（演示）`);
 }
@@ -2761,7 +2761,7 @@ async function rejectAiEvolutionSkill(row: AiEvolutionSkillRow): Promise<void> {
   }
   processingAiEvolutionId.value = row.id;
   await new Promise((resolve) => setTimeout(resolve, 300));
-  row.status = 'rejected';
+  aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
   processingAiEvolutionId.value = '';
   showToast(`已拒绝「${row.name}」的自进化审批（演示）`);
 }

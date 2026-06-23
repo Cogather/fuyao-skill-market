@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
             >
               {{ deletingSkillId === currentSkillId() ? '删除中…' : '删除' }}
             </button>
-            <div ref="detailMoreWrapRef" class="detail-more-wrap">
+            <div v-if="!aiEvolution" ref="detailMoreWrapRef" class="detail-more-wrap">
               <button
                 type="button"
                 class="detail-btn detail-more-trigger"
