@@ -11,11 +11,18 @@ const props = withDefaults(
     deletingSkillId?: string | null;
     /** 仅展示文件树与 SKILL.md，隐藏下载/调测/删除/版本管理等操作（如版本列表「查看」） */
     previewOnly?: boolean;
+    /** 自进化审批模式：隐藏版本/作者等标签，底部展示居中的「通过/拒绝」按钮 */
+    aiEvolution?: boolean;
+    aiEvolutionStatus?: 'pending' | 'approved' | 'rejected';
+    aiEvolutionProcessing?: boolean;
   }>(),
   {
     showDelete: true,
     deletingSkillId: null,
     previewOnly: false,
+    aiEvolution: false,
+    aiEvolutionStatus: 'pending',
+    aiEvolutionProcessing: false,
   },
 );
 
@@ -25,6 +32,8 @@ const emit = defineEmits<{
   download: [];
   deleteClick: [evt: MouseEvent];
   versionManage: [];
+  approve: [];
+  reject: [];
 }>();
 
 const detailMoreWrapRef = ref<HTMLElement | null>(null);
@@ -125,8 +134,12 @@ onBeforeUnmount(() => {
               skill.categoryGroupName
             }}</span>
             <span class="detail-pill pill-id">{{ skill.name }}</span>
-            <span class="detail-pill">版本 {{ skill.currentVersion ?? skill.version }}</span>
-            <span v-if="!previewOnly" class="detail-pill">作者 {{ skill.author }}</span>
+            <span v-if="!aiEvolution" class="detail-pill"
+              >版本 {{ skill.currentVersion ?? skill.version }}</span
+            >
+            <span v-if="!previewOnly && !aiEvolution" class="detail-pill"
+              >作者 {{ skill.author }}</span
+            >
             <span v-if="!previewOnly" class="detail-pill" :class="skillScopeClass(skill)">
               {{ skill.level }}
             </span>
@@ -143,7 +156,7 @@ onBeforeUnmount(() => {
               {{ skill.totalDownloads }}
             </span>
           </div>
-          <div v-if="!previewOnly" class="detail-actions">
+          <div v-if="!previewOnly && !aiEvolution" class="detail-actions">
             <button type="button" class="detail-btn ghost" disabled title="建设中">在线调测</button>
             <button type="button" class="detail-btn primary" @click="emit('download')">
               下载到本地
@@ -195,6 +208,31 @@ onBeforeUnmount(() => {
             </div>
           </article>
         </div>
+
+        <footer v-if="aiEvolution" class="detail-evo-footer">
+          <button
+            type="button"
+            class="detail-btn primary"
+            :disabled="aiEvolutionStatus !== 'pending' || aiEvolutionProcessing"
+            @click="emit('approve')"
+          >
+            {{
+              aiEvolutionStatus === 'approved'
+                ? '已通过'
+                : aiEvolutionProcessing
+                  ? '处理中…'
+                  : '通过'
+            }}
+          </button>
+          <button
+            type="button"
+            class="detail-btn danger"
+            :disabled="aiEvolutionStatus !== 'pending' || aiEvolutionProcessing"
+            @click="emit('reject')"
+          >
+            {{ aiEvolutionStatus === 'rejected' ? '已拒绝' : '拒绝' }}
+          </button>
+        </footer>
       </section>
     </div>
   </Teleport>
@@ -430,6 +468,19 @@ onBeforeUnmount(() => {
 .detail-btn.primary:hover {
   background: #1d4ed8;
   border-color: #1d4ed8;
+}
+
+.detail-evo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 22px 20px;
+}
+
+.detail-evo-footer .detail-btn {
+  min-width: 120px;
+  text-align: center;
 }
 
 .detail-main {

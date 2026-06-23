@@ -2413,6 +2413,7 @@ function closeDetailPanel(): void {
   closeDetailDeleteConfirm();
   detailPanelSkill.value = null;
   detailShowDelete.value = true;
+  aiEvolutionDetailRow.value = null;
 }
 
 async function onDetailVersionManage(): Promise<void> {
@@ -2766,6 +2767,8 @@ async function rejectAiEvolutionSkill(row: AiEvolutionSkillRow): Promise<void> {
   showToast(`已驳回「${row.name}」的自进化审批（演示）`);
 }
 
+const aiEvolutionDetailRow = ref<AiEvolutionSkillRow | null>(null);
+
 function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
   const skill = {
     id: row.id,
@@ -2779,10 +2782,24 @@ function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
     publish_level: '',
     fileTree: row.fileTree,
     skillMdContent: row.skillMdContent,
+    isAiEvolution: true,
   };
   detailFileTree(skill);
+  aiEvolutionDetailRow.value = row;
   detailPanelSkill.value = skill;
   detailShowDelete.value = false;
+}
+
+async function onAiEvolutionDetailApprove(): Promise<void> {
+  if (aiEvolutionDetailRow.value) {
+    await approveAiEvolutionSkill(aiEvolutionDetailRow.value);
+  }
+}
+
+async function onAiEvolutionDetailReject(): Promise<void> {
+  if (aiEvolutionDetailRow.value) {
+    await rejectAiEvolutionSkill(aiEvolutionDetailRow.value);
+  }
 }
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
@@ -3304,12 +3321,17 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       :skill-md-text="String(skillMdFile[detailPanelSkill.id] ?? '')"
       :show-delete="detailShowDelete"
       :deleting-skill-id="deletingMySkillId"
+      :ai-evolution="!!detailPanelSkill.isAiEvolution"
+      :ai-evolution-status="aiEvolutionDetailRow?.status"
+      :ai-evolution-processing="processingAiEvolutionId === aiEvolutionDetailRow?.id"
       @close="closeDetailPanel"
       @try-skill="onTrySkill"
       @download="onDetailDownload"
       @delete-click="openDetailDeleteConfirm"
       @version-manage="onDetailVersionManage"
       @update-skill-data="updateSkillData"
+      @approve="onAiEvolutionDetailApprove"
+      @reject="onAiEvolutionDetailReject"
     />
 
     <SkillVersionManageDialog
