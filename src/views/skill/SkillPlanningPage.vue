@@ -63,12 +63,12 @@ const pageSizeOptions = [5, 10, 20, 50];
 
 const emptyFilters = {
   department: '',
-  DepartmentL1: '',
-  DepartmentL2: '',
-  DepartmentL3: '',
-  DepartmentL4: '',
-  DepartmentL5: '',
-  DepartmentL6: '',
+  departmentL3: '',
+  departmentL4: '',
+  departmentL5: '',
+  departmentL6: '',
+  departmentL7: '',
+  departmentL8: '',
   firstScene: '',
   secondScene: '',
   activityNodeName: '',
@@ -85,19 +85,19 @@ const filterForm = reactive({ ...emptyFilters });
 const appliedFilters = reactive({ ...emptyFilters });
 const planningDepartmentTree = computed(() => props.departmentTree ?? []);
 const planningDepartmentSegments = ref<string[]>([]);
-const DepartmentL1 = ref('');
-const DepartmentL2 = ref('');
-const DepartmentL3 = ref('');
-const DepartmentL4 = ref('');
-const DepartmentL5 = ref('');
-const DepartmentL6 = ref('');
+const departmentL3 = ref('');
+const departmentL4 = ref('');
+const departmentL5 = ref('');
+const departmentL6 = ref('');
+const departmentL7 = ref('');
+const departmentL8 = ref('');
 const planningDepartmentLevelRefs = [
-  DepartmentL1,
-  DepartmentL2,
-  DepartmentL3,
-  DepartmentL4,
-  DepartmentL5,
-  DepartmentL6,
+  departmentL3,
+  departmentL4,
+  departmentL5,
+  departmentL6,
+  departmentL7,
+  departmentL8,
 ] as const;
 const rows = ref<SkillPlanningItem[]>([]);
 const total = ref(0);
@@ -343,10 +343,10 @@ const queryFilterObj = reactive({
   keyword: filterForm.keyword,
   pageNum: pageNum.value,
   pageSize: pageSize.value,
-  DepartmentL3: filterForm.DepartmentL1,
-  DepartmentL4: filterForm.DepartmentL2,
-  DepartmentL5: filterForm.DepartmentL3,
-  DepartmentL6: filterForm.DepartmentL4,
+  departmentL5: filterForm.departmentL3,
+  departmentL6: filterForm.departmentL4,
+  departmentL7: filterForm.departmentL5,
+  departmentL8: filterForm.departmentL6,
 });
 
 async function reloadList() {
@@ -806,7 +806,7 @@ onBeforeUnmount(() => {
             class="planning-dept-cascader"
             :tree="planningDepartmentTree"
             :max-level="6"
-            aria-label="Skill 规划部门级联筛选（DepartmentL1～DepartmentL6）"
+            aria-label="Skill 规划部门级联筛选（departmentL3～departmentL8）"
             @change="onPlanningDepartmentChange"
             @clear="onPlanningDepartmentClear"
             @done="onPlanningDepartmentDone"
@@ -1418,7 +1418,9 @@ onBeforeUnmount(() => {
                     :class="{ 'has-error': formErrors.level }"
                   >
                     <option value="">请选择</option>
-                    <option v-for="item in levelOptions" :key="item" :value="item">{{ item }}</option>
+                    <option v-for="item in levelOptions" :key="item" :value="item">
+                      {{ item }}
+                    </option>
                   </select>
                   <small v-if="formErrors.level" class="planning-inline-error">
                     {{ formErrors.level }}
@@ -1519,247 +1521,249 @@ onBeforeUnmount(() => {
             <template v-else>
               <template v-for="row in rows" :key="row.id">
                 <tr v-if="inlineEditId === row.id" class="planning-inline-row">
-                <td class="select-col" />
-                <td>
-                  <div class="planning-inline-field">
+                  <td class="select-col" />
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.firstScene"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.firstScene }"
+                        placeholder="一级场景"
+                      />
+                      <small v-if="formErrors.firstScene" class="planning-inline-error">
+                        {{ formErrors.firstScene }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.secondScene"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.secondScene }"
+                        placeholder="二级场景"
+                      />
+                      <small v-if="formErrors.secondScene" class="planning-inline-error">
+                        {{ formErrors.secondScene }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.activityNodeName"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.activityNodeName }"
+                        placeholder="归属活动"
+                      />
+                      <small v-if="formErrors.activityNodeName" class="planning-inline-error">
+                        {{ formErrors.activityNodeName }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.subActivityNodeName"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.subActivityNodeName }"
+                        placeholder="归属子活动"
+                      />
+                      <small v-if="formErrors.subActivityNodeName" class="planning-inline-error">
+                        {{ formErrors.subActivityNodeName }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.skillName"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.skillName }"
+                        placeholder="Skill 名称"
+                      />
+                      <small v-if="formErrors.skillName" class="planning-inline-error">
+                        {{ formErrors.skillName }}
+                      </small>
+                    </div>
+                  </td>
+                  <td class="desc-col">
+                    <div class="planning-inline-field">
+                      <textarea
+                        v-model.trim="planningForm.skillDescription"
+                        class="planning-inline-control planning-inline-control--textarea"
+                        :class="{ 'has-error': formErrors.skillDescription }"
+                        maxlength="300"
+                        rows="1"
+                        placeholder="Skill 说明"
+                      />
+                      <small v-if="formErrors.skillDescription" class="planning-inline-error">
+                        {{ formErrors.skillDescription }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <select
+                        v-model="planningForm.level"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.level }"
+                      >
+                        <option value="">请选择</option>
+                        <option v-for="item in levelOptions" :key="item" :value="item">
+                          {{ item }}
+                        </option>
+                      </select>
+                      <small v-if="formErrors.level" class="planning-inline-error">
+                        {{ formErrors.level }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.owner"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.owner }"
+                        placeholder="责任 Owner"
+                      />
+                      <small v-if="formErrors.owner" class="planning-inline-error">
+                        {{ formErrors.owner }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.department"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.department }"
+                        placeholder="归属部门"
+                      />
+                      <small v-if="formErrors.department" class="planning-inline-error">
+                        {{ formErrors.department }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model.trim="planningForm.developer"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.developer }"
+                        placeholder="开发责任人"
+                      />
+                      <small v-if="formErrors.developer" class="planning-inline-error">
+                        {{ formErrors.developer }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <input
+                        v-model="planningForm.planedCompleteDate"
+                        type="date"
+                        class="planning-inline-control"
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <div class="planning-inline-field">
+                      <select v-model="planningForm.status" class="planning-inline-control">
+                        <option v-for="item in progressOptions" :key="item" :value="item">
+                          {{ item }}
+                        </option>
+                      </select>
+                    </div>
+                  </td>
+                  <td class="action-col">
+                    <div class="planning-inline-actions">
+                      <button
+                        type="button"
+                        class="icon-btn icon-btn--confirm"
+                        title="确认修改"
+                        aria-label="确认修改"
+                        :disabled="inlineEditSubmitting"
+                        @click="confirmInlineEdit"
+                      >
+                        √
+                      </button>
+                      <button
+                        type="button"
+                        class="icon-btn icon-btn--muted"
+                        title="取消修改"
+                        aria-label="取消修改"
+                        :disabled="inlineEditSubmitting"
+                        @click="cancelInlineEdit"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-else>
+                  <td class="select-col">
                     <input
-                      v-model.trim="planningForm.firstScene"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.firstScene }"
-                      placeholder="一级场景"
+                      type="checkbox"
+                      :checked="selectedIds.includes(row.id)"
+                      @change="toggleRowSelection(row.id)"
                     />
-                    <small v-if="formErrors.firstScene" class="planning-inline-error">
-                      {{ formErrors.firstScene }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.secondScene"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.secondScene }"
-                      placeholder="二级场景"
-                    />
-                    <small v-if="formErrors.secondScene" class="planning-inline-error">
-                      {{ formErrors.secondScene }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.activityNodeName"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.activityNodeName }"
-                      placeholder="归属活动"
-                    />
-                    <small v-if="formErrors.activityNodeName" class="planning-inline-error">
-                      {{ formErrors.activityNodeName }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.subActivityNodeName"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.subActivityNodeName }"
-                      placeholder="归属子活动"
-                    />
-                    <small v-if="formErrors.subActivityNodeName" class="planning-inline-error">
-                      {{ formErrors.subActivityNodeName }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.skillName"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.skillName }"
-                      placeholder="Skill 名称"
-                    />
-                    <small v-if="formErrors.skillName" class="planning-inline-error">
-                      {{ formErrors.skillName }}
-                    </small>
-                  </div>
-                </td>
-                <td class="desc-col">
-                  <div class="planning-inline-field">
-                    <textarea
-                      v-model.trim="planningForm.skillDescription"
-                      class="planning-inline-control planning-inline-control--textarea"
-                      :class="{ 'has-error': formErrors.skillDescription }"
-                      maxlength="300"
-                      rows="1"
-                      placeholder="Skill 说明"
-                    />
-                    <small v-if="formErrors.skillDescription" class="planning-inline-error">
-                      {{ formErrors.skillDescription }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <select
-                      v-model="planningForm.level"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.level }"
-                    >
-                      <option value="">请选择</option>
-                      <option v-for="item in levelOptions" :key="item" :value="item">{{ item }}</option>
-                    </select>
-                    <small v-if="formErrors.level" class="planning-inline-error">
-                      {{ formErrors.level }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.owner"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.owner }"
-                      placeholder="责任 Owner"
-                    />
-                    <small v-if="formErrors.owner" class="planning-inline-error">
-                      {{ formErrors.owner }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.department"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.department }"
-                      placeholder="归属部门"
-                    />
-                    <small v-if="formErrors.department" class="planning-inline-error">
-                      {{ formErrors.department }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model.trim="planningForm.developer"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.developer }"
-                      placeholder="开发责任人"
-                    />
-                    <small v-if="formErrors.developer" class="planning-inline-error">
-                      {{ formErrors.developer }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <input
-                      v-model="planningForm.planedCompleteDate"
-                      type="date"
-                      class="planning-inline-control"
-                    />
-                  </div>
-                </td>
-                <td>
-                  <div class="planning-inline-field">
-                    <select v-model="planningForm.status" class="planning-inline-control">
-                      <option v-for="item in progressOptions" :key="item" :value="item">
-                        {{ item }}
-                      </option>
-                    </select>
-                  </div>
-                </td>
-                <td class="action-col">
-                  <div class="planning-inline-actions">
+                  </td>
+                  <td>{{ row.firstScene }}</td>
+                  <td>{{ row.secondScene }}</td>
+                  <td>{{ row.activityNodeName }}</td>
+                  <td>{{ row.subActivityNodeName }}</td>
+                  <td>
+                    <strong class="skill-name">{{ row.skillName }}</strong>
+                  </td>
+                  <td class="desc-col">
+                    <span :title="row.skillDescription">{{ row.skillDescription }}</span>
+                  </td>
+                  <td>{{ row.level }}</td>
+                  <td>{{ row.owner }}</td>
+                  <td>{{ row.department }}</td>
+                  <td>{{ row.developer }}</td>
+                  <td>{{ row.planedCompleteDate }}</td>
+                  <td>
+                    <span class="status-pill" :class="progressClass(row.status)">
+                      {{ row.status }}
+                    </span>
+                  </td>
+                  <td class="action-col">
                     <button
                       type="button"
-                      class="icon-btn icon-btn--confirm"
-                      title="确认修改"
-                      aria-label="确认修改"
-                      :disabled="inlineEditSubmitting"
-                      @click="confirmInlineEdit"
+                      class="icon-btn"
+                      title="编辑"
+                      aria-label="编辑"
+                      @click="startInlineEdit(row)"
                     >
-                      √
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                        <path d="m13 7 4 4" />
+                      </svg>
                     </button>
                     <button
                       type="button"
-                      class="icon-btn icon-btn--muted"
-                      title="取消修改"
-                      aria-label="取消修改"
-                      :disabled="inlineEditSubmitting"
-                      @click="cancelInlineEdit"
+                      class="icon-btn icon-btn--danger"
+                      title="删除"
+                      aria-label="删除"
+                      @click="requestDeleteRow(row)"
                     >
-                      ×
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
+                      </svg>
                     </button>
-                  </div>
-                </td>
-              </tr>
-                  <tr v-else>
-                <td class="select-col">
-                  <input
-                    type="checkbox"
-                    :checked="selectedIds.includes(row.id)"
-                    @change="toggleRowSelection(row.id)"
-                  />
-                </td>
-                <td>{{ row.firstScene }}</td>
-                <td>{{ row.secondScene }}</td>
-                <td>{{ row.activityNodeName }}</td>
-                <td>{{ row.subActivityNodeName }}</td>
-                <td>
-                  <strong class="skill-name">{{ row.skillName }}</strong>
-                </td>
-                <td class="desc-col">
-                  <span :title="row.skillDescription">{{ row.skillDescription }}</span>
-                </td>
-                <td>{{ row.level }}</td>
-                <td>{{ row.owner }}</td>
-                <td>{{ row.department }}</td>
-                <td>{{ row.developer }}</td>
-                <td>{{ row.planedCompleteDate }}</td>
-                <td>
-                  <span class="status-pill" :class="progressClass(row.status)">
-                    {{ row.status }}
-                  </span>
-                </td>
-                <td class="action-col">
-                  <button
-                    type="button"
-                    class="icon-btn"
-                    title="编辑"
-                    aria-label="编辑"
-                    @click="startInlineEdit(row)"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 20h4l10-10-4-4L4 16v4Z" />
-                      <path d="m13 7 4 4" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-btn icon-btn--danger"
-                    title="删除"
-                    aria-label="删除"
-                    @click="requestDeleteRow(row)"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
-                    </svg>
-                  </button>
-                </td>
-              </tr>
-                </template>
+                  </td>
+                </tr>
+              </template>
             </template>
           </tbody>
         </table>
@@ -1864,9 +1868,7 @@ onBeforeUnmount(() => {
                     <path d="M5 18h14" />
                   </svg>
                 </span>
-                <span>{{
-                  templateDownloadPending ? '下载导入模板中...' : '下载导入模板'
-                }}</span>
+                <span>{{ templateDownloadPending ? '下载导入模板中...' : '下载导入模板' }}</span>
               </button>
             </div>
           </div>
@@ -1929,7 +1931,9 @@ onBeforeUnmount(() => {
             <label class="planning-field">
               <span>归属子活动 <em>*</em></span>
               <input v-model.trim="planningForm.subActivityNodeName" type="text" />
-              <small v-if="formErrors.subActivityNodeName">{{ formErrors.subActivityNodeName }}</small>
+              <small v-if="formErrors.subActivityNodeName">{{
+                formErrors.subActivityNodeName
+              }}</small>
             </label>
             <label class="planning-field">
               <span>Skill 名称 <em>*</em></span>
@@ -3120,6 +3124,5 @@ onBeforeUnmount(() => {
   .import-dropzone__copy strong {
     white-space: normal;
   }
-
 }
 </style>

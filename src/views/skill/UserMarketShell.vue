@@ -917,6 +917,8 @@ const debounce = (fn: any, delay: number): any => {
 
 const debounceScroll = handleScroll;
 
+const isExpertReviewer = ref(false);
+
 onMounted(async () => {
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
@@ -926,6 +928,12 @@ onMounted(async () => {
   await loadBusinessDimensions();
   // HTTP 与 Mock 均保留一次角色拉取；抢先调用仅见 loadMyPublishedSkills / executeDelete 内对 Mock 的分支
   await loadCurrentUserRole();
+  // 判断是否为专家
+  await skillBaseService.isReviewer({ userId: userId.value }).then((res: any) => {
+    if (res?.meta?.success && res?.data) {
+      isExpertReviewer.value = res.data.isExpert;
+    }
+  });
   if (transportIsHttp) {
     await loadAdminOrganizations();
     // await startOverviewRemoteFetch();
@@ -3346,7 +3354,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           审核中心
         </button>
         <button
-          v-if="showAdminModules"
+          v-if="isExpertReviewer"
           type="button"
           class="sub-tab"
           :class="{ on: innerTab === 'review' }"
@@ -4804,7 +4812,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     </div>
 
     <div v-else-if="innerTab === 'review'" class="tabs-panel overview-panel review-panel">
-      <ReviewCenterPage :userId="userId" :department-tree="marketOverviewDeptTree" />
+      <ReviewCenterPage
+        :userId="userId"
+        :department-tree="marketOverviewDeptTree"
+        :is-expert-reviewer="isExpertReviewer"
+      />
     </div>
 
     <div

@@ -195,12 +195,12 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   const department =
     normalizeText(query.department) ||
     [
-      query.DepartmentL6,
-      query.DepartmentL5,
-      query.DepartmentL4,
-      query.DepartmentL3,
-      query.DepartmentL2,
-      query.DepartmentL1,
+      query.departmentL8,
+      query.departmentL7,
+      query.departmentL6,
+      query.departmentL5,
+      query.departmentL4,
+      query.departmentL3,
     ]
       .map(normalizeText)
       .find(Boolean) ||

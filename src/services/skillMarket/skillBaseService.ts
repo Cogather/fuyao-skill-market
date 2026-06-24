@@ -344,7 +344,7 @@ export const skillBaseService = {
     return httpRequest.skill<any>({
       url: '/config/search_offering',
       method: 'get',
-      params
+      params,
     });
   },
 

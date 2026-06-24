@@ -1374,7 +1374,9 @@ function handleSkillRequest(
   if (method === 'post' && reviewDraftMatch) {
     const body = (config.data ?? {}) as Record<string, unknown>;
     const badges =
-      body.badges && typeof body.badges === 'object' ? (body.badges as Record<string, unknown>) : {};
+      body.badges && typeof body.badges === 'object'
+        ? (body.badges as Record<string, unknown>)
+        : {};
     const detail = ensureExpertReviewDetail(reviewDraftMatch[1]);
     detail.reviewId = readString(body.reviewId, detail.reviewId);
     detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores ?? body.dimensions);
@@ -1396,7 +1398,9 @@ function handleSkillRequest(
   if (method === 'post' && reviewSubmitMatch) {
     const body = (config.data ?? {}) as Record<string, unknown>;
     const badges =
-      body.badges && typeof body.badges === 'object' ? (body.badges as Record<string, unknown>) : {};
+      body.badges && typeof body.badges === 'object'
+        ? (body.badges as Record<string, unknown>)
+        : {};
     const detail = ensureExpertReviewDetail(reviewSubmitMatch[1]);
     detail.reviewId = readString(body.reviewId, detail.reviewId);
     detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores ?? body.dimensions);

@@ -22,12 +22,12 @@ export interface SkillPlanningItem {
 
 export interface SkillPlanningQuery {
   department?: string;
-  DepartmentL1?: string;
-  DepartmentL2?: string;
-  DepartmentL3?: string;
-  DepartmentL4?: string;
-  DepartmentL5?: string;
-  DepartmentL6?: string;
+  departmentL3?: string;
+  departmentL4?: string;
+  departmentL5?: string;
+  departmentL6?: string;
+  departmentL7?: string;
+  departmentL8?: string;
   firstScene?: string;
   primaryScenes?: string[];
   secondScene?: string;
