@@ -1177,7 +1177,7 @@ th {
 
 .ai-review-summary-card {
   display: grid;
-  grid-template-columns: minmax(245px, 360px) minmax(360px, 1.15fr);
+  grid-template-columns: minmax(245px, 380px) minmax(380px, 1.15fr);
   gap: 18px;
   padding: 22px;
   border-color: #edf1f7;
@@ -1190,14 +1190,14 @@ th {
   align-items: center;
   justify-content: center;
   min-height: 245px;
-  max-width: 360px;
+  max-width: 380px;
 }
 
 .ai-radar__stage {
   position: relative;
   display: grid;
   place-items: center;
-  width: min(240px, 100%);
+  width: min(230px, 100%);
   aspect-ratio: 1;
   overflow: visible;
 }
@@ -3266,6 +3266,25 @@ input:focus {
   line-height: 1.7;
 }
 
+.history-dimension-scores {
+  max-width: 180px;
+}
+
+.history-dimension-pre {
+  width: 180px;
+  overflow: auto;
+}
+
+.history-summary-cell {
+  max-width: 340px;
+}
+
+.history-summary-pre {
+  width: 340px;
+  max-height: 100px;
+  overflow: auto;
+}
+
 .history-empty-cell {
   padding: 32px 16px;
   color: #64748b;
@@ -3273,7 +3292,7 @@ input:focus {
 }
 
 .version-history-modal {
-  width: min(1180px, calc(100vw - 56px));
+  width: min(1200px, calc(100vw - 56px));
 }
 
 .version-history-modal__body {
@@ -3313,8 +3332,7 @@ input:focus {
 }
 
 .version-history-table {
-  width: 100%;
-  min-width: 980px;
+  width: 980px;
   margin: 0;
   table-layout: fixed;
   border-collapse: collapse;
