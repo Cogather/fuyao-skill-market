@@ -1084,7 +1084,7 @@ onBeforeUnmount(() => {
                           :checked="headerFilterSelections.firstScene.includes(item)"
                           @change="toggleHeaderFilterOption('firstScene', item)"
                         />
-                        <span>{{ item }}</span>
+                        <span>{{ item.scene }}</span>
                       </label>
                     </div>
                     <p v-else class="planning-th-filter__empty">暂无可选项</p>
@@ -1197,7 +1197,7 @@ onBeforeUnmount(() => {
                           :checked="headerFilterSelections.activityNodeName.includes(item)"
                           @change="toggleHeaderFilterOption('activityNodeName', item)"
                         />
-                        <span>{{ item }}</span>
+                        <span>{{ item.activityNodeName }}</span>
                       </label>
                     </div>
                     <p v-else class="planning-th-filter__empty">暂无可选项</p>
