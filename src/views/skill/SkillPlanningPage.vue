@@ -79,8 +79,6 @@ const emptyFilters = {
   departmentL4: '',
   departmentL5: '',
   departmentL6: '',
-  departmentL7: '',
-  departmentL8: '',
   firstScene: '',
   secondScene: '',
   activityNodeName: '',
@@ -102,15 +100,11 @@ const departmentL3 = ref('');
 const departmentL4 = ref('');
 const departmentL5 = ref('');
 const departmentL6 = ref('');
-const departmentL7 = ref('');
-const departmentL8 = ref('');
 const planningDepartmentLevelRefs = [
   departmentL3,
   departmentL4,
   departmentL5,
   departmentL6,
-  departmentL7,
-  departmentL8,
 ] as const;
 const rows = ref<SkillPlanningItem[]>([]);
 const total = ref(0);
@@ -473,8 +467,6 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignQueryValue(nextQuery, 'departmentL4', filterForm.departmentL4);
   assignQueryValue(nextQuery, 'departmentL5', filterForm.departmentL5);
   assignQueryValue(nextQuery, 'departmentL6', filterForm.departmentL6);
-  assignQueryValue(nextQuery, 'departmentL7', filterForm.departmentL7);
-  assignQueryValue(nextQuery, 'departmentL8', filterForm.departmentL8);
 
   if (plannedFinishSortOrder.value) {
     nextQuery.sortBy = 'planedCompleteDate';
@@ -1033,8 +1025,8 @@ onBeforeUnmount(() => {
             v-model="planningDepartmentSegments"
             class="planning-dept-cascader"
             :tree="planningDepartmentTree"
-            :max-level="6"
-            aria-label="Skill 规划部门级联筛选（DepartmentL1～DepartmentL6）"
+            :max-level="4"
+            aria-label="Skill 规划部门级联筛选（departmentL3～departmentL6）"
             @change="onPlanningDepartmentChange"
             @clear="onPlanningDepartmentClear"
             @done="onPlanningDepartmentDone"
