@@ -9,6 +9,15 @@ const _ai_env = import.meta.env.VITE_SKILL_CORE_CODE_URL;
 export const ai = _ai_env;
 
 export const skillBaseService = {
+  // 获取用户部门信息
+  getUserDepartment: (params: any): any => {
+    return httpRequest.fuyao<any>({
+      url: '/dataengineering/config-center/hw-userinfo',
+      method: 'get',
+      params,
+    });
+  },
+
   // skill压缩包解析接口
   parseSkillPackage: (formData: FormData, params: any): any => {
     return httpRequest.skill<any>({

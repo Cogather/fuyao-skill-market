@@ -13,6 +13,7 @@ export interface SkillPlanningItem {
   skillName: string;
   skillDescription: string;
   level: string;
+  offeringId: string;
   offeringName: string;
   owner: string;
   department: string;
@@ -59,6 +60,11 @@ export interface SkillPlanningListResult {
 export interface SkillPlanningOptionGroup {
   value: string;
   children: string[];
+}
+
+export interface ProductPlanningOption {
+  offeringId: string;
+  offeringName: string;
 }
 
 export interface SkillPlanningFilterOptions {
@@ -162,6 +168,7 @@ export function createEmptySkillPlanningPayload(): SkillPlanningPayload {
     skillName: '',
     skillDescription: '',
     level: '',
+    offeringId: '',
     offeringName: '',
     owner: '',
     department: '',
@@ -182,6 +189,7 @@ export function normalizeSkillPlanningPayload(
     skillName: normalizeText(payload.skillName),
     skillDescription: normalizeText(payload.skillDescription),
     level: normalizeText(payload.level),
+    offeringId: normalizeText(payload.offeringId),
     offeringName: normalizeText(payload.offeringName),
     owner: normalizeText(payload.owner),
     department: normalizeText(payload.department),
@@ -206,6 +214,7 @@ export function normalizeSkillPlanningItem(value: unknown): SkillPlanningItem {
     skillName: normalizeText(record.skillName),
     skillDescription: normalizeText(record.skillDescription),
     level: normalizeText(record.level),
+    offeringId: normalizeText(record.offeringId),
     offeringName: normalizeText(record.offeringName),
     owner: normalizeText(record.owner),
     department: normalizeText(record.department),

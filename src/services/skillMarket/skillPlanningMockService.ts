@@ -9,6 +9,7 @@ import {
   rowToSkillPlanningPayload,
   skillPlanningExportHeaders,
   skillPlanningFieldMap,
+  type ProductPlanningOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningFilterOptions,
   type SkillPlanningImportResult,
@@ -29,6 +30,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '接口 Mock 生成 Skill',
     skillDescription: '根据接口定义自动生成 Mock 数据和联调示例，减少前后端等待时间。',
     level: '平台级',
+    offeringId: 'offering-api',
     offeringName: 'API产品线',
     owner: '张三',
     department: '平台工具部',
@@ -45,6 +47,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '测试用例评审 Skill',
     skillDescription: '围绕需求说明和历史缺陷生成测试用例评审建议，提升测试覆盖完整度。',
     level: '部门级',
+    offeringId: 'offering-quality',
     offeringName: '质量产品线',
     owner: '李四',
     department: '质量工具组',
@@ -61,6 +64,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '日志分析 Skill',
     skillDescription: '汇总异常日志、调用链和发布记录，输出可执行的问题定位摘要。',
     level: '组织级',
+    offeringId: 'offering-data',
     offeringName: '数据产品线',
     owner: '王五',
     department: '数据平台部',
@@ -77,6 +81,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '会议纪要沉淀 Skill',
     skillDescription: '从会议记录中抽取决策、风险、待办和关联文档，自动整理到团队知识库。',
     level: '部门级',
+    offeringId: 'offering-efficiency',
     offeringName: '研发效能产品线',
     owner: '赵六',
     department: '研发效能部',
@@ -93,6 +98,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '发布风险检查 Skill',
     skillDescription: '结合发布单、代码变更和历史事故，生成发布前风险检查清单。',
     level: '平台级',
+    offeringId: 'offering-cloud',
     offeringName: '云平台产品线',
     owner: '钱慧',
     department: '云平台部',
@@ -109,6 +115,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '工单智能分派 Skill',
     skillDescription: '按问题类型、系统模块和处理经验自动推荐承接团队与处理路径。',
     level: '组织级',
+    offeringId: 'offering-customer-success',
     offeringName: '客户成功产品线',
     owner: '孙宇',
     department: '客户成功部',
@@ -125,6 +132,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '代码评审摘要 Skill',
     skillDescription: '生成代码改动摘要、风险点和建议关注文件，辅助 reviewer 快速进入上下文。',
     level: '个人级',
+    offeringId: 'offering-platform-tools',
     offeringName: '平台工具产品线',
     owner: '何佳',
     department: '平台工具部',
@@ -141,6 +149,7 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '缺陷根因归纳 Skill',
     skillDescription: '对缺陷描述、提交记录和修复方案进行归纳，输出可复用的质量改进建议。',
     level: '部门级',
+    offeringId: 'offering-quality',
     offeringName: '质量产品线',
     owner: '郑欣',
     department: '质量工具组',
@@ -148,6 +157,18 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     planedCompleteDate: '2026-07-08',
     status: '已完成',
   },
+];
+
+const mockProductPlanningOptions: ProductPlanningOption[] = [
+  { offeringId: 'offering-api', offeringName: 'API产品线' },
+  { offeringId: 'offering-quality', offeringName: '质量产品线' },
+  { offeringId: 'offering-data', offeringName: '数据产品线' },
+  { offeringId: 'offering-efficiency', offeringName: '研发效能产品线' },
+  { offeringId: 'offering-cloud', offeringName: '云平台产品线' },
+  { offeringId: 'offering-customer-success', offeringName: '客户成功产品线' },
+  { offeringId: 'offering-platform-tools', offeringName: '平台工具产品线' },
+  { offeringId: 'offering-security', offeringName: '安全能力产品线' },
+  { offeringId: 'offering-mobile', offeringName: '移动端产品线' },
 ];
 
 let skillPlanningItems = [...initialSkillPlanningItems];
@@ -294,6 +315,28 @@ export async function queryAllSkillPlanningList(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningItem[]> {
   return sortItems(filterItems(query), query).map(cloneSkillPlanningItem);
+}
+
+export async function getProductPlanning(
+  params: { offeringName?: string } = {},
+): Promise<ProductPlanningOption[]> {
+  const keyword = normalizeText(params.offeringName).toLowerCase();
+  const optionMap = new Map<string, ProductPlanningOption>();
+
+  [...mockProductPlanningOptions, ...skillPlanningItems].forEach((item) => {
+    const option = {
+      offeringId: normalizeText(item.offeringId),
+      offeringName: normalizeText(item.offeringName),
+    };
+    if (!option.offeringName) {
+      return;
+    }
+    optionMap.set(option.offeringId || option.offeringName, option);
+  });
+
+  return Array.from(optionMap.values()).filter((option) =>
+    keyword ? option.offeringName.toLowerCase().includes(keyword) : true,
+  );
 }
 
 export async function createSkillPlanning(

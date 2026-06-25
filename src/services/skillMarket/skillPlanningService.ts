@@ -5,6 +5,7 @@ import {
   normalizeSkillPlanningItem,
   normalizeText,
   normalizeTextArray,
+  type ProductPlanningOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningBatchUpdatePayload,
   type SkillPlanningFilterOptions,
@@ -18,6 +19,7 @@ import {
 
 export { exportSkillPlanningToExcel, skillPlanningExportHeaders } from './skillPlanningShared';
 export type {
+  ProductPlanningOption,
   SkillPlanningBatchPatch,
   SkillPlanningBatchUpdatePayload,
   SkillPlanningFilterOptions,
@@ -191,6 +193,26 @@ function normalizeHttpImportResult(response: unknown): SkillPlanningImportResult
   };
 }
 
+function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
+  const data = unwrapResponseData<unknown>(response);
+  const source = Array.isArray(data)
+    ? data
+    : pickArray(asRecord(data), ['list', 'records', 'items', 'rows']);
+  const optionMap = new Map<string, ProductPlanningOption>();
+
+  source.forEach((item) => {
+    const record = asRecord(item);
+    const offeringId = normalizeText(record.offeringId);
+    const offeringName = normalizeText(record.offeringName);
+    if (!offeringName) {
+      return;
+    }
+    optionMap.set(offeringId || offeringName, { offeringId, offeringName });
+  });
+
+  return Array.from(optionMap.values());
+}
+
 function normalizeHttpDownloadUrl(response: unknown): string {
   const data = unwrapResponseData<unknown>(response);
   if (typeof data === 'string') {
@@ -273,6 +295,16 @@ function toHttpSkillPlanningQuery(query: SkillPlanningQuery): Record<string, unk
   });
 
   return body;
+}
+
+export async function getProductPlanning(offeringName = ''): Promise<ProductPlanningOption[]> {
+  const params = { offeringName: normalizeText(offeringName) };
+  if (!useHttpTransport()) {
+    return (await loadMockService()).getProductPlanning(params);
+  }
+
+  const response = await skillBaseService.getProductPlanning(params);
+  return normalizeProductPlanningOptions(response);
 }
 
 export async function querySkillPlanningFilterOptions(): Promise<SkillPlanningFilterOptions> {

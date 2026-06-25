@@ -9,10 +9,12 @@ import {
   downloadSkillPlanningTemplate,
   exportSkillPlanningToExcel,
   importSkillPlanningFromExcel,
+  getProductPlanning,
   querySkillPlanningFilterOptions,
   queryAllSkillPlanningList,
   querySkillConfig,
   updateSkillPlanning,
+  type ProductPlanningOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningFilterOptions,
   type SkillPlanningItem,
@@ -148,6 +150,13 @@ const inlineEditId = ref('');
 const inlineEditSubmitting = ref(false);
 const formErrors = reactive<Partial<Record<keyof SkillPlanningPayload, string>>>({});
 const planningForm = reactive<SkillPlanningPayload>(createEmptyPlanningForm());
+const productDropdownOpen = ref(false);
+const productSearchKeyword = ref('');
+const productOptions = ref<ProductPlanningOption[]>([]);
+const productSearching = ref(false);
+const productSearchMessage = ref('');
+let productSearchTimer: number | null = null;
+let productSearchSeq = 0;
 
 const batchDialogOpen = ref(false);
 const batchSubmitting = ref(false);
@@ -228,6 +237,7 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     name: '',
     description: '',
     level: '',
+    offeringId: '',
     offeringName: '',
     owner: '',
     deptName: '',
@@ -273,6 +283,94 @@ function clearPlanningFormError(field: keyof SkillPlanningPayload): void {
   delete formErrors[field];
 }
 
+function clearProductSearchTimer(): void {
+  if (productSearchTimer !== null) {
+    window.clearTimeout(productSearchTimer);
+    productSearchTimer = null;
+  }
+}
+
+function closePlanningProductSelect(): void {
+  productDropdownOpen.value = false;
+  clearProductSearchTimer();
+}
+
+function resetProductSearchState(): void {
+  closePlanningProductSelect();
+  productSearchKeyword.value = '';
+  productOptions.value = [];
+  productSearchMessage.value = '';
+}
+
+async function searchPlanningProducts(keyword = productSearchKeyword.value): Promise<void> {
+  const requestSeq = ++productSearchSeq;
+  productSearching.value = true;
+  productSearchMessage.value = '';
+
+  try {
+    const options = await getProductPlanning(keyword);
+    if (requestSeq !== productSearchSeq) {
+      return;
+    }
+    productOptions.value = options;
+    productSearchMessage.value = options.length > 0 ? '' : '暂无匹配产品';
+  } catch (error) {
+    if (requestSeq !== productSearchSeq) {
+      return;
+    }
+    productOptions.value = [];
+    productSearchMessage.value =
+      error instanceof Error ? error.message : '产品查询失败，请稍后重试';
+  } finally {
+    if (requestSeq === productSearchSeq) {
+      productSearching.value = false;
+    }
+  }
+}
+
+function openPlanningProductSelect(): void {
+  productDropdownOpen.value = true;
+  productSearchKeyword.value = planningForm.offeringName;
+  void searchPlanningProducts(productSearchKeyword.value);
+}
+
+function togglePlanningProductSelect(): void {
+  if (productDropdownOpen.value) {
+    closePlanningProductSelect();
+    return;
+  }
+  openPlanningProductSelect();
+}
+
+function onPlanningProductSearchInput(event: Event): void {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  const keyword = target?.value ?? '';
+  productSearchKeyword.value = keyword;
+  if (planningForm.offeringName && keyword !== planningForm.offeringName) {
+    planningForm.offeringId = '';
+    planningForm.offeringName = '';
+  }
+  clearProductSearchTimer();
+  productSearchTimer = window.setTimeout(() => {
+    void searchPlanningProducts(productSearchKeyword.value);
+  }, 250);
+}
+
+function clearPlanningProduct(): void {
+  clearProductSearchTimer();
+  planningForm.offeringId = '';
+  planningForm.offeringName = '';
+  productSearchKeyword.value = '';
+  productOptions.value = [];
+  productSearchMessage.value = '';
+  void searchPlanningProducts('');
+}
+
+function choosePlanningProduct(option: ProductPlanningOption): void {
+  planningForm.offeringId = option.offeringId;
+  planningForm.offeringName = option.offeringName;
+  closePlanningProductSelect();
+}
 function onPlanningFirstSceneChange(): void {
   planningForm.secondScene = '';
   clearPlanningFormError('firstScene');
@@ -391,6 +489,9 @@ function handlePlanningHeaderFilterOutsideClick(event: MouseEvent): void {
   const target = event.target;
   if (!(target instanceof Element)) {
     return;
+  }
+  if (!target.closest('.planning-product-select')) {
+    closePlanningProductSelect();
   }
   if (target.closest('.planning-th-filter')) {
     return;
@@ -512,6 +613,7 @@ async function reloadList() {
 }
 
 function resetPlanningForm() {
+  resetProductSearchState();
   Object.assign(planningForm, createEmptyPlanningForm());
   Object.keys(formErrors).forEach((key) => {
     delete formErrors[key as keyof SkillPlanningPayload];
@@ -527,6 +629,7 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     name: row.name,
     description: row.description,
     level: row.level,
+    offeringId: row.offeringId,
     offeringName: row.offeringName,
     owner: row.owner,
     deptName: row.deptName,
@@ -1007,6 +1110,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handlePlanningHeaderFilterOutsideClick);
+  clearProductSearchTimer();
   if (toastTimer) {
     window.clearTimeout(toastTimer);
     toastTimer = null;
@@ -1645,12 +1749,59 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <div class="planning-inline-field">
-                  <input
-                    v-model.trim="planningForm.offeringName"
-                    type="text"
-                    class="planning-inline-control"
-                    placeholder="产品"
-                  />
+                  <div class="planning-product-select">
+                    <button
+                      type="button"
+                      class="planning-inline-control planning-product-trigger"
+                      :class="{ 'is-placeholder': !planningForm.offeringName }"
+                      @click="togglePlanningProductSelect"
+                    >
+                      <span>{{ planningForm.offeringName || '产品' }}</span>
+                      <span class="planning-product-caret">⌄</span>
+                    </button>
+                    <div v-if="productDropdownOpen" class="planning-product-panel" @mousedown.stop>
+                      <div class="planning-product-search-wrap">
+                        <input
+                          :value="productSearchKeyword"
+                          type="text"
+                          class="planning-product-search"
+                          placeholder="搜索产品"
+                          @input="onPlanningProductSearchInput"
+                          @keydown.enter.prevent="searchPlanningProducts(productSearchKeyword)"
+                        />
+                        <button
+                          v-if="planningForm.offeringName || productSearchKeyword"
+                          type="button"
+                          class="planning-product-clear"
+                          aria-label="清除产品"
+                          title="清除产品"
+                          @click="clearPlanningProduct"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div class="planning-product-list">
+                        <span v-if="productSearching" class="planning-product-empty"
+                          >查询中...</span
+                        >
+                        <template v-else>
+                          <button
+                            v-for="item in productOptions"
+                            :key="item.offeringId || item.offeringName"
+                            type="button"
+                            class="planning-product-option"
+                            :class="{ 'is-selected': item.offeringId === planningForm.offeringId }"
+                            @click="choosePlanningProduct(item)"
+                          >
+                            {{ item.offeringName }}
+                          </button>
+                          <span v-if="productSearchMessage" class="planning-product-empty">
+                            {{ productSearchMessage }}
+                          </span>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </td>
               <td>
@@ -1882,12 +2033,65 @@ onBeforeUnmount(() => {
                   </td>
                   <td>
                     <div class="planning-inline-field">
-                      <input
-                        v-model.trim="planningForm.offeringName"
-                        type="text"
-                        class="planning-inline-control"
-                        placeholder="产品"
-                      />
+                      <div class="planning-product-select">
+                        <button
+                          type="button"
+                          class="planning-inline-control planning-product-trigger"
+                          :class="{ 'is-placeholder': !planningForm.offeringName }"
+                          @click="togglePlanningProductSelect"
+                        >
+                          <span>{{ planningForm.offeringName || '产品' }}</span>
+                          <span class="planning-product-caret">⌄</span>
+                        </button>
+                        <div
+                          v-if="productDropdownOpen"
+                          class="planning-product-panel"
+                          @mousedown.stop
+                        >
+                          <div class="planning-product-search-wrap">
+                            <input
+                              :value="productSearchKeyword"
+                              type="text"
+                              class="planning-product-search"
+                              placeholder="搜索产品"
+                              @input="onPlanningProductSearchInput"
+                              @keydown.enter.prevent="searchPlanningProducts(productSearchKeyword)"
+                            />
+                            <button
+                              v-if="planningForm.offeringName || productSearchKeyword"
+                              type="button"
+                              class="planning-product-clear"
+                              aria-label="清除产品"
+                              title="清除产品"
+                              @click="clearPlanningProduct"
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <div class="planning-product-list">
+                            <span v-if="productSearching" class="planning-product-empty"
+                              >查询中...</span
+                            >
+                            <template v-else>
+                              <button
+                                v-for="item in productOptions"
+                                :key="item.offeringId || item.offeringName"
+                                type="button"
+                                class="planning-product-option"
+                                :class="{
+                                  'is-selected': item.offeringId === planningForm.offeringId,
+                                }"
+                                @click="choosePlanningProduct(item)"
+                              >
+                                {{ item.offeringName }}
+                              </button>
+                              <span v-if="productSearchMessage" class="planning-product-empty">
+                                {{ productSearchMessage }}
+                              </span>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td>
@@ -2367,9 +2571,59 @@ onBeforeUnmount(() => {
               </select>
               <small v-if="formErrors.level">{{ formErrors.level }}</small>
             </label>
-            <label class="planning-field">
+            <label class="planning-field planning-field--product">
               <span>产品</span>
-              <input v-model.trim="planningForm.offeringName" type="text" />
+              <div class="planning-product-select planning-product-select--dialog">
+                <button
+                  type="button"
+                  class="planning-product-trigger planning-product-trigger--dialog"
+                  :class="{ 'is-placeholder': !planningForm.offeringName }"
+                  @click="togglePlanningProductSelect"
+                >
+                  <span>{{ planningForm.offeringName || '请选择产品' }}</span>
+                  <span class="planning-product-caret">⌄</span>
+                </button>
+                <div v-if="productDropdownOpen" class="planning-product-panel" @mousedown.stop>
+                  <div class="planning-product-search-wrap">
+                    <input
+                      :value="productSearchKeyword"
+                      type="text"
+                      class="planning-product-search"
+                      placeholder="搜索产品"
+                      @input="onPlanningProductSearchInput"
+                      @keydown.enter.prevent="searchPlanningProducts(productSearchKeyword)"
+                    />
+                    <button
+                      v-if="planningForm.offeringName || productSearchKeyword"
+                      type="button"
+                      class="planning-product-clear"
+                      aria-label="清除产品"
+                      title="清除产品"
+                      @click="clearPlanningProduct"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div class="planning-product-list">
+                    <span v-if="productSearching" class="planning-product-empty">查询中...</span>
+                    <template v-else>
+                      <button
+                        v-for="item in productOptions"
+                        :key="item.offeringId || item.offeringName"
+                        type="button"
+                        class="planning-product-option"
+                        :class="{ 'is-selected': item.offeringId === planningForm.offeringId }"
+                        @click="choosePlanningProduct(item)"
+                      >
+                        {{ item.offeringName }}
+                      </button>
+                      <span v-if="productSearchMessage" class="planning-product-empty">
+                        {{ productSearchMessage }}
+                      </span>
+                    </template>
+                  </div>
+                </div>
+              </div>
             </label>
             <label class="planning-field">
               <span>责任 Owner <em>*</em></span>
@@ -3054,6 +3308,156 @@ onBeforeUnmount(() => {
   background: #fff7f7;
 }
 
+.planning-product-select {
+  position: relative;
+  min-width: 0;
+}
+
+.planning-product-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid #d8e2f0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #10243f;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planning-product-trigger span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-product-trigger.is-placeholder {
+  color: #7f8fa6;
+}
+
+.planning-product-trigger:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+  outline: none;
+}
+
+.planning-product-trigger--dialog {
+  height: 38px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+
+.planning-product-caret {
+  flex: 0 0 auto;
+  color: #8aa0b7;
+  font-size: 12px;
+  bottom: 12%;
+}
+
+.planning-product-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  width: 260px;
+  max-width: min(320px, calc(100vw - 48px));
+  padding: 8px;
+  border: 1px solid #dbe6f5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(33, 53, 84, 0.18);
+}
+
+.planning-product-select--dialog .planning-product-panel {
+  width: 100%;
+  min-width: 260px;
+}
+
+.planning-product-search-wrap {
+  position: relative;
+}
+
+.planning-product-search {
+  width: 100%;
+  height: 34px;
+  min-width: 0;
+  padding: 0 32px 0 10px;
+  border: 1px solid #d8e2f0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #10243f;
+  font-size: 12px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.planning-product-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #63758d;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.planning-product-clear:hover {
+  background: #eef5ff;
+  color: #1263e6;
+}
+
+.planning-product-search:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+
+.planning-product-list {
+  display: grid;
+  gap: 4px;
+  max-height: 188px;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.planning-product-option {
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #253852;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planning-product-option:hover,
+.planning-product-option.is-selected {
+  background: #eef5ff;
+  color: #1263e6;
+}
+
+.planning-product-empty {
+  display: block;
+  padding: 10px 8px;
+  color: #70839d;
+  font-size: 12px;
+}
 .planning-inline-error {
   color: #dc2626;
   font-size: 11px;
