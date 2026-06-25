@@ -399,28 +399,31 @@ function handlePlanningHeaderFilterOutsideClick(event: MouseEvent): void {
 }
 
 function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.value): void {
+  const nextSegments = segments.slice(0, planningDepartmentLevelRefs.length);
   planningDepartmentLevelRefs.forEach((levelRef, index) => {
-    levelRef.value = segments[index] ?? '';
+    levelRef.value = nextSegments[index] ?? '';
     filterForm[`departmentL${index + 3}` as keyof typeof filterForm] = levelRef.value;
   });
-  filterForm.deptName = segments[segments.length - 1] ?? '';
+  filterForm.deptName = nextSegments[nextSegments.length - 1] ?? '';
 }
 
 function onPlanningDepartmentChange(segments: string[]): void {
   syncPlanningDepartmentLevels(segments);
 }
 
-async function onPlanningDepartmentDone(segments: string[]): Promise<void> {
-  syncPlanningDepartmentLevels(segments);
+async function applyPlanningDepartmentQuery(segments: string[]): Promise<void> {
+  planningDepartmentSegments.value = segments.slice(0, planningDepartmentLevelRefs.length);
+  syncPlanningDepartmentLevels(planningDepartmentSegments.value);
   pageNum.value = 1;
   await reloadList();
 }
 
+async function onPlanningDepartmentDone(segments: string[]): Promise<void> {
+  await applyPlanningDepartmentQuery(segments);
+}
+
 async function onPlanningDepartmentClear(): Promise<void> {
-  planningDepartmentSegments.value = [];
-  syncPlanningDepartmentLevels([]);
-  pageNum.value = 1;
-  await reloadList();
+  await applyPlanningDepartmentQuery([]);
 }
 
 const queryFilterObj = reactive<SkillPlanningQuery>({});
@@ -467,10 +470,11 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignHeaderFilterQueryValue(nextQuery, 'level', 'levels');
   assignHeaderFilterQueryValue(nextQuery, 'status', 'progresses');
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
-  assignQueryValue(nextQuery, 'departmentL3', filterForm.departmentL3);
-  assignQueryValue(nextQuery, 'departmentL4', filterForm.departmentL4);
-  assignQueryValue(nextQuery, 'departmentL5', filterForm.departmentL5);
-  assignQueryValue(nextQuery, 'departmentL6', filterForm.departmentL6);
+  planningDepartmentSegments.value
+    .slice(0, planningDepartmentLevelRefs.length)
+    .forEach((segment, index) => {
+      assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
+    });
 
   if (plannedFinishSortOrder.value) {
     nextQuery.sortBy = 'planedCompleteDate';
