@@ -410,13 +410,17 @@ function onPlanningDepartmentChange(segments: string[]): void {
   syncPlanningDepartmentLevels(segments);
 }
 
-function onPlanningDepartmentDone(segments: string[]): void {
+async function onPlanningDepartmentDone(segments: string[]): Promise<void> {
   syncPlanningDepartmentLevels(segments);
+  pageNum.value = 1;
+  await reloadList();
 }
 
-function onPlanningDepartmentClear(): void {
+async function onPlanningDepartmentClear(): Promise<void> {
   planningDepartmentSegments.value = [];
   syncPlanningDepartmentLevels([]);
+  pageNum.value = 1;
+  await reloadList();
 }
 
 const queryFilterObj = reactive<SkillPlanningQuery>({});

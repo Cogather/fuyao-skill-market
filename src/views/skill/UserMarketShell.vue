@@ -39,6 +39,7 @@ import type {
   UserInnerTab,
 } from '../../types/skill';
 import { emptyOpsDashboardBundle } from '../../services/skillMarket/mock/opsDashboardUiDefaults';
+import { getMockMarketDepartmentsTree } from '../../services/skillMarket/mock/marketDepartmentsTreeDefault';
 import {
   parseDeptNamePath,
   type DeptTreeNode,
@@ -505,7 +506,11 @@ const marketOrgSelectOptions = computed(() =>
 );
 
 const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
-  const coerced = coerceDepartmentTreeFromUnknown(departmentList.value);
+  const source =
+    Array.isArray(departmentList.value) && departmentList.value.length > 0
+      ? departmentList.value
+      : getMockMarketDepartmentsTree();
+  const coerced = coerceDepartmentTreeFromUnknown(source);
   return mapDepartmentTreeDtoToForest(coerced);
 });
 

@@ -266,7 +266,7 @@ function toHttpSkillPlanningQuery(query: SkillPlanningQuery): Record<string, unk
   planningHeaderFilterHttpParamPairs.forEach(([valueKey, multiKey]) => {
     const values = normalizeTextArray(query[multiKey]);
     if (values.length > 0) {
-      body[valueKey] = values.length === 1 ? values[0] : values;
+      body[valueKey] = values;
       return;
     }
     assignHttpQueryValue(body, valueKey, query[valueKey]);
