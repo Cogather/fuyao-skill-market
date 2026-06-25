@@ -216,6 +216,65 @@ function normalizeHttpItem(response: unknown): SkillPlanningItem {
   return normalizeSkillPlanningItem(unwrapResponseData<unknown>(response));
 }
 
+const planningHeaderFilterHttpParamPairs = [
+  ['firstScene', 'primaryScenes'],
+  ['secondScene', 'secondaryScenes'],
+  ['activityNodeName', 'activities'],
+  ['subActivityNodeName', 'subActivities'],
+  ['level', 'levels'],
+  ['status', 'progresses'],
+] as const satisfies ReadonlyArray<readonly [keyof SkillPlanningQuery, keyof SkillPlanningQuery]>;
+
+const planningHeaderFilterHttpMultiKeys = new Set<string>(
+  planningHeaderFilterHttpParamPairs.map(([, multiKey]) => multiKey),
+);
+
+function assignHttpQueryValue(
+  body: Record<string, unknown>,
+  key: keyof SkillPlanningQuery,
+  value: unknown,
+): void {
+  if (Array.isArray(value)) {
+    const values = normalizeTextArray(value);
+    if (values.length > 0) {
+      body[key] = values.length === 1 ? values[0] : values;
+    }
+    return;
+  }
+
+  if (typeof value === 'number') {
+    body[key] = value;
+    return;
+  }
+
+  const text = normalizeText(value);
+  if (text) {
+    body[key] = text;
+  }
+}
+
+function toHttpSkillPlanningQuery(query: SkillPlanningQuery): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (planningHeaderFilterHttpMultiKeys.has(key)) {
+      return;
+    }
+    assignHttpQueryValue(body, key as keyof SkillPlanningQuery, value);
+  });
+
+  planningHeaderFilterHttpParamPairs.forEach(([valueKey, multiKey]) => {
+    const values = normalizeTextArray(query[multiKey]);
+    if (values.length > 0) {
+      body[valueKey] = values.length === 1 ? values[0] : values;
+      return;
+    }
+    assignHttpQueryValue(body, valueKey, query[valueKey]);
+  });
+
+  return body;
+}
+
 export async function querySkillPlanningFilterOptions(): Promise<SkillPlanningFilterOptions> {
   if (!useHttpTransport()) {
     return (await loadMockService()).getPlanningOption();
@@ -232,7 +291,7 @@ export async function querySkillConfig(
     return (await loadMockService()).querySkillConfig(query);
   }
 
-  const response = await skillBaseService.querySkillConfig(query);
+  const response = await skillBaseService.querySkillConfig(toHttpSkillPlanningQuery(query));
   return normalizeHttpListResult(response);
 }
 

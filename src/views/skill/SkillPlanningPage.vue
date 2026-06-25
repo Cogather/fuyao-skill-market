@@ -74,7 +74,7 @@ const batchReadonlyHeaders = [
 ] as const;
 
 const emptyFilters = {
-  department: '',
+  deptName: '',
   departmentL3: '',
   departmentL4: '',
   departmentL5: '',
@@ -231,13 +231,13 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     secondScene: '',
     activityNodeName: '',
     subActivityNodeName: '',
-    skillName: '',
-    skillDescription: '',
+    name: '',
+    description: '',
     level: '',
     offeringName: '',
     owner: '',
-    department: '',
-    developer: '',
+    deptName: '',
+    developOwner: '',
     planedCompleteDate: '',
     status: '未开始',
   };
@@ -245,11 +245,11 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
 
 function createEmptyBatchForm(): PlanningBatchForm {
   return {
-    skillDescription: '',
+    description: '',
     offeringName: '',
     owner: '',
-    department: '',
-    developer: '',
+    deptName: '',
+    developOwner: '',
     planedCompleteDate: '',
     status: '',
   };
@@ -350,8 +350,7 @@ async function applyPlanningTableFilters(): Promise<void> {
 }
 
 async function onSearchKeyword() {
-  queryFilterObj.keyword = filterForm.keyword;
-  queryFilterObj.pageNum = 1;
+  pageNum.value = 1;
   await reloadList();
 }
 
@@ -406,7 +405,7 @@ function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.valu
     levelRef.value = segments[index] ?? '';
     filterForm[`departmentL${index + 3}` as keyof typeof filterForm] = levelRef.value;
   });
-  filterForm.department = segments[segments.length - 1] ?? '';
+  filterForm.deptName = segments[segments.length - 1] ?? '';
 }
 
 function onPlanningDepartmentChange(segments: string[]): void {
@@ -422,31 +421,83 @@ function onPlanningDepartmentClear(): void {
   syncPlanningDepartmentLevels([]);
 }
 
-const queryFilterObj = reactive({
-  firstScene: [...headerFilterSelections.firstScene],
-  secondScene: [...headerFilterSelections.secondScene],
-  activityNodeName: [...headerFilterSelections.activityNodeName],
-  subActivityNodeName: [...headerFilterSelections.subActivityNodeName],
-  level: [...headerFilterSelections.level],
-  status: [...headerFilterSelections.status],
-  keyword: filterForm.keyword,
-  pageNum: pageNum.value,
-  pageSize: pageSize.value,
-  departmentL3: filterForm.departmentL3,
-  departmentL4: filterForm.departmentL4,
-  departmentL5: filterForm.departmentL5,
-  departmentL6: filterForm.departmentL6,
-});
+const queryFilterObj = reactive<SkillPlanningQuery>({});
+
+function assignQueryValue(
+  query: SkillPlanningQuery,
+  key: keyof SkillPlanningQuery,
+  value: string | string[] | number | undefined,
+): void {
+  if (Array.isArray(value)) {
+    if (value.length > 0) {
+      (query as Record<string, unknown>)[key] = [...value];
+    }
+    return;
+  }
+
+  if (typeof value === 'number') {
+    query[key] = value as never;
+    return;
+  }
+
+  const text = String(value ?? '').trim();
+  if (text) {
+    (query as Record<string, unknown>)[key] = text;
+  }
+}
+
+function assignHeaderFilterQueryValue(
+  query: SkillPlanningQuery,
+  key: PlanningHeaderFilterKey,
+  multiKey: keyof SkillPlanningQuery,
+): void {
+  const values = [...headerFilterSelections[key]];
+  assignQueryValue(query, key, values[0]);
+  assignQueryValue(query, multiKey, values);
+}
+
+function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
+  const nextQuery: SkillPlanningQuery = {};
+  assignHeaderFilterQueryValue(nextQuery, 'firstScene', 'primaryScenes');
+  assignHeaderFilterQueryValue(nextQuery, 'secondScene', 'secondaryScenes');
+  assignHeaderFilterQueryValue(nextQuery, 'activityNodeName', 'activities');
+  assignHeaderFilterQueryValue(nextQuery, 'subActivityNodeName', 'subActivities');
+  assignHeaderFilterQueryValue(nextQuery, 'level', 'levels');
+  assignHeaderFilterQueryValue(nextQuery, 'status', 'progresses');
+  assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
+  assignQueryValue(nextQuery, 'departmentL3', filterForm.departmentL3);
+  assignQueryValue(nextQuery, 'departmentL4', filterForm.departmentL4);
+  assignQueryValue(nextQuery, 'departmentL5', filterForm.departmentL5);
+  assignQueryValue(nextQuery, 'departmentL6', filterForm.departmentL6);
+  assignQueryValue(nextQuery, 'departmentL7', filterForm.departmentL7);
+  assignQueryValue(nextQuery, 'departmentL8', filterForm.departmentL8);
+
+  if (plannedFinishSortOrder.value) {
+    nextQuery.sortBy = 'planedCompleteDate';
+    nextQuery.sortOrder = plannedFinishSortOrder.value;
+  }
+
+  if (includePagination) {
+    nextQuery.pageNum = pageNum.value;
+    nextQuery.pageSize = pageSize.value;
+  }
+
+  Object.keys(queryFilterObj).forEach((key) => {
+    delete (queryFilterObj as Record<string, unknown>)[key];
+  });
+  Object.assign(queryFilterObj, nextQuery);
+  return { ...queryFilterObj };
+}
 
 async function reloadList() {
   loading.value = true;
   try {
-    const result = await querySkillConfig(queryFilterObj);
+    const result = await querySkillConfig(syncQueryFilterObj());
     rows.value = result.list;
     total.value = result.total;
     if (pageNum.value > totalPages.value) {
       pageNum.value = totalPages.value;
-      const nextResult = await querySkillConfig(queryFilterObj);
+      const nextResult = await querySkillConfig(syncQueryFilterObj());
       rows.value = nextResult.list;
       total.value = nextResult.total;
     }
@@ -469,13 +520,13 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     secondScene: row.secondScene,
     activityNodeName: row.activityNodeName,
     subActivityNodeName: row.subActivityNodeName,
-    skillName: row.skillName,
-    skillDescription: row.skillDescription,
+    name: row.name,
+    description: row.description,
     level: row.level,
     offeringName: row.offeringName,
     owner: row.owner,
-    department: row.department,
-    developer: row.developer,
+    deptName: row.deptName,
+    developOwner: row.developOwner,
     planedCompleteDate: row.planedCompleteDate,
     status: row.status,
   });
@@ -584,12 +635,12 @@ function validateForm(): boolean {
     'secondScene',
     'activityNodeName',
     'subActivityNodeName',
-    'skillName',
-    'skillDescription',
+    'name',
+    'description',
     'level',
     'owner',
-    'department',
-    'developer',
+    'deptName',
+    'developOwner',
   ];
 
   requiredFields.forEach((field) => {
@@ -598,8 +649,8 @@ function validateForm(): boolean {
     }
   });
 
-  if (planningForm.skillDescription.length > 300) {
-    formErrors.skillDescription = '最多 300 字';
+  if (planningForm.description.length > 300) {
+    formErrors.description = '最多 300 字';
   }
 
   return Object.keys(formErrors).length === 0;
@@ -657,8 +708,8 @@ function closeBatchEditDialog() {
 function validateBatchForm(): boolean {
   resetBatchErrors();
 
-  if (batchForm.skillDescription.trim().length > 300) {
-    batchErrors.skillDescription = '最多 300 字';
+  if (batchForm.description.trim().length > 300) {
+    batchErrors.description = '最多 300 字';
   }
 
   return Object.keys(batchErrors).length === 0;
@@ -666,19 +717,19 @@ function validateBatchForm(): boolean {
 
 function collectBatchPatch(): SkillPlanningBatchPatch {
   const patch: SkillPlanningBatchPatch = {};
-  const skillDescription = batchForm.skillDescription.trim();
+  const description = batchForm.description.trim();
   const offeringName = batchForm.offeringName.trim();
   const owner = batchForm.owner.trim();
-  const department = batchForm.department.trim();
-  const developer = batchForm.developer.trim();
+  const deptName = batchForm.deptName.trim();
+  const developOwner = batchForm.developOwner.trim();
   const planedCompleteDate = batchForm.planedCompleteDate.trim();
   const status = batchForm.status.trim();
 
-  if (skillDescription) patch.skillDescription = skillDescription;
+  if (description) patch.description = description;
   if (offeringName) patch.offeringName = offeringName;
   if (owner) patch.owner = owner;
-  if (department) patch.department = department;
-  if (developer) patch.developer = developer;
+  if (deptName) patch.deptName = deptName;
+  if (developOwner) patch.developOwner = developOwner;
   if (planedCompleteDate) patch.planedCompleteDate = planedCompleteDate;
   if (status) patch.status = status as SkillPlanningProgress;
 
@@ -836,9 +887,7 @@ async function submitImportFile() {
 }
 
 async function exportCurrentData() {
-  queryFilterObj.pageNum = undefined;
-  queryFilterObj.pageSize = undefined;
-  const exportRows = await queryAllSkillPlanningList(queryFilterObj);
+  const exportRows = await queryAllSkillPlanningList(syncQueryFilterObj(false));
   if (exportRows.length === 0) {
     showToast('当前筛选条件下暂无可导出数据');
     return;
@@ -877,7 +926,7 @@ async function confirmDialogAction() {
 function requestDeleteRow(row: SkillPlanningItem) {
   openConfirmDialog(
     '删除 Skill 规划',
-    `确认删除「${row.skillName}」吗？删除后将无法恢复。`,
+    `确认删除「${row.name}」吗？删除后将无法恢复。`,
     '确认删除',
     async () => {
       await deleteSkillPlanning(row.id);
@@ -1559,29 +1608,29 @@ onBeforeUnmount(() => {
               <td>
                 <div class="planning-inline-field">
                   <input
-                    v-model.trim="planningForm.skillName"
+                    v-model.trim="planningForm.name"
                     type="text"
                     class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.skillName }"
+                    :class="{ 'has-error': formErrors.name }"
                     placeholder="Skill 名称"
                   />
-                  <small v-if="formErrors.skillName" class="planning-inline-error">
-                    {{ formErrors.skillName }}
+                  <small v-if="formErrors.name" class="planning-inline-error">
+                    {{ formErrors.name }}
                   </small>
                 </div>
               </td>
               <td class="desc-col">
                 <div class="planning-inline-field">
                   <textarea
-                    v-model.trim="planningForm.skillDescription"
+                    v-model.trim="planningForm.description"
                     class="planning-inline-control planning-inline-control--textarea"
-                    :class="{ 'has-error': formErrors.skillDescription }"
+                    :class="{ 'has-error': formErrors.description }"
                     maxlength="300"
                     rows="1"
                     placeholder="Skill 说明"
                   />
-                  <small v-if="formErrors.skillDescription" class="planning-inline-error">
-                    {{ formErrors.skillDescription }}
+                  <small v-if="formErrors.description" class="planning-inline-error">
+                    {{ formErrors.description }}
                   </small>
                 </div>
               </td>
@@ -1629,28 +1678,28 @@ onBeforeUnmount(() => {
               <td>
                 <div class="planning-inline-field">
                   <input
-                    v-model.trim="planningForm.department"
+                    v-model.trim="planningForm.deptName"
                     type="text"
                     class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.department }"
+                    :class="{ 'has-error': formErrors.deptName }"
                     placeholder="归属部门"
                   />
-                  <small v-if="formErrors.department" class="planning-inline-error">
-                    {{ formErrors.department }}
+                  <small v-if="formErrors.deptName" class="planning-inline-error">
+                    {{ formErrors.deptName }}
                   </small>
                 </div>
               </td>
               <td>
                 <div class="planning-inline-field">
                   <input
-                    v-model.trim="planningForm.developer"
+                    v-model.trim="planningForm.developOwner"
                     type="text"
                     class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.developer }"
+                    :class="{ 'has-error': formErrors.developOwner }"
                     placeholder="开发责任人"
                   />
-                  <small v-if="formErrors.developer" class="planning-inline-error">
-                    {{ formErrors.developer }}
+                  <small v-if="formErrors.developOwner" class="planning-inline-error">
+                    {{ formErrors.developOwner }}
                   </small>
                 </div>
               </td>
@@ -1796,29 +1845,29 @@ onBeforeUnmount(() => {
                   <td>
                     <div class="planning-inline-field">
                       <input
-                        v-model.trim="planningForm.skillName"
+                        v-model.trim="planningForm.name"
                         type="text"
                         class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.skillName }"
+                        :class="{ 'has-error': formErrors.name }"
                         placeholder="Skill 名称"
                       />
-                      <small v-if="formErrors.skillName" class="planning-inline-error">
-                        {{ formErrors.skillName }}
+                      <small v-if="formErrors.name" class="planning-inline-error">
+                        {{ formErrors.name }}
                       </small>
                     </div>
                   </td>
                   <td class="desc-col">
                     <div class="planning-inline-field">
                       <textarea
-                        v-model.trim="planningForm.skillDescription"
+                        v-model.trim="planningForm.description"
                         class="planning-inline-control planning-inline-control--textarea"
-                        :class="{ 'has-error': formErrors.skillDescription }"
+                        :class="{ 'has-error': formErrors.description }"
                         maxlength="300"
                         rows="1"
                         placeholder="Skill 说明"
                       />
-                      <small v-if="formErrors.skillDescription" class="planning-inline-error">
-                        {{ formErrors.skillDescription }}
+                      <small v-if="formErrors.description" class="planning-inline-error">
+                        {{ formErrors.description }}
                       </small>
                     </div>
                   </td>
@@ -1866,28 +1915,28 @@ onBeforeUnmount(() => {
                   <td>
                     <div class="planning-inline-field">
                       <input
-                        v-model.trim="planningForm.department"
+                        v-model.trim="planningForm.deptName"
                         type="text"
                         class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.department }"
+                        :class="{ 'has-error': formErrors.deptName }"
                         placeholder="归属部门"
                       />
-                      <small v-if="formErrors.department" class="planning-inline-error">
-                        {{ formErrors.department }}
+                      <small v-if="formErrors.deptName" class="planning-inline-error">
+                        {{ formErrors.deptName }}
                       </small>
                     </div>
                   </td>
                   <td>
                     <div class="planning-inline-field">
                       <input
-                        v-model.trim="planningForm.developer"
+                        v-model.trim="planningForm.developOwner"
                         type="text"
                         class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.developer }"
+                        :class="{ 'has-error': formErrors.developOwner }"
                         placeholder="开发责任人"
                       />
-                      <small v-if="formErrors.developer" class="planning-inline-error">
-                        {{ formErrors.developer }}
+                      <small v-if="formErrors.developOwner" class="planning-inline-error">
+                        {{ formErrors.developOwner }}
                       </small>
                     </div>
                   </td>
@@ -1947,16 +1996,16 @@ onBeforeUnmount(() => {
                   <td>{{ row.activityNodeName }}</td>
                   <td>{{ row.subActivityNodeName }}</td>
                   <td>
-                    <strong class="skill-name">{{ row.skillName }}</strong>
+                    <strong class="skill-name">{{ row.name }}</strong>
                   </td>
                   <td class="desc-col">
-                    <span :title="row.skillDescription">{{ row.skillDescription }}</span>
+                    <span :title="row.description">{{ row.description }}</span>
                   </td>
                   <td>{{ row.level }}</td>
                   <td>{{ row.offeringName }}</td>
                   <td>{{ row.owner }}</td>
-                  <td>{{ row.department }}</td>
-                  <td>{{ row.developer }}</td>
+                  <td>{{ row.deptName }}</td>
+                  <td>{{ row.developOwner }}</td>
                   <td>{{ row.planedCompleteDate }}</td>
                   <td>
                     <span class="status-pill" :class="progressClass(row.status)">
@@ -2170,16 +2219,12 @@ onBeforeUnmount(() => {
               </label>
               <label class="planning-field">
                 <span>归属部门</span>
-                <input
-                  v-model.trim="batchForm.department"
-                  type="text"
-                  placeholder="不填写则不修改"
-                />
+                <input v-model.trim="batchForm.deptName" type="text" placeholder="不填写则不修改" />
               </label>
               <label class="planning-field">
                 <span>开发责任人</span>
                 <input
-                  v-model.trim="batchForm.developer"
+                  v-model.trim="batchForm.developOwner"
                   type="text"
                   placeholder="不填写则不修改"
                 />
@@ -2200,13 +2245,11 @@ onBeforeUnmount(() => {
               <label class="planning-field planning-field--textarea">
                 <span>Skill 说明</span>
                 <textarea
-                  v-model.trim="batchForm.skillDescription"
+                  v-model.trim="batchForm.description"
                   maxlength="300"
                   placeholder="不填写则不修改，最多 300 字"
                 />
-                <small v-if="batchErrors.skillDescription">{{
-                  batchErrors.skillDescription
-                }}</small>
+                <small v-if="batchErrors.description">{{ batchErrors.description }}</small>
               </label>
             </div>
           </div>
@@ -2321,8 +2364,8 @@ onBeforeUnmount(() => {
             </label>
             <label class="planning-field">
               <span>Skill 名称 <em>*</em></span>
-              <input v-model.trim="planningForm.skillName" type="text" />
-              <small v-if="formErrors.skillName">{{ formErrors.skillName }}</small>
+              <input v-model.trim="planningForm.name" type="text" />
+              <small v-if="formErrors.name">{{ formErrors.name }}</small>
             </label>
             <label class="planning-field">
               <span>层级 <em>*</em></span>
@@ -2343,13 +2386,13 @@ onBeforeUnmount(() => {
             </label>
             <label class="planning-field">
               <span>归属部门 <em>*</em></span>
-              <input v-model.trim="planningForm.department" type="text" />
-              <small v-if="formErrors.department">{{ formErrors.department }}</small>
+              <input v-model.trim="planningForm.deptName" type="text" />
+              <small v-if="formErrors.deptName">{{ formErrors.deptName }}</small>
             </label>
             <label class="planning-field">
               <span>开发责任人 <em>*</em></span>
-              <input v-model.trim="planningForm.developer" type="text" />
-              <small v-if="formErrors.developer">{{ formErrors.developer }}</small>
+              <input v-model.trim="planningForm.developOwner" type="text" />
+              <small v-if="formErrors.developOwner">{{ formErrors.developOwner }}</small>
             </label>
             <label class="planning-field">
               <span>计划完成时间</span>
@@ -2366,11 +2409,11 @@ onBeforeUnmount(() => {
             <label class="planning-field planning-field--textarea">
               <span>Skill 说明 <em>*</em></span>
               <textarea
-                v-model.trim="planningForm.skillDescription"
+                v-model.trim="planningForm.description"
                 maxlength="300"
                 placeholder="最多 300 字"
               />
-              <small v-if="formErrors.skillDescription">{{ formErrors.skillDescription }}</small>
+              <small v-if="formErrors.description">{{ formErrors.description }}</small>
             </label>
           </div>
           <div class="planning-dialog__actions">
