@@ -336,6 +336,10 @@ function headerFilterSelectedCount(key: PlanningHeaderFilterKey): number {
   return headerFilterSelections[key].length;
 }
 
+function hasHeaderFilterSelection(key: PlanningHeaderFilterKey): boolean {
+  return headerFilterSelections[key].length > 0;
+}
+
 function isHeaderFilterOpen(key: PlanningHeaderFilterKey): boolean {
   return headerFilterOpenKey.value === key;
 }
@@ -1168,12 +1172,10 @@ onBeforeUnmount(() => {
                   >
                     <span>一级场景</span>
                     <span
-                      v-if="headerFilterSelectedCount('firstScene')"
-                      class="planning-th-filter__count"
-                    >
-                      {{ headerFilterSelectedCount('firstScene') }}
-                    </span>
-                    <span class="planning-th-filter__caret" aria-hidden="true"></span>
+                      class="planning-th-filter__indicator"
+                      :class="{ 'is-filtered': hasHeaderFilterSelection('firstScene') }"
+                      aria-hidden="true"
+                    ></span>
                   </button>
                   <div v-if="isHeaderFilterOpen('firstScene')" class="planning-th-filter__menu">
                     <div class="planning-th-filter__menu-head">
@@ -1223,12 +1225,10 @@ onBeforeUnmount(() => {
                   >
                     <span>二级场景</span>
                     <span
-                      v-if="headerFilterSelectedCount('secondScene')"
-                      class="planning-th-filter__count"
-                    >
-                      {{ headerFilterSelectedCount('secondScene') }}
-                    </span>
-                    <span class="planning-th-filter__caret" aria-hidden="true"></span>
+                      class="planning-th-filter__indicator"
+                      :class="{ 'is-filtered': hasHeaderFilterSelection('secondScene') }"
+                      aria-hidden="true"
+                    ></span>
                   </button>
                   <div v-if="isHeaderFilterOpen('secondScene')" class="planning-th-filter__menu">
                     <div class="planning-th-filter__menu-head">
@@ -1278,12 +1278,10 @@ onBeforeUnmount(() => {
                   >
                     <span>归属活动</span>
                     <span
-                      v-if="headerFilterSelectedCount('activityNodeName')"
-                      class="planning-th-filter__count"
-                    >
-                      {{ headerFilterSelectedCount('activityNodeName') }}
-                    </span>
-                    <span class="planning-th-filter__caret" aria-hidden="true"></span>
+                      class="planning-th-filter__indicator"
+                      :class="{ 'is-filtered': hasHeaderFilterSelection('activityNodeName') }"
+                      aria-hidden="true"
+                    ></span>
                   </button>
                   <div
                     v-if="isHeaderFilterOpen('activityNodeName')"
@@ -1336,12 +1334,10 @@ onBeforeUnmount(() => {
                   >
                     <span>归属子活动</span>
                     <span
-                      v-if="headerFilterSelectedCount('subActivityNodeName')"
-                      class="planning-th-filter__count"
-                    >
-                      {{ headerFilterSelectedCount('subActivityNodeName') }}
-                    </span>
-                    <span class="planning-th-filter__caret" aria-hidden="true"></span>
+                      class="planning-th-filter__indicator"
+                      :class="{ 'is-filtered': hasHeaderFilterSelection('subActivityNodeName') }"
+                      aria-hidden="true"
+                    ></span>
                   </button>
                   <div
                     v-if="isHeaderFilterOpen('subActivityNodeName')"
@@ -1396,12 +1392,10 @@ onBeforeUnmount(() => {
                   >
                     <span>层级</span>
                     <span
-                      v-if="headerFilterSelectedCount('level')"
-                      class="planning-th-filter__count"
-                    >
-                      {{ headerFilterSelectedCount('level') }}
-                    </span>
-                    <span class="planning-th-filter__caret" aria-hidden="true"></span>
+                      class="planning-th-filter__indicator"
+                      :class="{ 'is-filtered': hasHeaderFilterSelection('level') }"
+                      aria-hidden="true"
+                    ></span>
                   </button>
                   <div v-if="isHeaderFilterOpen('level')" class="planning-th-filter__menu">
                     <div class="planning-th-filter__menu-head">
@@ -1473,12 +1467,10 @@ onBeforeUnmount(() => {
                   >
                     <span>当前进展</span>
                     <span
-                      v-if="headerFilterSelectedCount('status')"
-                      class="planning-th-filter__count"
-                    >
-                      {{ headerFilterSelectedCount('status') }}
-                    </span>
-                    <span class="planning-th-filter__caret" aria-hidden="true"></span>
+                      class="planning-th-filter__indicator"
+                      :class="{ 'is-filtered': hasHeaderFilterSelection('status') }"
+                      aria-hidden="true"
+                    ></span>
                   </button>
                   <div v-if="isHeaderFilterOpen('status')" class="planning-th-filter__menu">
                     <div class="planning-th-filter__menu-head">
@@ -2717,6 +2709,9 @@ onBeforeUnmount(() => {
 }
 
 .planning-board {
+  height: clamp(520px, calc(100vh - 330px), 880px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -2758,8 +2753,10 @@ onBeforeUnmount(() => {
 }
 
 .planning-table-wrap {
+  flex: 1 1 auto;
   width: 100%;
-  overflow-x: auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .planning-table {
@@ -2836,7 +2833,6 @@ onBeforeUnmount(() => {
   color: #1d4ed8;
 }
 
-.planning-th-filter__count,
 .planning-th-sort__badge {
   display: inline-flex;
   align-items: center;
@@ -2852,7 +2848,57 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-.planning-th-filter__caret,
+.planning-th-filter__indicator {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.planning-th-filter__indicator::before,
+.planning-th-filter__indicator::after {
+  content: '';
+  position: absolute;
+}
+
+.planning-th-filter__indicator::before {
+  top: 1px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transform-origin: center;
+  transition: transform 0.16s ease;
+}
+
+.planning-th-filter.is-open .planning-th-filter__indicator::before {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.planning-th-filter__indicator.is-filtered::before {
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid currentColor;
+  transform: none;
+}
+
+.planning-th-filter__indicator.is-filtered::after {
+  top: 6px;
+  left: 4px;
+  width: 2px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 .planning-th-sort__caret {
   width: 8px;
   height: 8px;
@@ -2862,10 +2908,6 @@ onBeforeUnmount(() => {
   opacity: 0.8;
   transform: translateY(-1px) rotate(45deg);
   transition: transform 0.16s ease;
-}
-
-.planning-th-filter.is-open .planning-th-filter__caret {
-  transform: translateY(1px) rotate(-135deg);
 }
 
 .planning-th-sort.is-active .planning-th-sort__caret {
