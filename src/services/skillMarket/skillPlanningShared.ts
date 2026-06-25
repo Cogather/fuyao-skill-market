@@ -71,7 +71,10 @@ export interface SkillPlanningImportResult {
 
 export type SkillPlanningPayload = Omit<SkillPlanningItem, 'id'>;
 export type SkillPlanningBatchPatch = Partial<
-  Pick<SkillPlanningItem, 'department' | 'status' | 'planedCompleteDate' | 'developer'>
+  Pick<
+    SkillPlanningItem,
+    'skillDescription' | 'owner' | 'department' | 'developer' | 'planedCompleteDate' | 'status'
+  >
 >;
 
 export const skillPlanningFieldMap: Record<string, keyof SkillPlanningPayload> = {

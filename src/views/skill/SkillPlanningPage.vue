@@ -34,6 +34,8 @@ type PlanningHeaderFilterKey =
   | 'level'
   | 'status';
 type PlanningHeaderFilterSelections = Record<PlanningHeaderFilterKey, string[]>;
+type PlanningBatchField = keyof SkillPlanningBatchPatch;
+type PlanningBatchForm = Record<PlanningBatchField, string>;
 
 const props = withDefaults(
   defineProps<{
@@ -60,6 +62,14 @@ const planningHeaderFilterKeys = [
   'status',
 ] as const;
 const pageSizeOptions = [5, 10, 20, 50];
+const batchReadonlyHeaders = [
+  '一级场景',
+  '二级场景',
+  '归属活动',
+  '归属子活动',
+  'SKILL名称',
+  '层级',
+] as const;
 
 const emptyFilters = {
   department: '',
@@ -140,12 +150,10 @@ const inlineEditSubmitting = ref(false);
 const formErrors = reactive<Partial<Record<keyof SkillPlanningPayload, string>>>({});
 const planningForm = reactive<SkillPlanningPayload>(createEmptyPlanningForm());
 
-const batchForm = reactive<SkillPlanningBatchPatch>({
-  department: '',
-  status: undefined,
-  planedCompleteDate: '',
-  developer: '',
-});
+const batchDialogOpen = ref(false);
+const batchSubmitting = ref(false);
+const batchErrors = reactive<Partial<Record<PlanningBatchField, string>>>({});
+const batchForm = reactive<PlanningBatchForm>(createEmptyBatchForm());
 
 const confirmDialog = reactive({
   open: false,
@@ -164,6 +172,10 @@ const allPageSelected = computed(
   () => rows.value.length > 0 && rows.value.every((row) => selectedIds.value.includes(row.id)),
 );
 const hasSelectedRows = computed(() => selectedIds.value.length > 0);
+const selectedRows = computed(() => {
+  const selected = new Set(selectedIds.value);
+  return rows.value.filter((row) => selected.has(row.id));
+});
 const selectedImportFileSize = computed(() => {
   if (!selectedImportFile.value) {
     return '';
@@ -206,6 +218,17 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     developer: '',
     planedCompleteDate: '',
     status: '未开始',
+  };
+}
+
+function createEmptyBatchForm(): PlanningBatchForm {
+  return {
+    skillDescription: '',
+    owner: '',
+    department: '',
+    developer: '',
+    planedCompleteDate: '',
+    status: '',
   };
 }
 
@@ -264,6 +287,11 @@ async function onSearchKeyword() {
   await reloadList();
 }
 
+async function resetQuery() {
+  filterForm.keyword = '';
+  await onSearchKeyword();
+}
+
 async function toggleHeaderFilterOption(
   key: PlanningHeaderFilterKey,
   option: string,
@@ -281,13 +309,6 @@ async function clearHeaderFilter(key: PlanningHeaderFilterKey): Promise<void> {
   }
   headerFilterSelections[key] = [];
   await applyPlanningTableFilters();
-}
-
-function resetPlanningHeaderFilters(): void {
-  planningHeaderFilterKeys.forEach((key) => {
-    headerFilterSelections[key] = [];
-  });
-  headerFilterOpenKey.value = null;
 }
 
 async function togglePlannedFinishSort(): Promise<void> {
@@ -365,25 +386,6 @@ async function reloadList() {
   } finally {
     loading.value = false;
   }
-}
-
-async function queryList() {
-  syncPlanningDepartmentLevels();
-  Object.assign(appliedFilters, filterForm);
-  pageNum.value = 1;
-  await reloadList();
-}
-
-async function resetQuery() {
-  planningDepartmentSegments.value = [];
-  syncPlanningDepartmentLevels([]);
-  Object.assign(filterForm, emptyFilters);
-  Object.assign(appliedFilters, emptyFilters);
-  resetPlanningHeaderFilters();
-  plannedFinishSortOrder.value = '';
-  pageNum.value = 1;
-  selectedIds.value = [];
-  await reloadList();
 }
 
 function resetPlanningForm() {
@@ -551,6 +553,113 @@ async function submitPlanningForm() {
   closeFormDialog();
   await loadPlanningFilterOptions();
   await reloadList();
+}
+
+function resetBatchErrors() {
+  Object.keys(batchErrors).forEach((key) => {
+    delete batchErrors[key as PlanningBatchField];
+  });
+}
+
+function resetBatchForm() {
+  Object.assign(batchForm, createEmptyBatchForm());
+  resetBatchErrors();
+}
+
+function openBatchEditDialog() {
+  if (!hasSelectedRows.value) {
+    showToast('请先勾选至少一条需要批量修改的数据');
+    return;
+  }
+
+  resetBatchForm();
+  batchDialogOpen.value = true;
+}
+
+function closeBatchEditDialog() {
+  if (batchSubmitting.value) {
+    return;
+  }
+
+  batchDialogOpen.value = false;
+  resetBatchForm();
+}
+
+function validateBatchForm(): boolean {
+  resetBatchErrors();
+
+  if (batchForm.skillDescription.trim().length > 300) {
+    batchErrors.skillDescription = '最多 300 字';
+  }
+
+  return Object.keys(batchErrors).length === 0;
+}
+
+function collectBatchPatch(): SkillPlanningBatchPatch {
+  const patch: SkillPlanningBatchPatch = {};
+  const skillDescription = batchForm.skillDescription.trim();
+  const owner = batchForm.owner.trim();
+  const department = batchForm.department.trim();
+  const developer = batchForm.developer.trim();
+  const planedCompleteDate = batchForm.planedCompleteDate.trim();
+  const status = batchForm.status.trim();
+
+  if (skillDescription) patch.skillDescription = skillDescription;
+  if (owner) patch.owner = owner;
+  if (department) patch.department = department;
+  if (developer) patch.developer = developer;
+  if (planedCompleteDate) patch.planedCompleteDate = planedCompleteDate;
+  if (status) patch.status = status as SkillPlanningProgress;
+
+  return patch;
+}
+
+async function submitBatchEdit() {
+  if (batchSubmitting.value) {
+    return;
+  }
+
+  if (!hasSelectedRows.value) {
+    showToast('请先勾选至少一条需要批量修改的数据');
+    return;
+  }
+
+  if (!validateBatchForm()) {
+    showToast('请检查批量修改内容');
+    return;
+  }
+
+  const patch = collectBatchPatch();
+  if (Object.keys(patch).length === 0) {
+    showToast('请至少填写或选择一个要批量修改的字段');
+    return;
+  }
+
+  const targetRows = selectedRows.value;
+  if (targetRows.length === 0) {
+    showToast('未找到已勾选的数据，请重新选择');
+    return;
+  }
+
+  try {
+    batchSubmitting.value = true;
+    for (const row of targetRows) {
+      const { id, ...payload } = row;
+      await updateSkillPlanning(id, { ...payload, ...patch });
+    }
+
+    const count = targetRows.length;
+    selectedIds.value = [];
+    batchDialogOpen.value = false;
+    resetBatchForm();
+    showToast(`已批量修改 ${count} 条数据`);
+    await loadPlanningFilterOptions();
+    await reloadList();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '批量修改失败，请稍后重试');
+  } finally {
+    batchSubmitting.value = false;
+  }
 }
 
 function triggerImport() {
@@ -881,7 +990,7 @@ onBeforeUnmount(() => {
           />
         </label>
         <div class="filter-actions">
-          <button type="button" class="planning-btn planning-btn--primary" @click="queryList">
+          <button type="button" class="planning-btn planning-btn--primary" @click="onSearchKeyword">
             查询
           </button>
           <button type="button" class="planning-btn planning-btn--ghost" @click="resetQuery">
@@ -932,6 +1041,17 @@ onBeforeUnmount(() => {
               <path d="M12 20V10m0 10 4-4m-4 4-4-4M5 7V5h14v2" />
             </svg>
             导出
+          </button>
+          <button
+            type="button"
+            class="planning-btn planning-btn--soft"
+            @click="openBatchEditDialog"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m4 16 1 4 4-1L18.5 9.5a2.1 2.1 0 0 0-3-3L6 16Z" />
+              <path d="m13.5 7.5 3 3" />
+            </svg>
+            批量修改
           </button>
           <button
             type="button"
@@ -1895,6 +2015,108 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
+    <Teleport to="body">
+      <div
+        v-if="batchDialogOpen"
+        class="planning-overlay"
+        role="presentation"
+        @click.self="closeBatchEditDialog"
+      >
+        <div
+          class="planning-dialog planning-dialog--wide planning-dialog--batch"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div class="planning-dialog__head">
+            <div>
+              <strong>批量修改 Skill 规划</strong>
+              <p>已选 {{ selectedIds.length }} 条，未填写字段将保持原值。</p>
+            </div>
+            <button
+              type="button"
+              class="dialog-close"
+              aria-label="关闭"
+              :disabled="batchSubmitting"
+              @click="closeBatchEditDialog"
+            >
+              ×
+            </button>
+          </div>
+          <div class="batch-form">
+            <div class="batch-form__locked" aria-label="不可修改字段">
+              <strong>不可修改字段</strong>
+              <div class="batch-form__locked-list">
+                <span v-for="item in batchReadonlyHeaders" :key="item">{{ item }}</span>
+              </div>
+            </div>
+            <div class="batch-form__grid">
+              <label class="planning-field">
+                <span>责任 Owner</span>
+                <input v-model.trim="batchForm.owner" type="text" placeholder="不填写则不修改" />
+              </label>
+              <label class="planning-field">
+                <span>归属部门</span>
+                <input
+                  v-model.trim="batchForm.department"
+                  type="text"
+                  placeholder="不填写则不修改"
+                />
+              </label>
+              <label class="planning-field">
+                <span>开发责任人</span>
+                <input
+                  v-model.trim="batchForm.developer"
+                  type="text"
+                  placeholder="不填写则不修改"
+                />
+              </label>
+              <label class="planning-field">
+                <span>计划完成时间</span>
+                <input v-model="batchForm.planedCompleteDate" type="date" />
+              </label>
+              <label class="planning-field">
+                <span>当前进展</span>
+                <select v-model="batchForm.status">
+                  <option value="">不修改</option>
+                  <option v-for="item in progressOptions" :key="item" :value="item">
+                    {{ item }}
+                  </option>
+                </select>
+              </label>
+              <label class="planning-field planning-field--textarea">
+                <span>Skill 说明</span>
+                <textarea
+                  v-model.trim="batchForm.skillDescription"
+                  maxlength="300"
+                  placeholder="不填写则不修改，最多 300 字"
+                />
+                <small v-if="batchErrors.skillDescription">{{
+                  batchErrors.skillDescription
+                }}</small>
+              </label>
+            </div>
+          </div>
+          <div class="planning-dialog__actions">
+            <button
+              type="button"
+              class="planning-btn planning-btn--ghost"
+              :disabled="batchSubmitting"
+              @click="closeBatchEditDialog"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="planning-btn planning-btn--primary"
+              :disabled="batchSubmitting"
+              @click="submitBatchEdit"
+            >
+              {{ batchSubmitting ? '修改中...' : '确认' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
     <Teleport to="body">
       <div
         v-if="formDialogOpen"
@@ -3009,8 +3231,49 @@ onBeforeUnmount(() => {
 
 .batch-form {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   padding: 18px 20px;
+  overflow-y: auto;
+}
+
+.batch-form__locked {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dbe5f2;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.batch-form__locked strong {
+  color: #253857;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.batch-form__locked-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.batch-form__locked-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid #dbe5f2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.batch-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
 }
 
 .planning-dialog__actions {
@@ -3092,7 +3355,8 @@ onBeforeUnmount(() => {
   }
 
   .filter-grid,
-  .planning-form-grid {
+  .planning-form-grid,
+  .batch-form__grid {
     grid-template-columns: 1fr;
   }
 
