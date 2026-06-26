@@ -25,7 +25,7 @@ import {
   type SkillPlanningQuery,
   type SkillPlanningSortOrder,
 } from '../../services/skillMarket/skillPlanningService';
-import { openLink } from '@/utils/common';
+import { openLink } from '@/utils/common'
 
 type PlanningFormMode = 'create' | 'edit';
 type PlanningDepartmentTreeNode = {
@@ -508,9 +508,35 @@ function onPlanningPersonInput(field: PlanningPersonField, event: Event): void {
   }, 250);
 }
 
-const getLastDept;
+const getLastDept = (option: SkillPlanningUserOption) => {
+  try {
+    const deptArr = Object.entries(option?.raw)
+    .filter((item) => item[1] !== '' && item[1] !== null item[0].startsWith('hwDepartName'))
+    .map((item) => [option.raw[`hwDepartCode${item[0][12]}`], item[1]])
+    return deptArr
+  } catch (error) {
+    return []
+  }
+}
+
+const handleDeptArr = (option: SkillPlanningUserOption, isBatch: boolean) => {
+  const deptArr = getLastDept(option);
+  const form = isBatch ? batchForm : planningForm;
+  if(deptArr?.length) {
+    const lastDept = deptArr[deptArr.length - 1]
+    form.deptCode = lastDept[0];
+    form.deptName = lastDept[1];
+    for (let i = 1; i<6; i++) {
+      form[`l${i}DeptCode`] = i < deptArr.length ? deptArr[i][0] : '';
+      form[`l${i}DeptName`] = i < deptArr.length ? deptArr[i][1] : '';
+    }
+  }
+}
 
 function choosePlanningPerson(field: PlanningPersonField, option: SkillPlanningUserOption): void {
+  if(field === 'owner') {
+    handleDeptArr(option, false)
+  }
   setPlanningPersonValue(field, option.label);
   const state = personSearchStates[field];
   state.selectedLabel = option.label;
@@ -518,7 +544,6 @@ function choosePlanningPerson(field: PlanningPersonField, option: SkillPlanningU
   state.options = [option];
   state.message = '';
   closePlanningPersonSelect(field);
-  if (field === 'owner') setPlanningOwnerDepartment(option.department);
 }
 
 function markPlanningPersonValueSelected(field: PlanningPersonField, value: string): void {
@@ -638,6 +663,9 @@ function onBatchPersonInput(field: PlanningPersonField, event: Event): void {
 }
 
 function chooseBatchPerson(field: PlanningPersonField, option: SkillPlanningUserOption): void {
+  if (field === 'owner') {
+    handleDeptArr(option, true)
+  }
   setBatchPersonValue(field, option.label);
   const state = batchPersonSearchStates[field];
   state.selectedLabel = option.label;
@@ -645,7 +673,6 @@ function chooseBatchPerson(field: PlanningPersonField, option: SkillPlanningUser
   state.options = [option];
   state.message = '';
   closeBatchPersonSelect(field);
-  if (field === 'owner') setBatchOwnerDepartment(option.department);
 }
 
 function isBatchPersonSelectionMissing(field: PlanningPersonField): boolean {
@@ -1142,7 +1169,13 @@ function collectBatchPatch(): SkillPlanningBatchPatch {
   if (description) patch.description = description;
   if (offeringName) patch.offeringName = offeringName;
   if (owner) patch.owner = owner;
-  if (deptName) patch.deptName = deptName;
+  if (deptName) {
+    patch.deptName = deptName;
+    for(let i =1;i<6;i++) {
+      patch[`l${i}DeptCode`] = batchForm[`l${i}DeptCode`]
+      patch[`l${i}DeptName`] = batchForm[`l${i}DeptName`]
+    }
+  }
   if (developOwner) patch.developOwner = developOwner;
   if (planedCompleteDate) patch.planedCompleteDate = planedCompleteDate;
   if (status) patch.status = status as SkillPlanningProgress;
@@ -1285,8 +1318,8 @@ async function submitImportFile() {
       importError.value = `\n其中导入失败的有：${result.errorList.reduce((pre, curr) => pre + `\n    第${curr.rowNum}行：` + curr.errMsg, '')}`;
       return;
     } else {
-      importSuccess.value = `Skill 规划已成功导入 ${result.successCount} 条（共需要导入 ${result.totalCount} 条）`;
-      importError.value = '';
+      importSuccess.value = `Skill 规划已成功导入 ${result.successCount} 条（共需要导入 ${result.totalCount} 条）`
+      importError.value = ''
     }
 
     importSubmitting.value = false;
@@ -1303,13 +1336,11 @@ async function submitImportFile() {
 }
 
 async function exportCurrentData() {
-  const exportRows = await exportAllSkillPlanningList(syncQueryFilterObj(false));
-  if (exportRows.length === 0) {
-    showToast('当前筛选条件下暂无可导出数据');
-    return;
+  const result = await exportAllSkillPlanningList(syncQueryFilterObj(false));
+  if (result?.data) {
+    openLink(result.data)
+    showToast('导出文件完成');
   }
-  await exportSkillPlanningToExcel(exportRows);
-  showToast('已导出当前筛选结果');
 }
 
 function openConfirmDialog(
@@ -2044,7 +2075,6 @@ onBeforeUnmount(() => {
                     class="planning-inline-control"
                     :class="{ 'has-error': formErrors.level }"
                   >
-                    <option value="">请选择</option>
                     <option v-for="item in levelOptions" :key="item" :value="item">
                       {{ item }}
                     </option>
