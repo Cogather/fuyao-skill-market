@@ -4343,12 +4343,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <thead>
               <tr>
                 <th class="col-skill">Skill 名称</th>
+                <th>Skill 描述</th>
+                <th class="col-first-msg">第一条消息内容</th>
+                <th class="col-repo">代码仓信息</th>
                 <th class="col-ide">IDE</th>
                 <th class="col-time">Session 时间</th>
                 <th class="col-time">Skill 生成时间</th>
-                <th class="col-repo">代码仓信息</th>
-                <th>Skill 描述</th>
-                <th class="col-first-msg">第一条消息内容</th>
                 <th class="col-ops ai-evo-col-ops">操作</th>
               </tr>
             </thead>
@@ -4368,6 +4368,17 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   </div>
                 </td>
                 <td>
+                  <div class="ai-evolution-reason">{{ row.description || '—' }}</div>
+                </td>
+                <td>
+                  <div class="ai-evolution-first-msg">{{ row.firstMessage || '—' }}</div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-repo">
+                    {{ row.codeRepo || '—' }}
+                  </div>
+                </td>
+                <td>
                   <div class="cell-main cell-main-plain ai-evolution-ide">
                     {{ row.ide || '—' }}
                   </div>
@@ -4381,17 +4392,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   <div class="cell-main cell-main-plain ai-evolution-time">
                     {{ row.generatedAt || '—' }}
                   </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-repo">
-                    {{ row.codeRepo || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="ai-evolution-reason">{{ row.description || '—' }}</div>
-                </td>
-                <td>
-                  <div class="ai-evolution-first-msg">{{ row.firstMessage || '—' }}</div>
                 </td>
                 <td class="col-ops-td" @click.stop>
                   <div class="ops ai-evolution-ops">
