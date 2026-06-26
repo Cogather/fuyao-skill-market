@@ -1,5 +1,4 @@
 import httpRequest from '@/services/skillMarket/request';
-import type { st } from 'vue-router/dist/router-CWoNjPRp.mjs';
 
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
@@ -473,7 +472,7 @@ export const skillBaseService = {
     });
   },
 
-  // ================================= Agent 调测相关接口 =================================
+  // ============================================== Agent 调测相关接口 ==============================================
 
   // agent详情查询
   getAgentDetail: (userId: string, agentId: string): any => {
@@ -486,12 +485,12 @@ export const skillBaseService = {
   // agent用户config接口
   getAgentConfig: (agentId: string, userId: string): any => {
     return httpRequest.direct<any>({
-      baseURL: corecode,
+      baseURL: ai,
       url: `/aiapp-v2/v1/ai_agent/agent_config/${agentId}/${userId}`,
       method: 'get',
     });
   },
-  // streamchat
+  //   streamchat
   apiRun: (data: any): any => {
     return httpRequest.direct<any>({
       baseURL: ai,
