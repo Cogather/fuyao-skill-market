@@ -114,7 +114,7 @@ const httpRequest = {
   direct: <T = null>(config: AxiosRequestConfig): Promise<T> => {
     const requestConfig = {
       ...config,
-      baseURL: '/',
+      baseURL: config.baseURL || '/',
       url: stripPrefix(config.url, '/'),
     };
     return tryMockThenAxios<T>('direct', requestConfig);
