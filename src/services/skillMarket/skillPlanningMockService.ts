@@ -253,12 +253,6 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
       .map(normalizeText)
       .find(Boolean) ||
     '';
-  const firstScene = normalizeText(query.firstScene);
-  const secondScene = normalizeText(query.secondScene);
-  const activityNodeName = normalizeText(query.activityNodeName);
-  const subActivityNodeName = normalizeText(query.subActivityNodeName);
-  const level = normalizeText(query.level);
-  const status = normalizeText(query.status);
   const owner = normalizeText(query.owner);
 
   return skillPlanningItems.filter((item) => {

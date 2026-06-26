@@ -158,30 +158,6 @@ function normalizeHttpListResult(response: unknown): SkillPlanningListResult {
   };
 }
 
-function normalizeHttpCount(response: unknown): number {
-  const data = unwrapResponseData<unknown>(response);
-  if (typeof data === 'number') {
-    return readNumber(data, 0);
-  }
-
-  if (Array.isArray(data)) {
-    return data.length;
-  }
-
-  const record =
-    data && typeof data === 'object'
-      ? (data as Record<string, unknown>)
-      : ({} as Record<string, unknown>);
-  return readNumber(
-    record.count ??
-      record.updatedCount ??
-      record.deletedCount ??
-      record.affectedRows ??
-      record.total,
-    0,
-  );
-}
-
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
   const data = unwrapResponseData<unknown>(response);
   const source = Array.isArray(data)
@@ -437,28 +413,10 @@ export async function exportAllSkillPlanningList(
   delete nextQuery.pageNum;
   delete nextQuery.pageSize;
 
-  const pageSize = Math.max(200, readNumber(query.pageSize, 200));
-  const rows: SkillPlanningItem[] = [];
-  let nextPage = 1;
-  let total = Number.POSITIVE_INFINITY;
-
-  while (rows.length < total) {
-    delete nextQuery.pageNum;
-    delete nextQuery.pageSize;
-    const result = await exportSkillConfig({
-      ...nextQuery,
-    });
-
-    rows.push(...result.list);
-    total = result.total;
-
-    if (result.list.length === 0 || result.list.length < pageSize) {
-      break;
-    }
-    nextPage += 1;
-  }
-
-  return rows;
+  const result = await exportSkillConfig({
+    ...nextQuery,
+  });
+  return result;
 }
 
 export async function createSkillPlanning(
@@ -480,6 +438,7 @@ export async function updateSkillPlanning(
     return (await loadMockService()).updateSkillPlanning(id, payload);
   }
 
+  payload.id = id;
   const response = await skillBaseService.updateSkillPlanning(payload);
   return normalizeHttpItem(response);
 }
@@ -493,8 +452,8 @@ export async function batchUpdateSkillPlanning(
     return (await loadMockService()).batchUpdateSkillPlanning(ids, patch);
   }
 
-  const response = await skillBaseService.batchUpdateSkillPlanning(body);
-  return normalizeHttpCount(response);
+  await skillBaseService.batchUpdateSkillPlanning(body);
+  return ids.length;
 }
 
 export async function deleteSkillPlanning(id: string): Promise<void> {
@@ -510,8 +469,8 @@ export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
     return (await loadMockService()).batchDeleteSkillPlanning(ids);
   }
 
-  const response = await skillBaseService.batchDeleteSkillPlanning(ids);
-  return normalizeHttpCount(response);
+  await skillBaseService.batchDeleteSkillPlanning(ids);
+  return ids.length;
 }
 
 export async function importSkillPlanningFromExcel(file: File): Promise<any> {
