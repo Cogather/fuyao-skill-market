@@ -9256,18 +9256,15 @@ span {
 }
 
 .ai-evolution-table {
-  min-width: 1120px;
+  min-width: 1320px;
 }
 
 .ai-evolution-row td {
-  vertical-align: middle;
+  vertical-align: top;
 }
 
-.ai-evolution-session {
-  font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
-  font-size: 12.5px;
+.ai-evolution-ide {
   color: #475569;
-  letter-spacing: 0.2px;
   white-space: nowrap;
 }
 
@@ -9276,10 +9273,25 @@ span {
   white-space: nowrap;
 }
 
+.ai-evolution-repo {
+  font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  color: #475569;
+  word-break: break-all;
+}
+
 .ai-evolution-reason {
   font-size: 13px;
   color: #0f172a;
   line-height: 1.55;
+}
+
+.ai-evolution-first-msg {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .ai-evo-col-ops {
@@ -9287,12 +9299,20 @@ span {
   text-align: center;
 }
 
-.ai-evolution-table .col-session {
-  min-width: 196px;
+.ai-evolution-table .col-ide {
+  min-width: 96px;
 }
 
 .ai-evolution-table .col-time {
-  min-width: 140px;
+  min-width: 150px;
+}
+
+.ai-evolution-table .col-repo {
+  min-width: 220px;
+}
+
+.ai-evolution-table .col-first-msg {
+  min-width: 220px;
 }
 
 .ai-evolution-table .col-ops-td {

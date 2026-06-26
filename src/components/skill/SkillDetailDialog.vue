@@ -189,47 +189,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <section v-if="aiEvolution" class="detail-evo-meta" aria-label="Skill 内容信息">
-          <div class="detail-evo-meta-grid">
-            <div class="detail-evo-item">
-              <span class="detail-evo-label">Skill 名称</span>
-              <span class="detail-evo-value">{{ skill.name || '—' }}</span>
-            </div>
-            <div class="detail-evo-item">
-              <span class="detail-evo-label">IDE</span>
-              <span class="detail-evo-value">{{ skill.ide || '—' }}</span>
-            </div>
-            <div class="detail-evo-item">
-              <span class="detail-evo-label">Session</span>
-              <span class="detail-evo-value">{{ skill.sessionId || '—' }}</span>
-            </div>
-            <div class="detail-evo-item">
-              <span class="detail-evo-label">Session 时间</span>
-              <span class="detail-evo-value">{{ skill.sessionTime || '—' }}</span>
-            </div>
-            <div class="detail-evo-item">
-              <span class="detail-evo-label">Skill 生成时间</span>
-              <span class="detail-evo-value">{{ skill.generatedAt || '—' }}</span>
-            </div>
-            <div class="detail-evo-item detail-evo-item--wide">
-              <span class="detail-evo-label">代码仓信息</span>
-              <span class="detail-evo-value detail-evo-value--mono">{{
-                skill.codeRepo || '—'
-              }}</span>
-            </div>
-            <div class="detail-evo-item detail-evo-item--wide">
-              <span class="detail-evo-label">Skill 描述</span>
-              <span class="detail-evo-value">{{ skill.description || '—' }}</span>
-            </div>
-            <div class="detail-evo-item detail-evo-item--wide">
-              <span class="detail-evo-label">第一条消息内容</span>
-              <span class="detail-evo-value detail-evo-value--quote">{{
-                skill.firstMessage || '—'
-              }}</span>
-            </div>
-          </div>
-        </section>
-
         <div class="detail-main">
           <aside class="detail-file-panel">
             <div class="detail-panel-title">文件结构</div>
@@ -478,62 +437,6 @@ onBeforeUnmount(() => {
 .detail-btn.primary:hover {
   background: #1d4ed8;
   border-color: #1d4ed8;
-}
-
-.detail-evo-meta {
-  margin: 0 22px 14px;
-  padding: 16px 18px;
-  border: 1px solid #e9edf3;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(120, 98, 255, 0.05), rgba(255, 255, 255, 0));
-}
-
-.detail-evo-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 24px;
-}
-
-.detail-evo-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.detail-evo-item--wide {
-  grid-column: 1 / -1;
-}
-
-.detail-evo-label {
-  font-size: 12px;
-  font-weight: 800;
-  color: #8a93a5;
-  letter-spacing: 0.02em;
-}
-
-.detail-evo-value {
-  font-size: 13px;
-  font-weight: 650;
-  color: #1f2733;
-  line-height: 1.55;
-  word-break: break-word;
-}
-
-.detail-evo-value--mono {
-  font-family: Consolas, 'Courier New', monospace;
-  font-weight: 600;
-  color: #334155;
-}
-
-.detail-evo-value--quote {
-  padding: 8px 12px;
-  border-left: 3px solid #c7d2fe;
-  border-radius: 0 6px 6px 0;
-  background: #f5f7fb;
-  color: #334155;
-  font-weight: 600;
-  white-space: pre-wrap;
 }
 
 .detail-main {
