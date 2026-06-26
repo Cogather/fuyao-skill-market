@@ -4343,7 +4343,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <thead>
               <tr>
                 <th class="col-skill">Skill 名称</th>
-                <th>Skill 描述</th>
+                <th class="col-desc">Skill 描述</th>
                 <th class="col-first-msg">第一条消息内容</th>
                 <th class="col-repo">代码仓信息</th>
                 <th class="col-ide">IDE</th>

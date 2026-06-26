@@ -9284,6 +9284,7 @@ span {
   font-size: 13px;
   color: #0f172a;
   line-height: 1.55;
+  word-break: break-word;
 }
 
 .ai-evolution-first-msg {
@@ -9297,6 +9298,11 @@ span {
 .ai-evo-col-ops {
   min-width: 188px;
   text-align: center;
+}
+
+.ai-evolution-table .col-desc {
+  width: 160px;
+  max-width: 160px;
 }
 
 .ai-evolution-table .col-ide {
