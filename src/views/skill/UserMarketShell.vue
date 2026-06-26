@@ -2797,7 +2797,7 @@ async function confirmAiEvolutionDecision(): Promise<void> {
   aiEvolutionConfirm.value = null;
   showToast(
     decision === 'approve'
-      ? `已通过「${row.name}」的自进化审批（演示）`
+      ? `已通过「${row.name}」，将发布为个人级 Skill（演示）`
       : `已拒绝「${row.name}」的自进化审批（演示）`,
   );
 }
@@ -4249,8 +4249,8 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
           </div>
           <p class="ai-evolution-intro-desc">
-            系统会基于运行数据自动产出 Skill
-            的优化版本。审批通过后将作为新版本进入发布流程；驳回后将丢弃该候选版本。
+            系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将发布为个人级
+            Skill，可在个人级页面查看；拒绝后将丢弃该候选版本。
           </p>
         </div>
 
@@ -5231,7 +5231,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             {{ aiEvolutionConfirm.decision === 'approve' ? '通过后' : '拒绝后' }}
             「{{ aiEvolutionConfirm.row.name }}」
             <template v-if="aiEvolutionConfirm.decision === 'approve'">
-              将作为新版本进入发布流程，是否确认通过？
+              将发布为个人级 Skill，可在个人级页面查看，是否确认通过？
             </template>
             <template v-else> 的本次自进化候选版本将被丢弃，是否确认拒绝？ </template>
           </p>

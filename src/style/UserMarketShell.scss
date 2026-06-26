@@ -9205,15 +9205,6 @@ span {
   gap: 6px;
 }
 
-.my-filters .seg-ai-evolution::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
-  display: inline-block;
-}
-
 .my-filters .seg-badge {
   display: inline-flex;
   align-items: center;
