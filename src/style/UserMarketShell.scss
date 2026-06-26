@@ -9256,8 +9256,7 @@ span {
 }
 
 .ai-evolution-table {
-  min-width: 1360px;
-  table-layout: fixed;
+  min-width: 1320px;
 }
 
 .ai-evolution-row td {
@@ -9282,9 +9281,11 @@ span {
 }
 
 .ai-evolution-reason {
+  width: 150px;
   font-size: 13px;
   color: #0f172a;
   line-height: 1.55;
+  white-space: normal;
   word-break: break-word;
 }
 
@@ -9296,33 +9297,29 @@ span {
   word-break: break-word;
 }
 
-.ai-evolution-table .ai-evo-col-ops {
-  width: 190px;
+.ai-evo-col-ops {
+  min-width: 188px;
   text-align: center;
-}
-
-.ai-evolution-table .col-skill {
-  width: 150px;
 }
 
 .ai-evolution-table .col-desc {
   width: 150px;
 }
 
-.ai-evolution-table .col-first-msg {
-  width: 280px;
-}
-
-.ai-evolution-table .col-repo {
-  width: 240px;
-}
-
 .ai-evolution-table .col-ide {
-  width: 100px;
+  min-width: 96px;
 }
 
 .ai-evolution-table .col-time {
-  width: 150px;
+  min-width: 150px;
+}
+
+.ai-evolution-table .col-repo {
+  min-width: 220px;
+}
+
+.ai-evolution-table .col-first-msg {
+  min-width: 220px;
 }
 
 .ai-evolution-table .col-ops-td {
