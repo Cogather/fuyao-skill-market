@@ -2682,9 +2682,14 @@ type AiEvolutionStatus = 'pending' | 'approved' | 'rejected';
 type AiEvolutionSkillRow = {
   id: string;
   name: string;
+  description: string;
   sessionId: string;
   summary: string;
+  ide: string;
+  sessionTime: string;
   generatedAt: string;
+  firstMessage: string;
+  codeRepo: string;
   status: AiEvolutionStatus;
   version: string;
   skillMdContent: string;
@@ -2695,9 +2700,15 @@ const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([
   {
     id: 'ai-evo-001',
     name: '智能日报汇总（自进化）',
+    description: '自动汇总团队每日工作进展，生成结构化日报，支持多数据源聚合与异常兜底。',
     sessionId: 'sess-20260621-7f3a9c1d',
-    summary: '近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支，新增空数据兜底与字段缺失校验。',
+    summary:
+      '近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支，新增空数据兜底与字段缺失校验。',
+    ide: 'VS Code',
+    sessionTime: '2026-06-21 08:42',
     generatedAt: '2026-06-21 09:14',
+    firstMessage: '帮我把团队每天的工作进展自动整理成结构化日报，要能处理某些人没填写的情况。',
+    codeRepo: 'git@code.company.com:agent-center/daily-report-skill.git',
     status: 'pending',
     version: 'v1.3.0',
     skillMdContent:
@@ -2707,9 +2718,14 @@ const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([
   {
     id: 'ai-evo-002',
     name: '会议纪要生成器（自进化）',
+    description: '将会议录音转写文本整理为结构化纪要与待办，支持长会议分块摘要。',
     sessionId: 'sess-20260620-2b8e45af',
     summary: '用户反馈显示长会议截断率上升，触发上下文窗口策略升级，引入分块摘要 + 二次合并。',
+    ide: 'Cursor',
+    sessionTime: '2026-06-20 17:05',
     generatedAt: '2026-06-20 17:42',
+    firstMessage: '会议录音转写出来太长了，模型经常截断，帮我做成能分段总结再合并的纪要工具。',
+    codeRepo: 'git@code.company.com:agent-center/meeting-minutes-skill.git',
     status: 'pending',
     version: 'v2.1.0',
     skillMdContent:
@@ -2719,9 +2735,14 @@ const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([
   {
     id: 'ai-evo-003',
     name: '客户工单分类器（自进化）',
+    description: '根据工单内容自动分类并路由到对应处理队列，支持少样本提示与阈值调优。',
     sessionId: 'sess-20260619-c0d172e6',
     summary: '准确率从 87% 提升至 94%，引入新一轮标注数据，调整分类阈值与少样本提示。',
+    ide: 'JetBrains IDEA',
+    sessionTime: '2026-06-19 21:30',
     generatedAt: '2026-06-19 22:08',
+    firstMessage: '客户工单越来越多，帮我做一个能根据内容自动分类并路由到处理队列的技能。',
+    codeRepo: 'git@code.company.com:agent-center/ticket-classifier-skill.git',
     status: 'pending',
     version: 'v1.0.0',
     skillMdContent:
@@ -2736,32 +2757,56 @@ const aiEvolutionPendingCount = computed(
 
 const processingAiEvolutionId = ref<string>('');
 
-async function approveAiEvolutionSkill(row: AiEvolutionSkillRow): Promise<void> {
+type AiEvolutionDecision = 'approve' | 'reject';
+const aiEvolutionConfirm = ref<{ row: AiEvolutionSkillRow; decision: AiEvolutionDecision } | null>(
+  null,
+);
+
+function requestAiEvolutionDecision(row: AiEvolutionSkillRow, decision: AiEvolutionDecision): void {
   if (row.status !== 'pending' || processingAiEvolutionId.value) {
     return;
   }
-  processingAiEvolutionId.value = row.id;
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
-  processingAiEvolutionId.value = '';
-  showToast(`已通过「${row.name}」的自进化审批（演示）`);
+  aiEvolutionConfirm.value = { row, decision };
 }
 
-async function rejectAiEvolutionSkill(row: AiEvolutionSkillRow): Promise<void> {
-  if (row.status !== 'pending' || processingAiEvolutionId.value) {
+function approveAiEvolutionSkill(row: AiEvolutionSkillRow): void {
+  requestAiEvolutionDecision(row, 'approve');
+}
+
+function rejectAiEvolutionSkill(row: AiEvolutionSkillRow): void {
+  requestAiEvolutionDecision(row, 'reject');
+}
+
+function closeAiEvolutionConfirm(): void {
+  if (processingAiEvolutionId.value) {
     return;
   }
+  aiEvolutionConfirm.value = null;
+}
+
+async function confirmAiEvolutionDecision(): Promise<void> {
+  const pending = aiEvolutionConfirm.value;
+  if (!pending || processingAiEvolutionId.value) {
+    return;
+  }
+  const { row, decision } = pending;
   processingAiEvolutionId.value = row.id;
   await new Promise((resolve) => setTimeout(resolve, 300));
   aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
   processingAiEvolutionId.value = '';
-  showToast(`已拒绝「${row.name}」的自进化审批（演示）`);
+  aiEvolutionConfirm.value = null;
+  showToast(
+    decision === 'approve'
+      ? `已通过「${row.name}」的自进化审批（演示）`
+      : `已拒绝「${row.name}」的自进化审批（演示）`,
+  );
 }
 
 function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
   const skill = {
     id: row.id,
     name: row.name,
+    description: row.description,
     currentVersion: row.version,
     version: row.version,
     categoryGroupName: '自进化',
@@ -2772,6 +2817,12 @@ function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
     fileTree: row.fileTree,
     skillMdContent: row.skillMdContent,
     isAiEvolution: true,
+    ide: row.ide,
+    sessionId: row.sessionId,
+    sessionTime: row.sessionTime,
+    generatedAt: row.generatedAt,
+    firstMessage: row.firstMessage,
+    codeRepo: row.codeRepo,
   };
   detailFileTree(skill);
   detailPanelSkill.value = skill;
@@ -4192,17 +4243,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </div>
 
-        <div
-          v-if="releaseFilter === 'aiEvolution'"
-          class="ai-evolution-intro"
-          role="note"
-        >
+        <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
           <div class="ai-evolution-intro-title">
             <span class="ai-evolution-tag">AI 自进化</span>
             <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
           </div>
           <p class="ai-evolution-intro-desc">
-            系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将作为新版本进入发布流程；驳回后将丢弃该候选版本。
+            系统会基于运行数据自动产出 Skill
+            的优化版本。审批通过后将作为新版本进入发布流程；驳回后将丢弃该候选版本。
           </p>
         </div>
 
@@ -4282,11 +4330,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </table>
         </div>
 
-        <div
-          v-else
-          class="table-wrap my-table-wrap"
-          ref="myReleaseTableWrapRef"
-        >
+        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
           <table class="table my-table">
             <thead>
               <tr>
@@ -5146,6 +5190,74 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               @click="submitReviewModal"
             >
               提交
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="aiEvolutionConfirm"
+        class="overlay"
+        role="presentation"
+        @click.self="closeAiEvolutionConfirm"
+      >
+        <div
+          class="v-dialog ai-evo-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-evo-confirm-title"
+        >
+          <div class="v-head">
+            <strong id="ai-evo-confirm-title">
+              {{
+                aiEvolutionConfirm.decision === 'approve'
+                  ? '确认通过自进化审批'
+                  : '确认拒绝自进化审批'
+              }}
+            </strong>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              :disabled="!!processingAiEvolutionId"
+              @click="closeAiEvolutionConfirm"
+            >
+              ×
+            </button>
+          </div>
+          <p class="v-sub ai-evo-confirm-sub">
+            {{ aiEvolutionConfirm.decision === 'approve' ? '通过后' : '拒绝后' }}
+            「{{ aiEvolutionConfirm.row.name }}」
+            <template v-if="aiEvolutionConfirm.decision === 'approve'">
+              将作为新版本进入发布流程，是否确认通过？
+            </template>
+            <template v-else> 的本次自进化候选版本将被丢弃，是否确认拒绝？ </template>
+          </p>
+          <div class="v-actions">
+            <button
+              type="button"
+              class="btn outline sm"
+              :disabled="!!processingAiEvolutionId"
+              @click="closeAiEvolutionConfirm"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="btn sm"
+              :class="aiEvolutionConfirm.decision === 'approve' ? 'primary' : 'danger'"
+              :disabled="!!processingAiEvolutionId"
+              @click="confirmAiEvolutionDecision"
+            >
+              {{
+                processingAiEvolutionId
+                  ? '处理中…'
+                  : aiEvolutionConfirm.decision === 'approve'
+                    ? '确认通过'
+                    : '确认拒绝'
+              }}
             </button>
           </div>
         </div>

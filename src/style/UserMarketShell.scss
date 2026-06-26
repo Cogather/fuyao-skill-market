@@ -5755,6 +5755,29 @@
   color: #8a93a5;
 }
 
+.ai-evo-confirm-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.ai-evo-confirm-sub {
+  margin: 14px 0 4px;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.btn.danger {
+  color: #fff;
+  background: #dc2626;
+  border-color: #dc2626;
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.18);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
 .toast {
   border-radius: 999px;
   background: rgba(29, 29, 31, 0.9);
