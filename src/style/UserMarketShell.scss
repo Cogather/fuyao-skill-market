@@ -9281,7 +9281,7 @@ span {
 }
 
 .ai-evolution-reason {
-  width: 150px;
+  width: 240px;
   font-size: 13px;
   color: #0f172a;
   line-height: 1.55;
@@ -9302,8 +9302,12 @@ span {
   text-align: center;
 }
 
+.ai-evolution-table .col-skill {
+  min-width: 120px;
+}
+
 .ai-evolution-table .col-desc {
-  width: 150px;
+  width: 240px;
 }
 
 .ai-evolution-table .col-ide {
