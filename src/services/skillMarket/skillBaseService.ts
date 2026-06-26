@@ -344,7 +344,7 @@ export const skillBaseService = {
     return httpRequest.skill<any>({
       url: '/config/search_offering',
       method: 'get',
-      params
+      params,
     });
   },
 
@@ -460,6 +460,54 @@ export const skillBaseService = {
     return httpRequest.skill<any>({
       url: '/stat',
       method: 'get',
+    });
+  },
+
+  /*
+   * 自进化草稿（skill drafts）相关接口，统一前缀 /api/skill-drafts
+   */
+
+  // 草稿列表查询接口（前端展示用）
+  querySkillDraftList: (params: any): any => {
+    return httpRequest.skillDraft<any>({
+      url: '',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 草稿详情查询接口
+  querySkillDraftDetail: (id: string): any => {
+    return httpRequest.skillDraft<any>({
+      url: `/${id}`,
+      method: 'get',
+    });
+  },
+
+  // 草稿审批通过接口；params 含审批人工号 userId
+  approveSkillDraft: (id: string, params: any): any => {
+    return httpRequest.skillDraft<any>({
+      url: `/${id}/approve`,
+      method: 'post',
+      params,
+    });
+  },
+
+  // 草稿审批驳回接口；params 含审批人工号 userId、可选驳回原因 reason
+  rejectSkillDraft: (id: string, params: any): any => {
+    return httpRequest.skillDraft<any>({
+      url: `/${id}/reject`,
+      method: 'post',
+      params,
+    });
+  },
+
+  // 草稿下载接口；params 含操作人工号 userId，返回下载 URL
+  downloadSkillDraft: (id: string, params: any): any => {
+    return httpRequest.skillDraft<any>({
+      url: `/${id}/download`,
+      method: 'post',
+      params,
     });
   },
 };

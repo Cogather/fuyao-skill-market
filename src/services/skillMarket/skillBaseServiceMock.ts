@@ -1620,6 +1620,205 @@ function handleApiRequest(
   return null;
 }
 
+type MockSkillDraft = {
+  skillId: string;
+  skillName: string;
+  description: string;
+  userId: string;
+  archiveData: string;
+  archiveSize: number;
+  sessionId: string;
+  sessionCreateTime: string;
+  skillGenerateTime: string;
+  skillStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  downloadCount: number;
+  ide: string;
+  codeRepo: string;
+  firstMessage: string;
+  version: string;
+  skillMdContent: string;
+  fileTree: string;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+let skillDrafts: MockSkillDraft[] = [
+  {
+    skillId: 'ai-evo-001',
+    skillName: '智能日报汇总（自进化）',
+    description: '自动汇总团队每日工作进展，生成结构化日报，支持多数据源聚合与异常兜底。',
+    userId: 'mock001',
+    archiveData: 'fuyao/skill_drafts/智能日报汇总/1.3.0',
+    archiveSize: 20480,
+    sessionId: 'sess-20260621-7f3a9c1d',
+    sessionCreateTime: '2026-06-21 08:42:00',
+    skillGenerateTime: '2026-06-21 09:14:00',
+    skillStatus: 'PENDING',
+    downloadCount: 0,
+    ide: 'VS Code',
+    codeRepo: 'git@code.company.com:agent-center/daily-report-skill.git',
+    firstMessage: '帮我把团队每天的工作进展自动整理成结构化日报，要能处理某些人没填写的情况。',
+    version: '1.3.0',
+    skillMdContent:
+      '# 智能日报汇总（自进化）\n\n## 简介\n自动汇总团队每日工作进展，生成结构化日报。\n\n## 本次自进化变更\n- 新增空数据兜底逻辑\n- 优化分段总结提示词\n- 补充字段缺失校验\n\n## 触发原因\n近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支。',
+    fileTree: 'SKILL.md\nprompts/\n  summary.md\n  fallback.md\nscripts/\n  collect.py',
+    createdAt: '2026-06-21 09:15:00',
+    updatedAt: null,
+  },
+  {
+    skillId: 'ai-evo-002',
+    skillName: '会议纪要生成器（自进化）',
+    description: '将会议录音转写文本整理为结构化纪要与待办，支持长会议分块摘要。',
+    userId: 'mock001',
+    archiveData: 'fuyao/skill_drafts/会议纪要生成器/2.1.0',
+    archiveSize: 30720,
+    sessionId: 'sess-20260620-2b8e45af',
+    sessionCreateTime: '2026-06-20 17:05:00',
+    skillGenerateTime: '2026-06-20 17:42:00',
+    skillStatus: 'PENDING',
+    downloadCount: 0,
+    ide: 'Cursor',
+    codeRepo: 'git@code.company.com:agent-center/meeting-minutes-skill.git',
+    firstMessage: '会议录音转写出来太长了，模型经常截断，帮我做成能分段总结再合并的纪要工具。',
+    version: '2.1.0',
+    skillMdContent:
+      '# 会议纪要生成器（自进化）\n\n## 简介\n将会议录音转写文本整理为结构化纪要与待办。\n\n## 本次自进化变更\n- 引入分块摘要 + 二次合并\n- 适配 200k 上下文窗口模型\n\n## 触发原因\n用户反馈显示长会议截断率上升，触发上下文窗口策略升级。',
+    fileTree: 'SKILL.md\nprompts/\n  chunk.md\n  merge.md\nconfig.json',
+    createdAt: '2026-06-20 17:43:00',
+    updatedAt: null,
+  },
+  {
+    skillId: 'ai-evo-003',
+    skillName: '客户工单分类器（自进化）',
+    description: '根据工单内容自动分类并路由到对应处理队列，支持少样本提示与阈值调优。',
+    userId: 'mock001',
+    archiveData: 'fuyao/skill_drafts/客户工单分类器/1.0.0',
+    archiveSize: 15360,
+    sessionId: 'sess-20260619-c0d172e6',
+    sessionCreateTime: '2026-06-19 21:30:00',
+    skillGenerateTime: '2026-06-19 22:08:00',
+    skillStatus: 'PENDING',
+    downloadCount: 0,
+    ide: 'JetBrains IDEA',
+    codeRepo: 'git@code.company.com:agent-center/ticket-classifier-skill.git',
+    firstMessage: '客户工单越来越多，帮我做一个能根据内容自动分类并路由到处理队列的技能。',
+    version: '1.0.0',
+    skillMdContent:
+      '# 客户工单分类器（自进化）\n\n## 简介\n根据工单内容自动分类并路由到对应处理队列。\n\n## 本次自进化变更\n- 引入新一轮标注数据\n- 调整分类阈值与少样本提示\n\n## 触发原因\n准确率从 87% 提升至 94%，可发起一次正式版本升级。',
+    fileTree: 'SKILL.md\ndata/\n  labels.csv\nprompts/\n  classify.md',
+    createdAt: '2026-06-19 22:09:00',
+    updatedAt: null,
+  },
+];
+
+function findSkillDraft(id: string | undefined): MockSkillDraft | undefined {
+  const sid = String(id ?? '').trim();
+  if (!sid) {
+    return undefined;
+  }
+  return skillDrafts.find((d) => d.skillId === sid);
+}
+
+function handleSkillDraftRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  const params = readParams(config);
+
+  // 列表（前端展示用）
+  if (method === 'get' && path === '') {
+    let list = [...skillDrafts];
+    const skillStatus = String(params.skillStatus ?? '')
+      .trim()
+      .toUpperCase();
+    if (skillStatus) {
+      list = list.filter((d) => d.skillStatus === skillStatus);
+    }
+    const skillName = String(params.skillName ?? '')
+      .trim()
+      .toLowerCase();
+    if (skillName) {
+      list = list.filter((d) => d.skillName.toLowerCase().includes(skillName));
+    }
+    const total = list.length;
+    const pageNo = Math.max(1, readNumber(params.pageNo, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 10));
+    const start = (pageNo - 1) * pageSize;
+    const data = withPageMeta(list.slice(start, start + pageSize), total);
+    return ok(data, total);
+  }
+
+  const approveMatch = /^\/([^/]+)\/approve$/.exec(path);
+  if (method === 'post' && approveMatch) {
+    const draft = findSkillDraft(approveMatch[1]);
+    if (!draft) {
+      return fail('草稿不存在', null);
+    }
+    if (draft.skillStatus !== 'PENDING') {
+      return fail('草稿状态不是待审批，无法审批', null);
+    }
+    draft.skillStatus = 'APPROVED';
+    draft.updatedAt = nowText();
+    const approver = readString(params.userId, draft.userId);
+    return ok({
+      id: `skill-${draft.skillId}`,
+      name: draft.skillName,
+      description: draft.description,
+      author: draft.userId,
+      currentVersion: draft.version,
+      level: '个人级',
+      status: '个人级',
+      ownerUser: draft.userId,
+      packagePath: `fuyao/skills/${draft.skillName}/${draft.version}`,
+      downloads: 0,
+      deleted: 0,
+      sourceType: 'market',
+      createdBy: approver,
+      createdAt: nowText(),
+      fileTree: draft.fileTree,
+      skillMdContent: draft.skillMdContent,
+    });
+  }
+
+  const rejectMatch = /^\/([^/]+)\/reject$/.exec(path);
+  if (method === 'post' && rejectMatch) {
+    const draft = findSkillDraft(rejectMatch[1]);
+    if (!draft) {
+      return fail('草稿不存在', null);
+    }
+    if (draft.skillStatus !== 'PENDING') {
+      return fail('草稿状态不是待审批，无法驳回', null);
+    }
+    draft.skillStatus = 'REJECTED';
+    draft.updatedAt = nowText();
+    return ok('驳回成功');
+  }
+
+  const downloadMatch = /^\/([^/]+)\/download$/.exec(path);
+  if (method === 'post' && downloadMatch) {
+    const draft = findSkillDraft(downloadMatch[1]);
+    if (!draft) {
+      return fail('草稿不存在', null);
+    }
+    draft.downloadCount += 1;
+    return ok(
+      `https://mock.s3.file.url?fileName=${encodeURIComponent(
+        `${draft.skillName}.zip`,
+      )}&fileDir=${encodeURIComponent(draft.archiveData)}`,
+    );
+  }
+
+  // 详情
+  const detailMatch = /^\/([^/]+)$/.exec(path);
+  if (method === 'get' && detailMatch) {
+    const draft = findSkillDraft(detailMatch[1]);
+    return draft ? ok({ ...draft }) : fail('草稿不存在', null);
+  }
+
+  return null;
+}
+
 function handleDirectRequest(method: string, path: string): Record<string, string> | null {
   if (method !== 'get') {
     return null;
@@ -1738,6 +1937,10 @@ export function maybeHandleSkillBaseMockRequest<T>(
 
   if (channel === 'skill') {
     const envelope = handleSkillRequest(method, path, config);
+    return envelope ? Promise.resolve(envelope as T) : null;
+  }
+  if (channel === 'skillDraft') {
+    const envelope = handleSkillDraftRequest(method, path, config);
     return envelope ? Promise.resolve(envelope as T) : null;
   }
   if (channel === 'api') {

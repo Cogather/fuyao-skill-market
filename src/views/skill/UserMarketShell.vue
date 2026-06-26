@@ -926,6 +926,8 @@ onMounted(async () => {
   await loadBusinessDimensions();
   // HTTP 与 Mock 均保留一次角色拉取；抢先调用仅见 loadMyPublishedSkills / executeDelete 内对 Mock 的分支
   await loadCurrentUserRole();
+  // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
+  await loadAiEvolutionSkills();
   if (transportIsHttp) {
     await loadAdminOrganizations();
     // await startOverviewRemoteFetch();
@@ -2459,10 +2461,30 @@ async function onDetailVersionManage(): Promise<void> {
 }
 
 function onDetailDownload(): void {
-  if (!detailPanelSkill.value) {
+  const skill = detailPanelSkill.value;
+  if (!skill) {
     return;
   }
-  void onDownload(detailPanelSkill.value.id, detailPanelSkill.value.currentVersion);
+  if (skill.isAiEvolution) {
+    void onDownloadAiEvolution(String(skill.id ?? ''));
+    return;
+  }
+  void onDownload(skill.id, skill.currentVersion);
+}
+
+async function onDownloadAiEvolution(id: string): Promise<void> {
+  if (!id) {
+    return;
+  }
+  try {
+    const env = await skillBaseService.downloadSkillDraft(id, { userId: userId.value });
+    if (!serviceSucceeded(env) || !env?.data) {
+      throw new Error(serviceMessage(env, '下载失败'));
+    }
+    window.open(String(env.data));
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '下载失败');
+  }
 }
 
 function onTrySkill(): void {
@@ -2696,60 +2718,75 @@ type AiEvolutionSkillRow = {
   fileTree: string;
 };
 
-const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([
-  {
-    id: 'ai-evo-001',
-    name: '智能日报汇总（自进化）',
-    description: '自动汇总团队每日工作进展，生成结构化日报，支持多数据源聚合与异常兜底。',
-    sessionId: 'sess-20260621-7f3a9c1d',
-    summary:
-      '近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支，新增空数据兜底与字段缺失校验。',
-    ide: 'VS Code',
-    sessionTime: '2026-06-21 08:42',
-    generatedAt: '2026-06-21 09:14',
-    firstMessage: '帮我把团队每天的工作进展自动整理成结构化日报，要能处理某些人没填写的情况。',
-    codeRepo: 'git@code.company.com:agent-center/daily-report-skill.git',
-    status: 'pending',
-    version: 'v1.3.0',
-    skillMdContent:
-      '# 智能日报汇总（自进化）\n\n## 简介\n自动汇总团队每日工作进展，生成结构化日报。\n\n## 本次自进化变更\n- 新增空数据兜底逻辑\n- 优化分段总结提示词\n- 补充字段缺失校验\n\n## 触发原因\n近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支。',
-    fileTree: 'SKILL.md\nprompts/\n  summary.md\n  fallback.md\nscripts/\n  collect.py',
-  },
-  {
-    id: 'ai-evo-002',
-    name: '会议纪要生成器（自进化）',
-    description: '将会议录音转写文本整理为结构化纪要与待办，支持长会议分块摘要。',
-    sessionId: 'sess-20260620-2b8e45af',
-    summary: '用户反馈显示长会议截断率上升，触发上下文窗口策略升级，引入分块摘要 + 二次合并。',
-    ide: 'Cursor',
-    sessionTime: '2026-06-20 17:05',
-    generatedAt: '2026-06-20 17:42',
-    firstMessage: '会议录音转写出来太长了，模型经常截断，帮我做成能分段总结再合并的纪要工具。',
-    codeRepo: 'git@code.company.com:agent-center/meeting-minutes-skill.git',
-    status: 'pending',
-    version: 'v2.1.0',
-    skillMdContent:
-      '# 会议纪要生成器（自进化）\n\n## 简介\n将会议录音转写文本整理为结构化纪要与待办。\n\n## 本次自进化变更\n- 引入分块摘要 + 二次合并\n- 适配 200k 上下文窗口模型\n\n## 触发原因\n用户反馈显示长会议截断率上升，触发上下文窗口策略升级。',
-    fileTree: 'SKILL.md\nprompts/\n  chunk.md\n  merge.md\nconfig.json',
-  },
-  {
-    id: 'ai-evo-003',
-    name: '客户工单分类器（自进化）',
-    description: '根据工单内容自动分类并路由到对应处理队列，支持少样本提示与阈值调优。',
-    sessionId: 'sess-20260619-c0d172e6',
-    summary: '准确率从 87% 提升至 94%，引入新一轮标注数据，调整分类阈值与少样本提示。',
-    ide: 'JetBrains IDEA',
-    sessionTime: '2026-06-19 21:30',
-    generatedAt: '2026-06-19 22:08',
-    firstMessage: '客户工单越来越多，帮我做一个能根据内容自动分类并路由到处理队列的技能。',
-    codeRepo: 'git@code.company.com:agent-center/ticket-classifier-skill.git',
-    status: 'pending',
-    version: 'v1.0.0',
-    skillMdContent:
-      '# 客户工单分类器（自进化）\n\n## 简介\n根据工单内容自动分类并路由到对应处理队列。\n\n## 本次自进化变更\n- 引入新一轮标注数据\n- 调整分类阈值与少样本提示\n\n## 触发原因\n准确率从 87% 提升至 94%，可发起一次正式版本升级。',
-    fileTree: 'SKILL.md\ndata/\n  labels.csv\nprompts/\n  classify.md',
-  },
-]);
+const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([]);
+const aiEvolutionLoading = ref(false);
+
+/** 文件树字段统一为换行文本：兼容后端字符串或路径数组 */
+function normalizeDraftFileTree(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join('\n');
+  }
+  return '';
+}
+
+/** SkillDraft → 自进化审批列表行 */
+function mapSkillDraftToRow(dto: any): AiEvolutionSkillRow {
+  const status = String(dto?.skillStatus ?? '')
+    .trim()
+    .toUpperCase();
+  const statusKey: AiEvolutionStatus =
+    status === 'APPROVED' ? 'approved' : status === 'REJECTED' ? 'rejected' : 'pending';
+  return {
+    id: String(dto?.skillId ?? ''),
+    name: String(dto?.skillName ?? ''),
+    description: String(dto?.description ?? ''),
+    sessionId: String(dto?.sessionId ?? ''),
+    summary: String(dto?.description ?? ''),
+    ide: String(dto?.ide ?? ''),
+    sessionTime: String(dto?.sessionCreateTime ?? ''),
+    generatedAt: String(dto?.skillGenerateTime ?? ''),
+    firstMessage: String(dto?.firstMessage ?? ''),
+    codeRepo: String(dto?.codeRepo ?? ''),
+    status: statusKey,
+    version: String(dto?.version ?? ''),
+    skillMdContent: String(dto?.skillMdContent ?? ''),
+    fileTree: normalizeDraftFileTree(dto?.fileTree),
+  };
+}
+
+async function loadAiEvolutionSkills(): Promise<void> {
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  if (transportIsHttp) {
+    await waitUserIdAndDepartmentList();
+  }
+  aiEvolutionLoading.value = true;
+  try {
+    const params = {
+      userId: effectiveSkillUserId(),
+      skillStatus: 'PENDING',
+      pageNo: 1,
+      pageSize: 100,
+    };
+    const res = await skillBaseService.querySkillDraftList(params);
+    if (!serviceSucceeded(res)) {
+      showToast(serviceMessage(res, '自进化审批列表加载失败'));
+      return;
+    }
+    const list = Array.isArray(res?.data) ? res.data : [];
+    aiEvolutionSkills.value = list.map(mapSkillDraftToRow);
+  } catch (e) {
+    if (transportIsHttp) {
+      showToast(e instanceof Error ? e.message : '自进化审批列表加载失败');
+    }
+  } finally {
+    aiEvolutionLoading.value = false;
+  }
+}
 
 const aiEvolutionPendingCount = computed(
   () => aiEvolutionSkills.value.filter((s) => s.status === 'pending').length,
@@ -2790,19 +2827,62 @@ async function confirmAiEvolutionDecision(): Promise<void> {
     return;
   }
   const { row, decision } = pending;
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  const uid = effectiveSkillUserId();
+  if (!uid) {
+    showToast('请先配置用户工号');
+    return;
+  }
+  const failFallback = decision === 'approve' ? '审批失败' : '拒绝失败';
   processingAiEvolutionId.value = row.id;
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
-  processingAiEvolutionId.value = '';
-  aiEvolutionConfirm.value = null;
-  showToast(
-    decision === 'approve'
-      ? `已通过「${row.name}」，将发布为个人级 Skill（演示）`
-      : `已拒绝「${row.name}」的自进化审批（演示）`,
-  );
+  try {
+    const res =
+      decision === 'approve'
+        ? await skillBaseService.approveSkillDraft(row.id, { userId: uid })
+        : await skillBaseService.rejectSkillDraft(row.id, { userId: uid });
+    if (!serviceSucceeded(res)) {
+      showToast(serviceMessage(res, failFallback));
+      return;
+    }
+    aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
+    aiEvolutionConfirm.value = null;
+    showToast(
+      decision === 'approve'
+        ? `已通过「${row.name}」，将发布为个人级 Skill`
+        : `已拒绝「${row.name}」的自进化审批`,
+    );
+    if (decision === 'approve') {
+      // 审批通过后落成个人级 Skill，刷新我的发布列表
+      await loadMyPublishedSkills();
+    }
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : failFallback);
+  } finally {
+    processingAiEvolutionId.value = '';
+  }
 }
 
-function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
+async function openAiEvolutionDetail(row: AiEvolutionSkillRow): Promise<void> {
+  let skillMdContent = row.skillMdContent;
+  let fileTree = row.fileTree;
+  // 列表场景如使用轻量 VO，可能缺少正文/文件树，按需拉详情补全
+  if (!skillMdContent || !fileTree) {
+    try {
+      const res = await skillBaseService.querySkillDraftDetail(row.id);
+      if (serviceSucceeded(res) && res?.data) {
+        if (!skillMdContent) {
+          skillMdContent = String(res.data.skillMdContent ?? '');
+        }
+        if (!fileTree) {
+          fileTree = normalizeDraftFileTree(res.data.fileTree);
+        }
+      }
+    } catch {
+      // 拉取失败时沿用列表已有内容
+    }
+  }
   const skill = {
     id: row.id,
     name: row.name,
@@ -2814,8 +2894,8 @@ function openAiEvolutionDetail(row: AiEvolutionSkillRow): void {
     level: '自进化候选',
     totalDownloads: 0,
     publish_level: '',
-    fileTree: row.fileTree,
-    skillMdContent: row.skillMdContent,
+    fileTree,
+    skillMdContent,
     isAiEvolution: true,
     ide: row.ide,
     sessionId: row.sessionId,
@@ -2845,6 +2925,7 @@ function releaseSyncActionText(row: {
 const onClickFilterRelease = async (key: any) => {
   releaseFilter.value = key;
   if (key === 'aiEvolution') {
+    await loadAiEvolutionSkills();
     return;
   }
   if (key === 'all' && 'status' in myReleaseFilterObj.value) {
