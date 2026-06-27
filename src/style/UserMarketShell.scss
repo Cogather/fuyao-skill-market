@@ -9256,7 +9256,7 @@ span {
 }
 
 .ai-evolution-table {
-  min-width: 1320px;
+  min-width: 1420px;
 }
 
 .ai-evolution-row td {
@@ -9304,6 +9304,15 @@ span {
 
 .ai-evolution-table .col-skill {
   min-width: 120px;
+}
+
+.ai-evolution-table .col-source {
+  min-width: 96px;
+}
+
+.ai-evolution-source {
+  color: #475569;
+  white-space: nowrap;
 }
 
 .ai-evolution-table .col-desc {

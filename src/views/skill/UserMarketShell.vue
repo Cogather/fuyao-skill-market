@@ -2704,6 +2704,7 @@ type AiEvolutionStatus = 'pending' | 'approved' | 'rejected';
 type AiEvolutionSkillRow = {
   id: string;
   name: string;
+  source: string;
   description: string;
   sessionId: string;
   summary: string;
@@ -2742,6 +2743,7 @@ function mapSkillDraftToRow(dto: any): AiEvolutionSkillRow {
   return {
     id: String(dto?.skillId ?? ''),
     name: String(dto?.skillName ?? ''),
+    source: String(dto?.source ?? ''),
     description: String(dto?.description ?? ''),
     sessionId: String(dto?.sessionId ?? ''),
     summary: String(dto?.description ?? ''),
@@ -4343,6 +4345,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <thead>
               <tr>
                 <th class="col-skill">Skill 名称</th>
+                <th class="col-source">来源</th>
                 <th class="col-desc">Skill 描述</th>
                 <th class="col-first-msg">第一条消息内容</th>
                 <th class="col-repo">代码仓信息</th>
@@ -4365,6 +4368,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <td>
                   <div class="skill-main">
                     <strong class="skill-name skill-name-link">{{ row.name }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-source">
+                    {{ row.source || '—' }}
                   </div>
                 </td>
                 <td>
@@ -4421,7 +4429,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </td>
               </tr>
               <tr v-if="aiEvolutionSkills.length === 0">
-                <td colspan="8" class="empty-row">暂无待审批的自进化 Skill</td>
+                <td colspan="9" class="empty-row">暂无待审批的自进化 Skill</td>
               </tr>
             </tbody>
           </table>
