@@ -9,6 +9,15 @@ const _ai_env = import.meta.env.VITE_SKILL_CORE_CODE_URL;
 export const ai = _ai_env;
 
 export const skillBaseService = {
+  // 获取用户部门信息
+  getUserDepartment: (params: any): any => {
+    return httpRequest.fuyao<any>({
+      url: '/dataengineering/config-center/hw-userinfo',
+      method: 'get',
+      params,
+    });
+  },
+
   // skill压缩包解析接口
   parseSkillPackage: (formData: FormData, params: any): any => {
     return httpRequest.skill<any>({
@@ -297,6 +306,15 @@ export const skillBaseService = {
     });
   },
 
+  // 批量更改skill规划
+  batchUpdateSkillPlanning: (body: any): any => {
+    return httpRequest.skill<any>({
+      url: `/config/batch_update`,
+      method: 'put',
+      data: body,
+    });
+  },
+
   deleteSkillPlanning: (params: any): any => {
     return httpRequest.skill<any>({
       url: `/config/singel_delete`,
@@ -332,6 +350,7 @@ export const skillBaseService = {
     });
   },
 
+  // 下载skill规划导入excel的模板
   downloadSkillPlanning: (): any => {
     return httpRequest.skill<any>({
       url: '/config/download_template',
@@ -452,6 +471,43 @@ export const skillBaseService = {
       url: '/skill-quality-reviews/archive',
       method: 'post',
       data: body,
+    });
+  },
+
+  // ==================== Agent 调测相关接口 ====================
+
+  // agent详情查询
+  getAgentDetail: (userId: string, agentId: string): any => {
+    return httpRequest.direct<any>({
+      baseURL: corecode,
+      url: `/aiapp-v2/v1/ai_app_api/agent_portal/agent/detail?appId=${agentId}&userId=${userId}`,
+      method: 'get',
+    });
+  },
+  // agent用户config接口
+  getAgentConfig: (agentId: string, userId: string): any => {
+    return httpRequest.direct<any>({
+      baseURL: ai,
+      url: `/aiapp-v2/v1/ai_agent/agent_config/${agentId}/${userId}`,
+      method: 'get',
+    });
+  },
+  // streamchat
+  apiRun: (data: any): any => {
+    return httpRequest.direct<any>({
+      baseURL: ai,
+      url: `/aiapp-v2/v1/ai_app_api/run/stream_chat`,
+      method: 'post',
+      data: data,
+    });
+  },
+  // agent插入历史记录接口
+  setHistoryInfo: (data: any): any => {
+    return httpRequest.direct<any>({
+      baseURL: ai,
+      url: `/aiapp-v2/v1/ai_api_history/insert_record`,
+      method: 'post',
+      data: data,
     });
   },
 

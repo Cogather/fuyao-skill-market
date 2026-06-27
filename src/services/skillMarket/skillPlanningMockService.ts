@@ -9,9 +9,11 @@ import {
   rowToSkillPlanningPayload,
   skillPlanningExportHeaders,
   skillPlanningFieldMap,
+  type ProductPlanningOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningFilterOptions,
   type SkillPlanningImportResult,
+  type SkillPlanningOptionGroup,
   type SkillPlanningItem,
   type SkillPlanningListResult,
   type SkillPlanningPayload,
@@ -28,6 +30,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '接口 Mock 生成 Skill',
     skillDescription: '根据接口定义自动生成 Mock 数据和联调示例，减少前后端等待时间。',
     level: '平台级',
+    offeringId: 'offering-api',
+    offeringName: 'API产品线',
     owner: '张三',
     department: '平台工具部',
     developer: '李明',
@@ -43,6 +47,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '测试用例评审 Skill',
     skillDescription: '围绕需求说明和历史缺陷生成测试用例评审建议，提升测试覆盖完整度。',
     level: '部门级',
+    offeringId: 'offering-quality',
+    offeringName: '质量产品线',
     owner: '李四',
     department: '质量工具组',
     developer: '周扬',
@@ -58,6 +64,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '日志分析 Skill',
     skillDescription: '汇总异常日志、调用链和发布记录，输出可执行的问题定位摘要。',
     level: '组织级',
+    offeringId: 'offering-data',
+    offeringName: '数据产品线',
     owner: '王五',
     department: '数据平台部',
     developer: '陈七',
@@ -73,6 +81,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '会议纪要沉淀 Skill',
     skillDescription: '从会议记录中抽取决策、风险、待办和关联文档，自动整理到团队知识库。',
     level: '部门级',
+    offeringId: 'offering-efficiency',
+    offeringName: '研发效能产品线',
     owner: '赵六',
     department: '研发效能部',
     developer: '刘岚',
@@ -88,6 +98,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '发布风险检查 Skill',
     skillDescription: '结合发布单、代码变更和历史事故，生成发布前风险检查清单。',
     level: '平台级',
+    offeringId: 'offering-cloud',
+    offeringName: '云平台产品线',
     owner: '钱慧',
     department: '云平台部',
     developer: '吴越',
@@ -103,6 +115,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '工单智能分派 Skill',
     skillDescription: '按问题类型、系统模块和处理经验自动推荐承接团队与处理路径。',
     level: '组织级',
+    offeringId: 'offering-customer-success',
+    offeringName: '客户成功产品线',
     owner: '孙宇',
     department: '客户成功部',
     developer: '高宁',
@@ -118,6 +132,8 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '代码评审摘要 Skill',
     skillDescription: '生成代码改动摘要、风险点和建议关注文件，辅助 reviewer 快速进入上下文。',
     level: '个人级',
+    offeringId: 'offering-platform-tools',
+    offeringName: '平台工具产品线',
     owner: '何佳',
     department: '平台工具部',
     developer: '许安',
@@ -133,12 +149,26 @@ const initialSkillPlanningItems: SkillPlanningItem[] = [
     skillName: '缺陷根因归纳 Skill',
     skillDescription: '对缺陷描述、提交记录和修复方案进行归纳，输出可复用的质量改进建议。',
     level: '部门级',
+    offeringId: 'offering-quality',
+    offeringName: '质量产品线',
     owner: '郑欣',
     department: '质量工具组',
     developer: '马可',
     planedCompleteDate: '2026-07-08',
     status: '已完成',
   },
+];
+
+const mockProductPlanningOptions: ProductPlanningOption[] = [
+  { offeringId: 'offering-api', offeringName: 'API产品线' },
+  { offeringId: 'offering-quality', offeringName: '质量产品线' },
+  { offeringId: 'offering-data', offeringName: '数据产品线' },
+  { offeringId: 'offering-efficiency', offeringName: '研发效能产品线' },
+  { offeringId: 'offering-cloud', offeringName: '云平台产品线' },
+  { offeringId: 'offering-customer-success', offeringName: '客户成功产品线' },
+  { offeringId: 'offering-platform-tools', offeringName: '平台工具产品线' },
+  { offeringId: 'offering-security', offeringName: '安全能力产品线' },
+  { offeringId: 'offering-mobile', offeringName: '移动端产品线' },
 ];
 
 let skillPlanningItems = [...initialSkillPlanningItems];
@@ -184,49 +214,62 @@ function distinctValuesInOrder(values: string[]): string[] {
   return [...new Set(values.map((value) => normalizeText(value)).filter(Boolean))];
 }
 
+function createOptionGroups(
+  parentKey: 'firstScene' | 'activityNodeName',
+  childKey: 'secondScene' | 'subActivityNodeName',
+): SkillPlanningOptionGroup[] {
+  const groupMap = new Map<string, string[]>();
+
+  skillPlanningItems.forEach((item) => {
+    const parent = normalizeText(item[parentKey]);
+    const child = normalizeText(item[childKey]);
+    if (!parent) {
+      return;
+    }
+    groupMap.set(parent, distinctValuesInOrder([...(groupMap.get(parent) ?? []), child]));
+  });
+
+  return Array.from(groupMap, ([value, children]) => ({ value, children }));
+}
+
 function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   const keyword = normalizeText(query.keyword).toLowerCase();
-  const primaryScenes = normalizeTextArray(query.primaryScenes);
-  const secondaryScenes = normalizeTextArray(query.secondaryScenes);
-  const activities = normalizeTextArray(query.activities);
-  const subActivities = normalizeTextArray(query.subActivities);
-  const levels = normalizeTextArray(query.levels);
-  const progresses = normalizeTextArray(query.progresses);
+  const firstScene = normalizeTextArray(query.firstScene);
+  const secondScene = normalizeTextArray(query.secondScene);
+  const activityNodeName = normalizeTextArray(query.activityNodeName);
+  const subActivityNodeName = normalizeTextArray(query.subActivityNodeName);
+  const level = normalizeTextArray(query.level);
+  const status = normalizeTextArray(query.status);
   const department =
     normalizeText(query.department) ||
     [
-      query.DepartmentL6,
-      query.DepartmentL5,
-      query.DepartmentL4,
-      query.DepartmentL3,
-      query.DepartmentL2,
-      query.DepartmentL1,
+      query.departmentL8,
+      query.departmentL7,
+      query.departmentL6,
+      query.departmentL5,
+      query.departmentL4,
+      query.departmentL3,
     ]
       .map(normalizeText)
       .find(Boolean) ||
     '';
-  const firstScene = normalizeText(query.firstScene);
-  const secondScene = normalizeText(query.secondScene);
-  const activityNodeName = normalizeText(query.activityNodeName);
-  const subActivityNodeName = normalizeText(query.subActivityNodeName);
-  const level = normalizeText(query.level);
-  const status = normalizeText(query.status);
   const owner = normalizeText(query.owner);
 
   return skillPlanningItems.filter((item) => {
     if (department && item.department !== department) return false;
-    if (!matchesDiscreteFilter(item.firstScene, firstScene, primaryScenes)) return false;
-    if (!matchesDiscreteFilter(item.secondScene, secondScene, secondaryScenes)) return false;
-    if (!matchesDiscreteFilter(item.activityNodeName, activityNodeName, activities)) return false;
-    if (!matchesDiscreteFilter(item.subActivityNodeName, subActivityNodeName, subActivities))
+    if (!matchesDiscreteFilter(item.firstScene, firstScene, firstScene)) return false;
+    if (!matchesDiscreteFilter(item.secondScene, secondScene, secondScene)) return false;
+    if (!matchesDiscreteFilter(item.activityNodeName, activityNodeName, activityNodeName))
       return false;
-    if (!matchesDiscreteFilter(item.level, level, levels)) return false;
-    if (!matchesDiscreteFilter(item.status, status, progresses)) return false;
+    if (!matchesDiscreteFilter(item.subActivityNodeName, subActivityNodeName, subActivityNodeName))
+      return false;
+    if (!matchesDiscreteFilter(item.level, level, level)) return false;
+    if (!matchesDiscreteFilter(item.status, status, status)) return false;
     if (owner && !item.owner.includes(owner)) return false;
     if (!matchesDateRange(item, query)) return false;
     if (!keyword) return true;
 
-    return [item.skillName, item.skillDescription, item.developer]
+    return [item.offeringName, item.skillName, item.skillDescription, item.developer]
       .join(' ')
       .toLowerCase()
       .includes(keyword);
@@ -234,17 +277,18 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
 }
 
 export async function getPlanningOption(): Promise<SkillPlanningFilterOptions> {
+  const sceneGroups = createOptionGroups('firstScene', 'secondScene');
+  const activityGroups = createOptionGroups('activityNodeName', 'subActivityNodeName');
+
   return {
-    firstScene: distinctValuesInOrder(skillPlanningItems.map((item) => item.firstScene)),
-    secondScene: distinctValuesInOrder(skillPlanningItems.map((item) => item.secondScene)),
-    activityNodeName: distinctValuesInOrder(
-      skillPlanningItems.map((item) => item.activityNodeName),
-    ),
-    subActivityNodeName: distinctValuesInOrder(
-      skillPlanningItems.map((item) => item.subActivityNodeName),
-    ),
+    firstScene: sceneGroups.map((group) => group.value),
+    secondScene: distinctValuesInOrder(sceneGroups.flatMap((group) => group.children)),
+    activityNodeName: activityGroups.map((group) => group.value),
+    subActivityNodeName: distinctValuesInOrder(activityGroups.flatMap((group) => group.children)),
     level: distinctValuesInOrder(skillPlanningItems.map((item) => item.level)),
     status: distinctValuesInOrder(skillPlanningItems.map((item) => item.status)),
+    sceneGroups,
+    activityGroups,
   };
 }
 
@@ -262,10 +306,32 @@ export async function querySkillConfig(
   };
 }
 
-export async function queryAllSkillPlanningList(
+export async function exportAllSkillPlanningList(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningItem[]> {
   return sortItems(filterItems(query), query).map(cloneSkillPlanningItem);
+}
+
+export async function getProductPlanning(
+  params: { offeringName?: string } = {},
+): Promise<ProductPlanningOption[]> {
+  const keyword = normalizeText(params.offeringName).toLowerCase();
+  const optionMap = new Map<string, ProductPlanningOption>();
+
+  [...mockProductPlanningOptions, ...skillPlanningItems].forEach((item) => {
+    const option = {
+      offeringId: normalizeText(item.offeringId),
+      offeringName: normalizeText(item.offeringName),
+    };
+    if (!option.offeringName) {
+      return;
+    }
+    optionMap.set(option.offeringId || option.offeringName, option);
+  });
+
+  return Array.from(optionMap.values()).filter((option) =>
+    keyword ? option.offeringName.toLowerCase().includes(keyword) : true,
+  );
 }
 
 export async function createSkillPlanning(
@@ -291,6 +357,49 @@ export async function updateSkillPlanning(
   const next = { id, ...normalizeSkillPlanningPayload(payload) };
   skillPlanningItems.splice(index, 1, next);
   return cloneSkillPlanningItem(next);
+}
+
+function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): SkillPlanningBatchPatch {
+  const next: SkillPlanningBatchPatch = {};
+  const skillDescription = normalizeText(patch.skillDescription);
+  const offeringName = normalizeText(patch.offeringName);
+  const owner = normalizeText(patch.owner);
+  const department = normalizeText(patch.department);
+  const developer = normalizeText(patch.developer);
+  const planedCompleteDate = normalizeText(patch.planedCompleteDate);
+  const status = normalizeText(patch.status);
+
+  if (skillDescription) next.skillDescription = skillDescription;
+  if (offeringName) next.offeringName = offeringName;
+  if (owner) next.owner = owner;
+  if (department) next.department = department;
+  if (developer) next.developer = developer;
+  if (planedCompleteDate) next.planedCompleteDate = planedCompleteDate;
+  if (status) next.status = normalizeProgress(status);
+
+  return next;
+}
+
+export async function batchUpdateSkillPlanning(
+  ids: string[],
+  patch: SkillPlanningBatchPatch,
+): Promise<number> {
+  const idSet = new Set(normalizeTextArray(ids));
+  const nextPatch = normalizeSkillPlanningBatchPatch(patch);
+  if (idSet.size === 0 || Object.keys(nextPatch).length === 0) {
+    return 0;
+  }
+
+  let updatedCount = 0;
+  skillPlanningItems = skillPlanningItems.map((item) => {
+    if (!idSet.has(item.id)) {
+      return item;
+    }
+    updatedCount += 1;
+    return { ...item, ...nextPatch };
+  });
+
+  return updatedCount;
 }
 
 export async function deleteSkillPlanning(id: string): Promise<void> {

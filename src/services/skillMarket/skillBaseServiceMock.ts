@@ -39,6 +39,43 @@ const MOCK_VALIDATE_USER = {
   mail: 'mock.user@example.com',
 } as const;
 
+const MOCK_USER_DEPARTMENT_OPTIONS = [
+  {
+    id: 'w30000001',
+    chName: '张三',
+    department_l1: '云核装备经营管理部',
+    department_l2: '智能终端产品部',
+    department_l3: '平台工具部',
+    department_l4: '接口开发组',
+  },
+  {
+    id: 'w30000002',
+    chName: '李四',
+    department_l1: '云核装备经营管理部',
+    department_l2: '质量产品线',
+    department_l3: '质量工具组',
+  },
+  {
+    id: 'w30000003',
+    chName: '王五',
+    department_l1: '数据与智能平台部',
+    department_l2: '数据产品线',
+    department_l3: '日志智能组',
+  },
+  {
+    id: 'w30000004',
+    chName: '赵六',
+    department_l1: '研发效能产品部',
+    department_l2: '知识工程组',
+  },
+  {
+    id: 'w30000005',
+    chName: '钱慧',
+    department_l1: '云平台产品部',
+    department_l2: '发布治理组',
+  },
+] as const;
+
 type MockEnvelope<T> = {
   code: number;
   message: string;
@@ -122,6 +159,59 @@ type MockSkillReviewDetail = {
   badgeReason?: string;
   overallOpinion?: string;
   updatedAt?: string;
+};
+type MockAiReviewDimensionScore = {
+  dimensionId: string;
+  score: number;
+  deductionBreakdown: string;
+};
+
+type MockAiReviewDetail = {
+  aiModel: string;
+  evaluateTime: string;
+  aiScore: number;
+  dimensionScores: MockAiReviewDimensionScore[];
+  advices: Record<'SKILL.md' | 'references' | 'scripts', string>;
+};
+
+type MockCurrentUserReview = {
+  reviewId: string;
+  skillId: string;
+  expertUserId: string;
+  reviewStatus: 'draft' | 'submitted';
+  status: 'draft' | 'submitted';
+  overallScore: number | null;
+  dimensions: {
+    dimensionId: string;
+    score?: number;
+    comment?: string;
+  }[];
+  badges: {
+    badgeIds: string;
+    reason: string;
+  };
+  reviewComment: string;
+  reviewedAt: string;
+  updatedAt: string;
+};
+
+type MockReviewVersionDetail = {
+  version: string;
+  aiScore: MockAiReviewDetail;
+  expertReviews: MockCurrentUserReview[];
+};
+
+type MockSkillReviewDetailPayload = {
+  skillInfo: {
+    skillId: string;
+    name: string;
+    version: string;
+    ownerUser: string;
+    departmentL6: string;
+  };
+  aiScore: MockAiReviewDetail;
+  currentUserReview: MockCurrentUserReview | null;
+  versionDetails: MockReviewVersionDetail[];
 };
 
 type MockSkillRecord = Skill & {
@@ -444,7 +534,7 @@ function normalizeDraftDimensionScores(raw: unknown): MockExpertReviewDimensionS
         }
       }
 
-      const reason = String(record.reason ?? '').trim();
+      const reason = String(record.reason ?? record.comment ?? '').trim();
       if (reason) {
         nextItem.reason = reason;
       }
@@ -515,6 +605,105 @@ function ensureExpertReviewDetail(skillId: string): MockSkillReviewDetail {
   }
   expertReviewDetailStore[key] = detail;
   return detail;
+}
+const MOCK_AI_REVIEW_DIMENSIONS = [
+  { dimensionId: 'D1', maxScore: 20, label: '技能边界完整性' },
+  { dimensionId: 'D2', maxScore: 30, label: '接口规范完整性' },
+  { dimensionId: 'D3', maxScore: 20, label: '异常与边界处理' },
+  { dimensionId: 'D4', maxScore: 10, label: '规则一致性' },
+  { dimensionId: 'D5', maxScore: 20, label: '安全与权限约束' },
+] as const;
+
+function mockReviewTime(seed: number, dayOffset = 0): string {
+  const day = String(8 + ((seed + dayOffset) % 18)).padStart(2, '0');
+  const hour = String(9 + (seed % 8)).padStart(2, '0');
+  const minute = String((seed * 7 + dayOffset) % 60).padStart(2, '0');
+  return `2026-05-${day} ${hour}:${minute}`;
+}
+
+function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiReviewDetail {
+  const seed = mockSeedFromSkillId(skillId);
+  const dimensionScores = MOCK_AI_REVIEW_DIMENSIONS.map((dimension, index) => {
+    const ratio = 0.78 + ((seed + index * 9) % 16) / 100;
+    const score = roundToTwo(Math.min(dimension.maxScore, dimension.maxScore * ratio));
+    return {
+      dimensionId: dimension.dimensionId,
+      score,
+      deductionBreakdown: `${dimension.label}得分 ${score}/${dimension.maxScore}，Mock 数据用于查看 AI 评审明细展示。`,
+    };
+  });
+  const aiScore = roundToTwo(dimensionScores.reduce((sum, item) => sum + item.score, 0));
+  const skillName = skill?.name ?? `Mock Skill ${skillId}`;
+
+  return {
+    aiModel: 'mock-ai-review-v2',
+    evaluateTime: mockReviewTime(seed, 2),
+    aiScore,
+    dimensionScores,
+    advices: {
+      'SKILL.md': `${skillName} 的目标、输入输出和适用场景描述较完整，可补充失败示例。`,
+      references: '引用材料覆盖核心场景，建议增加边界样例和反例说明。',
+      scripts: '脚本结构清晰，建议补充参数校验和异常日志。',
+    },
+  };
+}
+
+function createMockCurrentUserReview(detail: MockSkillReviewDetail): MockCurrentUserReview | null {
+  if (detail.reviewStatus === 'pending') {
+    return null;
+  }
+
+  return {
+    reviewId: detail.reviewId,
+    skillId: detail.skillId,
+    expertUserId: 'mock-expert-001',
+    reviewStatus: detail.reviewStatus,
+    status: detail.reviewStatus,
+    overallScore: detail.totalScore,
+    dimensions: detail.dimensionScores.map((dimension) => ({
+      dimensionId: dimension.dimensionId,
+      score: dimension.score,
+      comment: dimension.reason ?? '',
+    })),
+    badges: {
+      badgeIds: detail.badgeIds.join(','),
+      reason: detail.badgeReason ?? '',
+    },
+    reviewComment: detail.overallOpinion ?? '',
+    reviewedAt: detail.updatedAt ?? nowText(),
+    updatedAt: detail.updatedAt ?? nowText(),
+  };
+}
+
+function createMockSkillReviewDetailPayload(
+  skillId: string,
+  params: Record<string, unknown> = {},
+): MockSkillReviewDetailPayload {
+  const key = String(skillId).trim();
+  const skill = findSkill(key);
+  const detail = ensureExpertReviewDetail(key);
+  const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
+  const aiScore = createMockAiReview(key, skill);
+  const currentUserReview = createMockCurrentUserReview(detail);
+
+  return {
+    skillInfo: {
+      skillId: key,
+      name: skill?.name ?? `Mock Skill ${key}`,
+      version,
+      ownerUser: skill?.createdBy ?? skill?.author ?? 'mock-owner',
+      departmentL6: skill?.departmentL6 ?? skill?.departmentL5 ?? 'Mock 评审部门',
+    },
+    aiScore,
+    currentUserReview,
+    versionDetails: [
+      {
+        version,
+        aiScore,
+        expertReviews: currentUserReview ? [currentUserReview] : [],
+      },
+    ],
+  };
 }
 
 function ok<T>(data: T, number?: number): MockEnvelope<T> {
@@ -1209,18 +1398,28 @@ function handleSkillRequest(
 
   const reviewDetailMatch = /^\/review\/([^/]+)\/detail$/.exec(path);
   if (method === 'get' && reviewDetailMatch) {
-    return ok({ ...ensureExpertReviewDetail(reviewDetailMatch[1]) });
+    return ok(createMockSkillReviewDetailPayload(reviewDetailMatch[1], params));
+  }
+
+  const reviewHistoryMatch = /^\/review\/([^/]+)\/history$/.exec(path);
+  if (method === 'get' && reviewHistoryMatch) {
+    const detailPayload = createMockSkillReviewDetailPayload(reviewHistoryMatch[1], params);
+    return ok({ versionDetails: detailPayload.versionDetails });
   }
 
   const reviewDraftMatch = /^\/review\/([^/]+)\/draft$/.exec(path);
   if (method === 'post' && reviewDraftMatch) {
     const body = (config.data ?? {}) as Record<string, unknown>;
+    const badges =
+      body.badges && typeof body.badges === 'object'
+        ? (body.badges as Record<string, unknown>)
+        : {};
     const detail = ensureExpertReviewDetail(reviewDraftMatch[1]);
     detail.reviewId = readString(body.reviewId, detail.reviewId);
-    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores);
-    detail.badgeIds = normalizeBadgeIds(body.badgeIds);
-    detail.badgeReason = normalizeBadgeReason(body.badgeReason, detail.badgeIds);
-    detail.overallOpinion = normalizeOverallOpinion(body.overallOpinion);
+    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores ?? body.dimensions);
+    detail.badgeIds = normalizeBadgeIds(body.badgeIds ?? badges.badgeIds);
+    detail.badgeReason = normalizeBadgeReason(body.badgeReason ?? badges.reason, detail.badgeIds);
+    detail.overallOpinion = normalizeOverallOpinion(body.overallOpinion ?? body.reviewComment);
     const totalScore = body.totalScore;
     if (typeof totalScore === 'number' && Number.isFinite(totalScore)) {
       detail.totalScore = roundToTwo(totalScore);
@@ -1229,18 +1428,22 @@ function handleSkillRequest(
     }
     detail.reviewStatus = 'draft';
     detail.updatedAt = nowText();
-    return ok({ ...detail });
+    return ok(createMockSkillReviewDetailPayload(reviewDraftMatch[1], params));
   }
 
   const reviewSubmitMatch = /^\/review\/([^/]+)\/submit$/.exec(path);
   if (method === 'post' && reviewSubmitMatch) {
     const body = (config.data ?? {}) as Record<string, unknown>;
+    const badges =
+      body.badges && typeof body.badges === 'object'
+        ? (body.badges as Record<string, unknown>)
+        : {};
     const detail = ensureExpertReviewDetail(reviewSubmitMatch[1]);
     detail.reviewId = readString(body.reviewId, detail.reviewId);
-    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores);
-    detail.badgeIds = normalizeBadgeIds(body.badgeIds);
-    detail.badgeReason = normalizeBadgeReason(body.badgeReason, detail.badgeIds);
-    detail.overallOpinion = normalizeOverallOpinion(body.overallOpinion);
+    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores ?? body.dimensions);
+    detail.badgeIds = normalizeBadgeIds(body.badgeIds ?? badges.badgeIds);
+    detail.badgeReason = normalizeBadgeReason(body.badgeReason ?? badges.reason, detail.badgeIds);
+    detail.overallOpinion = normalizeOverallOpinion(body.overallOpinion ?? body.reviewComment);
     const totalScore = body.totalScore;
     if (typeof totalScore === 'number' && Number.isFinite(totalScore)) {
       detail.totalScore = roundToTwo(totalScore);
@@ -1249,7 +1452,7 @@ function handleSkillRequest(
     }
     detail.reviewStatus = 'submitted';
     detail.updatedAt = nowText();
-    return ok({ ...detail });
+    return ok(createMockSkillReviewDetailPayload(reviewSubmitMatch[1], params));
   }
 
   const deleteAllMatch = /^\/([^/]+)\/all$/.exec(path);
@@ -1839,6 +2042,18 @@ function handleFuyaoUserPlainResponse(
   }
   if (path.includes('auth-manager/login')) {
     return { success: true, code: 0, data: { status: 'ok' } };
+  }
+  if (path.includes('config-center/hw-userinfo')) {
+    const info = String(readParams(config).info ?? '')
+      .trim()
+      .toLowerCase();
+    const data = MOCK_USER_DEPARTMENT_OPTIONS.filter((item) => {
+      if (!info) {
+        return true;
+      }
+      return Object.values(item).some((value) => String(value).toLowerCase().includes(info));
+    });
+    return ok(data, data.length);
   }
   if (path.includes('config-center/user')) {
     const userId = String(readParams(config).userId ?? '').trim();

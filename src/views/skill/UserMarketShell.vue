@@ -39,6 +39,7 @@ import type {
   UserInnerTab,
 } from '../../types/skill';
 import { emptyOpsDashboardBundle } from '../../services/skillMarket/mock/opsDashboardUiDefaults';
+import { getMockMarketDepartmentsTree } from '../../services/skillMarket/mock/marketDepartmentsTreeDefault';
 import {
   parseDeptNamePath,
   type DeptTreeNode,
@@ -505,7 +506,11 @@ const marketOrgSelectOptions = computed(() =>
 );
 
 const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
-  const coerced = coerceDepartmentTreeFromUnknown(departmentList.value);
+  const source =
+    Array.isArray(departmentList.value) && departmentList.value.length > 0
+      ? departmentList.value
+      : getMockMarketDepartmentsTree();
+  const coerced = coerceDepartmentTreeFromUnknown(source);
   return mapDepartmentTreeDtoToForest(coerced);
 });
 
@@ -917,6 +922,8 @@ const debounce = (fn: any, delay: number): any => {
 
 const debounceScroll = handleScroll;
 
+const isExpertReviewer = ref(false);
+
 onMounted(async () => {
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
@@ -928,6 +935,12 @@ onMounted(async () => {
   await loadCurrentUserRole();
   // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
   await loadAiEvolutionSkills();
+  // 判断是否为专家
+  await skillBaseService.isReviewer({ userId: userId.value }).then((res: any) => {
+    if (res?.meta?.success && res?.data) {
+      isExpertReviewer.value = res.data.isExpert;
+    }
+  });
   if (transportIsHttp) {
     await loadAdminOrganizations();
     // await startOverviewRemoteFetch();
@@ -3593,7 +3606,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           审核中心
         </button>
         <button
-          v-if="showAdminModules"
+          v-if="isExpertReviewer"
           type="button"
           class="sub-tab"
           :class="{ on: innerTab === 'review' }"
@@ -5165,7 +5178,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     </div>
 
     <div v-else-if="innerTab === 'review'" class="tabs-panel overview-panel review-panel">
-      <ReviewCenterPage :userId="userId" :department-tree="marketOverviewDeptTree" />
+      <ReviewCenterPage
+        :userId="userId"
+        :department-tree="marketOverviewDeptTree"
+        :is-expert-reviewer="isExpertReviewer"
+      />
     </div>
 
     <div

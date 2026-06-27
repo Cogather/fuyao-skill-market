@@ -9307,7 +9307,8 @@ span {
 }
 
 .ai-evolution-table .col-source {
-  min-width: 96px;
+  width: 60px;
+  min-width: 60px;
 }
 
 .ai-evolution-source {
@@ -9332,7 +9333,7 @@ span {
 }
 
 .ai-evolution-table .col-first-msg {
-  min-width: 220px;
+  min-width: 256px;
 }
 
 .ai-evolution-table .col-ops-td {

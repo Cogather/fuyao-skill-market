@@ -547,7 +547,7 @@ export type SkillExpertReviewDetailDto = {
   skillId: string;
   aiScore: number;
   reviewStatus: 'pending' | 'draft' | 'submitted';
-  totalScore: number | null;
+  totalScore?: number | null;
   dimensionScores: ExpertReviewDimensionScoreDto[];
   badgeIds: string[];
   badgeReason?: string;

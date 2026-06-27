@@ -13,7 +13,7 @@ export type ReviewTaskCard = {
   ownerUser: string;
   version?: string;
   team: string;
-  DepartmentL6: string;
+  departmentL6: string;
   tags: string;
   usage: string;
   downloads: string;
@@ -218,7 +218,7 @@ export const mockReviewTaskCards: ReviewTaskCard[] = MOCK_REVIEW_TASK_NAMES.map(
     ownerName: owner,
     ownerUser: owner,
     team,
-    DepartmentL6: team,
+    departmentL6: team,
     tags: category.tags.join(','),
     usage: String(usage),
     downloads: String(downloads),

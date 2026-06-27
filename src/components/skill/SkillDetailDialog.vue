@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from 'vue';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
 
 const props = withDefaults(
   defineProps<{
@@ -28,6 +31,7 @@ const emit = defineEmits<{
   download: [];
   deleteClick: [evt: MouseEvent];
   versionManage: [];
+  updateSkillData: [id: string, currentVersion: string];
 }>();
 
 const detailMoreWrapRef = ref<HTMLElement | null>(null);
@@ -95,7 +99,21 @@ function onVersionMenuClick(): void {
   closeDetailMoreMenu();
   emit('versionManage');
 }
-
+// 调测
+const goToDebugPage = (skill) => {
+  router.push({
+    name: 'skill-debug',
+    query: { id: currentSkillId(), skillName: skill.name },
+  });
+};
+const updateSkill = async (skill) => {
+  try {
+    await emit('updateSkillData', skill.id, skill.currentVersion);
+    goToDebugPage(skill);
+  } catch (err) {
+    console.error(err);
+  }
+};
 onBeforeUnmount(() => {
   removeDetailMoreMenuListeners();
 });
@@ -127,6 +145,7 @@ onBeforeUnmount(() => {
             <span v-if="!previewOnly" class="detail-pill pill-category">{{
               skill.categoryGroupName
             }}</span>
+
             <span class="detail-pill pill-id">{{ skill.name }}</span>
             <span v-if="!aiEvolution" class="detail-pill"
               >版本 {{ skill.currentVersion ?? skill.version }}</span
@@ -151,7 +170,9 @@ onBeforeUnmount(() => {
             </span>
           </div>
           <div v-if="!previewOnly" class="detail-actions">
-            <button type="button" class="detail-btn ghost" disabled title="建设中">在线调测</button>
+            <button type="button" class="detail-btn ghost" @click="updateSkill(skill)">
+              在线调测
+            </button>
             <button type="button" class="detail-btn primary" @click="emit('download')">
               下载到本地
             </button>
