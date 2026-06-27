@@ -306,6 +306,61 @@ export type UploadSkillResultDto = {
   scored: boolean;
 };
 
+/**
+ * 自进化草稿（skill draft）实体，对应 `GET /api/skill-drafts` 列表项与详情。
+ * `skillStatus`：`PENDING` 待审批 / `APPROVED` 已通过 / `REJECTED` 已驳回。
+ */
+export type SkillDraftDto = {
+  skillId: string;
+  skillName: string;
+  description: string;
+  userId: string;
+  archiveData: string;
+  archiveSize: number;
+  sessionId: string;
+  sessionCreateTime: string;
+  skillGenerateTime: string;
+  skillStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | string;
+  downloadCount: number;
+  ide: string;
+  codeRepo: string;
+  firstMessage: string;
+  version: string;
+  skillMdContent: string;
+  fileTree: SkillFileTreeField;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+/** `GET /api/skill-drafts` 查询参数 */
+export type SkillDraftListParams = {
+  userId?: string;
+  skillStatus?: string;
+  skillName?: string;
+  pageNo?: number;
+  pageSize?: number;
+};
+
+/** `POST /api/skill-drafts/{id}/approve` query 参数 */
+export type SkillDraftApproveParams = {
+  /** 审批人工号 */
+  userId: string;
+};
+
+/** `POST /api/skill-drafts/{id}/reject` query 参数 */
+export type SkillDraftRejectParams = {
+  /** 审批人工号 */
+  userId: string;
+  /** 驳回原因 */
+  reason?: string;
+};
+
+/** `POST /api/skill-drafts/{id}/download` query 参数 */
+export type SkillDraftDownloadParams = {
+  /** 操作人工号 */
+  userId: string;
+};
+
 export type CreateSkillBody = {
   userId?: string;
   name: string;
