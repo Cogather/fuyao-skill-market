@@ -27,24 +27,41 @@ const emit = defineEmits<{
   viewDetail: [row: SkillVersionListItemDto];
 }>();
 
-function semverNums(v: string): number[] {
-  return String(v)
-    .split('.')
-    .map((p) => Number.parseInt(p, 10))
-    .map((n) => (Number.isFinite(n) ? n : 0));
+function parseVersionTimeValue(raw: unknown): number {
+  const s = String(raw ?? '').trim();
+  if (!s) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const match =
+    /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.(\d{1,6}))?)?$/.exec(s);
+  if (match) {
+    const [, year, month, day, hour, minute, second = '0', fraction = '0'] = match;
+    const micros = Number(fraction.padEnd(6, '0').slice(0, 6));
+    const millis = Math.floor(micros / 1000);
+    const extraMicros = micros % 1000;
+    const time = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      millis,
+    ).getTime();
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time * 1000 + extraMicros;
+  }
+
+  const normalized = s.includes('T') ? s : s.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time * 1000;
 }
 
-function compareSemverDesc(a: string, b: string): number {
-  const pa = semverNums(a);
-  const pb = semverNums(b);
-  const n = Math.max(pa.length, pb.length);
-  for (let i = 0; i < n; i++) {
-    const d = (pb[i] ?? 0) - (pa[i] ?? 0);
-    if (d !== 0) {
-      return d;
-    }
-  }
-  return 0;
+function compareVersionCreatedAtDesc(
+  a: SkillVersionListItemDto,
+  b: SkillVersionListItemDto,
+): number {
+  return parseVersionTimeValue(b.createdAt) - parseVersionTimeValue(a.createdAt);
 }
 
 function formatPublishTime(raw: unknown): string {
@@ -70,7 +87,7 @@ function formatPublishTime(raw: unknown): string {
 }
 
 const sortedVersions = computed(() =>
-  [...(props.skill?.versions ?? [])].sort((a, b) => compareSemverDesc(a.version, b.version)),
+  [...(props.skill?.versions ?? [])].sort(compareVersionCreatedAtDesc),
 );
 
 function isUnpublished(row: SkillVersionListItemDto): boolean {

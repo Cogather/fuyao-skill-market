@@ -290,6 +290,101 @@ const GENERATED_MOCK_DEPTS = [
   '部门1/数据产品线/数据库运营部/SQL治理组',
   '部门1/项目产品线/项目管理部/交付管理组',
 ];
+function formatGeneratedMockTime(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(
+    date.getMinutes(),
+  ).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+}
+
+function generatedMockPublishTime(index: number, dayOffset = 0, minuteOffset = 0): string {
+  const date = new Date(2024, 5, (index % 28) + 1, 8 + (index % 12), 20, 0);
+  date.setDate(date.getDate() + dayOffset);
+  date.setMinutes(date.getMinutes() + minuteOffset);
+  return formatGeneratedMockTime(date);
+}
+
+function semverParts(version: string): [number, number, number] {
+  const parts = version.split('.').map((part) => Number.parseInt(part, 10));
+  return [
+    Number.isFinite(parts[0]) ? parts[0] : 0,
+    Number.isFinite(parts[1]) ? parts[1] : 0,
+    Number.isFinite(parts[2]) ? parts[2] : 0,
+  ];
+}
+
+function createGeneratedVersionEntries(
+  index: number,
+  skillId: string,
+  version: string,
+  publisher: string,
+  packageSizeBase: number,
+): Skill['versions'] {
+  const [major, minor, patch] = semverParts(version);
+  const lowerLaterVersion =
+    minor > 0
+      ? `${major}.${minor - 1}.${(patch + 4 + (index % 3)) % 10}`
+      : `${Math.max(0, major - 1)}.9.${9 - (index % 4)}`;
+  const previousPatchVersion =
+    patch > 0
+      ? `${major}.${minor}.${patch - 1}`
+      : minor > 0
+        ? `${major}.${minor - 1}.${7 + (index % 3)}`
+        : `${Math.max(0, major - 1)}.8.${index % 7}`;
+  const firstVersion =
+    minor > 1
+      ? `${major}.${minor - 2}.${index % 4}`
+      : major > 0
+        ? `${major - 1}.8.${index % 4}`
+        : `0.1.${index % 4}`;
+
+  const rows = [
+    {
+      version,
+      publishTime: generatedMockPublishTime(index),
+      publisher,
+      note: '批量 mock 当前版本',
+      packageFileName: `${skillId}-v${version}.zip`,
+      packageSize: packageSizeBase,
+    },
+    {
+      version: lowerLaterVersion,
+      publishTime: generatedMockPublishTime(index, 2, 17),
+      publisher,
+      note: '批量 mock：低版本号但更新时间更晚',
+      packageFileName: `${skillId}-v${lowerLaterVersion}.zip`,
+      packageSize: packageSizeBase - 7000,
+    },
+    {
+      version: previousPatchVersion,
+      publishTime: generatedMockPublishTime(index, -6, 9),
+      publisher,
+      note: '批量 mock 历史补丁版本',
+      packageFileName: `${skillId}-v${previousPatchVersion}.zip`,
+      packageSize: packageSizeBase - 14000,
+    },
+    {
+      version: firstVersion,
+      publishTime: generatedMockPublishTime(index, -18, 3),
+      publisher,
+      note: '批量 mock 首次发布版本',
+      packageFileName: `${skillId}-v${firstVersion}.zip`,
+      packageSize: packageSizeBase - 28000,
+    },
+  ];
+
+  return rows.filter(
+    (row, rowIndex, all) => all.findIndex((item) => item.version === row.version) === rowIndex,
+  );
+}
+
+function latestGeneratedVersionTime(versions: NonNullable<Skill['versions']>): string {
+  return versions.reduce(
+    (latest, row) => (latest < row.publishTime ? row.publishTime : latest),
+    versions[0]?.publishTime ?? '',
+  );
+}
 
 function createGeneratedMockSkill(index: number): Skill {
   const seq = BASE_MOCK_SKILL_COUNT + index + 1;
@@ -301,14 +396,20 @@ function createGeneratedMockSkill(index: number): Skill {
       ? 'xxx_个人发布商'
       : GENERATED_MOCK_ORGS[index % GENERATED_MOCK_ORGS.length];
   const version = `1.${index % 8}.${index % 5}`;
-  const day = String((index % 28) + 1).padStart(2, '0');
-  const hour = String(8 + (index % 12)).padStart(2, '0');
-  const publishTime = `2024-06-${day} ${hour}:20`;
   const tags =
     index === 55
       ? ['test', 'data', 'generate', 'fixture', 'mock', 'quality', 'case', 'automation']
       : GENERATED_MOCK_TAGS[index % GENERATED_MOCK_TAGS.length];
   const skillId = `mock-bulk-${String(seq).padStart(3, '0')}`;
+  const packageSizeBase = 150000 + index * 1024;
+  const versions = createGeneratedVersionEntries(
+    index,
+    skillId,
+    version,
+    publishName,
+    packageSizeBase,
+  );
+  const latestPublishTime = latestGeneratedVersionTime(versions ?? []);
 
   return {
     skill_id: skillId,
@@ -323,20 +424,12 @@ function createGeneratedMockSkill(index: number): Skill {
     icon: nameBase.slice(0, 2),
     publisher: publishName,
     createdBy: `u${String(20000 + index).padStart(5, '0')}`,
-    latestPublishTime: publishTime,
+    latestPublishTime,
     level: publishLevel,
     downloads: 20 + ((index * 17) % 380),
     rating: 4.2 + (index % 8) * 0.08,
     version,
-    versions: [
-      {
-        version,
-        publishTime,
-        note: '批量 mock 数据',
-        packageFileName: `${skillId}-v${version}.zip`,
-        packageSize: 150000 + index * 1024,
-      },
-    ],
+    versions,
     ownedByUser: publishLevel === '个人级',
     tagFunctional: category,
     tagOrg: publishLevel,
