@@ -349,6 +349,7 @@ export const skillBaseService = {
     });
   },
 
+  // 下载skill规划导入excel的模板
   downloadSkillPlanning: (): any => {
     return httpRequest.skill<any>({
       url: '/config/download_template',
