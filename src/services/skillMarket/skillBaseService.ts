@@ -490,7 +490,7 @@ export const skillBaseService = {
       method: 'get',
     });
   },
-  //   streamchat
+  // streamchat
   apiRun: (data: any): any => {
     return httpRequest.direct<any>({
       baseURL: ai,
@@ -499,6 +499,7 @@ export const skillBaseService = {
       data: data,
     });
   },
+  // agent插入历史记录接口
   setHistoryInfo: (data: any): any => {
     return httpRequest.direct<any>({
       baseURL: ai,
