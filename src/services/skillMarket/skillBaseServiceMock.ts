@@ -392,38 +392,92 @@ const MOCK_EXPERT_REVIEW_DIMENSIONS: MockExpertReviewDimension[] = [
   {
     dimensionId: 'dim-001',
     name: '问题定义准确性',
-    description: '是否准确识别并抓住核心问题',
-    weight: 0.4,
+    description: '是否准确识别业务痛点、约束条件和核心目标。',
+    weight: 0.09,
   },
   {
     dimensionId: 'dim-002',
-    name: '解决方案创新性',
-    description: '方案是否具有创新性和突破性',
-    weight: 0.3,
+    name: '场景价值覆盖度',
+    description: '是否覆盖高频或高价值场景，并能说明预期收益。',
+    weight: 0.08,
   },
   {
     dimensionId: 'dim-003',
-    name: '工程落地能力',
-    description: '方案是否具备实际落地价值',
-    weight: 0.3,
+    name: '解决方案创新性',
+    description: '方案是否具有创新性、差异化思路或明显效率提升。',
+    weight: 0.09,
+  },
+  {
+    dimensionId: 'dim-004',
+    name: '工程结构清晰度',
+    description: 'Skill 目录、入口、配置和依赖组织是否清晰可维护。',
+    weight: 0.08,
+  },
+  {
+    dimensionId: 'dim-005',
+    name: '代码质量与可维护性',
+    description: '代码是否简洁稳定，命名、抽象和注释是否便于后续维护。',
+    weight: 0.08,
+  },
+  {
+    dimensionId: 'dim-006',
+    name: '异常与边界处理',
+    description: '是否覆盖输入缺失、服务异常、空结果等边界场景。',
+    weight: 0.08,
+  },
+  {
+    dimensionId: 'dim-007',
+    name: '安全合规与权限控制',
+    description: '是否避免敏感信息泄露，并对权限、数据范围和依赖调用有约束。',
+    weight: 0.09,
+  },
+  {
+    dimensionId: 'dim-008',
+    name: '文档完整性',
+    description: 'SKILL.md、示例、参数说明和使用限制是否充分。',
+    weight: 0.08,
+  },
+  {
+    dimensionId: 'dim-009',
+    name: '可复用与可扩展性',
+    description: '是否便于跨团队复用，并支持新增场景或配置扩展。',
+    weight: 0.08,
+  },
+  {
+    dimensionId: 'dim-010',
+    name: '运行效率与资源成本',
+    description: '执行耗时、token 消耗、缓存策略和资源占用是否合理。',
+    weight: 0.08,
+  },
+  {
+    dimensionId: 'dim-011',
+    name: '测试验证充分性',
+    description: '是否提供足够测试样例、验收标准和回归验证方式。',
+    weight: 0.09,
+  },
+  {
+    dimensionId: 'dim-012',
+    name: '运营观测与持续改进',
+    description: '是否具备日志、指标、反馈闭环和后续优化计划。',
+    weight: 0.08,
   },
 ];
 
 const MOCK_REVIEW_BADGES: MockReviewBadge[] = [
   {
-    badgeId: 'badge-001',
-    name: '破局先锋',
-    description: '在问题解决方面具有突破性贡献',
+    badgeId: 'breaking-pioneer',
+    name: 'breaking-pioneer',
+    description: 'public/badges/breaking-pioneer.png',
   },
   {
-    badgeId: 'badge-002',
-    name: '创新引领者',
-    description: '方案创新性突出',
+    badgeId: 'craftsmanship-foundation',
+    name: 'craftsmanship-foundation',
+    description: 'public/badges/craftsmanship-foundation.png',
   },
   {
-    badgeId: 'badge-003',
-    name: '工程典范',
-    description: '工程质量与落地效果优秀',
+    badgeId: 'innovation-spark',
+    name: 'innovation-spark',
+    description: 'public/badges/innovation-spark.png',
   },
 ];
 
@@ -588,7 +642,7 @@ function ensureExpertReviewDetail(skillId: string): MockSkillReviewDetail {
     totalScore: computeWeightedTotal(dimensionScores),
     dimensionScores,
     badgeIds: submitted
-      ? [MOCK_REVIEW_BADGES[seed % MOCK_REVIEW_BADGES.length]?.badgeId ?? '']
+      ? MOCK_REVIEW_BADGES.slice(0, seed % 2 === 0 ? 2 : 1).map((badge) => badge.badgeId)
       : [],
     badgeReason: '',
     overallOpinion: '',
@@ -607,11 +661,16 @@ function ensureExpertReviewDetail(skillId: string): MockSkillReviewDetail {
   return detail;
 }
 const MOCK_AI_REVIEW_DIMENSIONS = [
-  { dimensionId: 'D1', maxScore: 20, label: '技能边界完整性' },
-  { dimensionId: 'D2', maxScore: 30, label: '接口规范完整性' },
-  { dimensionId: 'D3', maxScore: 20, label: '异常与边界处理' },
+  { dimensionId: 'D1', maxScore: 10, label: '技能边界完整性' },
+  { dimensionId: 'D2', maxScore: 10, label: '接口规范完整性' },
+  { dimensionId: 'D3', maxScore: 10, label: '异常与边界处理' },
   { dimensionId: 'D4', maxScore: 10, label: '规则一致性' },
-  { dimensionId: 'D5', maxScore: 20, label: '安全与权限约束' },
+  { dimensionId: 'D5', maxScore: 10, label: '安全与权限约束' },
+  { dimensionId: 'D6', maxScore: 10, label: '上下文理解与任务拆解' },
+  { dimensionId: 'D7', maxScore: 10, label: '工具调用准确性' },
+  { dimensionId: 'D8', maxScore: 10, label: '输出可解释性' },
+  { dimensionId: 'D9', maxScore: 10, label: '复用泛化能力' },
+  { dimensionId: 'D10', maxScore: 10, label: '运行稳定性与成本控制' },
 ] as const;
 
 function mockReviewTime(seed: number, dayOffset = 0): string {
@@ -1390,6 +1449,11 @@ function handleSkillRequest(
 
   if (method === 'get' && path === '/review/dimensions') {
     return ok(MOCK_EXPERT_REVIEW_DIMENSIONS, MOCK_EXPERT_REVIEW_DIMENSIONS.length);
+  }
+
+  if (method === 'get' && path === '/review/ai-dimensions') {
+    const dimensions = MOCK_AI_REVIEW_DIMENSIONS.map((dimension) => ({ ...dimension }));
+    return ok(dimensions, dimensions.length);
   }
 
   if (method === 'get' && path === '/review/badges') {

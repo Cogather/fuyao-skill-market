@@ -113,7 +113,16 @@ type ExpertDimensionFormState = ExpertReviewDimensionDto & {
 };
 const activeReviewDetailTab = ref<ReviewDetailTab>('AI评审');
 
-const aiReviewDimensions = ref([
+const AI_REVIEW_TONES = ['green', 'blue', 'amber', 'purple', 'red'] as const;
+type AiReviewTone = (typeof AI_REVIEW_TONES)[number];
+type AiReviewDimensionView = {
+  key: string;
+  label: string;
+  tone: AiReviewTone;
+  max_score: number;
+};
+
+const aiReviewDimensions = ref<AiReviewDimensionView[]>([
   {
     key: 'D1',
     label: '',
@@ -146,7 +155,7 @@ const aiReviewDimensions = ref([
   },
 ]);
 
-const dimensionField = ref({
+const dimensionField = ref<Record<string, string>>({
   D1: '',
   D2: '',
   D3: '',
@@ -168,6 +177,53 @@ type RadarLabel = RadarPoint & {
   text: string;
   transform: string;
 };
+
+function normalizeAiReviewDimensions(data: unknown): AiReviewDimensionView[] {
+  if (Array.isArray(data)) {
+    return data
+      .map((item, index) => {
+        const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+        const fallbackKey = `D${index + 1}`;
+        const key = String(record.dimensionId ?? record.key ?? fallbackKey).trim();
+        const rawMaxScore = record.maxScore ?? record.max_score;
+        const maxScore = Number(rawMaxScore);
+
+        return {
+          key: key || fallbackKey,
+          label: String(record.label ?? record.name ?? key ?? fallbackKey).trim(),
+          tone: AI_REVIEW_TONES[index % AI_REVIEW_TONES.length],
+          max_score: Number.isFinite(maxScore) && maxScore > 0 ? maxScore : 20,
+        };
+      })
+      .filter((dimension) => dimension.key);
+  }
+
+  if (data && typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+    return aiReviewDimensions.value.map((dimension, index) => {
+      const key = dimension.key || `D${index + 1}`;
+      return {
+        ...dimension,
+        label: String(record[key] ?? record[`D${index + 1}`] ?? dimension.label).trim(),
+      };
+    });
+  }
+
+  return aiReviewDimensions.value;
+}
+
+function applyAiReviewDimensions(data: unknown): void {
+  const dimensions = normalizeAiReviewDimensions(data);
+  if (!dimensions.length) {
+    return;
+  }
+
+  aiReviewDimensions.value = dimensions;
+  dimensionField.value = dimensions.reduce<Record<string, string>>((fields, dimension) => {
+    fields[dimension.key] = dimension.label;
+    return fields;
+  }, {});
+}
 
 function replaceReactiveArray<T>(target: T[], source: T[]) {
   target.splice(0, target.length, ...source);
@@ -301,6 +357,30 @@ function normalizeReviewBadgeIds(value: unknown): string[] {
     .split(/[，,]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function historyReviewBadgeIds(expertReview: unknown): string[] {
+  const reviewRecord = readRecord(expertReview);
+  const badgeRecord = readRecord(reviewRecord.badges);
+  return normalizeReviewBadgeIds(badgeRecord.badgeIds);
+}
+
+function reviewBadgeImageSrc(badgeId: string): string {
+  return `${import.meta.env.BASE_URL}badges/${encodeURIComponent(badgeId)}.png`;
+}
+
+function formatHistoryReviewTime(value: unknown): string {
+  const text = String(value ?? '').trim();
+  const matched = text
+    .replace('T', ' ')
+    .replace(/\.\d+.*$/, '')
+    .match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?::(\d{2}))?/);
+
+  if (!matched) {
+    return text;
+  }
+
+  return `${matched[1]} ${matched[2]}:${matched[3] ?? '00'}`;
 }
 
 function normalizeExpertReviewDimensionScores(value: unknown): ExpertReviewDimensionScoreDto[] {
@@ -819,7 +899,7 @@ const aiReviewRadarPoints = computed(() => {
   return (
     dimensionArr
       .map((dimension, index) => {
-        const scale = dimension.score / aiReviewDimensions.value[index]?.max_score;
+        const scale = dimension.score / (aiReviewDimensions.value[index]?.max_score ?? 100);
         const point = buildRadarPoint(index, aiReviewDimensions.value.length, 34 * scale);
         return `${point.x},${point.y}`;
       })
@@ -1022,12 +1102,7 @@ async function loadActiveTaskReviewContext(taskId: string, version: string): Pro
   }
   const aiDimensionRes = await skillBaseService.getAIReviewDimension();
   if (aiDimensionRes?.meta?.success && aiDimensionRes?.data) {
-    const data = aiDimensionRes.data;
-    aiReviewDimensions.value = aiReviewDimensions.value.map((iter, index) => {
-      iter.label = data[`D${index + 1}`];
-      dimensionField.value[`D${index + 1}`] = data[`D${index + 1}`];
-      return iter;
-    });
+    applyAiReviewDimensions(aiDimensionRes.data);
   }
 
   expertReviewLoading.value = true;
@@ -1771,22 +1846,22 @@ onBeforeUnmount(() => {
                 <article
                   v-for="(dimension, index) in selectedSkillDetail?.aiScore?.dimensionScores ?? []"
                   :key="dimension.dimensionId"
-                  :class="['ai-dimension-row', `is-${aiReviewDimensions[index].tone}`]"
+                  :class="['ai-dimension-row', `is-${aiReviewDimensions[index]?.tone ?? 'blue'}`]"
                 >
                   <div class="ai-dimension-row__header">
                     <span class="ai-dimension-row__icon">{{ index + 1 }}</span>
-                    <strong>{{ aiReviewDimensions[index].label }}</strong>
+                    <strong>{{ aiReviewDimensions[index]?.label ?? dimension.dimensionId }}</strong>
                   </div>
                   <div class="ai-dimension-row__score">
                     <div class="ai-dimension-row__bar">
                       <span
                         :style="{
-                          width: `${(dimension.score / aiReviewDimensions[index].max_score) * 100}%`,
+                          width: `${(dimension.score / (aiReviewDimensions[index]?.max_score ?? 100)) * 100}%`,
                         }"
                       ></span>
                     </div>
                     <strong
-                      >{{ dimension.score }} / {{ aiReviewDimensions[index].max_score }}</strong
+                      >{{ dimension.score }} / {{ aiReviewDimensions[index]?.max_score ?? 100 }}</strong
                     >
                   </div>
                   <p>{{ dimension.deductionBreakdown }}</p>
@@ -2264,7 +2339,7 @@ onBeforeUnmount(() => {
                   <th>评审人</th>
                   <th>评审时间</th>
                   <th style="width: 180px">各维度评分</th>
-                  <th style="width: 100px">获得的勋章类型</th>
+                  <th style="width: 132px">获得的勋章类型</th>
                   <th style="width: 50px">总分</th>
                   <th>整体评审意见</th>
                 </tr>
@@ -2277,7 +2352,7 @@ onBeforeUnmount(() => {
                       <span>AI评审</span>
                     </div>
                   </td>
-                  <td class="history-time">{{ group[1].aiScore.evaluateTime }}</td>
+                  <td class="history-time">{{ formatHistoryReviewTime(group[1].aiScore.evaluateTime) }}</td>
                   <td class="history-dimension-scores">
                     <pre class="history-dimension-pre">{{
                       group[1].aiScore.dimensionScores.reduce(
@@ -2304,7 +2379,7 @@ onBeforeUnmount(() => {
                       <span>专家评审</span>
                     </div>
                   </td>
-                  <td class="history-time">{{ expertReview.reviewedAt }}</td>
+                  <td class="history-time">{{ formatHistoryReviewTime(expertReview.reviewedAt) }}</td>
                   <td class="history-dimension-scores">
                     <pre class="history-dimension-pre">{{
                       expertReview.dimensions.reduce(
@@ -2316,9 +2391,18 @@ onBeforeUnmount(() => {
                     }}</pre>
                   </td>
                   <td>
-                    <pre>{{
-                      expertReview.badges.badgeIds?.split(',')?.join('\n') ?? '未授予勋章'
-                    }}</pre>
+                    <div
+                      v-if="historyReviewBadgeIds(expertReview).length"
+                      class="history-badge-icons"
+                    >
+                      <img
+                        v-for="badgeId in historyReviewBadgeIds(expertReview)"
+                        :key="badgeId"
+                        :src="reviewBadgeImageSrc(badgeId)"
+                        alt=""
+                      />
+                    </div>
+                    <span v-else class="history-badge-empty">-</span>
                   </td>
                   <td>
                     <strong class="history-total-score">{{ expertReview.overallScore }}</strong>
