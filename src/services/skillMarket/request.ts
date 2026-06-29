@@ -43,7 +43,7 @@ function normalizePath(path: unknown): string {
   return raw.startsWith('/') ? raw : `/${raw}`;
 }
 
-function buildBaseUrl(prefix: '/api' | '/api/skills'): string {
+function buildBaseUrl(prefix: '/api' | '/api/skills' | '/api/skill-drafts'): string {
   const base = normalizeEnvBase();
   if (!base) {
     return prefix;
@@ -53,6 +53,9 @@ function buildBaseUrl(prefix: '/api' | '/api/skills'): string {
   }
   if (prefix === '/api/skills' && base.endsWith('/api')) {
     return `${base}/skills`;
+  }
+  if (prefix === '/api/skill-drafts' && base.endsWith('/api')) {
+    return `${base}/skill-drafts`;
   }
   return `${base}${prefix}`;
 }
@@ -102,6 +105,14 @@ const httpRequest = {
       url: stripPrefix(config.url, '/api/skills'),
     };
     return tryMockThenAxios<T>('skill', requestConfig);
+  },
+  skillDraft: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    const requestConfig = {
+      ...config,
+      baseURL: buildBaseUrl('/api/skill-drafts'),
+      url: stripPrefix(config.url, '/api/skill-drafts'),
+    };
+    return tryMockThenAxios<T>('skillDraft', requestConfig);
   },
   fuyao: <T = null>(config: AxiosRequestConfig): Promise<T> => {
     const requestConfig = {

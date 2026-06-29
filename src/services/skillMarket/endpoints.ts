@@ -46,6 +46,15 @@ export const SKILL_MARKET_ENDPOINTS = {
   /** 占位；公司看板只读打包 mock JSON，前端不请求 */
   dashboardOpsUi: (system: 'fuyao' | 'company') =>
     `/api/dashboard/ops-ui?system=${encodeURIComponent(system)}`,
+  /** 自进化草稿（skill drafts）：列表 / 详情 / 审批 / 下载，统一前缀 `/api/skill-drafts` */
+  skillDrafts: '/api/skill-drafts',
+  skillDraftById: (id: string | number) => `/api/skill-drafts/${encodeURIComponent(String(id))}`,
+  skillDraftApprove: (id: string | number) =>
+    `/api/skill-drafts/${encodeURIComponent(String(id))}/approve`,
+  skillDraftReject: (id: string | number) =>
+    `/api/skill-drafts/${encodeURIComponent(String(id))}/reject`,
+  skillDraftDownload: (id: string | number) =>
+    `/api/skill-drafts/${encodeURIComponent(String(id))}/download`,
   skillQualityReviews: '/api/skill-quality-reviews',
   skillQualityReviewsSave: '/api/skill-quality-reviews/save',
   skillQualityReviewsArchive: '/api/skill-quality-reviews/archive',

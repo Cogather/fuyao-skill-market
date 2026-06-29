@@ -14,11 +14,14 @@ const props = withDefaults(
     deletingSkillId?: string | null;
     /** 仅展示文件树与 SKILL.md，隐藏下载/调测/删除/版本管理等操作（如版本列表「查看」） */
     previewOnly?: boolean;
+    /** 自进化审批模式：隐藏版本/作者等标签 */
+    aiEvolution?: boolean;
   }>(),
   {
     showDelete: true,
     deletingSkillId: null,
     previewOnly: false,
+    aiEvolution: false,
   },
 );
 
@@ -144,8 +147,12 @@ onBeforeUnmount(() => {
             }}</span>
 
             <span class="detail-pill pill-id">{{ skill.name }}</span>
-            <span class="detail-pill">版本 {{ skill.currentVersion ?? skill.version }}</span>
-            <span v-if="!previewOnly" class="detail-pill">作者 {{ skill.author }}</span>
+            <span v-if="!aiEvolution" class="detail-pill"
+              >版本 {{ skill.currentVersion ?? skill.version }}</span
+            >
+            <span v-if="!previewOnly && !aiEvolution" class="detail-pill"
+              >作者 {{ skill.author }}</span
+            >
             <span v-if="!previewOnly" class="detail-pill" :class="skillScopeClass(skill)">
               {{ skill.level }}
             </span>
@@ -178,7 +185,7 @@ onBeforeUnmount(() => {
             >
               {{ deletingSkillId === currentSkillId() ? '删除中…' : '删除' }}
             </button>
-            <div ref="detailMoreWrapRef" class="detail-more-wrap">
+            <div v-if="!aiEvolution" ref="detailMoreWrapRef" class="detail-more-wrap">
               <button
                 type="button"
                 class="detail-btn detail-more-trigger"
