@@ -359,6 +359,16 @@ function normalizeReviewBadgeIds(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function historyReviewBadgeIds(expertReview: unknown): string[] {
+  const reviewRecord = readRecord(expertReview);
+  const badgeRecord = readRecord(reviewRecord.badges);
+  return normalizeReviewBadgeIds(badgeRecord.badgeIds);
+}
+
+function reviewBadgeImageSrc(badgeId: string): string {
+  return `${import.meta.env.BASE_URL}badges/${encodeURIComponent(badgeId)}.png`;
+}
+
 function normalizeExpertReviewDimensionScores(value: unknown): ExpertReviewDimensionScoreDto[] {
   if (!Array.isArray(value)) {
     return [];
@@ -2315,7 +2325,7 @@ onBeforeUnmount(() => {
                   <th>评审人</th>
                   <th>评审时间</th>
                   <th style="width: 180px">各维度评分</th>
-                  <th style="width: 100px">获得的勋章类型</th>
+                  <th style="width: 132px">获得的勋章类型</th>
                   <th style="width: 50px">总分</th>
                   <th>整体评审意见</th>
                 </tr>
@@ -2367,9 +2377,18 @@ onBeforeUnmount(() => {
                     }}</pre>
                   </td>
                   <td>
-                    <pre>{{
-                      expertReview.badges.badgeIds?.split(',')?.join('\n') ?? '未授予勋章'
-                    }}</pre>
+                    <div
+                      v-if="historyReviewBadgeIds(expertReview).length"
+                      class="history-badge-icons"
+                    >
+                      <img
+                        v-for="badgeId in historyReviewBadgeIds(expertReview)"
+                        :key="badgeId"
+                        :src="reviewBadgeImageSrc(badgeId)"
+                        alt=""
+                      />
+                    </div>
+                    <span v-else class="history-badge-empty">-</span>
                   </td>
                   <td>
                     <strong class="history-total-score">{{ expertReview.overallScore }}</strong>

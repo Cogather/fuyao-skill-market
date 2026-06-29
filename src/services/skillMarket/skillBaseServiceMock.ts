@@ -465,19 +465,19 @@ const MOCK_EXPERT_REVIEW_DIMENSIONS: MockExpertReviewDimension[] = [
 
 const MOCK_REVIEW_BADGES: MockReviewBadge[] = [
   {
-    badgeId: 'badge-001',
-    name: '破局先锋',
-    description: '在问题解决方面具有突破性贡献',
+    badgeId: 'breaking-pioneer',
+    name: 'breaking-pioneer',
+    description: 'public/badges/breaking-pioneer.png',
   },
   {
-    badgeId: 'badge-002',
-    name: '创新引领者',
-    description: '方案创新性突出',
+    badgeId: 'craftsmanship-foundation',
+    name: 'craftsmanship-foundation',
+    description: 'public/badges/craftsmanship-foundation.png',
   },
   {
-    badgeId: 'badge-003',
-    name: '工程典范',
-    description: '工程质量与落地效果优秀',
+    badgeId: 'innovation-spark',
+    name: 'innovation-spark',
+    description: 'public/badges/innovation-spark.png',
   },
 ];
 
@@ -642,7 +642,7 @@ function ensureExpertReviewDetail(skillId: string): MockSkillReviewDetail {
     totalScore: computeWeightedTotal(dimensionScores),
     dimensionScores,
     badgeIds: submitted
-      ? [MOCK_REVIEW_BADGES[seed % MOCK_REVIEW_BADGES.length]?.badgeId ?? '']
+      ? MOCK_REVIEW_BADGES.slice(0, seed % 2 === 0 ? 2 : 1).map((badge) => badge.badgeId)
       : [],
     badgeReason: '',
     overallOpinion: '',

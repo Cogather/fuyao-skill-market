@@ -3279,6 +3279,26 @@ input:focus {
   overflow: auto;
 }
 
+
+.history-badge-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 112px;
+}
+
+.history-badge-icons img {
+  display: block;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.history-badge-empty {
+  color: #94a3b8;
+  font-size: 13px;
+}
 .history-summary-cell {
   max-width: 340px;
 }
