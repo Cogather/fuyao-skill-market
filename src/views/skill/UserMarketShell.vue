@@ -933,6 +933,8 @@ onMounted(async () => {
   await loadBusinessDimensions();
   // HTTP 与 Mock 均保留一次角色拉取；抢先调用仅见 loadMyPublishedSkills / executeDelete 内对 Mock 的分支
   await loadCurrentUserRole();
+  // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
+  await loadAiEvolutionSkills();
   // 判断是否为专家
   await skillBaseService.isReviewer({ userId: userId.value }).then((res: any) => {
     if (res?.meta?.success && res?.data) {
@@ -2472,10 +2474,30 @@ async function onDetailVersionManage(): Promise<void> {
 }
 
 function onDetailDownload(): void {
-  if (!detailPanelSkill.value) {
+  const skill = detailPanelSkill.value;
+  if (!skill) {
     return;
   }
-  void onDownload(detailPanelSkill.value.id, detailPanelSkill.value.currentVersion);
+  if (skill.isAiEvolution) {
+    void onDownloadAiEvolution(String(skill.id ?? ''));
+    return;
+  }
+  void onDownload(skill.id, skill.currentVersion);
+}
+
+async function onDownloadAiEvolution(id: string): Promise<void> {
+  if (!id) {
+    return;
+  }
+  try {
+    const env = await skillBaseService.downloadSkillDraft(id, { userId: userId.value });
+    if (!serviceSucceeded(env) || !env?.data) {
+      throw new Error(serviceMessage(env, '下载失败'));
+    }
+    window.open(String(env.data));
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '下载失败');
+  }
 }
 
 function onTrySkill(): void {
@@ -2670,7 +2692,14 @@ function onApplyCoreHarness(): void {
   }, 2500);
 }
 
-type ReleaseFilterKey = 'all' | 'personal' | 'published' | 'reviewing' | 'rejected' | 'coreApply';
+type ReleaseFilterKey =
+  | 'all'
+  | 'personal'
+  | 'published'
+  | 'reviewing'
+  | 'rejected'
+  | 'aiEvolution'
+  | 'coreApply';
 
 const releaseFilter = ref<ReleaseFilterKey>('all');
 
@@ -2680,7 +2709,220 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'published', label: '组织级' },
   { key: 'reviewing', label: '组织审核中' },
   { key: 'rejected', label: '组织已驳回' },
+  { key: 'aiEvolution', label: '自进化审批' },
 ];
+
+type AiEvolutionStatus = 'pending' | 'approved' | 'rejected';
+
+type AiEvolutionSkillRow = {
+  id: string;
+  name: string;
+  source: string;
+  description: string;
+  sessionId: string;
+  summary: string;
+  ide: string;
+  sessionTime: string;
+  generatedAt: string;
+  firstMessage: string;
+  codeRepo: string;
+  status: AiEvolutionStatus;
+  version: string;
+  skillMdContent: string;
+  fileTree: string;
+};
+
+const aiEvolutionSkills = ref<AiEvolutionSkillRow[]>([]);
+const aiEvolutionLoading = ref(false);
+
+/** 文件树字段统一为换行文本：兼容后端字符串或路径数组 */
+function normalizeDraftFileTree(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).join('\n');
+  }
+  return '';
+}
+
+/** SkillDraft → 自进化审批列表行 */
+function mapSkillDraftToRow(dto: any): AiEvolutionSkillRow {
+  const status = String(dto?.skillStatus ?? '')
+    .trim()
+    .toUpperCase();
+  const statusKey: AiEvolutionStatus =
+    status === 'APPROVED' ? 'approved' : status === 'REJECTED' ? 'rejected' : 'pending';
+  return {
+    id: String(dto?.skillId ?? ''),
+    name: String(dto?.skillName ?? ''),
+    source: String(dto?.source ?? ''),
+    description: String(dto?.description ?? ''),
+    sessionId: String(dto?.sessionId ?? ''),
+    summary: String(dto?.description ?? ''),
+    ide: String(dto?.ide ?? ''),
+    sessionTime: String(dto?.sessionCreateTime ?? ''),
+    generatedAt: String(dto?.skillGenerateTime ?? ''),
+    firstMessage: String(dto?.firstMessage ?? ''),
+    codeRepo: String(dto?.codeRepo ?? ''),
+    status: statusKey,
+    version: String(dto?.version ?? ''),
+    skillMdContent: String(dto?.skillMdContent ?? ''),
+    fileTree: normalizeDraftFileTree(dto?.fileTree),
+  };
+}
+
+async function loadAiEvolutionSkills(): Promise<void> {
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  if (transportIsHttp) {
+    await waitUserIdAndDepartmentList();
+  }
+  aiEvolutionLoading.value = true;
+  try {
+    const params = {
+      userId: effectiveSkillUserId(),
+      skillStatus: 'PENDING',
+      pageNo: 1,
+      pageSize: 100,
+    };
+    const res = await skillBaseService.querySkillDraftList(params);
+    if (!serviceSucceeded(res)) {
+      showToast(serviceMessage(res, '自进化审批列表加载失败'));
+      return;
+    }
+    const list = Array.isArray(res?.data) ? res.data : [];
+    aiEvolutionSkills.value = list.map(mapSkillDraftToRow);
+  } catch (e) {
+    if (transportIsHttp) {
+      showToast(e instanceof Error ? e.message : '自进化审批列表加载失败');
+    }
+  } finally {
+    aiEvolutionLoading.value = false;
+  }
+}
+
+const aiEvolutionPendingCount = computed(
+  () => aiEvolutionSkills.value.filter((s) => s.status === 'pending').length,
+);
+
+const processingAiEvolutionId = ref<string>('');
+
+type AiEvolutionDecision = 'approve' | 'reject';
+const aiEvolutionConfirm = ref<{ row: AiEvolutionSkillRow; decision: AiEvolutionDecision } | null>(
+  null,
+);
+
+function requestAiEvolutionDecision(row: AiEvolutionSkillRow, decision: AiEvolutionDecision): void {
+  if (row.status !== 'pending' || processingAiEvolutionId.value) {
+    return;
+  }
+  aiEvolutionConfirm.value = { row, decision };
+}
+
+function approveAiEvolutionSkill(row: AiEvolutionSkillRow): void {
+  requestAiEvolutionDecision(row, 'approve');
+}
+
+function rejectAiEvolutionSkill(row: AiEvolutionSkillRow): void {
+  requestAiEvolutionDecision(row, 'reject');
+}
+
+function closeAiEvolutionConfirm(): void {
+  if (processingAiEvolutionId.value) {
+    return;
+  }
+  aiEvolutionConfirm.value = null;
+}
+
+async function confirmAiEvolutionDecision(): Promise<void> {
+  const pending = aiEvolutionConfirm.value;
+  if (!pending || processingAiEvolutionId.value) {
+    return;
+  }
+  const { row, decision } = pending;
+  if (!transportIsHttp && !effectiveSkillUserId()) {
+    await loadCurrentUserRole();
+  }
+  const uid = effectiveSkillUserId();
+  if (!uid) {
+    showToast('请先配置用户工号');
+    return;
+  }
+  const failFallback = decision === 'approve' ? '审批失败' : '拒绝失败';
+  processingAiEvolutionId.value = row.id;
+  try {
+    const res =
+      decision === 'approve'
+        ? await skillBaseService.approveSkillDraft(row.id, { userId: uid })
+        : await skillBaseService.rejectSkillDraft(row.id, { userId: uid });
+    if (!serviceSucceeded(res)) {
+      showToast(serviceMessage(res, failFallback));
+      return;
+    }
+    aiEvolutionSkills.value = aiEvolutionSkills.value.filter((s) => s.id !== row.id);
+    aiEvolutionConfirm.value = null;
+    showToast(
+      decision === 'approve'
+        ? `已通过「${row.name}」，将发布为个人级 Skill`
+        : `已拒绝「${row.name}」的自进化审批`,
+    );
+    if (decision === 'approve') {
+      // 审批通过后落成个人级 Skill，刷新我的发布列表
+      await loadMyPublishedSkills();
+    }
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : failFallback);
+  } finally {
+    processingAiEvolutionId.value = '';
+  }
+}
+
+async function openAiEvolutionDetail(row: AiEvolutionSkillRow): Promise<void> {
+  let skillMdContent = row.skillMdContent;
+  let fileTree = row.fileTree;
+  // 列表场景如使用轻量 VO，可能缺少正文/文件树，按需拉详情补全
+  if (!skillMdContent || !fileTree) {
+    try {
+      const res = await skillBaseService.querySkillDraftDetail(row.id);
+      if (serviceSucceeded(res) && res?.data) {
+        if (!skillMdContent) {
+          skillMdContent = String(res.data.skillMdContent ?? '');
+        }
+        if (!fileTree) {
+          fileTree = normalizeDraftFileTree(res.data.fileTree);
+        }
+      }
+    } catch {
+      // 拉取失败时沿用列表已有内容
+    }
+  }
+  const skill = {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    currentVersion: row.version,
+    version: row.version,
+    categoryGroupName: '自进化',
+    author: 'AI 自进化',
+    level: '自进化候选',
+    totalDownloads: 0,
+    publish_level: '',
+    fileTree,
+    skillMdContent,
+    isAiEvolution: true,
+    ide: row.ide,
+    sessionId: row.sessionId,
+    sessionTime: row.sessionTime,
+    generatedAt: row.generatedAt,
+    firstMessage: row.firstMessage,
+    codeRepo: row.codeRepo,
+  };
+  detailFileTree(skill);
+  detailPanelSkill.value = skill;
+  detailShowDelete.value = false;
+}
 
 type ReleaseStatusKey = 'personal-live' | 'published' | 'reviewing-dev' | 'rejected-pdu';
 
@@ -2697,6 +2939,10 @@ function releaseSyncActionText(row: {
 
 const onClickFilterRelease = async (key: any) => {
   releaseFilter.value = key;
+  if (key === 'aiEvolution') {
+    await loadAiEvolutionSkills();
+    return;
+  }
   if (key === 'all' && 'status' in myReleaseFilterObj.value) {
     delete myReleaseFilterObj.value.status;
   } else if (key === 'personal') {
@@ -3198,6 +3444,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       :skill-md-text="String(skillMdFile[detailPanelSkill.id] ?? '')"
       :show-delete="detailShowDelete"
       :deleting-skill-id="deletingMySkillId"
+      :ai-evolution="!!detailPanelSkill.isAiEvolution"
       @close="closeDetailPanel"
       @try-skill="onTrySkill"
       @download="onDetailDownload"
@@ -4079,15 +4326,129 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               :key="f.key"
               type="button"
               class="seg"
-              :class="{ on: releaseFilter === f.key }"
+              :class="{ on: releaseFilter === f.key, 'seg-ai-evolution': f.key === 'aiEvolution' }"
               @click="onClickFilterRelease(f.key)"
             >
               {{ f.label }}
+              <span
+                v-if="f.key === 'aiEvolution' && aiEvolutionPendingCount > 0"
+                class="seg-badge"
+                >{{ aiEvolutionPendingCount }}</span
+              >
             </button>
           </div>
         </div>
 
-        <div class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
+        <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
+          <div class="ai-evolution-intro-title">
+            <span class="ai-evolution-tag">AI 自进化</span>
+            <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
+          </div>
+          <p class="ai-evolution-intro-desc">
+            系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将发布为个人级
+            Skill，可在个人级页面查看；拒绝后将丢弃该候选版本。
+          </p>
+        </div>
+
+        <div
+          v-if="releaseFilter === 'aiEvolution'"
+          class="table-wrap my-table-wrap ai-evolution-table-wrap"
+        >
+          <table class="table my-table ai-evolution-table">
+            <thead>
+              <tr>
+                <th class="col-skill">Skill 名称</th>
+                <th class="col-source">来源</th>
+                <th class="col-desc">Skill 描述</th>
+                <th class="col-first-msg">第一条消息内容</th>
+                <th class="col-repo">代码仓信息</th>
+                <th class="col-ide">IDE</th>
+                <th class="col-time">Session 时间</th>
+                <th class="col-time">Skill 生成时间</th>
+                <th class="col-ops ai-evo-col-ops">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in aiEvolutionSkills"
+                :key="row.id"
+                class="ai-evolution-row clickable-row"
+                role="button"
+                tabindex="0"
+                @click="openAiEvolutionDetail(row)"
+                @keydown.enter.prevent="openAiEvolutionDetail(row)"
+              >
+                <td>
+                  <div class="skill-main">
+                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-source">
+                    {{ row.source || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="ai-evolution-reason">{{ row.description || '—' }}</div>
+                </td>
+                <td>
+                  <div class="ai-evolution-first-msg">{{ row.firstMessage || '—' }}</div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-repo">
+                    {{ row.codeRepo || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-ide">
+                    {{ row.ide || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-time">
+                    {{ row.sessionTime || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-time">
+                    {{ row.generatedAt || '—' }}
+                  </div>
+                </td>
+                <td class="col-ops-td" @click.stop>
+                  <div class="ops ai-evolution-ops">
+                    <button
+                      type="button"
+                      class="ai-evo-btn ai-evo-approve-btn"
+                      :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
+                      @click="approveAiEvolutionSkill(row)"
+                    >
+                      {{
+                        row.status === 'approved'
+                          ? '已通过'
+                          : processingAiEvolutionId === row.id
+                            ? '处理中…'
+                            : '通过'
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="ai-evo-btn ai-evo-reject-btn"
+                      :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
+                      @click="rejectAiEvolutionSkill(row)"
+                    >
+                      {{ row.status === 'rejected' ? '已拒绝' : '拒绝' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="aiEvolutionSkills.length === 0">
+                <td colspan="9" class="empty-row">暂无待审批的自进化 Skill</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
           <table class="table my-table">
             <thead>
               <tr>
@@ -4951,6 +5312,74 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               @click="submitReviewModal"
             >
               提交
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="aiEvolutionConfirm"
+        class="overlay"
+        role="presentation"
+        @click.self="closeAiEvolutionConfirm"
+      >
+        <div
+          class="v-dialog ai-evo-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-evo-confirm-title"
+        >
+          <div class="v-head">
+            <strong id="ai-evo-confirm-title">
+              {{
+                aiEvolutionConfirm.decision === 'approve'
+                  ? '确认通过自进化审批'
+                  : '确认拒绝自进化审批'
+              }}
+            </strong>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              :disabled="!!processingAiEvolutionId"
+              @click="closeAiEvolutionConfirm"
+            >
+              ×
+            </button>
+          </div>
+          <p class="v-sub ai-evo-confirm-sub">
+            {{ aiEvolutionConfirm.decision === 'approve' ? '通过后' : '拒绝后' }}
+            「{{ aiEvolutionConfirm.row.name }}」
+            <template v-if="aiEvolutionConfirm.decision === 'approve'">
+              将发布为个人级 Skill，可在个人级页面查看，是否确认通过？
+            </template>
+            <template v-else> 的本次自进化候选版本将被丢弃，是否确认拒绝？ </template>
+          </p>
+          <div class="v-actions">
+            <button
+              type="button"
+              class="btn outline sm"
+              :disabled="!!processingAiEvolutionId"
+              @click="closeAiEvolutionConfirm"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="btn sm"
+              :class="aiEvolutionConfirm.decision === 'approve' ? 'primary' : 'danger'"
+              :disabled="!!processingAiEvolutionId"
+              @click="confirmAiEvolutionDecision"
+            >
+              {{
+                processingAiEvolutionId
+                  ? '处理中…'
+                  : aiEvolutionConfirm.decision === 'approve'
+                    ? '确认通过'
+                    : '确认拒绝'
+              }}
             </button>
           </div>
         </div>
