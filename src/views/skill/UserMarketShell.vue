@@ -2040,24 +2040,41 @@ function skillTitle(skill: Skill): string {
   return skill.name ?? skill.skill_id;
 }
 
-function semverNumsForVersions(v: string): number[] {
-  return String(v)
-    .split('.')
-    .map((p) => Number.parseInt(p, 10))
-    .map((n) => (Number.isFinite(n) ? n : 0));
+function parseVersionCreatedAtValue(raw: unknown): number {
+  const s = String(raw ?? '').trim();
+  if (!s) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const match =
+    /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.(\d{1,6}))?)?$/.exec(s);
+  if (match) {
+    const [, year, month, day, hour, minute, second = '0', fraction = '0'] = match;
+    const micros = Number(fraction.padEnd(6, '0').slice(0, 6));
+    const millis = Math.floor(micros / 1000);
+    const extraMicros = micros % 1000;
+    const time = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      millis,
+    ).getTime();
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time * 1000 + extraMicros;
+  }
+
+  const normalized = s.includes('T') ? s : s.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time * 1000;
 }
 
-function compareSemverDescVersions(a: string, b: string): number {
-  const pa = semverNumsForVersions(a);
-  const pb = semverNumsForVersions(b);
-  const n = Math.max(pa.length, pb.length);
-  for (let i = 0; i < n; i++) {
-    const d = (pb[i] ?? 0) - (pa[i] ?? 0);
-    if (d !== 0) {
-      return d;
-    }
-  }
-  return 0;
+function compareVersionCreatedAtDesc(
+  a: SkillVersionListItemDto,
+  b: SkillVersionListItemDto,
+): number {
+  return parseVersionCreatedAtValue(b.createdAt) - parseVersionCreatedAtValue(a.createdAt);
 }
 
 function isVersionRowDeleted(row: SkillVersionListItemDto): boolean {
@@ -2069,7 +2086,7 @@ function pickCurrentVersionFromRows(list: SkillVersionListItemDto[], fallback: s
   if (active.length === 0) {
     return fallback;
   }
-  return [...active].sort((a, b) => compareSemverDescVersions(a.version, b.version))[0]!.version;
+  return [...active].sort(compareVersionCreatedAtDesc)[0]!.version;
 }
 
 async function reloadVersionPanelList(): Promise<void> {
