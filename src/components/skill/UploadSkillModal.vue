@@ -466,7 +466,7 @@ const onSubmit = async (): Promise<void> => {
           </ul>
         </div>
 
-        <section class="upload-result-card" aria-label="发布信息">
+        <section class="upload-result-card upload-result-card--publish-info" aria-label="发布信息">
           <div class="upload-result-head">
             <b>发布信息</b>
             <span>基础信息和 tags 自动解析，业务维度手动选择</span>
@@ -933,6 +933,10 @@ const onSubmit = async (): Promise<void> => {
   background: #fff;
 }
 
+.upload-result-card--publish-info {
+  overflow: visible;
+}
+
 .upload-result-head {
   display: flex;
   align-items: center;
@@ -1190,6 +1194,11 @@ const onSubmit = async (): Promise<void> => {
   border-color: #e9edf3;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(22, 34, 51, 0.05);
+}
+
+.upload-result-card--publish-info :deep(.business-dimension-cascader__menu) {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .upload-result-head {

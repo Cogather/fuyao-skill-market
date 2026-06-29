@@ -435,6 +435,7 @@ function closePlanningPersonSelect(field: PlanningPersonField): void {
 }
 
 function closeAllPlanningPersonSelects(): void {
+  clearUnselectedPlanningOwnerInput();
   (['owner', 'developOwner'] as const).forEach(closePlanningPersonSelect);
 }
 
@@ -482,6 +483,9 @@ async function searchPlanningUsers(
 }
 
 function openPlanningPersonSelect(field: PlanningPersonField): void {
+  if (field !== 'owner') {
+    clearUnselectedPlanningOwnerInput();
+  }
   const state = personSearchStates[field];
   const value = planningPersonValue(field).trim();
   state.open = true;
@@ -561,6 +565,19 @@ function isPlanningPersonSelectionMissing(field: PlanningPersonField): boolean {
   return Boolean(value && state.touched && state.selectedLabel !== value);
 }
 
+function clearUnselectedPlanningOwnerInput(): void {
+  if (!isPlanningPersonSelectionMissing('owner')) {
+    return;
+  }
+  setPlanningPersonValue('owner', '');
+  setPlanningOwnerDepartment('');
+  resetPlanningPersonSearchState('owner');
+}
+
+function scheduleClearUnselectedPlanningOwnerInput(): void {
+  window.setTimeout(clearUnselectedPlanningOwnerInput, 160);
+}
+
 function batchPersonValue(field: PlanningPersonField): string {
   return String((batchForm as Record<string, unknown>)[field] ?? '');
 }
@@ -589,6 +606,7 @@ function closeBatchPersonSelect(field: PlanningPersonField): void {
 }
 
 function closeAllBatchPersonSelects(): void {
+  clearUnselectedBatchOwnerInput();
   (['owner', 'developOwner'] as const).forEach(closeBatchPersonSelect);
 }
 
@@ -636,6 +654,9 @@ async function searchBatchUsers(
 }
 
 function openBatchPersonSelect(field: PlanningPersonField): void {
+  if (field !== 'owner') {
+    clearUnselectedBatchOwnerInput();
+  }
   const state = batchPersonSearchStates[field];
   const value = batchPersonValue(field).trim();
   state.open = true;
@@ -679,6 +700,19 @@ function isBatchPersonSelectionMissing(field: PlanningPersonField): boolean {
   const value = batchPersonValue(field).trim();
   const state = batchPersonSearchStates[field];
   return Boolean(value && state.touched && state.selectedLabel !== value);
+}
+
+function clearUnselectedBatchOwnerInput(): void {
+  if (!isBatchPersonSelectionMissing('owner')) {
+    return;
+  }
+  setBatchPersonValue('owner', '');
+  setBatchOwnerDepartment('');
+  resetBatchPersonSearchState('owner');
+}
+
+function scheduleClearUnselectedBatchOwnerInput(): void {
+  window.setTimeout(clearUnselectedBatchOwnerInput, 160);
 }
 
 function onPlanningFirstSceneChange(): void {
@@ -2153,6 +2187,7 @@ onBeforeUnmount(() => {
                       @focus="openPlanningPersonSelect('owner')"
                       @input="onPlanningPersonInput('owner', $event)"
                       @keydown.enter.prevent="searchPlanningUsers('owner')"
+                      @blur="scheduleClearUnselectedPlanningOwnerInput"
                     />
                     <div
                       v-if="personSearchStates.owner.open"
@@ -2514,6 +2549,7 @@ onBeforeUnmount(() => {
                           @focus="openPlanningPersonSelect('owner')"
                           @input="onPlanningPersonInput('owner', $event)"
                           @keydown.enter.prevent="searchPlanningUsers('owner')"
+                      @blur="scheduleClearUnselectedPlanningOwnerInput"
                         />
                         <div
                           v-if="personSearchStates.owner.open"
@@ -2903,6 +2939,7 @@ onBeforeUnmount(() => {
                     @focus="openBatchPersonSelect('owner')"
                     @input="onBatchPersonInput('owner', $event)"
                     @keydown.enter.prevent="searchBatchUsers('owner')"
+                    @blur="scheduleClearUnselectedBatchOwnerInput"
                   />
                   <div
                     v-if="batchPersonSearchStates.owner.open"
@@ -3205,6 +3242,7 @@ onBeforeUnmount(() => {
                   @focus="openPlanningPersonSelect('owner')"
                   @input="onPlanningPersonInput('owner', $event)"
                   @keydown.enter.prevent="searchPlanningUsers('owner')"
+                      @blur="scheduleClearUnselectedPlanningOwnerInput"
                 />
                 <div
                   v-if="personSearchStates.owner.open"
