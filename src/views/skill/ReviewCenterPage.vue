@@ -1318,6 +1318,7 @@ function getPreviousReviewMonth(): string {
 const currentReviewMonth = formatReviewMonth(new Date());
 const fixedReviewMonth = getPreviousReviewMonth();
 const fixedReviewMonthYear = Number(fixedReviewMonth.slice(0, 4));
+const selectableReviewMonths = new Set([fixedReviewMonth, fixedReviewMonthYear + '-05']);
 const reviewMonthSelectionLocked = true;
 const selectedReviewMonth = ref(fixedReviewMonth);
 const reviewMonthPickerOpen = ref(false);
@@ -1386,7 +1387,7 @@ function isSelectedReviewMonth(month: string): boolean {
 }
 
 function isReviewMonthSelectable(month: string): boolean {
-  return reviewMonthValue(month) === fixedReviewMonth;
+  return selectableReviewMonths.has(reviewMonthValue(month));
 }
 
 function isCurrentReviewMonth(month: string): boolean {
@@ -1861,7 +1862,8 @@ onBeforeUnmount(() => {
                       ></span>
                     </div>
                     <strong
-                      >{{ dimension.score }} / {{ aiReviewDimensions[index]?.max_score ?? 100 }}</strong
+                      >{{ dimension.score }} /
+                      {{ aiReviewDimensions[index]?.max_score ?? 100 }}</strong
                     >
                   </div>
                   <p>{{ dimension.deductionBreakdown }}</p>
@@ -2335,84 +2337,88 @@ onBeforeUnmount(() => {
             </div>
             <div class="version-history-table-scroll">
               <table class="version-history-table">
-              <thead>
-                <tr>
-                  <th>评审人</th>
-                  <th>评审时间</th>
-                  <th style="width: 180px">各维度评分</th>
-                  <th style="width: 132px">获得的勋章类型</th>
-                  <th style="width: 50px">总分</th>
-                  <th>整体评审意见</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="group[1].aiScore">
-                  <td>
-                    <div class="history-reviewer-cell">
-                      <strong>{{ group[1].aiScore.aiModel }}</strong>
-                      <span>AI评审</span>
-                    </div>
-                  </td>
-                  <td class="history-time">{{ formatHistoryReviewTime(group[1].aiScore.evaluateTime) }}</td>
-                  <td class="history-dimension-scores">
-                    <pre class="history-dimension-pre">{{
-                      group[1].aiScore.dimensionScores.reduce(
-                        (pre, curr) =>
-                          pre + `${dimensionField[curr.dimensionId]}维度得分: ${curr.score} \n`,
-                        '',
-                      )
-                    }}</pre>
-                  </td>
-                  <td>-</td>
-                  <td>
-                    <strong class="history-total-score">{{ group[1].aiScore.aiScore }}</strong>
-                  </td>
-                  <td class="history-summary-cell">
-                    <pre class="history-summary-pre">{{
-                      `SKILL.md: ${group[1].aiScore.advices['SKILL.md']}\nreferences: ${group[1].aiScore.advices['references']}\nscripts:${group[1].aiScore.advices['scripts']}`
-                    }}</pre>
-                  </td>
-                </tr>
-                <tr v-for="(expertReview, index) in group[1].expertReviews" :key="index">
-                  <td>
-                    <div class="history-reviewer-cell">
-                      <strong>{{ expertReview.expertUserId }}</strong>
-                      <span>专家评审</span>
-                    </div>
-                  </td>
-                  <td class="history-time">{{ formatHistoryReviewTime(expertReview.reviewedAt) }}</td>
-                  <td class="history-dimension-scores">
-                    <pre class="history-dimension-pre">{{
-                      expertReview.dimensions.reduce(
-                        (pre, curr) =>
-                          pre +
-                          `${expertReviewDimensions.find((iter) => iter.dimensionId === curr.dimensionId)?.name ?? ''}维度得分: ${curr.score} \n`,
-                        '',
-                      )
-                    }}</pre>
-                  </td>
-                  <td>
-                    <div
-                      v-if="historyReviewBadgeIds(expertReview).length"
-                      class="history-badge-icons"
-                    >
-                      <img
-                        v-for="badgeId in historyReviewBadgeIds(expertReview)"
-                        :key="badgeId"
-                        :src="reviewBadgeImageSrc(badgeId)"
-                        alt=""
-                      />
-                    </div>
-                    <span v-else class="history-badge-empty">-</span>
-                  </td>
-                  <td>
-                    <strong class="history-total-score">{{ expertReview.overallScore }}</strong>
-                  </td>
-                  <td class="history-summary-cell">
-                    <pre class="history-summary-pre">{{ expertReview.reviewComment }}</pre>
-                  </td>
-                </tr>
-              </tbody>
+                <thead>
+                  <tr>
+                    <th>评审人</th>
+                    <th>评审时间</th>
+                    <th style="width: 180px">各维度评分</th>
+                    <th style="width: 132px">获得的勋章类型</th>
+                    <th style="width: 50px">总分</th>
+                    <th>整体评审意见</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="group[1].aiScore">
+                    <td>
+                      <div class="history-reviewer-cell">
+                        <strong>{{ group[1].aiScore.aiModel }}</strong>
+                        <span>AI评审</span>
+                      </div>
+                    </td>
+                    <td class="history-time">
+                      {{ formatHistoryReviewTime(group[1].aiScore.evaluateTime) }}
+                    </td>
+                    <td class="history-dimension-scores">
+                      <pre class="history-dimension-pre">{{
+                        group[1].aiScore.dimensionScores.reduce(
+                          (pre, curr) =>
+                            pre + `${dimensionField[curr.dimensionId]}维度得分: ${curr.score} \n`,
+                          '',
+                        )
+                      }}</pre>
+                    </td>
+                    <td>-</td>
+                    <td>
+                      <strong class="history-total-score">{{ group[1].aiScore.aiScore }}</strong>
+                    </td>
+                    <td class="history-summary-cell">
+                      <pre class="history-summary-pre">{{
+                        `SKILL.md: ${group[1].aiScore.advices['SKILL.md']}\nreferences: ${group[1].aiScore.advices['references']}\nscripts:${group[1].aiScore.advices['scripts']}`
+                      }}</pre>
+                    </td>
+                  </tr>
+                  <tr v-for="(expertReview, index) in group[1].expertReviews" :key="index">
+                    <td>
+                      <div class="history-reviewer-cell">
+                        <strong>{{ expertReview.expertUserId }}</strong>
+                        <span>专家评审</span>
+                      </div>
+                    </td>
+                    <td class="history-time">
+                      {{ formatHistoryReviewTime(expertReview.reviewedAt) }}
+                    </td>
+                    <td class="history-dimension-scores">
+                      <pre class="history-dimension-pre">{{
+                        expertReview.dimensions.reduce(
+                          (pre, curr) =>
+                            pre +
+                            `${expertReviewDimensions.find((iter) => iter.dimensionId === curr.dimensionId)?.name ?? ''}维度得分: ${curr.score} \n`,
+                          '',
+                        )
+                      }}</pre>
+                    </td>
+                    <td>
+                      <div
+                        v-if="historyReviewBadgeIds(expertReview).length"
+                        class="history-badge-icons"
+                      >
+                        <img
+                          v-for="badgeId in historyReviewBadgeIds(expertReview)"
+                          :key="badgeId"
+                          :src="reviewBadgeImageSrc(badgeId)"
+                          alt=""
+                        />
+                      </div>
+                      <span v-else class="history-badge-empty">-</span>
+                    </td>
+                    <td>
+                      <strong class="history-total-score">{{ expertReview.overallScore }}</strong>
+                    </td>
+                    <td class="history-summary-cell">
+                      <pre class="history-summary-pre">{{ expertReview.reviewComment }}</pre>
+                    </td>
+                  </tr>
+                </tbody>
               </table>
             </div>
           </section>

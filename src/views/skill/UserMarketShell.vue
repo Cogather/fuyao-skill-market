@@ -47,7 +47,7 @@ import {
   type OpsSkillDetailRow,
 } from '../../utils/opsExcelImport';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
-import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
@@ -922,6 +922,51 @@ const debounce = (fn: any, delay: number): any => {
 
 const debounceScroll = handleScroll;
 
+function firstRouteString(value: unknown): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
+}
+
+function parentTargetOrigin(): string {
+  return String(webfrondUrl || '*');
+}
+
+function parentOriginMatches(event: MessageEvent): boolean {
+  const expectedOrigin = String(webfrondUrl || '').trim();
+  return !expectedOrigin || event.origin === expectedOrigin;
+}
+
+function notifyParentRouteChange(payload: Record<string, unknown>): void {
+  if (window.parent === window) {
+    return;
+  }
+  window.parent.postMessage(payload, parentTargetOrigin());
+}
+
+function skillIdFromParentPayload(data: Record<string, unknown>): string {
+  return firstRouteString(data.skillId) || firstRouteString(data.skillID) || firstRouteString(data.skill_id);
+}
+
+const handleParentMessage = (event: MessageEvent) => {
+  if (!parentOriginMatches(event)) {
+    return;
+  }
+  const data = event.data;
+  if (!data || typeof data !== 'object') {
+    return;
+  }
+  const payload = data as Record<string, unknown>;
+  if (payload.type !== 'SKill_Square_Init' && payload.type !== 'Skill_Square_Init') {
+    return;
+  }
+  const skillId = skillIdFromParentPayload(payload);
+  if (skillId) {
+    void openSkillDetailRoute(skillId, true, payload.tab);
+    return;
+  }
+  goTab(payload.tab ?? 'hot');
+};
+
 const isExpertReviewer = ref(false);
 
 onMounted(async () => {
@@ -946,6 +991,7 @@ onMounted(async () => {
     // await startOverviewRemoteFetch();
     // await loadOpsDashboardOverview();
   }
+  window.addEventListener('message', handleParentMessage);
   document.addEventListener('mousedown', onOverviewDimensionDocDown);
   document.addEventListener('keydown', onOverviewDimensionKeydown);
   window.addEventListener('resize', scheduleOverviewDimensionOverflowCheck);
@@ -971,6 +1017,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', scheduleOverviewDimensionOverflowCheck);
   window.removeEventListener('scroll', scheduleTopbarGlassUpdate);
   window.removeEventListener('resize', scheduleTopbarGlassUpdate);
+  window.removeEventListener('message', handleParentMessage);
   if (overviewScrollRaf) {
     window.cancelAnimationFrame(overviewScrollRaf);
     overviewScrollRaf = 0;
@@ -1304,20 +1351,33 @@ function openUpload(): void {
   uploadOpen.value = true;
 }
 
-function goTab(tab: UserInnerTab, replace = false): void {
+function goTab(tabInput: unknown, replace = false): void {
+  const tab = routeTabFromQuery(tabInput);
   innerTab.value = tab;
+  closeDetailPanel();
   const target = {
     name: 'skill-market',
     query: {
-      ...route.query,
       tab,
     },
   };
-  if (replace) {
-    void router.replace(target);
-  } else {
-    void router.push(target);
+  const alreadyOnTarget =
+    route.name === 'skill-market' &&
+    route.query.tab != null &&
+    routeTabFromQuery(route.query.tab) === tab &&
+    Object.keys(route.query).every((key) => key === 'tab');
+  if (!alreadyOnTarget) {
+    if (replace) {
+      void router.replace(target);
+    } else {
+      void router.push(target);
+    }
   }
+  notifyParentRouteChange({
+    type: 'CHILD_TAB_CHANGE',
+    view: 'tab',
+    tab,
+  });
 }
 
 function normalizeSyncRecord(raw: unknown): SyncApplicationListItemDto {
@@ -2399,20 +2459,40 @@ const handleDetailItem = async (skill: any, id: any) => {
   detailShowDelete.value = false;
 };
 
-async function openDetailPanel(id: any): Promise<void> {
-  const skill = newSkills.value.find((item) => skillKey(item) === id);
-  if (!skill) {
+async function openSkillDetailRoute(
+  skillIdInput: unknown,
+  replace = false,
+  sourceTab: unknown = innerTab.value,
+): Promise<void> {
+  const skillId = firstRouteString(skillIdInput);
+  if (!skillId) {
     return;
   }
-  await handleDetailItem(skill, id);
+  const tab = routeTabFromQuery(sourceTab);
+  const target = {
+    name: 'skill-detail',
+    params: { skillId },
+    query: { tab },
+  };
+  if (replace) {
+    await router.replace(target);
+  } else {
+    await router.push(target);
+  }
+  notifyParentRouteChange({
+    type: 'CHILD_TAB_CHANGE',
+    view: 'detail',
+    tab,
+    skillId,
+  });
+}
+
+async function openDetailPanel(id: any): Promise<void> {
+  await openSkillDetailRoute(id, false, 'overview');
 }
 
 async function openHotSkillDetail(skill: any): Promise<void> {
-  const id = String(skill?.id ?? '').trim();
-  if (!id) {
-    return;
-  }
-  await handleDetailItem(skill, id);
+  await openSkillDetailRoute(skill?.id ?? skill?.skill_id, false, 'hot');
 }
 
 async function fetchSkillDetailExtras(
@@ -2436,9 +2516,7 @@ async function fetchSkillDetailExtras(
 }
 
 async function openDetailFromMyRelease(row: SkillListRecordDto): Promise<void> {
-  await handleDetailItem(row, row.id);
-  detailPanelSkill.value = row;
-  detailShowDelete.value = true;
+  await openSkillDetailRoute(row.id, false, 'releases');
 }
 
 function closeDetailPanel(): void {
