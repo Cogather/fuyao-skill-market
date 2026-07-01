@@ -1318,6 +1318,7 @@ function getPreviousReviewMonth(): string {
 const currentReviewMonth = formatReviewMonth(new Date());
 const fixedReviewMonth = getPreviousReviewMonth();
 const fixedReviewMonthYear = Number(fixedReviewMonth.slice(0, 4));
+const selectableReviewMonths = new Set([fixedReviewMonth, fixedReviewMonthYear + '-05']);
 const reviewMonthSelectionLocked = true;
 const selectedReviewMonth = ref(fixedReviewMonth);
 const reviewMonthPickerOpen = ref(false);
@@ -1386,7 +1387,7 @@ function isSelectedReviewMonth(month: string): boolean {
 }
 
 function isReviewMonthSelectable(month: string): boolean {
-  return reviewMonthValue(month) === fixedReviewMonth;
+  return selectableReviewMonths.has(reviewMonthValue(month));
 }
 
 function isCurrentReviewMonth(month: string): boolean {
