@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -16,12 +16,23 @@ const props = withDefaults(
     previewOnly?: boolean;
     /** 自进化审批模式：隐藏版本/作者等标签 */
     aiEvolution?: boolean;
+    /** dialog: 弹窗；page: 独立页面内联展示 */
+    displayMode?: 'dialog' | 'page';
+    closeText?: string;
+    showTrySkill?: boolean;
+    showDownload?: boolean;
+    showVersionManage?: boolean;
   }>(),
   {
     showDelete: true,
     deletingSkillId: null,
     previewOnly: false,
     aiEvolution: false,
+    displayMode: 'dialog',
+    closeText: '',
+    showTrySkill: true,
+    showDownload: true,
+    showVersionManage: true,
   },
 );
 
@@ -37,6 +48,7 @@ const emit = defineEmits<{
 const detailMoreWrapRef = ref<HTMLElement | null>(null);
 const detailMoreMenuOpen = ref(false);
 let detailMoreMenuListenersBound = false;
+const isPageMode = computed(() => props.displayMode === 'page');
 
 function skillScopeLabel(s: Record<string, unknown>): string {
   const level = String(s.publish_level ?? s.level ?? s.tagOrg ?? '').trim();
@@ -99,6 +111,12 @@ function onVersionMenuClick(): void {
   closeDetailMoreMenu();
   emit('versionManage');
 }
+
+function onShellClick(): void {
+  if (!isPageMode.value) {
+    emit('close');
+  }
+}
 // 调测
 const goToDebugPage = (skill) => {
   router.push({
@@ -120,24 +138,29 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="isPageMode">
     <div
-      class="overlay detail-overlay"
-      :class="{ 'detail-overlay--stacked': previewOnly }"
-      role="presentation"
-      @click.self="emit('close')"
+      :class="[
+        isPageMode ? 'detail-page-shell' : 'overlay detail-overlay',
+        { 'detail-overlay--stacked': previewOnly && !isPageMode },
+      ]"
+      :role="isPageMode ? undefined : 'presentation'"
+      @click.self="onShellClick"
     >
       <section
         class="skill-detail-dialog"
-        role="dialog"
-        aria-modal="true"
+        :class="{ 'skill-detail-dialog--page': isPageMode }"
+        :role="isPageMode ? 'region' : 'dialog'"
+        :aria-modal="isPageMode ? undefined : 'true'"
         aria-labelledby="skill-detail-title"
       >
         <header class="detail-head">
           <h2 id="skill-detail-title">
             {{ previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情' }}
           </h2>
-          <button type="button" class="detail-close" @click="emit('close')">关闭</button>
+          <button type="button" class="detail-close" @click="emit('close')">
+            {{ closeText || (isPageMode ? '返回' : '关闭') }}
+          </button>
         </header>
 
         <div class="detail-toolbar">
@@ -170,10 +193,20 @@ onBeforeUnmount(() => {
             </span>
           </div>
           <div v-if="!previewOnly" class="detail-actions">
-            <button type="button" class="detail-btn ghost" @click="updateSkill(skill)">
+            <button
+              v-if="showTrySkill"
+              type="button"
+              class="detail-btn ghost"
+              @click="updateSkill(skill)"
+            >
               在线调测
             </button>
-            <button type="button" class="detail-btn primary" @click="emit('download')">
+            <button
+              v-if="showDownload"
+              type="button"
+              class="detail-btn primary"
+              @click="emit('download')"
+            >
               下载到本地
             </button>
             <button
@@ -185,7 +218,11 @@ onBeforeUnmount(() => {
             >
               {{ deletingSkillId === currentSkillId() ? '删除中…' : '删除' }}
             </button>
-            <div v-if="!aiEvolution" ref="detailMoreWrapRef" class="detail-more-wrap">
+            <div
+              v-if="!aiEvolution && showVersionManage"
+              ref="detailMoreWrapRef"
+              class="detail-more-wrap"
+            >
               <button
                 type="button"
                 class="detail-btn detail-more-trigger"
@@ -687,5 +724,26 @@ onBeforeUnmount(() => {
   color: #15171d;
   font-weight: 900;
   letter-spacing: 0;
+}
+.detail-page-shell {
+  min-height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.detail-page-shell .skill-detail-dialog {
+  width: min(1180px, 100%);
+  min-height: calc(100vh - 40px);
+  max-height: none;
+  margin: 0 auto;
+}
+
+.skill-detail-dialog--page {
+  border-radius: 8px;
+}
+
+.skill-detail-dialog--page .detail-main {
+  flex: 1;
+  min-height: 0;
 }
 </style>
