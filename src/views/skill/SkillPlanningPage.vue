@@ -2549,7 +2549,7 @@ onBeforeUnmount(() => {
                           @focus="openPlanningPersonSelect('owner')"
                           @input="onPlanningPersonInput('owner', $event)"
                           @keydown.enter.prevent="searchPlanningUsers('owner')"
-                      @blur="scheduleClearUnselectedPlanningOwnerInput"
+                          @blur="scheduleClearUnselectedPlanningOwnerInput"
                         />
                         <div
                           v-if="personSearchStates.owner.open"
@@ -3242,7 +3242,7 @@ onBeforeUnmount(() => {
                   @focus="openPlanningPersonSelect('owner')"
                   @input="onPlanningPersonInput('owner', $event)"
                   @keydown.enter.prevent="searchPlanningUsers('owner')"
-                      @blur="scheduleClearUnselectedPlanningOwnerInput"
+                  @blur="scheduleClearUnselectedPlanningOwnerInput"
                 />
                 <div
                   v-if="personSearchStates.owner.open"

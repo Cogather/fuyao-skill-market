@@ -4,9 +4,8 @@ const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
 export const corecode = _corecode_env;
 
-const _ai_env = import.meta.env.VITE_SKILL_CORE_CODE_URL;
-
-export const ai = _ai_env;
+export const ai = import.meta.env.VITE_SKILL_CORE_CODE_URL;
+export const webfrondUrl = import.meta.env.VITE_WEBFROND_APP_BASE;
 
 export const skillBaseService = {
   // 获取用户部门信息

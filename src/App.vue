@@ -25,7 +25,7 @@ function handleEvent(event: MessageEvent): void {
     return;
   }
   const p = payload as Record<string, unknown>;
-  if (p.type !== 'init') {
+  if (p.type !== 'Skill_Square_Init') {
     return;
   }
   skillMarketStore.updateUserId(p.userId as string);

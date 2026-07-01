@@ -414,7 +414,14 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
     if (!matchesDateRange(item, query)) return false;
     if (!keyword) return true;
 
-    return [item.offeringName, item.name, item.description, item.owner, item.deptName, item.developOwner]
+    return [
+      item.offeringName,
+      item.name,
+      item.description,
+      item.owner,
+      item.deptName,
+      item.developOwner,
+    ]
       .join(' ')
       .toLowerCase()
       .includes(keyword);

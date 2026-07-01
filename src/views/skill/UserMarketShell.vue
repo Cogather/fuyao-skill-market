@@ -47,7 +47,7 @@ import {
   type OpsSkillDetailRow,
 } from '../../utils/opsExcelImport';
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
-import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
@@ -123,19 +123,11 @@ const innerTabAliases: Record<string, UserInnerTab> = {
   skill规划: 'planning',
 };
 
-function routeTabFromQuery(value: unknown): UserInnerTab {
-  const raw = Array.isArray(value) ? value[0] : value;
-  if (typeof raw !== 'string') {
-    return 'hot';
-  }
-  return innerTabAliases[raw] ?? innerTabAliases[raw.toLowerCase()] ?? 'hot';
-}
-
 const helpLink = () => {
   showToast('帮助说明暂未配置');
 };
 
-const innerTab = ref<UserInnerTab>(routeTabFromQuery(route.query.tab));
+const innerTab = ref<UserInnerTab>(route?.query?.tab || 'hot');
 const uploadOpen = ref(false);
 const search = ref('');
 const hotSearch = ref('');
@@ -921,8 +913,21 @@ const debounce = (fn: any, delay: number): any => {
 };
 
 const debounceScroll = handleScroll;
+const handleParentMessage = (event: MessageEvent) => {
+  // 跨域场景建议校验来源
+  if (event.origin !== webfrondUrl) {
+    return;
+  }
+  const data = event.data;
+
+  if (data?.type === 'SKill_Square_Init') {
+    const thisTab = data?.tab ?? 'hot';
+    goTab(thisTab);
+  }
+};
 
 const isExpertReviewer = ref(false);
+window.onmessage = handleParentMessage;
 
 onMounted(async () => {
   if (transportIsHttp) {
@@ -971,6 +976,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', scheduleOverviewDimensionOverflowCheck);
   window.removeEventListener('scroll', scheduleTopbarGlassUpdate);
   window.removeEventListener('resize', scheduleTopbarGlassUpdate);
+  window.removeEventListener('message', handleParentMessage);
   if (overviewScrollRaf) {
     window.cancelAnimationFrame(overviewScrollRaf);
     overviewScrollRaf = 0;
@@ -1309,7 +1315,6 @@ function goTab(tab: UserInnerTab, replace = false): void {
   const target = {
     name: 'skill-market',
     query: {
-      ...route.query,
       tab,
     },
   };
@@ -1318,6 +1323,14 @@ function goTab(tab: UserInnerTab, replace = false): void {
   } else {
     void router.push(target);
   }
+  // 通知父页面
+  window.parent.postMessage(
+    {
+      type: 'CHILD_TAB_CHANGE',
+      tab,
+    },
+    webfrondUrl,
+  );
 }
 
 function normalizeSyncRecord(raw: unknown): SyncApplicationListItemDto {
@@ -1849,11 +1862,8 @@ async function executeDeleteMyReleaseSkill(): Promise<void> {
 
 watch(
   () => route.query.tab,
-  (tab) => {
-    const nextTab = routeTabFromQuery(tab);
-    if (nextTab !== innerTab.value) {
-      innerTab.value = nextTab;
-    }
+  () => {
+    goTab(route.query.tab);
   },
 );
 
