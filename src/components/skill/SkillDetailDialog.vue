@@ -726,24 +726,31 @@ onBeforeUnmount(() => {
   letter-spacing: 0;
 }
 .detail-page-shell {
-  min-height: 100vh;
-  padding: 20px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
   box-sizing: border-box;
 }
 
 .detail-page-shell .skill-detail-dialog {
-  width: min(1180px, 100%);
-  min-height: calc(100vh - 40px);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   max-height: none;
-  margin: 0 auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .skill-detail-dialog--page {
-  border-radius: 8px;
+  border-radius: 0;
 }
 
 .skill-detail-dialog--page .detail-main {
   flex: 1;
   min-height: 0;
+  padding-bottom: 24px;
 }
 </style>

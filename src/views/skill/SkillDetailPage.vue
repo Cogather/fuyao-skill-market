@@ -230,7 +230,12 @@ watch(
 
 <style scoped lang="scss">
 .skill-detail-page {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
   background:
     linear-gradient(rgba(96, 111, 136, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(96, 111, 136, 0.045) 1px, transparent 1px),
@@ -239,6 +244,7 @@ watch(
     34px 34px,
     34px 34px,
     auto;
+  box-sizing: border-box;
 }
 
 .skill-detail-state {
