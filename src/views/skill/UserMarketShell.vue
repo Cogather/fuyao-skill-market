@@ -930,16 +930,18 @@ function notifyParentRouteChange(payload: Record<string, unknown>): void {
   window.parent.postMessage(payload, parentTargetOrigin());
 }
 
-const handleParentMessage = (event: MessageEvent) => {
+const handleParentMessage = async (event: MessageEvent) => {
   // 跨域场景建议校验来源
   if (event.origin !== webfrondUrl) {
     return;
   }
   const data = event.data;
-
+  const thisTab = data?.tab ?? 'hot';
   if (data?.type === 'SKill_Square_Init') {
-    const thisTab = data?.tab ?? 'hot';
     goTab(thisTab);
+  }
+  if (data?.type === 'SKill_Square_Init' && data?.view === 'detail' && data?.skillId) {
+    await openSkillDetailRoute(data.skillId, false, thisTab);
   }
 };
 
@@ -2428,11 +2430,10 @@ const handleDetailItem = async (skill: any, id: any) => {
 };
 
 async function openSkillDetailRoute(
-  skillIdInput: unknown,
+  skillId: string,
   replace = false,
   tab: unknown = innerTab.value,
 ): Promise<void> {
-  const skillId = firstRouteString(skillIdInput);
   if (!skillId) {
     return;
   }
@@ -2447,7 +2448,7 @@ async function openSkillDetailRoute(
     await router.push(target);
   }
   notifyParentRouteChange({
-    type: 'CHILD_TAB_CHANGE',
+    type: 'CHILD_DETAIL',
     view: 'detail',
     tab,
     skillId,
@@ -2459,7 +2460,7 @@ async function openDetailPanel(id: any): Promise<void> {
 }
 
 async function openHotSkillDetail(skill: any): Promise<void> {
-  await openSkillDetailRoute(skill?.id ?? skill?.skill_id, false, 'hot');
+  await openSkillDetailRoute(skill.id, false, 'hot');
 }
 
 async function fetchSkillDetailExtras(

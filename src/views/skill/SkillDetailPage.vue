@@ -7,7 +7,10 @@ import type { SkillDetailDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
-import { fileTreeFromDetailDto, normalizeDetailFileTreeToDisplay } from '../../utils/skillDetailDisplay';
+import {
+  fileTreeFromDetailDto,
+  normalizeDetailFileTreeToDisplay,
+} from '../../utils/skillDetailDisplay';
 import type { UserInnerTab } from '../../types/skill';
 
 const route = useRoute();
@@ -60,9 +63,7 @@ function routeTabFromValue(value: unknown): UserInnerTab {
 
 const sourceTab = computed(() => routeTabFromValue(route.query.tab));
 
-const fileTreeText = computed(() =>
-  normalizeDetailFileTreeToDisplay(skillDetail.value?.fileTree),
-);
+const fileTreeText = computed(() => normalizeDetailFileTreeToDisplay(skillDetail.value?.fileTree));
 const skillMdText = computed(() =>
   typeof skillDetail.value?.skillMdContent === 'string'
     ? String(skillDetail.value.skillMdContent)
@@ -79,7 +80,7 @@ function notifyParentDetailRoute(skillId: string): void {
   }
   window.parent.postMessage(
     {
-      type: 'CHILD_TAB_CHANGE',
+      type: 'CHILD_DETAIL',
       view: 'detail',
       tab: sourceTab.value,
       skillId,
@@ -181,6 +182,14 @@ function goBackToMarket(): void {
       tab: sourceTab.value,
     },
   });
+  // 通知父页面
+  window.parent.postMessage(
+    {
+      type: 'CHILD_TAB_CHANGE',
+      tab: sourceTab.value,
+    },
+    webfrondUrl,
+  );
 }
 
 watch(
