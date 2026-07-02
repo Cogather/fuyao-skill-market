@@ -53,7 +53,7 @@ function handleEvent(event: MessageEvent): void {
     return;
   }
   const p = payload as Record<string, unknown>;
-  if (p.type !== 'Skill_Square_Init' && p.type !== 'SKill_Square_Init') {
+  if (p.type !== 'Skill_Square_Init') {
     return;
   }
   const incomingUserId = firstString(p.userId);
@@ -79,5 +79,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <RouterView />
+  <div class="app-wrapper">
+    <RouterView />
+  </div>
 </template>
+
+<style scoped>
+.app-wrapper {
+  width: 100%;
+  height: 100vh;
+}
+</style>
