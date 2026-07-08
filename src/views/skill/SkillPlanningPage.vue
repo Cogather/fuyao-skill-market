@@ -84,6 +84,7 @@ const batchReadonlyHeaders = [
   '归属子活动',
   'SKILL名称',
   '层级',
+  '产品',
 ] as const;
 
 const emptyFilters = {
@@ -1022,8 +1023,11 @@ async function confirmInlineCreate() {
 
   try {
     inlineCreateSubmitting.value = true;
-    await createSkillPlanning({ ...planningForm });
-    showToast('已新增 Skill 规划');
+    const createRes = await createSkillPlanning({ ...planningForm });
+    const toastStr = !createRes?.meta?.success
+      ? (createRes.meta?.message ?? 'SKill已存在')
+      : '已新增 Skill 规划';
+    showToast(toastStr);
     pageNum.value = 1;
     cancelInlineCreate(true);
     await loadPlanningFilterOptions();
@@ -1068,8 +1072,12 @@ async function confirmInlineEdit() {
 
   try {
     inlineEditSubmitting.value = true;
-    await updateSkillPlanning(editingId.value, { ...planningForm });
-    showToast('已保存修改');
+
+    const updateRes = await updateSkillPlanning(editingId.value, { ...planningForm });
+    const toastStr = !updateRes?.meta?.success
+      ? (updateRes.meta?.message ?? '更新后的SKill已存在')
+      : '已保存修改';
+    showToast(toastStr);
     cancelInlineEdit(true);
     await loadPlanningFilterOptions();
     await reloadList();
@@ -2920,14 +2928,6 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="batch-form__grid">
-              <label class="planning-field">
-                <span>产品</span>
-                <input
-                  v-model.trim="batchForm.offeringName"
-                  type="text"
-                  placeholder="不填写则不修改"
-                />
-              </label>
               <label class="planning-field">
                 <span>责任 Owner</span>
                 <div class="planning-person-select planning-person-select--dialog">

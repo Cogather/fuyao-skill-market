@@ -2,7 +2,6 @@ import { skillBaseService } from './skillBaseService';
 import {
   exportSkillPlanningToExcel,
   normalizeProgress,
-  normalizeSkillPlanningItem,
   normalizeText,
   normalizeTextArray,
   type ProductPlanningOption,
@@ -290,10 +289,6 @@ function normalizeHttpDownloadUrl(response: unknown): string {
   return text;
 }
 
-function normalizeHttpItem(response: unknown): SkillPlanningItem {
-  return normalizeSkillPlanningItem(unwrapResponseData<unknown>(response));
-}
-
 const planningHeaderFilterHttpParamPairs = [
   ['firstScene', 'firstScene'],
   ['secondScene', 'secondScene'],
@@ -427,7 +422,7 @@ export async function createSkillPlanning(
   }
 
   const response = await skillBaseService.createSkillPlanning(payload);
-  return normalizeHttpItem(response);
+  return response;
 }
 
 export async function updateSkillPlanning(
@@ -440,7 +435,7 @@ export async function updateSkillPlanning(
 
   payload.id = id;
   const response = await skillBaseService.updateSkillPlanning(payload);
-  return normalizeHttpItem(response);
+  return response;
 }
 
 export async function batchUpdateSkillPlanning(

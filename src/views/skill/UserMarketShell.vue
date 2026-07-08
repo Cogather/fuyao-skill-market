@@ -937,10 +937,10 @@ const handleParentMessage = async (event: MessageEvent) => {
   }
   const data = event.data;
   const thisTab = data?.tab ?? 'hot';
-  if (data?.type === 'SKill_Square_Init') {
+  if (data?.type === 'Skill_Square_Init' && !data?.view) {
     goTab(thisTab);
   }
-  if (data?.type === 'SKill_Square_Init' && data?.view === 'detail' && data?.skillId) {
+  if (data?.type === 'Skill_Square_Init' && data?.view === 'detail' && data?.skillId) {
     await openSkillDetailRoute(data.skillId, false, thisTab);
   }
 };
