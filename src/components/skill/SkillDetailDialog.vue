@@ -105,13 +105,34 @@ type DetailVersionRow = {
   description: string;
   creator: string;
   department: string;
+  skillMdContent: string;
+  fileTreeText: string;
   timeValue: number;
   index: number;
+};
+type DetailCompareFileStatus = 'added' | 'deleted' | 'modified' | 'unchanged';
+type DetailCompareFile = {
+  key: string;
+  path: string;
+  name: string;
+  status: DetailCompareFileStatus;
+  content: string;
+  oldContent: string;
+};
+type DetailCompareLine = {
+  key: string;
+  oldLineNumber: number | string;
+  newLineNumber: number | string;
+  text: string;
+  status: DetailCompareFileStatus | 'normal';
 };
 
 const detailContentTab = ref<DetailContentTab>('detail');
 const detailVersionSubTab = ref<DetailVersionSubTab>('list');
 const detailVersionExpandedMap = ref<Record<string, boolean>>({});
+const detailCompareVersionKey = ref('');
+const detailCompareFileIndex = ref(0);
+const detailCompareFileMenuOpen = ref(false);
 
 function isDetailRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -152,6 +173,16 @@ function formatDetailVersionDate(value: string): string {
   const month = String(parsed.getMonth() + 1).padStart(2, '0');
   const day = String(parsed.getDate()).padStart(2, '0');
   return `${year}/${month}/${day}`;
+}
+
+function normalizeDetailFileTreeText(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+  return String(value ?? '').trim();
 }
 
 const detailVersionRows = computed<DetailVersionRow[]>(() => {
@@ -207,6 +238,15 @@ const detailVersionRows = computed<DetailVersionRow[]>(() => {
           'publishName',
           'publish_name',
         ]),
+        skillMdContent: readDetailString(record, [
+          'skillMdContent',
+          'skillMdText',
+          'skillMd',
+          'markdown',
+        ]),
+        fileTreeText: normalizeDetailFileTreeText(
+          record.fileTree ?? record.fileTreeText ?? record.fileTreePaths,
+        ),
         timeValue: detailVersionTimeValue(updatedAt),
         index,
       };
@@ -287,13 +327,15 @@ function parseDetailFileTreeLine(
   };
 }
 
-const detailFileRows = computed(() => {
+function detailRowsFromFileTreeText(text: string): DetailFileTreeRow[] {
   const stack: string[] = [];
-  return props.fileTreeText
+  return String(text ?? '')
     .split(/\r?\n/)
     .map((line, index) => parseDetailFileTreeLine(line, index, stack))
     .filter((row): row is DetailFileTreeRow => Boolean(row));
-});
+}
+
+const detailFileRows = computed(() => detailRowsFromFileTreeText(props.fileTreeText));
 
 const defaultDetailFileRow = computed(() => {
   return (
@@ -317,6 +359,195 @@ const selectedDetailFileContent = computed(() => {
   const selectedName = selectedDetailFileRow.value?.label.replace(/\/$/, '').toLowerCase();
   return selectedName === 'skill.md' ? props.skillMdText : '';
 });
+
+function detailVersionFileTreeText(row: DetailVersionRow | null, isLatest: boolean): string {
+  return row?.fileTreeText || (isLatest ? props.fileTreeText : props.fileTreeText);
+}
+
+function detailVersionSkillMdText(row: DetailVersionRow | null, isLatest: boolean): string {
+  return row?.skillMdContent || (isLatest ? props.skillMdText : props.skillMdText);
+}
+
+function detailCompareFileName(path: string): string {
+  return path.split('/').filter(Boolean).at(-1) || path || '-';
+}
+
+function detailCompareFileStatusLabel(status: DetailCompareFileStatus): string {
+  const labels: Record<DetailCompareFileStatus, string> = {
+    added: '新增',
+    deleted: '删除',
+    modified: '修改',
+    unchanged: '未变',
+  };
+  return labels[status];
+}
+
+const detailCompareLatestVersion = computed(() => detailVersionRows.value[0] ?? null);
+const detailCompareHistoryVersions = computed(() => detailVersionRows.value.slice(1));
+const selectedDetailCompareVersion = computed(() => {
+  return (
+    detailCompareHistoryVersions.value.find((row) => row.key === detailCompareVersionKey.value) ??
+    detailCompareHistoryVersions.value[0] ??
+    null
+  );
+});
+const detailCompareLatestVersionLabel = computed(
+  () => detailCompareLatestVersion.value?.version || '-',
+);
+const detailCompareHistoryVersionLabel = computed(
+  () => selectedDetailCompareVersion.value?.version || '-',
+);
+const detailCompareRelationLabel = computed(
+  () => `${detailCompareHistoryVersionLabel.value} = ${detailCompareLatestVersionLabel.value}`,
+);
+
+function makeDetailCompareFile(
+  path: string,
+  status: DetailCompareFileStatus,
+  latestContent: string,
+  previousContent: string,
+): DetailCompareFile {
+  const name = detailCompareFileName(path);
+  const lowerName = name.toLowerCase();
+  const content =
+    lowerName === 'skill.md' ? (status === 'deleted' ? previousContent : latestContent) : '';
+  const oldContent = lowerName === 'skill.md' ? previousContent : '';
+
+  return {
+    key: path,
+    path,
+    name,
+    status,
+    content,
+    oldContent,
+  };
+}
+
+const detailCompareFiles = computed<DetailCompareFile[]>(() => {
+  const latest = detailCompareLatestVersion.value;
+  const previous = selectedDetailCompareVersion.value;
+  if (!latest || !previous) {
+    return [];
+  }
+
+  const latestRows = detailRowsFromFileTreeText(detailVersionFileTreeText(latest, true)).filter(
+    (row) => !row.isDirectory,
+  );
+  const previousRows = detailRowsFromFileTreeText(
+    detailVersionFileTreeText(previous, false),
+  ).filter((row) => !row.isDirectory);
+  const latestPaths = new Set(latestRows.map((row) => row.path));
+  const previousPaths = new Set(previousRows.map((row) => row.path));
+  const allPaths = Array.from(new Set([...latestPaths, ...previousPaths]));
+  const latestSkillMd = detailVersionSkillMdText(latest, true);
+  const previousSkillMd = detailVersionSkillMdText(previous, false);
+
+  return allPaths.map((path) => {
+    const inLatest = latestPaths.has(path);
+    const inPrevious = previousPaths.has(path);
+    let status: DetailCompareFileStatus = 'unchanged';
+    if (inLatest && !inPrevious) {
+      status = 'added';
+    } else if (!inLatest && inPrevious) {
+      status = 'deleted';
+    } else if (
+      detailCompareFileName(path).toLowerCase() === 'skill.md' &&
+      latestSkillMd &&
+      previousSkillMd &&
+      latestSkillMd !== previousSkillMd
+    ) {
+      status = 'modified';
+    }
+    return makeDetailCompareFile(path, status, latestSkillMd, previousSkillMd);
+  });
+});
+
+const detailCompareCurrentFileIndex = computed(() => {
+  if (detailCompareFiles.value.length === 0) {
+    return -1;
+  }
+  return Math.min(Math.max(detailCompareFileIndex.value, 0), detailCompareFiles.value.length - 1);
+});
+const detailCompareCurrentFile = computed(() => {
+  const index = detailCompareCurrentFileIndex.value;
+  return index >= 0 ? (detailCompareFiles.value[index] ?? null) : null;
+});
+const detailCompareFilePositionLabel = computed(() => {
+  const total = detailCompareFiles.value.length;
+  const index = detailCompareCurrentFileIndex.value;
+  return total > 0 && index >= 0 ? `${index + 1} of ${total} files` : '0 of 0 files';
+});
+const detailCompareCanGoPrevious = computed(() => detailCompareCurrentFileIndex.value > 0);
+const detailCompareCanGoNext = computed(
+  () =>
+    detailCompareCurrentFileIndex.value >= 0 &&
+    detailCompareCurrentFileIndex.value < detailCompareFiles.value.length - 1,
+);
+
+const detailCompareStats = computed(() => {
+  const files = detailCompareFiles.value;
+  const count = (status: DetailCompareFileStatus) =>
+    files.filter((file) => file.status === status).length;
+  return [
+    { key: 'added', label: '新增', count: count('added') },
+    { key: 'deleted', label: '删除', count: count('deleted') },
+    { key: 'modified', label: '修改', count: count('modified') },
+    { key: 'unchanged', label: '未变', count: count('unchanged') },
+  ];
+});
+
+const detailCompareCurrentFileLines = computed<DetailCompareLine[]>(() => {
+  const file = detailCompareCurrentFile.value;
+  if (!file) {
+    return [];
+  }
+
+  const content = file.content || '暂无可预览内容';
+  const oldLines = file.oldContent.split(/\r?\n/);
+  return content.split(/\r?\n/).map((text, index) => {
+    let status: DetailCompareLine['status'] = 'normal';
+    if (file.status === 'added' || file.status === 'deleted') {
+      status = file.status;
+    } else if (file.status === 'modified' && oldLines[index] !== text) {
+      status = 'modified';
+    }
+    return {
+      key: `${file.key}-${index}`,
+      oldLineNumber: file.status === 'added' ? '' : index + 1,
+      newLineNumber: file.status === 'deleted' ? '' : index + 1,
+      text,
+      status,
+    };
+  });
+});
+
+function onDetailCompareVersionChange(event: Event): void {
+  const value = (event.target as HTMLSelectElement | null)?.value ?? '';
+  detailCompareVersionKey.value = value;
+  detailCompareFileIndex.value = 0;
+  detailCompareFileMenuOpen.value = false;
+}
+
+function changeDetailCompareFile(offset: number): void {
+  const nextIndex = detailCompareCurrentFileIndex.value + offset;
+  if (nextIndex < 0 || nextIndex >= detailCompareFiles.value.length) {
+    return;
+  }
+  detailCompareFileIndex.value = nextIndex;
+  detailCompareFileMenuOpen.value = false;
+}
+
+function toggleDetailCompareFileMenu(): void {
+  if (detailCompareFiles.value.length === 0) {
+    return;
+  }
+  detailCompareFileMenuOpen.value = !detailCompareFileMenuOpen.value;
+}
+
+function selectDetailCompareFile(index: number): void {
+  detailCompareFileIndex.value = index;
+  detailCompareFileMenuOpen.value = false;
+}
 
 function selectDetailFile(row: DetailFileTreeRow): void {
   if (row.isDirectory) {
@@ -702,7 +933,165 @@ onBeforeUnmount(() => {
                 </li>
               </ol>
             </template>
-            <div v-else class="detail-version-empty">暂无版本对比</div>
+            <div v-else class="detail-compare-panel">
+              <div class="detail-compare-version-row">
+                <div class="detail-compare-version-field">
+                  <span class="detail-compare-version-label">最新版本</span>
+                  <strong class="detail-compare-version-value">
+                    {{ detailCompareLatestVersionLabel }}
+                  </strong>
+                </div>
+                <label class="detail-compare-version-field">
+                  <span class="detail-compare-version-label">往期版本</span>
+                  <span class="detail-compare-select-wrap">
+                    <select
+                      class="detail-compare-version-select"
+                      :value="selectedDetailCompareVersion?.key || ''"
+                      @change="onDetailCompareVersionChange"
+                    >
+                      <option v-if="detailCompareHistoryVersions.length === 0" value="">
+                        暂无历史版本
+                      </option>
+                      <option
+                        v-for="versionItem in detailCompareHistoryVersions"
+                        :key="versionItem.key"
+                        :value="versionItem.key"
+                      >
+                        {{ versionItem.version || '-' }}
+                      </option>
+                    </select>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="m4 6 4 4 4-4"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                </label>
+              </div>
+
+              <div class="detail-compare-stats">
+                <article
+                  v-for="stat in detailCompareStats"
+                  :key="stat.key"
+                  class="detail-compare-stat"
+                  :class="'is-' + stat.key"
+                >
+                  <strong>{{ stat.count }}</strong>
+                  <span>{{ stat.label }}</span>
+                </article>
+              </div>
+
+              <div class="detail-compare-file-switch">
+                <button
+                  type="button"
+                  class="detail-compare-file-arrow"
+                  :disabled="!detailCompareCanGoPrevious"
+                  aria-label="Previous file"
+                  @click="changeDetailCompareFile(-1)"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="m10 4-4 4 4 4"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+                <div class="detail-compare-file-picker" @click.stop>
+                  <button
+                    type="button"
+                    class="detail-compare-file-current"
+                    :disabled="detailCompareFiles.length === 0"
+                    @click="toggleDetailCompareFileMenu"
+                  >
+                    <span
+                      v-if="detailCompareCurrentFile"
+                      class="detail-compare-file-status"
+                      :class="'is-' + detailCompareCurrentFile.status"
+                    >
+                      {{ detailCompareFileStatusLabel(detailCompareCurrentFile.status) }}
+                    </span>
+                    <span class="detail-compare-file-name">
+                      {{ detailCompareCurrentFile?.name || '-' }}
+                    </span>
+                    <span class="detail-compare-file-count">
+                      {{ detailCompareFilePositionLabel }}
+                    </span>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="m4 6 4 4 4-4"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <div v-if="detailCompareFileMenuOpen" class="detail-compare-file-menu">
+                    <button
+                      v-for="(fileItem, fileIndex) in detailCompareFiles"
+                      :key="fileItem.key"
+                      type="button"
+                      class="detail-compare-file-option"
+                      :class="{ active: fileIndex === detailCompareCurrentFileIndex }"
+                      @click="selectDetailCompareFile(fileIndex)"
+                    >
+                      <span class="detail-compare-file-status" :class="'is-' + fileItem.status">
+                        {{ detailCompareFileStatusLabel(fileItem.status) }}
+                      </span>
+                      <span>{{ fileItem.name }}</span>
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="detail-compare-file-arrow"
+                  :disabled="!detailCompareCanGoNext"
+                  aria-label="Next file"
+                  @click="changeDetailCompareFile(1)"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="m6 4 4 4-4 4"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <section class="detail-compare-content">
+                <header class="detail-compare-content-head">
+                  <strong>文件内容</strong>
+                  <span>{{ detailCompareRelationLabel }}</span>
+                </header>
+                <div class="detail-compare-code-wrap">
+                  <div v-if="!detailCompareCurrentFile" class="detail-version-empty">
+                    暂无可对比文件
+                  </div>
+                  <div v-else class="detail-compare-code">
+                    <div
+                      v-for="line in detailCompareCurrentFileLines"
+                      :key="line.key"
+                      class="detail-compare-code-line"
+                      :class="'is-' + line.status"
+                    >
+                      <span class="detail-compare-line-number">{{ line.oldLineNumber }}</span>
+                      <span class="detail-compare-line-number">{{ line.newLineNumber }}</span>
+                      <code>{{ line.text || ' ' }}</code>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
           </section>
           <template v-else>
             <aside class="detail-file-panel">
@@ -1718,6 +2107,316 @@ onBeforeUnmount(() => {
 
 .detail-version-timeline-item.is-expanded .detail-version-toggle svg {
   transform: rotate(180deg);
+}
+
+.detail-compare-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.detail-compare-version-row {
+  display: flex;
+  align-items: center;
+  gap: 56px;
+}
+
+.detail-compare-version-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detail-compare-version-label {
+  color: #94a3b8;
+  font-weight: 750;
+}
+
+.detail-compare-version-value {
+  color: #334155;
+  font-weight: 900;
+}
+
+.detail-compare-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.detail-compare-select-wrap svg {
+  position: absolute;
+  right: 14px;
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.detail-compare-version-select {
+  min-width: 108px;
+  height: 44px;
+  padding: 0 38px 0 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-weight: 750;
+  appearance: none;
+  cursor: pointer;
+}
+
+.detail-compare-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-compare-stat {
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.detail-compare-stat strong {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.detail-compare-stat span {
+  color: #94a3b8;
+}
+
+.detail-compare-stat.is-added strong {
+  color: #059669;
+}
+
+.detail-compare-stat.is-deleted strong {
+  color: #dc2626;
+}
+
+.detail-compare-stat.is-modified strong {
+  color: #d97706;
+}
+
+.detail-compare-stat.is-unchanged strong {
+  color: #64748b;
+}
+
+.detail-compare-file-switch {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-compare-file-arrow {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.detail-compare-file-arrow:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.detail-compare-file-arrow svg {
+  width: 18px;
+  height: 18px;
+}
+
+.detail-compare-file-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.detail-compare-file-current {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+.detail-compare-file-current:disabled {
+  cursor: not-allowed;
+}
+
+.detail-compare-file-current > svg {
+  width: 16px;
+  height: 16px;
+  color: #94a3b8;
+}
+
+.detail-compare-file-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.detail-compare-file-status.is-added {
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.detail-compare-file-status.is-deleted {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.detail-compare-file-status.is-modified {
+  color: #b45309;
+  background: #fffbeb;
+}
+
+.detail-compare-file-status.is-unchanged {
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.detail-compare-file-name {
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-compare-file-count {
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.detail-compare-file-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 10;
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+}
+
+.detail-compare-file-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+.detail-compare-file-option:hover,
+.detail-compare-file-option.active {
+  background: #f8fafc;
+}
+
+.detail-compare-content {
+  min-height: 360px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.detail-compare-content-head {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px;
+  border-bottom: 1px solid #eef2f7;
+  color: #334155;
+}
+
+.detail-compare-content-head span {
+  color: #a1a1aa;
+  font-weight: 750;
+}
+
+.detail-compare-code-wrap {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.detail-compare-code {
+  min-width: 760px;
+  padding: 8px 0;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.detail-compare-code-line {
+  display: grid;
+  grid-template-columns: 44px 44px minmax(0, 1fr);
+  min-height: 24px;
+}
+
+.detail-compare-code-line.is-added {
+  background: #ecfdf5;
+}
+
+.detail-compare-code-line.is-deleted {
+  background: #fef2f2;
+}
+
+.detail-compare-code-line.is-modified {
+  background: #fffbeb;
+}
+
+.detail-compare-line-number {
+  color: #a1a1aa;
+  text-align: right;
+  padding: 0 10px;
+  user-select: none;
+}
+
+.detail-compare-code-line code {
+  min-width: 0;
+  padding: 0 18px;
+  color: #111827;
+  white-space: pre;
 }
 
 .detail-version-empty {
