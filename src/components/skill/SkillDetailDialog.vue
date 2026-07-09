@@ -94,6 +94,149 @@ const showPageActionCard = computed(
       (!props.aiEvolution && props.showVersionManage)),
 );
 
+type DetailContentTab = 'detail' | 'versions';
+type DetailVersionSubTab = 'list' | 'compare';
+type DetailVersionRow = {
+  key: string;
+  version: string;
+  updatedAt: string;
+  updatedAtLabel: string;
+  level: string;
+  description: string;
+  creator: string;
+  department: string;
+  timeValue: number;
+  index: number;
+};
+
+const detailContentTab = ref<DetailContentTab>('detail');
+const detailVersionSubTab = ref<DetailVersionSubTab>('list');
+const detailVersionExpandedMap = ref<Record<string, boolean>>({});
+
+function isDetailRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readDetailString(source: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== null && value !== undefined) {
+      const text = String(value).trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+  return '';
+}
+
+function detailVersionTimeValue(value: string): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value.replace(/-/g, '/'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatDetailVersionDate(value: string): string {
+  if (!value) {
+    return '';
+  }
+
+  const parsed = new Date(value.replace(/-/g, '/'));
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}/${month}/${day}`;
+}
+
+const detailVersionRows = computed<DetailVersionRow[]>(() => {
+  const candidates = [
+    props.skill?.versions,
+    props.skill?.versionHistory,
+    props.skill?.versionList,
+    props.skill?.versionDetails,
+  ];
+  const sourceList = candidates.find((item): item is unknown[] => Array.isArray(item)) ?? [];
+  const skillLevel = readDetailString(props.skill, ['level', 'status']);
+  const skillCreator = readDetailString(props.skill, ['createdBy', 'author', 'publisher']);
+
+  return sourceList
+    .map((item, index) => {
+      const record = isDetailRecord(item) ? item : {};
+      const updatedAt = readDetailString(record, [
+        'updatedAt',
+        'lastUpdatedAt',
+        'createdAt',
+        'publishTime',
+        'releasedAt',
+      ]);
+      const version = readDetailString(record, ['version', 'currentVersion']);
+      const description = readDetailString(record, [
+        'description',
+        'versionDescription',
+        'releaseNote',
+        'releaseNotes',
+        'changeLog',
+        'changelog',
+        'remark',
+        'summary',
+        'note',
+      ]);
+
+      return {
+        key: String(version || 'version') + '-' + String(updatedAt || index),
+        version,
+        updatedAt,
+        updatedAtLabel: formatDetailVersionDate(updatedAt),
+        level: readDetailString(record, ['level', 'status']) || skillLevel,
+        description,
+        creator:
+          readDetailString(record, ['createdBy', 'creator', 'author', 'publisher']) || skillCreator,
+        department: readDetailString(record, [
+          'department',
+          'deptName',
+          'team',
+          'orgName',
+          'organization',
+          'organizationName',
+          'publishName',
+          'publish_name',
+        ]),
+        timeValue: detailVersionTimeValue(updatedAt),
+        index,
+      };
+    })
+    .sort((a, b) => b.timeValue - a.timeValue || a.index - b.index);
+});
+
+function changeDetailContentTab(tab: DetailContentTab): void {
+  detailContentTab.value = tab;
+}
+
+function changeDetailVersionSubTab(tab: DetailVersionSubTab): void {
+  detailVersionSubTab.value = tab;
+}
+
+function detailVersionOwnerText(row: DetailVersionRow): string {
+  return [row.creator, row.department].filter(Boolean).join('    ') || '-';
+}
+
+function isDetailVersionExpanded(row: DetailVersionRow, index: number): boolean {
+  return detailVersionExpandedMap.value[row.key] ?? index === 0;
+}
+
+function toggleDetailVersion(row: DetailVersionRow, index: number): void {
+  detailVersionExpandedMap.value = {
+    ...detailVersionExpandedMap.value,
+    [row.key]: !isDetailVersionExpanded(row, index),
+  };
+}
+
 type DetailFileTreeRow = {
   key: string;
   label: string;
@@ -305,7 +448,9 @@ onBeforeUnmount(() => {
             </div>
             <div class="detail-title-copy">
               <h2 id="skill-detail-title">
-                {{ isPageMode ? detailTitle : previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情' }}
+                {{
+                  isPageMode ? detailTitle : previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情'
+                }}
               </h2>
               <p v-if="isPageMode && detailDescription" class="detail-description">
                 {{ detailDescription }}
@@ -322,13 +467,11 @@ onBeforeUnmount(() => {
             <span v-if="!previewOnly" class="detail-pill pill-category">{{
               skill.categoryGroupName
             }}</span>
-            <span v-if="isPageMode && detailRating" class="detail-pill">{{ detailRating }} 评分</span>
+            <span v-if="isPageMode && detailRating" class="detail-pill"
+              >{{ detailRating }} 评分</span
+            >
             <template v-if="isPageMode">
-              <span
-                v-for="badge in detailBadges"
-                :key="`badge-${badge}`"
-                class="detail-pill"
-              >
+              <span v-for="badge in detailBadges" :key="`badge-${badge}`" class="detail-pill">
                 {{ badge }}
               </span>
               <span v-for="tag in detailTags" :key="`tag-${tag}`" class="detail-pill">
@@ -414,12 +557,39 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="isPageMode" class="detail-page-tabs" role="tablist" aria-label="Skill detail sections">
-          <span class="detail-page-tab active" role="tab" aria-selected="true">详情</span>
+        <div
+          v-if="isPageMode"
+          class="detail-page-tabs"
+          role="tablist"
+          aria-label="Skill detail sections"
+        >
+          <button
+            type="button"
+            class="detail-page-tab"
+            :class="{ active: detailContentTab === 'detail' }"
+            role="tab"
+            :aria-selected="detailContentTab === 'detail'"
+            @click="changeDetailContentTab('detail')"
+          >
+            详情
+          </button>
+          <button
+            type="button"
+            class="detail-page-tab"
+            :class="{ active: detailContentTab === 'versions' }"
+            role="tab"
+            :aria-selected="detailContentTab === 'versions'"
+            @click="changeDetailContentTab('versions')"
+          >
+            版本
+          </button>
         </div>
 
         <div class="detail-main">
-          <section v-if="isPageMode" class="detail-file-panel detail-file-panel--browser">
+          <section
+            v-if="isPageMode && detailContentTab === 'detail'"
+            class="detail-file-panel detail-file-panel--browser"
+          >
             <div class="detail-panel-title">文件结构</div>
             <div class="detail-file-browser">
               <div class="detail-file-tree-pane" aria-label="文件树">
@@ -446,6 +616,93 @@ onBeforeUnmount(() => {
                 <div v-else class="detail-file-content-empty">暂无可预览内容</div>
               </article>
             </div>
+          </section>
+          <section v-else-if="isPageMode" class="detail-version-panel">
+            <div class="detail-version-subtabs" role="tablist" aria-label="版本内容">
+              <button
+                type="button"
+                class="detail-version-subtab"
+                :class="{ active: detailVersionSubTab === 'list' }"
+                role="tab"
+                :aria-selected="detailVersionSubTab === 'list'"
+                @click="changeDetailVersionSubTab('list')"
+              >
+                版本列表
+              </button>
+              <button
+                type="button"
+                class="detail-version-subtab"
+                :class="{ active: detailVersionSubTab === 'compare' }"
+                role="tab"
+                :aria-selected="detailVersionSubTab === 'compare'"
+                @click="changeDetailVersionSubTab('compare')"
+              >
+                版本对比
+              </button>
+            </div>
+
+            <template v-if="detailVersionSubTab === 'list'">
+              <div v-if="detailVersionRows.length === 0" class="detail-version-empty">
+                暂无版本历史
+              </div>
+              <ol v-else class="detail-version-timeline">
+                <li
+                  v-for="(versionItem, versionIndex) in detailVersionRows"
+                  :key="versionItem.key"
+                  class="detail-version-timeline-item"
+                  :class="{
+                    'is-latest': versionIndex === 0,
+                    'is-expanded': isDetailVersionExpanded(versionItem, versionIndex),
+                  }"
+                >
+                  <span class="detail-version-marker" aria-hidden="true"></span>
+                  <article class="detail-version-node">
+                    <div class="detail-version-row">
+                      <div class="detail-version-content">
+                        <div class="detail-version-title-row">
+                          <strong class="detail-version-number">{{
+                            versionItem.version || '-'
+                          }}</strong>
+                          <span v-if="versionIndex === 0" class="detail-version-latest">最新</span>
+                          <span class="detail-version-level">{{ versionItem.level || '-' }}</span>
+                        </div>
+                        <div
+                          v-if="isDetailVersionExpanded(versionItem, versionIndex)"
+                          class="detail-version-extra"
+                        >
+                          <p class="detail-version-desc">{{ versionItem.description || '-' }}</p>
+                          <p class="detail-version-owner">
+                            {{ detailVersionOwnerText(versionItem) }}
+                          </p>
+                        </div>
+                      </div>
+                      <div class="detail-version-side">
+                        <time class="detail-version-date">{{
+                          versionItem.updatedAtLabel || versionItem.updatedAt || '-'
+                        }}</time>
+                        <button
+                          type="button"
+                          class="detail-version-toggle"
+                          :aria-expanded="isDetailVersionExpanded(versionItem, versionIndex)"
+                          @click="toggleDetailVersion(versionItem, versionIndex)"
+                        >
+                          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path
+                              d="m4 6 4 4 4-4"
+                              stroke="currentColor"
+                              stroke-width="1.6"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                </li>
+              </ol>
+            </template>
+            <div v-else class="detail-version-empty">暂无版本对比</div>
           </section>
           <template v-else>
             <aside class="detail-file-panel">
@@ -659,9 +916,9 @@ onBeforeUnmount(() => {
 }
 
 .detail-pill.scope-personal {
-  background: #f1f4f8;
-  color: #3f5f7c;
-  border-color: #edf1f5;
+  color: #2f7df6;
+  background: #eef6ff;
+  border-color: #d8eaff;
   font-weight: 800;
 }
 
@@ -1061,7 +1318,6 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-
 .skill-detail-dialog--page .detail-toolbar {
   display: contents;
   padding: 0;
@@ -1120,9 +1376,14 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   min-height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #475569;
+  font-family: inherit;
   font-size: 14px;
   font-weight: 850;
+  cursor: pointer;
 }
 
 .detail-page-tab.active {
@@ -1257,6 +1518,217 @@ onBeforeUnmount(() => {
   font: inherit;
 }
 
+.detail-version-panel {
+  width: 100%;
+}
+
+.detail-version-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  margin-bottom: 28px;
+}
+
+.detail-version-subtab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.detail-version-subtab.active {
+  color: #15171d;
+}
+
+.detail-version-subtab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 999px;
+  background: #15171d;
+}
+
+.detail-version-timeline {
+  position: relative;
+  width: calc(100vw - 160px);
+  margin: 0;
+  padding: 0 0 0 34px;
+  list-style: none;
+}
+
+.detail-version-timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 14px;
+  bottom: 30px;
+  width: 1px;
+  background: #e5e7eb;
+}
+
+.detail-version-timeline-item {
+  position: relative;
+  min-width: 0;
+  padding-bottom: 32px;
+}
+
+.detail-version-timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.detail-version-marker {
+  position: absolute;
+  left: -34px;
+  top: 7px;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.detail-version-timeline-item.is-latest .detail-version-marker {
+  border-color: #1f1f23;
+  background: #1f1f23;
+}
+
+.detail-version-node {
+  min-width: 0;
+}
+
+.detail-version-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px;
+}
+
+.detail-version-content {
+  min-width: 0;
+}
+
+.detail-version-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 24px;
+}
+
+.detail-version-number {
+  color: #15171d;
+  font-weight: 900;
+}
+
+.detail-version-latest {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #1f1f23;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.detail-version-level {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #e4d7ff;
+  border-radius: 999px;
+  color: #7c3aed;
+  background: #f5f0ff;
+  font-weight: 750;
+}
+
+.detail-version-extra {
+  margin-top: 12px;
+}
+
+.detail-version-desc,
+.detail-version-owner {
+  margin: 0;
+  line-height: 1.58;
+}
+
+.detail-version-desc {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.detail-version-owner {
+  margin-top: 4px;
+  font-size: 16px;
+  color: #64748b;
+}
+
+.detail-version-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #a1a1aa;
+  white-space: nowrap;
+}
+
+.detail-version-date {
+  font-size: 14px;
+  color: #a1a1aa;
+}
+
+.detail-version-toggle {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #a1a1aa;
+  cursor: pointer;
+}
+
+.detail-version-toggle:hover {
+  color: #15171d;
+  background: #f8fafc;
+}
+
+.detail-version-toggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.16s ease;
+}
+
+.detail-version-timeline-item.is-expanded .detail-version-toggle svg {
+  transform: rotate(180deg);
+}
+
+.detail-version-empty {
+  padding: 18px;
+  border: 1px solid #e9edf3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #94a3b8;
+  box-shadow: 0 8px 24px rgba(22, 34, 51, 0.05);
+}
+
 @media (max-width: 1100px) {
   .skill-detail-dialog--page {
     grid-template-columns: 1fr;
@@ -1290,7 +1762,6 @@ onBeforeUnmount(() => {
     height: 48px;
     font-size: 22px;
   }
-
 
   .detail-page-tabs {
     gap: 28px;
