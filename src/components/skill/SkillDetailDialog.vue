@@ -415,7 +415,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="isPageMode" class="detail-page-tabs" role="tablist" aria-label="Skill detail sections">
-          <span class="detail-page-tab active" role="tab" aria-selected="true">文件结构</span>
+          <span class="detail-page-tab active" role="tab" aria-selected="true">详情</span>
         </div>
 
         <div class="detail-main">
@@ -1020,15 +1020,16 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) max-content;
   align-content: start;
   align-items: start;
-  column-gap: 64px;
+  column-gap: clamp(32px, 4vw, 72px);
   row-gap: 0;
-  padding: 36px clamp(24px, 8vw, 96px) 48px;
+  padding: 36px clamp(24px, 4vw, 80px) 48px;
   overflow: auto;
   background: #ffffff;
 }
 
 .skill-detail-dialog--page .detail-head {
   grid-column: 1;
+  grid-row: 1;
   flex-direction: column;
   justify-content: flex-start;
   gap: 22px;
@@ -1068,16 +1069,18 @@ onBeforeUnmount(() => {
 
 .skill-detail-dialog--page .detail-tags {
   grid-column: 1;
+  grid-row: 2;
   align-items: center;
   margin-top: 14px;
 }
 
 .skill-detail-dialog--page .detail-actions {
   grid-column: 2;
-  grid-row: 1 / span 4;
+  grid-row: 2;
   position: sticky;
-  top: 36px;
+  top: 112px;
   justify-self: end;
+  align-self: center;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1103,6 +1106,8 @@ onBeforeUnmount(() => {
 
 .detail-page-tabs {
   grid-column: 1;
+  grid-row: 3;
+  width: calc(100vw - 120px);
   display: flex;
   align-items: center;
   gap: 56px;
@@ -1137,6 +1142,8 @@ onBeforeUnmount(() => {
 
 .skill-detail-dialog--page .detail-main {
   grid-column: 1;
+  grid-row: 4;
+  width: calc(100vw - 120px);
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -1157,6 +1164,7 @@ onBeforeUnmount(() => {
 
 .skill-detail-dialog--page .detail-file-panel {
   order: initial;
+  width: 100%;
   overflow: hidden;
 }
 
