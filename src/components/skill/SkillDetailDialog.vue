@@ -49,6 +49,142 @@ const detailMoreWrapRef = ref<HTMLElement | null>(null);
 const detailMoreMenuOpen = ref(false);
 let detailMoreMenuListenersBound = false;
 const isPageMode = computed(() => props.displayMode === 'page');
+const detailTitle = computed(() =>
+  String(props.skill?.name ?? props.skill?.skill_id ?? 'Skill').trim(),
+);
+const detailIcon = computed(() => {
+  const icon = String(props.skill?.icon ?? '').trim();
+  const source = icon || detailTitle.value;
+  return Array.from(source)[0]?.toUpperCase() || 'S';
+});
+const detailDescription = computed(() => String(props.skill?.description ?? '').trim());
+const detailRating = computed(() => {
+  const raw = Number(props.skill?.rating);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return '';
+  }
+  return raw.toFixed(1).replace(/\.0$/, '');
+});
+const detailTags = computed(() => {
+  const raw = props.skill?.tags;
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item).trim()).filter(Boolean);
+  }
+  return String(raw ?? '')
+    .split(/[,\n，、|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+});
+const detailBadges = computed(() => {
+  const raw = props.skill?.qualityBadges;
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item).trim()).filter(Boolean);
+  }
+  return String(raw ?? '')
+    .split(/[,\n，、|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+});
+const showPageActionCard = computed(
+  () =>
+    !props.previewOnly &&
+    (props.showTrySkill ||
+      props.showDownload ||
+      props.showDelete ||
+      (!props.aiEvolution && props.showVersionManage)),
+);
+
+type DetailFileTreeRow = {
+  key: string;
+  label: string;
+  path: string;
+  depth: number;
+  isDirectory: boolean;
+  displayText: string;
+};
+
+const selectedDetailFilePath = ref('');
+
+function parseDetailFileTreeLine(
+  line: string,
+  index: number,
+  stack: string[],
+): DetailFileTreeRow | null {
+  const raw = String(line ?? '');
+  if (!raw.trim()) {
+    return null;
+  }
+
+  let depth = 0;
+  let offset = 0;
+  while (raw.slice(offset, offset + 3) === '   ' || raw.slice(offset, offset + 3) === '│  ') {
+    depth += 1;
+    offset += 3;
+  }
+
+  const labelWithMarker = raw
+    .slice(offset)
+    .replace(/^[├└][─\s]*/u, '')
+    .trim();
+  const label = labelWithMarker || raw.trim();
+  const isDirectory = label.endsWith('/');
+  const segment = label.replace(/\/$/, '');
+
+  stack.length = depth;
+  stack[depth] = segment;
+  const path = stack.slice(0, depth + 1).join('/');
+
+  return {
+    key: `${index}-${path}`,
+    label,
+    path,
+    depth,
+    isDirectory,
+    displayText: raw.trim(),
+  };
+}
+
+const detailFileRows = computed(() => {
+  const stack: string[] = [];
+  return props.fileTreeText
+    .split(/\r?\n/)
+    .map((line, index) => parseDetailFileTreeLine(line, index, stack))
+    .filter((row): row is DetailFileTreeRow => Boolean(row));
+});
+
+const defaultDetailFileRow = computed(() => {
+  return (
+    detailFileRows.value.find(
+      (row) => !row.isDirectory && row.label.replace(/\/$/, '').toLowerCase() === 'skill.md',
+    ) ??
+    detailFileRows.value.find((row) => !row.isDirectory) ??
+    null
+  );
+});
+
+const selectedDetailFileRow = computed(() => {
+  return (
+    detailFileRows.value.find(
+      (row) => !row.isDirectory && row.path === selectedDetailFilePath.value,
+    ) ?? defaultDetailFileRow.value
+  );
+});
+
+const selectedDetailFileContent = computed(() => {
+  const selectedName = selectedDetailFileRow.value?.label.replace(/\/$/, '').toLowerCase();
+  return selectedName === 'skill.md' ? props.skillMdText : '';
+});
+
+function selectDetailFile(row: DetailFileTreeRow): void {
+  if (row.isDirectory) {
+    return;
+  }
+  selectedDetailFilePath.value = row.path;
+}
+
+function isDetailFileSelected(row: DetailFileTreeRow): boolean {
+  return !row.isDirectory && selectedDetailFileRow.value?.path === row.path;
+}
 
 function skillScopeLabel(s: Record<string, unknown>): string {
   const level = String(s.publish_level ?? s.level ?? s.tagOrg ?? '').trim();
@@ -155,11 +291,29 @@ onBeforeUnmount(() => {
         aria-labelledby="skill-detail-title"
       >
         <header class="detail-head">
-          <h2 id="skill-detail-title">
-            {{ previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情' }}
-          </h2>
-          <button type="button" class="detail-close" @click="emit('close')">
-            {{ closeText || (isPageMode ? '返回' : '关闭') }}
+          <nav v-if="isPageMode" class="detail-breadcrumb" aria-label="Skill 返回导航">
+            <button type="button" class="detail-breadcrumb-back" @click="emit('close')">
+              <span class="detail-breadcrumb-arrow" aria-hidden="true">←</span>
+              <span>技能</span>
+            </button>
+            <span class="detail-breadcrumb-separator" aria-hidden="true">/</span>
+            <span class="detail-breadcrumb-current">{{ detailTitle }}</span>
+          </nav>
+          <div class="detail-title-wrap">
+            <div v-if="isPageMode" class="detail-hero-icon" aria-hidden="true">
+              {{ detailIcon }}
+            </div>
+            <div class="detail-title-copy">
+              <h2 id="skill-detail-title">
+                {{ isPageMode ? detailTitle : previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情' }}
+              </h2>
+              <p v-if="isPageMode && detailDescription" class="detail-description">
+                {{ detailDescription }}
+              </p>
+            </div>
+          </div>
+          <button v-if="!isPageMode" type="button" class="detail-close" @click="emit('close')">
+            {{ closeText || '关闭' }}
           </button>
         </header>
 
@@ -168,8 +322,21 @@ onBeforeUnmount(() => {
             <span v-if="!previewOnly" class="detail-pill pill-category">{{
               skill.categoryGroupName
             }}</span>
+            <span v-if="isPageMode && detailRating" class="detail-pill">{{ detailRating }} 评分</span>
+            <template v-if="isPageMode">
+              <span
+                v-for="badge in detailBadges"
+                :key="`badge-${badge}`"
+                class="detail-pill"
+              >
+                {{ badge }}
+              </span>
+              <span v-for="tag in detailTags" :key="`tag-${tag}`" class="detail-pill">
+                {{ tag }}
+              </span>
+            </template>
 
-            <span class="detail-pill pill-id">{{ skill.name }}</span>
+            <span v-if="!isPageMode" class="detail-pill pill-id">{{ skill.name }}</span>
             <span v-if="!aiEvolution" class="detail-pill"
               >版本 {{ skill.currentVersion ?? skill.version }}</span
             >
@@ -192,7 +359,7 @@ onBeforeUnmount(() => {
               {{ skill.totalDownloads }}
             </span>
           </div>
-          <div v-if="!previewOnly" class="detail-actions">
+          <div v-if="isPageMode ? showPageActionCard : !previewOnly" class="detail-actions">
             <button
               v-if="showTrySkill"
               type="button"
@@ -247,18 +414,52 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <div v-if="isPageMode" class="detail-page-tabs" role="tablist" aria-label="Skill detail sections">
+          <span class="detail-page-tab active" role="tab" aria-selected="true">文件结构</span>
+        </div>
+
         <div class="detail-main">
-          <aside class="detail-file-panel">
+          <section v-if="isPageMode" class="detail-file-panel detail-file-panel--browser">
             <div class="detail-panel-title">文件结构</div>
-            <pre>{{ fileTreeText }}</pre>
-          </aside>
-          <article class="detail-md-panel">
-            <div class="detail-panel-title">SKILL.md</div>
-            <div class="detail-md-body">
-              <h3>{{ skill.name }} Skill</h3>
-              <pre>{{ skillMdText }}</pre>
+            <div class="detail-file-browser">
+              <div class="detail-file-tree-pane" aria-label="文件树">
+                <div v-if="detailFileRows.length === 0" class="detail-file-tree-empty">
+                  暂无文件结构
+                </div>
+                <div
+                  v-for="row in detailFileRows"
+                  :key="row.key"
+                  class="detail-file-tree-row"
+                  :class="{
+                    'is-directory': row.isDirectory,
+                    'is-file': !row.isDirectory,
+                    'is-selected': isDetailFileSelected(row),
+                  }"
+                  :style="{ paddingLeft: `${16 + row.depth * 18}px` }"
+                  @click="selectDetailFile(row)"
+                >
+                  {{ row.displayText }}
+                </div>
+              </div>
+              <article class="detail-file-content-pane">
+                <pre v-if="selectedDetailFileContent">{{ selectedDetailFileContent }}</pre>
+                <div v-else class="detail-file-content-empty">暂无可预览内容</div>
+              </article>
             </div>
-          </article>
+          </section>
+          <template v-else>
+            <aside class="detail-file-panel">
+              <div class="detail-panel-title">文件结构</div>
+              <pre>{{ fileTreeText }}</pre>
+            </aside>
+            <article class="detail-md-panel">
+              <div class="detail-panel-title">SKILL.md</div>
+              <div class="detail-md-body">
+                <h3>{{ skill.name }} Skill</h3>
+                <pre>{{ skillMdText }}</pre>
+              </div>
+            </article>
+          </template>
         </div>
       </section>
     </div>
@@ -752,5 +953,339 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   padding-bottom: 24px;
+}
+
+.detail-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.detail-breadcrumb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.detail-breadcrumb-arrow {
+  line-height: 1;
+}
+
+.detail-breadcrumb-separator {
+  color: inherit;
+}
+
+.detail-breadcrumb-current {
+  min-width: 0;
+  color: #64748b;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detail-title-copy {
+  min-width: 0;
+}
+
+.detail-description {
+  margin: 10px 0 0;
+  max-width: 760px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.65;
+  font-weight: 500;
+}
+
+.skill-detail-dialog--page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-content: start;
+  align-items: start;
+  column-gap: 64px;
+  row-gap: 0;
+  padding: 36px clamp(24px, 8vw, 96px) 48px;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.skill-detail-dialog--page .detail-head {
+  grid-column: 1;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 22px;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+  align-items: flex-start;
+}
+
+.skill-detail-dialog--page .detail-title-wrap {
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.detail-hero-icon {
+  width: 60px;
+  height: 60px;
+  padding: 10px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: #eef6ff;
+  color: #2f7df6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+
+.skill-detail-dialog--page .detail-toolbar {
+  display: contents;
+  padding: 0;
+}
+
+.skill-detail-dialog--page .detail-tags {
+  grid-column: 1;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.skill-detail-dialog--page .detail-actions {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  position: sticky;
+  top: 36px;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.skill-detail-dialog--page .detail-actions .detail-btn {
+  width: auto;
+  min-width: 160px;
+  justify-content: center;
+  padding-inline: 28px;
+}
+
+.skill-detail-dialog--page .detail-actions .detail-more-wrap,
+.skill-detail-dialog--page .detail-actions .detail-more-trigger {
+  width: auto;
+}
+
+.detail-page-tabs {
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  gap: 56px;
+  margin-top: 54px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.detail-page-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.detail-page-tab.active {
+  color: #15171d;
+}
+
+.detail-page-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 999px;
+  background: #15171d;
+}
+
+.skill-detail-dialog--page .detail-main {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+  margin-top: 34px;
+  padding: 0 0 24px;
+  overflow: visible;
+}
+
+.skill-detail-dialog--page .detail-md-panel {
+  order: 1;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.skill-detail-dialog--page .detail-file-panel {
+  order: initial;
+  overflow: hidden;
+}
+
+.detail-file-panel--browser {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-file-browser {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  min-height: 220px;
+}
+
+.detail-file-tree-pane {
+  padding: 14px 0;
+  border-right: 1px solid #e9edf3;
+  overflow: auto;
+}
+
+.detail-file-tree-row {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 4px 14px;
+  color: #334155;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.detail-file-tree-row.is-file {
+  cursor: pointer;
+}
+
+.detail-file-tree-row.is-file:hover {
+  background: #f8fafc;
+}
+
+.detail-file-tree-row.is-selected {
+  background: #eef6ff;
+  color: #1d4ed8;
+  box-shadow: inset 3px 0 0 #2f7df6;
+}
+
+.detail-file-content-pane {
+  min-width: 0;
+  padding: 16px 18px;
+  overflow: auto;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.58;
+}
+
+.detail-file-content-pane pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+  font: inherit;
+}
+
+.detail-file-tree-empty,
+.detail-file-content-empty {
+  padding: 14px 16px;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.skill-detail-dialog--page .detail-md-panel > .detail-panel-title {
+  display: none;
+}
+
+.skill-detail-dialog--page .detail-md-body {
+  padding: 0;
+  overflow: visible;
+}
+
+.skill-detail-dialog--page .detail-md-body h3 {
+  margin-bottom: 22px;
+}
+
+.skill-detail-dialog--page .detail-md-body pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+  font: inherit;
+}
+
+@media (max-width: 1100px) {
+  .skill-detail-dialog--page {
+    grid-template-columns: 1fr;
+    row-gap: 0;
+    padding: 24px;
+  }
+
+  .skill-detail-dialog--page .detail-actions {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    margin-top: 24px;
+  }
+
+  .detail-page-tabs {
+    margin-top: 32px;
+  }
+}
+
+@media (max-width: 640px) {
+  .skill-detail-dialog--page .detail-head {
+    flex-direction: column;
+  }
+
+  .skill-detail-dialog--page .detail-title-wrap {
+    gap: 14px;
+  }
+
+  .detail-hero-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+  }
+
+
+  .detail-page-tabs {
+    gap: 28px;
+  }
 }
 </style>
