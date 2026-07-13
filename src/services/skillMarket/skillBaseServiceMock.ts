@@ -1037,14 +1037,58 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
 
 let skillRecords: MockSkillRecord[] = getBuiltInSkills().map(toMockSkillRecord);
 
+function readReviewCenterSkillSnapshot(sid: string): Record<string, any> | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem('__review_skill_detail__' + sid);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, any>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function createReviewCenterSkillRecord(sid: string): MockSkillRecord | undefined {
+  if (!sid.startsWith('review-skill-')) {
+    return undefined;
+  }
+
+  const task = readReviewCenterSkillSnapshot(sid);
+  const record = toMockSkillRecord({
+    id: sid,
+    skill_id: sid,
+    name: task?.name ?? 'Mock Skill ' + sid,
+    description: task
+      ? 'Review center mock detail for ' + task.name
+      : 'Review center mock skill detail',
+    publishName: task?.team ?? 'Review Center Mock Team',
+    createdBy: task?.ownerUser ?? task?.ownerName ?? 'mock-reviewer',
+    deptName: task?.team ? 'Review Center/' + task.team : 'Review Center/Mock Team',
+    downloads: Number(task?.downloads ?? 0),
+    category: task?.categoryId ?? 'review',
+    icon: 'RV',
+    version: task?.version ?? '1.0.0',
+    tags: task?.tags ? task.tags.split(',').map((tag) => tag.trim()).filter(Boolean) : ['review'],
+    fileTree: sid + '/\n' + sid + '/SKILL.md\n' + sid + '/references/review-rubric.md',
+    skillMdContent: '# ' + (task?.name ?? sid) + '\n\nMock detail generated from review center task ' + sid + '.',
+  } as Skill);
+  skillRecords = [record, ...skillRecords];
+  return record;
+}
+
 function findSkill(id: string | number | undefined): MockSkillRecord | undefined {
   const sid = String(id ?? '').trim();
   if (!sid) {
     return undefined;
   }
-  return skillRecords.find(
-    (s) =>
-      s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
+  return (
+    skillRecords.find(
+      (s) =>
+        s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
+    ) ?? createReviewCenterSkillRecord(sid)
   );
 }
 

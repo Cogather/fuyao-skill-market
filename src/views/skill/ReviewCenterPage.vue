@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -36,6 +37,8 @@ const props = withDefaults(
     departmentTree: () => [],
   },
 );
+
+const router = useRouter();
 
 const rankingCards = ref<ReviewRankingCard[]>([]);
 const taskCards = reactive<ReviewTaskCard[]>([]);
@@ -834,6 +837,13 @@ const activeTask = computed(
 );
 
 const selectedSkillDetail = ref<any>({});
+const activeReviewSkillId = computed(() => {
+  const detailRecord = readRecord(selectedSkillDetail.value);
+  const skillInfoRecord = readRecord(detailRecord.skillInfo);
+  return String(
+    skillInfoRecord.skillId ?? detailRecord.skillId ?? activeTask.value?.skillId ?? '',
+  ).trim();
+});
 const activeMetrics = computed(() => {
   const task = activeTask.value;
   if (!task) {
@@ -851,6 +861,43 @@ const activeMetrics = computed(() => {
     // },
   ];
 });
+
+function openActiveSkillDetail(): void {
+  const skillId = activeReviewSkillId.value;
+  if (!skillId) {
+    showToast('无法识别当前 Skill ID');
+    return;
+  }
+
+  const task = activeTask.value;
+  if (task) {
+    const taskRecord = readRecord(task);
+    try {
+      window.localStorage.setItem(
+        '__review_skill_detail__' + skillId,
+        JSON.stringify({
+          name: task.name,
+          ownerName: task.ownerName,
+          ownerUser: task.ownerUser,
+          team: task.team,
+          downloads: task.downloads,
+          categoryId: taskRecord.categoryId,
+          tags: taskRecord.tags,
+          version: task.version,
+        }),
+      );
+    } catch {
+      // Ignore storage failures; the detail route can still load by id in real environments.
+    }
+  }
+
+  const detailUrl = router.resolve({
+    name: 'skill-detail',
+    params: { skillId },
+    query: { tab: 'review' },
+  }).href;
+  window.open(detailUrl, '_blank', 'noopener');
+}
 
 function buildRadarPoints(scale: number) {
   return aiReviewDimensions.value
@@ -1755,6 +1802,14 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="metric-row" aria-label="Skill 数据概览">
+                <button
+                  type="button"
+                  class="metric-chip metric-chip--button is-cyan"
+                  :disabled="!activeReviewSkillId"
+                  @click="openActiveSkillDetail"
+                >
+                  查看详情
+                </button>
                 <span
                   v-for="metric in activeMetrics"
                   :key="metric.label"
