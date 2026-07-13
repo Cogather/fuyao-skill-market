@@ -533,7 +533,26 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     fileTree:
       'test2-skill/\ntest2-skill/SKILL.md\ntest2-skill/deploy/helm/values.yaml\ntest2-skill/deploy/chart.yaml\ntest2-skill/ci/Jenkinsfile',
     skillMdContent:
-      '# test2（Mock 接口原文）\n\n多版本历史 + `deploy`/`ci` 目录；正文用于与 test1 区分数据源。',
+      '# test2（Mock 接口原文）\n\n' +
+      '多版本历史 + deploy/ci 目录；正文用于与 test1 区分数据源。\n\n' +
+      '## 长内容渲染压测\n\n' +
+      '这份 SKILL.md 被刻意扩展为较长内容，用于验证右侧文件内容区域在内容溢出时是否出现内部滚动条，页面主滚动是否保持自然，左侧文件树是否保持在同一自适应高度容器内。\n\n' +
+      '## 使用场景\n\n' +
+      'test2 主要模拟平台工具部发布的组织级 Skill，关注 CI/CD、日志分析、发布检查、运维巡检和监控告警这些高频工程场景。\n\n' +
+      '## 输入\n\n| 字段 | 类型 | 是否必填 | 说明 |\n| --- | --- | --- | --- |\n| repository | string | 是 | 仓库名称或仓库地址 |\n| branch | string | 是 | 当前发布分支 |\n| version | string | 是 | 目标发布版本 |\n| deployEnv | string | 否 | dev、test、stage、prod |\n\n' +
+      Array.from({ length: 32 }, (_, index) =>
+        [
+          '## 长内容段落 ' + String(index + 1).padStart(2, '0'),
+          '',
+          '这是一段用于增加纵向长度的测试内容。它模拟真实 SKILL.md 中的规则说明、排障建议、执行记录和验收观察点。右侧内容区域应该在自身容器内滚动，左侧文件树保持独立滚动能力，页面主滚动只负责整体详情页。',
+          '',
+          '- 检查 deploy/helm/values.yaml 中的资源限制、探针配置和镜像标签。',
+          '- 检查 ci/Jenkinsfile 中的测试、构建、制品上传和部署阶段。',
+          '- 输出阻断项、警告项、建议项和可追踪的证据位置。',
+          '- 验证长内容换行、内部滚动条和底部贴合表现。',
+        ].join('\n'),
+      ).join('\n\n') +
+      '\n\n## 长路径样例\n\ntest2-skill/deploy/helm/templates/platform/runtime/checkpoints/release-validation/generated/configmap-release-observer.yaml\n\n## 结束\n\n这是 test2 的长内容 mock 结尾。',
   },
   {
     skill_id: 'test3',

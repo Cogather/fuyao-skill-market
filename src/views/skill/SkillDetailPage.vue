@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
-import type { SkillDetailDto } from '../../services/skillMarket/apiTypes';
+import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
+import type { SkillDetailDto, SkillVersionListItemDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
@@ -39,6 +40,11 @@ const loading = ref(false);
 const errorText = ref('');
 const toast = ref('');
 const skillDetail = ref<Record<string, unknown> | null>(null);
+const versionPanelSkill = ref<Record<string, unknown> | null>(null);
+const versionPanelLoading = ref(false);
+const versionUnpublishing = ref<string | null>(null);
+const deletingSkillId = ref<string | null>(null);
+const versionPreviewSkill = ref<Record<string, unknown> | null>(null);
 
 const userId = computed(() => {
   const fromStore = String(skillMarketStore.userId ?? '').trim();
@@ -62,11 +68,20 @@ function routeTabFromValue(value: unknown): UserInnerTab {
 }
 
 const sourceTab = computed(() => routeTabFromValue(route.query.tab));
+const detailFromMyReleases = computed(() => sourceTab.value === 'releases');
 
 const fileTreeText = computed(() => normalizeDetailFileTreeToDisplay(skillDetail.value?.fileTree));
 const skillMdText = computed(() =>
   typeof skillDetail.value?.skillMdContent === 'string'
     ? String(skillDetail.value.skillMdContent)
+    : '',
+);
+const versionPreviewFileTreeText = computed(() =>
+  normalizeDetailFileTreeToDisplay(versionPreviewSkill.value?.fileTree),
+);
+const versionPreviewSkillMdText = computed(() =>
+  typeof versionPreviewSkill.value?.skillMdContent === 'string'
+    ? String(versionPreviewSkill.value.skillMdContent)
     : '',
 );
 
@@ -89,27 +104,249 @@ function notifyParentDetailRoute(skillId: string): void {
   );
 }
 
-function mapSkillDetailDto(dto: SkillDetailDto): Record<string, unknown> {
-  const tags = Array.isArray(dto.tags) ? dto.tags.join(',') : String(dto.tags ?? '');
-  const level = String(dto.level ?? dto.status ?? '').trim();
-  return {
-    ...dto,
-    id: String(dto.id),
-    skill_id: String(dto.id),
-    name: dto.name,
-    currentVersion: dto.version,
-    version: dto.version,
-    author: dto.author || dto.createdBy || '',
-    categoryGroupName: dto.categoryGroupName || dto.category || '',
-    tags,
-    level,
-    publish_level: level,
-    publish_name: dto.orgName || dto.author || '',
-    downloads: dto.downloads ?? 0,
-    totalDownloads: dto.downloads ?? 0,
-    fileTree: fileTreeFromDetailDto(dto.fileTree),
-    skillMdContent: typeof dto.skillMdContent === 'string' ? dto.skillMdContent : '',
+function isVersionRowDeleted(row: SkillVersionListItemDto): boolean {
+  return Number(row.deleted) === 1;
+}
+
+function versionTimeValue(row: SkillVersionListItemDto): number {
+  const raw = String(row.createdAt ?? '').trim();
+  if (!raw) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const normalized = raw.includes('T') ? raw : raw.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+function pickCurrentVersionFromRows(list: SkillVersionListItemDto[], fallback: string): string {
+  const active = list.filter((row) => !isVersionRowDeleted(row));
+  if (active.length === 0) {
+    return fallback;
+  }
+  return [...active].sort((left, right) => versionTimeValue(right) - versionTimeValue(left))[0]!
+    .version;
+}
+
+function currentDetailSkillId(): string {
+  return String(
+    skillDetail.value?.id ?? skillDetail.value?.skill_id ?? routeSkillId.value ?? '',
+  ).trim();
+}
+
+function readServiceRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function serviceSucceeded(value: unknown): boolean {
+  const record = readServiceRecord(value);
+  const meta = readServiceRecord(record.meta);
+  if (typeof meta.success === 'boolean') {
+    return meta.success;
+  }
+  const code = record.code;
+  return code === undefined || code === 0 || code === 200 || code === '0' || code === '200';
+}
+
+function serviceMessage(value: unknown, fallback: string): string {
+  const record = readServiceRecord(value);
+  const meta = readServiceRecord(record.meta);
+  const message = meta.message ?? record.message ?? record.msg;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
+async function handleVersionManage(): Promise<void> {
+  const skill = skillDetail.value;
+  const rowId = currentDetailSkillId();
+  if (!skill || !rowId) {
+    showToast('无法识别 Skill ID');
+    return;
+  }
+
+  const currentVersion = String(skill.currentVersion ?? skill.version ?? '');
+  versionPreviewSkill.value = null;
+  versionPanelLoading.value = true;
+  versionPanelSkill.value = {
+    ...skill,
+    id: rowId,
+    skill_id: rowId,
+    name: skill.name ?? skill.skill_id ?? rowId,
+    version: currentVersion,
+    versions: [],
   };
+
+  try {
+    const res = await skillBaseService.querySkillVersions(rowId);
+    if (res?.meta?.success && res.data) {
+      const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
+      versionPanelSkill.value = {
+        ...versionPanelSkill.value,
+        version: pickCurrentVersionFromRows(list, currentVersion),
+        versions: list,
+      };
+    } else {
+      showToast(res?.message || res?.meta?.message || '版本列表加载失败');
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '版本列表加载失败');
+  } finally {
+    versionPanelLoading.value = false;
+  }
+}
+
+function closeVersionPanel(): void {
+  versionPanelSkill.value = null;
+  versionPreviewSkill.value = null;
+  versionUnpublishing.value = null;
+}
+
+async function reloadVersionPanelList(): Promise<void> {
+  const panelSkill = versionPanelSkill.value;
+  if (!panelSkill) {
+    return;
+  }
+  const id = String(panelSkill.id ?? panelSkill.skill_id ?? currentDetailSkillId()).trim();
+  if (!id) {
+    return;
+  }
+
+  versionPanelLoading.value = true;
+  try {
+    const res = await skillBaseService.querySkillVersions(id);
+    if (res?.meta?.success && res.data) {
+      const list = Array.isArray(res.data) ? (res.data as SkillVersionListItemDto[]) : [];
+      versionPanelSkill.value = {
+        ...panelSkill,
+        version: pickCurrentVersionFromRows(list, String(panelSkill.version ?? '')),
+        versions: list,
+      };
+    } else {
+      showToast(res?.message || res?.meta?.message || '版本列表刷新失败');
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '版本列表刷新失败');
+  } finally {
+    versionPanelLoading.value = false;
+  }
+}
+
+function onVersionManageBack(): void {
+  closeVersionPanel();
+}
+
+function versionPreviewStorageKey(skillId: string, version: string): string {
+  return `__detail_vprev__${skillId}__${version}`;
+}
+
+function onVersionViewDetail(row: SkillVersionListItemDto): void {
+  const panelSkill = versionPanelSkill.value;
+  if (!panelSkill) {
+    return;
+  }
+  const skillId = String(panelSkill.id ?? panelSkill.skill_id ?? '').trim();
+  if (!skillId) {
+    return;
+  }
+  versionPreviewSkill.value = {
+    id: versionPreviewStorageKey(skillId, String(row.version)),
+    skill_id: skillId,
+    name: String(panelSkill.name ?? panelSkill.skill_id ?? skillId),
+    currentVersion: row.version,
+    version: row.version,
+    author: String(panelSkill.author ?? panelSkill.publisher ?? panelSkill.publish_name ?? ''),
+    categoryGroupName: String(panelSkill.categoryGroupName ?? panelSkill.category ?? ''),
+    level: String(panelSkill.level ?? panelSkill.publish_level ?? ''),
+    publish_level: String(panelSkill.publish_level ?? panelSkill.level ?? ''),
+    downloads: panelSkill.downloads ?? panelSkill.download_count ?? 0,
+    fileTree: fileTreeFromDetailDto(row.fileTree),
+    skillMdContent: typeof row.skillMdContent === 'string' ? row.skillMdContent : '',
+  };
+}
+
+function closeVersionDetailPreview(): void {
+  versionPreviewSkill.value = null;
+}
+
+function onVersionRowDownload(version: string): void {
+  const panelSkill = versionPanelSkill.value;
+  const versions =
+    panelSkill && Array.isArray(panelSkill.versions)
+      ? (panelSkill.versions as SkillVersionListItemDto[])
+      : [];
+  const row = versions.find((item) => String(item.version) === String(version));
+  if (row && isVersionRowDeleted(row)) {
+    showToast('该版本已下架，无法下载');
+    return;
+  }
+
+  void downloadSkillVersion(version);
+}
+
+async function onVersionRowUnpublish(version: string): Promise<void> {
+  if (!detailFromMyReleases.value) {
+    return;
+  }
+  const id = currentDetailSkillId();
+  if (!id) {
+    return;
+  }
+  if (!userId.value) {
+    showToast('请先配置用户工号');
+    return;
+  }
+
+  versionUnpublishing.value = version;
+  try {
+    const res = await skillBaseService.unpublishSkillVersion(id, {
+      version,
+      userId: userId.value,
+    });
+    if (!serviceSucceeded(res)) {
+      showToast(serviceMessage(res, '下架失败'));
+      return;
+    }
+    showToast('已下架该版本');
+    await reloadVersionPanelList();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '下架失败');
+  } finally {
+    versionUnpublishing.value = null;
+  }
+}
+
+async function handleDeleteClick(): Promise<void> {
+  if (!detailFromMyReleases.value) {
+    return;
+  }
+  const id = currentDetailSkillId();
+  if (!id) {
+    showToast('无法识别 Skill ID');
+    return;
+  }
+  if (!userId.value) {
+    showToast('请先配置用户工号');
+    return;
+  }
+
+  const title = String(skillDetail.value?.name ?? skillDetail.value?.skill_id ?? id).trim();
+  if (!window.confirm(`确定删除「${title}」及全部版本？此操作不可恢复。`)) {
+    return;
+  }
+
+  deletingSkillId.value = id;
+  try {
+    const res = await skillBaseService.deleteSkillAll(id, { userId: userId.value });
+    if (!serviceSucceeded(res)) {
+      showToast(serviceMessage(res, '删除失败'));
+      return;
+    }
+    showToast('已删除');
+    closeVersionPanel();
+    goBackToMarket();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '删除失败');
+  } finally {
+    deletingSkillId.value = null;
+  }
 }
 
 async function loadSkillDetail(skillId: string): Promise<void> {
@@ -126,7 +363,7 @@ async function loadSkillDetail(skillId: string): Promise<void> {
     if (!res?.meta?.success || !res?.data) {
       throw new Error(res?.message || res?.meta?.message || 'Skill 详情加载失败');
     }
-    skillDetail.value = mapSkillDetailDto(res.data as SkillDetailDto);
+    skillDetail.value = res.data;
     notifyParentDetailRoute(skillId);
   } catch (error) {
     skillDetail.value = null;
@@ -143,9 +380,11 @@ function showToast(message: string, ms = 3000): void {
   }, ms);
 }
 
-async function downloadCurrentSkill(): Promise<void> {
-  const id = routeSkillId.value;
-  const version = String(skillDetail.value?.currentVersion ?? skillDetail.value?.version ?? '');
+async function downloadSkillVersion(version?: string): Promise<void> {
+  const id = currentDetailSkillId();
+  const targetVersion = String(
+    version ?? skillDetail.value?.currentVersion ?? skillDetail.value?.version ?? '',
+  );
   if (!id) {
     return;
   }
@@ -154,8 +393,8 @@ async function downloadCurrentSkill(): Promise<void> {
     if (userId.value) {
       params.userId = userId.value;
     }
-    if (version) {
-      params.version = version;
+    if (targetVersion) {
+      params.version = targetVersion;
     }
     const env = await skillBaseService.downloadSkill(params, id);
     if (!env?.meta?.success || !env?.data) {
@@ -173,6 +412,10 @@ async function downloadCurrentSkill(): Promise<void> {
   } catch (error) {
     showToast(error instanceof Error ? error.message : '下载失败');
   }
+}
+
+async function downloadCurrentSkill(): Promise<void> {
+  await downloadSkillVersion();
 }
 
 function goBackToMarket(): void {
@@ -195,6 +438,7 @@ function goBackToMarket(): void {
 watch(
   routeSkillId,
   (skillId) => {
+    closeVersionPanel();
     void loadSkillDetail(skillId);
   },
   { immediate: true },
@@ -217,11 +461,34 @@ watch(
       :skill="skillDetail"
       :file-tree-text="fileTreeText"
       :skill-md-text="skillMdText"
-      :show-delete="false"
-      :show-try-skill="false"
-      :show-version-manage="false"
+      :show-delete="detailFromMyReleases"
+      :deleting-skill-id="deletingSkillId"
+      @version-manage="handleVersionManage"
+      @delete-click="handleDeleteClick"
       @close="goBackToMarket"
       @download="downloadCurrentSkill"
+    />
+
+    <SkillVersionManageDialog
+      v-if="versionPanelSkill"
+      :skill="versionPanelSkill"
+      :loading="versionPanelLoading"
+      :unpublishing-version="versionUnpublishing"
+      :show-operations-column="detailFromMyReleases"
+      @close="closeVersionPanel"
+      @back="onVersionManageBack"
+      @download="onVersionRowDownload"
+      @unpublish="onVersionRowUnpublish"
+      @view-detail="onVersionViewDetail"
+    />
+
+    <SkillDetailDialog
+      v-if="versionPreviewSkill"
+      preview-only
+      :skill="versionPreviewSkill"
+      :file-tree-text="versionPreviewFileTreeText"
+      :skill-md-text="versionPreviewSkillMdText"
+      @close="closeVersionDetailPreview"
     />
 
     <div v-if="toast" class="toast" role="status">{{ toast }}</div>

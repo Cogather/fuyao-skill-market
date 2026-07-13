@@ -21,7 +21,6 @@ const props = withDefaults(
     closeText?: string;
     showTrySkill?: boolean;
     showDownload?: boolean;
-    showVersionManage?: boolean;
   }>(),
   {
     showDelete: true,
@@ -32,7 +31,6 @@ const props = withDefaults(
     closeText: '',
     showTrySkill: true,
     showDownload: true,
-    showVersionManage: true,
   },
 );
 
@@ -91,7 +89,7 @@ const showPageActionCard = computed(
     (props.showTrySkill ||
       props.showDownload ||
       props.showDelete ||
-      (!props.aiEvolution && props.showVersionManage)),
+      !props.aiEvolution),
 );
 
 type DetailContentTab = 'detail' | 'versions';
@@ -760,7 +758,7 @@ onBeforeUnmount(() => {
               {{ deletingSkillId === currentSkillId() ? '删除中…' : '删除' }}
             </button>
             <div
-              v-if="!aiEvolution && showVersionManage"
+              v-if="!aiEvolution"
               ref="detailMoreWrapRef"
               class="detail-more-wrap"
             >
@@ -1664,11 +1662,12 @@ onBeforeUnmount(() => {
 .skill-detail-dialog--page {
   display: grid;
   grid-template-columns: minmax(0, 1fr) max-content;
-  align-content: start;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  align-content: stretch;
   align-items: start;
   column-gap: clamp(32px, 4vw, 72px);
   row-gap: 0;
-  padding: 36px clamp(24px, 4vw, 80px) 48px;
+  padding: 36px clamp(24px, 4vw, 80px) 24px;
   overflow: auto;
   background: #ffffff;
 }
@@ -1721,9 +1720,7 @@ onBeforeUnmount(() => {
 
 .skill-detail-dialog--page .detail-actions {
   grid-column: 2;
-  grid-row: 2;
-  position: sticky;
-  top: 112px;
+  grid-row: 1 / span 2;
   justify-self: end;
   align-self: center;
   display: flex;
@@ -1750,9 +1747,9 @@ onBeforeUnmount(() => {
 }
 
 .detail-page-tabs {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 3;
-  width: calc(100vw - 120px);
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 56px;
@@ -1791,15 +1788,16 @@ onBeforeUnmount(() => {
 }
 
 .skill-detail-dialog--page .detail-main {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 4;
-  width: calc(100vw - 120px);
+  align-self: stretch;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 24px;
   min-height: 0;
   margin-top: 34px;
-  padding: 0 0 24px;
+  padding: 0;
   overflow: visible;
 }
 
@@ -1815,21 +1813,27 @@ onBeforeUnmount(() => {
 .skill-detail-dialog--page .detail-file-panel {
   order: initial;
   width: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
 .detail-file-panel--browser {
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 340px);
+  min-height: 0;
 }
 
 .detail-file-browser {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
-  min-height: 220px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .detail-file-tree-pane {
+  min-height: 0;
   padding: 14px 0;
   border-right: 1px solid #e9edf3;
   overflow: auto;
@@ -1863,6 +1867,7 @@ onBeforeUnmount(() => {
 
 .detail-file-content-pane {
   min-width: 0;
+  min-height: 0;
   padding: 16px 18px;
   overflow: auto;
   color: #334155;
@@ -2431,19 +2436,25 @@ onBeforeUnmount(() => {
 @media (max-width: 1100px) {
   .skill-detail-dialog--page {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
     row-gap: 0;
     padding: 24px;
   }
 
   .skill-detail-dialog--page .detail-actions {
     grid-column: 1;
-    grid-row: auto;
+    grid-row: 3;
     position: static;
     margin-top: 24px;
   }
 
   .detail-page-tabs {
+    grid-row: 4;
     margin-top: 32px;
+  }
+
+  .skill-detail-dialog--page .detail-main {
+    grid-row: 5;
   }
 }
 
