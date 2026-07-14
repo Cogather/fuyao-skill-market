@@ -1831,6 +1831,7 @@ type MockSkillDraft = {
   skillId: string;
   skillName: string;
   description: string;
+  type?: string;
   userId: string;
   archiveData: string;
   archiveSize: number;

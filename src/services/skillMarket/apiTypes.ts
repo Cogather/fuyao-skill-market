@@ -314,6 +314,8 @@ export type SkillDraftDto = {
   skillId: string;
   skillName: string;
   description: string;
+  /** 草稿类型，为空时前端默认展示为「轨迹提取skill」 */
+  type?: string;
   userId: string;
   archiveData: string;
   archiveSize: number;

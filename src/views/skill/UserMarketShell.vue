@@ -2781,6 +2781,8 @@ type AiEvolutionSkillRow = {
   id: string;
   name: string;
   source: string;
+  /** 草稿类型，接口未返回时默认展示为「轨迹提取skill」 */
+  type: string;
   description: string;
   sessionId: string;
   summary: string;
@@ -2820,6 +2822,7 @@ function mapSkillDraftToRow(dto: any): AiEvolutionSkillRow {
     id: String(dto?.skillId ?? ''),
     name: String(dto?.skillName ?? ''),
     source: String(dto?.source ?? ''),
+    type: String(dto?.type ?? '').trim() || '轨迹提取skill',
     description: String(dto?.description ?? ''),
     sessionId: String(dto?.sessionId ?? ''),
     summary: String(dto?.description ?? ''),
@@ -2964,6 +2967,7 @@ async function openAiEvolutionDetail(row: AiEvolutionSkillRow): Promise<void> {
   const skill = {
     id: row.id,
     name: row.name,
+    type: row.type,
     description: row.description,
     currentVersion: row.version,
     version: row.version,
@@ -4422,6 +4426,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <tr>
                 <th class="col-skill">Skill 名称</th>
                 <th class="col-source">来源</th>
+                <th class="col-type">类型</th>
                 <th class="col-desc">Skill 描述</th>
                 <th class="col-first-msg">第一条消息内容</th>
                 <th class="col-repo">代码仓信息</th>
@@ -4452,10 +4457,19 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   </div>
                 </td>
                 <td>
-                  <div class="ai-evolution-reason">{{ row.description || '—' }}</div>
+                  <div class="cell-main cell-main-plain ai-evolution-type">
+                    {{ row.type || '—' }}
+                  </div>
                 </td>
                 <td>
-                  <div class="ai-evolution-first-msg">{{ row.firstMessage || '—' }}</div>
+                  <div class="ai-evolution-reason" :title="row.description">
+                    {{ row.description || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="ai-evolution-first-msg" :title="row.firstMessage">
+                    {{ row.firstMessage || '—' }}
+                  </div>
                 </td>
                 <td>
                   <div class="cell-main cell-main-plain ai-evolution-repo">
