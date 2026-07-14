@@ -4519,7 +4519,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </td>
               </tr>
               <tr v-if="aiEvolutionSkills.length === 0">
-                <td colspan="9" class="empty-row">暂无待审批的自进化 Skill</td>
+                <td colspan="10" class="empty-row">暂无待审批的自进化 Skill</td>
               </tr>
             </tbody>
           </table>
