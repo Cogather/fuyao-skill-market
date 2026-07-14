@@ -9257,12 +9257,16 @@ span {
 
 .ai-evolution-table {
   min-width: 1530px;
-  /**
-   * .my-release-panel .table 默认带 overflow: hidden（用于圆角裁剪），
-   * 这会让表格自身成为 sticky 的定位容器，导致「操作」列的 right: 0
-   * 相对表格右缘（即单元格自身位置）定位而失效。改回 visible，让粘性列
-   * 相对可横向滚动的 .table-wrap 定位，才能真正固定在视口右侧。
-   */
+}
+
+/**
+ * .my-release-panel .table 默认带 overflow: hidden（用于圆角裁剪），
+ * 这会让表格自身成为 sticky 的定位容器，导致「操作」列的 right: 0
+ * 相对表格右缘（即单元格自身位置）定位而失效。改回 visible，让粘性列
+ * 相对可横向滚动的 .table-wrap 定位，才能真正固定在视口右侧。
+ * 选择器需与 .my-release-panel .table (0,2,0) 同等特异度才能覆盖。
+ */
+.my-release-panel .ai-evolution-table {
   overflow: visible;
 }
 
