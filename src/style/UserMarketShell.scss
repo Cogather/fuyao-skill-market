@@ -9317,6 +9317,29 @@ span {
   text-align: center;
 }
 
+/**
+ * 「操作」列固定在表格右侧，避免行内容过长时通过/拒绝按钮被推到可视区外，
+ * 用户需横向滚动才能看到。与 ops-detail-table 的粘性列保持一致的实现方式。
+ */
+.ai-evolution-table th.ai-evo-col-ops,
+.ai-evolution-table td.col-ops-td {
+  position: sticky;
+  right: 0;
+  z-index: 5;
+  box-shadow:
+    -6px 0 12px -12px rgba(15, 23, 42, 0.35),
+    -1px 0 0 #f0f0f0;
+}
+
+.ai-evolution-table th.ai-evo-col-ops {
+  z-index: 6;
+  background: #fafafa;
+}
+
+.ai-evolution-table td.col-ops-td {
+  background: #fff;
+}
+
 .ai-evolution-table .col-skill {
   min-width: 120px;
 }
