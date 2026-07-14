@@ -9256,7 +9256,7 @@ span {
 }
 
 .ai-evolution-table {
-  min-width: 1420px;
+  min-width: 1530px;
 }
 
 .ai-evolution-row td {
@@ -9285,16 +9285,31 @@ span {
   font-size: 13px;
   color: #0f172a;
   line-height: 1.55;
-  white-space: normal;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
 }
 
 .ai-evolution-first-msg {
   font-size: 13px;
   color: #334155;
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+}
+
+.ai-evolution-type {
+  color: #475569;
+  white-space: nowrap;
 }
 
 .ai-evo-col-ops {
@@ -9314,6 +9329,11 @@ span {
 .ai-evolution-source {
   color: #475569;
   white-space: nowrap;
+}
+
+.ai-evolution-table .col-type {
+  width: 110px;
+  min-width: 110px;
 }
 
 .ai-evolution-table .col-desc {
