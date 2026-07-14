@@ -9259,6 +9259,17 @@ span {
   min-width: 1530px;
 }
 
+/**
+ * .my-release-panel .table 默认带 overflow: hidden（用于圆角裁剪），
+ * 这会让表格自身成为 sticky 的定位容器，导致「操作」列的 right: 0
+ * 相对表格右缘（即单元格自身位置）定位而失效。改回 visible，让粘性列
+ * 相对可横向滚动的 .table-wrap 定位，才能真正固定在视口右侧。
+ * 选择器需与 .my-release-panel .table (0,2,0) 同等特异度才能覆盖。
+ */
+.my-release-panel .ai-evolution-table {
+  overflow: visible;
+}
+
 .ai-evolution-row td {
   vertical-align: top;
 }
@@ -9315,6 +9326,29 @@ span {
 .ai-evo-col-ops {
   min-width: 188px;
   text-align: center;
+}
+
+/**
+ * 「操作」列固定在表格右侧，避免行内容过长时通过/拒绝按钮被推到可视区外，
+ * 用户需横向滚动才能看到。与 ops-detail-table 的粘性列保持一致的实现方式。
+ */
+.ai-evolution-table th.ai-evo-col-ops,
+.ai-evolution-table td.col-ops-td {
+  position: sticky;
+  right: 0;
+  z-index: 5;
+  box-shadow:
+    -6px 0 12px -12px rgba(15, 23, 42, 0.35),
+    -1px 0 0 #f0f0f0;
+}
+
+.ai-evolution-table th.ai-evo-col-ops {
+  z-index: 6;
+  background: #fafafa;
+}
+
+.ai-evolution-table td.col-ops-td {
+  background: #fff;
 }
 
 .ai-evolution-table .col-skill {
