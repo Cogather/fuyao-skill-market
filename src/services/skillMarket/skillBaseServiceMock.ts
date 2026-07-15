@@ -1434,7 +1434,16 @@ function handleSkillRequest(
   }
 
   if (method === 'get' && path === '/review/expert/check') {
-    return ok({ isExpert: true });
+    return ok({
+      isExpert: true,
+      expertName: '张三',
+      dept: {
+        dept3: '部门1',
+        dept4: '平台产品线',
+        dept5: '平台工具组',
+        dept6: 'DevOps部',
+      },
+    });
   }
 
   if (method === 'get' && path === '/review/dimensions') {

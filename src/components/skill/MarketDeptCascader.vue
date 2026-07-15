@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
 
 export type MarketDeptCascaderNode = {
+  id?: string;
   name: string;
   children?: MarketDeptCascaderNode[];
 };
@@ -23,6 +24,8 @@ const props = withDefaults(
     clearText?: string;
     doneText?: string;
     ariaLabel?: string;
+    beforeClear?: () => boolean;
+    beforeDone?: (value: string[]) => boolean;
   }>(),
   {
     maxLevel: 6,
@@ -174,6 +177,9 @@ function select(levelIndex: number, name: string): void {
 }
 
 function clear(): void {
+  if (props.beforeClear && !props.beforeClear()) {
+    return;
+  }
   emit('update:modelValue', []);
   emit('change', []);
   emit('clear');
@@ -181,6 +187,9 @@ function clear(): void {
 }
 
 function done(): void {
+  if (props.beforeDone && !props.beforeDone([...selectedPath.value])) {
+    return;
+  }
   emit('done', selectedPath.value);
   setOpen(false);
 }

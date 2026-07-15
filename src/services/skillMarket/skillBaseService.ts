@@ -1,4 +1,5 @@
 import httpRequest from '@/services/skillMarket/request';
+import type { ApiEnvelope, ExpertCheckDto } from './apiTypes';
 
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
@@ -371,8 +372,8 @@ export const skillBaseService = {
    */
 
   // 判断是否为专家
-  isReviewer: (params: any): any => {
-    return httpRequest.skill<any>({
+  isReviewer: (params: { userId?: string }): Promise<ApiEnvelope<ExpertCheckDto>> => {
+    return httpRequest.skill<ApiEnvelope<ExpertCheckDto>>({
       url: '/review/expert/check',
       method: 'get',
       params,

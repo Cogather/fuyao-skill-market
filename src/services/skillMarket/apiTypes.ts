@@ -21,6 +21,33 @@ export type UserDepartmentDto = {
   departmentL6: string;
 };
 
+export type ExpertDepartmentLevelDto = {
+  departmentId?: string | number;
+  departmentName?: string;
+  departmentLevel?: number;
+  deptId?: string | number;
+  deptName?: string;
+  deptLevel?: number;
+};
+
+export type ExpertDeptDto = {
+  dept3?: string;
+  dept4?: string;
+  dept5?: string;
+  dept6?: string;
+  [key: string]: unknown;
+};
+export type ExpertCheckDto = {
+  isExpert: boolean;
+  expertName?: string;
+  dept?: ExpertDeptDto;
+  departmentList?: ExpertDepartmentLevelDto[];
+  departments?: ExpertDepartmentLevelDto[];
+  departmentInfo?: Record<string, unknown>;
+  departmentHierarchy?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 /** §3.3.10 / §4.4 */
 export type UserMarketRole = 'SUPER_ADMIN' | 'ORG_ADMIN' | 'USER';
 
@@ -451,6 +478,7 @@ export type OrganizationUpsertBody = {
  * 节点字段与 `DashboardOverviewDto.deptTree` 单节点对齐，便于后端与 Mock 复用。
  */
 export type DepartmentTreeNodeDto = {
+  deptId?: string | number;
   deptName: string;
   deptLevel: number;
   children?: DepartmentTreeNodeDto[];

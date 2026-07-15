@@ -26,6 +26,10 @@ import {
   mapDepartmentTreeDtoToForest,
 } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
+  extractExpertDepartmentPermission,
+  type ExpertDepartmentPermission,
+} from '../../services/skillMarket/expertDepartmentPermission';
+import {
   marketRoleIsOrgAdmin,
   marketRoleIsSuperAdmin,
   marketRoleCanCreateOrganization,
@@ -946,6 +950,10 @@ const handleParentMessage = async (event: MessageEvent) => {
 };
 
 const isExpertReviewer = ref(false);
+const expertDepartmentPermission = ref<ExpertDepartmentPermission>({
+  minimumDepartmentId: '',
+  path: [],
+});
 window.onmessage = handleParentMessage;
 
 onMounted(async () => {
@@ -960,11 +968,12 @@ onMounted(async () => {
   // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
   await loadAiEvolutionSkills();
   // 判断是否为专家
-  await skillBaseService.isReviewer({ userId: userId.value }).then((res: any) => {
-    if (res?.meta?.success && res?.data) {
-      isExpertReviewer.value = res.data.isExpert;
-    }
-  });
+  const expertResponse = await skillBaseService.isReviewer({ userId: userId.value });
+  if (serviceSucceeded(expertResponse)) {
+    const expertData = readServiceRecord(expertResponse.data);
+    isExpertReviewer.value = expertData.isExpert === true;
+    expertDepartmentPermission.value = extractExpertDepartmentPermission(expertData);
+  }
   if (transportIsHttp) {
     await loadAdminOrganizations();
     // await startOverviewRemoteFetch();
@@ -5244,6 +5253,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       <ReviewCenterPage
         :userId="userId"
         :department-tree="marketOverviewDeptTree"
+        :expert-department-permission="expertDepartmentPermission"
         :is-expert-reviewer="isExpertReviewer"
       />
     </div>

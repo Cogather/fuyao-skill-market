@@ -19,9 +19,11 @@ import type {
   ReviewBadgeDto,
   SkillExpertReviewDetailDto,
 } from '../../services/skillMarket/apiTypes';
+import type { ExpertDepartmentPermission } from '../../services/skillMarket/expertDepartmentPermission';
 import { skillBaseService } from '@/services/skillMarket/skillBaseService';
 
 type ReviewDepartmentTreeNode = {
+  id?: string;
   name: string;
   children?: ReviewDepartmentTreeNode[];
 };
@@ -30,6 +32,7 @@ const props = withDefaults(
   defineProps<{
     userId?: string;
     departmentTree?: ReviewDepartmentTreeNode[];
+    expertDepartmentPermission?: ExpertDepartmentPermission;
     isExpertReviewer?: boolean;
   }>(),
   {
@@ -1475,6 +1478,78 @@ function syncReviewDepartmentLevels(segments = reviewDepartmentSegments.value): 
   });
 }
 
+const REVIEW_DEPARTMENT_PERMISSION_MESSAGE =
+  '\u8bf7\u9009\u62e9\u60a8\u6240\u5c5e\u7684\u6700\u7ec6\u7c92\u5ea6\u90e8\u95e8\u3002';
+
+function normalizeDepartmentId(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+  return '';
+}
+
+function normalizeDepartmentPath(segments: string[] | undefined): string[] {
+  return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
+}
+
+function sameDepartmentPath(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizeDepartmentPath(left);
+  const normalizedRight = normalizeDepartmentPath(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function reviewDepartmentNodeByPath(segments: string[]): ReviewDepartmentTreeNode | null {
+  let siblings = reviewDepartmentTree.value;
+  let current: ReviewDepartmentTreeNode | null = null;
+
+  for (const segment of normalizeDepartmentPath(segments)) {
+    current = siblings.find((node) => node.name === segment) ?? null;
+    if (!current) {
+      return null;
+    }
+    siblings = current.children ?? [];
+  }
+
+  return current;
+}
+
+function isReviewDepartmentSelectionAllowed(segments: string[]): boolean {
+  const permission = props.expertDepartmentPermission;
+  const requiredDepartmentId = normalizeDepartmentId(permission?.minimumDepartmentId);
+  const requiredPath = normalizeDepartmentPath(permission?.path);
+
+  if (!requiredDepartmentId && requiredPath.length === 0) {
+    return true;
+  }
+
+  const selectedNode = reviewDepartmentNodeByPath(segments);
+  const selectedDepartmentId = normalizeDepartmentId(selectedNode?.id);
+  if (requiredDepartmentId && selectedDepartmentId) {
+    return selectedDepartmentId === requiredDepartmentId;
+  }
+
+  if (requiredPath.length > 0) {
+    return sameDepartmentPath(segments, requiredPath);
+  }
+
+  return false;
+}
+
+function guardReviewDepartmentSelection(segments: string[]): boolean {
+  if (isReviewDepartmentSelectionAllowed(segments)) {
+    return true;
+  }
+  showToast(REVIEW_DEPARTMENT_PERMISSION_MESSAGE);
+  return false;
+}
+
+function guardReviewDepartmentClear(): boolean {
+  return guardReviewDepartmentSelection([]);
+}
+
 function reviewDepartmentLevelParams() {
   return {
     departmentL3: departmentL3.value,
@@ -1523,11 +1598,17 @@ function onReviewDepartmentChange(segments: string[]): void {
 }
 
 async function onReviewDepartmentDone(segments: string[]): Promise<void> {
+  if (!guardReviewDepartmentSelection(segments)) {
+    return;
+  }
   syncReviewDepartmentLevels(segments);
   await reloadReviewCenterTasks();
 }
 
 async function onReviewDepartmentClear(): Promise<void> {
+  if (!guardReviewDepartmentClear()) {
+    return;
+  }
   reviewDepartmentSegments.value = [];
   syncReviewDepartmentLevels([]);
   await reloadReviewCenterTasks();
@@ -1696,6 +1777,8 @@ onBeforeUnmount(() => {
                   :max-level="6"
                   aria-label="评审部门级联筛选（DepartmentL1～DepartmentL6）"
                   @change="onReviewDepartmentChange"
+                  :before-clear="guardReviewDepartmentClear"
+                  :before-done="guardReviewDepartmentSelection"
                   @clear="onReviewDepartmentClear"
                   @done="onReviewDepartmentDone"
                 />
