@@ -86,10 +86,7 @@ const detailBadges = computed(() => {
 const showPageActionCard = computed(
   () =>
     !props.previewOnly &&
-    (props.showTrySkill ||
-      props.showDownload ||
-      props.showDelete ||
-      !props.aiEvolution),
+    (props.showTrySkill || props.showDownload || props.showDelete || !props.aiEvolution),
 );
 
 type DetailContentTab = 'detail' | 'versions';
@@ -757,11 +754,7 @@ onBeforeUnmount(() => {
             >
               {{ deletingSkillId === currentSkillId() ? '删除中…' : '删除' }}
             </button>
-            <div
-              v-if="!aiEvolution"
-              ref="detailMoreWrapRef"
-              class="detail-more-wrap"
-            >
+            <div v-if="!aiEvolution" ref="detailMoreWrapRef" class="detail-more-wrap">
               <button
                 type="button"
                 class="detail-btn detail-more-trigger"

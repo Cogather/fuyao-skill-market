@@ -1071,9 +1071,15 @@ function createReviewCenterSkillRecord(sid: string): MockSkillRecord | undefined
     category: task?.categoryId ?? 'review',
     icon: 'RV',
     version: task?.version ?? '1.0.0',
-    tags: task?.tags ? task.tags.split(',').map((tag) => tag.trim()).filter(Boolean) : ['review'],
+    tags: task?.tags
+      ? task.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : ['review'],
     fileTree: sid + '/\n' + sid + '/SKILL.md\n' + sid + '/references/review-rubric.md',
-    skillMdContent: '# ' + (task?.name ?? sid) + '\n\nMock detail generated from review center task ' + sid + '.',
+    skillMdContent:
+      '# ' + (task?.name ?? sid) + '\n\nMock detail generated from review center task ' + sid + '.',
   } as Skill);
   skillRecords = [record, ...skillRecords];
   return record;

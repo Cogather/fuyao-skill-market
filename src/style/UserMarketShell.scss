@@ -8329,7 +8329,6 @@ span {
   }
 }
 
-
 /* Review and planning tabs share the same title rhythm. */
 .skill-market-shell:not(.is-overview-tab) .tabs-panel.overview-panel.review-panel {
   box-sizing: border-box;
@@ -8342,7 +8341,12 @@ span {
   background:
     radial-gradient(circle at 8% 0%, rgba(88, 146, 255, 0.11), transparent 26%),
     radial-gradient(circle at 92% 0%, rgba(128, 82, 255, 0.1), transparent 28%),
-    linear-gradient(180deg, rgba(247, 250, 255, 0.92) 0%, rgba(251, 252, 255, 0.96) 44%, #ffffff 100%);
+    linear-gradient(
+      180deg,
+      rgba(247, 250, 255, 0.92) 0%,
+      rgba(251, 252, 255, 0.96) 44%,
+      #ffffff 100%
+    );
   box-shadow: none;
   overflow: visible;
 }
