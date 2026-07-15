@@ -954,6 +954,7 @@ const expertDepartmentPermission = ref<ExpertDepartmentPermission>({
   minimumDepartmentId: '',
   path: [],
 });
+const expertCheckLoaded = ref(false);
 window.onmessage = handleParentMessage;
 
 onMounted(async () => {
@@ -968,11 +969,15 @@ onMounted(async () => {
   // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
   await loadAiEvolutionSkills();
   // 判断是否为专家
-  const expertResponse = await skillBaseService.isReviewer({ userId: userId.value });
-  if (serviceSucceeded(expertResponse)) {
-    const expertData = readServiceRecord(expertResponse.data);
-    isExpertReviewer.value = expertData.isExpert === true;
-    expertDepartmentPermission.value = extractExpertDepartmentPermission(expertData);
+  try {
+    const expertResponse = await skillBaseService.isReviewer({ userId: userId.value });
+    if (serviceSucceeded(expertResponse)) {
+      const expertData = readServiceRecord(expertResponse.data);
+      isExpertReviewer.value = expertData.isExpert === true;
+      expertDepartmentPermission.value = extractExpertDepartmentPermission(expertData);
+    }
+  } finally {
+    expertCheckLoaded.value = true;
   }
   if (transportIsHttp) {
     await loadAdminOrganizations();
@@ -5254,6 +5259,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         :userId="userId"
         :department-tree="marketOverviewDeptTree"
         :expert-department-permission="expertDepartmentPermission"
+        :expert-check-loaded="expertCheckLoaded"
         :is-expert-reviewer="isExpertReviewer"
       />
     </div>

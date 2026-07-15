@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
@@ -33,11 +33,13 @@ const props = withDefaults(
     userId?: string;
     departmentTree?: ReviewDepartmentTreeNode[];
     expertDepartmentPermission?: ExpertDepartmentPermission;
+    expertCheckLoaded?: boolean;
     isExpertReviewer?: boolean;
   }>(),
   {
     userId: '',
     departmentTree: () => [],
+    expertCheckLoaded: true,
   },
 );
 
@@ -1501,19 +1503,35 @@ function sameDepartmentPath(left: string[], right: string[]): boolean {
   );
 }
 
-function reviewDepartmentNodeByPath(segments: string[]): ReviewDepartmentTreeNode | null {
-  let siblings = reviewDepartmentTree.value;
-  let current: ReviewDepartmentTreeNode | null = null;
+function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
+  );
+}
 
+function reviewDepartmentPathIncludesId(segments: string[], departmentId: string): boolean {
+  const requiredDepartmentId = normalizeDepartmentId(departmentId);
+  if (!requiredDepartmentId) {
+    return false;
+  }
+
+  let siblings = reviewDepartmentTree.value;
   for (const segment of normalizeDepartmentPath(segments)) {
-    current = siblings.find((node) => node.name === segment) ?? null;
+    const current = siblings.find((node) => node.name === segment) ?? null;
     if (!current) {
-      return null;
+      return false;
+    }
+    if (normalizeDepartmentId(current.id) === requiredDepartmentId) {
+      return true;
     }
     siblings = current.children ?? [];
   }
 
-  return current;
+  return false;
 }
 
 function isReviewDepartmentSelectionAllowed(segments: string[]): boolean {
@@ -1525,19 +1543,17 @@ function isReviewDepartmentSelectionAllowed(segments: string[]): boolean {
     return true;
   }
 
-  const selectedNode = reviewDepartmentNodeByPath(segments);
-  const selectedDepartmentId = normalizeDepartmentId(selectedNode?.id);
-  if (requiredDepartmentId && selectedDepartmentId) {
-    return selectedDepartmentId === requiredDepartmentId;
-  }
+  const selectedPathIncludesRequiredId = reviewDepartmentPathIncludesId(
+    segments,
+    requiredDepartmentId,
+  );
 
   if (requiredPath.length > 0) {
-    return sameDepartmentPath(segments, requiredPath);
+    return departmentPathStartsWith(segments, requiredPath) || selectedPathIncludesRequiredId;
   }
 
-  return false;
+  return selectedPathIncludesRequiredId;
 }
-
 function guardReviewDepartmentSelection(segments: string[]): boolean {
   if (isReviewDepartmentSelectionAllowed(segments)) {
     return true;
@@ -1548,6 +1564,34 @@ function guardReviewDepartmentSelection(segments: string[]): boolean {
 
 function guardReviewDepartmentClear(): boolean {
   return guardReviewDepartmentSelection([]);
+}
+
+let reviewCenterInitialLoadStarted = false;
+
+function applyDefaultReviewDepartmentSelection(): boolean {
+  const defaultSegments = normalizeDepartmentPath(props.expertDepartmentPermission?.path);
+  if (defaultSegments.length === 0) {
+    return false;
+  }
+
+  if (sameDepartmentPath(reviewDepartmentSegments.value, defaultSegments)) {
+    syncReviewDepartmentLevels(defaultSegments);
+    return false;
+  }
+
+  reviewDepartmentSegments.value = defaultSegments;
+  syncReviewDepartmentLevels(defaultSegments);
+  return true;
+}
+
+async function initializeReviewCenterTasks(): Promise<void> {
+  if (reviewCenterInitialLoadStarted || !props.expertCheckLoaded) {
+    return;
+  }
+
+  reviewCenterInitialLoadStarted = true;
+  applyDefaultReviewDepartmentSelection();
+  await reloadReviewCenterTasks();
 }
 
 function reviewDepartmentLevelParams() {
@@ -1614,8 +1658,31 @@ async function onReviewDepartmentClear(): Promise<void> {
   await reloadReviewCenterTasks();
 }
 
+watch(
+  () =>
+    [
+      props.expertCheckLoaded,
+      props.expertDepartmentPermission?.minimumDepartmentId ?? '',
+      props.expertDepartmentPermission?.path.join('\u0001') ?? '',
+    ] as const,
+  () => {
+    if (!props.expertCheckLoaded) {
+      return;
+    }
+
+    if (!reviewCenterInitialLoadStarted) {
+      void initializeReviewCenterTasks();
+      return;
+    }
+
+    if (applyDefaultReviewDepartmentSelection()) {
+      void reloadReviewCenterTasks();
+    }
+  },
+);
+
 onMounted(async () => {
-  await reloadReviewCenterTasks();
+  await initializeReviewCenterTasks();
   document.addEventListener('mousedown', handleReviewMonthOutsideClick);
 });
 
