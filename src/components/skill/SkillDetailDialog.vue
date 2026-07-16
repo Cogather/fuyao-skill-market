@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 const router = useRouter();
 
@@ -8,7 +10,6 @@ const props = withDefaults(
   defineProps<{
     skill: Record<string, unknown>;
     fileTreeText: string;
-    skillMdText: string;
     /** 为 false 时不展示删除（如从市场卡片进入） */
     showDelete?: boolean;
     deletingSkillId?: string | null;
@@ -282,6 +283,10 @@ type DetailFileTreeRow = {
 };
 
 const selectedDetailFilePath = ref('');
+const detailFileContentCache = ref<Record<string, string>>({});
+const detailFileLoadingPath = ref('');
+const detailFileErrorText = ref('');
+let detailFileRequestSequence = 0;
 
 function parseDetailFileTreeLine(
   line: string,
@@ -332,6 +337,24 @@ function detailRowsFromFileTreeText(text: string): DetailFileTreeRow[] {
 
 const detailFileRows = computed(() => detailRowsFromFileTreeText(props.fileTreeText));
 
+const detailSkillName = computed(() =>
+  readDetailString(props.skill, ['name', 'skillName', 'skill_id', 'id']),
+);
+const detailSkillVersion = computed(() =>
+  readDetailString(props.skill, ['currentVersion', 'version']),
+);
+const detailFileTreeRoot = computed(() => {
+  const firstRow = detailFileRows.value[0];
+  if (!firstRow?.isDirectory || firstRow.depth !== 0) {
+    return '';
+  }
+  return detailFileRows.value.some(
+    (row) => row.depth > 0 && row.path.startsWith(`${firstRow.path}/`),
+  )
+    ? firstRow.path
+    : '';
+});
+
 const defaultDetailFileRow = computed(() => {
   return (
     detailFileRows.value.find(
@@ -351,16 +374,170 @@ const selectedDetailFileRow = computed(() => {
 });
 
 const selectedDetailFileContent = computed(() => {
-  const selectedName = selectedDetailFileRow.value?.label.replace(/\/$/, '').toLowerCase();
-  return selectedName === 'skill.md' ? props.skillMdText : '';
+  const path = selectedDetailFileRow.value?.path ?? '';
+  return path ? (detailFileContentCache.value[path] ?? '') : '';
 });
+const selectedDetailFileLoaded = computed(() => {
+  const path = selectedDetailFileRow.value?.path ?? '';
+  return Boolean(path) && Object.prototype.hasOwnProperty.call(detailFileContentCache.value, path);
+});
+const selectedDetailFileLoading = computed(
+  () =>
+    Boolean(selectedDetailFileRow.value?.path) &&
+    detailFileLoadingPath.value === selectedDetailFileRow.value?.path,
+);
+const detailSkillMdText = computed(() => {
+  const skillMdRow = detailFileRows.value.find(
+    (row) => !row.isDirectory && row.label.replace(/\/$/, '').toLowerCase() === 'skill.md',
+  );
+  if (
+    skillMdRow &&
+    Object.prototype.hasOwnProperty.call(detailFileContentCache.value, skillMdRow.path)
+  ) {
+    return detailFileContentCache.value[skillMdRow.path] ?? '';
+  }
+  return props.aiEvolution ? readDetailString(props.skill, ['skillMdContent']) : '';
+});
+
+function detailFileRequestPath(row: DetailFileTreeRow): string {
+  const normalizedPath = row.path.replace(/\\/g, '/').replace(/^\/+/, '');
+  const root = detailFileTreeRoot.value;
+  if (root && normalizedPath.startsWith(`${root}/`)) {
+    return normalizedPath.slice(root.length + 1);
+  }
+  return normalizedPath;
+}
+
+function detailFileResponseMessage(response: unknown, fallback: string): string {
+  const record = isDetailRecord(response) ? response : {};
+  const meta = isDetailRecord(record.meta) ? record.meta : {};
+  return (
+    readDetailString(meta, ['message']) || readDetailString(record, ['message', 'msg']) || fallback
+  );
+}
+
+function readDetailFileContentField(source: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (value !== null && value !== undefined) {
+      return String(value);
+    }
+  }
+  return '';
+}
+
+function detailFileResponseContent(response: unknown): string {
+  if (typeof response === 'string') {
+    return response;
+  }
+  const record = isDetailRecord(response) ? response : {};
+  const meta = isDetailRecord(record.meta) ? record.meta : {};
+  if (meta.success === false) {
+    throw new Error(detailFileResponseMessage(response, '文件内容加载失败'));
+  }
+
+  const payload = record.data;
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  if (isDetailRecord(payload)) {
+    return readDetailFileContentField(payload, ['content', 'fileContent', 'file_content', 'text']);
+  }
+  return readDetailFileContentField(record, ['content', 'fileContent', 'file_content', 'text']);
+}
+
+async function loadDetailFile(row: DetailFileTreeRow, force = false): Promise<void> {
+  if (row.isDirectory) {
+    return;
+  }
+
+  selectedDetailFilePath.value = row.path;
+  const requestSequence = ++detailFileRequestSequence;
+  detailFileErrorText.value = '';
+  if (!force && Object.prototype.hasOwnProperty.call(detailFileContentCache.value, row.path)) {
+    detailFileLoadingPath.value = '';
+    return;
+  }
+
+  const embeddedSkillMd = props.aiEvolution
+    ? readDetailFileContentField(props.skill, ['skillMdContent'])
+    : '';
+  if (row.label.replace(/\/$/, '').toLowerCase() === 'skill.md' && embeddedSkillMd) {
+    detailFileContentCache.value = {
+      ...detailFileContentCache.value,
+      [row.path]: embeddedSkillMd,
+    };
+    detailFileLoadingPath.value = '';
+    return;
+  }
+
+  const skillName = detailSkillName.value;
+  const filePath = detailFileRequestPath(row);
+  if (!skillName || !filePath) {
+    detailFileLoadingPath.value = '';
+    detailFileErrorText.value = '缺少 Skill 名称或文件路径，无法加载文件内容';
+    return;
+  }
+
+  detailFileLoadingPath.value = row.path;
+  try {
+    const version = detailSkillVersion.value;
+    const response = await skillBaseService.querySkillFile(
+      skillName,
+      filePath,
+      version ? { version } : undefined,
+    );
+    if (requestSequence !== detailFileRequestSequence) {
+      return;
+    }
+    detailFileContentCache.value = {
+      ...detailFileContentCache.value,
+      [row.path]: detailFileResponseContent(response),
+    };
+  } catch (error) {
+    if (requestSequence !== detailFileRequestSequence) {
+      return;
+    }
+    detailFileErrorText.value = error instanceof Error ? error.message : '文件内容加载失败';
+  } finally {
+    if (requestSequence === detailFileRequestSequence) {
+      detailFileLoadingPath.value = '';
+    }
+  }
+}
+
+function retrySelectedDetailFile(): void {
+  const row = selectedDetailFileRow.value;
+  if (row) {
+    void loadDetailFile(row, true);
+  }
+}
+
+watch(
+  () => `${detailSkillName.value}\u0000${detailSkillVersion.value}\u0000${props.fileTreeText}`,
+  () => {
+    detailFileRequestSequence += 1;
+    detailFileContentCache.value = {};
+    detailFileLoadingPath.value = '';
+    detailFileErrorText.value = '';
+    const defaultRow = defaultDetailFileRow.value;
+    selectedDetailFilePath.value = defaultRow?.path ?? '';
+    if (defaultRow) {
+      void loadDetailFile(defaultRow);
+    }
+  },
+  { immediate: true },
+);
 
 function detailVersionFileTreeText(row: DetailVersionRow | null, isLatest: boolean): string {
   return row?.fileTreeText || (isLatest ? props.fileTreeText : props.fileTreeText);
 }
 
 function detailVersionSkillMdText(row: DetailVersionRow | null, isLatest: boolean): string {
-  return row?.skillMdContent || (isLatest ? props.skillMdText : props.skillMdText);
+  return row?.skillMdContent || (isLatest ? detailSkillMdText.value : '');
 }
 
 function detailCompareFileName(path: string): string {
@@ -548,7 +725,7 @@ function selectDetailFile(row: DetailFileTreeRow): void {
   if (row.isDirectory) {
     return;
   }
-  selectedDetailFilePath.value = row.path;
+  void loadDetailFile(row);
 }
 
 function isDetailFileSelected(row: DetailFileTreeRow): boolean {
@@ -834,8 +1011,24 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <article class="detail-file-content-pane">
-                <pre v-if="selectedDetailFileContent">{{ selectedDetailFileContent }}</pre>
-                <div v-else class="detail-file-content-empty">暂无可预览内容</div>
+                <div
+                  v-if="selectedDetailFileLoading"
+                  class="detail-file-content-empty"
+                  role="status"
+                >
+                  文件内容加载中...
+                </div>
+                <div v-else-if="detailFileErrorText" class="detail-file-content-error" role="alert">
+                  <span>{{ detailFileErrorText }}</span>
+                  <button type="button" @click="retrySelectedDetailFile">重新加载</button>
+                </div>
+                <pre v-else-if="selectedDetailFileLoaded && selectedDetailFileContent">{{
+                  selectedDetailFileContent
+                }}</pre>
+                <div v-else-if="selectedDetailFileLoaded" class="detail-file-content-empty">
+                  该文件内容为空
+                </div>
+                <div v-else class="detail-file-content-empty">请选择要预览的文件</div>
               </article>
             </div>
           </section>
@@ -1093,7 +1286,19 @@ onBeforeUnmount(() => {
               <div class="detail-panel-title">SKILL.md</div>
               <div class="detail-md-body">
                 <h3>{{ skill.name }} Skill</h3>
-                <pre>{{ skillMdText }}</pre>
+                <div
+                  v-if="selectedDetailFileLoading"
+                  class="detail-file-content-empty"
+                  role="status"
+                >
+                  文件内容加载中...
+                </div>
+                <div v-else-if="detailFileErrorText" class="detail-file-content-error" role="alert">
+                  <span>{{ detailFileErrorText }}</span>
+                  <button type="button" @click="retrySelectedDetailFile">重新加载</button>
+                </div>
+                <pre v-else-if="detailSkillMdText">{{ detailSkillMdText }}</pre>
+                <div v-else class="detail-file-content-empty">该文件内容为空</div>
               </div>
             </article>
           </template>
@@ -1882,6 +2087,30 @@ onBeforeUnmount(() => {
   color: #94a3b8;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.detail-file-content-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.detail-file-content-error button {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font: inherit;
+}
+
+.detail-file-content-error button:hover {
+  text-decoration: underline;
 }
 
 .skill-detail-dialog--page .detail-md-panel > .detail-panel-title {

@@ -1567,6 +1567,48 @@ function handleSkillRequest(
     });
   }
 
+  const fileContentMatch = /^\/([^/]+)\/files\/(.+)$/.exec(path);
+  if (method === 'get' && fileContentMatch) {
+    let skillName = fileContentMatch[1];
+    let filePath = fileContentMatch[2];
+    try {
+      skillName = decodeURIComponent(skillName);
+      filePath = filePath
+        .split('/')
+        .map((segment) => decodeURIComponent(segment))
+        .join('/');
+    } catch {
+      // 解码失败时继续使用原始路径，Mock 仍可返回可识别的错误。
+    }
+
+    const skill = findSkill(skillName);
+    if (!skill) {
+      return fail('Skill 不存在', '', 40401);
+    }
+    const rootNames = [skill.name, skill.skill_id, skill.id].map((item) => String(item ?? ''));
+    const rootName = rootNames.find((item) => item && filePath.startsWith(`${item}/`));
+    const relativePath = rootName ? filePath.slice(rootName.length + 1) : filePath;
+    const fileName = relativePath.split('/').at(-1)?.toLowerCase() ?? '';
+    const version = String(params.version ?? skill.currentVersion ?? skill.version ?? '').trim();
+
+    if (fileName === 'skill.md') {
+      return ok(skill.skillMdContent || makeSkillMd(skill));
+    }
+    if (fileName === 'readme.md') {
+      return ok(`# ${skill.name}\n\n${skill.description}\n`);
+    }
+    if (fileName.endsWith('.json')) {
+      return ok(JSON.stringify({ skill: skill.name, version, file: relativePath }, null, 2));
+    }
+    if (fileName.endsWith('.py')) {
+      return ok(`# ${relativePath}\nprint(${JSON.stringify(`hello from ${skill.name}`)})\n`);
+    }
+    if (fileName.endsWith('.md')) {
+      return ok(`# ${relativePath}\n\nMock file for ${skill.name} ${version}.\n`);
+    }
+    return ok(`# Mock file: ${relativePath}\n# Skill: ${skill.name}\n# Version: ${version}\n`);
+  }
+
   const detailMatch = /^\/([^/]+)$/.exec(path);
   if (method === 'delete' && detailMatch) {
     const ver = String(params.version ?? '').trim();

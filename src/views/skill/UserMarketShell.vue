@@ -14,7 +14,6 @@ import type {
   BusinessDimensionDto,
   CurrentUserRoleDto,
   OrganizationDto,
-  SkillDetailDto,
   SkillFileTreeField,
   SkillListRecordDto,
   SkillVersionListItemDto,
@@ -2274,13 +2273,10 @@ function fileTreeFromDetailDto(raw: unknown): SkillFileTreeField {
 }
 
 const fileTreeObj = ref<any>({});
-const skillMdFile = ref<any>({});
 
 function detailFileTree(skill: any): void {
   const idKey = String(skill.id ?? skill.skill_id ?? '');
   fileTreeObj.value[idKey] = normalizeDetailFileTreeToDisplay(skill.fileTree);
-
-  skillMdFile.value[idKey] = typeof skill.skillMdContent === 'string' ? skill.skillMdContent : '';
 }
 
 async function parseSkillArchiveForUpload(file: File): Promise<any> {
@@ -2428,14 +2424,10 @@ async function openVersionPanelFromMarketSkill(id: string): Promise<void> {
 
 const handleDetailItem = async (skill: any, id: any) => {
   const hasTree = fileTreePayloadIsPresent(skill.fileTree);
-  const hasMd = typeof skill.skillMdContent === 'string' && skill.skillMdContent.length > 0;
-  if (!hasTree || !hasMd) {
-    const { skillMdContent, fileTree } = await fetchSkillDetailExtras(String(id));
-    if (!hasTree && fileTreePayloadIsPresent(fileTree)) {
+  if (!hasTree) {
+    const fileTree = await fetchSkillDetailFileTree(String(id));
+    if (fileTreePayloadIsPresent(fileTree)) {
       skill.fileTree = fileTree;
-    }
-    if (!hasMd && typeof skillMdContent === 'string') {
-      skill.skillMdContent = skillMdContent;
     }
   }
   detailFileTree(skill);
@@ -2477,24 +2469,18 @@ async function openHotSkillDetail(skill: any): Promise<void> {
   await openSkillDetailRoute(skill.id, false, 'hot');
 }
 
-async function fetchSkillDetailExtras(
-  skillId: string,
-): Promise<{ skillMdContent: string; fileTree: SkillFileTreeField }> {
+async function fetchSkillDetailFileTree(skillId: string): Promise<SkillFileTreeField> {
   const id = String(skillId ?? '').trim();
   if (!id) {
-    return { skillMdContent: '', fileTree: '' };
+    return '';
   }
   try {
     const res = await skillBaseService.querySkillDetail(id);
     if (res.meta.success && res.data) {
-      const d = res.data as SkillDetailDto;
-      return {
-        skillMdContent: typeof d.skillMdContent === 'string' ? d.skillMdContent : '',
-        fileTree: fileTreeFromDetailDto(d.fileTree),
-      };
+      return fileTreeFromDetailDto(res.data.fileTree);
     }
   } catch {}
-  return { skillMdContent: '', fileTree: '' };
+  return '';
 }
 
 async function openDetailFromMyRelease(row: SkillListRecordDto): Promise<void> {
@@ -2613,7 +2599,7 @@ async function onVersionManageBack(): Promise<void> {
     await openDetailPanel(snapshot.sid);
     return;
   }
-  const { skillMdContent, fileTree } = await fetchSkillDetailExtras(snapshot.sid);
+  const fileTree = await fetchSkillDetailFileTree(snapshot.sid);
   const shim: Record<string, unknown> = {
     id: snapshot.sid,
     name: snapshot.name,
@@ -2622,7 +2608,6 @@ async function onVersionManageBack(): Promise<void> {
     author: '',
     level: '',
     downloads: 0,
-    skillMdContent,
     fileTree,
     publish_level: '',
   };
@@ -2676,7 +2661,6 @@ function onVersionViewDetail(row: SkillVersionListItemDto): void {
     publish_level: String(vs.publish_level ?? vs.level ?? ''),
     downloads: vs.downloads ?? vs.download_count ?? 0,
     fileTree: row.fileTree,
-    skillMdContent: row.skillMdContent,
   };
   detailFileTree(shim);
   versionPreviewSkill.value = shim;
@@ -3518,7 +3502,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       v-if="detailPanelSkill"
       :skill="detailPanelSkill"
       :file-tree-text="String(fileTreeObj[detailPanelSkill.id] ?? '')"
-      :skill-md-text="String(skillMdFile[detailPanelSkill.id] ?? '')"
       :show-delete="detailShowDelete"
       :deleting-skill-id="deletingMySkillId"
       :ai-evolution="!!detailPanelSkill.isAiEvolution"
@@ -3548,7 +3531,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       preview-only
       :skill="versionPreviewSkill"
       :file-tree-text="String(fileTreeObj[versionPreviewSkill.id] ?? '')"
-      :skill-md-text="String(skillMdFile[versionPreviewSkill.id] ?? '')"
       @close="closeVersionDetailPreview"
     />
 

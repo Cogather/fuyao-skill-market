@@ -131,6 +131,22 @@ export const skillBaseService = {
     });
   },
 
+  // 获取skill详情文件内容
+  querySkillFile: (skillName: string, filePath: string, params?: any): any => {
+    const encodedSkillName = encodeURIComponent(skillName);
+    const encodedFilePath = filePath
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    return httpRequest.skill<any>({
+      url: `/${encodedSkillName}/files/${encodedFilePath}`,
+      method: 'get',
+      params,
+    });
+  },
+
   /** `GET /api/skills/{id}/versions` 版本列表 */
   querySkillVersions: (id: string): any => {
     return httpRequest.skill<any>({

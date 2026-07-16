@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
-import type { SkillDetailDto, SkillVersionListItemDto } from '../../services/skillMarket/apiTypes';
+import type { SkillVersionListItemDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
@@ -71,18 +71,8 @@ const sourceTab = computed(() => routeTabFromValue(route.query.tab));
 const detailFromMyReleases = computed(() => sourceTab.value === 'releases');
 
 const fileTreeText = computed(() => normalizeDetailFileTreeToDisplay(skillDetail.value?.fileTree));
-const skillMdText = computed(() =>
-  typeof skillDetail.value?.skillMdContent === 'string'
-    ? String(skillDetail.value.skillMdContent)
-    : '',
-);
 const versionPreviewFileTreeText = computed(() =>
   normalizeDetailFileTreeToDisplay(versionPreviewSkill.value?.fileTree),
-);
-const versionPreviewSkillMdText = computed(() =>
-  typeof versionPreviewSkill.value?.skillMdContent === 'string'
-    ? String(versionPreviewSkill.value.skillMdContent)
-    : '',
 );
 
 function parentTargetOrigin(): string {
@@ -258,7 +248,6 @@ function onVersionViewDetail(row: SkillVersionListItemDto): void {
     publish_level: String(panelSkill.publish_level ?? panelSkill.level ?? ''),
     downloads: panelSkill.downloads ?? panelSkill.download_count ?? 0,
     fileTree: fileTreeFromDetailDto(row.fileTree),
-    skillMdContent: typeof row.skillMdContent === 'string' ? row.skillMdContent : '',
   };
 }
 
@@ -460,7 +449,6 @@ watch(
       close-text="返回市场"
       :skill="skillDetail"
       :file-tree-text="fileTreeText"
-      :skill-md-text="skillMdText"
       :show-delete="detailFromMyReleases"
       :deleting-skill-id="deletingSkillId"
       @version-manage="handleVersionManage"
@@ -487,7 +475,6 @@ watch(
       preview-only
       :skill="versionPreviewSkill"
       :file-tree-text="versionPreviewFileTreeText"
-      :skill-md-text="versionPreviewSkillMdText"
       @close="closeVersionDetailPreview"
     />
 
