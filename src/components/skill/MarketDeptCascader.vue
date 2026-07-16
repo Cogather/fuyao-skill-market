@@ -10,7 +10,7 @@ export type MarketDeptCascaderNode = {
 
 type DeptCascadeColumn = {
   levelIndex: number;
-  options: string[];
+  options: MarketDeptCascaderNode[];
   active: string | undefined;
 };
 
@@ -26,9 +26,17 @@ const props = withDefaults(
     ariaLabel?: string;
     beforeClear?: () => boolean;
     beforeDone?: (value: string[]) => boolean;
+    clearBehavior?: 'clear' | 'reset';
+    clearValue?: string[];
+    permissionMode?: 'none' | 'review-center';
+    permissionPath?: string[];
   }>(),
   {
     maxLevel: 6,
+    clearBehavior: 'clear',
+    clearValue: () => [],
+    permissionMode: 'none',
+    permissionPath: () => [],
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
     clearText: '清空部门',
@@ -40,7 +48,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: string[]];
   change: [value: string[]];
-  clear: [];
+  clear: [value: string[]];
   done: [value: string[]];
 }>();
 
@@ -55,6 +63,11 @@ const selectedPath = computed(() => props.modelValue ?? []);
 const selectedLabel = computed(() =>
   selectedPath.value.length > 0 ? selectedPath.value.join(' / ') : props.allLabel,
 );
+const normalizedPermissionPath = computed(() => normalizePath(props.permissionPath ?? []));
+
+function normalizePath(segments: string[]): string[] {
+  return segments.map((segment) => segment.trim()).filter(Boolean);
+}
 
 function nodeByPartial(segments: string[]): MarketDeptCascaderNode | null {
   let nodes = normalizedTree.value;
@@ -69,7 +82,7 @@ function nodeByPartial(segments: string[]): MarketDeptCascaderNode | null {
   return current;
 }
 
-function optionsAt(levelIndex: number): string[] {
+function optionsAt(levelIndex: number): MarketDeptCascaderNode[] {
   const tree = normalizedTree.value;
   if (tree.length === 0) {
     return [];
@@ -91,7 +104,7 @@ function optionsAt(levelIndex: number): string[] {
     }
     nodes = hit.children ?? [];
   }
-  return nodes.map((node) => node.name);
+  return nodes;
 }
 
 const columns = computed<DeptCascadeColumn[]>(() => {
@@ -117,6 +130,30 @@ const columns = computed<DeptCascadeColumn[]>(() => {
 function hasChildren(levelIndex: number, name: string): boolean {
   const node = nodeByPartial([...selectedPath.value.slice(0, levelIndex), name]);
   return Boolean(node?.children?.length);
+}
+
+function pathAllowedByPermission(path: string[]): boolean {
+  if (props.permissionMode !== 'review-center') {
+    return true;
+  }
+
+  const permissionPath = normalizedPermissionPath.value;
+  const normalizedPath = normalizePath(path);
+  if (permissionPath.length === 0 || normalizedPath.length === 0) {
+    return true;
+  }
+
+  const pathIsBeforePermissionDept =
+    normalizedPath.length <= permissionPath.length &&
+    normalizedPath.every((segment, index) => segment === permissionPath[index]);
+  const pathIsInsidePermissionDept = permissionPath.every(
+    (segment, index) => normalizedPath[index] === segment,
+  );
+  return pathIsBeforePermissionDept || pathIsInsidePermissionDept;
+}
+
+function isOptionDisabled(levelIndex: number, name: string): boolean {
+  return !pathAllowedByPermission([...selectedPath.value.slice(0, levelIndex), name]);
 }
 
 function updatePanelLayout(): void {
@@ -171,6 +208,10 @@ function toggle(): void {
 }
 
 function select(levelIndex: number, name: string): void {
+  if (isOptionDisabled(levelIndex, name)) {
+    return;
+  }
+
   const nextValue = [...selectedPath.value.slice(0, levelIndex), name];
   emit('update:modelValue', nextValue);
   emit('change', nextValue);
@@ -180,9 +221,10 @@ function clear(): void {
   if (props.beforeClear && !props.beforeClear()) {
     return;
   }
-  emit('update:modelValue', []);
-  emit('change', []);
-  emit('clear');
+  const nextValue = props.clearBehavior === 'reset' ? [...(props.clearValue ?? [])] : [];
+  emit('update:modelValue', nextValue);
+  emit('change', nextValue);
+  emit('clear', nextValue);
   setOpen(false);
 }
 
@@ -281,22 +323,30 @@ onBeforeUnmount(() => {
             role="presentation"
           >
             <button
-              v-for="name in column.options"
-              :key="`${column.levelIndex}-${name}`"
+              v-for="node in column.options"
+              :key="`${column.levelIndex}-${node.name}`"
               type="button"
               class="market-dept-cascader-item"
-              :class="{ 'is-active': column.active === name }"
+              :class="{
+                'is-active': column.active === node.name,
+                'is-disabled': isOptionDisabled(column.levelIndex, node.name),
+              }"
               role="option"
-              :aria-selected="column.active === name"
-              @click="select(column.levelIndex, name)"
+              :disabled="isOptionDisabled(column.levelIndex, node.name)"
+              :aria-selected="column.active === node.name"
+              :aria-disabled="isOptionDisabled(column.levelIndex, node.name)"
+              @click="select(column.levelIndex, node.name)"
             >
-              <span class="market-dept-cascader-item-label">{{ name }}</span>
+              <span class="market-dept-cascader-item-label">{{ node.name }}</span>
               <span
-                v-if="hasChildren(column.levelIndex, name)"
+                v-if="
+                  hasChildren(column.levelIndex, node.name) &&
+                  !isOptionDisabled(column.levelIndex, node.name)
+                "
                 class="market-dept-cascader-item-chevron"
                 aria-hidden="true"
               >
-                ›
+                &rsaquo;
               </span>
             </button>
           </div>
@@ -436,6 +486,16 @@ onBeforeUnmount(() => {
   background: #f8fafc;
 }
 
+.market-dept-cascader-item:disabled,
+.market-dept-cascader-item.is-disabled {
+  color: #a8b3c2;
+  cursor: not-allowed;
+}
+
+.market-dept-cascader-item:disabled:hover,
+.market-dept-cascader-item.is-disabled:hover {
+  background: transparent;
+}
 .market-dept-cascader-item.is-active {
   background: #eaf2ff;
   color: #2563eb;

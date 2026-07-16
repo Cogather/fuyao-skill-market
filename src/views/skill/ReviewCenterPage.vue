@@ -1482,6 +1482,7 @@ function syncReviewDepartmentLevels(segments = reviewDepartmentSegments.value): 
 
 const REVIEW_DEPARTMENT_PERMISSION_MESSAGE =
   '\u8bf7\u9009\u62e9\u60a8\u6240\u5c5e\u7684\u6700\u7ec6\u7c92\u5ea6\u90e8\u95e8\u3002';
+const REVIEW_DEPARTMENT_RESET_TEXT = '\u6062\u590d\u9ed8\u8ba4\u9009\u62e9';
 
 function normalizeDepartmentId(value: unknown): string {
   if (typeof value === 'string' || typeof value === 'number') {
@@ -1513,25 +1514,19 @@ function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boo
   );
 }
 
-function reviewDepartmentPathIncludesId(segments: string[], departmentId: string): boolean {
-  const requiredDepartmentId = normalizeDepartmentId(departmentId);
-  if (!requiredDepartmentId) {
-    return false;
-  }
-
+function reviewDepartmentNodeIdByPath(segments: string[]): string {
   let siblings = reviewDepartmentTree.value;
+  let current: ReviewDepartmentTreeNode | null = null;
+
   for (const segment of normalizeDepartmentPath(segments)) {
-    const current = siblings.find((node) => node.name === segment) ?? null;
+    current = siblings.find((node) => node.name === segment) ?? null;
     if (!current) {
-      return false;
-    }
-    if (normalizeDepartmentId(current.id) === requiredDepartmentId) {
-      return true;
+      return '';
     }
     siblings = current.children ?? [];
   }
 
-  return false;
+  return normalizeDepartmentId(current?.id);
 }
 
 function isReviewDepartmentSelectionAllowed(segments: string[]): boolean {
@@ -1543,16 +1538,16 @@ function isReviewDepartmentSelectionAllowed(segments: string[]): boolean {
     return true;
   }
 
-  const selectedPathIncludesRequiredId = reviewDepartmentPathIncludesId(
-    segments,
-    requiredDepartmentId,
-  );
-
   if (requiredPath.length > 0) {
-    return departmentPathStartsWith(segments, requiredPath) || selectedPathIncludesRequiredId;
+    return departmentPathStartsWith(segments, requiredPath);
   }
 
-  return selectedPathIncludesRequiredId;
+  const selectedDepartmentId = reviewDepartmentNodeIdByPath(segments);
+  if (requiredDepartmentId && selectedDepartmentId) {
+    return selectedDepartmentId === requiredDepartmentId;
+  }
+
+  return false;
 }
 function guardReviewDepartmentSelection(segments: string[]): boolean {
   if (isReviewDepartmentSelectionAllowed(segments)) {
@@ -1563,13 +1558,18 @@ function guardReviewDepartmentSelection(segments: string[]): boolean {
 }
 
 function guardReviewDepartmentClear(): boolean {
-  return guardReviewDepartmentSelection([]);
+  return true;
 }
+
+const reviewDepartmentResetText = REVIEW_DEPARTMENT_RESET_TEXT;
+const reviewDepartmentDefaultSegments = computed(() =>
+  normalizeDepartmentPath(props.expertDepartmentPermission?.path),
+);
 
 let reviewCenterInitialLoadStarted = false;
 
 function applyDefaultReviewDepartmentSelection(): boolean {
-  const defaultSegments = normalizeDepartmentPath(props.expertDepartmentPermission?.path);
+  const defaultSegments = reviewDepartmentDefaultSegments.value;
   if (defaultSegments.length === 0) {
     return false;
   }
@@ -1649,12 +1649,15 @@ async function onReviewDepartmentDone(segments: string[]): Promise<void> {
   await reloadReviewCenterTasks();
 }
 
-async function onReviewDepartmentClear(): Promise<void> {
+async function onReviewDepartmentClear(
+  segments = reviewDepartmentDefaultSegments.value,
+): Promise<void> {
   if (!guardReviewDepartmentClear()) {
     return;
   }
-  reviewDepartmentSegments.value = [];
-  syncReviewDepartmentLevels([]);
+  const nextSegments = [...segments];
+  reviewDepartmentSegments.value = nextSegments;
+  syncReviewDepartmentLevels(nextSegments);
   await reloadReviewCenterTasks();
 }
 
@@ -1842,6 +1845,11 @@ onBeforeUnmount(() => {
                   class="review-dept-cascader"
                   :tree="reviewDepartmentTree"
                   :max-level="6"
+                  :clear-text="reviewDepartmentResetText"
+                  clear-behavior="reset"
+                  :clear-value="reviewDepartmentDefaultSegments"
+                  permission-mode="review-center"
+                  :permission-path="reviewDepartmentDefaultSegments"
                   aria-label="评审部门级联筛选（DepartmentL1～DepartmentL6）"
                   @change="onReviewDepartmentChange"
                   :before-clear="guardReviewDepartmentClear"

@@ -76,21 +76,17 @@ function permissionFromLevels(levels: DepartmentLevel[]): ExpertDepartmentPermis
 }
 
 function permissionFromArray(record: Record<string, unknown>): ExpertDepartmentPermission | null {
-  const keys = ['departmentList', 'departments', 'departmentLevels', 'deptList', 'deptLevels'];
-  for (const key of keys) {
-    const source = record[key];
-    if (!Array.isArray(source)) {
-      continue;
-    }
-    const levels = source
-      .map((item, index) => readDepartmentLevel(item, index + 1))
-      .filter((item): item is DepartmentLevel => item !== null);
-    const permission = permissionFromLevels(levels);
-    if (permission) {
-      return permission;
+  const key = 'dept';
+  const levels = [];
+  for (let i = 3; i < 7; i++) {
+    const source = record[`${key}${i.toString()}`];
+    const level = readDepartmentLevel(source, i);
+    if(level !== null) {
+      levels.push(level);
     }
   }
-  return null;
+  const permission = permissionFromLevels(levels);
+  return permission;
 }
 
 function permissionFromFlatLevels(
