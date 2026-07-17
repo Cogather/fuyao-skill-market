@@ -208,6 +208,7 @@ type MockSkillReviewDetailPayload = {
     version: string;
     ownerUser: string;
     departmentL6: string;
+    totalAccess: number;
   };
   aiScore: MockAiReviewDetail;
   currentUserReview: MockCurrentUserReview | null;
@@ -692,6 +693,7 @@ function createMockSkillReviewDetailPayload(
       version,
       ownerUser: skill?.createdBy ?? skill?.author ?? 'mock-owner',
       departmentL6: skill?.departmentL6 ?? skill?.departmentL5 ?? 'Mock 评审部门',
+      totalAccess: skill?.totalAccess ?? 0,
     },
     aiScore,
     currentUserReview,
@@ -963,6 +965,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const category = categoryFromGroup(categoryGroupName);
   const updatedAt = seed.latestPublishTime ?? nowText();
   const downloads = seed.download_count ?? seed.downloads ?? 0;
+  const totalAccess = seed.totalAccess ?? downloads * 8;
   const currentVersion = seed.version ?? '1.0.0';
   const dept = seed.dept_name || '部门1/平台产品线/平台工具组';
   const deptParts = skillDeptParts({ ...seed, dept_name: dept });
@@ -993,6 +996,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     latestPublishTime: updatedAt,
     level,
     downloads,
+    totalAccess,
     rating: seed.rating ?? 4.5,
     version: currentVersion,
     currentVersion,
@@ -1071,6 +1075,7 @@ function createReviewCenterSkillRecord(sid: string): MockSkillRecord | undefined
     createdBy: task?.ownerUser ?? task?.ownerName ?? 'mock-reviewer',
     deptName: task?.team ? 'Review Center/' + task.team : 'Review Center/Mock Team',
     downloads: Number(task?.downloads ?? 0),
+    totalAccess: Number(task?.totalAccess ?? task?.usage ?? 0),
     category: task?.categoryId ?? 'review',
     icon: 'RV',
     version: task?.version ?? '1.0.0',

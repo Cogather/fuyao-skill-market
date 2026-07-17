@@ -147,6 +147,8 @@ export type SkillListRecordDto = {
   departmentL5?: string;
   departmentL6?: string;
   downloads: number;
+  /** Skill 累计调用量 */
+  totalAccess?: number;
   likes: number;
   dislikes: number;
   rating: number;
@@ -237,6 +239,8 @@ export type SkillDetailDto = {
   status: string;
   orgName: string | null;
   downloads: number;
+  /** Skill 累计调用量 */
+  totalAccess?: number;
   likes: number;
   dislikes: number;
   rating: number;

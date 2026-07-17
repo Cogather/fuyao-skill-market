@@ -163,6 +163,10 @@ const overviewCategoryLabel = computed(
 const downloadCount = computed(() =>
   Number(props.skill.totalDownloads ?? props.skill.downloads ?? 0),
 );
+const accessCount = computed(() => {
+  const value = Number(props.skill.totalAccess ?? 0);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+});
 const ratingValue = computed(() => Number(props.skill.rating ?? 0));
 const ratingLabel = computed(() =>
   ratingValue.value > 0 ? ratingValue.value.toFixed(1) : '未评分',
@@ -361,6 +365,18 @@ function onOpenDetail(): void {
       </span>
       <span class="footer-right-metrics">
         <span class="rating-metric" :title="`评分 ${ratingLabel}`">★ {{ ratingLabel }}</span>
+        <span class="access-metric" :title="`调用量 ${accessCount.toLocaleString('zh-CN')}`">
+          <svg class="access-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="metric-num">{{ accessCount.toLocaleString('zh-CN') }}</span>
+        </span>
         <span class="download-metric" :title="`下载 ${downloadCount.toLocaleString('zh-CN')}`">
           <svg class="dl-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
@@ -391,6 +407,18 @@ function onOpenDetail(): void {
       </span>
       <span class="footer-right-metrics">
         <span class="rating-metric" :title="`评分 ${ratingLabel}`">★ {{ ratingLabel }}</span>
+        <span class="access-metric" :title="`调用量 ${accessCount.toLocaleString('zh-CN')}`">
+          <svg class="access-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 012-2V6a2 2 0 012-2z"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span class="metric-num">{{ accessCount.toLocaleString('zh-CN') }}</span>
+        </span>
         <button type="button" class="dl-btn" aria-label="下载" @click.stop="onFooterDownload">
           <svg class="dl-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
@@ -886,6 +914,7 @@ function onOpenDetail(): void {
   color: #1d4ed8;
 }
 
+.access-metric,
 .download-metric {
   display: inline-flex;
   align-items: center;
@@ -896,11 +925,13 @@ function onOpenDetail(): void {
   line-height: 1;
 }
 
+.access-icon,
 .dl-icon {
   width: 13px;
   height: 13px;
 }
 
+.metric-num,
 .dl-num {
   font-variant-numeric: tabular-nums;
 }

@@ -849,16 +849,39 @@ const activeReviewSkillId = computed(() => {
     skillInfoRecord.skillId ?? detailRecord.skillId ?? activeTask.value?.skillId ?? '',
   ).trim();
 });
+function formatReviewMetric(value: unknown): string {
+  const count = Number(value);
+  if (Number.isFinite(count) && count >= 0) {
+    return count.toLocaleString('zh-CN');
+  }
+  const text = String(value ?? '').trim();
+  return text || '0';
+}
 const activeMetrics = computed(() => {
   const task = activeTask.value;
   if (!task) {
     return [];
   }
 
+  const detailRecord = readRecord(selectedSkillDetail.value);
+  const skillInfoRecord = readRecord(detailRecord.skillInfo);
+  const taskRecord = readRecord(task);
+  const totalAccess =
+    taskRecord.totalAccess ??
+    skillInfoRecord.totalAccess ??
+    detailRecord.totalAccess ??
+    task.usage ??
+    0;
+
   return [
-    // { label: '使用量', value: task.usage, tone: 'blue' },
-    { label: '版本', value: task.version, tone: 'blue' },
-    { label: '下载量', value: task.downloads, tone: 'cyan' },
+    { label: '版本', value: task.version, tone: 'blue', icon: '' },
+    { label: '调用量', value: formatReviewMetric(totalAccess), tone: 'blue', icon: 'access' },
+    {
+      label: '下载量',
+      value: formatReviewMetric(task.downloads),
+      tone: 'cyan',
+      icon: 'download',
+    },
     // {
     //   label: '专家评审得分',
     //   value: task.expertScore,
@@ -886,6 +909,7 @@ function openActiveSkillDetail(): void {
           ownerUser: task.ownerUser,
           team: task.team,
           downloads: task.downloads,
+          totalAccess: taskRecord.totalAccess ?? task.usage ?? 0,
           categoryId: taskRecord.categoryId,
           tags: taskRecord.tags,
           version: task.version,
@@ -1974,6 +1998,36 @@ onBeforeUnmount(() => {
                   :key="metric.label"
                   :class="['metric-chip', `is-${metric.tone}`]"
                 >
+                  <svg
+                    v-if="metric.icon === 'access'"
+                    class="metric-chip__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <svg
+                    v-else-if="metric.icon === 'download'"
+                    class="metric-chip__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 4v12m0 0 4-4m-4 4-4-4M5 20h14"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
                   {{ metric.label }} {{ metric.value }}
                 </span>
               </div>

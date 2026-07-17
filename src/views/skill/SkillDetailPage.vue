@@ -247,6 +247,7 @@ function onVersionViewDetail(row: SkillVersionListItemDto): void {
     level: String(panelSkill.level ?? panelSkill.publish_level ?? ''),
     publish_level: String(panelSkill.publish_level ?? panelSkill.level ?? ''),
     downloads: panelSkill.downloads ?? panelSkill.download_count ?? 0,
+    totalAccess: panelSkill.totalAccess ?? 0,
     fileTree: fileTreeFromDetailDto(row.fileTree),
   };
 }

@@ -64,6 +64,16 @@ const detailRating = computed(() => {
   }
   return raw.toFixed(1).replace(/\.0$/, '');
 });
+function formatMetricCount(value: unknown): string {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? count.toLocaleString('zh-CN') : '0';
+}
+const detailDownloadCount = computed(() =>
+  formatMetricCount(
+    props.skill?.totalDownloads ?? props.skill?.downloads ?? props.skill?.download_count ?? 0,
+  ),
+);
+const detailAccessCount = computed(() => formatMetricCount(props.skill?.totalAccess ?? 0));
 const detailTags = computed(() => {
   const raw = props.skill?.tags;
   if (Array.isArray(raw)) {
@@ -352,9 +362,7 @@ function detailRowsFromFileTreeText(text: string): DetailFileTreeRow[] {
 const detailFileRows = computed(() => detailRowsFromFileTreeText(props.fileTreeText));
 
 const detailSkillId = computed(() => readDetailString(props.skill, ['skill_id', 'skillId', 'id']));
-const detailSkillName = computed(() => 
-  readDetailString(props.skill, ['name', 'skillName'])
-);
+const detailSkillName = computed(() => readDetailString(props.skill, ['name', 'skillName']));
 const detailSkillVersion = computed(() =>
   readDetailString(props.skill, ['currentVersion', 'version']),
 );
@@ -535,8 +543,9 @@ async function loadDetailFile(row: DetailFileTreeRow, force = false): Promise<vo
       .filter(Boolean)
       .map((segment) => encodeURIComponent(segment))
       .join('/');
-    const response = await skillBaseService.querySkillFile(encodedSkillId, 
-      version ? {version: version, filePath: encodedFilePath} : {filePath: encodedFilePath},
+    const response = await skillBaseService.querySkillFile(
+      encodedSkillId,
+      version ? { version: version, filePath: encodedFilePath } : { filePath: encodedFilePath },
     );
     if (requestSequence !== detailFileRequestSequence) {
       return;
@@ -961,7 +970,19 @@ onBeforeUnmount(() => {
                   stroke-linejoin="round"
                 />
               </svg>
-              {{ skill.totalDownloads }}
+              {{ detailDownloadCount }}
+            </span>
+            <span v-if="!previewOnly" class="detail-access" :title="`调用量 ${detailAccessCount}`">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M8 9l3 3-3 3m5 0h3M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              {{ detailAccessCount }}
             </span>
           </div>
           <div v-if="isPageMode ? showPageActionCard : !previewOnly" class="detail-actions">
@@ -1032,6 +1053,7 @@ onBeforeUnmount(() => {
             详情
           </button>
           <button
+            v-if="false"
             type="button"
             class="detail-page-tab"
             :class="{ active: detailContentTab === 'versions' }"
@@ -1587,7 +1609,8 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
-.detail-download {
+.detail-download,
+.detail-access {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1595,7 +1618,8 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.detail-download svg {
+.detail-download svg,
+.detail-access svg {
   width: 16px;
   height: 16px;
 }

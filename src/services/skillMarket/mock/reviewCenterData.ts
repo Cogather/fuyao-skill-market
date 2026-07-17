@@ -16,6 +16,7 @@ export type ReviewTaskCard = {
   departmentL6: string;
   tags: string;
   usage: string;
+  totalAccess: string | number;
   downloads: string;
   expertScore: string;
   hasReviewed: boolean;
@@ -196,8 +197,11 @@ const MOCK_REVIEW_BUSINESS_CATEGORIES = [
   },
 ] as const;
 
+const MOCK_REVIEW_TOTAL_ACCESS = [1280, 864, 512, 236, 98] as const;
+
 export const mockReviewTaskCards: ReviewTaskCard[] = MOCK_REVIEW_TASK_NAMES.map((name, index) => {
   const usage = 12 + ((index * 17) % 180);
+  const totalAccess = MOCK_REVIEW_TOTAL_ACCESS[index] ?? usage;
   const downloads = 3 + ((index * 11) % 96);
   const hasReviewed = index % 3 !== 1;
   const overallScore = hasReviewed
@@ -221,6 +225,7 @@ export const mockReviewTaskCards: ReviewTaskCard[] = MOCK_REVIEW_TASK_NAMES.map(
     departmentL6: team,
     tags: category.tags.join(','),
     usage: String(usage),
+    totalAccess,
     downloads: String(downloads),
     hasReviewed,
     overallScore,
