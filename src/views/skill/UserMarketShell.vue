@@ -2469,6 +2469,11 @@ async function openHotSkillDetail(skill: any): Promise<void> {
   await openSkillDetailRoute(skill.id, false, 'hot');
 }
 
+
+async function openReviewSkillDetail(skillId: string): Promise<void> {
+  await openSkillDetailRoute(skillId, false, 'review');
+}
+
 async function fetchSkillDetailFileTree(skillId: string): Promise<SkillFileTreeField> {
   const id = String(skillId ?? '').trim();
   if (!id) {
@@ -5244,6 +5249,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         :expert-department-permission="expertDepartmentPermission"
         :expert-check-loaded="expertCheckLoaded"
         :is-expert-reviewer="isExpertReviewer"
+        @open-detail="openReviewSkillDetail"
       />
     </div>
 

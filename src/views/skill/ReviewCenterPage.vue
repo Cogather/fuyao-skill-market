@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -43,7 +42,9 @@ const props = withDefaults(
   },
 );
 
-const router = useRouter();
+const emit = defineEmits<{
+  'open-detail': [skillId: string];
+}>();
 
 const rankingCards = ref<ReviewRankingCard[]>([]);
 const taskCards = reactive<ReviewTaskCard[]>([]);
@@ -919,13 +920,7 @@ function openActiveSkillDetail(): void {
       // Ignore storage failures; the detail route can still load by id in real environments.
     }
   }
-
-  const detailUrl = router.resolve({
-    name: 'skill-detail',
-    params: { skillId },
-    query: { tab: 'review' },
-  }).href;
-  window.open(detailUrl, '_blank', 'noopener');
+  emit('open-detail', skillId);
 }
 
 function buildRadarPoints(scale: number) {
