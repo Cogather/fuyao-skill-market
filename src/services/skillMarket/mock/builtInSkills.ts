@@ -472,7 +472,7 @@ const BUILT_IN_MOCK_SKILLS: Skill[] = [
     tags: 'review,report',
     qualityBadges: ['优秀', '高分', '推荐'],
     fileTree:
-      'test1-skill/\ntest1-skill/SKILL.md\ntest1-skill/cases/smoke.feature\ntest1-skill/config/env.yaml',
+      'test1-skill/\ntest1-skill/SKILL.md\ntest1-skill/cases/smoke.feature\ntest1-skill/config/env.yaml\ntest1-skill/assets/mock-preview.png',
     skillMdContent:
       '# test1（Mock 接口原文）\n\n内置联调用例包结构；与 test2、test3 的 `fileTree` / 正文均不同。',
   },

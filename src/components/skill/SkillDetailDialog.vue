@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 const router = useRouter();
 
@@ -8,7 +10,6 @@ const props = withDefaults(
   defineProps<{
     skill: Record<string, unknown>;
     fileTreeText: string;
-    skillMdText: string;
     /** 为 false 时不展示删除（如从市场卡片进入） */
     showDelete?: boolean;
     deletingSkillId?: string | null;
@@ -63,6 +64,16 @@ const detailRating = computed(() => {
   }
   return raw.toFixed(1).replace(/\.0$/, '');
 });
+function formatMetricCount(value: unknown): string {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? count.toLocaleString('zh-CN') : '0';
+}
+const detailDownloadCount = computed(() =>
+  formatMetricCount(
+    props.skill?.totalDownloads ?? props.skill?.downloads ?? props.skill?.download_count ?? 0,
+  ),
+);
+const detailAccessCount = computed(() => formatMetricCount(props.skill?.totalAccess ?? 0));
 const detailTags = computed(() => {
   const raw = props.skill?.tags;
   if (Array.isArray(raw)) {
@@ -86,10 +97,7 @@ const detailBadges = computed(() => {
 const showPageActionCard = computed(
   () =>
     !props.previewOnly &&
-    (props.showTrySkill ||
-      props.showDownload ||
-      props.showDelete ||
-      !props.aiEvolution),
+    (props.showTrySkill || props.showDownload || props.showDelete || !props.aiEvolution),
 );
 
 type DetailContentTab = 'detail' | 'versions';
@@ -284,7 +292,25 @@ type DetailFileTreeRow = {
   displayText: string;
 };
 
+const DETAIL_IMAGE_MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  avif: 'image/avif',
+  apng: 'image/apng',
+};
+
 const selectedDetailFilePath = ref('');
+const detailFileContentCache = ref<Record<string, string>>({});
+const detailFileLoadingPath = ref('');
+const detailFileErrorText = ref('');
+const selectedDetailImageLoadFailed = ref(false);
+let detailFileRequestSequence = 0;
 
 function parseDetailFileTreeLine(
   line: string,
@@ -335,6 +361,23 @@ function detailRowsFromFileTreeText(text: string): DetailFileTreeRow[] {
 
 const detailFileRows = computed(() => detailRowsFromFileTreeText(props.fileTreeText));
 
+const detailSkillId = computed(() => readDetailString(props.skill, ['skill_id', 'skillId', 'id']));
+const detailSkillName = computed(() => readDetailString(props.skill, ['name', 'skillName']));
+const detailSkillVersion = computed(() =>
+  readDetailString(props.skill, ['currentVersion', 'version']),
+);
+const detailFileTreeRoot = computed(() => {
+  const firstRow = detailFileRows.value[0];
+  if (!firstRow?.isDirectory || firstRow.depth !== 0) {
+    return '';
+  }
+  return detailFileRows.value.some(
+    (row) => row.depth > 0 && row.path.startsWith(`${firstRow.path}/`),
+  )
+    ? firstRow.path
+    : '';
+});
+
 const defaultDetailFileRow = computed(() => {
   return (
     detailFileRows.value.find(
@@ -354,16 +397,215 @@ const selectedDetailFileRow = computed(() => {
 });
 
 const selectedDetailFileContent = computed(() => {
-  const selectedName = selectedDetailFileRow.value?.label.replace(/\/$/, '').toLowerCase();
-  return selectedName === 'skill.md' ? props.skillMdText : '';
+  const path = selectedDetailFileRow.value?.path ?? '';
+  return path ? (detailFileContentCache.value[path] ?? '') : '';
 });
+const selectedDetailFileLoaded = computed(() => {
+  const path = selectedDetailFileRow.value?.path ?? '';
+  return Boolean(path) && Object.prototype.hasOwnProperty.call(detailFileContentCache.value, path);
+});
+const selectedDetailFileLoading = computed(
+  () =>
+    Boolean(selectedDetailFileRow.value?.path) &&
+    detailFileLoadingPath.value === selectedDetailFileRow.value?.path,
+);
+const selectedDetailFileName = computed(
+  () => selectedDetailFileRow.value?.label.replace(/\/$/, '') ?? '',
+);
+const selectedDetailImageMimeType = computed(() => {
+  const fileName = selectedDetailFileName.value.toLowerCase();
+  const extension = fileName.includes('.') ? (fileName.split('.').at(-1) ?? '') : '';
+  return DETAIL_IMAGE_MIME_TYPES[extension] ?? '';
+});
+const selectedDetailImageSrc = computed(() => {
+  const mimeType = selectedDetailImageMimeType.value;
+  const content = selectedDetailFileContent.value.trim();
+  if (!mimeType || !selectedDetailFileLoaded.value || !content) {
+    return '';
+  }
+
+  const dataUrlMatch = content.match(
+    /^(data:image\/[a-z0-9.+-]+(?:;[a-z0-9=._-]+)*;base64,)([\s\S]*)$/i,
+  );
+  if (dataUrlMatch) {
+    return `${dataUrlMatch[1]}${dataUrlMatch[2].replace(/\s+/g, '')}`;
+  }
+
+  const normalizedBase64 = content.replace(/\s+/g, '');
+  if (normalizedBase64.length % 4 === 1 || !/^[a-z0-9+/]*={0,2}$/i.test(normalizedBase64)) {
+    return '';
+  }
+  return `data:${mimeType};base64,${normalizedBase64}`;
+});
+const detailSkillMdText = computed(() => {
+  const skillMdRow = detailFileRows.value.find(
+    (row) => !row.isDirectory && row.label.replace(/\/$/, '').toLowerCase() === 'skill.md',
+  );
+  if (
+    skillMdRow &&
+    Object.prototype.hasOwnProperty.call(detailFileContentCache.value, skillMdRow.path)
+  ) {
+    return detailFileContentCache.value[skillMdRow.path] ?? '';
+  }
+  return props.aiEvolution ? readDetailString(props.skill, ['skillMdContent']) : '';
+});
+
+function detailFileRequestPath(row: DetailFileTreeRow): string {
+  const normalizedPath = row.path.replace(/\\/g, '/').replace(/^\/+/, '');
+  const root = detailFileTreeRoot.value;
+  if (root && normalizedPath.startsWith(`${root}/`)) {
+    return detailSkillName.value + '/' + normalizedPath.slice(root.length + 1);
+  }
+  return detailSkillName.value + '/' + normalizedPath;
+}
+
+function detailFileResponseMessage(response: unknown, fallback: string): string {
+  const record = isDetailRecord(response) ? response : {};
+  const meta = isDetailRecord(record.meta) ? record.meta : {};
+  return (
+    readDetailString(meta, ['message']) || readDetailString(record, ['message', 'msg']) || fallback
+  );
+}
+
+function readDetailFileContentField(source: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (value !== null && value !== undefined) {
+      return String(value);
+    }
+  }
+  return '';
+}
+
+function detailFileResponseContent(response: unknown): string {
+  if (typeof response === 'string') {
+    return response;
+  }
+  const record = isDetailRecord(response) ? response : {};
+  const meta = isDetailRecord(record.meta) ? record.meta : {};
+  if (meta.success === false) {
+    throw new Error(detailFileResponseMessage(response, '文件内容加载失败'));
+  }
+
+  const payload = record.data;
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  if (isDetailRecord(payload)) {
+    return readDetailFileContentField(payload, ['content', 'fileContent', 'file_content', 'text']);
+  }
+  return readDetailFileContentField(record, ['content', 'fileContent', 'file_content', 'text']);
+}
+
+async function loadDetailFile(row: DetailFileTreeRow, force = false): Promise<void> {
+  if (row.isDirectory) {
+    return;
+  }
+
+  selectedDetailFilePath.value = row.path;
+  const requestSequence = ++detailFileRequestSequence;
+  detailFileErrorText.value = '';
+  if (!force && Object.prototype.hasOwnProperty.call(detailFileContentCache.value, row.path)) {
+    detailFileLoadingPath.value = '';
+    return;
+  }
+
+  const embeddedSkillMd = props.aiEvolution
+    ? readDetailFileContentField(props.skill, ['skillMdContent'])
+    : '';
+  if (row.label.replace(/\/$/, '').toLowerCase() === 'skill.md' && embeddedSkillMd) {
+    detailFileContentCache.value = {
+      ...detailFileContentCache.value,
+      [row.path]: embeddedSkillMd,
+    };
+    detailFileLoadingPath.value = '';
+    return;
+  }
+
+  const skillId = props.skill.id;
+  const filePath = detailFileRequestPath(row);
+  if (!skillId || !filePath) {
+    detailFileLoadingPath.value = '';
+    detailFileErrorText.value = '缺少 Skill ID 或文件路径，无法加载文件内容';
+    return;
+  }
+
+  detailFileLoadingPath.value = row.path;
+  try {
+    const version = detailSkillVersion.value;
+    const encodedSkillId = encodeURIComponent(skillId);
+    const encodedFilePath = filePath
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const response = await skillBaseService.querySkillFile(
+      encodedSkillId,
+      version ? { version: version, filePath: encodedFilePath } : { filePath: encodedFilePath },
+    );
+    if (requestSequence !== detailFileRequestSequence) {
+      return;
+    }
+    detailFileContentCache.value = {
+      ...detailFileContentCache.value,
+      [row.path]: detailFileResponseContent(response),
+    };
+  } catch (error) {
+    if (requestSequence !== detailFileRequestSequence) {
+      return;
+    }
+    detailFileErrorText.value = error instanceof Error ? error.message : '文件内容加载失败';
+  } finally {
+    if (requestSequence === detailFileRequestSequence) {
+      detailFileLoadingPath.value = '';
+    }
+  }
+}
+
+function retrySelectedDetailFile(): void {
+  const row = selectedDetailFileRow.value;
+  if (row) {
+    void loadDetailFile(row, true);
+  }
+}
+
+function onSelectedDetailImageError(): void {
+  selectedDetailImageLoadFailed.value = true;
+}
+
+watch(
+  () => [selectedDetailFileRow.value?.path ?? '', selectedDetailImageSrc.value],
+  () => {
+    selectedDetailImageLoadFailed.value = false;
+  },
+);
+
+watch(
+  () => `${detailSkillId.value}\u0000${detailSkillVersion.value}\u0000${props.fileTreeText}`,
+  () => {
+    detailFileRequestSequence += 1;
+    detailFileContentCache.value = {};
+    detailFileLoadingPath.value = '';
+    detailFileErrorText.value = '';
+    const defaultRow = defaultDetailFileRow.value;
+    selectedDetailFilePath.value = defaultRow?.path ?? '';
+    if (defaultRow) {
+      void loadDetailFile(defaultRow);
+    }
+  },
+  { immediate: true },
+);
 
 function detailVersionFileTreeText(row: DetailVersionRow | null, isLatest: boolean): string {
   return row?.fileTreeText || (isLatest ? props.fileTreeText : props.fileTreeText);
 }
 
 function detailVersionSkillMdText(row: DetailVersionRow | null, isLatest: boolean): string {
-  return row?.skillMdContent || (isLatest ? props.skillMdText : props.skillMdText);
+  return row?.skillMdContent || (isLatest ? detailSkillMdText.value : '');
 }
 
 function detailCompareFileName(path: string): string {
@@ -551,7 +793,7 @@ function selectDetailFile(row: DetailFileTreeRow): void {
   if (row.isDirectory) {
     return;
   }
-  selectedDetailFilePath.value = row.path;
+  void loadDetailFile(row);
 }
 
 function isDetailFileSelected(row: DetailFileTreeRow): boolean {
@@ -728,7 +970,19 @@ onBeforeUnmount(() => {
                   stroke-linejoin="round"
                 />
               </svg>
-              {{ skill.totalDownloads }}
+              {{ detailDownloadCount }}
+            </span>
+            <span v-if="!previewOnly" class="detail-access" :title="`调用量 ${detailAccessCount}`">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              {{ detailAccessCount }}
             </span>
           </div>
           <div v-if="isPageMode ? showPageActionCard : !previewOnly" class="detail-actions">
@@ -757,11 +1011,7 @@ onBeforeUnmount(() => {
             >
               {{ deletingSkillId === currentSkillId() ? '删除中…' : '删除' }}
             </button>
-            <div
-              v-if="!aiEvolution"
-              ref="detailMoreWrapRef"
-              class="detail-more-wrap"
-            >
+            <div v-if="!aiEvolution" ref="detailMoreWrapRef" class="detail-more-wrap">
               <button
                 type="button"
                 class="detail-btn detail-more-trigger"
@@ -803,6 +1053,7 @@ onBeforeUnmount(() => {
             详情
           </button>
           <button
+            v-if="false"
             type="button"
             class="detail-page-tab"
             :class="{ active: detailContentTab === 'versions' }"
@@ -841,8 +1092,45 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <article class="detail-file-content-pane">
-                <pre v-if="selectedDetailFileContent">{{ selectedDetailFileContent }}</pre>
-                <div v-else class="detail-file-content-empty">暂无可预览内容</div>
+                <div
+                  v-if="selectedDetailFileLoading"
+                  class="detail-file-content-empty"
+                  role="status"
+                >
+                  文件内容加载中...
+                </div>
+                <div v-else-if="detailFileErrorText" class="detail-file-content-error" role="alert">
+                  <span>{{ detailFileErrorText }}</span>
+                  <button type="button" @click="retrySelectedDetailFile">重新加载</button>
+                </div>
+                <div
+                  v-else-if="selectedDetailImageSrc && !selectedDetailImageLoadFailed"
+                  class="detail-file-image-preview"
+                >
+                  <img
+                    :src="selectedDetailImageSrc"
+                    :alt="selectedDetailFileName"
+                    @error="onSelectedDetailImageError"
+                  />
+                </div>
+                <template v-else-if="selectedDetailFileLoaded && selectedDetailFileContent">
+                  <div
+                    v-if="selectedDetailImageMimeType"
+                    class="detail-file-image-fallback"
+                    role="alert"
+                  >
+                    {{
+                      selectedDetailImageLoadFailed
+                        ? '图片加载失败，已回退为文件内容展示。'
+                        : '未识别到有效的图片 Base64 内容，已按文本展示。'
+                    }}
+                  </div>
+                  <pre>{{ selectedDetailFileContent }}</pre>
+                </template>
+                <div v-else-if="selectedDetailFileLoaded" class="detail-file-content-empty">
+                  该文件内容为空
+                </div>
+                <div v-else class="detail-file-content-empty">请选择要预览的文件</div>
               </article>
             </div>
           </section>
@@ -1100,7 +1388,19 @@ onBeforeUnmount(() => {
               <div class="detail-panel-title">SKILL.md</div>
               <div class="detail-md-body">
                 <h3>{{ skill.name }} Skill</h3>
-                <pre>{{ skillMdText }}</pre>
+                <div
+                  v-if="selectedDetailFileLoading"
+                  class="detail-file-content-empty"
+                  role="status"
+                >
+                  文件内容加载中...
+                </div>
+                <div v-else-if="detailFileErrorText" class="detail-file-content-error" role="alert">
+                  <span>{{ detailFileErrorText }}</span>
+                  <button type="button" @click="retrySelectedDetailFile">重新加载</button>
+                </div>
+                <pre v-else-if="detailSkillMdText">{{ detailSkillMdText }}</pre>
+                <div v-else class="detail-file-content-empty">该文件内容为空</div>
               </div>
             </article>
           </template>
@@ -1309,7 +1609,8 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
-.detail-download {
+.detail-download,
+.detail-access {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1317,7 +1618,8 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.detail-download svg {
+.detail-download svg,
+.detail-access svg {
   width: 16px;
   height: 16px;
 }
@@ -1883,12 +2185,62 @@ onBeforeUnmount(() => {
   font: inherit;
 }
 
+.detail-file-image-preview {
+  display: flex;
+  width: 100%;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-file-image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.detail-file-image-fallback {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .detail-file-tree-empty,
 .detail-file-content-empty {
   padding: 14px 16px;
   color: #94a3b8;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.detail-file-content-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.detail-file-content-error button {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font: inherit;
+}
+
+.detail-file-content-error button:hover {
+  text-decoration: underline;
 }
 
 .skill-detail-dialog--page .detail-md-panel > .detail-panel-title {

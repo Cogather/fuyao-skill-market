@@ -14,7 +14,6 @@ import type {
   BusinessDimensionDto,
   CurrentUserRoleDto,
   OrganizationDto,
-  SkillDetailDto,
   SkillFileTreeField,
   SkillListRecordDto,
   SkillVersionListItemDto,
@@ -25,6 +24,10 @@ import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
 } from '../../services/skillMarket/marketDeptTreeFromApi';
+import {
+  extractExpertDepartmentPermission,
+  type ExpertDepartmentPermission,
+} from '../../services/skillMarket/expertDepartmentPermission';
 import {
   marketRoleIsOrgAdmin,
   marketRoleIsSuperAdmin,
@@ -88,7 +91,7 @@ const router = useRouter();
 const hotMarketStatsByKey = ref<any>({
   skillCount: { key: 'skillCount', label: 'SKILL', value: '7.4万' },
   creatorCount: { key: 'creatorCount', label: '创作人数', value: '1.2万' },
-  callCount: { key: 'callCount', label: '调用数', value: '230万' },
+  accessCount: { key: 'accessCount', label: '调用数', value: '230万' },
   downloadCount: { key: 'downloadCount', label: '下载数', value: '86万' },
 });
 
@@ -946,6 +949,11 @@ const handleParentMessage = async (event: MessageEvent) => {
 };
 
 const isExpertReviewer = ref(false);
+const expertDepartmentPermission = ref<ExpertDepartmentPermission>({
+  minimumDepartmentId: '',
+  path: [],
+});
+const expertCheckLoaded = ref(false);
 window.onmessage = handleParentMessage;
 
 onMounted(async () => {
@@ -960,11 +968,16 @@ onMounted(async () => {
   // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
   await loadAiEvolutionSkills();
   // 判断是否为专家
-  await skillBaseService.isReviewer({ userId: userId.value }).then((res: any) => {
-    if (res?.meta?.success && res?.data) {
-      isExpertReviewer.value = res.data.isExpert;
+  try {
+    const expertResponse = await skillBaseService.isReviewer({ userId: userId.value });
+    if (serviceSucceeded(expertResponse)) {
+      const expertData = readServiceRecord(expertResponse.data);
+      isExpertReviewer.value = expertData.isExpert === true;
+      expertDepartmentPermission.value = extractExpertDepartmentPermission(expertData);
     }
-  });
+  } finally {
+    expertCheckLoaded.value = true;
+  }
   if (transportIsHttp) {
     await loadAdminOrganizations();
     // await startOverviewRemoteFetch();
@@ -2260,13 +2273,10 @@ function fileTreeFromDetailDto(raw: unknown): SkillFileTreeField {
 }
 
 const fileTreeObj = ref<any>({});
-const skillMdFile = ref<any>({});
 
 function detailFileTree(skill: any): void {
   const idKey = String(skill.id ?? skill.skill_id ?? '');
   fileTreeObj.value[idKey] = normalizeDetailFileTreeToDisplay(skill.fileTree);
-
-  skillMdFile.value[idKey] = typeof skill.skillMdContent === 'string' ? skill.skillMdContent : '';
 }
 
 async function parseSkillArchiveForUpload(file: File): Promise<any> {
@@ -2414,14 +2424,10 @@ async function openVersionPanelFromMarketSkill(id: string): Promise<void> {
 
 const handleDetailItem = async (skill: any, id: any) => {
   const hasTree = fileTreePayloadIsPresent(skill.fileTree);
-  const hasMd = typeof skill.skillMdContent === 'string' && skill.skillMdContent.length > 0;
-  if (!hasTree || !hasMd) {
-    const { skillMdContent, fileTree } = await fetchSkillDetailExtras(String(id));
-    if (!hasTree && fileTreePayloadIsPresent(fileTree)) {
+  if (!hasTree) {
+    const fileTree = await fetchSkillDetailFileTree(String(id));
+    if (fileTreePayloadIsPresent(fileTree)) {
       skill.fileTree = fileTree;
-    }
-    if (!hasMd && typeof skillMdContent === 'string') {
-      skill.skillMdContent = skillMdContent;
     }
   }
   detailFileTree(skill);
@@ -2463,24 +2469,23 @@ async function openHotSkillDetail(skill: any): Promise<void> {
   await openSkillDetailRoute(skill.id, false, 'hot');
 }
 
-async function fetchSkillDetailExtras(
-  skillId: string,
-): Promise<{ skillMdContent: string; fileTree: SkillFileTreeField }> {
+
+async function openReviewSkillDetail(skillId: string): Promise<void> {
+  await openSkillDetailRoute(skillId, false, 'review');
+}
+
+async function fetchSkillDetailFileTree(skillId: string): Promise<SkillFileTreeField> {
   const id = String(skillId ?? '').trim();
   if (!id) {
-    return { skillMdContent: '', fileTree: '' };
+    return '';
   }
   try {
     const res = await skillBaseService.querySkillDetail(id);
     if (res.meta.success && res.data) {
-      const d = res.data as SkillDetailDto;
-      return {
-        skillMdContent: typeof d.skillMdContent === 'string' ? d.skillMdContent : '',
-        fileTree: fileTreeFromDetailDto(d.fileTree),
-      };
+      return fileTreeFromDetailDto(res.data.fileTree);
     }
   } catch {}
-  return { skillMdContent: '', fileTree: '' };
+  return '';
 }
 
 async function openDetailFromMyRelease(row: SkillListRecordDto): Promise<void> {
@@ -2599,7 +2604,7 @@ async function onVersionManageBack(): Promise<void> {
     await openDetailPanel(snapshot.sid);
     return;
   }
-  const { skillMdContent, fileTree } = await fetchSkillDetailExtras(snapshot.sid);
+  const fileTree = await fetchSkillDetailFileTree(snapshot.sid);
   const shim: Record<string, unknown> = {
     id: snapshot.sid,
     name: snapshot.name,
@@ -2608,7 +2613,6 @@ async function onVersionManageBack(): Promise<void> {
     author: '',
     level: '',
     downloads: 0,
-    skillMdContent,
     fileTree,
     publish_level: '',
   };
@@ -2662,7 +2666,6 @@ function onVersionViewDetail(row: SkillVersionListItemDto): void {
     publish_level: String(vs.publish_level ?? vs.level ?? ''),
     downloads: vs.downloads ?? vs.download_count ?? 0,
     fileTree: row.fileTree,
-    skillMdContent: row.skillMdContent,
   };
   detailFileTree(shim);
   versionPreviewSkill.value = shim;
@@ -3508,7 +3511,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       v-if="detailPanelSkill"
       :skill="detailPanelSkill"
       :file-tree-text="String(fileTreeObj[detailPanelSkill.id] ?? '')"
-      :skill-md-text="String(skillMdFile[detailPanelSkill.id] ?? '')"
       :show-delete="detailShowDelete"
       :deleting-skill-id="deletingMySkillId"
       :ai-evolution="!!detailPanelSkill.isAiEvolution"
@@ -3538,7 +3540,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       preview-only
       :skill="versionPreviewSkill"
       :file-tree-text="String(fileTreeObj[versionPreviewSkill.id] ?? '')"
-      :skill-md-text="String(skillMdFile[versionPreviewSkill.id] ?? '')"
       @close="closeVersionDetailPreview"
     />
 
@@ -3775,7 +3776,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <div class="market-stat-icon calls" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path
-                  d="M5 16.5h2.8l2-7 3.2 10 2.1-6H19"
+                  d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"
                   stroke="currentColor"
                   stroke-width="2.2"
                   stroke-linecap="round"
@@ -3785,7 +3786,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
             <div class="market-stat-meta">
               <div class="market-stat-label">调用数</div>
-              <div class="market-stat-value">{{ hotMarketStatsByKey.callCount.value }}</div>
+              <div class="market-stat-value">{{ hotMarketStatsByKey.accessCount.value }}</div>
             </div>
           </div>
           <div class="market-stat-card">
@@ -4100,6 +4101,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               v-model="overviewMarketDeptSegments"
               class="all-dept-cascader"
               :tree="marketOverviewDeptTree"
+              selection-mode="confirm"
               aria-label="部门级联筛选（departmentL1～L6）"
               @clear="clearOverviewDeptCascader"
               @done="deptFilterOnChange"
@@ -5258,7 +5260,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       <ReviewCenterPage
         :userId="userId"
         :department-tree="marketOverviewDeptTree"
+        :expert-department-permission="expertDepartmentPermission"
+        :expert-check-loaded="expertCheckLoaded"
         :is-expert-reviewer="isExpertReviewer"
+        @open-detail="openReviewSkillDetail"
       />
     </div>
 

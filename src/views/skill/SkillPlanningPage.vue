@@ -1522,6 +1522,7 @@ onBeforeUnmount(() => {
             class="planning-dept-cascader"
             :tree="planningDepartmentTree"
             :max-level="4"
+            selection-mode="confirm"
             aria-label="Skill 规划部门级联筛选（departmentL3～departmentL6）"
             @change="onPlanningDepartmentChange"
             @clear="onPlanningDepartmentClear"
@@ -3414,11 +3415,13 @@ onBeforeUnmount(() => {
 }
 
 .planning-hero {
-  /* min-height: 154px; */
   display: flex;
-  margin-top: 110px;
-  padding-bottom: 30px;
-  /* align-items: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin: 0;
+  padding: 28px 0 30px;
+  /*
   padding: 34px 40px;
   border: 1px solid rgba(225, 230, 240, 0.92);
   border-radius: 8px;

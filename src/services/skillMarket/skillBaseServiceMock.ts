@@ -208,6 +208,7 @@ type MockSkillReviewDetailPayload = {
     version: string;
     ownerUser: string;
     departmentL6: string;
+    totalAccess: number;
   };
   aiScore: MockAiReviewDetail;
   currentUserReview: MockCurrentUserReview | null;
@@ -692,6 +693,7 @@ function createMockSkillReviewDetailPayload(
       version,
       ownerUser: skill?.createdBy ?? skill?.author ?? 'mock-owner',
       departmentL6: skill?.departmentL6 ?? skill?.departmentL5 ?? 'Mock 评审部门',
+      totalAccess: skill?.totalAccess ?? 0,
     },
     aiScore,
     currentUserReview,
@@ -917,6 +919,9 @@ function makeSkillMd(
 }
 
 const DEFAULT_MOCK_FILE_TREE: string[] = ['SKILL.md', 'README.md', 'scripts/main.py'];
+const MOCK_FIRST_SKILL_PNG_PATH = 'assets/mock-preview.png';
+const MOCK_FIRST_SKILL_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAPAAAAB4CAYAAADMtn8nAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAN2SURBVHhe7dqxreBWEAPA68gVujVX4jqc3uUMDBDQF7XAEJhEId8y06+//v7vN3DTr/wA3GHAcJgBw2EGDIcZMBxmwHCYAcNhBgyHGTAcZsBwmAHDYQYMhxkwHGbAcJgBw2EGDIcZMBxmwHCYAcNhBgyHGTAcZsBwmAHDYT8+YPn/ZF/QMOBxsi9oGPA42Rc0DHic7AsaBjxO9gUNAx4n+4KGAY+TfbX++fc3H5bv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsq9WHgzfku/1NAMeJ/tq5cHwLfleTzPgcbKvVh4M35Lv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsq9WHgzfku/1NAMeJ/tq5cHwLfleTzPgcbKvVh4M35Lv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsi9oGPA42Rc0DHic7AsaBjxO9gUNAx4n+4KGAY+TfUHDgMfJvqBhwONkX9Aw4HGyL2gY8DjZFzQMeJzsq5W/7tHJPq8x4HGyr1YeJJ3s8xoDHif7auVB0sk+rzHgcbKvVh4knezzGgMeJ/tq5UHSyT6vMeBxsq9WHiSd7PMaAx4n+2rlQdLJPq8x4HGyr1YeJJ3s8xoDHif7auVB0sk+rzHgcbKvVh4knezzGgMeJ/tq5UHSyT6vMeBxsq9WHiSd7PMaAx4n+4KGAY+TfUHDgMfJvqBhwONkX9Aw4HGyL2gY8DjZFzQMeJzsCxoGPE72BQ0DHif7goYBj5N9QcOAx8m+WvlrIO/K93ibAY+TfbXyoHhXvsfbDHic7KuVB8W78j3eZsDjZF+tPCjele/xNgMeJ/tq5UHxrnyPtxnwONlXKw+Kd+V7vM2Ax8m+WnlQvCvf420GPE721cqD4l35Hm8z4HGyr1YeFO/K93ibAY+TfbXyoHhXvsfbDHic7KuVB8W78j3eZsDjZF+tPCjele/xNgMeJ/uChgGPk31Bw4DHyb6gYcDjZF/QMOBxsi9oGPA42Rc0fnzAwM8xYDjMgOEwA4bDDBgOM2A4zIDhMAOGwwwYDjNgOMyA4TADhsMMGA4zYDjMgOEwA4bDDBgOM2A4zIDhMAOGwwwYDjNgOMyA4TADhsP+ACwMgkAIacqvAAAAAElFTkSuQmCC';
 
 function pickMockFileTreeFromSeed(seed: Skill): string | string[] {
   const ft = (seed as { fileTree?: unknown }).fileTree;
@@ -960,6 +965,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
   const category = categoryFromGroup(categoryGroupName);
   const updatedAt = seed.latestPublishTime ?? nowText();
   const downloads = seed.download_count ?? seed.downloads ?? 0;
+  const totalAccess = seed.totalAccess ?? downloads * 8;
   const currentVersion = seed.version ?? '1.0.0';
   const dept = seed.dept_name || '部门1/平台产品线/平台工具组';
   const deptParts = skillDeptParts({ ...seed, dept_name: dept });
@@ -990,6 +996,7 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
     latestPublishTime: updatedAt,
     level,
     downloads,
+    totalAccess,
     rating: seed.rating ?? 4.5,
     version: currentVersion,
     currentVersion,
@@ -1037,14 +1044,65 @@ function toMockSkillRecord(seed: Skill): MockSkillRecord {
 
 let skillRecords: MockSkillRecord[] = getBuiltInSkills().map(toMockSkillRecord);
 
+function readReviewCenterSkillSnapshot(sid: string): Record<string, any> | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem('__review_skill_detail__' + sid);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, any>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function createReviewCenterSkillRecord(sid: string): MockSkillRecord | undefined {
+  if (!sid.startsWith('review-skill-')) {
+    return undefined;
+  }
+
+  const task = readReviewCenterSkillSnapshot(sid);
+  const record = toMockSkillRecord({
+    id: sid,
+    skill_id: sid,
+    name: task?.name ?? 'Mock Skill ' + sid,
+    description: task
+      ? 'Review center mock detail for ' + task.name
+      : 'Review center mock skill detail',
+    publishName: task?.team ?? 'Review Center Mock Team',
+    createdBy: task?.ownerUser ?? task?.ownerName ?? 'mock-reviewer',
+    deptName: task?.team ? 'Review Center/' + task.team : 'Review Center/Mock Team',
+    downloads: Number(task?.downloads ?? 0),
+    totalAccess: Number(task?.totalAccess ?? task?.usage ?? 0),
+    category: task?.categoryId ?? 'review',
+    icon: 'RV',
+    version: task?.version ?? '1.0.0',
+    tags: task?.tags
+      ? task.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : ['review'],
+    fileTree: sid + '/\n' + sid + '/SKILL.md\n' + sid + '/references/review-rubric.md',
+    skillMdContent:
+      '# ' + (task?.name ?? sid) + '\n\nMock detail generated from review center task ' + sid + '.',
+  } as Skill);
+  skillRecords = [record, ...skillRecords];
+  return record;
+}
+
 function findSkill(id: string | number | undefined): MockSkillRecord | undefined {
   const sid = String(id ?? '').trim();
   if (!sid) {
     return undefined;
   }
-  return skillRecords.find(
-    (s) =>
-      s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
+  return (
+    skillRecords.find(
+      (s) =>
+        s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
+    ) ?? createReviewCenterSkillRecord(sid)
   );
 }
 
@@ -1384,7 +1442,16 @@ function handleSkillRequest(
   }
 
   if (method === 'get' && path === '/review/expert/check') {
-    return ok({ isExpert: true });
+    return ok({
+      isExpert: true,
+      expertName: '张三',
+      dept: {
+        dept3: '部门1',
+        dept4: '平台产品线',
+        dept5: '平台工具组',
+        dept6: 'DevOps部',
+      },
+    });
   }
 
   if (method === 'get' && path === '/review/dimensions') {
@@ -1506,6 +1573,51 @@ function handleSkillRequest(
       granularity: params.granularity ?? 'day',
       trend: [],
     });
+  }
+
+  const fileContentMatch = /^\/([^/]+)\/fileContent$/.exec(path);
+  if (method === 'get' && fileContentMatch) {
+    let skillId = fileContentMatch[1];
+    let filePath = String(params.filePath ?? '');
+    try {
+      skillId = decodeURIComponent(skillId);
+      filePath = filePath
+        .split('/')
+        .map((segment) => decodeURIComponent(segment))
+        .join('/');
+    } catch {
+      // 解码失败时继续使用原始参数，Mock 仍可返回可识别的错误。
+    }
+
+    const skill = findSkill(skillId);
+    if (!skill) {
+      return fail('Skill 不存在', '', 40401);
+    }
+    const rootNames = [skill.name, skill.skill_id, skill.id].map((item) => String(item ?? ''));
+    const rootName = rootNames.find((item) => item && filePath.startsWith(`${item}/`));
+    const relativePath = rootName ? filePath.slice(rootName.length + 1) : filePath;
+    const fileName = relativePath.split('/').at(-1)?.toLowerCase() ?? '';
+    const version = String(params.version ?? skill.currentVersion ?? skill.version ?? '').trim();
+
+    if (skill.skill_id === 'test1' && relativePath === MOCK_FIRST_SKILL_PNG_PATH) {
+      return ok(MOCK_FIRST_SKILL_PNG_BASE64);
+    }
+    if (fileName === 'skill.md') {
+      return ok(skill.skillMdContent || makeSkillMd(skill));
+    }
+    if (fileName === 'readme.md') {
+      return ok(`# ${skill.name}\n\n${skill.description}\n`);
+    }
+    if (fileName.endsWith('.json')) {
+      return ok(JSON.stringify({ skill: skill.name, version, file: relativePath }, null, 2));
+    }
+    if (fileName.endsWith('.py')) {
+      return ok(`# ${relativePath}\nprint(${JSON.stringify(`hello from ${skill.name}`)})\n`);
+    }
+    if (fileName.endsWith('.md')) {
+      return ok(`# ${relativePath}\n\nMock file for ${skill.name} ${version}.\n`);
+    }
+    return ok(`# Mock file: ${relativePath}\n# Skill: ${skill.name}\n# Version: ${version}\n`);
   }
 
   const detailMatch = /^\/([^/]+)$/.exec(path);

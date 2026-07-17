@@ -40,6 +40,8 @@ export interface Skill {
   latestPublishTime?: string;
   level?: string;
   downloads?: number;
+  /** Skill 累计调用量，对应列表接口 `totalAccess` */
+  totalAccess?: number;
   rating?: number;
   /** 当前对外展示版本号 */
   version?: string;

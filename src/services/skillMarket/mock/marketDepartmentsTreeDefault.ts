@@ -13,6 +13,7 @@ const MOCK_DEPT_FULL_PATHS: string[] = [
   '部门1/数据产品线/数据库运营部/SQL治理组',
   '部门1/设计产品线/体验设计部',
   '部门1/平台产品线/平台工具组/变更分析组',
+  '部门1/平台产品线/平台工具组/DevOps部',
   '部门1/test2产品线/xxx部门/test5部门/test5部门/12345组',
   '部门1/test3产品线/xxx部门/测试部门/平台一部/平台工具部',
   '部门1/test2产品线/xxx部门/test5部门/小部门',
@@ -21,12 +22,13 @@ const MOCK_DEPT_FULL_PATHS: string[] = [
 
 type MutableNode = {
   name: string;
+  path: string;
   level: number;
   children: Map<string, MutableNode>;
 };
 
 function nestPathsToDepartmentDtos(paths: string[]): DepartmentTreeNodeDto[] {
-  const root: MutableNode = { name: '', level: 0, children: new Map() };
+  const root: MutableNode = { name: '', path: '', level: 0, children: new Map() };
   for (const line of paths) {
     const segs = line
       .split('/')
@@ -38,6 +40,7 @@ function nestPathsToDepartmentDtos(paths: string[]): DepartmentTreeNodeDto[] {
       if (!node.children.has(name)) {
         node.children.set(name, {
           name,
+          path: node.path ? `${node.path}/${name}` : name,
           level: i + 1,
           children: new Map(),
         });
@@ -55,6 +58,7 @@ function nestPathsToDepartmentDtos(paths: string[]): DepartmentTreeNodeDto[] {
       .filter((x): x is DepartmentTreeNodeDto => x != null)
       .sort((a, b) => a.deptName.localeCompare(b.deptName, 'zh-Hans-CN'));
     const dto: DepartmentTreeNodeDto = {
+      deptId: m.path,
       deptName: m.name,
       deptLevel: m.level,
     };

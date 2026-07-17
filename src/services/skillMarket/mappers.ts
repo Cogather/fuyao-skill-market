@@ -76,6 +76,7 @@ export function skillToListRecord(skill: Skill, updatedAt: string): SkillListRec
     status: skill.marketStatus ?? skill.publish_level ?? skill.level ?? '个人级',
     orgName: skill.tagOrg?.includes('组织') ? skill.publish_name : null,
     downloads: skill.download_count ?? skill.downloads ?? 0,
+    totalAccess: skill.totalAccess ?? 0,
     likes,
     dislikes,
     rating: skill.rating ?? 4.5,
@@ -143,6 +144,7 @@ export function skillDetailDtoToSkill(d: any): Skill {
     status: d.status,
     orgName: d.orgName,
     downloads: d.downloads,
+    totalAccess: d.totalAccess ?? 0,
     likes: d.likes,
     dislikes: d.dislikes,
     rating: d.rating,
@@ -188,6 +190,7 @@ export function apiRecordToSkill(rec: SkillListRecordDto): Skill {
     latestPublishTime: rec.updatedAt,
     level: rec.level,
     downloads: rec.downloads,
+    totalAccess: rec.totalAccess ?? 0,
     rating: rec.rating,
     version: rec.version,
     versions: [

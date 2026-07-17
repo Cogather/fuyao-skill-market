@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -18,9 +18,11 @@ import type {
   ReviewBadgeDto,
   SkillExpertReviewDetailDto,
 } from '../../services/skillMarket/apiTypes';
+import type { ExpertDepartmentPermission } from '../../services/skillMarket/expertDepartmentPermission';
 import { skillBaseService } from '@/services/skillMarket/skillBaseService';
 
 type ReviewDepartmentTreeNode = {
+  id?: string;
   name: string;
   children?: ReviewDepartmentTreeNode[];
 };
@@ -29,13 +31,20 @@ const props = withDefaults(
   defineProps<{
     userId?: string;
     departmentTree?: ReviewDepartmentTreeNode[];
+    expertDepartmentPermission?: ExpertDepartmentPermission;
+    expertCheckLoaded?: boolean;
     isExpertReviewer?: boolean;
   }>(),
   {
     userId: '',
     departmentTree: () => [],
+    expertCheckLoaded: true,
   },
 );
+
+const emit = defineEmits<{
+  'open-detail': [skillId: string];
+}>();
 
 const rankingCards = ref<ReviewRankingCard[]>([]);
 const taskCards = reactive<ReviewTaskCard[]>([]);
@@ -834,16 +843,46 @@ const activeTask = computed(
 );
 
 const selectedSkillDetail = ref<any>({});
+const activeReviewSkillId = computed(() => {
+  const detailRecord = readRecord(selectedSkillDetail.value);
+  const skillInfoRecord = readRecord(detailRecord.skillInfo);
+  return String(
+    skillInfoRecord.skillId ?? detailRecord.skillId ?? activeTask.value?.skillId ?? '',
+  ).trim();
+});
+function formatReviewMetric(value: unknown): string {
+  const count = Number(value);
+  if (Number.isFinite(count) && count >= 0) {
+    return count.toLocaleString('zh-CN');
+  }
+  const text = String(value ?? '').trim();
+  return text || '0';
+}
 const activeMetrics = computed(() => {
   const task = activeTask.value;
   if (!task) {
     return [];
   }
 
+  const detailRecord = readRecord(selectedSkillDetail.value);
+  const skillInfoRecord = readRecord(detailRecord.skillInfo);
+  const taskRecord = readRecord(task);
+  const totalAccess =
+    taskRecord.totalAccess ??
+    skillInfoRecord.totalAccess ??
+    detailRecord.totalAccess ??
+    task.usage ??
+    0;
+
   return [
-    // { label: '使用量', value: task.usage, tone: 'blue' },
-    { label: '版本', value: task.version, tone: 'blue' },
-    { label: '下载量', value: task.downloads, tone: 'cyan' },
+    { label: '版本', value: task.version, tone: 'blue', icon: '' },
+    { label: '调用量', value: formatReviewMetric(totalAccess), tone: 'blue', icon: 'access' },
+    {
+      label: '下载量',
+      value: formatReviewMetric(task.downloads),
+      tone: 'cyan',
+      icon: 'download',
+    },
     // {
     //   label: '专家评审得分',
     //   value: task.expertScore,
@@ -851,6 +890,38 @@ const activeMetrics = computed(() => {
     // },
   ];
 });
+
+function openActiveSkillDetail(): void {
+  const skillId = activeReviewSkillId.value;
+  if (!skillId) {
+    showToast('无法识别当前 Skill ID');
+    return;
+  }
+
+  const task = activeTask.value;
+  if (task) {
+    const taskRecord = readRecord(task);
+    try {
+      window.localStorage.setItem(
+        '__review_skill_detail__' + skillId,
+        JSON.stringify({
+          name: task.name,
+          ownerName: task.ownerName,
+          ownerUser: task.ownerUser,
+          team: task.team,
+          downloads: task.downloads,
+          totalAccess: taskRecord.totalAccess ?? task.usage ?? 0,
+          categoryId: taskRecord.categoryId,
+          tags: taskRecord.tags,
+          version: task.version,
+        }),
+      );
+    } catch {
+      // Ignore storage failures; the detail route can still load by id in real environments.
+    }
+  }
+  emit('open-detail', skillId);
+}
 
 function buildRadarPoints(scale: number) {
   return aiReviewDimensions.value
@@ -1428,6 +1499,120 @@ function syncReviewDepartmentLevels(segments = reviewDepartmentSegments.value): 
   });
 }
 
+const REVIEW_DEPARTMENT_PERMISSION_MESSAGE =
+  '\u8bf7\u9009\u62e9\u60a8\u6240\u5c5e\u7684\u6700\u7ec6\u7c92\u5ea6\u90e8\u95e8\u3002';
+const REVIEW_DEPARTMENT_RESET_TEXT = '\u6062\u590d\u9ed8\u8ba4\u9009\u62e9';
+
+function normalizeDepartmentId(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+  return '';
+}
+
+function normalizeDepartmentPath(segments: string[] | undefined): string[] {
+  return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
+}
+
+function sameDepartmentPath(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizeDepartmentPath(left);
+  const normalizedRight = normalizeDepartmentPath(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
+  );
+}
+
+function reviewDepartmentNodeIdByPath(segments: string[]): string {
+  let siblings = reviewDepartmentTree.value;
+  let current: ReviewDepartmentTreeNode | null = null;
+
+  for (const segment of normalizeDepartmentPath(segments)) {
+    current = siblings.find((node) => node.name === segment) ?? null;
+    if (!current) {
+      return '';
+    }
+    siblings = current.children ?? [];
+  }
+
+  return normalizeDepartmentId(current?.id);
+}
+
+function isReviewDepartmentSelectionAllowed(segments: string[]): boolean {
+  const permission = props.expertDepartmentPermission;
+  const requiredDepartmentId = normalizeDepartmentId(permission?.minimumDepartmentId);
+  const requiredPath = normalizeDepartmentPath(permission?.path);
+
+  if (!requiredDepartmentId && requiredPath.length === 0) {
+    return true;
+  }
+
+  if (requiredPath.length > 0) {
+    return departmentPathStartsWith(segments, requiredPath);
+  }
+
+  const selectedDepartmentId = reviewDepartmentNodeIdByPath(segments);
+  if (requiredDepartmentId && selectedDepartmentId) {
+    return selectedDepartmentId === requiredDepartmentId;
+  }
+
+  return false;
+}
+function guardReviewDepartmentSelection(segments: string[]): boolean {
+  if (isReviewDepartmentSelectionAllowed(segments)) {
+    return true;
+  }
+  showToast(REVIEW_DEPARTMENT_PERMISSION_MESSAGE);
+  return false;
+}
+
+function guardReviewDepartmentClear(): boolean {
+  return true;
+}
+
+const reviewDepartmentResetText = REVIEW_DEPARTMENT_RESET_TEXT;
+const reviewDepartmentDefaultSegments = computed(() =>
+  normalizeDepartmentPath(props.expertDepartmentPermission?.path),
+);
+
+let reviewCenterInitialLoadStarted = false;
+
+function applyDefaultReviewDepartmentSelection(): boolean {
+  const defaultSegments = reviewDepartmentDefaultSegments.value;
+  if (defaultSegments.length === 0) {
+    return false;
+  }
+
+  if (sameDepartmentPath(reviewDepartmentSegments.value, defaultSegments)) {
+    syncReviewDepartmentLevels(defaultSegments);
+    return false;
+  }
+
+  reviewDepartmentSegments.value = defaultSegments;
+  syncReviewDepartmentLevels(defaultSegments);
+  return true;
+}
+
+async function initializeReviewCenterTasks(): Promise<void> {
+  if (reviewCenterInitialLoadStarted || !props.expertCheckLoaded) {
+    return;
+  }
+
+  reviewCenterInitialLoadStarted = true;
+  applyDefaultReviewDepartmentSelection();
+  await reloadReviewCenterTasks();
+}
+
 function reviewDepartmentLevelParams() {
   return {
     departmentL3: departmentL3.value,
@@ -1476,18 +1661,50 @@ function onReviewDepartmentChange(segments: string[]): void {
 }
 
 async function onReviewDepartmentDone(segments: string[]): Promise<void> {
+  if (!guardReviewDepartmentSelection(segments)) {
+    return;
+  }
   syncReviewDepartmentLevels(segments);
   await reloadReviewCenterTasks();
 }
 
-async function onReviewDepartmentClear(): Promise<void> {
-  reviewDepartmentSegments.value = [];
-  syncReviewDepartmentLevels([]);
+async function onReviewDepartmentClear(
+  segments = reviewDepartmentDefaultSegments.value,
+): Promise<void> {
+  if (!guardReviewDepartmentClear()) {
+    return;
+  }
+  const nextSegments = [...segments];
+  reviewDepartmentSegments.value = nextSegments;
+  syncReviewDepartmentLevels(nextSegments);
   await reloadReviewCenterTasks();
 }
 
+watch(
+  () =>
+    [
+      props.expertCheckLoaded,
+      props.expertDepartmentPermission?.minimumDepartmentId ?? '',
+      props.expertDepartmentPermission?.path.join('\u0001') ?? '',
+    ] as const,
+  () => {
+    if (!props.expertCheckLoaded) {
+      return;
+    }
+
+    if (!reviewCenterInitialLoadStarted) {
+      void initializeReviewCenterTasks();
+      return;
+    }
+
+    if (applyDefaultReviewDepartmentSelection()) {
+      void reloadReviewCenterTasks();
+    }
+  },
+);
+
 onMounted(async () => {
-  await reloadReviewCenterTasks();
+  await initializeReviewCenterTasks();
   document.addEventListener('mousedown', handleReviewMonthOutsideClick);
 });
 
@@ -1647,8 +1864,16 @@ onBeforeUnmount(() => {
                   class="review-dept-cascader"
                   :tree="reviewDepartmentTree"
                   :max-level="6"
+                  :clear-text="reviewDepartmentResetText"
+                  clear-behavior="reset"
+                  :clear-value="reviewDepartmentDefaultSegments"
+                  selection-mode="confirm"
+                  permission-mode="review-center"
+                  :permission-path="reviewDepartmentDefaultSegments"
                   aria-label="评审部门级联筛选（DepartmentL1～DepartmentL6）"
                   @change="onReviewDepartmentChange"
+                  :before-clear="guardReviewDepartmentClear"
+                  :before-done="guardReviewDepartmentSelection"
                   @clear="onReviewDepartmentClear"
                   @done="onReviewDepartmentDone"
                 />
@@ -1755,11 +1980,49 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="metric-row" aria-label="Skill 数据概览">
+                <button
+                  type="button"
+                  class="metric-chip metric-chip--button is-cyan"
+                  :disabled="!activeReviewSkillId"
+                  @click="openActiveSkillDetail"
+                >
+                  查看详情
+                </button>
                 <span
                   v-for="metric in activeMetrics"
                   :key="metric.label"
                   :class="['metric-chip', `is-${metric.tone}`]"
                 >
+                  <svg
+                    v-if="metric.icon === 'access'"
+                    class="metric-chip__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <svg
+                    v-else-if="metric.icon === 'download'"
+                    class="metric-chip__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 4v12m0 0 4-4m-4 4-4-4M5 20h14"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
                   {{ metric.label }} {{ metric.value }}
                 </span>
               </div>
