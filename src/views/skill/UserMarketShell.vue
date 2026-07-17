@@ -3767,7 +3767,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             <div class="market-stat-icon calls" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path
-                  d="M5 16.5h2.8l2-7 3.2 10 2.1-6H19"
+                  d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"
                   stroke="currentColor"
                   stroke-width="2.2"
                   stroke-linecap="round"
