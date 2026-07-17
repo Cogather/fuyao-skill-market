@@ -91,7 +91,7 @@ const router = useRouter();
 const hotMarketStatsByKey = ref<any>({
   skillCount: { key: 'skillCount', label: 'SKILL', value: '7.4万' },
   creatorCount: { key: 'creatorCount', label: '创作人数', value: '1.2万' },
-  callCount: { key: 'callCount', label: '调用数', value: '230万' },
+  accessCount: { key: 'accessCount', label: '调用数', value: '230万' },
   downloadCount: { key: 'downloadCount', label: '下载数', value: '86万' },
 });
 
@@ -3777,7 +3777,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </div>
             <div class="market-stat-meta">
               <div class="market-stat-label">调用数</div>
-              <div class="market-stat-value">{{ hotMarketStatsByKey.callCount.value }}</div>
+              <div class="market-stat-value">{{ hotMarketStatsByKey.accessCount.value }}</div>
             </div>
           </div>
           <div class="market-stat-card">

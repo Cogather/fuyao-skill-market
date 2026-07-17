@@ -81,7 +81,7 @@ function permissionFromArray(record: Record<string, unknown>): ExpertDepartmentP
   for (let i = 3; i < 7; i++) {
     const source = record[`${key}${i.toString()}`];
     const level = readDepartmentLevel(source, i);
-    if(level !== null) {
+    if (level !== null) {
       levels.push(level);
     }
   }

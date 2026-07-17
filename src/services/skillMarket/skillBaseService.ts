@@ -132,16 +132,9 @@ export const skillBaseService = {
   },
 
   // 获取skill详情文件内容
-  querySkillFile: (skillName: string, filePath: string, params?: any): any => {
-    const encodedSkillName = encodeURIComponent(skillName);
-    const encodedFilePath = filePath
-      .replace(/\\/g, '/')
-      .split('/')
-      .filter(Boolean)
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
+  querySkillFile: (skillId: string, params: any): any => {
     return httpRequest.skill<any>({
-      url: `/${encodedSkillName}/files/${encodedFilePath}`,
+      url: `/${skillId}/fileContent`,
       method: 'get',
       params,
     });

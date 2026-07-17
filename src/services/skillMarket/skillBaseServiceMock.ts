@@ -917,6 +917,9 @@ function makeSkillMd(
 }
 
 const DEFAULT_MOCK_FILE_TREE: string[] = ['SKILL.md', 'README.md', 'scripts/main.py'];
+const MOCK_FIRST_SKILL_PNG_PATH = 'assets/mock-preview.png';
+const MOCK_FIRST_SKILL_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAPAAAAB4CAYAAADMtn8nAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAN2SURBVHhe7dqxreBWEAPA68gVujVX4jqc3uUMDBDQF7XAEJhEId8y06+//v7vN3DTr/wA3GHAcJgBw2EGDIcZMBxmwHCYAcNhBgyHGTAcZsBwmAHDYQYMhxkwHGbAcJgBw2EGDIcZMBxmwHCYAcNhBgyHGTAcZsBwmAHDYT8+YPn/ZF/QMOBxsi9oGPA42Rc0DHic7AsaBjxO9gUNAx4n+4KGAY+TfbX++fc3H5bv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsq9WHgzfku/1NAMeJ/tq5cHwLfleTzPgcbKvVh4M35Lv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsq9WHgzfku/1NAMeJ/tq5cHwLfleTzPgcbKvVh4M35Lv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsi9oGPA42Rc0DHic7AsaBjxO9gUNAx4n+4KGAY+TfUHDgMfJvqBhwONkX9Aw4HGyL2gY8DjZFzQMeJzsq5W/7tHJPq8x4HGyr1YeJJ3s8xoDHif7auVB0sk+rzHgcbKvVh4knezzGgMeJ/tq5UHSyT6vMeBxsq9WHiSd7PMaAx4n+2rlQdLJPq8x4HGyr1YeJJ3s8xoDHif7auVB0sk+rzHgcbKvVh4knezzGgMeJ/tq5UHSyT6vMeBxsq9WHiSd7PMaAx4n+4KGAY+TfUHDgMfJvqBhwONkX9Aw4HGyL2gY8DjZFzQMeJzsCxoGPE72BQ0DHif7goYBj5N9QcOAx8m+WvlrIO/K93ibAY+TfbXyoHhXvsfbDHic7KuVB8W78j3eZsDjZF+tPCjele/xNgMeJ/tq5UHxrnyPtxnwONlXKw+Kd+V7vM2Ax8m+WnlQvCvf420GPE721cqD4l35Hm8z4HGyr1YeFO/K93ibAY+TfbXyoHhXvsfbDHic7KuVB8W78j3eZsDjZF+tPCjele/xNgMeJ/uChgGPk31Bw4DHyb6gYcDjZF/QMOBxsi9oGPA42Rc0fnzAwM8xYDjMgOEwA4bDDBgOM2A4zIDhMAOGwwwYDjNgOMyA4TADhsMMGA4zYDjMgOEwA4bDDBgOM2A4zIDhMAOGwwwYDjNgOMyA4TADhsP+ACwMgkAIacqvAAAAAElFTkSuQmCC';
 
 function pickMockFileTreeFromSeed(seed: Skill): string | string[] {
   const ft = (seed as { fileTree?: unknown }).fileTree;
@@ -1567,21 +1570,21 @@ function handleSkillRequest(
     });
   }
 
-  const fileContentMatch = /^\/([^/]+)\/files\/(.+)$/.exec(path);
+  const fileContentMatch = /^\/([^/]+)\/fileContent$/.exec(path);
   if (method === 'get' && fileContentMatch) {
-    let skillName = fileContentMatch[1];
-    let filePath = fileContentMatch[2];
+    let skillId = fileContentMatch[1];
+    let filePath = String(params.filePath ?? '');
     try {
-      skillName = decodeURIComponent(skillName);
+      skillId = decodeURIComponent(skillId);
       filePath = filePath
         .split('/')
         .map((segment) => decodeURIComponent(segment))
         .join('/');
     } catch {
-      // 解码失败时继续使用原始路径，Mock 仍可返回可识别的错误。
+      // 解码失败时继续使用原始参数，Mock 仍可返回可识别的错误。
     }
 
-    const skill = findSkill(skillName);
+    const skill = findSkill(skillId);
     if (!skill) {
       return fail('Skill 不存在', '', 40401);
     }
@@ -1591,6 +1594,9 @@ function handleSkillRequest(
     const fileName = relativePath.split('/').at(-1)?.toLowerCase() ?? '';
     const version = String(params.version ?? skill.currentVersion ?? skill.version ?? '').trim();
 
+    if (skill.skill_id === 'test1' && relativePath === MOCK_FIRST_SKILL_PNG_PATH) {
+      return ok(MOCK_FIRST_SKILL_PNG_BASE64);
+    }
     if (fileName === 'skill.md') {
       return ok(skill.skillMdContent || makeSkillMd(skill));
     }

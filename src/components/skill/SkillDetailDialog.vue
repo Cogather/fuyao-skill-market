@@ -282,10 +282,24 @@ type DetailFileTreeRow = {
   displayText: string;
 };
 
+const DETAIL_IMAGE_MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  avif: 'image/avif',
+  apng: 'image/apng',
+};
+
 const selectedDetailFilePath = ref('');
 const detailFileContentCache = ref<Record<string, string>>({});
 const detailFileLoadingPath = ref('');
 const detailFileErrorText = ref('');
+const selectedDetailImageLoadFailed = ref(false);
 let detailFileRequestSequence = 0;
 
 function parseDetailFileTreeLine(
@@ -337,8 +351,9 @@ function detailRowsFromFileTreeText(text: string): DetailFileTreeRow[] {
 
 const detailFileRows = computed(() => detailRowsFromFileTreeText(props.fileTreeText));
 
-const detailSkillName = computed(() =>
-  readDetailString(props.skill, ['name', 'skillName', 'skill_id', 'id']),
+const detailSkillId = computed(() => readDetailString(props.skill, ['skill_id', 'skillId', 'id']));
+const detailSkillName = computed(() => 
+  readDetailString(props.skill, ['name', 'skillName'])
 );
 const detailSkillVersion = computed(() =>
   readDetailString(props.skill, ['currentVersion', 'version']),
@@ -386,6 +401,34 @@ const selectedDetailFileLoading = computed(
     Boolean(selectedDetailFileRow.value?.path) &&
     detailFileLoadingPath.value === selectedDetailFileRow.value?.path,
 );
+const selectedDetailFileName = computed(
+  () => selectedDetailFileRow.value?.label.replace(/\/$/, '') ?? '',
+);
+const selectedDetailImageMimeType = computed(() => {
+  const fileName = selectedDetailFileName.value.toLowerCase();
+  const extension = fileName.includes('.') ? (fileName.split('.').at(-1) ?? '') : '';
+  return DETAIL_IMAGE_MIME_TYPES[extension] ?? '';
+});
+const selectedDetailImageSrc = computed(() => {
+  const mimeType = selectedDetailImageMimeType.value;
+  const content = selectedDetailFileContent.value.trim();
+  if (!mimeType || !selectedDetailFileLoaded.value || !content) {
+    return '';
+  }
+
+  const dataUrlMatch = content.match(
+    /^(data:image\/[a-z0-9.+-]+(?:;[a-z0-9=._-]+)*;base64,)([\s\S]*)$/i,
+  );
+  if (dataUrlMatch) {
+    return `${dataUrlMatch[1]}${dataUrlMatch[2].replace(/\s+/g, '')}`;
+  }
+
+  const normalizedBase64 = content.replace(/\s+/g, '');
+  if (normalizedBase64.length % 4 === 1 || !/^[a-z0-9+/]*={0,2}$/i.test(normalizedBase64)) {
+    return '';
+  }
+  return `data:${mimeType};base64,${normalizedBase64}`;
+});
 const detailSkillMdText = computed(() => {
   const skillMdRow = detailFileRows.value.find(
     (row) => !row.isDirectory && row.label.replace(/\/$/, '').toLowerCase() === 'skill.md',
@@ -403,9 +446,9 @@ function detailFileRequestPath(row: DetailFileTreeRow): string {
   const normalizedPath = row.path.replace(/\\/g, '/').replace(/^\/+/, '');
   const root = detailFileTreeRoot.value;
   if (root && normalizedPath.startsWith(`${root}/`)) {
-    return normalizedPath.slice(root.length + 1);
+    return detailSkillName.value + '/' + normalizedPath.slice(root.length + 1);
   }
-  return normalizedPath;
+  return detailSkillName.value + '/' + normalizedPath;
 }
 
 function detailFileResponseMessage(response: unknown, fallback: string): string {
@@ -474,21 +517,26 @@ async function loadDetailFile(row: DetailFileTreeRow, force = false): Promise<vo
     return;
   }
 
-  const skillName = detailSkillName.value;
+  const skillId = props.skill.id;
   const filePath = detailFileRequestPath(row);
-  if (!skillName || !filePath) {
+  if (!skillId || !filePath) {
     detailFileLoadingPath.value = '';
-    detailFileErrorText.value = '缺少 Skill 名称或文件路径，无法加载文件内容';
+    detailFileErrorText.value = '缺少 Skill ID 或文件路径，无法加载文件内容';
     return;
   }
 
   detailFileLoadingPath.value = row.path;
   try {
     const version = detailSkillVersion.value;
-    const response = await skillBaseService.querySkillFile(
-      skillName,
-      filePath,
-      version ? { version } : undefined,
+    const encodedSkillId = encodeURIComponent(skillId);
+    const encodedFilePath = filePath
+      .replace(/\\/g, '/')
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const response = await skillBaseService.querySkillFile(encodedSkillId, 
+      version ? {version: version, filePath: encodedFilePath} : {filePath: encodedFilePath},
     );
     if (requestSequence !== detailFileRequestSequence) {
       return;
@@ -516,8 +564,19 @@ function retrySelectedDetailFile(): void {
   }
 }
 
+function onSelectedDetailImageError(): void {
+  selectedDetailImageLoadFailed.value = true;
+}
+
 watch(
-  () => `${detailSkillName.value}\u0000${detailSkillVersion.value}\u0000${props.fileTreeText}`,
+  () => [selectedDetailFileRow.value?.path ?? '', selectedDetailImageSrc.value],
+  () => {
+    selectedDetailImageLoadFailed.value = false;
+  },
+);
+
+watch(
+  () => `${detailSkillId.value}\u0000${detailSkillVersion.value}\u0000${props.fileTreeText}`,
   () => {
     detailFileRequestSequence += 1;
     detailFileContentCache.value = {};
@@ -1022,9 +1081,30 @@ onBeforeUnmount(() => {
                   <span>{{ detailFileErrorText }}</span>
                   <button type="button" @click="retrySelectedDetailFile">重新加载</button>
                 </div>
-                <pre v-else-if="selectedDetailFileLoaded && selectedDetailFileContent">{{
-                  selectedDetailFileContent
-                }}</pre>
+                <div
+                  v-else-if="selectedDetailImageSrc && !selectedDetailImageLoadFailed"
+                  class="detail-file-image-preview"
+                >
+                  <img
+                    :src="selectedDetailImageSrc"
+                    :alt="selectedDetailFileName"
+                    @error="onSelectedDetailImageError"
+                  />
+                </div>
+                <template v-else-if="selectedDetailFileLoaded && selectedDetailFileContent">
+                  <div
+                    v-if="selectedDetailImageMimeType"
+                    class="detail-file-image-fallback"
+                    role="alert"
+                  >
+                    {{
+                      selectedDetailImageLoadFailed
+                        ? '图片加载失败，已回退为文件内容展示。'
+                        : '未识别到有效的图片 Base64 内容，已按文本展示。'
+                    }}
+                  </div>
+                  <pre>{{ selectedDetailFileContent }}</pre>
+                </template>
                 <div v-else-if="selectedDetailFileLoaded" class="detail-file-content-empty">
                   该文件内容为空
                 </div>
@@ -2079,6 +2159,32 @@ onBeforeUnmount(() => {
   word-break: break-word;
   color: inherit;
   font: inherit;
+}
+
+.detail-file-image-preview {
+  display: flex;
+  width: 100%;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-file-image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.detail-file-image-fallback {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .detail-file-tree-empty,
