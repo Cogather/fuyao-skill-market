@@ -1522,6 +1522,7 @@ onBeforeUnmount(() => {
             class="planning-dept-cascader"
             :tree="planningDepartmentTree"
             :max-level="4"
+            selection-mode="confirm"
             aria-label="Skill 规划部门级联筛选（departmentL3～departmentL6）"
             @change="onPlanningDepartmentChange"
             @clear="onPlanningDepartmentClear"

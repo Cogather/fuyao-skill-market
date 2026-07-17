@@ -4092,6 +4092,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               v-model="overviewMarketDeptSegments"
               class="all-dept-cascader"
               :tree="marketOverviewDeptTree"
+              selection-mode="confirm"
               aria-label="部门级联筛选（departmentL1～L6）"
               @clear="clearOverviewDeptCascader"
               @done="deptFilterOnChange"

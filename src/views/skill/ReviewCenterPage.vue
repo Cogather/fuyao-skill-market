@@ -1848,6 +1848,7 @@ onBeforeUnmount(() => {
                   :clear-text="reviewDepartmentResetText"
                   clear-behavior="reset"
                   :clear-value="reviewDepartmentDefaultSegments"
+                  selection-mode="confirm"
                   permission-mode="review-center"
                   :permission-path="reviewDepartmentDefaultSegments"
                   aria-label="评审部门级联筛选（DepartmentL1～DepartmentL6）"

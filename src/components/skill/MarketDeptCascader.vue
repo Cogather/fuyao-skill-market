@@ -28,6 +28,7 @@ const props = withDefaults(
     beforeDone?: (value: string[]) => boolean;
     clearBehavior?: 'clear' | 'reset';
     clearValue?: string[];
+    selectionMode?: 'immediate' | 'confirm';
     permissionMode?: 'none' | 'review-center';
     permissionPath?: string[];
   }>(),
@@ -35,6 +36,7 @@ const props = withDefaults(
     maxLevel: 6,
     clearBehavior: 'clear',
     clearValue: () => [],
+    selectionMode: 'immediate',
     permissionMode: 'none',
     permissionPath: () => [],
     allLabel: '全部部门',
@@ -60,6 +62,10 @@ let panelScrollCleanup: (() => void) | null = null;
 
 const normalizedTree = computed(() => props.tree ?? []);
 const selectedPath = computed(() => props.modelValue ?? []);
+const draftPath = ref<string[]>([]);
+const activePath = computed(() =>
+  props.selectionMode === 'confirm' ? draftPath.value : selectedPath.value,
+);
 const selectedLabel = computed(() =>
   selectedPath.value.length > 0 ? selectedPath.value.join(' / ') : props.allLabel,
 );
@@ -87,7 +93,7 @@ function optionsAt(levelIndex: number): MarketDeptCascaderNode[] {
   if (tree.length === 0) {
     return [];
   }
-  const segments = selectedPath.value;
+  const segments = activePath.value;
   if (levelIndex > segments.length) {
     return [];
   }
@@ -121,14 +127,14 @@ const columns = computed<DeptCascadeColumn[]>(() => {
     output.push({
       levelIndex: level,
       options,
-      active: selectedPath.value[level],
+      active: activePath.value[level],
     });
   }
   return output;
 });
 
 function hasChildren(levelIndex: number, name: string): boolean {
-  const node = nodeByPartial([...selectedPath.value.slice(0, levelIndex), name]);
+  const node = nodeByPartial([...activePath.value.slice(0, levelIndex), name]);
   return Boolean(node?.children?.length);
 }
 
@@ -153,7 +159,7 @@ function pathAllowedByPermission(path: string[]): boolean {
 }
 
 function isOptionDisabled(levelIndex: number, name: string): boolean {
-  return !pathAllowedByPermission([...selectedPath.value.slice(0, levelIndex), name]);
+  return !pathAllowedByPermission([...activePath.value.slice(0, levelIndex), name]);
 }
 
 function updatePanelLayout(): void {
@@ -194,6 +200,9 @@ const panelStyle = computed((): CSSProperties => {
 });
 
 function setOpen(nextOpen: boolean): void {
+  if (props.selectionMode === 'confirm') {
+    draftPath.value = [...selectedPath.value];
+  }
   open.value = nextOpen;
   if (nextOpen) {
     updatePanelLayout();
@@ -212,7 +221,11 @@ function select(levelIndex: number, name: string): void {
     return;
   }
 
-  const nextValue = [...selectedPath.value.slice(0, levelIndex), name];
+  const nextValue = [...activePath.value.slice(0, levelIndex), name];
+  if (props.selectionMode === 'confirm') {
+    draftPath.value = nextValue;
+    return;
+  }
   emit('update:modelValue', nextValue);
   emit('change', nextValue);
 }
@@ -229,10 +242,15 @@ function clear(): void {
 }
 
 function done(): void {
-  if (props.beforeDone && !props.beforeDone([...selectedPath.value])) {
+  const nextValue = [...activePath.value];
+  if (props.beforeDone && !props.beforeDone(nextValue)) {
     return;
   }
-  emit('done', selectedPath.value);
+  if (props.selectionMode === 'confirm') {
+    emit('update:modelValue', nextValue);
+    emit('change', nextValue);
+  }
+  emit('done', nextValue);
   setOpen(false);
 }
 
