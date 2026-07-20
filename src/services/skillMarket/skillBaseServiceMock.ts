@@ -8,6 +8,15 @@ import { getMockBusinessDimensions } from './mock/businessDimensionsDefault';
 import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
 import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
 import { marketSkillsToOpsExcelRows } from './opsBundleFromSkills';
+import {
+  mockDeptSkills,
+  mockPublishTasks,
+  mockPublishTargetOrgs,
+  type DeptSkillCommentItem,
+  type DeptSkillRow,
+  type PublishTask,
+  type PublishTaskSkill,
+} from './deptSkillReviewMock';
 
 function semverNums(v: string): number[] {
   return String(v)
@@ -1934,6 +1943,281 @@ function handleApiRequest(
       !reviewMonth || r.reviewMonth === reviewMonth ? { ...r, reviewStatus: '已归档' } : r,
     );
     return ok({ ok: true });
+  }
+
+  const deptReview = handleDeptReviewRequest(method, path, config);
+  if (deptReview) {
+    return deptReview;
+  }
+
+  return null;
+}
+
+/**
+ * 部门 Skill 评审模块 Mock 处理器
+ * 详见 docs/部门Skill评审模块_接口设计文档.md
+ */
+let deptReviewSkills: DeptSkillRow[] = mockDeptSkills.map((row) => ({
+  ...row,
+  comments: row.comments.map((c) => ({ ...c })),
+}));
+let deptReviewTasks: PublishTask[] = mockPublishTasks.map((task) => ({
+  ...task,
+  skills: task.skills.map((s) => ({ ...s })),
+}));
+
+function handleDeptReviewRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  const params = readParams(config);
+  const userId = readString(params.userId, 'mock001');
+
+  // 1. 看管部门列表
+  if (method === 'get' && path === '/dept-review/departments') {
+    // 从 Skill 的 deptPath 聚合出管理员看管的部门树（扁平路径列表）
+    const seen = new Map<string, { id: string; path: string; name: string }>();
+    for (const row of deptReviewSkills) {
+      const segs = row.deptPath.split(' / ').map((s) => s.trim()).filter(Boolean);
+      if (segs.length === 0) {
+        continue;
+      }
+      const full = segs.join(' / ');
+      if (!seen.has(full)) {
+        seen.set(full, { id: `dept-${seen.size}`, path: full, name: segs[segs.length - 1]! });
+      }
+    }
+    return ok({ departments: [...seen.values()] }, seen.size);
+  }
+
+  // 2. 部门评审 Skill 列表
+  if (method === 'get' && path === '/dept-review/skills') {
+    let list = deptReviewSkills.map((row) => ({
+      ...row,
+      comments: undefined,
+      commentCount: row.comments.length,
+    }));
+    const deptSegsRaw = readString(params.deptSegments, '');
+    if (deptSegsRaw) {
+      const segs = deptSegsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      list = list.filter((row) => {
+        const parts = row.deptPath.split(' / ');
+        if (parts.length < segs.length) return false;
+        return segs.every((seg, i) => parts[i] === seg);
+      });
+    }
+    const sortBy = readString(params.sortBy, 'downloads');
+    const sortOrder = readString(params.sortOrder, 'desc');
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    if (sortBy === 'downloads') {
+      list.sort((a, b) => (a.downloads - b.downloads) * dir);
+    } else if (sortBy === 'access') {
+      list.sort((a, b) => (a.totalAccess - b.totalAccess) * dir);
+    } else if (sortBy === 'aiScore') {
+      list.sort((a, b) => ((a.aiScore ?? -1) - (b.aiScore ?? -1)) * dir);
+    } else if (sortBy === 'expertScore') {
+      list.sort((a, b) => ((a.expertScore ?? -1) - (b.expertScore ?? -1)) * dir);
+    }
+    const total = list.length;
+    const pageNum = Math.max(1, readNumber(params.pageNum, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 10));
+    const start = (pageNum - 1) * pageSize;
+    return ok(list.slice(start, start + pageSize), total);
+  }
+
+  // 3. 某 Skill 的意见列表
+  const commentsMatch = /^\/dept-review\/skills\/([^/]+)\/comments$/.exec(path);
+  if (method === 'get' && commentsMatch) {
+    const skillId = commentsMatch[1]!;
+    const row = deptReviewSkills.find((r) => r.id === skillId);
+    if (!row) {
+      return ok({ comments: [] }, 0);
+    }
+    const comments = [...row.comments].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return ok({ comments }, comments.length);
+  }
+
+  // 4. 提交评审意见
+  if (method === 'post' && commentsMatch) {
+    const skillId = commentsMatch[1]!;
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const content = readString(body.content, '');
+    const row = deptReviewSkills.find((r) => r.id === skillId);
+    if (!row) {
+      return fail('Skill 不存在', { comment: null });
+    }
+    const item: DeptSkillCommentItem = {
+      id: `cm-${Date.now()}`,
+      type: 'review',
+      submitter: userId,
+      submitterId: userId,
+      content,
+      status: 'processing',
+      createdAt: nowText(),
+      isMine: true,
+      publishTaskId: undefined,
+    };
+    row.comments = [...row.comments, item];
+    return ok({ comment: item });
+  }
+
+  // 5. 创建发布任务（一键发布到组织）
+  if (method === 'post' && path === '/dept-review/publish-tasks') {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const targetOrgId = readString(body.targetOrgId, '');
+    const skillIdsRaw = body.skillIds;
+    const skillIds: string[] = Array.isArray(skillIdsRaw)
+      ? skillIdsRaw.map((s) => String(s))
+      : [];
+    const org = mockPublishTargetOrgs.find((o) => o.id === targetOrgId);
+    const orgName = org?.orgName ?? '未知组织';
+    const owner = org?.owner ?? '';
+    const taskSkills: PublishTaskSkill[] = skillIds
+      .map((sid) => deptReviewSkills.find((r) => r.id === sid))
+      .filter((r): r is DeptSkillRow => Boolean(r))
+      .map((r) => ({ id: r.id, name: r.name, version: r.version, author: r.author }));
+    const taskId = `task-${Date.now()}`;
+    const task: PublishTask = {
+      id: taskId,
+      taskName: `${orgName} · 批量发布任务（${taskSkills.length} 个 Skill）`,
+      targetOrgId,
+      targetOrgName: orgName,
+      orgOwner: owner,
+      status: 'processing',
+      skills: taskSkills,
+      createdAt: nowText(),
+      completedAt: null,
+      creator: userId,
+      approvalComment: null,
+    };
+    deptReviewTasks = [task, ...deptReviewTasks];
+    // 为每个选中 Skill 追加 publish 类型意见
+    for (const sid of skillIds) {
+      const row = deptReviewSkills.find((r) => r.id === sid);
+      if (!row) continue;
+      row.comments = [
+        ...row.comments,
+        {
+          id: `cm-${Date.now()}-${sid}`,
+          type: 'publish',
+          submitter: userId,
+          submitterId: userId,
+          content: `一键发布到组织：${orgName}，等待 owner 确认。`,
+          status: 'processing',
+          createdAt: nowText(),
+          isMine: true,
+          publishTaskId: taskId,
+        },
+      ];
+      row.publishTaskId = taskId;
+    }
+    return ok({
+      task: {
+        ...task,
+        skillCount: task.skills.length,
+        skills: task.skills,
+      },
+    });
+  }
+
+  // 6. 处理发布任务（close/reject/approve）
+  const processMatch = /^\/dept-review\/publish-tasks\/([^/]+)\/process$/.exec(path);
+  if (method === 'post' && processMatch) {
+    const taskId = processMatch[1]!;
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const action = readString(body.action, '');
+    const comment = readString(body.comment, '');
+    const idx = deptReviewTasks.findIndex((t) => t.id === taskId);
+    if (idx < 0) {
+      return fail('任务不存在', { task: null });
+    }
+    const task = deptReviewTasks[idx]!;
+    if (action === 'reject' && !comment) {
+      return fail('请填写驳回原因', { task: null });
+    }
+    let status: PublishTask['status'] = task.status;
+    let commentStatus: DeptSkillCommentItem['status'] = 'closed';
+    if (action === 'close') {
+      status = 'closed';
+      commentStatus = 'closed';
+    } else if (action === 'reject') {
+      status = 'rejected';
+      commentStatus = 'rejected';
+    } else if (action === 'approve') {
+      status = 'approved';
+      commentStatus = 'closed';
+    } else {
+      return fail('未知的处理动作', { task: null });
+    }
+    const updated: PublishTask = {
+      ...task,
+      status,
+      completedAt: nowText(),
+      approvalComment: comment || undefined,
+    };
+    deptReviewTasks[idx] = updated;
+    // 联动更新 Skill 的 publish 意见状态
+    for (const row of deptReviewSkills) {
+      if (row.publishTaskId === taskId) {
+        row.comments = row.comments.map((c) =>
+          c.publishTaskId === taskId && c.type === 'publish'
+            ? { ...c, status: commentStatus }
+            : c,
+        );
+        if (action === 'close' || action === 'reject') {
+          row.publishTaskId = null;
+        }
+      }
+    }
+    return ok({
+      task: {
+        ...updated,
+        skillCount: updated.skills.length,
+        skills: updated.skills,
+      },
+    });
+  }
+
+  // 7. 发布任务列表
+  if (method === 'get' && path === '/dept-review/publish-tasks') {
+    let list = deptReviewTasks.map((t) => ({
+      id: t.id,
+      targetOrgName: t.targetOrgName,
+      creator: t.creator,
+      skillCount: t.skills.length,
+      status: t.status,
+      createdAt: t.createdAt,
+      completedAt: t.completedAt,
+    }));
+    const statusFilter = readString(params.status, '');
+    if (statusFilter) {
+      list = list.filter((t) => t.status === statusFilter);
+    }
+    const sortOrder = readString(params.sortOrder, 'desc');
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt) * dir);
+    const total = list.length;
+    const pageNum = Math.max(1, readNumber(params.pageNum, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 10));
+    const start = (pageNum - 1) * pageSize;
+    return ok(list.slice(start, start + pageSize), total);
+  }
+
+  // 8. 发布任务详情
+  const detailMatch = /^\/dept-review\/publish-tasks\/([^/]+)$/.exec(path);
+  if (method === 'get' && detailMatch) {
+    const taskId = detailMatch[1]!;
+    const task = deptReviewTasks.find((t) => t.id === taskId);
+    if (!task) {
+      return fail('任务不存在', { task: null });
+    }
+    return ok({
+      task: {
+        ...task,
+        skills: task.skills,
+      },
+    });
   }
 
   return null;

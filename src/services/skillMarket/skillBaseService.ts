@@ -575,4 +575,81 @@ export const skillBaseService = {
       params,
     });
   },
+
+  /*
+   * 部门 Skill 评审相关接口，统一前缀 /api/dept-review
+   * 详见 docs/部门Skill评审模块_接口设计文档.md
+   */
+
+  // 1. 看管部门列表（部门筛选用）
+  queryDeptReviewDepartments: (params: any): any => {
+    return httpRequest.api<any>({
+      url: '/dept-review/departments',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 2. 部门评审 Skill 列表（筛选/排序/分页）
+  queryDeptReviewSkills: (params: any): any => {
+    return httpRequest.api<any>({
+      url: '/dept-review/skills',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 3. 某 Skill 的意见列表（评审意见 + 一键发布申请）
+  queryDeptSkillComments: (skillId: string, params: any): any => {
+    return httpRequest.api<any>({
+      url: `/dept-review/skills/${skillId}/comments`,
+      method: 'get',
+      params,
+    });
+  },
+
+  // 4. 提交评审意见
+  submitDeptSkillComment: (skillId: string, body: any): any => {
+    return httpRequest.api<any>({
+      url: `/dept-review/skills/${skillId}/comments`,
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // 5. 创建发布任务（一键发布到组织）
+  createDeptPublishTask: (body: any): any => {
+    return httpRequest.api<any>({
+      url: '/dept-review/publish-tasks',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // 6. 处理发布任务（close/reject/approve，统一 action 参数）
+  processDeptPublishTask: (taskId: string, body: any): any => {
+    return httpRequest.api<any>({
+      url: `/dept-review/publish-tasks/${taskId}/process`,
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // 7. 发布任务列表（状态筛选/时间排序/分页）
+  queryDeptPublishTasks: (params: any): any => {
+    return httpRequest.api<any>({
+      url: '/dept-review/publish-tasks',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 8. 发布任务详情（含 Skill 清单）
+  queryDeptPublishTaskDetail: (taskId: string, params: any): any => {
+    return httpRequest.api<any>({
+      url: `/dept-review/publish-tasks/${taskId}`,
+      method: 'get',
+      params,
+    });
+  },
 };

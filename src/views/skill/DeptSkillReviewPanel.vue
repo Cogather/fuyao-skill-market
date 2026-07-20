@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import type { MarketDeptCascaderNode } from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -12,6 +12,7 @@ import {
   type PublishTaskSkill,
   type PublishTargetOrg,
 } from '../../services/skillMarket/deptSkillReviewMock';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 const props = withDefaults(
   defineProps<{
@@ -34,10 +35,11 @@ const emit = defineEmits<{
 
 /** 部门级联选中的路径段（如 ['部门1','平台产品线']），空数组表示全部 */
 const selectedDeptSegments = ref<string[]>([]);
-const skillRows = ref<DeptSkillRow[]>(mockDeptSkills.map((row) => ({ ...row })));
-const publishTargetOrgs = ref<PublishTargetOrg[]>([...mockPublishTargetOrgs]);
-const publishTasks = ref<PublishTask[]>(mockPublishTasks.map((task) => ({ ...task })));
-
+const skillRows = ref<DeptSkillRow[]>([]);
+const publishTargetOrgs = ref<PublishTargetOrg[]>([]);
+const publishTasks = ref<PublishTask[]>([]);
+const skillsLoading = ref(false);
+const tasksLoading = ref(false);
 type DeptReviewSubTab = 'skills' | 'tasks';
 const activeSubTab = ref<DeptReviewSubTab>('skills');
 
@@ -149,6 +151,111 @@ function showToast(message: string): void {
   emit('toast', message);
 }
 
+/** 读取响应壳统一工具：成功取 data，失败返回 null */
+function readEnvelope<T>(res: any): T | null {
+  if (res && res.meta && res.meta.success && res.data != null) {
+    return res.data as T;
+  }
+  return null;
+}
+
+/** 加载部门评审 Skill 列表（全量拉取后前端筛选/排序/分页） */
+async function loadSkills(): Promise<void> {
+  skillsLoading.value = true;
+  try {
+    const res = await skillBaseService.queryDeptReviewSkills({
+      userId: props.userId,
+      pageNum: 1,
+      pageSize: 999,
+    });
+    const list = readEnvelope<any[]>(res);
+    if (list) {
+      skillRows.value = list.map((item: any) => ({
+        ...item,
+        comments: [] as DeptSkillCommentItem[],
+      }));
+    } else {
+      // 回退默认值
+      skillRows.value = mockDeptSkills.map((row) => ({
+        ...row,
+        comments: row.comments.map((c) => ({ ...c })),
+      }));
+    }
+  } catch {
+    skillRows.value = mockDeptSkills.map((row) => ({
+      ...row,
+      comments: row.comments.map((c) => ({ ...c })),
+    }));
+  } finally {
+    skillsLoading.value = false;
+  }
+}
+
+/** 加载发布任务清单 */
+async function loadTasks(): Promise<void> {
+  tasksLoading.value = true;
+  try {
+    const res = await skillBaseService.queryDeptPublishTasks({
+      userId: props.userId,
+      pageNum: 1,
+      pageSize: 999,
+    });
+    const list = readEnvelope<any[]>(res);
+    if (list) {
+      publishTasks.value = list.map((item: any) => ({
+        id: item.id,
+        taskName: item.taskName ?? '',
+        targetOrgId: item.targetOrgId ?? '',
+        targetOrgName: item.targetOrgName ?? '',
+        orgOwner: item.orgOwner ?? '',
+        status: item.status,
+        skills: item.skills ?? [],
+        createdAt: item.createdAt ?? '',
+        completedAt: item.completedAt ?? null,
+        creator: item.creator ?? '',
+        approvalComment: item.approvalComment ?? null,
+      }));
+    } else {
+      publishTasks.value = mockPublishTasks.map((task) => ({
+        ...task,
+        skills: task.skills.map((s) => ({ ...s })),
+      }));
+    }
+  } catch {
+    publishTasks.value = mockPublishTasks.map((task) => ({
+      ...task,
+      skills: task.skills.map((s) => ({ ...s })),
+    }));
+  } finally {
+    tasksLoading.value = false;
+  }
+}
+
+/** 加载可见组织（发布弹窗用），复用现有组织查询接口 */
+async function loadOrganizations(): Promise<void> {
+  try {
+    const res = await skillBaseService.queryOrganizationList({ userId: props.userId });
+    const list = readEnvelope<any[]>(res);
+    if (list && list.length > 0) {
+      publishTargetOrgs.value = list.map((o: any) => ({
+        id: String(o.id),
+        orgName: o.orgName ?? '',
+        owner: o.admins ?? o.owner ?? '',
+      }));
+    } else {
+      publishTargetOrgs.value = [...mockPublishTargetOrgs];
+    }
+  } catch {
+    publishTargetOrgs.value = [...mockPublishTargetOrgs];
+  }
+}
+
+onMounted(() => {
+  void loadSkills();
+  void loadTasks();
+  void loadOrganizations();
+});
+
 function toggleSkillSelection(id: string): void {
   const next = new Set(selectedSkillIds.value);
   if (next.has(id)) {
@@ -167,13 +274,29 @@ function toggleSelectAll(): void {
   selectedSkillIds.value = new Set(filteredSkills.value.map((row) => row.id));
 }
 
-/** 打开某 Skill 的意见列表弹窗 */
-function openCommentsDialog(row: DeptSkillRow): void {
+/** 打开某 Skill 的意见列表弹窗，异步加载该 Skill 的全部意见 */
+async function openCommentsDialog(row: DeptSkillRow): Promise<void> {
   commentsTarget.value = row;
   draftComment.value = '';
   savingComment.value = false;
   processingCommentId.value = '';
   commentsOpen.value = true;
+  // 异步加载意见列表
+  try {
+    const res = await skillBaseService.queryDeptSkillComments(row.id, { userId: props.userId });
+    const data = readEnvelope<any>(res);
+    if (data && Array.isArray(data.comments)) {
+      const idx = skillRows.value.findIndex((r) => r.id === row.id);
+      if (idx >= 0) {
+        skillRows.value[idx] = {
+          ...skillRows.value[idx],
+          comments: data.comments.map((c: any) => ({ ...c })) as DeptSkillCommentItem[],
+        };
+      }
+    }
+  } catch {
+    // 拉取失败保留空列表
+  }
 }
 
 function closeCommentsDialog(): void {
@@ -205,62 +328,95 @@ async function submitReviewComment(): Promise<void> {
     return;
   }
   savingComment.value = true;
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const idx = skillRows.value.findIndex((row) => row.id === target.id);
-  if (idx >= 0) {
-    const item: DeptSkillCommentItem = {
-      id: `cm-${Date.now()}`,
-      type: 'review',
-      submitter: '当前管理员',
-      submitterId: 'admin',
+  try {
+    const res = await skillBaseService.submitDeptSkillComment(target.id, {
+      userId: props.userId,
       content,
-      status: 'processing',
-      createdAt: formatNow(),
-      isMine: true,
-    };
-    skillRows.value[idx] = {
-      ...skillRows.value[idx],
-      comments: [...skillRows.value[idx].comments, item],
-    };
+    });
+    const data = readEnvelope<any>(res);
+    const item: DeptSkillCommentItem = data?.comment
+      ? { ...data.comment }
+      : {
+          id: `cm-${Date.now()}`,
+          type: 'review',
+          submitter: props.userId,
+          submitterId: props.userId,
+          content,
+          status: 'processing',
+          createdAt: formatNow(),
+          isMine: true,
+        };
+    const idx = skillRows.value.findIndex((row) => row.id === target.id);
+    if (idx >= 0) {
+      skillRows.value[idx] = {
+        ...skillRows.value[idx],
+        comments: [...skillRows.value[idx].comments, item],
+      };
+    }
+    showToast(`已提交「${target.name}」的评审意见，已在个人发布中标记`);
+    draftComment.value = '';
+  } catch {
+    showToast('提交失败，请稍后重试');
+  } finally {
+    savingComment.value = false;
   }
-  showToast(`已提交「${target.name}」的评审意见，已在个人发布中标记`);
-  savingComment.value = false;
-  draftComment.value = '';
 }
 
 /** 我对自己发起的一键发布申请：关闭（撤回） */
 async function closePublishComment(item: DeptSkillCommentItem): Promise<void> {
-  if (processingCommentId.value) {
+  if (processingCommentId.value || !item.publishTaskId) {
     return;
   }
   processingCommentId.value = item.id;
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  updateCommentStatus(item.id, 'closed');
-  showToast('已关闭该一键发布申请');
-  processingCommentId.value = '';
+  try {
+    await skillBaseService.processDeptPublishTask(item.publishTaskId, {
+      userId: props.userId,
+      action: 'close',
+    });
+    refreshCommentStatus(item.publishTaskId, 'closed');
+    showToast('已关闭该一键发布申请');
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    processingCommentId.value = '';
+  }
 }
 
 /** 我对自己发起的一键发布申请：驳回 */
 async function rejectPublishComment(item: DeptSkillCommentItem): Promise<void> {
-  if (processingCommentId.value) {
+  if (processingCommentId.value || !item.publishTaskId) {
     return;
   }
   processingCommentId.value = item.id;
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  updateCommentStatus(item.id, 'rejected');
-  showToast('已驳回该一键发布申请');
-  processingCommentId.value = '';
+  try {
+    await skillBaseService.processDeptPublishTask(item.publishTaskId, {
+      userId: props.userId,
+      action: 'reject',
+      comment: '发起人驳回',
+    });
+    refreshCommentStatus(item.publishTaskId, 'rejected');
+    showToast('已驳回该一键发布申请');
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    processingCommentId.value = '';
+  }
 }
 
-function updateCommentStatus(commentId: string, status: DeptSkillCommentItem['status']): void {
+/** 按发布任务 ID 联动刷新本地 Skill 意见状态 */
+function refreshCommentStatus(taskId: string, status: DeptSkillCommentItem['status']): void {
   for (let i = 0; i < skillRows.value.length; i += 1) {
     const row = skillRows.value[i];
-    const cmtIdx = row.comments.findIndex((c) => c.id === commentId);
-    if (cmtIdx >= 0) {
-      const nextComments = row.comments.slice();
-      nextComments[cmtIdx] = { ...nextComments[cmtIdx], status };
+    if (row.comments.some((c) => c.publishTaskId === taskId)) {
+      const nextComments = row.comments.map((c) =>
+        c.publishTaskId === taskId && c.type === 'publish'
+          ? { ...c, status }
+          : c,
+      );
       skillRows.value[i] = { ...row, comments: nextComments };
-      break;
+    }
+    if (row.publishTaskId === taskId && (status === 'closed' || status === 'rejected')) {
+      skillRows.value[i] = { ...skillRows.value[i], publishTaskId: null };
     }
   }
 }
@@ -336,56 +492,64 @@ async function confirmPublish(): Promise<void> {
     return;
   }
   publishing.value = true;
-  await new Promise((resolve) => setTimeout(resolve, 300));
   const org = selectedPublishOrg.value;
-  const now = formatNow();
-  const taskId = `task-${Date.now()}`;
-  const taskSkills: PublishTaskSkill[] = selectedSkills.value.map((row) => ({
-    id: row.id,
-    name: row.name,
-    version: row.version,
-    author: row.author,
-  }));
-  const task: PublishTask = {
-    id: taskId,
-    taskName: `${org.orgName} · 批量发布任务（${taskSkills.length} 个 Skill）`,
-    targetOrgId: org.id,
-    targetOrgName: org.orgName,
-    orgOwner: org.owner,
-    status: 'pending_owner',
-    skills: taskSkills,
-    createdAt: now,
-    completedAt: null,
-    creator: props.userId || 'admin',
-    approvalComment: null,
-  };
-  publishTasks.value = [task, ...publishTasks.value];
-  for (let i = 0; i < skillRows.value.length; i += 1) {
-    const row = skillRows.value[i];
-    if (selectedSkillIds.value.has(row.id)) {
-      const publishComment: DeptSkillCommentItem = {
-        id: `cm-${Date.now()}-${row.id}`,
-        type: 'publish',
-        submitter: '当前管理员',
-        submitterId: 'admin',
-        content: `一键发布到组织：${org.orgName}，等待 owner 确认。`,
-        status: 'processing',
-        createdAt: now,
-        isMine: true,
-        publishTaskId: taskId,
-      };
-      skillRows.value[i] = {
-        ...row,
-        publishTaskId: taskId,
-        comments: [...row.comments, publishComment],
-      };
+  const skillIds = selectedSkills.value.map((row) => row.id);
+  try {
+    const res = await skillBaseService.createDeptPublishTask({
+      userId: props.userId,
+      targetOrgId: org.id,
+      skillIds,
+    });
+    const data = readEnvelope<any>(res);
+    const taskData = data?.task;
+    const task: PublishTask = taskData
+      ? {
+          id: taskData.id,
+          taskName: taskData.taskName ?? '',
+          targetOrgId: taskData.targetOrgId ?? org.id,
+          targetOrgName: taskData.targetOrgName ?? org.orgName,
+          orgOwner: taskData.orgOwner ?? org.owner,
+          status: taskData.status ?? 'processing',
+          skills: taskData.skills ?? [],
+          createdAt: taskData.createdAt ?? formatNow(),
+          completedAt: taskData.completedAt ?? null,
+          creator: taskData.creator ?? props.userId,
+          approvalComment: taskData.approvalComment ?? null,
+        }
+      : {
+          id: `task-${Date.now()}`,
+          taskName: `${org.orgName} · 批量发布任务（${skillIds.length} 个 Skill）`,
+          targetOrgId: org.id,
+          targetOrgName: org.orgName,
+          orgOwner: org.owner,
+          status: 'processing',
+          skills: selectedSkills.value.map((row) => ({
+            id: row.id,
+            name: row.name,
+            version: row.version,
+            author: row.author,
+          })),
+          createdAt: formatNow(),
+          completedAt: null,
+          creator: props.userId,
+          approvalComment: null,
+        };
+    publishTasks.value = [task, ...publishTasks.value];
+    // 联动更新选中 Skill 的 publishTaskId
+    for (let i = 0; i < skillRows.value.length; i += 1) {
+      if (selectedSkillIds.value.has(skillRows.value[i].id)) {
+        skillRows.value[i] = { ...skillRows.value[i], publishTaskId: task.id };
+      }
     }
+    selectedSkillIds.value = new Set();
+    publishDialogOpen.value = false;
+    publishTargetOrgId.value = '';
+    showToast(`已创建发布任务「${task.taskName}」，已通知组织 owner ${org.owner} 确认`);
+  } catch {
+    showToast('创建发布任务失败，请稍后重试');
+  } finally {
+    publishing.value = false;
   }
-  selectedSkillIds.value = new Set();
-  publishing.value = false;
-  publishDialogOpen.value = false;
-  publishTargetOrgId.value = '';
-  showToast(`已创建发布任务「${task.taskName}」，已通知组织 owner ${org.owner} 确认`);
 }
 
 function openTaskDetail(task: PublishTask): void {
@@ -433,76 +597,53 @@ function closeTaskDetail(): void {
   taskApprovalInput.value = '';
 }
 
-async function ownerApproveTask(task: PublishTask): Promise<void> {
+async function processTask(task: PublishTask, action: 'close' | 'reject' | 'approve'): Promise<void> {
   if (taskProcessing.value) {
     return;
   }
-  taskProcessing.value = true;
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const idx = publishTasks.value.findIndex((t) => t.id === task.id);
-  if (idx >= 0) {
-    const comment = taskApprovalInput.value.trim();
-    publishTasks.value[idx] = {
-      ...publishTasks.value[idx],
-      status: 'approved',
-      completedAt: formatNow(),
-      approvalComment: comment || '组织 owner 已确认，已发布到组织并完成审批。',
-    };
-    for (let i = 0; i < skillRows.value.length; i += 1) {
-      const row = skillRows.value[i];
-      if (row.publishTaskId === task.id) {
-        const nextComments = row.comments.map((c) =>
-          c.publishTaskId === task.id && c.type === 'publish'
-            ? { ...c, status: 'closed' as const }
-            : c,
-        );
-        skillRows.value[i] = { ...row, comments: nextComments };
-      }
-    }
-  }
-  showToast(`任务「${task.taskName}」已确认发布到组织`);
-  if (taskDetailTarget.value?.id === task.id) {
-    taskDetailTarget.value = publishTasks.value[idx] ?? null;
-  }
-  taskProcessing.value = false;
-}
-
-async function ownerRejectTask(task: PublishTask): Promise<void> {
-  if (taskProcessing.value) {
-    return;
-  }
-  const reason = taskApprovalInput.value.trim();
-  if (!reason) {
+  const comment = taskApprovalInput.value.trim();
+  if (action === 'reject' && !comment) {
     showToast('请填写驳回原因');
     return;
   }
   taskProcessing.value = true;
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const idx = publishTasks.value.findIndex((t) => t.id === task.id);
-  if (idx >= 0) {
-    publishTasks.value[idx] = {
-      ...publishTasks.value[idx],
-      status: 'rejected',
-      completedAt: formatNow(),
-      approvalComment: reason,
-    };
-    for (let i = 0; i < skillRows.value.length; i += 1) {
-      const row = skillRows.value[i];
-      if (row.publishTaskId === task.id) {
-        const nextComments = row.comments.map((c) =>
-          c.publishTaskId === task.id && c.type === 'publish'
-            ? { ...c, status: 'rejected' as const }
-            : c,
-        );
-        skillRows.value[i] = { ...row, publishTaskId: null, comments: nextComments };
-      }
+  try {
+    const res = await skillBaseService.processDeptPublishTask(task.id, {
+      userId: props.userId,
+      action,
+      comment,
+    });
+    const data = readEnvelope<any>(res);
+    const updatedTask = data?.task;
+    const idx = publishTasks.value.findIndex((t) => t.id === task.id);
+    const nextStatus: PublishTask['status'] =
+      action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'closed';
+    const nextCommentStatus: DeptSkillCommentItem['status'] =
+      action === 'reject' ? 'rejected' : 'closed';
+    if (idx >= 0) {
+      publishTasks.value[idx] = {
+        ...publishTasks.value[idx],
+        status: updatedTask?.status ?? nextStatus,
+        completedAt: updatedTask?.completedAt ?? formatNow(),
+        approvalComment: updatedTask?.approvalComment ?? (comment || null),
+      };
     }
+    refreshCommentStatus(task.id, nextCommentStatus);
+    showToast(
+      action === 'approve'
+        ? `任务「${task.taskName}」已确认发布到组织`
+        : action === 'reject'
+          ? `任务「${task.taskName}」已被驳回`
+          : `任务「${task.taskName}」已关闭`,
+    );
+    if (taskDetailTarget.value?.id === task.id) {
+      taskDetailTarget.value = idx >= 0 ? publishTasks.value[idx]! : null;
+    }
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    taskProcessing.value = false;
   }
-  showToast(`任务「${task.taskName}」已被驳回`);
-  if (taskDetailTarget.value?.id === task.id) {
-    taskDetailTarget.value = publishTasks.value[idx] ?? null;
-  }
-  taskProcessing.value = false;
 }
 
 function taskStatusBadge(status: PublishTask['status']): { label: string; cls: string } {
@@ -1076,10 +1217,10 @@ function onTasksPageSizeChange(event: Event): void {
               />
             </label>
             <div class="v-actions">
-              <button type="button" class="btn danger sm" :disabled="taskProcessing" @click="ownerRejectTask(taskDetailTarget)">
+              <button type="button" class="btn danger sm" :disabled="taskProcessing" @click="processTask(taskDetailTarget, 'reject')">
                 {{ taskProcessing ? '处理中…' : '驳回' }}
               </button>
-              <button type="button" class="btn primary sm" :disabled="taskProcessing" @click="ownerApproveTask(taskDetailTarget)">
+              <button type="button" class="btn primary sm" :disabled="taskProcessing" @click="processTask(taskDetailTarget, 'approve')">
                 确认发布到组织
               </button>
             </div>
