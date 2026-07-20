@@ -7,6 +7,7 @@ import SkillCard from '../../components/skill/SkillCard.vue';
 import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
+import DeptSkillReviewPanel from './DeptSkillReviewPanel.vue';
 import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
 import SkillPlanningPage from '../skill/SkillPlanningPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
@@ -2492,6 +2493,14 @@ async function openDetailFromMyRelease(row: SkillListRecordDto): Promise<void> {
   await openSkillDetailRoute(row.id, false, 'releases');
 }
 
+/** 部门评审模块点击 Skill 名称查看详情（仅 skillId） */
+async function openDetailFromMyReleaseSkillId(skillId: string): Promise<void> {
+  if (!skillId) {
+    return;
+  }
+  await openSkillDetailRoute(skillId, false, 'releases');
+}
+
 function closeDetailPanel(): void {
   closeDetailDeleteConfirm();
   detailPanelSkill.value = null;
@@ -2765,7 +2774,8 @@ type ReleaseFilterKey =
   | 'reviewing'
   | 'rejected'
   | 'aiEvolution'
-  | 'coreApply';
+  | 'coreApply'
+  | 'deptReview';
 
 const releaseFilter = ref<ReleaseFilterKey>('all');
 
@@ -2777,6 +2787,16 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'rejected', label: '组织已驳回' },
   { key: 'aiEvolution', label: '自进化审批' },
 ];
+
+const visibleReleaseFilters = computed(() => {
+  if (showAdminModules.value) {
+    return [
+      ...releaseFilters,
+      { key: 'deptReview' as ReleaseFilterKey, label: '部门评审' },
+    ];
+  }
+  return releaseFilters;
+});
 
 type AiEvolutionStatus = 'pending' | 'approved' | 'rejected';
 
@@ -3011,6 +3031,10 @@ const onClickFilterRelease = async (key: any) => {
   releaseFilter.value = key;
   if (key === 'aiEvolution') {
     await loadAiEvolutionSkills();
+    return;
+  }
+  if (key === 'deptReview') {
+    // 部门评审模块自带 Mock 数据，无需拉取我的发布列表
     return;
   }
   if (key === 'all' && 'status' in myReleaseFilterObj.value) {
@@ -4391,11 +4415,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <div class="my-toolbar">
           <div class="my-filters" role="tablist" aria-label="我的发布筛选">
             <button
-              v-for="f in releaseFilters"
+              v-for="f in visibleReleaseFilters"
               :key="f.key"
               type="button"
               class="seg"
-              :class="{ on: releaseFilter === f.key, 'seg-ai-evolution': f.key === 'aiEvolution' }"
+              :class="{ on: releaseFilter === f.key, 'seg-ai-evolution': f.key === 'aiEvolution', 'seg-dept-review': f.key === 'deptReview' }"
               @click="onClickFilterRelease(f.key)"
             >
               {{ f.label }}
@@ -4408,6 +4432,15 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </div>
 
+        <div v-if="releaseFilter === 'deptReview'" class="dept-review-wrap">
+          <DeptSkillReviewPanel
+            :user-id="userId"
+            :department-tree="marketOverviewDeptTree"
+            @open-skill-detail="openDetailFromMyReleaseSkillId"
+            @toast="showToast"
+          />
+        </div>
+        <template v-else>
         <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
           <div class="ai-evolution-intro-title">
             <span class="ai-evolution-tag">AI 自进化</span>
@@ -4604,6 +4637,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </tbody>
           </table>
         </div>
+        </template>
       </div>
     </div>
 
