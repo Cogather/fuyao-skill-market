@@ -623,11 +623,19 @@ function reviewTaskHiddenTagText(task: ReviewTaskCard): string {
 
 function reviewTaskDepartmentLabel(task: ReviewTaskCard): string {
   const record = readRecord(task);
-  return String(record.departmentL6 ?? '').trim();
+  let i = 6;
+  while (i >= 3) {
+    if (record?.[`departmentL${i}`]) {
+      break;
+    }
+    i--;
+  }
+
+  return String(record[`departmentL${i}`] ?? '').trim();
 }
 
 function reviewTaskMetaText(task: ReviewTaskCard): string {
-  const owner = String(task.ownerUser || task.ownerName || task.owner || '').trim();
+  const owner = `${task.ownerName} ${task.ownerUser}`;
   return [owner, reviewTaskDepartmentLabel(task)].filter(Boolean).join(' · ');
 }
 function replaceReviewTasks(list: ReviewTaskCard[]): void {
