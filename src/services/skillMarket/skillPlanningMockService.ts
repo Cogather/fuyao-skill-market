@@ -22,7 +22,7 @@ import {
   type SkillPlanningQuery,
 } from './skillPlanningShared';
 
-const initialSkillPlanningItems: SkillPlanningItem[] = [
+const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName'>> = [
   {
     id: 'plan-1001',
     firstScene: '研发提效',
@@ -327,8 +327,21 @@ const mockProductPlanningOptions: ProductPlanningOption[] = [
   { offeringId: 'offering-mobile', offeringName: '移动端产品线' },
 ];
 
-let skillPlanningItems = initialSkillPlanningItems.map((item) => ({
+const mockPlanningDepartments = [
+  '研发效能部',
+  '质量工具组',
+  '平台稳定部',
+  '项目管理部',
+  'DevOps部',
+  '云服务产品线',
+  '平台工具组',
+  '数据平台部',
+];
+
+let skillPlanningItems: SkillPlanningItem[] = initialSkillPlanningItems.map((item, index) => ({
   ...item,
+  planningDeptName:
+    mockPlanningDepartments[index % mockPlanningDepartments.length] ?? item.deptName,
   sceneId: findSceneIdByNames(item.firstScene, item.secondScene),
   activityId: findActivityIdByNames(item.activityNodeName, item.subActivityNodeName),
 }));
@@ -401,9 +414,12 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   const subActivityNodeName = normalizeTextArray(query.subActivityNodeName);
   const level = normalizeTextArray(query.level);
   const status = normalizeTextArray(query.status);
-  const department =
+  const ownerDepartment =
     normalizeText(query.deptName) ||
     normalizeText((query as { department?: unknown }).department) ||
+    '';
+  const planningDepartment =
+    normalizeText(query.planningDeptName) ||
     [
       query.departmentL8,
       query.departmentL7,
@@ -418,7 +434,8 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   const owner = normalizeText(query.owner);
 
   return skillPlanningItems.filter((item) => {
-    if (department && item.deptName !== department) return false;
+    if (ownerDepartment && item.deptName !== ownerDepartment) return false;
+    if (planningDepartment && item.planningDeptName !== planningDepartment) return false;
     if (!matchesDiscreteFilter(item.firstScene, firstScene)) return false;
     if (!matchesDiscreteFilter(item.secondScene, secondScene)) return false;
     if (!matchesDiscreteFilter(item.activityNodeName, activityNodeName)) return false;
@@ -435,6 +452,7 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
       item.description,
       item.owner,
       item.deptName,
+      item.planningDeptName,
       item.developOwner,
     ]
       .join(' ')
@@ -544,6 +562,7 @@ function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): Skill
   const offeringName = normalizeText(patch.offeringName);
   const owner = normalizeText(patch.owner);
   const deptName = normalizeText(patch.deptName);
+  const planningDeptName = normalizeText(patch.planningDeptName);
   const developOwner = normalizeText(patch.developOwner);
   const planedCompleteDate = normalizeText(patch.planedCompleteDate);
   const status = normalizeText(patch.status);
@@ -552,6 +571,7 @@ function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): Skill
   if (offeringName) next.offeringName = offeringName;
   if (owner) next.owner = owner;
   if (deptName) next.deptName = deptName;
+  if (planningDeptName) next.planningDeptName = planningDeptName;
   if (developOwner) next.developOwner = developOwner;
   if (planedCompleteDate) next.planedCompleteDate = planedCompleteDate;
   if (status) next.status = normalizeProgress(status);
@@ -599,7 +619,12 @@ export async function downloadSkillPlanningTemplate(): Promise<void> {
 export async function importSkillPlanningFromExcel(file: File): Promise<SkillPlanningImportResult> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const firstSheetName = workbook.SheetNames[0];
+  const sheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
+  if (!sheet) {
+    return { created: 0, missingFields: [...skillPlanningExportHeaders] };
+  }
+
   const headerRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
   const headerSet = new Set((headerRows[0] ?? []).map(normalizeText));
   const presentKeys = new Set(
@@ -619,7 +644,9 @@ export async function importSkillPlanningFromExcel(file: File): Promise<SkillPla
 
   const imported = rows
     .map(rowToSkillPlanningPayload)
-    .filter((payload) => payload.name && payload.deptName && payload.owner);
+    .filter(
+      (payload) => payload.name && payload.deptName && payload.planningDeptName && payload.owner,
+    );
 
   const createdItems = imported.map((payload) => ({
     id: `plan-${idSeed++}`,

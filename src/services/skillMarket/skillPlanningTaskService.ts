@@ -1,4 +1,5 @@
-export type SkillTaskStatus = 'todo' | 'inProgress' | 'published' | 'done';
+export type SkillTaskStatus = 'todo' | 'inProgress' | 'done';
+type LegacySkillTaskStatus = SkillTaskStatus | 'published';
 export type SkillTaskPriority = 'high' | 'medium' | 'low';
 
 export interface SkillPlanningTask {
@@ -9,6 +10,7 @@ export interface SkillPlanningTask {
   status: SkillTaskStatus;
   progress: number;
   department: string;
+  planningDepartment: string;
   ownerId: string;
   owner: string;
   dueDate: string;
@@ -51,6 +53,15 @@ const departments = [
   '研发效能部',
 ];
 
+const planningDepartments = [
+  '研发效能部',
+  '质量工具组',
+  '平台稳定部',
+  '项目管理部',
+  'DevOps部',
+  '数据平台部',
+];
+
 const descriptions = [
   '自动检查输入信息与上下游约束，形成可执行的分析结果。',
   '汇总业务数据和历史记录，输出结构化建议与处理清单。',
@@ -60,8 +71,7 @@ const descriptions = [
 
 const statusSeeds: Array<{ status: SkillTaskStatus; count: number; progress: number }> = [
   { status: 'todo', count: 5, progress: 0 },
-  { status: 'inProgress', count: 18, progress: 46 },
-  { status: 'published', count: 3, progress: 90 },
+  { status: 'inProgress', count: 21, progress: 46 },
   { status: 'done', count: 41, progress: 100 },
 ];
 
@@ -74,12 +84,13 @@ function createDefaultTasks(): SkillPlanningTask[] {
       const hour = String(18 - (number % 9)).padStart(2, '0');
       return {
         id: 'skill-task-' + status + '-' + String(index + 1).padStart(3, '0'),
-        name: skillNames[number % skillNames.length],
-        description: descriptions[number % descriptions.length],
-        priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3],
+        name: skillNames[number % skillNames.length] ?? '??? Skill',
+        description: descriptions[number % descriptions.length] ?? '',
+        priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3] ?? 'medium',
         status,
         progress: status === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
-        department: departments[number % departments.length],
+        department: departments[number % departments.length] ?? '',
+        planningDepartment: planningDepartments[number % planningDepartments.length] ?? '',
         ownerId: 'mock001',
         owner: '演示用户',
         dueDate: '2026-08-' + String(10 + (number % 18)).padStart(2, '0'),
@@ -113,19 +124,23 @@ function normalizeProgress(value: unknown, status: SkillTaskStatus): number {
   const numeric = Number(value);
   if (Number.isFinite(numeric)) return Math.max(0, Math.min(100, Math.round(numeric)));
   if (status === 'done') return 100;
-  if (status === 'published') return 90;
   if (status === 'inProgress') return 20;
   return 0;
 }
 
-function normalizeTask(task: SkillPlanningTask): SkillPlanningTask {
+function normalizeTask(
+  task: Omit<SkillPlanningTask, 'status'> & { status: LegacySkillTaskStatus },
+): SkillPlanningTask {
   const defaultTask = defaultTasks.find((item) => item.id === task.id);
-  const status = task.status === 'published' ? 'published' : task.status;
+  const status: SkillTaskStatus = task.status === 'published' ? 'inProgress' : task.status;
   return {
     ...task,
     status,
     progress: normalizeProgress(task.progress, status),
     department: String(task.department || defaultTask?.department || '').trim(),
+    planningDepartment: String(
+      task.planningDepartment || defaultTask?.planningDepartment || task.department || '',
+    ).trim(),
     ownerId: String(task.ownerId || defaultTask?.ownerId || task.owner).trim(),
   };
 }
@@ -145,7 +160,9 @@ function readTasks(): SkillPlanningTask[] {
   if (typeof window !== 'undefined') {
     try {
       const raw = window.localStorage.getItem(TASK_STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as SkillPlanningTask[]) : [];
+      const parsed = raw
+        ? (JSON.parse(raw) as Array<SkillPlanningTask & { status: LegacySkillTaskStatus }>)
+        : [];
       if (Array.isArray(parsed) && parsed.length > 0) {
         memoryTasks = parsed.map(normalizeTask);
         return memoryTasks;
@@ -194,6 +211,20 @@ export function listSkillPlanningTasks(ownerId: string): SkillPlanningTask[] {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
+export function updateSkillTaskProgress(id: string, progress: number): SkillPlanningTask {
+  const tasks = readTasks();
+  const task = tasks.find((item) => item.id === id);
+  if (!task) throw new Error('\u672a\u627e\u5230\u8be5\u5f85\u529e\u4efb\u52a1');
+  if (task.status !== 'inProgress')
+    throw new Error(
+      '\u53ea\u6709\u5f00\u53d1\u4e2d\u7684\u4efb\u52a1\u53ef\u4ee5\u66f4\u65b0\u8fdb\u5ea6',
+    );
+  task.progress = Math.max(1, Math.min(99, Math.round(Number(progress))));
+  task.updatedAt = new Date().toISOString();
+  persistTasks(tasks);
+  return cloneTask(task);
+}
+
 export function updateSkillTaskStatus(id: string, status: SkillTaskStatus): SkillPlanningTask {
   const tasks = readTasks();
   const task = tasks.find((item) => item.id === id);
@@ -201,7 +232,6 @@ export function updateSkillTaskStatus(id: string, status: SkillTaskStatus): Skil
   task.status = status;
   if (status === 'todo') task.progress = 0;
   if (status === 'inProgress') task.progress = Math.max(10, task.progress);
-  if (status === 'published') task.progress = Math.max(90, task.progress);
   if (status === 'done') task.progress = 100;
   task.updatedAt = new Date().toISOString();
   persistTasks(tasks);
