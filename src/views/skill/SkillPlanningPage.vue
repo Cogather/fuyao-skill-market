@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
+import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
+import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
+import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanel.vue';
 import {
   batchDeleteSkillPlanning,
   batchUpdateSkillPlanning,
@@ -25,6 +29,14 @@ import {
   type SkillPlanningQuery,
   type SkillPlanningSortOrder,
 } from '../../services/skillMarket/skillPlanningService';
+import {
+  findSceneIdByNames,
+  getSceneOptionGroups,
+} from '../../services/skillMarket/sceneManagementService';
+import {
+  findActivityIdByNames,
+  getActivityOptionGroups,
+} from '../../services/skillMarket/activityManagementService';
 import { openLink } from '@/utils/common';
 
 type PlanningFormMode = 'create' | 'edit';
@@ -55,9 +67,13 @@ type PlanningPersonSearchState = {
 const props = withDefaults(
   defineProps<{
     departmentTree?: PlanningDepartmentTreeNode[];
+    canConfigureDepartmentPermissions?: boolean;
+    permissionDepartmentNames?: string[];
   }>(),
   {
     departmentTree: () => [],
+    canConfigureDepartmentPermissions: false,
+    permissionDepartmentNames: () => [],
   },
 );
 
@@ -86,6 +102,10 @@ const batchReadonlyHeaders = [
   '层级',
   '产品',
 ] as const;
+
+const activePlanningTab = ref<'skills' | 'scenes' | 'activities' | 'management' | 'permissions'>(
+  'skills',
+);
 
 const emptyFilters = {
   deptName: '',
@@ -255,6 +275,8 @@ const subActivitySelectDisabled = computed(
 
 function createEmptyPlanningForm(): SkillPlanningPayload {
   return {
+    sceneId: '',
+    activityId: '',
     firstScene: '',
     secondScene: '',
     activityNodeName: '',
@@ -420,6 +442,7 @@ function setPlanningPersonValue(field: PlanningPersonField, value: string): void
 function setPlanningOwnerDepartment(value: string): void {
   (planningForm as Record<string, string>).deptName = value;
   clearPlanningFormError('deptName' as keyof SkillPlanningPayload);
+  syncManagedTaxonomiesForDepartment(value);
 }
 
 function clearPlanningPersonSearchTimer(field: PlanningPersonField): void {
@@ -531,6 +554,7 @@ const handleDeptArr = (option: SkillPlanningUserOption, isBatch: boolean) => {
     const lastDept = deptArr[deptArr.length - 1];
     form.deptCode = lastDept[0];
     form.deptName = lastDept[1];
+    if (!isBatch) syncManagedTaxonomiesForDepartment(form.deptName);
     for (let i = 1; i < 6; i++) {
       form[`l${i}DeptCode`] = i < deptArr.length ? deptArr[i][0] : '';
       form[`l${i}DeptName`] = i < deptArr.length ? deptArr[i][1] : '';
@@ -718,21 +742,33 @@ function scheduleClearUnselectedBatchOwnerInput(): void {
 
 function onPlanningFirstSceneChange(): void {
   planningForm.secondScene = '';
+  planningForm.sceneId = '';
   clearPlanningFormError('firstScene');
   clearPlanningFormError('secondScene');
 }
 
 function onPlanningSecondSceneChange(): void {
+  planningForm.sceneId = findSceneIdByNames(
+    planningForm.firstScene,
+    planningForm.secondScene,
+    planningForm.deptName,
+  );
   clearPlanningFormError('secondScene');
 }
 
 function onPlanningActivityChange(): void {
   planningForm.subActivityNodeName = '';
+  planningForm.activityId = '';
   clearPlanningFormError('activityNodeName');
   clearPlanningFormError('subActivityNodeName');
 }
 
 function onPlanningSubActivityChange(): void {
+  planningForm.activityId = findActivityIdByNames(
+    planningForm.activityNodeName,
+    planningForm.subActivityNodeName,
+    planningForm.deptName,
+  );
   clearPlanningFormError('subActivityNodeName');
 }
 function showToast(message: string) {
@@ -752,17 +788,43 @@ function syncPlanningHeaderFilterSelections(options: SkillPlanningFilterOptions)
   });
 }
 
+function syncManagedTaxonomiesForDepartment(departmentName = ''): void {
+  const managedSceneGroups = getSceneOptionGroups(departmentName);
+  const managedActivityGroups = getActivityOptionGroups(departmentName);
+  primarySceneOptions.value = managedSceneGroups.map((group) => group.value);
+  secondarySceneOptions.value = managedSceneGroups.flatMap((group) => group.children);
+  activityOptions.value = managedActivityGroups.map((group) => group.value);
+  subActivityOptions.value = managedActivityGroups.flatMap((group) => group.children);
+  sceneOptionGroups.value = managedSceneGroups;
+  activityOptionGroups.value = managedActivityGroups;
+}
+
 async function loadPlanningFilterOptions(): Promise<void> {
   const options = await querySkillPlanningFilterOptions();
-  primarySceneOptions.value = options.firstScene;
-  secondarySceneOptions.value = options.secondScene;
-  activityOptions.value = options.activityNodeName;
-  subActivityOptions.value = options.subActivityNodeName;
-  sceneOptionGroups.value = options.sceneGroups ?? [];
-  activityOptionGroups.value = options.activityGroups ?? [];
+  syncManagedTaxonomiesForDepartment(planningForm.deptName);
   levelOptions.value = options.level;
   progressOptions.value = options.status as SkillPlanningProgress[];
-  syncPlanningHeaderFilterSelections(options);
+  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
+}
+
+function handleManagedScenesChanged(
+  groups: SkillPlanningOptionGroup[],
+  _departmentName: string,
+): void {
+  sceneOptionGroups.value = groups;
+  primarySceneOptions.value = groups.map((group) => group.value);
+  secondarySceneOptions.value = groups.flatMap((group) => group.children);
+  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
+}
+
+function handleManagedActivitiesChanged(
+  groups: SkillPlanningOptionGroup[],
+  _departmentName: string,
+): void {
+  activityOptionGroups.value = groups;
+  activityOptions.value = groups.map((group) => group.value);
+  subActivityOptions.value = groups.flatMap((group) => group.children);
+  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
 }
 
 function headerFilterOptionList(key: PlanningHeaderFilterKey): string[] {
@@ -972,6 +1034,10 @@ function resetPlanningForm() {
 
 function fillPlanningFormFromRow(row: SkillPlanningItem) {
   Object.assign(planningForm, {
+    sceneId: row.sceneId || findSceneIdByNames(row.firstScene, row.secondScene, row.deptName),
+    activityId:
+      row.activityId ||
+      findActivityIdByNames(row.activityNodeName, row.subActivityNodeName, row.deptName),
     firstScene: row.firstScene,
     secondScene: row.secondScene,
     activityNodeName: row.activityNodeName,
@@ -987,6 +1053,7 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     planedCompleteDate: row.planedCompleteDate,
     status: row.status,
   });
+  syncManagedTaxonomiesForDepartment(row.deptName);
   markPlanningPersonValueSelected('owner', planningPersonValue('owner'));
   markPlanningPersonValueSelected('developOwner', planningPersonValue('developOwner'));
 }
@@ -1513,1277 +1580,1374 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <section class="planning-filter-card" aria-label="Skill 规划查询">
-      <div class="filter-grid">
-        <div class="planning-field planning-field--dept">
-          <span>归属部门</span>
-          <MarketDeptCascader
-            v-model="planningDepartmentSegments"
-            class="planning-dept-cascader"
-            :tree="planningDepartmentTree"
-            :max-level="4"
-            selection-mode="confirm"
-            aria-label="Skill 规划部门级联筛选（departmentL3～departmentL6）"
-            @change="onPlanningDepartmentChange"
-            @clear="onPlanningDepartmentClear"
-            @done="onPlanningDepartmentDone"
-          />
-        </div>
-        <label v-if="false" class="planning-field">
-          <span>产品</span>
-          <input
-            v-model.trim="filterForm.offeringName"
-            type="search"
-            placeholder="输入产品关键字搜索"
-          />
-        </label>
-        <label v-if="false" class="planning-field">
-          <span>计划开始</span>
-          <input v-model="filterForm.plannedStartDate" type="date" />
-        </label>
-        <label v-if="false" class="planning-field">
-          <span>计划结束</span>
-          <input v-model="filterForm.plannedEndDate" type="date" />
-        </label>
-        <label class="planning-field planning-field--keyword">
-          <span>关键词</span>
-          <input
-            v-model.trim="filterForm.keyword"
-            type="search"
-            placeholder="按 产品、Skill 名称、说明、责任Owner、开发责任人查询"
-            @keydown.enter="onSearchKeyword"
-            @input="onSearchKeyword"
-          />
-        </label>
-        <div class="filter-actions">
-          <button type="button" class="planning-btn planning-btn--primary" @click="onSearchKeyword">
-            查询
-          </button>
-          <button type="button" class="planning-btn planning-btn--ghost" @click="resetQuery">
-            重置
-          </button>
-        </div>
-      </div>
-    </section>
+    <nav
+      class="planning-tabs"
+      :class="{ 'has-permission-tab': props.canConfigureDepartmentPermissions }"
+      aria-label="Skill planning tabs"
+    >
+      <button
+        type="button"
+        class="planning-tab"
+        :class="{ 'is-active': activePlanningTab === 'skills' }"
+        @click="activePlanningTab = 'skills'"
+      >
+        <span class="planning-tab__icon" aria-hidden="true">01</span>
+        <span><strong>Skill 清单</strong><small>管理 Skill 内容</small></span>
+      </button>
+      <button
+        type="button"
+        class="planning-tab"
+        :class="{ 'is-active': activePlanningTab === 'scenes' }"
+        @click="activePlanningTab = 'scenes'"
+      >
+        <span class="planning-tab__icon" aria-hidden="true">02</span>
+        <span><strong>场景设置</strong><small>管理分类体系</small></span>
+      </button>
+      <button
+        type="button"
+        class="planning-tab"
+        :class="{ 'is-active': activePlanningTab === 'activities' }"
+        @click="activePlanningTab = 'activities'"
+      >
+        <span class="planning-tab__icon" aria-hidden="true">03</span>
+        <span><strong>活动管理</strong><small>管理 Skill 活动体系</small></span>
+      </button>
+      <button
+        type="button"
+        class="planning-tab"
+        :class="{ 'is-active': activePlanningTab === 'management' }"
+        @click="activePlanningTab = 'management'"
+      >
+        <span class="planning-tab__icon" aria-hidden="true">04</span>
+        <span><strong>Skill 管理</strong><small>维护独立 Skill 主体</small></span>
+      </button>
+      <button
+        v-if="props.canConfigureDepartmentPermissions"
+        type="button"
+        class="planning-tab"
+        :class="{ 'is-active': activePlanningTab === 'permissions' }"
+        @click="activePlanningTab = 'permissions'"
+      >
+        <span class="planning-tab__icon" aria-hidden="true">05</span>
+        <span><strong>部门权限配置</strong><small>管理 Skill 规划人员</small></span>
+      </button>
+    </nav>
 
-    <section class="planning-board" aria-label="Skill 规划清单">
-      <div class="planning-toolbar">
-        <div class="planning-toolbar__summary">
-          <strong>Skill 规划清单</strong>
-          <span>
-            已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条
-            <template v-if="hasActivePlanningHeaderFilters || plannedFinishSortOrder">
-              ·
-              <template v-if="hasActivePlanningHeaderFilters">表头筛选已生效</template>
-              <template v-if="hasActivePlanningHeaderFilters && plannedFinishSortOrder">
+    <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
+      <section class="planning-filter-card" aria-label="Skill 规划查询">
+        <div class="filter-grid">
+          <div class="planning-field planning-field--dept">
+            <span>归属部门</span>
+            <MarketDeptCascader
+              v-model="planningDepartmentSegments"
+              class="planning-dept-cascader"
+              :tree="planningDepartmentTree"
+              :max-level="4"
+              selection-mode="confirm"
+              aria-label="Skill 规划部门级联筛选（departmentL3～departmentL6）"
+              @change="onPlanningDepartmentChange"
+              @clear="onPlanningDepartmentClear"
+              @done="onPlanningDepartmentDone"
+            />
+          </div>
+          <label v-if="false" class="planning-field">
+            <span>产品</span>
+            <input
+              v-model.trim="filterForm.offeringName"
+              type="search"
+              placeholder="输入产品关键字搜索"
+            />
+          </label>
+          <label v-if="false" class="planning-field">
+            <span>计划开始</span>
+            <input v-model="filterForm.plannedStartDate" type="date" />
+          </label>
+          <label v-if="false" class="planning-field">
+            <span>计划结束</span>
+            <input v-model="filterForm.plannedEndDate" type="date" />
+          </label>
+          <label class="planning-field planning-field--keyword">
+            <span>关键词</span>
+            <input
+              v-model.trim="filterForm.keyword"
+              type="search"
+              placeholder="按 产品、Skill 名称、说明、责任Owner、开发责任人查询"
+              @keydown.enter="onSearchKeyword"
+              @input="onSearchKeyword"
+            />
+          </label>
+          <div class="filter-actions">
+            <button
+              type="button"
+              class="planning-btn planning-btn--primary"
+              @click="onSearchKeyword"
+            >
+              查询
+            </button>
+            <button type="button" class="planning-btn planning-btn--ghost" @click="resetQuery">
+              重置
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="planning-board" aria-label="Skill 规划清单">
+        <div class="planning-toolbar">
+          <div class="planning-toolbar__summary">
+            <strong>Skill 规划清单</strong>
+            <span>
+              已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条
+              <template v-if="hasActivePlanningHeaderFilters || plannedFinishSortOrder">
                 ·
+                <template v-if="hasActivePlanningHeaderFilters">表头筛选已生效</template>
+                <template v-if="hasActivePlanningHeaderFilters && plannedFinishSortOrder">
+                  ·
+                </template>
+                <template v-if="plannedFinishSortOrder"
+                  >完成时间{{ plannedFinishSortSymbol }}</template
+                >
               </template>
-              <template v-if="plannedFinishSortOrder"
-                >完成时间{{ plannedFinishSortSymbol }}</template
-              >
-            </template>
-          </span>
+            </span>
+          </div>
+          <div class="planning-toolbar__actions">
+            <button
+              type="button"
+              class="planning-btn planning-btn--primary"
+              :disabled="inlineCreateActive || inlineEditId !== ''"
+              @click="startInlineCreate"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              新增
+            </button>
+            <button type="button" class="planning-btn planning-btn--soft" @click="triggerImport">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
+              </svg>
+              导入
+            </button>
+            <button
+              type="button"
+              class="planning-btn planning-btn--soft"
+              @click="exportCurrentData"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20V10m0 10 4-4m-4 4-4-4M5 7V5h14v2" />
+              </svg>
+              导出
+            </button>
+            <button
+              type="button"
+              class="planning-btn planning-btn--soft"
+              @click="openBatchEditDialog"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m4 16 1 4 4-1L18.5 9.5a2.1 2.1 0 0 0-3-3L6 16Z" />
+                <path d="m13.5 7.5 3 3" />
+              </svg>
+              批量修改
+            </button>
+            <button
+              type="button"
+              class="planning-btn planning-btn--danger-soft"
+              @click="requestBatchDelete"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
+              </svg>
+              批量删除
+            </button>
+          </div>
+          <input
+            ref="importInputRef"
+            type="file"
+            accept=".xlsx,.xls"
+            class="planning-import-input"
+            @change="handleImportFile"
+          />
         </div>
-        <div class="planning-toolbar__actions">
-          <button
-            type="button"
-            class="planning-btn planning-btn--primary"
-            :disabled="inlineCreateActive || inlineEditId !== ''"
-            @click="startInlineCreate"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            新增
-          </button>
-          <button type="button" class="planning-btn planning-btn--soft" @click="triggerImport">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
-            </svg>
-            导入
-          </button>
-          <button type="button" class="planning-btn planning-btn--soft" @click="exportCurrentData">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 20V10m0 10 4-4m-4 4-4-4M5 7V5h14v2" />
-            </svg>
-            导出
-          </button>
-          <button
-            type="button"
-            class="planning-btn planning-btn--soft"
-            @click="openBatchEditDialog"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m4 16 1 4 4-1L18.5 9.5a2.1 2.1 0 0 0-3-3L6 16Z" />
-              <path d="m13.5 7.5 3 3" />
-            </svg>
-            批量修改
-          </button>
-          <button
-            type="button"
-            class="planning-btn planning-btn--danger-soft"
-            @click="requestBatchDelete"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
-            </svg>
-            批量删除
-          </button>
-        </div>
-        <input
-          ref="importInputRef"
-          type="file"
-          accept=".xlsx,.xls"
-          class="planning-import-input"
-          @change="handleImportFile"
-        />
-      </div>
 
-      <div class="planning-table-wrap">
-        <table class="planning-table">
-          <thead>
-            <tr>
-              <th class="select-col">
-                <input type="checkbox" :checked="allPageSelected" @change="togglePageSelection" />
-              </th>
-              <th>
-                <div
-                  class="planning-th-filter"
-                  :class="{
-                    'is-open': isHeaderFilterOpen('firstScene'),
-                    'is-active': headerFilterSelectedCount('firstScene') > 0,
-                  }"
-                >
-                  <button
-                    type="button"
-                    class="planning-th-filter__trigger"
-                    @click.stop="toggleHeaderFilterMenu('firstScene')"
-                  >
-                    <span>一级场景</span>
-                    <span
-                      class="planning-th-filter__indicator"
-                      :class="{ 'is-filtered': hasHeaderFilterSelection('firstScene') }"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <div v-if="isHeaderFilterOpen('firstScene')" class="planning-th-filter__menu">
-                    <div class="planning-th-filter__menu-head">
-                      <strong>一级场景</strong>
-                      <button
-                        type="button"
-                        class="planning-th-filter__clear"
-                        :disabled="headerFilterSelectedCount('firstScene') === 0"
-                        @click.stop="clearHeaderFilter('firstScene')"
-                      >
-                        清空
-                      </button>
-                    </div>
-                    <div
-                      v-if="headerFilterOptionList('firstScene').length"
-                      class="planning-th-filter__options"
-                    >
-                      <label
-                        v-for="item in headerFilterOptionList('firstScene')"
-                        :key="`firstScene-${item}`"
-                        class="planning-th-filter__option"
-                      >
-                        <input
-                          type="checkbox"
-                          :checked="headerFilterSelections.firstScene.includes(item)"
-                          @change="toggleHeaderFilterOption('firstScene', item)"
-                        />
-                        <span>{{ item }}</span>
-                      </label>
-                    </div>
-                    <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                  </div>
-                </div>
-              </th>
-              <th>
-                <div
-                  class="planning-th-filter"
-                  :class="{
-                    'is-open': isHeaderFilterOpen('secondScene'),
-                    'is-active': headerFilterSelectedCount('secondScene') > 0,
-                  }"
-                >
-                  <button
-                    type="button"
-                    class="planning-th-filter__trigger"
-                    @click.stop="toggleHeaderFilterMenu('secondScene')"
-                  >
-                    <span>二级场景</span>
-                    <span
-                      class="planning-th-filter__indicator"
-                      :class="{ 'is-filtered': hasHeaderFilterSelection('secondScene') }"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <div v-if="isHeaderFilterOpen('secondScene')" class="planning-th-filter__menu">
-                    <div class="planning-th-filter__menu-head">
-                      <strong>二级场景</strong>
-                      <button
-                        type="button"
-                        class="planning-th-filter__clear"
-                        :disabled="headerFilterSelectedCount('secondScene') === 0"
-                        @click.stop="clearHeaderFilter('secondScene')"
-                      >
-                        清空
-                      </button>
-                    </div>
-                    <div
-                      v-if="headerFilterOptionList('secondScene').length"
-                      class="planning-th-filter__options"
-                    >
-                      <label
-                        v-for="item in headerFilterOptionList('secondScene')"
-                        :key="`secondScene-${item}`"
-                        class="planning-th-filter__option"
-                      >
-                        <input
-                          type="checkbox"
-                          :checked="headerFilterSelections.secondScene.includes(item)"
-                          @change="toggleHeaderFilterOption('secondScene', item)"
-                        />
-                        <span>{{ item }}</span>
-                      </label>
-                    </div>
-                    <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                  </div>
-                </div>
-              </th>
-              <th>
-                <div
-                  class="planning-th-filter"
-                  :class="{
-                    'is-open': isHeaderFilterOpen('activityNodeName'),
-                    'is-active': headerFilterSelectedCount('activityNodeName') > 0,
-                  }"
-                >
-                  <button
-                    type="button"
-                    class="planning-th-filter__trigger"
-                    @click.stop="toggleHeaderFilterMenu('activityNodeName')"
-                  >
-                    <span>归属活动</span>
-                    <span
-                      class="planning-th-filter__indicator"
-                      :class="{ 'is-filtered': hasHeaderFilterSelection('activityNodeName') }"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
+        <div class="planning-table-wrap">
+          <table class="planning-table">
+            <thead>
+              <tr>
+                <th class="select-col">
+                  <input type="checkbox" :checked="allPageSelected" @change="togglePageSelection" />
+                </th>
+                <th>
                   <div
-                    v-if="isHeaderFilterOpen('activityNodeName')"
-                    class="planning-th-filter__menu"
+                    class="planning-th-filter"
+                    :class="{
+                      'is-open': isHeaderFilterOpen('firstScene'),
+                      'is-active': headerFilterSelectedCount('firstScene') > 0,
+                    }"
                   >
-                    <div class="planning-th-filter__menu-head">
-                      <strong>归属活动</strong>
-                      <button
-                        type="button"
-                        class="planning-th-filter__clear"
-                        :disabled="headerFilterSelectedCount('activityNodeName') === 0"
-                        @click.stop="clearHeaderFilter('activityNodeName')"
-                      >
-                        清空
-                      </button>
-                    </div>
-                    <div
-                      v-if="headerFilterOptionList('activityNodeName').length"
-                      class="planning-th-filter__options"
-                    >
-                      <label
-                        v-for="item in headerFilterOptionList('activityNodeName')"
-                        :key="`activityNodeName-${item}`"
-                        class="planning-th-filter__option"
-                      >
-                        <input
-                          type="checkbox"
-                          :checked="headerFilterSelections.activityNodeName.includes(item)"
-                          @change="toggleHeaderFilterOption('activityNodeName', item)"
-                        />
-                        <span>{{ item }}</span>
-                      </label>
-                    </div>
-                    <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                  </div>
-                </div>
-              </th>
-              <th>
-                <div
-                  class="planning-th-filter"
-                  :class="{
-                    'is-open': isHeaderFilterOpen('subActivityNodeName'),
-                    'is-active': headerFilterSelectedCount('subActivityNodeName') > 0,
-                  }"
-                >
-                  <button
-                    type="button"
-                    class="planning-th-filter__trigger"
-                    @click.stop="toggleHeaderFilterMenu('subActivityNodeName')"
-                  >
-                    <span>归属子活动</span>
-                    <span
-                      class="planning-th-filter__indicator"
-                      :class="{ 'is-filtered': hasHeaderFilterSelection('subActivityNodeName') }"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <div
-                    v-if="isHeaderFilterOpen('subActivityNodeName')"
-                    class="planning-th-filter__menu"
-                  >
-                    <div class="planning-th-filter__menu-head">
-                      <strong>归属子活动</strong>
-                      <button
-                        type="button"
-                        class="planning-th-filter__clear"
-                        :disabled="headerFilterSelectedCount('subActivityNodeName') === 0"
-                        @click.stop="clearHeaderFilter('subActivityNodeName')"
-                      >
-                        清空
-                      </button>
-                    </div>
-                    <div
-                      v-if="headerFilterOptionList('subActivityNodeName').length"
-                      class="planning-th-filter__options"
-                    >
-                      <label
-                        v-for="item in headerFilterOptionList('subActivityNodeName')"
-                        :key="`subActivityNodeName-${item}`"
-                        class="planning-th-filter__option"
-                      >
-                        <input
-                          type="checkbox"
-                          :checked="headerFilterSelections.subActivityNodeName.includes(item)"
-                          @change="toggleHeaderFilterOption('subActivityNodeName', item)"
-                        />
-                        <span>{{ item }}</span>
-                      </label>
-                    </div>
-                    <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                  </div>
-                </div>
-              </th>
-              <th>Skill 名称</th>
-              <th class="desc-col">Skill 说明</th>
-              <th>
-                <div
-                  class="planning-th-filter"
-                  :class="{
-                    'is-open': isHeaderFilterOpen('level'),
-                    'is-active': headerFilterSelectedCount('level') > 0,
-                  }"
-                >
-                  <button
-                    type="button"
-                    class="planning-th-filter__trigger"
-                    @click.stop="toggleHeaderFilterMenu('level')"
-                  >
-                    <span>层级</span>
-                    <span
-                      class="planning-th-filter__indicator"
-                      :class="{ 'is-filtered': hasHeaderFilterSelection('level') }"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <div v-if="isHeaderFilterOpen('level')" class="planning-th-filter__menu">
-                    <div class="planning-th-filter__menu-head">
-                      <strong>层级</strong>
-                      <button
-                        type="button"
-                        class="planning-th-filter__clear"
-                        :disabled="headerFilterSelectedCount('level') === 0"
-                        @click.stop="clearHeaderFilter('level')"
-                      >
-                        清空
-                      </button>
-                    </div>
-                    <div
-                      v-if="headerFilterOptionList('level').length"
-                      class="planning-th-filter__options"
-                    >
-                      <label
-                        v-for="item in headerFilterOptionList('level')"
-                        :key="`level-${item}`"
-                        class="planning-th-filter__option"
-                      >
-                        <input
-                          type="checkbox"
-                          :checked="headerFilterSelections.level.includes(item)"
-                          @change="toggleHeaderFilterOption('level', item)"
-                        />
-                        <span>{{ item }}</span>
-                      </label>
-                    </div>
-                    <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                  </div>
-                </div>
-              </th>
-              <th>产品</th>
-              <th>责任 Owner</th>
-              <th>归属部门</th>
-              <th>开发责任人</th>
-              <th>
-                <button
-                  type="button"
-                  class="planning-th-sort"
-                  :class="{ 'is-active': plannedFinishSortOrder }"
-                  :title="`计划完成时间排序：${plannedFinishSortSymbol}`"
-                  @click="togglePlannedFinishSort"
-                >
-                  <span>计划完成时间</span>
-                  <span class="planning-th-sort__symbol" aria-hidden="true">
-                    {{ plannedFinishSortSymbol }}
-                  </span>
-                </button>
-              </th>
-              <th>
-                <div
-                  class="planning-th-filter"
-                  :class="{
-                    'is-open': isHeaderFilterOpen('status'),
-                    'is-active': headerFilterSelectedCount('status') > 0,
-                  }"
-                >
-                  <button
-                    type="button"
-                    class="planning-th-filter__trigger"
-                    @click.stop="toggleHeaderFilterMenu('status')"
-                  >
-                    <span>当前进展</span>
-                    <span
-                      class="planning-th-filter__indicator"
-                      :class="{ 'is-filtered': hasHeaderFilterSelection('status') }"
-                      aria-hidden="true"
-                    ></span>
-                  </button>
-                  <div v-if="isHeaderFilterOpen('status')" class="planning-th-filter__menu">
-                    <div class="planning-th-filter__menu-head">
-                      <strong>当前进展</strong>
-                      <button
-                        type="button"
-                        class="planning-th-filter__clear"
-                        :disabled="headerFilterSelectedCount('status') === 0"
-                        @click.stop="clearHeaderFilter('status')"
-                      >
-                        清空
-                      </button>
-                    </div>
-                    <div
-                      v-if="headerFilterOptionList('status').length"
-                      class="planning-th-filter__options"
-                    >
-                      <label
-                        v-for="item in headerFilterOptionList('status')"
-                        :key="`status-${item}`"
-                        class="planning-th-filter__option"
-                      >
-                        <input
-                          type="checkbox"
-                          :checked="headerFilterSelections.status.includes(item)"
-                          @change="toggleHeaderFilterOption('status', item)"
-                        />
-                        <span>{{ item }}</span>
-                      </label>
-                    </div>
-                    <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                  </div>
-                </div>
-              </th>
-              <th class="action-col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="inlineCreateActive" class="planning-inline-row">
-              <td class="select-col" />
-              <td>
-                <div class="planning-inline-field">
-                  <select
-                    v-model="planningForm.firstScene"
-                    class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.firstScene }"
-                    @change="onPlanningFirstSceneChange"
-                  >
-                    <option
-                      v-for="item in formFirstSceneOptions"
-                      :key="`firstScene-${item}`"
-                      :value="item"
-                    >
-                      {{ item }}
-                    </option>
-                  </select>
-                  <small v-if="formErrors.firstScene" class="planning-inline-error">
-                    {{ formErrors.firstScene }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <select
-                    v-model="planningForm.secondScene"
-                    class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.secondScene }"
-                    :disabled="secondSceneSelectDisabled"
-                    @change="onPlanningSecondSceneChange"
-                  >
-                    <option
-                      v-for="item in formSecondSceneOptions"
-                      :key="`secondScene-${item}`"
-                      :value="item"
-                    >
-                      {{ item }}
-                    </option>
-                  </select>
-                  <small v-if="formErrors.secondScene" class="planning-inline-error">
-                    {{ formErrors.secondScene }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <select
-                    v-model="planningForm.activityNodeName"
-                    class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.activityNodeName }"
-                    @change="onPlanningActivityChange"
-                  >
-                    <option
-                      v-for="item in formActivityOptions"
-                      :key="`activityNodeName-${item}`"
-                      :value="item"
-                    >
-                      {{ item }}
-                    </option>
-                  </select>
-                  <small v-if="formErrors.activityNodeName" class="planning-inline-error">
-                    {{ formErrors.activityNodeName }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <select
-                    v-model="planningForm.subActivityNodeName"
-                    class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.subActivityNodeName }"
-                    :disabled="subActivitySelectDisabled"
-                    @change="onPlanningSubActivityChange"
-                  >
-                    <option
-                      v-for="item in formSubActivityOptions"
-                      :key="`subActivityNodeName-${item}`"
-                      :value="item"
-                    >
-                      {{ item }}
-                    </option>
-                  </select>
-                  <small v-if="formErrors.subActivityNodeName" class="planning-inline-error">
-                    {{ formErrors.subActivityNodeName }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <input
-                    v-model.trim="planningForm.name"
-                    type="text"
-                    class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.name }"
-                    placeholder="Skill 名称"
-                  />
-                  <small v-if="formErrors.name" class="planning-inline-error">
-                    {{ formErrors.name }}
-                  </small>
-                </div>
-              </td>
-              <td class="desc-col">
-                <div class="planning-inline-field">
-                  <textarea
-                    v-model.trim="planningForm.description"
-                    class="planning-inline-control planning-inline-control--textarea"
-                    :class="{ 'has-error': formErrors.description }"
-                    maxlength="300"
-                    rows="1"
-                    placeholder="Skill 说明"
-                  />
-                  <small v-if="formErrors.description" class="planning-inline-error">
-                    {{ formErrors.description }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <select
-                    v-model="planningForm.level"
-                    class="planning-inline-control"
-                    :class="{ 'has-error': formErrors.level }"
-                  >
-                    <option v-for="item in levelOptions" :key="item" :value="item">
-                      {{ item }}
-                    </option>
-                  </select>
-                  <small v-if="formErrors.level" class="planning-inline-error">
-                    {{ formErrors.level }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <div class="planning-product-select">
                     <button
                       type="button"
-                      class="planning-inline-control planning-product-trigger"
-                      :class="{ 'is-placeholder': !planningForm.offeringName }"
-                      @click="togglePlanningProductSelect"
+                      class="planning-th-filter__trigger"
+                      @click.stop="toggleHeaderFilterMenu('firstScene')"
                     >
-                      <span>{{ planningForm.offeringName || '产品' }}</span>
-                      <span class="planning-product-caret">⌄</span>
+                      <span>一级场景</span>
+                      <span
+                        class="planning-th-filter__indicator"
+                        :class="{ 'is-filtered': hasHeaderFilterSelection('firstScene') }"
+                        aria-hidden="true"
+                      ></span>
                     </button>
-                    <div v-if="productDropdownOpen" class="planning-product-panel" @mousedown.stop>
-                      <div class="planning-product-search-wrap">
-                        <input
-                          :value="productSearchKeyword"
-                          type="text"
-                          class="planning-product-search"
-                          placeholder="搜索产品"
-                          @input="onPlanningProductSearchInput"
-                          @keydown.enter.prevent="searchPlanningProducts(productSearchKeyword)"
-                        />
+                    <div v-if="isHeaderFilterOpen('firstScene')" class="planning-th-filter__menu">
+                      <div class="planning-th-filter__menu-head">
+                        <strong>一级场景</strong>
                         <button
-                          v-if="planningForm.offeringName || productSearchKeyword"
                           type="button"
-                          class="planning-product-clear"
-                          aria-label="清除产品"
-                          title="清除产品"
-                          @click="clearPlanningProduct"
+                          class="planning-th-filter__clear"
+                          :disabled="headerFilterSelectedCount('firstScene') === 0"
+                          @click.stop="clearHeaderFilter('firstScene')"
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div
+                        v-if="headerFilterOptionList('firstScene').length"
+                        class="planning-th-filter__options"
+                      >
+                        <label
+                          v-for="item in headerFilterOptionList('firstScene')"
+                          :key="`firstScene-${item}`"
+                          class="planning-th-filter__option"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="headerFilterSelections.firstScene.includes(item)"
+                            @change="toggleHeaderFilterOption('firstScene', item)"
+                          />
+                          <span>{{ item }}</span>
+                        </label>
+                      </div>
+                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
+                    </div>
+                  </div>
+                </th>
+                <th>
+                  <div
+                    class="planning-th-filter"
+                    :class="{
+                      'is-open': isHeaderFilterOpen('secondScene'),
+                      'is-active': headerFilterSelectedCount('secondScene') > 0,
+                    }"
+                  >
+                    <button
+                      type="button"
+                      class="planning-th-filter__trigger"
+                      @click.stop="toggleHeaderFilterMenu('secondScene')"
+                    >
+                      <span>二级场景</span>
+                      <span
+                        class="planning-th-filter__indicator"
+                        :class="{ 'is-filtered': hasHeaderFilterSelection('secondScene') }"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                    <div v-if="isHeaderFilterOpen('secondScene')" class="planning-th-filter__menu">
+                      <div class="planning-th-filter__menu-head">
+                        <strong>二级场景</strong>
+                        <button
+                          type="button"
+                          class="planning-th-filter__clear"
+                          :disabled="headerFilterSelectedCount('secondScene') === 0"
+                          @click.stop="clearHeaderFilter('secondScene')"
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div
+                        v-if="headerFilterOptionList('secondScene').length"
+                        class="planning-th-filter__options"
+                      >
+                        <label
+                          v-for="item in headerFilterOptionList('secondScene')"
+                          :key="`secondScene-${item}`"
+                          class="planning-th-filter__option"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="headerFilterSelections.secondScene.includes(item)"
+                            @change="toggleHeaderFilterOption('secondScene', item)"
+                          />
+                          <span>{{ item }}</span>
+                        </label>
+                      </div>
+                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
+                    </div>
+                  </div>
+                </th>
+                <th>
+                  <div
+                    class="planning-th-filter"
+                    :class="{
+                      'is-open': isHeaderFilterOpen('activityNodeName'),
+                      'is-active': headerFilterSelectedCount('activityNodeName') > 0,
+                    }"
+                  >
+                    <button
+                      type="button"
+                      class="planning-th-filter__trigger"
+                      @click.stop="toggleHeaderFilterMenu('activityNodeName')"
+                    >
+                      <span>归属活动</span>
+                      <span
+                        class="planning-th-filter__indicator"
+                        :class="{ 'is-filtered': hasHeaderFilterSelection('activityNodeName') }"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                    <div
+                      v-if="isHeaderFilterOpen('activityNodeName')"
+                      class="planning-th-filter__menu"
+                    >
+                      <div class="planning-th-filter__menu-head">
+                        <strong>归属活动</strong>
+                        <button
+                          type="button"
+                          class="planning-th-filter__clear"
+                          :disabled="headerFilterSelectedCount('activityNodeName') === 0"
+                          @click.stop="clearHeaderFilter('activityNodeName')"
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div
+                        v-if="headerFilterOptionList('activityNodeName').length"
+                        class="planning-th-filter__options"
+                      >
+                        <label
+                          v-for="item in headerFilterOptionList('activityNodeName')"
+                          :key="`activityNodeName-${item}`"
+                          class="planning-th-filter__option"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="headerFilterSelections.activityNodeName.includes(item)"
+                            @change="toggleHeaderFilterOption('activityNodeName', item)"
+                          />
+                          <span>{{ item }}</span>
+                        </label>
+                      </div>
+                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
+                    </div>
+                  </div>
+                </th>
+                <th>
+                  <div
+                    class="planning-th-filter"
+                    :class="{
+                      'is-open': isHeaderFilterOpen('subActivityNodeName'),
+                      'is-active': headerFilterSelectedCount('subActivityNodeName') > 0,
+                    }"
+                  >
+                    <button
+                      type="button"
+                      class="planning-th-filter__trigger"
+                      @click.stop="toggleHeaderFilterMenu('subActivityNodeName')"
+                    >
+                      <span>归属子活动</span>
+                      <span
+                        class="planning-th-filter__indicator"
+                        :class="{ 'is-filtered': hasHeaderFilterSelection('subActivityNodeName') }"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                    <div
+                      v-if="isHeaderFilterOpen('subActivityNodeName')"
+                      class="planning-th-filter__menu"
+                    >
+                      <div class="planning-th-filter__menu-head">
+                        <strong>归属子活动</strong>
+                        <button
+                          type="button"
+                          class="planning-th-filter__clear"
+                          :disabled="headerFilterSelectedCount('subActivityNodeName') === 0"
+                          @click.stop="clearHeaderFilter('subActivityNodeName')"
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div
+                        v-if="headerFilterOptionList('subActivityNodeName').length"
+                        class="planning-th-filter__options"
+                      >
+                        <label
+                          v-for="item in headerFilterOptionList('subActivityNodeName')"
+                          :key="`subActivityNodeName-${item}`"
+                          class="planning-th-filter__option"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="headerFilterSelections.subActivityNodeName.includes(item)"
+                            @change="toggleHeaderFilterOption('subActivityNodeName', item)"
+                          />
+                          <span>{{ item }}</span>
+                        </label>
+                      </div>
+                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
+                    </div>
+                  </div>
+                </th>
+                <th>Skill 名称</th>
+                <th class="desc-col">Skill 说明</th>
+                <th>
+                  <div
+                    class="planning-th-filter"
+                    :class="{
+                      'is-open': isHeaderFilterOpen('level'),
+                      'is-active': headerFilterSelectedCount('level') > 0,
+                    }"
+                  >
+                    <button
+                      type="button"
+                      class="planning-th-filter__trigger"
+                      @click.stop="toggleHeaderFilterMenu('level')"
+                    >
+                      <span>层级</span>
+                      <span
+                        class="planning-th-filter__indicator"
+                        :class="{ 'is-filtered': hasHeaderFilterSelection('level') }"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                    <div v-if="isHeaderFilterOpen('level')" class="planning-th-filter__menu">
+                      <div class="planning-th-filter__menu-head">
+                        <strong>层级</strong>
+                        <button
+                          type="button"
+                          class="planning-th-filter__clear"
+                          :disabled="headerFilterSelectedCount('level') === 0"
+                          @click.stop="clearHeaderFilter('level')"
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div
+                        v-if="headerFilterOptionList('level').length"
+                        class="planning-th-filter__options"
+                      >
+                        <label
+                          v-for="item in headerFilterOptionList('level')"
+                          :key="`level-${item}`"
+                          class="planning-th-filter__option"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="headerFilterSelections.level.includes(item)"
+                            @change="toggleHeaderFilterOption('level', item)"
+                          />
+                          <span>{{ item }}</span>
+                        </label>
+                      </div>
+                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
+                    </div>
+                  </div>
+                </th>
+                <th>产品</th>
+                <th>责任 Owner</th>
+                <th>归属部门</th>
+                <th>开发责任人</th>
+                <th>
+                  <button
+                    type="button"
+                    class="planning-th-sort"
+                    :class="{ 'is-active': plannedFinishSortOrder }"
+                    :title="`计划完成时间排序：${plannedFinishSortSymbol}`"
+                    @click="togglePlannedFinishSort"
+                  >
+                    <span>计划完成时间</span>
+                    <span class="planning-th-sort__symbol" aria-hidden="true">
+                      {{ plannedFinishSortSymbol }}
+                    </span>
+                  </button>
+                </th>
+                <th>
+                  <div
+                    class="planning-th-filter"
+                    :class="{
+                      'is-open': isHeaderFilterOpen('status'),
+                      'is-active': headerFilterSelectedCount('status') > 0,
+                    }"
+                  >
+                    <button
+                      type="button"
+                      class="planning-th-filter__trigger"
+                      @click.stop="toggleHeaderFilterMenu('status')"
+                    >
+                      <span>当前进展</span>
+                      <span
+                        class="planning-th-filter__indicator"
+                        :class="{ 'is-filtered': hasHeaderFilterSelection('status') }"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
+                    <div v-if="isHeaderFilterOpen('status')" class="planning-th-filter__menu">
+                      <div class="planning-th-filter__menu-head">
+                        <strong>当前进展</strong>
+                        <button
+                          type="button"
+                          class="planning-th-filter__clear"
+                          :disabled="headerFilterSelectedCount('status') === 0"
+                          @click.stop="clearHeaderFilter('status')"
+                        >
+                          清空
+                        </button>
+                      </div>
+                      <div
+                        v-if="headerFilterOptionList('status').length"
+                        class="planning-th-filter__options"
+                      >
+                        <label
+                          v-for="item in headerFilterOptionList('status')"
+                          :key="`status-${item}`"
+                          class="planning-th-filter__option"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="headerFilterSelections.status.includes(item)"
+                            @change="toggleHeaderFilterOption('status', item)"
+                          />
+                          <span>{{ item }}</span>
+                        </label>
+                      </div>
+                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
+                    </div>
+                  </div>
+                </th>
+                <th class="action-col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="inlineCreateActive" class="planning-inline-row">
+                <td class="select-col" />
+                <td>
+                  <div class="planning-inline-field">
+                    <select
+                      v-model="planningForm.firstScene"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.firstScene }"
+                      @change="onPlanningFirstSceneChange"
+                    >
+                      <option
+                        v-for="item in formFirstSceneOptions"
+                        :key="`firstScene-${item}`"
+                        :value="item"
+                      >
+                        {{ item }}
+                      </option>
+                    </select>
+                    <small v-if="formErrors.firstScene" class="planning-inline-error">
+                      {{ formErrors.firstScene }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <select
+                      v-model="planningForm.secondScene"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.secondScene }"
+                      :disabled="secondSceneSelectDisabled"
+                      @change="onPlanningSecondSceneChange"
+                    >
+                      <option
+                        v-for="item in formSecondSceneOptions"
+                        :key="`secondScene-${item}`"
+                        :value="item"
+                      >
+                        {{ item }}
+                      </option>
+                    </select>
+                    <small v-if="formErrors.secondScene" class="planning-inline-error">
+                      {{ formErrors.secondScene }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <select
+                      v-model="planningForm.activityNodeName"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.activityNodeName }"
+                      @change="onPlanningActivityChange"
+                    >
+                      <option
+                        v-for="item in formActivityOptions"
+                        :key="`activityNodeName-${item}`"
+                        :value="item"
+                      >
+                        {{ item }}
+                      </option>
+                    </select>
+                    <small v-if="formErrors.activityNodeName" class="planning-inline-error">
+                      {{ formErrors.activityNodeName }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <select
+                      v-model="planningForm.subActivityNodeName"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.subActivityNodeName }"
+                      :disabled="subActivitySelectDisabled"
+                      @change="onPlanningSubActivityChange"
+                    >
+                      <option
+                        v-for="item in formSubActivityOptions"
+                        :key="`subActivityNodeName-${item}`"
+                        :value="item"
+                      >
+                        {{ item }}
+                      </option>
+                    </select>
+                    <small v-if="formErrors.subActivityNodeName" class="planning-inline-error">
+                      {{ formErrors.subActivityNodeName }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <input
+                      v-model.trim="planningForm.name"
+                      type="text"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.name }"
+                      placeholder="Skill 名称"
+                    />
+                    <small v-if="formErrors.name" class="planning-inline-error">
+                      {{ formErrors.name }}
+                    </small>
+                  </div>
+                </td>
+                <td class="desc-col">
+                  <div class="planning-inline-field">
+                    <textarea
+                      v-model.trim="planningForm.description"
+                      class="planning-inline-control planning-inline-control--textarea"
+                      :class="{ 'has-error': formErrors.description }"
+                      maxlength="300"
+                      rows="1"
+                      placeholder="Skill 说明"
+                    />
+                    <small v-if="formErrors.description" class="planning-inline-error">
+                      {{ formErrors.description }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <select
+                      v-model="planningForm.level"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.level }"
+                    >
+                      <option v-for="item in levelOptions" :key="item" :value="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                    <small v-if="formErrors.level" class="planning-inline-error">
+                      {{ formErrors.level }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <div class="planning-product-select">
+                      <button
+                        type="button"
+                        class="planning-inline-control planning-product-trigger"
+                        :class="{ 'is-placeholder': !planningForm.offeringName }"
+                        @click="togglePlanningProductSelect"
+                      >
+                        <span>{{ planningForm.offeringName || '产品' }}</span>
+                        <span class="planning-product-caret">⌄</span>
+                      </button>
+                      <div
+                        v-if="productDropdownOpen"
+                        class="planning-product-panel"
+                        @mousedown.stop
+                      >
+                        <div class="planning-product-search-wrap">
+                          <input
+                            :value="productSearchKeyword"
+                            type="text"
+                            class="planning-product-search"
+                            placeholder="搜索产品"
+                            @input="onPlanningProductSearchInput"
+                            @keydown.enter.prevent="searchPlanningProducts(productSearchKeyword)"
+                          />
+                          <button
+                            v-if="planningForm.offeringName || productSearchKeyword"
+                            type="button"
+                            class="planning-product-clear"
+                            aria-label="清除产品"
+                            title="清除产品"
+                            @click="clearPlanningProduct"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div class="planning-product-list">
+                          <span v-if="productSearching" class="planning-product-empty"
+                            >查询中...</span
+                          >
+                          <template v-else>
+                            <button
+                              v-for="item in productOptions"
+                              :key="item.offeringId || item.offeringName"
+                              type="button"
+                              class="planning-product-option"
+                              :class="{
+                                'is-selected': item.offeringId === planningForm.offeringId,
+                              }"
+                              @click="choosePlanningProduct(item)"
+                            >
+                              {{ item.offeringName }}
+                            </button>
+                            <span v-if="productSearchMessage" class="planning-product-empty">
+                              {{ productSearchMessage }}
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <div class="planning-person-select">
+                      <input
+                        :value="planningForm.owner"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.owner }"
+                        placeholder="责任 Owner"
+                        @focus="openPlanningPersonSelect('owner')"
+                        @input="onPlanningPersonInput('owner', $event)"
+                        @keydown.enter.prevent="searchPlanningUsers('owner')"
+                        @blur="scheduleClearUnselectedPlanningOwnerInput"
+                      />
+                      <div
+                        v-if="personSearchStates.owner.open"
+                        class="planning-person-panel"
+                        @mousedown.stop
+                      >
+                        <div class="planning-person-list">
+                          <span
+                            v-if="personSearchStates.owner.loading"
+                            class="planning-person-empty"
+                            >查询中...</span
+                          >
+                          <template v-else>
+                            <button
+                              v-for="item in personSearchStates.owner.options"
+                              :key="'owner-' + item.label"
+                              type="button"
+                              class="planning-person-option"
+                              :class="{ 'is-selected': item.label === planningForm.owner }"
+                              @click="choosePlanningPerson('owner', item)"
+                            >
+                              {{ item.label }}
+                            </button>
+                            <span
+                              v-if="personSearchStates.owner.message"
+                              class="planning-person-empty"
+                            >
+                              {{ personSearchStates.owner.message }}
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                    <small v-if="formErrors.owner" class="planning-inline-error">
+                      {{ formErrors.owner }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <input
+                      :value="planningForm.deptName"
+                      type="text"
+                      readonly
+                      class="planning-inline-control planning-inline-control--readonly"
+                      :class="{ 'has-error': formErrors.deptName }"
+                      placeholder="随责任 Owner 自动带出"
+                    />
+                    <small v-if="formErrors.deptName" class="planning-inline-error">
+                      {{ formErrors.deptName }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <div class="planning-person-select">
+                      <input
+                        :value="planningForm.developOwner"
+                        type="text"
+                        class="planning-inline-control"
+                        :class="{ 'has-error': formErrors.developOwner }"
+                        placeholder="开发责任人"
+                        @focus="openPlanningPersonSelect('developOwner')"
+                        @input="onPlanningPersonInput('developOwner', $event)"
+                        @keydown.enter.prevent="searchPlanningUsers('developOwner')"
+                      />
+                      <div
+                        v-if="personSearchStates.developOwner.open"
+                        class="planning-person-panel"
+                        @mousedown.stop
+                      >
+                        <div class="planning-person-list">
+                          <span
+                            v-if="personSearchStates.developOwner.loading"
+                            class="planning-person-empty"
+                            >查询中...</span
+                          >
+                          <template v-else>
+                            <button
+                              v-for="item in personSearchStates.developOwner.options"
+                              :key="'developOwner-' + item.label"
+                              type="button"
+                              class="planning-person-option"
+                              :class="{ 'is-selected': item.label === planningForm.developOwner }"
+                              @click="choosePlanningPerson('developOwner', item)"
+                            >
+                              {{ item.label }}
+                            </button>
+                            <span
+                              v-if="personSearchStates.developOwner.message"
+                              class="planning-person-empty"
+                            >
+                              {{ personSearchStates.developOwner.message }}
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                    <small v-if="formErrors.developOwner" class="planning-inline-error">
+                      {{ formErrors.developOwner }}
+                    </small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <input
+                      v-model="planningForm.planedCompleteDate"
+                      type="date"
+                      class="planning-inline-control"
+                    />
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
+                    <select v-model="planningForm.status" class="planning-inline-control">
+                      <option v-for="item in progressOptions" :key="item" :value="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                  </div>
+                </td>
+                <td class="action-col">
+                  <div class="planning-inline-actions">
+                    <button
+                      type="button"
+                      class="icon-btn icon-btn--confirm"
+                      title="确认新增"
+                      aria-label="确认新增"
+                      :disabled="inlineCreateSubmitting"
+                      @click="confirmInlineCreate"
+                    >
+                      √
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn icon-btn--muted"
+                      title="取消新增"
+                      aria-label="取消新增"
+                      :disabled="inlineCreateSubmitting"
+                      @click="cancelInlineCreate"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="loading">
+                <td colspan="15" class="planning-empty">正在加载 Skill 规划数据...</td>
+              </tr>
+              <tr v-else-if="rows.length === 0 && !inlineCreateActive">
+                <td colspan="15" class="planning-empty">暂无符合条件的 Skill 规划</td>
+              </tr>
+              <template v-else>
+                <template v-for="row in rows" :key="row.id">
+                  <tr v-if="inlineEditId === row.id" class="planning-inline-row">
+                    <td class="select-col" />
+                    <td>
+                      <div class="planning-inline-field">
+                        <select
+                          v-model="planningForm.firstScene"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.firstScene }"
+                          @change="onPlanningFirstSceneChange"
+                        >
+                          <option
+                            v-for="item in formFirstSceneOptions"
+                            :key="`firstScene-${item}`"
+                            :value="item"
+                          >
+                            {{ item }}
+                          </option>
+                        </select>
+                        <small v-if="formErrors.firstScene" class="planning-inline-error">
+                          {{ formErrors.firstScene }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <select
+                          v-model="planningForm.secondScene"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.secondScene }"
+                          :disabled="secondSceneSelectDisabled"
+                          @change="onPlanningSecondSceneChange"
+                        >
+                          <option
+                            v-for="item in formSecondSceneOptions"
+                            :key="`secondScene-${item}`"
+                            :value="item"
+                          >
+                            {{ item }}
+                          </option>
+                        </select>
+                        <small v-if="formErrors.secondScene" class="planning-inline-error">
+                          {{ formErrors.secondScene }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <select
+                          v-model="planningForm.activityNodeName"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.activityNodeName }"
+                          @change="onPlanningActivityChange"
+                        >
+                          <option
+                            v-for="item in formActivityOptions"
+                            :key="`activityNodeName-${item}`"
+                            :value="item"
+                          >
+                            {{ item }}
+                          </option>
+                        </select>
+                        <small v-if="formErrors.activityNodeName" class="planning-inline-error">
+                          {{ formErrors.activityNodeName }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <select
+                          v-model="planningForm.subActivityNodeName"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.subActivityNodeName }"
+                          :disabled="subActivitySelectDisabled"
+                          @change="onPlanningSubActivityChange"
+                        >
+                          <option
+                            v-for="item in formSubActivityOptions"
+                            :key="`subActivityNodeName-${item}`"
+                            :value="item"
+                          >
+                            {{ item }}
+                          </option>
+                        </select>
+                        <small v-if="formErrors.subActivityNodeName" class="planning-inline-error">
+                          {{ formErrors.subActivityNodeName }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <input
+                          v-model.trim="planningForm.name"
+                          type="text"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.name }"
+                          placeholder="Skill 名称"
+                        />
+                        <small v-if="formErrors.name" class="planning-inline-error">
+                          {{ formErrors.name }}
+                        </small>
+                      </div>
+                    </td>
+                    <td class="desc-col">
+                      <div class="planning-inline-field">
+                        <textarea
+                          v-model.trim="planningForm.description"
+                          class="planning-inline-control planning-inline-control--textarea"
+                          :class="{ 'has-error': formErrors.description }"
+                          maxlength="300"
+                          rows="1"
+                          placeholder="Skill 说明"
+                        />
+                        <small v-if="formErrors.description" class="planning-inline-error">
+                          {{ formErrors.description }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <select
+                          v-model="planningForm.level"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.level }"
+                        >
+                          <option value="">请选择</option>
+                          <option v-for="item in levelOptions" :key="item" :value="item">
+                            {{ item }}
+                          </option>
+                        </select>
+                        <small v-if="formErrors.level" class="planning-inline-error">
+                          {{ formErrors.level }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <div class="planning-product-select">
+                          <button
+                            type="button"
+                            class="planning-inline-control planning-product-trigger"
+                            :class="{ 'is-placeholder': !planningForm.offeringName }"
+                            @click="togglePlanningProductSelect"
+                          >
+                            <span>{{ planningForm.offeringName || '产品' }}</span>
+                            <span class="planning-product-caret">⌄</span>
+                          </button>
+                          <div
+                            v-if="productDropdownOpen"
+                            class="planning-product-panel"
+                            @mousedown.stop
+                          >
+                            <div class="planning-product-search-wrap">
+                              <input
+                                :value="productSearchKeyword"
+                                type="text"
+                                class="planning-product-search"
+                                placeholder="搜索产品"
+                                @input="onPlanningProductSearchInput"
+                                @keydown.enter.prevent="
+                                  searchPlanningProducts(productSearchKeyword)
+                                "
+                              />
+                              <button
+                                v-if="planningForm.offeringName || productSearchKeyword"
+                                type="button"
+                                class="planning-product-clear"
+                                aria-label="清除产品"
+                                title="清除产品"
+                                @click="clearPlanningProduct"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <div class="planning-product-list">
+                              <span v-if="productSearching" class="planning-product-empty"
+                                >查询中...</span
+                              >
+                              <template v-else>
+                                <button
+                                  v-for="item in productOptions"
+                                  :key="item.offeringId || item.offeringName"
+                                  type="button"
+                                  class="planning-product-option"
+                                  :class="{
+                                    'is-selected': item.offeringId === planningForm.offeringId,
+                                  }"
+                                  @click="choosePlanningProduct(item)"
+                                >
+                                  {{ item.offeringName }}
+                                </button>
+                                <span v-if="productSearchMessage" class="planning-product-empty">
+                                  {{ productSearchMessage }}
+                                </span>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <div class="planning-person-select">
+                          <input
+                            :value="planningForm.owner"
+                            type="text"
+                            class="planning-inline-control"
+                            :class="{ 'has-error': formErrors.owner }"
+                            placeholder="责任 Owner"
+                            @focus="openPlanningPersonSelect('owner')"
+                            @input="onPlanningPersonInput('owner', $event)"
+                            @keydown.enter.prevent="searchPlanningUsers('owner')"
+                            @blur="scheduleClearUnselectedPlanningOwnerInput"
+                          />
+                          <div
+                            v-if="personSearchStates.owner.open"
+                            class="planning-person-panel"
+                            @mousedown.stop
+                          >
+                            <div class="planning-person-list">
+                              <span
+                                v-if="personSearchStates.owner.loading"
+                                class="planning-person-empty"
+                                >查询中...</span
+                              >
+                              <template v-else>
+                                <button
+                                  v-for="item in personSearchStates.owner.options"
+                                  :key="'owner-' + item.label"
+                                  type="button"
+                                  class="planning-person-option"
+                                  :class="{ 'is-selected': item.label === planningForm.owner }"
+                                  @click="choosePlanningPerson('owner', item)"
+                                >
+                                  {{ item.label }}
+                                </button>
+                                <span
+                                  v-if="personSearchStates.owner.message"
+                                  class="planning-person-empty"
+                                >
+                                  {{ personSearchStates.owner.message }}
+                                </span>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                        <small v-if="formErrors.owner" class="planning-inline-error">
+                          {{ formErrors.owner }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <input
+                          :value="planningForm.deptName"
+                          type="text"
+                          readonly
+                          class="planning-inline-control planning-inline-control--readonly"
+                          :class="{ 'has-error': formErrors.deptName }"
+                          placeholder="随责任 Owner 自动带出"
+                        />
+                        <small v-if="formErrors.deptName" class="planning-inline-error">
+                          {{ formErrors.deptName }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <div class="planning-person-select">
+                          <input
+                            :value="planningForm.developOwner"
+                            type="text"
+                            class="planning-inline-control"
+                            :class="{ 'has-error': formErrors.developOwner }"
+                            placeholder="开发责任人"
+                            @focus="openPlanningPersonSelect('developOwner')"
+                            @input="onPlanningPersonInput('developOwner', $event)"
+                            @keydown.enter.prevent="searchPlanningUsers('developOwner')"
+                          />
+                          <div
+                            v-if="personSearchStates.developOwner.open"
+                            class="planning-person-panel"
+                            @mousedown.stop
+                          >
+                            <div class="planning-person-list">
+                              <span
+                                v-if="personSearchStates.developOwner.loading"
+                                class="planning-person-empty"
+                                >查询中...</span
+                              >
+                              <template v-else>
+                                <button
+                                  v-for="item in personSearchStates.developOwner.options"
+                                  :key="'developOwner-' + item.label"
+                                  type="button"
+                                  class="planning-person-option"
+                                  :class="{
+                                    'is-selected': item.label === planningForm.developOwner,
+                                  }"
+                                  @click="choosePlanningPerson('developOwner', item)"
+                                >
+                                  {{ item.label }}
+                                </button>
+                                <span
+                                  v-if="personSearchStates.developOwner.message"
+                                  class="planning-person-empty"
+                                >
+                                  {{ personSearchStates.developOwner.message }}
+                                </span>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                        <small v-if="formErrors.developOwner" class="planning-inline-error">
+                          {{ formErrors.developOwner }}
+                        </small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <input
+                          v-model="planningForm.planedCompleteDate"
+                          type="date"
+                          class="planning-inline-control"
+                        />
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
+                        <select v-model="planningForm.status" class="planning-inline-control">
+                          <option v-for="item in progressOptions" :key="item" :value="item">
+                            {{ item }}
+                          </option>
+                        </select>
+                      </div>
+                    </td>
+                    <td class="action-col">
+                      <div class="planning-inline-actions">
+                        <button
+                          type="button"
+                          class="icon-btn icon-btn--confirm"
+                          title="确认修改"
+                          aria-label="确认修改"
+                          :disabled="inlineEditSubmitting"
+                          @click="confirmInlineEdit"
+                        >
+                          √
+                        </button>
+                        <button
+                          type="button"
+                          class="icon-btn icon-btn--muted"
+                          title="取消修改"
+                          aria-label="取消修改"
+                          :disabled="inlineEditSubmitting"
+                          @click="cancelInlineEdit"
                         >
                           ×
                         </button>
                       </div>
-                      <div class="planning-product-list">
-                        <span v-if="productSearching" class="planning-product-empty"
-                          >查询中...</span
-                        >
-                        <template v-else>
-                          <button
-                            v-for="item in productOptions"
-                            :key="item.offeringId || item.offeringName"
-                            type="button"
-                            class="planning-product-option"
-                            :class="{ 'is-selected': item.offeringId === planningForm.offeringId }"
-                            @click="choosePlanningProduct(item)"
-                          >
-                            {{ item.offeringName }}
-                          </button>
-                          <span v-if="productSearchMessage" class="planning-product-empty">
-                            {{ productSearchMessage }}
-                          </span>
-                        </template>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <div class="planning-person-select">
-                    <input
-                      :value="planningForm.owner"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.owner }"
-                      placeholder="责任 Owner"
-                      @focus="openPlanningPersonSelect('owner')"
-                      @input="onPlanningPersonInput('owner', $event)"
-                      @keydown.enter.prevent="searchPlanningUsers('owner')"
-                      @blur="scheduleClearUnselectedPlanningOwnerInput"
-                    />
-                    <div
-                      v-if="personSearchStates.owner.open"
-                      class="planning-person-panel"
-                      @mousedown.stop
-                    >
-                      <div class="planning-person-list">
-                        <span v-if="personSearchStates.owner.loading" class="planning-person-empty"
-                          >查询中...</span
-                        >
-                        <template v-else>
-                          <button
-                            v-for="item in personSearchStates.owner.options"
-                            :key="'owner-' + item.label"
-                            type="button"
-                            class="planning-person-option"
-                            :class="{ 'is-selected': item.label === planningForm.owner }"
-                            @click="choosePlanningPerson('owner', item)"
-                          >
-                            {{ item.label }}
-                          </button>
-                          <span
-                            v-if="personSearchStates.owner.message"
-                            class="planning-person-empty"
-                          >
-                            {{ personSearchStates.owner.message }}
-                          </span>
-                        </template>
-                      </div>
-                    </div>
-                  </div>
-                  <small v-if="formErrors.owner" class="planning-inline-error">
-                    {{ formErrors.owner }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <input
-                    :value="planningForm.deptName"
-                    type="text"
-                    readonly
-                    class="planning-inline-control planning-inline-control--readonly"
-                    :class="{ 'has-error': formErrors.deptName }"
-                    placeholder="随责任 Owner 自动带出"
-                  />
-                  <small v-if="formErrors.deptName" class="planning-inline-error">
-                    {{ formErrors.deptName }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <div class="planning-person-select">
-                    <input
-                      :value="planningForm.developOwner"
-                      type="text"
-                      class="planning-inline-control"
-                      :class="{ 'has-error': formErrors.developOwner }"
-                      placeholder="开发责任人"
-                      @focus="openPlanningPersonSelect('developOwner')"
-                      @input="onPlanningPersonInput('developOwner', $event)"
-                      @keydown.enter.prevent="searchPlanningUsers('developOwner')"
-                    />
-                    <div
-                      v-if="personSearchStates.developOwner.open"
-                      class="planning-person-panel"
-                      @mousedown.stop
-                    >
-                      <div class="planning-person-list">
-                        <span
-                          v-if="personSearchStates.developOwner.loading"
-                          class="planning-person-empty"
-                          >查询中...</span
-                        >
-                        <template v-else>
-                          <button
-                            v-for="item in personSearchStates.developOwner.options"
-                            :key="'developOwner-' + item.label"
-                            type="button"
-                            class="planning-person-option"
-                            :class="{ 'is-selected': item.label === planningForm.developOwner }"
-                            @click="choosePlanningPerson('developOwner', item)"
-                          >
-                            {{ item.label }}
-                          </button>
-                          <span
-                            v-if="personSearchStates.developOwner.message"
-                            class="planning-person-empty"
-                          >
-                            {{ personSearchStates.developOwner.message }}
-                          </span>
-                        </template>
-                      </div>
-                    </div>
-                  </div>
-                  <small v-if="formErrors.developOwner" class="planning-inline-error">
-                    {{ formErrors.developOwner }}
-                  </small>
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <input
-                    v-model="planningForm.planedCompleteDate"
-                    type="date"
-                    class="planning-inline-control"
-                  />
-                </div>
-              </td>
-              <td>
-                <div class="planning-inline-field">
-                  <select v-model="planningForm.status" class="planning-inline-control">
-                    <option v-for="item in progressOptions" :key="item" :value="item">
-                      {{ item }}
-                    </option>
-                  </select>
-                </div>
-              </td>
-              <td class="action-col">
-                <div class="planning-inline-actions">
-                  <button
-                    type="button"
-                    class="icon-btn icon-btn--confirm"
-                    title="确认新增"
-                    aria-label="确认新增"
-                    :disabled="inlineCreateSubmitting"
-                    @click="confirmInlineCreate"
-                  >
-                    √
-                  </button>
-                  <button
-                    type="button"
-                    class="icon-btn icon-btn--muted"
-                    title="取消新增"
-                    aria-label="取消新增"
-                    :disabled="inlineCreateSubmitting"
-                    @click="cancelInlineCreate"
-                  >
-                    ×
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="loading">
-              <td colspan="15" class="planning-empty">正在加载 Skill 规划数据...</td>
-            </tr>
-            <tr v-else-if="rows.length === 0 && !inlineCreateActive">
-              <td colspan="15" class="planning-empty">暂无符合条件的 Skill 规划</td>
-            </tr>
-            <template v-else>
-              <template v-for="row in rows" :key="row.id">
-                <tr v-if="inlineEditId === row.id" class="planning-inline-row">
-                  <td class="select-col" />
-                  <td>
-                    <div class="planning-inline-field">
-                      <select
-                        v-model="planningForm.firstScene"
-                        class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.firstScene }"
-                        @change="onPlanningFirstSceneChange"
-                      >
-                        <option
-                          v-for="item in formFirstSceneOptions"
-                          :key="`firstScene-${item}`"
-                          :value="item"
-                        >
-                          {{ item }}
-                        </option>
-                      </select>
-                      <small v-if="formErrors.firstScene" class="planning-inline-error">
-                        {{ formErrors.firstScene }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <select
-                        v-model="planningForm.secondScene"
-                        class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.secondScene }"
-                        :disabled="secondSceneSelectDisabled"
-                        @change="onPlanningSecondSceneChange"
-                      >
-                        <option
-                          v-for="item in formSecondSceneOptions"
-                          :key="`secondScene-${item}`"
-                          :value="item"
-                        >
-                          {{ item }}
-                        </option>
-                      </select>
-                      <small v-if="formErrors.secondScene" class="planning-inline-error">
-                        {{ formErrors.secondScene }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <select
-                        v-model="planningForm.activityNodeName"
-                        class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.activityNodeName }"
-                        @change="onPlanningActivityChange"
-                      >
-                        <option
-                          v-for="item in formActivityOptions"
-                          :key="`activityNodeName-${item}`"
-                          :value="item"
-                        >
-                          {{ item }}
-                        </option>
-                      </select>
-                      <small v-if="formErrors.activityNodeName" class="planning-inline-error">
-                        {{ formErrors.activityNodeName }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <select
-                        v-model="planningForm.subActivityNodeName"
-                        class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.subActivityNodeName }"
-                        :disabled="subActivitySelectDisabled"
-                        @change="onPlanningSubActivityChange"
-                      >
-                        <option
-                          v-for="item in formSubActivityOptions"
-                          :key="`subActivityNodeName-${item}`"
-                          :value="item"
-                        >
-                          {{ item }}
-                        </option>
-                      </select>
-                      <small v-if="formErrors.subActivityNodeName" class="planning-inline-error">
-                        {{ formErrors.subActivityNodeName }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
+                    </td>
+                  </tr>
+                  <tr v-else>
+                    <td class="select-col">
                       <input
-                        v-model.trim="planningForm.name"
-                        type="text"
-                        class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.name }"
-                        placeholder="Skill 名称"
+                        type="checkbox"
+                        :checked="selectedIds.includes(row.id)"
+                        @change="toggleRowSelection(row.id)"
                       />
-                      <small v-if="formErrors.name" class="planning-inline-error">
-                        {{ formErrors.name }}
-                      </small>
-                    </div>
-                  </td>
-                  <td class="desc-col">
-                    <div class="planning-inline-field">
-                      <textarea
-                        v-model.trim="planningForm.description"
-                        class="planning-inline-control planning-inline-control--textarea"
-                        :class="{ 'has-error': formErrors.description }"
-                        maxlength="300"
-                        rows="1"
-                        placeholder="Skill 说明"
-                      />
-                      <small v-if="formErrors.description" class="planning-inline-error">
-                        {{ formErrors.description }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <select
-                        v-model="planningForm.level"
-                        class="planning-inline-control"
-                        :class="{ 'has-error': formErrors.level }"
-                      >
-                        <option value="">请选择</option>
-                        <option v-for="item in levelOptions" :key="item" :value="item">
-                          {{ item }}
-                        </option>
-                      </select>
-                      <small v-if="formErrors.level" class="planning-inline-error">
-                        {{ formErrors.level }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <div class="planning-product-select">
-                        <button
-                          type="button"
-                          class="planning-inline-control planning-product-trigger"
-                          :class="{ 'is-placeholder': !planningForm.offeringName }"
-                          @click="togglePlanningProductSelect"
-                        >
-                          <span>{{ planningForm.offeringName || '产品' }}</span>
-                          <span class="planning-product-caret">⌄</span>
-                        </button>
-                        <div
-                          v-if="productDropdownOpen"
-                          class="planning-product-panel"
-                          @mousedown.stop
-                        >
-                          <div class="planning-product-search-wrap">
-                            <input
-                              :value="productSearchKeyword"
-                              type="text"
-                              class="planning-product-search"
-                              placeholder="搜索产品"
-                              @input="onPlanningProductSearchInput"
-                              @keydown.enter.prevent="searchPlanningProducts(productSearchKeyword)"
-                            />
-                            <button
-                              v-if="planningForm.offeringName || productSearchKeyword"
-                              type="button"
-                              class="planning-product-clear"
-                              aria-label="清除产品"
-                              title="清除产品"
-                              @click="clearPlanningProduct"
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <div class="planning-product-list">
-                            <span v-if="productSearching" class="planning-product-empty"
-                              >查询中...</span
-                            >
-                            <template v-else>
-                              <button
-                                v-for="item in productOptions"
-                                :key="item.offeringId || item.offeringName"
-                                type="button"
-                                class="planning-product-option"
-                                :class="{
-                                  'is-selected': item.offeringId === planningForm.offeringId,
-                                }"
-                                @click="choosePlanningProduct(item)"
-                              >
-                                {{ item.offeringName }}
-                              </button>
-                              <span v-if="productSearchMessage" class="planning-product-empty">
-                                {{ productSearchMessage }}
-                              </span>
-                            </template>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <div class="planning-person-select">
-                        <input
-                          :value="planningForm.owner"
-                          type="text"
-                          class="planning-inline-control"
-                          :class="{ 'has-error': formErrors.owner }"
-                          placeholder="责任 Owner"
-                          @focus="openPlanningPersonSelect('owner')"
-                          @input="onPlanningPersonInput('owner', $event)"
-                          @keydown.enter.prevent="searchPlanningUsers('owner')"
-                          @blur="scheduleClearUnselectedPlanningOwnerInput"
-                        />
-                        <div
-                          v-if="personSearchStates.owner.open"
-                          class="planning-person-panel"
-                          @mousedown.stop
-                        >
-                          <div class="planning-person-list">
-                            <span
-                              v-if="personSearchStates.owner.loading"
-                              class="planning-person-empty"
-                              >查询中...</span
-                            >
-                            <template v-else>
-                              <button
-                                v-for="item in personSearchStates.owner.options"
-                                :key="'owner-' + item.label"
-                                type="button"
-                                class="planning-person-option"
-                                :class="{ 'is-selected': item.label === planningForm.owner }"
-                                @click="choosePlanningPerson('owner', item)"
-                              >
-                                {{ item.label }}
-                              </button>
-                              <span
-                                v-if="personSearchStates.owner.message"
-                                class="planning-person-empty"
-                              >
-                                {{ personSearchStates.owner.message }}
-                              </span>
-                            </template>
-                          </div>
-                        </div>
-                      </div>
-                      <small v-if="formErrors.owner" class="planning-inline-error">
-                        {{ formErrors.owner }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <input
-                        :value="planningForm.deptName"
-                        type="text"
-                        readonly
-                        class="planning-inline-control planning-inline-control--readonly"
-                        :class="{ 'has-error': formErrors.deptName }"
-                        placeholder="随责任 Owner 自动带出"
-                      />
-                      <small v-if="formErrors.deptName" class="planning-inline-error">
-                        {{ formErrors.deptName }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <div class="planning-person-select">
-                        <input
-                          :value="planningForm.developOwner"
-                          type="text"
-                          class="planning-inline-control"
-                          :class="{ 'has-error': formErrors.developOwner }"
-                          placeholder="开发责任人"
-                          @focus="openPlanningPersonSelect('developOwner')"
-                          @input="onPlanningPersonInput('developOwner', $event)"
-                          @keydown.enter.prevent="searchPlanningUsers('developOwner')"
-                        />
-                        <div
-                          v-if="personSearchStates.developOwner.open"
-                          class="planning-person-panel"
-                          @mousedown.stop
-                        >
-                          <div class="planning-person-list">
-                            <span
-                              v-if="personSearchStates.developOwner.loading"
-                              class="planning-person-empty"
-                              >查询中...</span
-                            >
-                            <template v-else>
-                              <button
-                                v-for="item in personSearchStates.developOwner.options"
-                                :key="'developOwner-' + item.label"
-                                type="button"
-                                class="planning-person-option"
-                                :class="{ 'is-selected': item.label === planningForm.developOwner }"
-                                @click="choosePlanningPerson('developOwner', item)"
-                              >
-                                {{ item.label }}
-                              </button>
-                              <span
-                                v-if="personSearchStates.developOwner.message"
-                                class="planning-person-empty"
-                              >
-                                {{ personSearchStates.developOwner.message }}
-                              </span>
-                            </template>
-                          </div>
-                        </div>
-                      </div>
-                      <small v-if="formErrors.developOwner" class="planning-inline-error">
-                        {{ formErrors.developOwner }}
-                      </small>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <input
-                        v-model="planningForm.planedCompleteDate"
-                        type="date"
-                        class="planning-inline-control"
-                      />
-                    </div>
-                  </td>
-                  <td>
-                    <div class="planning-inline-field">
-                      <select v-model="planningForm.status" class="planning-inline-control">
-                        <option v-for="item in progressOptions" :key="item" :value="item">
-                          {{ item }}
-                        </option>
-                      </select>
-                    </div>
-                  </td>
-                  <td class="action-col">
-                    <div class="planning-inline-actions">
+                    </td>
+                    <td>{{ row.firstScene }}</td>
+                    <td>{{ row.secondScene }}</td>
+                    <td>{{ row.activityNodeName }}</td>
+                    <td>{{ row.subActivityNodeName }}</td>
+                    <td>
+                      <strong class="skill-name">{{ row.name }}</strong>
+                    </td>
+                    <td class="desc-col">
+                      <span :title="row.description">{{ row.description }}</span>
+                    </td>
+                    <td>{{ row.level }}</td>
+                    <td>{{ row.offeringName }}</td>
+                    <td>{{ row.owner }}</td>
+                    <td>{{ row.deptName }}</td>
+                    <td>{{ row.developOwner }}</td>
+                    <td>{{ row.planedCompleteDate }}</td>
+                    <td>
+                      <span class="status-pill" :class="progressClass(row.status)">
+                        {{ row.status }}
+                      </span>
+                    </td>
+                    <td class="action-col">
                       <button
                         type="button"
-                        class="icon-btn icon-btn--confirm"
-                        title="确认修改"
-                        aria-label="确认修改"
-                        :disabled="inlineEditSubmitting"
-                        @click="confirmInlineEdit"
+                        class="icon-btn"
+                        title="编辑"
+                        aria-label="编辑"
+                        @click="startInlineEdit(row)"
                       >
-                        √
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                          <path d="m13 7 4 4" />
+                        </svg>
                       </button>
                       <button
                         type="button"
-                        class="icon-btn icon-btn--muted"
-                        title="取消修改"
-                        aria-label="取消修改"
-                        :disabled="inlineEditSubmitting"
-                        @click="cancelInlineEdit"
+                        class="icon-btn icon-btn--danger"
+                        title="删除"
+                        aria-label="删除"
+                        @click="requestDeleteRow(row)"
                       >
-                        ×
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
+                        </svg>
                       </button>
-                    </div>
-                  </td>
-                </tr>
-                <tr v-else>
-                  <td class="select-col">
-                    <input
-                      type="checkbox"
-                      :checked="selectedIds.includes(row.id)"
-                      @change="toggleRowSelection(row.id)"
-                    />
-                  </td>
-                  <td>{{ row.firstScene }}</td>
-                  <td>{{ row.secondScene }}</td>
-                  <td>{{ row.activityNodeName }}</td>
-                  <td>{{ row.subActivityNodeName }}</td>
-                  <td>
-                    <strong class="skill-name">{{ row.name }}</strong>
-                  </td>
-                  <td class="desc-col">
-                    <span :title="row.description">{{ row.description }}</span>
-                  </td>
-                  <td>{{ row.level }}</td>
-                  <td>{{ row.offeringName }}</td>
-                  <td>{{ row.owner }}</td>
-                  <td>{{ row.deptName }}</td>
-                  <td>{{ row.developOwner }}</td>
-                  <td>{{ row.planedCompleteDate }}</td>
-                  <td>
-                    <span class="status-pill" :class="progressClass(row.status)">
-                      {{ row.status }}
-                    </span>
-                  </td>
-                  <td class="action-col">
-                    <button
-                      type="button"
-                      class="icon-btn"
-                      title="编辑"
-                      aria-label="编辑"
-                      @click="startInlineEdit(row)"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M4 20h4l10-10-4-4L4 16v4Z" />
-                        <path d="m13 7 4 4" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="icon-btn icon-btn--danger"
-                      title="删除"
-                      aria-label="删除"
-                      @click="requestDeleteRow(row)"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
+                </template>
               </template>
-            </template>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="planning-pagination">
-        <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
-        <div class="pagination-controls">
-          <select v-model.number="pageSize" @change="changePageSize">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
-          <button type="button" :disabled="pageNum <= 1" @click="goPage(pageNum - 1)">
-            上一页
-          </button>
-          <strong>{{ pageNum }} / {{ totalPages }}</strong>
-          <button type="button" :disabled="pageNum >= totalPages" @click="goPage(pageNum + 1)">
-            下一页
-          </button>
+            </tbody>
+          </table>
         </div>
-      </div>
-    </section>
+
+        <div class="planning-pagination">
+          <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
+          <div class="pagination-controls">
+            <select v-model.number="pageSize" @change="changePageSize">
+              <option v-for="size in pageSizeOptions" :key="size" :value="size">
+                {{ size }} 条/页
+              </option>
+            </select>
+            <button type="button" :disabled="pageNum <= 1" @click="goPage(pageNum - 1)">
+              上一页
+            </button>
+            <strong>{{ pageNum }} / {{ totalPages }}</strong>
+            <button type="button" :disabled="pageNum >= totalPages" @click="goPage(pageNum + 1)">
+              下一页
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <SceneSettingsPanel
+      v-if="activePlanningTab === 'scenes'"
+      :department-tree="planningDepartmentTree"
+      :allowed-department-names="props.permissionDepartmentNames"
+      @changed="handleManagedScenesChanged"
+    />
+
+    <ActivityManagementPanel
+      v-if="activePlanningTab === 'activities'"
+      :department-tree="planningDepartmentTree"
+      :allowed-department-names="props.permissionDepartmentNames"
+      @changed="handleManagedActivitiesChanged"
+    />
+
+    <SkillMasterManagementPanel v-if="activePlanningTab === 'management'" />
+
+    <DepartmentPlanningPermissionPanel
+      v-if="props.canConfigureDepartmentPermissions && activePlanningTab === 'permissions'"
+      :department-tree="planningDepartmentTree"
+      :allowed-department-names="props.permissionDepartmentNames"
+    />
 
     <Teleport to="body">
       <div
@@ -3405,6 +3569,84 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 @use '@/style/UserMarketShell.scss';
+.planning-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 4px;
+  width: fit-content;
+  padding: 4px;
+  border: 1px solid #dfe6f2;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 24px rgba(35, 52, 84, 0.05);
+}
+
+.planning-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 168px;
+  height: 54px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #7a879b;
+  text-align: left;
+  cursor: pointer;
+  transition: 160ms ease;
+}
+
+.planning-tab:hover {
+  background: #f6f8fc;
+  color: #465570;
+}
+
+.planning-tab.is-active {
+  background: #eef2ff;
+  color: #4054ce;
+  box-shadow: inset 0 0 0 1px #d6dcff;
+}
+
+.planning-tab__icon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: #f0f2f6;
+  color: #7d899b;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.planning-tab.is-active .planning-tab__icon {
+  background: #5063d8;
+  color: #ffffff;
+}
+
+.planning-tab > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.planning-tab strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.planning-tab small {
+  color: #99a3b3;
+  font-size: 10px;
+}
+
+.planning-tab-panel {
+  display: grid;
+  gap: 16px;
+}
+
 .planning-pageNum {
   display: grid;
   gap: 16px;
@@ -3655,7 +3897,7 @@ onBeforeUnmount(() => {
 }
 
 .planning-board {
-  height: clamp(520px, calc(100vh - 330px), 880px);
+  height: clamp(520px, calc(100vh - 395px), 880px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4740,6 +4982,22 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 820px) {
+  .planning-tabs {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    box-sizing: border-box;
+  }
+
+  .planning-tabs.has-permission-tab {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .planning-tab {
+    min-width: 0;
+    padding: 0 10px;
+  }
+
   .planning-hero {
     padding: 26px 22px;
   }

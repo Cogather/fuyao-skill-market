@@ -26,6 +26,17 @@ export function marketRoleIsOrgAdmin(role: CurrentUserRoleDto | null): boolean {
   return role?.role === 'ORG_ADMIN' || roleFlagIsTrue(role?.orgAdmin);
 }
 
+/** 部门 Skill 规划权限配置入口：管理员或部门主任。 */
+export function marketRoleCanConfigurePlanningPermissions(
+  role: CurrentUserRoleDto | null,
+): boolean {
+  return (
+    marketRoleIsSuperAdmin(role) ||
+    marketRoleIsOrgAdmin(role) ||
+    roleFlagIsTrue(role?.departmentDirector)
+  );
+}
+
 export function marketRoleShowsAdminPerspective(role: CurrentUserRoleDto | null): boolean {
   return marketRoleIsSuperAdmin(role) || marketRoleIsOrgAdmin(role);
 }

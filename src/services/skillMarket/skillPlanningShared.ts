@@ -6,6 +6,8 @@ export type SkillPlanningSortOrder = 'asc' | 'desc';
 
 export interface SkillPlanningItem {
   id: string;
+  sceneId?: string;
+  activityId?: string;
   firstScene: string;
   secondScene: string;
   activityNodeName: string;
@@ -195,6 +197,8 @@ export function normalizeSkillPlanningPayload(
   payload: Partial<SkillPlanningPayload>,
 ): SkillPlanningPayload {
   return {
+    sceneId: normalizeText(payload.sceneId),
+    activityId: normalizeText(payload.activityId),
     firstScene: normalizeText(payload.firstScene),
     secondScene: normalizeText(payload.secondScene),
     activityNodeName: normalizeText(payload.activityNodeName),
@@ -220,6 +224,8 @@ export function normalizeSkillPlanningItem(value: unknown): SkillPlanningItem {
 
   return {
     id: normalizeText(record.id),
+    sceneId: normalizeText(record.sceneId),
+    activityId: normalizeText(record.activityId),
     firstScene: normalizeText(record.firstScene),
     secondScene: normalizeText(record.secondScene),
     activityNodeName: normalizeText(record.activityNodeName),

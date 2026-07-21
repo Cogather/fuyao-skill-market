@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx';
+import { findActivityIdByNames, getActivitySortRank } from './activityManagementService';
+import { findSceneIdByNames, getSceneSortRank } from './sceneManagementService';
 import {
   cloneSkillPlanningItem,
   exportSkillPlanningTemplateToExcel,
@@ -325,7 +327,11 @@ const mockProductPlanningOptions: ProductPlanningOption[] = [
   { offeringId: 'offering-mobile', offeringName: '移动端产品线' },
 ];
 
-let skillPlanningItems = [...initialSkillPlanningItems];
+let skillPlanningItems = initialSkillPlanningItems.map((item) => ({
+  ...item,
+  sceneId: findSceneIdByNames(item.firstScene, item.secondScene),
+  activityId: findActivityIdByNames(item.activityNodeName, item.subActivityNodeName),
+}));
 let idSeed = 2000;
 
 function matchesDateRange(item: SkillPlanningItem, query: SkillPlanningQuery): boolean {
@@ -345,7 +351,16 @@ function matchesDiscreteFilter(value: string, values: string[]): boolean {
 
 function sortItems(items: SkillPlanningItem[], query: SkillPlanningQuery): SkillPlanningItem[] {
   if (query.sortBy !== 'planedCompleteDate' || !query.sortOrder) {
-    return items;
+    return [...items].sort((left, right) => {
+      const sceneResult =
+        getSceneSortRank(left.firstScene, left.secondScene) -
+        getSceneSortRank(right.firstScene, right.secondScene);
+      return (
+        sceneResult ||
+        getActivitySortRank(left.activityNodeName, left.subActivityNodeName) -
+          getActivitySortRank(right.activityNodeName, right.subActivityNodeName)
+      );
+    });
   }
 
   const sorted = [...items];
@@ -486,12 +501,24 @@ export async function getProductPlanning(
   );
 }
 
+function normalizePayloadWithTaxonomyIds(payload: SkillPlanningPayload): SkillPlanningPayload {
+  const normalized = normalizeSkillPlanningPayload(payload);
+  return {
+    ...normalized,
+    sceneId:
+      normalized.sceneId || findSceneIdByNames(normalized.firstScene, normalized.secondScene),
+    activityId:
+      normalized.activityId ||
+      findActivityIdByNames(normalized.activityNodeName, normalized.subActivityNodeName),
+  };
+}
+
 export async function createSkillPlanning(
   payload: SkillPlanningPayload,
 ): Promise<SkillPlanningItem> {
   const item = {
     id: `plan-${idSeed++}`,
-    ...normalizeSkillPlanningPayload(payload),
+    ...normalizePayloadWithTaxonomyIds(payload),
   };
   skillPlanningItems = [item, ...skillPlanningItems];
   return cloneSkillPlanningItem(item);
@@ -506,7 +533,7 @@ export async function updateSkillPlanning(
     throw new Error('未找到要编辑的 Skill 规划');
   }
 
-  const next = { id, ...normalizeSkillPlanningPayload(payload) };
+  const next = { id, ...normalizePayloadWithTaxonomyIds(payload) };
   skillPlanningItems.splice(index, 1, next);
   return cloneSkillPlanningItem(next);
 }
@@ -596,7 +623,7 @@ export async function importSkillPlanningFromExcel(file: File): Promise<SkillPla
 
   const createdItems = imported.map((payload) => ({
     id: `plan-${idSeed++}`,
-    ...normalizeSkillPlanningPayload(payload),
+    ...normalizePayloadWithTaxonomyIds(payload),
   }));
 
   skillPlanningItems = [...createdItems, ...skillPlanningItems];
