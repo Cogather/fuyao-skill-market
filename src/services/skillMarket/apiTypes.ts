@@ -62,6 +62,8 @@ export type CurrentUserRoleDto = {
   managedOrgIds: number[];
   managedOrgNames?: string[];
   organizationScope: OrganizationScope;
+  departmentDirector?: boolean;
+  managedDepartmentNames?: string[];
 };
 
 export type BusinessDimensionDto = {
