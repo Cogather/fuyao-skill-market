@@ -1517,4 +1517,33 @@ td strong {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Responsive list typography for wide screens */
+@media (min-width: 1440px) {
+  .panel-heading h3 {
+    font-size: clamp(15px, 0.9vw, 18px);
+  }
+
+  .panel-heading p,
+  .node-main small,
+  .tree-children button,
+  .empty-child,
+  th,
+  td,
+  .status-dot,
+  .status-switch,
+  .row-actions button {
+    font-size: clamp(10px, 0.625vw, 13px);
+  }
+
+  .node-main strong,
+  td strong {
+    font-size: clamp(12px, 0.72vw, 15px);
+  }
+
+  .sort-number,
+  .count-pill {
+    font-size: clamp(10px, 0.625vw, 12px);
+  }
+}
 </style>

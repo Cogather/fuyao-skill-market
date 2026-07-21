@@ -4,7 +4,7 @@ import ActivityManagementPanel from '../../components/skill/ActivityManagementPa
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
-import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanel.vue';
+import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import {
   batchDeleteSkillPlanning,
   batchUpdateSkillPlanning,
@@ -108,7 +108,7 @@ const activePlanningTab = ref<'skills' | 'scenes' | 'activities' | 'management' 
 );
 
 const emptyFilters = {
-  deptName: '',
+  planningDeptName: '',
   departmentL3: '',
   departmentL4: '',
   departmentL5: '',
@@ -127,7 +127,6 @@ const emptyFilters = {
 };
 
 const filterForm = reactive({ ...emptyFilters });
-const appliedFilters = reactive({ ...emptyFilters });
 const planningDepartmentTree = computed(() => props.departmentTree ?? []);
 const planningDepartmentSegments = ref<string[]>([]);
 const departmentL3 = ref('');
@@ -201,6 +200,28 @@ const batchDialogOpen = ref(false);
 const batchSubmitting = ref(false);
 const batchErrors = reactive<Partial<Record<PlanningBatchField, string>>>({});
 const batchForm = reactive<PlanningBatchForm>(createEmptyBatchForm());
+
+function collectPlanningDepartmentNames(
+  nodes: PlanningDepartmentTreeNode[],
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const name = node.name.trim();
+    if (name) values.add(name);
+    collectPlanningDepartmentNames(node.children ?? [], values);
+  });
+  return values;
+}
+
+const planningDepartmentOptions = computed(() => {
+  const values = collectPlanningDepartmentNames(planningDepartmentTree.value);
+  rows.value.forEach((row) => {
+    if (row.planningDeptName) values.add(row.planningDeptName);
+  });
+  if (planningForm.planningDeptName) values.add(planningForm.planningDeptName);
+  if (batchForm.planningDeptName) values.add(batchForm.planningDeptName);
+  return Array.from(values);
+});
 const batchPersonSearchStates = reactive<Record<PlanningPersonField, PlanningPersonSearchState>>({
   owner: createEmptyPersonSearchState(),
   developOwner: createEmptyPersonSearchState(),
@@ -287,7 +308,9 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     offeringId: '',
     offeringName: '',
     owner: '',
+    deptCode: '',
     deptName: '',
+    planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
     status: '未开始',
@@ -300,6 +323,7 @@ function createEmptyBatchForm(): PlanningBatchForm {
     offeringName: '',
     owner: '',
     deptName: '',
+    planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
     status: '',
@@ -442,7 +466,6 @@ function setPlanningPersonValue(field: PlanningPersonField, value: string): void
 function setPlanningOwnerDepartment(value: string): void {
   (planningForm as Record<string, string>).deptName = value;
   clearPlanningFormError('deptName' as keyof SkillPlanningPayload);
-  syncManagedTaxonomiesForDepartment(value);
 }
 
 function clearPlanningPersonSearchTimer(field: PlanningPersonField): void {
@@ -536,29 +559,43 @@ function onPlanningPersonInput(field: PlanningPersonField, event: Event): void {
   }, 250);
 }
 
-const getLastDept = (option: SkillPlanningUserOption) => {
+const getLastDept = (option: SkillPlanningUserOption): Array<[string, string]> => {
   try {
-    const deptArr = Object.entries(option?.raw)
-      .filter((item) => item[1] !== '' && item[1] !== null && item[0].startsWith('hwDepartName'))
-      .map((item) => [option.raw[`hwDepartCode${item[0][12]}`], item[1]]);
-    return deptArr;
-  } catch (error) {
+    return Object.entries(option.raw)
+      .filter(
+        ([key, value]) =>
+          key.startsWith('hwDepartName') && value !== '' && value !== null && value !== undefined,
+      )
+      .map(([key, value]) => {
+        const level = key.slice('hwDepartName'.length);
+        return [
+          String(option.raw[`hwDepartCode${level}`] ?? '').trim(),
+          String(value ?? '').trim(),
+        ] as [string, string];
+      })
+      .filter(([, name]) => Boolean(name));
+  } catch {
     return [];
   }
 };
 
 const handleDeptArr = (option: SkillPlanningUserOption, isBatch: boolean) => {
   const deptArr = getLastDept(option);
-  const form = isBatch ? batchForm : planningForm;
-  if (deptArr?.length) {
-    const lastDept = deptArr[deptArr.length - 1];
-    form.deptCode = lastDept[0];
-    form.deptName = lastDept[1];
-    if (!isBatch) syncManagedTaxonomiesForDepartment(form.deptName);
-    for (let i = 1; i < 6; i++) {
-      form[`l${i}DeptCode`] = i < deptArr.length ? deptArr[i][0] : '';
-      form[`l${i}DeptName`] = i < deptArr.length ? deptArr[i][1] : '';
-    }
+  const lastDept = deptArr.at(-1);
+  if (!lastDept) return;
+  if (isBatch) {
+    batchForm.deptName = lastDept[1];
+    return;
+  }
+
+  planningForm.deptCode = lastDept[0];
+  planningForm.deptName = lastDept[1];
+  for (let i = 1; i < 6; i++) {
+    const item = deptArr[i];
+    const codeKey = `l${i}DeptCode`;
+    const nameKey = `l${i}DeptName`;
+    (planningForm as unknown as Record<string, string>)[codeKey] = item?.[0] ?? '';
+    (planningForm as unknown as Record<string, string>)[nameKey] = item?.[1] ?? '';
   }
 };
 
@@ -740,6 +777,11 @@ function scheduleClearUnselectedBatchOwnerInput(): void {
   window.setTimeout(clearUnselectedBatchOwnerInput, 160);
 }
 
+function onPlanningDepartmentFieldChange(): void {
+  clearPlanningFormError('planningDeptName');
+  syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
+}
+
 function onPlanningFirstSceneChange(): void {
   planningForm.secondScene = '';
   planningForm.sceneId = '';
@@ -751,7 +793,7 @@ function onPlanningSecondSceneChange(): void {
   planningForm.sceneId = findSceneIdByNames(
     planningForm.firstScene,
     planningForm.secondScene,
-    planningForm.deptName,
+    planningForm.planningDeptName,
   );
   clearPlanningFormError('secondScene');
 }
@@ -767,7 +809,7 @@ function onPlanningSubActivityChange(): void {
   planningForm.activityId = findActivityIdByNames(
     planningForm.activityNodeName,
     planningForm.subActivityNodeName,
-    planningForm.deptName,
+    planningForm.planningDeptName,
   );
   clearPlanningFormError('subActivityNodeName');
 }
@@ -801,7 +843,7 @@ function syncManagedTaxonomiesForDepartment(departmentName = ''): void {
 
 async function loadPlanningFilterOptions(): Promise<void> {
   const options = await querySkillPlanningFilterOptions();
-  syncManagedTaxonomiesForDepartment(planningForm.deptName);
+  syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
   levelOptions.value = options.level;
   progressOptions.value = options.status as SkillPlanningProgress[];
   syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
@@ -916,7 +958,7 @@ function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.valu
     levelRef.value = nextSegments[index] ?? '';
     filterForm[`departmentL${index + 3}` as keyof typeof filterForm] = levelRef.value;
   });
-  filterForm.deptName = nextSegments[nextSegments.length - 1] ?? '';
+  filterForm.planningDeptName = nextSegments[nextSegments.length - 1] ?? '';
 }
 
 function onPlanningDepartmentChange(segments: string[]): void {
@@ -982,6 +1024,7 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignHeaderFilterQueryValue(nextQuery, 'level', 'level');
   assignHeaderFilterQueryValue(nextQuery, 'status', 'status');
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
+  assignQueryValue(nextQuery, 'planningDeptName', filterForm.planningDeptName);
   planningDepartmentSegments.value
     .slice(0, planningDepartmentLevelRefs.length)
     .forEach((segment, index) => {
@@ -1034,10 +1077,11 @@ function resetPlanningForm() {
 
 function fillPlanningFormFromRow(row: SkillPlanningItem) {
   Object.assign(planningForm, {
-    sceneId: row.sceneId || findSceneIdByNames(row.firstScene, row.secondScene, row.deptName),
+    sceneId:
+      row.sceneId || findSceneIdByNames(row.firstScene, row.secondScene, row.planningDeptName),
     activityId:
       row.activityId ||
-      findActivityIdByNames(row.activityNodeName, row.subActivityNodeName, row.deptName),
+      findActivityIdByNames(row.activityNodeName, row.subActivityNodeName, row.planningDeptName),
     firstScene: row.firstScene,
     secondScene: row.secondScene,
     activityNodeName: row.activityNodeName,
@@ -1049,11 +1093,12 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     offeringName: row.offeringName,
     owner: row.owner,
     deptName: row.deptName,
+    planningDeptName: row.planningDeptName,
     developOwner: row.developOwner,
     planedCompleteDate: row.planedCompleteDate,
     status: row.status,
   });
-  syncManagedTaxonomiesForDepartment(row.deptName);
+  syncManagedTaxonomiesForDepartment(row.planningDeptName);
   markPlanningPersonValueSelected('owner', planningPersonValue('owner'));
   markPlanningPersonValueSelected('developOwner', planningPersonValue('developOwner'));
 }
@@ -1173,6 +1218,7 @@ function validateForm(): boolean {
     'level',
     'owner',
     'deptName',
+    'planningDeptName',
     'developOwner',
   ];
 
@@ -1271,6 +1317,7 @@ function collectBatchPatch(): SkillPlanningBatchPatch {
   const offeringName = batchForm.offeringName.trim();
   const owner = batchForm.owner.trim();
   const deptName = batchForm.deptName.trim();
+  const planningDeptName = batchForm.planningDeptName.trim();
   const developOwner = batchForm.developOwner.trim();
   const planedCompleteDate = batchForm.planedCompleteDate.trim();
   const status = batchForm.status.trim();
@@ -1278,13 +1325,8 @@ function collectBatchPatch(): SkillPlanningBatchPatch {
   if (description) patch.description = description;
   if (offeringName) patch.offeringName = offeringName;
   if (owner) patch.owner = owner;
-  if (deptName) {
-    patch.deptName = deptName;
-    for (let i = 1; i < 6; i++) {
-      patch[`l${i}DeptCode`] = batchForm[`l${i}DeptCode`];
-      patch[`l${i}DeptName`] = batchForm[`l${i}DeptName`];
-    }
-  }
+  if (deptName) patch.deptName = deptName;
+  if (planningDeptName) patch.planningDeptName = planningDeptName;
   if (developOwner) patch.developOwner = developOwner;
   if (planedCompleteDate) patch.planedCompleteDate = planedCompleteDate;
   if (status) patch.status = status as SkillPlanningProgress;
@@ -1637,14 +1679,14 @@ onBeforeUnmount(() => {
       <section class="planning-filter-card" aria-label="Skill 规划查询">
         <div class="filter-grid">
           <div class="planning-field planning-field--dept">
-            <span>归属部门</span>
+            <span>规划部门</span>
             <MarketDeptCascader
               v-model="planningDepartmentSegments"
               class="planning-dept-cascader"
               :tree="planningDepartmentTree"
               :max-level="4"
               selection-mode="confirm"
-              aria-label="Skill 规划部门级联筛选（departmentL3～departmentL6）"
+              aria-label="按规划部门筛选 Skill"
               @change="onPlanningDepartmentChange"
               @clear="onPlanningDepartmentClear"
               @done="onPlanningDepartmentDone"
@@ -2050,7 +2092,8 @@ onBeforeUnmount(() => {
                 </th>
                 <th>产品</th>
                 <th>责任 Owner</th>
-                <th>归属部门</th>
+                <th title="随责任 Owner 自动变化">Owner 所在部门</th>
+                <th>规划部门</th>
                 <th>开发责任人</th>
                 <th>
                   <button
@@ -2387,6 +2430,24 @@ onBeforeUnmount(() => {
                 </td>
                 <td>
                   <div class="planning-inline-field">
+                    <select
+                      v-model="planningForm.planningDeptName"
+                      class="planning-inline-control"
+                      :class="{ 'has-error': formErrors.planningDeptName }"
+                      @change="onPlanningDepartmentFieldChange"
+                    >
+                      <option value="">请选择</option>
+                      <option v-for="item in planningDepartmentOptions" :key="item" :value="item">
+                        {{ item }}
+                      </option>
+                    </select>
+                    <small v-if="formErrors.planningDeptName" class="planning-inline-error">{{
+                      formErrors.planningDeptName
+                    }}</small>
+                  </div>
+                </td>
+                <td>
+                  <div class="planning-inline-field">
                     <div class="planning-person-select">
                       <input
                         :value="planningForm.developOwner"
@@ -2479,10 +2540,10 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="loading">
-                <td colspan="15" class="planning-empty">正在加载 Skill 规划数据...</td>
+                <td colspan="16" class="planning-empty">正在加载 Skill 规划数据...</td>
               </tr>
               <tr v-else-if="rows.length === 0 && !inlineCreateActive">
-                <td colspan="15" class="planning-empty">暂无符合条件的 Skill 规划</td>
+                <td colspan="16" class="planning-empty">暂无符合条件的 Skill 规划</td>
               </tr>
               <template v-else>
                 <template v-for="row in rows" :key="row.id">
@@ -2753,6 +2814,28 @@ onBeforeUnmount(() => {
                     </td>
                     <td>
                       <div class="planning-inline-field">
+                        <select
+                          v-model="planningForm.planningDeptName"
+                          class="planning-inline-control"
+                          :class="{ 'has-error': formErrors.planningDeptName }"
+                          @change="onPlanningDepartmentFieldChange"
+                        >
+                          <option value="">请选择</option>
+                          <option
+                            v-for="item in planningDepartmentOptions"
+                            :key="item"
+                            :value="item"
+                          >
+                            {{ item }}
+                          </option>
+                        </select>
+                        <small v-if="formErrors.planningDeptName" class="planning-inline-error">{{
+                          formErrors.planningDeptName
+                        }}</small>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="planning-inline-field">
                         <div class="planning-person-select">
                           <input
                             :value="planningForm.developOwner"
@@ -2868,6 +2951,7 @@ onBeforeUnmount(() => {
                     <td>{{ row.offeringName }}</td>
                     <td>{{ row.owner }}</td>
                     <td>{{ row.deptName }}</td>
+                    <td>{{ row.planningDeptName || '待明确' }}</td>
                     <td>{{ row.developOwner }}</td>
                     <td>{{ row.planedCompleteDate }}</td>
                     <td>
@@ -2941,7 +3025,10 @@ onBeforeUnmount(() => {
       @changed="handleManagedActivitiesChanged"
     />
 
-    <SkillMasterManagementPanel v-if="activePlanningTab === 'management'" />
+    <SkillMasterManagementPanel
+      v-if="activePlanningTab === 'management'"
+      :department-tree="planningDepartmentTree"
+    />
 
     <DepartmentPlanningPermissionPanel
       v-if="props.canConfigureDepartmentPermissions && activePlanningTab === 'permissions'"
@@ -3141,7 +3228,7 @@ onBeforeUnmount(() => {
                 <small v-if="batchErrors.owner">{{ batchErrors.owner }}</small>
               </label>
               <label class="planning-field">
-                <span>归属部门</span>
+                <span>Owner 所在部门</span>
                 <input
                   :value="batchForm.deptName"
                   type="text"
@@ -3150,6 +3237,15 @@ onBeforeUnmount(() => {
                   placeholder="随责任 Owner 自动带出"
                 />
                 <small v-if="batchErrors.deptName">{{ batchErrors.deptName }}</small>
+              </label>
+              <label class="planning-field">
+                <span>规划部门</span>
+                <select v-model="batchForm.planningDeptName">
+                  <option value="">不填写则不修改</option>
+                  <option v-for="item in planningDepartmentOptions" :key="item" :value="item">
+                    {{ item }}
+                  </option>
+                </select>
               </label>
               <label class="planning-field">
                 <span>开发责任人</span>
@@ -3439,7 +3535,7 @@ onBeforeUnmount(() => {
               <small v-if="formErrors.owner">{{ formErrors.owner }}</small>
             </label>
             <label class="planning-field">
-              <span>归属部门 <em>*</em></span>
+              <span>Owner 所在部门 <em>*</em></span>
               <input
                 :value="planningForm.deptName"
                 type="text"
@@ -3448,6 +3544,20 @@ onBeforeUnmount(() => {
                 placeholder="随责任 Owner 自动带出"
               />
               <small v-if="formErrors.deptName">{{ formErrors.deptName }}</small>
+            </label>
+            <label class="planning-field">
+              <span>规划部门 <em>*</em></span>
+              <select
+                v-model="planningForm.planningDeptName"
+                :class="{ 'has-error': formErrors.planningDeptName }"
+                @change="onPlanningDepartmentFieldChange"
+              >
+                <option value="">请选择规划部门</option>
+                <option v-for="item in planningDepartmentOptions" :key="item" :value="item">
+                  {{ item }}
+                </option>
+              </select>
+              <small v-if="formErrors.planningDeptName">{{ formErrors.planningDeptName }}</small>
             </label>
             <label class="planning-field">
               <span>开发责任人 <em>*</em></span>
@@ -3949,7 +4059,7 @@ onBeforeUnmount(() => {
 
 .planning-table {
   width: 100%;
-  min-width: 1800px;
+  min-width: 1920px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;

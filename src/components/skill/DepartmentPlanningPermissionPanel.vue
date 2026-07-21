@@ -933,4 +933,31 @@ onBeforeUnmount(() => {
     padding: 15px;
   }
 }
+
+/* Responsive permission typography for wide screens */
+@media (min-width: 1440px) {
+  .department-pane header strong {
+    font-size: clamp(13px, 0.8vw, 16px);
+  }
+
+  .department-pane header small,
+  .department-list button,
+  .department-list p,
+  .member-pane__head p,
+  .permission-note p,
+  .person-search > input,
+  .person-search__panel strong,
+  .person-search__panel small,
+  .person-search__panel em,
+  .member-table th,
+  .member-table td,
+  .member-cell strong,
+  .revoke-btn {
+    font-size: clamp(10px, 0.625vw, 13px);
+  }
+
+  .member-pane__head strong {
+    font-size: clamp(16px, 1vw, 20px);
+  }
+}
 </style>

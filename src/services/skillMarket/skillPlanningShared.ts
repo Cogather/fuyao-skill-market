@@ -20,6 +20,7 @@ export interface SkillPlanningItem {
   owner: string;
   deptCode: string;
   deptName: string;
+  planningDeptName: string;
   developOwner: string;
   planedCompleteDate: string;
   status: SkillPlanningProgress;
@@ -37,6 +38,7 @@ export interface SkillPlanningItem {
 
 export interface SkillPlanningQuery {
   deptName?: string;
+  planningDeptName?: string;
   departmentL3?: string;
   departmentL4?: string;
   departmentL5?: string;
@@ -106,6 +108,7 @@ export type SkillPlanningBatchPatch = Partial<
     | 'offeringName'
     | 'owner'
     | 'deptName'
+    | 'planningDeptName'
     | 'developOwner'
     | 'planedCompleteDate'
     | 'status'
@@ -131,6 +134,7 @@ export const skillPlanningFieldMap: Record<string, keyof SkillPlanningPayload> =
   '责任 Owener': 'owner',
   责任Owener: 'owner',
   归属部门: 'deptName',
+  规划部门: 'planningDeptName',
   开发责任人: 'developOwner',
   计划完成时间: 'planedCompleteDate',
   当前进展: 'status',
@@ -147,6 +151,7 @@ export const skillPlanningExportHeaders: Array<keyof typeof skillPlanningFieldMa
   '产品',
   '责任 Owner',
   '归属部门',
+  '规划部门',
   '开发责任人',
   '计划完成时间',
   '当前进展',
@@ -186,7 +191,9 @@ export function createEmptySkillPlanningPayload(): SkillPlanningPayload {
     offeringId: '',
     offeringName: '',
     owner: '',
+    deptCode: '',
     deptName: '',
+    planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
     status: defaultProgress,
@@ -209,7 +216,9 @@ export function normalizeSkillPlanningPayload(
     offeringId: normalizeText(payload.offeringId),
     offeringName: normalizeText(payload.offeringName),
     owner: normalizeText(payload.owner),
+    deptCode: normalizeText(payload.deptCode),
     deptName: normalizeText(payload.deptName),
+    planningDeptName: normalizeText(payload.planningDeptName) || normalizeText(payload.deptName),
     developOwner: normalizeText(payload.developOwner),
     planedCompleteDate: normalizeText(payload.planedCompleteDate),
     status: normalizeProgress(payload.status),
@@ -236,7 +245,9 @@ export function normalizeSkillPlanningItem(value: unknown): SkillPlanningItem {
     offeringId: normalizeText(record.offeringId),
     offeringName: normalizeText(record.offeringName),
     owner: normalizeText(record.owner),
+    deptCode: normalizeText(record.deptCode),
     deptName: normalizeText(record.deptName),
+    planningDeptName: normalizeText(record.planningDeptName) || normalizeText(record.deptName),
     developOwner: normalizeText(record.developOwner),
     planedCompleteDate: normalizeText(record.planedCompleteDate),
     status: normalizeProgress(record.status),
@@ -251,7 +262,11 @@ export function rowToSkillPlanningPayload(row: Record<string, unknown>): SkillPl
   const payload = createEmptySkillPlanningPayload();
   for (const [label, key] of Object.entries(skillPlanningFieldMap)) {
     if (row[label] !== undefined) {
-      payload[key] = key === 'status' ? normalizeProgress(row[label]) : normalizeText(row[label]);
+      if (key === 'status') {
+        payload.status = normalizeProgress(row[label]);
+      } else {
+        (payload as unknown as Record<string, string>)[key] = normalizeText(row[label]);
+      }
     }
   }
   return normalizeSkillPlanningPayload(payload);
@@ -269,6 +284,7 @@ export function itemToSkillPlanningExportRow(item: SkillPlanningItem): Record<st
     产品: item.offeringName,
     '责任 Owner': item.owner,
     归属部门: item.deptName,
+    规划部门: item.planningDeptName,
     开发责任人: item.developOwner,
     计划完成时间: item.planedCompleteDate,
     当前进展: item.status,

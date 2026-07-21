@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   getSkillTaskAssociation,
   listSkillPlanningTasks,
+  updateSkillTaskProgress,
   updateSkillTaskStatus,
   type SkillPlanningTask,
   type SkillTaskAssociation,
@@ -25,6 +26,7 @@ const statusFilter = ref<'all' | SkillTaskStatus>('all');
 const page = ref(1);
 const pageSize = 10;
 const toast = ref('');
+const progressDrafts = reactive<Record<string, number>>({});
 let toastTimer: number | null = null;
 
 const detailDialog = reactive({
@@ -61,9 +63,8 @@ const notices = ref<TaskNotice[]>([
 ]);
 
 const statusOptions: Array<{ value: SkillTaskStatus; label: string }> = [
-  { value: 'todo', label: '待启动' },
-  { value: 'inProgress', label: '进行中' },
-  { value: 'published', label: '已发布' },
+  { value: 'todo', label: '未开始' },
+  { value: 'inProgress', label: '开发中' },
   { value: 'done', label: '已完成' },
 ];
 
@@ -79,7 +80,7 @@ const filteredTasks = computed(() => {
   return tasks.value.filter((task) => {
     if (statusFilter.value !== 'all' && task.status !== statusFilter.value) return false;
     if (!text) return true;
-    return [task.name, task.department, task.owner, task.description]
+    return [task.name, task.department, task.planningDepartment, task.owner, task.description]
       .join(' ')
       .toLowerCase()
       .includes(text);
@@ -100,6 +101,9 @@ const yesterdayNotices = computed(() => notices.value.filter((notice) => notice.
 
 function reload(): void {
   tasks.value = listSkillPlanningTasks(props.userId);
+  tasks.value.forEach((task) => {
+    progressDrafts[task.id] = task.progress;
+  });
   if (page.value > totalPages.value) page.value = totalPages.value;
 }
 
@@ -151,14 +155,26 @@ function startTask(task: SkillPlanningTask): void {
   updateSkillTaskStatus(task.id, 'inProgress');
   addNotice('任务已开始', task.name, 'change');
   reload();
-  showToast('“' + task.name + '”已进入进行中');
+  showToast('“' + task.name + '”已进入开发中');
 }
 
-function submitPublish(task: SkillPlanningTask): void {
-  updateSkillTaskStatus(task.id, 'published');
-  addNotice('已提交发布', task.name, 'publish');
+function saveProgress(task: SkillPlanningTask): void {
+  const input = Number(progressDrafts[task.id]);
+  const progress = Number.isFinite(input)
+    ? Math.max(1, Math.min(99, Math.round(input)))
+    : task.progress;
+  progressDrafts[task.id] = progress;
+  updateSkillTaskProgress(task.id, progress);
+  addNotice('进度已更新', `${task.name}：${progress}%`, 'change');
   reload();
-  showToast('“' + task.name + '”已提交发布');
+  showToast(`“${task.name}”进度已更新为 ${progress}%`);
+}
+
+function completeTask(task: SkillPlanningTask): void {
+  updateSkillTaskStatus(task.id, 'done');
+  addNotice('任务已完成', task.name, 'publish');
+  reload();
+  showToast('“' + task.name + '”已完成');
 }
 
 function openSkill(task: SkillPlanningTask): void {
@@ -193,7 +209,7 @@ onBeforeUnmount(() => {
       <div>
         <span>MY SKILL TODO CENTER</span>
         <h3>我的 Skill 待办中心</h3>
-        <p>聚焦当前登录用户负责的 Skill 任务，完成启动、发布和进度跟踪。</p>
+        <p>聚焦当前登录用户负责的 Skill 任务，完成启动、开发和进度跟踪。</p>
       </div>
       <div class="status-flow" aria-label="任务状态流转">
         <span v-for="(item, index) in statusOptions" :key="item.value">
@@ -245,7 +261,8 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th>Skill 名称</th>
-                <th>所属部门</th>
+                <th title="随责任 Owner 自动变化">Owner 所在部门</th>
+                <th>规划部门</th>
                 <th>负责人</th>
                 <th>状态</th>
                 <th>进度 %</th>
@@ -265,6 +282,7 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
                 <td>{{ task.department || '待分配' }}</td>
+                <td>{{ task.planningDepartment || '待明确' }}</td>
                 <td>
                   <div class="owner-cell">
                     <strong>{{ task.owner || '我' }}</strong>
@@ -279,7 +297,19 @@ onBeforeUnmount(() => {
                 <td>
                   <div class="progress-cell">
                     <div><i :style="{ width: task.progress + '%' }"></i></div>
-                    <strong>{{ task.progress }}%</strong>
+                    <label v-if="task.status === 'inProgress'" class="progress-input">
+                      <input
+                        v-model.number="progressDrafts[task.id]"
+                        type="number"
+                        min="1"
+                        max="99"
+                        step="1"
+                        aria-label="当前进度百分比"
+                        @keyup.enter="saveProgress(task)"
+                      />
+                      <span>%</span>
+                    </label>
+                    <strong v-else>{{ task.progress }}%</strong>
                   </div>
                 </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
@@ -293,14 +323,14 @@ onBeforeUnmount(() => {
                     >
                       开始
                     </button>
-                    <button
-                      v-if="task.status === 'inProgress'"
-                      type="button"
-                      class="is-primary"
-                      @click="submitPublish(task)"
-                    >
-                      提交发布
-                    </button>
+                    <template v-if="task.status === 'inProgress'">
+                      <button type="button" class="is-secondary" @click="saveProgress(task)">
+                        保存进度
+                      </button>
+                      <button type="button" class="is-primary" @click="completeTask(task)">
+                        完成
+                      </button>
+                    </template>
                     <button type="button" class="is-link" @click="openSkill(task)">
                       查看 Skill
                     </button>
@@ -308,7 +338,7 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="pagedTasks.length === 0">
-                <td colspan="7" class="task-empty">
+                <td colspan="8" class="task-empty">
                   {{ props.userId ? '当前没有符合条件的待办任务' : '正在获取当前用户信息…' }}
                 </td>
               </tr>
@@ -386,8 +416,12 @@ onBeforeUnmount(() => {
 
           <dl>
             <div>
-              <dt>所属部门</dt>
+              <dt>Owner 所在部门</dt>
               <dd>{{ detailDialog.task.department || '待分配' }}</dd>
+            </div>
+            <div>
+              <dt>规划部门</dt>
+              <dd>{{ detailDialog.task.planningDepartment || '待明确' }}</dd>
             </div>
             <div>
               <dt>负责人</dt>
@@ -536,9 +570,6 @@ onBeforeUnmount(() => {
 .metric-card.is-inProgress {
   --metric-color: #e69a2f;
 }
-.metric-card.is-published {
-  --metric-color: #4d72df;
-}
 .metric-card.is-done {
   --metric-color: #2f9d72;
 }
@@ -629,7 +660,8 @@ onBeforeUnmount(() => {
 }
 
 .task-table-wrap {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .task-table {
@@ -662,22 +694,25 @@ onBeforeUnmount(() => {
   width: 245px;
 }
 .task-table th:nth-child(2) {
-  width: 110px;
+  width: 106px;
 }
 .task-table th:nth-child(3) {
-  width: 100px;
+  width: 106px;
 }
 .task-table th:nth-child(4) {
-  width: 82px;
-}
-.task-table th:nth-child(5) {
-  width: 130px;
-}
-.task-table th:nth-child(6) {
   width: 96px;
 }
+.task-table th:nth-child(5) {
+  width: 78px;
+}
+.task-table th:nth-child(6) {
+  width: 124px;
+}
+.task-table th:nth-child(7) {
+  width: 78px;
+}
 .task-table th:last-child {
-  width: 150px;
+  width: 186px;
   text-align: right;
 }
 
@@ -747,11 +782,6 @@ onBeforeUnmount(() => {
   color: #b06a18;
 }
 
-.status-badge.is-published {
-  background: #eaf0ff;
-  color: #4568cf;
-}
-
 .status-badge.is-done {
   background: #eaf8f1;
   color: #27815d;
@@ -780,6 +810,48 @@ onBeforeUnmount(() => {
   background: linear-gradient(90deg, #5478e4, #49a8dc);
 }
 
+.progress-input {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 64px;
+  box-sizing: border-box;
+  width: 64px;
+  height: 28px;
+  overflow: hidden;
+  padding: 0 8px;
+  border: 1px solid #cfd8ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #53627a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.progress-input:focus-within {
+  border-color: #5478e4;
+  box-shadow: 0 0 0 2px rgba(84, 120, 228, 0.12);
+}
+
+.progress-input input {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  appearance: textfield;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+}
+
+.progress-input input::-webkit-inner-spin-button,
+.progress-input input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 .progress-cell strong {
   width: 30px;
   color: #53627a;
@@ -788,8 +860,10 @@ onBeforeUnmount(() => {
 
 .task-actions {
   display: flex;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .task-actions button {
@@ -801,6 +875,12 @@ onBeforeUnmount(() => {
   font-size: 9px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.task-actions .is-secondary {
+  border: 1px solid #cfd8ea;
+  background: #fff;
+  color: #466de0;
 }
 
 .task-actions .is-primary {
@@ -1171,6 +1251,53 @@ onBeforeUnmount(() => {
     flex-direction: column;
     justify-content: center;
     gap: 7px;
+  }
+}
+
+/* Responsive task typography for wide screens */
+@media (min-width: 1440px) {
+  .task-toolbar > div:first-child strong,
+  .notification-panel > header strong {
+    font-size: clamp(14px, 0.86vw, 17px);
+  }
+
+  .task-toolbar > div:first-child small,
+  .task-table th,
+  .task-table td,
+  .owner-cell strong,
+  .status-badge,
+  .progress-input,
+  .task-actions button,
+  .notification-panel article strong {
+    font-size: clamp(10px, 0.625vw, 13px);
+  }
+
+  .task-name-cell strong {
+    font-size: clamp(11px, 0.7vw, 14px);
+  }
+
+  .task-name-cell small,
+  .owner-cell small,
+  .progress-cell > strong,
+  .notification-panel h4,
+  .notification-panel article p,
+  .notification-panel time,
+  .task-pagination {
+    font-size: clamp(9px, 0.56vw, 12px);
+  }
+
+  .progress-input {
+    flex-basis: clamp(64px, 4vw, 76px);
+    width: clamp(64px, 4vw, 76px);
+  }
+
+  .task-table th:last-child {
+    width: clamp(184px, 10vw, 198px);
+  }
+
+  .task-actions button {
+    height: clamp(28px, 1.8vw, 34px);
+    padding-inline: clamp(7px, 0.5vw, 10px);
   }
 }
 </style>
