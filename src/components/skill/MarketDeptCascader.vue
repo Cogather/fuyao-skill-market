@@ -31,6 +31,8 @@ const props = withDefaults(
     selectionMode?: 'immediate' | 'confirm';
     permissionMode?: 'none' | 'review-center';
     permissionPath?: string[];
+    allowedPaths?: string[][];
+    disabled?: boolean;
   }>(),
   {
     maxLevel: 6,
@@ -39,6 +41,8 @@ const props = withDefaults(
     selectionMode: 'immediate',
     permissionMode: 'none',
     permissionPath: () => [],
+    allowedPaths: () => [],
+    disabled: false,
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
     clearText: '清空部门',
@@ -71,6 +75,9 @@ const selectedLabel = computed(() =>
   selectedPath.value.length > 0 ? selectedPath.value.join(' / ') : props.allLabel,
 );
 const normalizedPermissionPath = computed(() => normalizePath(props.permissionPath ?? []));
+const normalizedAllowedPaths = computed(() =>
+  (props.allowedPaths ?? []).map((path) => normalizePath(path)).filter((path) => path.length > 0),
+);
 
 function normalizePath(segments: string[]): string[] {
   return segments.map((segment) => segment.trim()).filter(Boolean);
@@ -140,23 +147,35 @@ function hasChildren(levelIndex: number, name: string): boolean {
 }
 
 function pathAllowedByPermission(path: string[]): boolean {
-  if (props.permissionMode !== 'review-center') {
-    return true;
-  }
-
-  const permissionPath = normalizedPermissionPath.value;
   const normalizedPath = normalizePath(path);
-  if (permissionPath.length === 0 || normalizedPath.length === 0) {
-    return true;
+  const allowedPaths = normalizedAllowedPaths.value;
+  if (
+    allowedPaths.length > 0 &&
+    !allowedPaths.some(
+      (allowedPath) =>
+        normalizedPath.length <= allowedPath.length &&
+        normalizedPath.every((segment, index) => segment === allowedPath[index]),
+    )
+  ) {
+    return false;
   }
 
-  const pathIsBeforePermissionDept =
-    normalizedPath.length <= permissionPath.length &&
-    normalizedPath.every((segment, index) => segment === permissionPath[index]);
-  const pathIsInsidePermissionDept = permissionPath.every(
-    (segment, index) => normalizedPath[index] === segment,
-  );
-  return pathIsBeforePermissionDept || pathIsInsidePermissionDept;
+  if (props.permissionMode === 'review-center') {
+    const permissionPath = normalizedPermissionPath.value;
+    if (permissionPath.length === 0 || normalizedPath.length === 0) {
+      return true;
+    }
+
+    const pathIsBeforePermissionDept =
+      normalizedPath.length <= permissionPath.length &&
+      normalizedPath.every((segment, index) => segment === permissionPath[index]);
+    const pathIsInsidePermissionDept = permissionPath.every(
+      (segment, index) => normalizedPath[index] === segment,
+    );
+    return pathIsBeforePermissionDept || pathIsInsidePermissionDept;
+  }
+
+  return true;
 }
 
 function isOptionDisabled(levelIndex: number, name: string): boolean {
@@ -232,6 +251,9 @@ function setOpen(nextOpen: boolean): void {
 }
 
 function toggle(): void {
+  if (props.disabled) {
+    return;
+  }
   setOpen(!open.value);
 }
 
@@ -330,6 +352,7 @@ onBeforeUnmount(() => {
       type="button"
       class="market-dept-cascader-trigger"
       :class="{ 'is-open': open }"
+      :disabled="disabled"
       aria-haspopup="true"
       :aria-expanded="open"
       @click.stop="toggle"
@@ -430,6 +453,13 @@ onBeforeUnmount(() => {
 
 .market-dept-cascader-trigger:hover {
   border-color: #c5d0e0;
+}
+
+.market-dept-cascader-trigger:disabled {
+  border-color: #dfe6f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 .market-dept-cascader-trigger.is-open,

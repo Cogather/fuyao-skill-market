@@ -304,38 +304,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="master-panel" aria-label="Skill 管理">
-    <div class="master-hero">
-      <div>
-        <span>SKILL MASTER DATA</span>
-        <h3>Skill 主体与关联范围</h3>
-        <p>Owner 所在部门随人员自动变化；规划部门、场景和活动通过关系独立维护。</p>
-      </div>
-      <div class="master-metrics">
-        <div>
-          <strong>{{ metrics.total }}</strong
-          ><span>Skill 总数</span>
-        </div>
-        <div>
-          <strong>{{ metrics.building }}</strong
-          ><span>建设中</span>
-        </div>
-        <div>
-          <strong>{{ metrics.complete }}</strong
-          ><span>已完成</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="relation-map">
-      <div><small>独立主体</small><strong>Skill</strong><span>名称 · Owner · 进展</span></div>
-      <b>通过关系按需关联 →</b>
-      <section>
-        <div><small>分类体系</small><strong>场景</strong><span>一级 / 二级场景</span></div>
-        <div><small>业务过程</small><strong>活动</strong><span>活动 / 子活动</span></div>
-        <div><small>规划范围</small><strong>规划部门</strong><span>支持关联多个部门</span></div>
-      </section>
-    </div>
-
     <div class="master-board">
       <header class="master-toolbar">
         <div>

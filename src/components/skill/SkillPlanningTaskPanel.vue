@@ -158,59 +158,6 @@ function selectStatus(status: SkillTaskStatus): void {
   statusFilter.value = statusFilter.value === status ? 'all' : status;
 }
 
-function addNotice(title: string, detail: string, tone: TaskNotice['tone']): void {
-  notices.value.unshift({
-    id: 'notice-' + Date.now(),
-    day: '今天',
-    title,
-    detail,
-    time: new Date().toLocaleTimeString('zh-CN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }),
-    tone,
-  });
-}
-
-function startTask(task: SkillPlanningTask): void {
-  if (remoteTasks) {
-    showToast('后端暂未提供待办状态流转接口');
-    return;
-  }
-  updateSkillTaskStatus(task.id, 'inProgress');
-  addNotice('任务已开始', task.name, 'change');
-  reload();
-  showToast('“' + task.name + '”已进入开发中');
-}
-
-function saveProgress(task: SkillPlanningTask): void {
-  if (remoteTasks) {
-    showToast('后端暂未提供待办进度更新接口');
-    return;
-  }
-  const input = Number(progressDrafts[task.id]);
-  const progress = Number.isFinite(input)
-    ? Math.max(1, Math.min(99, Math.round(input)))
-    : task.progress;
-  progressDrafts[task.id] = progress;
-  updateSkillTaskProgress(task.id, progress);
-  addNotice('进度已更新', `${task.name}：${progress}%`, 'change');
-  reload();
-  showToast(`“${task.name}”进度已更新为 ${progress}%`);
-}
-
-function completeTask(task: SkillPlanningTask): void {
-  if (remoteTasks) {
-    showToast('后端暂未提供待办状态流转接口');
-    return;
-  }
-  updateSkillTaskStatus(task.id, 'done');
-  addNotice('任务已完成', task.name, 'publish');
-  reload();
-  showToast('“' + task.name + '”已完成');
-}
-
 function openSkill(task: SkillPlanningTask): void {
   Object.assign(detailDialog, {
     open: true,
@@ -302,7 +249,6 @@ onBeforeUnmount(() => {
                 <th>规划部门</th>
                 <th>负责人</th>
                 <th>状态</th>
-                <th>进度 %</th>
                 <th>更新时间</th>
                 <th>操作</th>
               </tr>
@@ -331,46 +277,9 @@ onBeforeUnmount(() => {
                     {{ statusLabel(task.status) }}
                   </span>
                 </td>
-                <td>
-                  <div class="progress-cell">
-                    <div><i :style="{ width: task.progress + '%' }"></i></div>
-                    <label
-                      v-if="task.status === 'inProgress' && !remoteTasks"
-                      class="progress-input"
-                    >
-                      <input
-                        v-model.number="progressDrafts[task.id]"
-                        type="number"
-                        min="1"
-                        max="99"
-                        step="1"
-                        aria-label="当前进度百分比"
-                        @keyup.enter="saveProgress(task)"
-                      />
-                      <span>%</span>
-                    </label>
-                    <strong v-else>{{ task.progress }}%</strong>
-                  </div>
-                </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
                 <td>
                   <div class="task-actions">
-                    <button
-                      v-if="task.status === 'todo' && !remoteTasks"
-                      type="button"
-                      class="is-primary"
-                      @click="startTask(task)"
-                    >
-                      开始
-                    </button>
-                    <template v-if="task.status === 'inProgress' && !remoteTasks">
-                      <button type="button" class="is-secondary" @click="saveProgress(task)">
-                        保存进度
-                      </button>
-                      <button type="button" class="is-primary" @click="completeTask(task)">
-                        完成
-                      </button>
-                    </template>
                     <button type="button" class="is-link" @click="openSkill(task)">
                       查看 Skill
                     </button>

@@ -49,6 +49,7 @@ const toast = ref('');
 let toastTimer: number | null = null;
 let personSearchTimer: number | null = null;
 let personSearchSeq = 0;
+const userProfileCache = new Map<string, SkillPlanningUserOption>();
 
 const personSearch = reactive({
   value: '',
@@ -119,6 +120,10 @@ function readText(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 }
 
+function normalizeUserId(value: unknown): string {
+  return readText(value).toLowerCase();
+}
+
 function readUserIds(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -183,12 +188,66 @@ function normalizeDepartmentRecords(response: unknown): DepartmentPermissionReco
           userId,
           userName: '',
           label: userId === ownerUserId ? userId + '（Owner）' : userId,
-          departmentName,
+          departmentName: '',
           grantedAt: updatedAt,
         })),
       },
     ];
   });
+}
+
+function cacheUserOptions(options: SkillPlanningUserOption[]): void {
+  options.forEach((option) => {
+    const key = normalizeUserId(option.id);
+    if (key) userProfileCache.set(key, option);
+  });
+}
+
+async function resolveUserProfile(userId: string): Promise<SkillPlanningUserOption | undefined> {
+  const key = normalizeUserId(userId);
+  const cached = userProfileCache.get(key);
+  if (cached) return cached;
+
+  try {
+    const options = await querySkillPlanningUsers(userId);
+    cacheUserOptions(options);
+    return options.find((option) => normalizeUserId(option.id) === key);
+  } catch {
+    return undefined;
+  }
+}
+
+async function enrichMemberProfiles(
+  departmentRecords: DepartmentPermissionRecord[],
+): Promise<DepartmentPermissionRecord[]> {
+  const userIds = [
+    ...new Set(
+      departmentRecords.flatMap((record) => record.members.map((member) => member.userId)),
+    ),
+  ];
+  const profiles = new Map<string, SkillPlanningUserOption>();
+
+  await Promise.all(
+    userIds.map(async (userId) => {
+      const profile = await resolveUserProfile(userId);
+      if (profile) profiles.set(normalizeUserId(userId), profile);
+    }),
+  );
+
+  return departmentRecords.map((record) => ({
+    ...record,
+    members: record.members.map((member) => {
+      const profile = profiles.get(normalizeUserId(member.userId));
+      if (!profile) return member;
+      const ownerSuffix = member.userId === record.ownerUserId ? '（Owner）' : '';
+      return {
+        ...member,
+        userName: profile.chName,
+        label: `${profile.label}${ownerSuffix}`,
+        departmentName: optionDepartment(profile),
+      };
+    }),
+  }));
 }
 
 async function reload(): Promise<void> {
@@ -199,7 +258,7 @@ async function reload(): Promise<void> {
       return;
     }
     const response = await skillBaseService.querySkillPlanningDepartments({ userId });
-    records.value = normalizeDepartmentRecords(response);
+    records.value = await enrichMemberProfiles(normalizeDepartmentRecords(response));
   } else {
     records.value = listDepartmentPlanningPermissions().map((record) => ({
       ...record,
@@ -281,6 +340,7 @@ async function searchUsers(keyword = personSearch.value): Promise<void> {
   try {
     const options = await querySkillPlanningUsers(text);
     if (requestSeq !== personSearchSeq) return;
+    cacheUserOptions(options);
     const grantedIds = new Set(selectedRecord.value.members.map((member) => member.userId));
     personSearch.options = options.filter((option) => !grantedIds.has(option.id));
     personSearch.message = personSearch.options.length > 0 ? '' : '暂无可添加的匹配人员';
@@ -311,11 +371,19 @@ function openPersonSearch(): void {
 
 function optionDepartment(option: SkillPlanningUserOption): string {
   const legacyDepartment = (option as SkillPlanningUserOption & { department?: string }).department;
-  return option.deptName || legacyDepartment || '';
+  const hwDepartment = Object.entries(option.raw)
+    .flatMap(([key, value]) => {
+      const match = /^hwDepartName(\d+)$/i.exec(key);
+      const name = readText(value);
+      return match && name ? [{ level: Number(match[1]), name }] : [];
+    })
+    .sort((left, right) => right.level - left.level)[0]?.name;
+  return hwDepartment || option.deptName || legacyDepartment || '';
 }
 
 async function addPermission(option: SkillPlanningUserOption): Promise<void> {
   try {
+    cacheUserOptions([option]);
     if (transportIsHttp) {
       const record = selectedRecord.value;
       await updateRemoteAdmins(record, [

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   getActivityOptionGroups,
   getDefaultActivityRecords,
@@ -17,6 +17,7 @@ import {
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
+import MarketDeptCascader from './MarketDeptCascader.vue';
 
 type TaxonomyKind = 'scene' | 'activity';
 type TaxonomyRecord = SceneRecord | ActivityRecord;
@@ -131,6 +132,11 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
 
 const departmentOptions = computed(() => flattenDepartments(props.departmentTree));
 const selectedDepartment = ref('');
+const selectedDepartmentPath = ref<string[]>([]);
+const configurableDepartmentPaths = computed(() =>
+  departmentOptions.value.map((department) => [...department.path]),
+);
+const defaultDepartmentPath = computed(() => [...(departmentOptions.value[0]?.path ?? [])]);
 const draftRecords = ref<TaxonomyRecord[]>([]);
 const savedSnapshot = ref('[]');
 const selectedPrimaryId = ref('');
@@ -140,6 +146,23 @@ const loading = ref(false);
 let departmentLoadSequence = 0;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
+
+function normalizeDepartmentPath(path: string[]): string[] {
+  return path.map((segment) => segment.trim()).filter(Boolean);
+}
+
+function sameDepartmentPath(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizeDepartmentPath(left);
+  const normalizedRight = normalizeDepartmentPath(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function departmentByPath(path: string[]): DepartmentOption | undefined {
+  return departmentOptions.value.find((department) => sameDepartmentPath(department.path, path));
+}
 
 const primaryRecords = computed(() =>
   draftRecords.value
@@ -385,12 +408,18 @@ watch(
       departmentLoadSequence += 1;
       loading.value = false;
       selectedDepartment.value = '';
+      selectedDepartmentPath.value = [];
       draftRecords.value = [];
       savedSnapshot.value = '[]';
       return;
     }
-    if (!options.some((item) => item.name === selectedDepartment.value)) {
+    const currentDepartment = departmentByPath(selectedDepartmentPath.value);
+    if (!currentDepartment) {
+      selectedDepartmentPath.value = [...options[0].path];
       selectedDepartment.value = options[0].name;
+      void loadDepartment(selectedDepartment.value);
+    } else if (currentDepartment.name !== selectedDepartment.value) {
+      selectedDepartment.value = currentDepartment.name;
       void loadDepartment(selectedDepartment.value);
     }
   },
@@ -403,19 +432,34 @@ watch([() => props.userId, () => props.isSuperAdmin], () => {
   }
 });
 
-function changeDepartment(event: Event): void {
-  const select = event.target as HTMLSelectElement;
-  const nextDepartment = select.value;
-  if (dirty.value && !window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？')) {
-    void nextTick(() => {
-      select.value = selectedDepartment.value;
-    });
-    return;
+function guardDepartmentChange(path: string[]): boolean {
+  const nextDepartment = departmentByPath(path);
+  if (!nextDepartment) {
+    notice.value = '请选择可配置的五级或六级部门。';
+    return false;
   }
-  selectedDepartment.value = nextDepartment;
-  void loadDepartment(nextDepartment);
+
+  return (
+    sameDepartmentPath(path, selectedDepartmentPath.value) ||
+    !dirty.value ||
+    window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？')
+  );
 }
 
+function changeDepartment(path: string[]): void {
+  const nextDepartment = departmentByPath(path);
+  if (!nextDepartment || sameDepartmentPath(path, selectedDepartmentPath.value)) {
+    return;
+  }
+
+  selectedDepartmentPath.value = [...nextDepartment.path];
+  selectedDepartment.value = nextDepartment.name;
+  void loadDepartment(nextDepartment.name);
+}
+
+function clearDepartment(path: string[]): void {
+  changeDepartment(path);
+}
 function childRecords(parentId: string): TaxonomyRecord[] {
   return draftRecords.value
     .filter((item) => item.parentId === parentId)
@@ -709,16 +753,25 @@ function exportRecords(): void {
       <div class="toolbar-controls">
         <label class="department-field">
           <span>配置部门</span>
-          <select :value="selectedDepartment" :disabled="loading" @change="changeDepartment">
-            <option v-if="!departmentOptions.length" value="">暂无可配置部门</option>
-            <option
-              v-for="department in departmentOptions"
-              :key="department.name"
-              :value="department.name"
-            >
-              {{ department.level }}级 · {{ department.name }}
-            </option>
-          </select>
+          <MarketDeptCascader
+            :model-value="selectedDepartmentPath"
+            class="configuration-dept-cascader"
+            :tree="departmentTree"
+            :max-level="6"
+            :allowed-paths="configurableDepartmentPaths"
+            :disabled="loading || !departmentOptions.length"
+            :all-label="departmentOptions.length ? '请选择配置部门' : '暂无可配置部门'"
+            empty-text="暂无可配置部门"
+            clear-text="恢复默认选择"
+            clear-behavior="reset"
+            :clear-value="defaultDepartmentPath"
+            selection-mode="confirm"
+            aria-label="配置部门级联选择"
+            :before-clear="() => guardDepartmentChange(defaultDepartmentPath)"
+            :before-done="guardDepartmentChange"
+            @clear="clearDepartment"
+            @done="changeDepartment"
+          />
         </label>
         <button
           class="primary-button"

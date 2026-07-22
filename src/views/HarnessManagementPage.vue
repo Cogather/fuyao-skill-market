@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
+import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
 import type { CurrentUserRoleDto } from '../services/skillMarket/apiTypes';
 import {
@@ -27,7 +28,7 @@ const roleContextReady = ref(false);
 const remotePermissionDepartmentNames = ref<string[]>([]);
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
-type HarnessTab = 'command' | 'planning' | 'agent' | 'extension' | 'settings';
+type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
 const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }> = [
   { key: 'command', label: 'Command 规划', description: '统一规划和管理 Command 能力。' },
@@ -35,6 +36,7 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
   { key: 'agent', label: 'Agent 规划', description: '统一规划和管理 Agent 能力。' },
   { key: 'extension', label: 'Extension 发布', description: '集中管理 Extension 的发布流程。' },
   { key: 'settings', label: '配置管理', description: '维护 Harness 管理相关的公共配置。' },
+  { key: 'tasks', label: '任务管理', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
 
 const activeHarnessTab = ref<HarnessTab>('planning');
@@ -248,6 +250,16 @@ onBeforeUnmount(() => {
         :allowed-department-names="permissionDepartmentNames"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
       />
+    </section>
+
+    <section
+      v-else-if="activeHarnessTab === 'tasks'"
+      id="harness-panel-tasks"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-tasks"
+    >
+      <HarnessTaskManagementPage :user-id="userId" />
     </section>
 
     <section

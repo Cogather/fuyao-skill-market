@@ -237,7 +237,15 @@ function readFirstText(record: Record<string, unknown>, keys: string[]): string 
 }
 
 function readDeepestDepartment(record: Record<string, unknown>): string {
-  return readFirstText(record, userDepartmentKeys);
+  const hwDepartment = Object.entries(record)
+    .flatMap(([key, value]) => {
+      const match = /^hwDepartName(\d+)$/i.exec(key);
+      const name = normalizeText(value);
+      return match && name ? [{ level: Number(match[1]), name }] : [];
+    })
+    .sort((left, right) => right.level - left.level)[0]?.name;
+
+  return hwDepartment || readFirstText(record, userDepartmentKeys);
 }
 
 function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOption[] {
