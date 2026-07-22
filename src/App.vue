@@ -39,6 +39,11 @@ function syncRouteFromParent(payload: Record<string, unknown>): void {
     return;
   }
 
+  if (['planning', 'skillPlanning', 'Skill规划', 'Skill 规划', 'skill规划'].includes(tab)) {
+    void router.push({ name: 'harness-management' });
+    return;
+  }
+
   if (payload.tab != null) {
     void router.push({
       name: 'skill-market',

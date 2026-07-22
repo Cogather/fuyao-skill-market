@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
-import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
-import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import {
   batchDeleteSkillPlanning,
@@ -37,7 +34,10 @@ import {
   findActivityIdByNames,
   getActivityOptionGroups,
 } from '../../services/skillMarket/activityManagementService';
+import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { openLink } from '@/utils/common';
+
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
 type PlanningFormMode = 'create' | 'edit';
 type PlanningDepartmentTreeNode = {
@@ -67,13 +67,15 @@ type PlanningPersonSearchState = {
 const props = withDefaults(
   defineProps<{
     departmentTree?: PlanningDepartmentTreeNode[];
-    canConfigureDepartmentPermissions?: boolean;
-    permissionDepartmentNames?: string[];
+    userId?: string;
+    allowedDepartmentNames?: string[];
+    restrictToAllowedDepartments?: boolean;
   }>(),
   {
     departmentTree: () => [],
-    canConfigureDepartmentPermissions: false,
-    permissionDepartmentNames: () => [],
+    userId: '',
+    allowedDepartmentNames: () => [],
+    restrictToAllowedDepartments: false,
   },
 );
 
@@ -103,9 +105,7 @@ const batchReadonlyHeaders = [
   '产品',
 ] as const;
 
-const activePlanningTab = ref<'skills' | 'scenes' | 'activities' | 'management' | 'permissions'>(
-  'skills',
-);
+const activePlanningTab = ref<'skills' | 'management'>('skills');
 
 const emptyFilters = {
   planningDeptName: '',
@@ -127,7 +127,14 @@ const emptyFilters = {
 };
 
 const filterForm = reactive({ ...emptyFilters });
-const planningDepartmentTree = computed(() => props.departmentTree ?? []);
+const planningDepartmentTree = computed(() => {
+  const tree = props.departmentTree ?? [];
+  if (!props.restrictToAllowedDepartments) return tree;
+  return filterPlanningDepartmentTree(
+    tree,
+    new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
+  );
+});
 const planningDepartmentSegments = ref<string[]>([]);
 const departmentL3 = ref('');
 const departmentL4 = ref('');
@@ -213,8 +220,58 @@ function collectPlanningDepartmentNames(
   return values;
 }
 
+function filterPlanningDepartmentTree(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+): PlanningDepartmentTreeNode[] {
+  return nodes.flatMap((node) => {
+    const nodeAllowed = ancestorAllowed || allowedNames.has(node.name.trim());
+    const children = filterPlanningDepartmentTree(node.children ?? [], allowedNames, nodeAllowed);
+    if (!nodeAllowed && children.length === 0) return [];
+    return [{ ...node, children }];
+  });
+}
+
+function collectAuthorizedPlanningDepartmentNames(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const name = node.name.trim();
+    const nodeAllowed = ancestorAllowed || allowedNames.has(name);
+    if (nodeAllowed && name) values.add(name);
+    collectAuthorizedPlanningDepartmentNames(
+      node.children ?? [],
+      allowedNames,
+      nodeAllowed,
+      values,
+    );
+  });
+  return values;
+}
+
+const manageablePlanningDepartmentNames = computed(() => {
+  const allowedNames = new Set(
+    props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean),
+  );
+  return collectAuthorizedPlanningDepartmentNames(planningDepartmentTree.value, allowedNames);
+});
+
+function canManagePlanningDepartment(departmentName: string): boolean {
+  return (
+    !props.restrictToAllowedDepartments ||
+    manageablePlanningDepartmentNames.value.has(departmentName.trim())
+  );
+}
+
 const planningDepartmentOptions = computed(() => {
   const values = collectPlanningDepartmentNames(planningDepartmentTree.value);
+  if (props.restrictToAllowedDepartments) {
+    return Array.from(manageablePlanningDepartmentNames.value);
+  }
   rows.value.forEach((row) => {
     if (row.planningDeptName) values.add(row.planningDeptName);
   });
@@ -242,8 +299,13 @@ const pageStart = computed(() =>
   total.value === 0 ? 0 : (pageNum.value - 1) * pageSize.value + 1,
 );
 const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
+const selectableRows = computed(() =>
+  rows.value.filter((row) => canManagePlanningDepartment(row.planningDeptName)),
+);
 const allPageSelected = computed(
-  () => rows.value.length > 0 && rows.value.every((row) => selectedIds.value.includes(row.id)),
+  () =>
+    selectableRows.value.length > 0 &&
+    selectableRows.value.every((row) => selectedIds.value.includes(row.id)),
 );
 const hasSelectedRows = computed(() => selectedIds.value.length > 0);
 const selectedImportFileSize = computed(() => {
@@ -842,32 +904,26 @@ function syncManagedTaxonomiesForDepartment(departmentName = ''): void {
 }
 
 async function loadPlanningFilterOptions(): Promise<void> {
-  const options = await querySkillPlanningFilterOptions();
-  syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
+  const options = await querySkillPlanningFilterOptions(props.userId);
+  if (transportIsHttp) {
+    primarySceneOptions.value = options.firstScene;
+    secondarySceneOptions.value = options.secondScene;
+    activityOptions.value = options.activityNodeName;
+    subActivityOptions.value = options.subActivityNodeName;
+    sceneOptionGroups.value = options.sceneGroups;
+    activityOptionGroups.value = options.activityGroups;
+  } else {
+    syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
+  }
   levelOptions.value = options.level;
   progressOptions.value = options.status as SkillPlanningProgress[];
   syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
 }
 
-function handleManagedScenesChanged(
-  groups: SkillPlanningOptionGroup[],
-  _departmentName: string,
-): void {
-  sceneOptionGroups.value = groups;
-  primarySceneOptions.value = groups.map((group) => group.value);
-  secondarySceneOptions.value = groups.flatMap((group) => group.children);
-  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
-}
-
-function handleManagedActivitiesChanged(
-  groups: SkillPlanningOptionGroup[],
-  _departmentName: string,
-): void {
-  activityOptionGroups.value = groups;
-  activityOptions.value = groups.map((group) => group.value);
-  subActivityOptions.value = groups.flatMap((group) => group.children);
-  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
-}
+watch(harnessConfigurationRevision, () => {
+  if (transportIsHttp) void loadPlanningFilterOptions();
+  else syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
+});
 
 function headerFilterOptionList(key: PlanningHeaderFilterKey): string[] {
   return planningHeaderFilterOptions.value[key];
@@ -1556,13 +1612,15 @@ function requestBatchDelete() {
 }
 
 function toggleRowSelection(id: string) {
+  const row = rows.value.find((item) => item.id === id);
+  if (!row || !canManagePlanningDepartment(row.planningDeptName)) return;
   selectedIds.value = selectedIds.value.includes(id)
     ? selectedIds.value.filter((item) => item !== id)
     : [...selectedIds.value, id];
 }
 
 function togglePageSelection() {
-  const pageIds = rows.value.map((row) => row.id);
+  const pageIds = selectableRows.value.map((row) => row.id);
   if (allPageSelected.value) {
     selectedIds.value = selectedIds.value.filter((id) => !pageIds.includes(id));
     return;
@@ -1622,11 +1680,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <nav
-      class="planning-tabs"
-      :class="{ 'has-permission-tab': props.canConfigureDepartmentPermissions }"
-      aria-label="Skill planning tabs"
-    >
+    <nav class="planning-tabs" aria-label="Skill planning tabs">
       <button
         type="button"
         class="planning-tab"
@@ -1639,39 +1693,11 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="planning-tab"
-        :class="{ 'is-active': activePlanningTab === 'scenes' }"
-        @click="activePlanningTab = 'scenes'"
-      >
-        <span class="planning-tab__icon" aria-hidden="true">02</span>
-        <span><strong>场景设置</strong><small>管理分类体系</small></span>
-      </button>
-      <button
-        type="button"
-        class="planning-tab"
-        :class="{ 'is-active': activePlanningTab === 'activities' }"
-        @click="activePlanningTab = 'activities'"
-      >
-        <span class="planning-tab__icon" aria-hidden="true">03</span>
-        <span><strong>活动管理</strong><small>管理 Skill 活动体系</small></span>
-      </button>
-      <button
-        type="button"
-        class="planning-tab"
         :class="{ 'is-active': activePlanningTab === 'management' }"
         @click="activePlanningTab = 'management'"
       >
-        <span class="planning-tab__icon" aria-hidden="true">04</span>
+        <span class="planning-tab__icon" aria-hidden="true">02</span>
         <span><strong>Skill 管理</strong><small>维护独立 Skill 主体</small></span>
-      </button>
-      <button
-        v-if="props.canConfigureDepartmentPermissions"
-        type="button"
-        class="planning-tab"
-        :class="{ 'is-active': activePlanningTab === 'permissions' }"
-        @click="activePlanningTab = 'permissions'"
-      >
-        <span class="planning-tab__icon" aria-hidden="true">05</span>
-        <span><strong>部门权限配置</strong><small>管理 Skill 规划人员</small></span>
       </button>
     </nav>
 
@@ -1815,7 +1841,12 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th class="select-col">
-                  <input type="checkbox" :checked="allPageSelected" @change="togglePageSelection" />
+                  <input
+                    type="checkbox"
+                    :checked="allPageSelected"
+                    :disabled="selectableRows.length === 0"
+                    @change="togglePageSelection"
+                  />
                 </th>
                 <th>
                   <div
@@ -2934,6 +2965,7 @@ onBeforeUnmount(() => {
                       <input
                         type="checkbox"
                         :checked="selectedIds.includes(row.id)"
+                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
                         @change="toggleRowSelection(row.id)"
                       />
                     </td>
@@ -2963,6 +2995,7 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn"
+                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
                         title="编辑"
                         aria-label="编辑"
                         @click="startInlineEdit(row)"
@@ -2975,6 +3008,7 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn icon-btn--danger"
+                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
                         title="删除"
                         aria-label="删除"
                         @click="requestDeleteRow(row)"
@@ -3011,29 +3045,9 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <SceneSettingsPanel
-      v-if="activePlanningTab === 'scenes'"
-      :department-tree="planningDepartmentTree"
-      :allowed-department-names="props.permissionDepartmentNames"
-      @changed="handleManagedScenesChanged"
-    />
-
-    <ActivityManagementPanel
-      v-if="activePlanningTab === 'activities'"
-      :department-tree="planningDepartmentTree"
-      :allowed-department-names="props.permissionDepartmentNames"
-      @changed="handleManagedActivitiesChanged"
-    />
-
     <SkillMasterManagementPanel
       v-if="activePlanningTab === 'management'"
       :department-tree="planningDepartmentTree"
-    />
-
-    <DepartmentPlanningPermissionPanel
-      v-if="props.canConfigureDepartmentPermissions && activePlanningTab === 'permissions'"
-      :department-tree="planningDepartmentTree"
-      :allowed-department-names="props.permissionDepartmentNames"
     />
 
     <Teleport to="body">
@@ -5095,12 +5109,8 @@ onBeforeUnmount(() => {
   .planning-tabs {
     display: grid;
     width: 100%;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     box-sizing: border-box;
-  }
-
-  .planning-tabs.has-permission-tab {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .planning-tab {

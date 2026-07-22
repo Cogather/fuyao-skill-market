@@ -3,6 +3,8 @@ import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillP
 import DepartmentTaxonomyPanel from './DepartmentTaxonomyPanel.vue';
 
 interface DepartmentTreeNode {
+  id?: string;
+  deptCode?: string;
   name: string;
   children?: DepartmentTreeNode[];
 }
@@ -10,11 +12,17 @@ interface DepartmentTreeNode {
 withDefaults(
   defineProps<{
     departmentTree?: DepartmentTreeNode[];
+    userId?: string;
+    isSuperAdmin?: boolean;
     allowedDepartmentNames?: string[];
+    restrictToAllowedDepartments?: boolean;
   }>(),
   {
     departmentTree: () => [],
+    userId: '',
+    isSuperAdmin: false,
     allowedDepartmentNames: () => [],
+    restrictToAllowedDepartments: false,
   },
 );
 
@@ -27,7 +35,10 @@ defineEmits<{
   <DepartmentTaxonomyPanel
     kind="activity"
     :department-tree="departmentTree"
+    :user-id="userId"
+    :is-super-admin="isSuperAdmin"
     :allowed-department-names="allowedDepartmentNames"
+    :restrict-to-allowed-departments="restrictToAllowedDepartments"
     @changed="(groups, departmentName) => $emit('changed', groups, departmentName)"
   />
 </template>

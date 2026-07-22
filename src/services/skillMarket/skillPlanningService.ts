@@ -260,7 +260,7 @@ function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOpt
       id,
       chName,
       label,
-      department: readDeepestDepartment(record),
+      deptName: readDeepestDepartment(record),
       raw: record,
     });
   });
@@ -368,12 +368,14 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
   return normalizeUserDepartmentOptions(response);
 }
 
-export async function querySkillPlanningFilterOptions(): Promise<SkillPlanningFilterOptions> {
+export async function querySkillPlanningFilterOptions(
+  userId = '',
+): Promise<SkillPlanningFilterOptions> {
   if (!useHttpTransport()) {
     return (await loadMockService()).getPlanningOption();
   }
 
-  const response = await skillBaseService.getPlanningOption();
+  const response = await skillBaseService.getPlanningOption({ userId });
   return normalizeHttpFilterOptions(response);
 }
 

@@ -14,17 +14,22 @@ import {
   replaceScenesForDepartment,
   type SceneRecord,
 } from '../../services/skillMarket/sceneManagementService';
+import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
 
 type TaxonomyKind = 'scene' | 'activity';
 type TaxonomyRecord = SceneRecord | ActivityRecord;
 
 interface DepartmentTreeNode {
+  id?: string;
+  deptCode?: string;
   name: string;
   children?: DepartmentTreeNode[];
 }
 
 interface DepartmentOption {
+  deptCode: string;
   name: string;
   level: number;
   path: string[];
@@ -35,13 +40,22 @@ const props = withDefaults(
   defineProps<{
     kind: TaxonomyKind;
     departmentTree?: DepartmentTreeNode[];
+    userId?: string;
+    isSuperAdmin?: boolean;
     allowedDepartmentNames?: string[];
+    restrictToAllowedDepartments?: boolean;
   }>(),
   {
     departmentTree: () => [],
+    userId: '',
+    isSuperAdmin: false,
     allowedDepartmentNames: () => [],
+    restrictToAllowedDepartments: false,
   },
 );
+
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const useHttpTaxonomySource = transportIsHttp;
 
 const emit = defineEmits<{
   changed: [groups: SkillPlanningOptionGroup[], departmentName: string];
@@ -53,7 +67,7 @@ const labels = computed(() =>
         eyebrow: 'DEPARTMENT SCENE TAXONOMY',
         title: '部门场景配置',
         description:
-          '五级、六级部门分别维护自己的场景树，保存后的顺序将用于 Skill 关联与市场筛选。',
+          '五级、六级部门分别维护自己的场景树，保存后自动同步至各项规划能力的关联与筛选。',
         primary: '一级场景',
         secondary: '二级场景',
         item: '场景',
@@ -63,7 +77,7 @@ const labels = computed(() =>
         eyebrow: 'DEPARTMENT ACTIVITY TAXONOMY',
         title: '部门活动配置',
         description:
-          '五级、六级部门分别维护自己的活动树，保存后的顺序将用于 Skill 关联与市场筛选。',
+          '五级、六级部门分别维护自己的活动树，保存后自动同步至各项规划能力的关联与筛选。',
         primary: '归属活动',
         secondary: '归属子活动',
         item: '活动',
@@ -77,6 +91,7 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
     items.forEach((item) => {
       const nextPath = [...path, item.name];
       rows.push({
+        deptCode: String(item.deptCode ?? item.id ?? '').trim(),
         name: item.name,
         level: depth,
         path: nextPath,
@@ -93,10 +108,11 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
   }
 
   const allowed = new Set(props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean));
-  if (allowed.size) {
+  if (props.restrictToAllowedDepartments) {
     candidates = candidates.filter((item) => item.path.some((name) => allowed.has(name)));
-    if (!candidates.length) {
+    if (!candidates.length && allowed.size) {
       candidates = [...allowed].map((name) => ({
+        deptCode: '',
         name,
         level: 5,
         path: [name],
@@ -120,6 +136,8 @@ const savedSnapshot = ref('[]');
 const selectedPrimaryId = ref('');
 const collapsedPrimaryIds = ref(new Set<string>());
 const notice = ref('');
+const loading = ref(false);
+let departmentLoadSequence = 0;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
 
@@ -160,20 +178,212 @@ function normalizeSort(parentId: string | null): void {
     });
 }
 
-function loadDepartment(departmentName: string): void {
-  const records =
-    props.kind === 'scene' ? listScenes(departmentName) : listActivities(departmentName);
-  draftRecords.value = cloneRecords(records);
-  savedSnapshot.value = JSON.stringify(draftRecords.value);
-  selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-  collapsedPrimaryIds.value = new Set<string>();
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function readText(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
+interface HttpTaxonomyRow {
+  deptCode: string;
+  deptName: string;
+  primary: string;
+  secondary: string;
+  sort: number;
+}
+
+function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  if (meta.success === false) {
+    throw new Error(readText(responseRecord.message) || fallbackMessage);
+  }
+}
+
+function responseRows(response: unknown): unknown[] {
+  const responseRecord = asRecord(response);
+  const data = responseRecord.data ?? response;
+  const dataRecord = asRecord(data);
+  return Array.isArray(data)
+    ? data
+    : (['list', 'records', 'items', 'rows']
+        .map((key) => dataRecord[key])
+        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+}
+
+function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
+  assertHttpSuccess(response, labels.value.item + '列表加载失败');
+  const primaryKey = props.kind === 'scene' ? 'firstScene' : 'activityNodeName';
+  const secondaryKey = props.kind === 'scene' ? 'secondScene' : 'subActivityNodeName';
+
+  return responseRows(response).flatMap((item, index) => {
+    const record = asRecord(item);
+    const primary = readText(record[primaryKey]);
+    if (!primary) return [];
+    const parsedSort = Number(record.sort);
+    return [
+      {
+        deptCode: readText(record.deptCode),
+        deptName: readText(record.deptName),
+        primary,
+        secondary: readText(record[secondaryKey]),
+        sort: Number.isFinite(parsedSort) ? parsedSort : index + 1,
+      },
+    ];
+  });
+}
+
+function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[] {
+  const groupedRows = new Map<string, Array<{ row: HttpTaxonomyRow; sourceIndex: number }>>();
+
+  rows.forEach((row, sourceIndex) => {
+    const group = groupedRows.get(row.primary) ?? [];
+    group.push({ row, sourceIndex });
+    groupedRows.set(row.primary, group);
+  });
+
+  const prefix = props.kind === 'scene' ? 'http-scene' : 'http-activity';
+  const records: TaxonomyRecord[] = [];
+  Array.from(groupedRows).forEach(([primary, children], primaryIndex) => {
+    const parentId = prefix + '-primary-' + (primaryIndex + 1);
+    records.push({
+      id: parentId,
+      parentId: null,
+      name: primary,
+      sort: primaryIndex + 1,
+      status: 'enabled',
+      skillCount: 0,
+    });
+
+    const seenChildren = new Set<string>();
+    children
+      .sort((left, right) => left.row.sort - right.row.sort || left.sourceIndex - right.sourceIndex)
+      .forEach(({ row }, childIndex) => {
+        if (!row.secondary || seenChildren.has(row.secondary)) return;
+        seenChildren.add(row.secondary);
+        records.push({
+          id: parentId + '-child-' + (childIndex + 1),
+          parentId,
+          name: row.secondary,
+          sort: row.sort,
+          status: 'enabled',
+          skillCount: 0,
+        });
+      });
+  });
+
+  return records;
+}
+
+function httpDepartmentContext(departmentName: string): { userId: string; deptCode: string } {
+  const userId = props.userId.trim();
+  if (!userId) throw new Error('请先获取当前用户工号');
+  const department = departmentOptions.value.find((item) => item.name === departmentName);
+  const deptCode = department?.deptCode.trim() || departmentName.trim();
+  if (!deptCode) throw new Error('未找到当前配置部门的 deptCode');
+  return { userId, deptCode };
+}
+
+async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
+  const params = httpDepartmentContext(departmentName);
+  const response =
+    props.kind === 'scene'
+      ? await skillBaseService.getSceneOptionGroups(params)
+      : await skillBaseService.getActivityOptionGroups(params);
+  return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
+}
+
+function toHttpTaxonomyItems(records: TaxonomyRecord[]): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  let sort = 1;
+  records
+    .filter((record) => record.parentId === null)
+    .sort((left, right) => left.sort - right.sort)
+    .forEach((parent) => {
+      const children = records
+        .filter((record) => record.parentId === parent.id)
+        .sort((left, right) => left.sort - right.sort);
+      const values = children.length > 0 ? children : [null];
+      values.forEach((child) => {
+        rows.push(
+          props.kind === 'scene'
+            ? { firstScene: parent.name, secondScene: child?.name ?? '', sort: sort++ }
+            : {
+                activityNodeName: parent.name,
+                subActivityNodeName: child?.name ?? '',
+                sort: sort++,
+              },
+        );
+      });
+    });
+  return rows;
+}
+
+function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGroup[] {
+  return records
+    .filter((record) => record.parentId === null && record.status === 'enabled')
+    .sort((left, right) => left.sort - right.sort)
+    .map((parent) => ({
+      value: parent.name,
+      children: records
+        .filter(
+          (record) =>
+            record.parentId === parent.id && record.status === 'enabled' && Boolean(record.name),
+        )
+        .sort((left, right) => left.sort - right.sort)
+        .map((record) => record.name),
+    }));
+}
+
+async function saveHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
+  const context = httpDepartmentContext(departmentName);
+  const items = toHttpTaxonomyItems(draftRecords.value);
+  const response =
+    props.kind === 'scene'
+      ? await skillBaseService.refreshSceneOptionGroups({ ...context, scenes: items })
+      : await skillBaseService.refreshActivityOptionGroups({ ...context, activities: items });
+  assertHttpSuccess(response, labels.value.item + '配置保存失败');
+  return fetchHttpTaxonomyRecords(departmentName);
+}
+
+async function loadDepartment(departmentName: string): Promise<void> {
+  const requestSequence = ++departmentLoadSequence;
+  loading.value = true;
   notice.value = '';
+
+  try {
+    const records = useHttpTaxonomySource
+      ? await fetchHttpTaxonomyRecords(departmentName)
+      : props.kind === 'scene'
+        ? listScenes(departmentName)
+        : listActivities(departmentName);
+    if (requestSequence !== departmentLoadSequence) return;
+
+    draftRecords.value = cloneRecords(records);
+    savedSnapshot.value = JSON.stringify(draftRecords.value);
+    selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
+    collapsedPrimaryIds.value = new Set<string>();
+  } catch (error) {
+    if (requestSequence !== departmentLoadSequence) return;
+    draftRecords.value = [];
+    savedSnapshot.value = '[]';
+    selectedPrimaryId.value = '';
+    notice.value = error instanceof Error ? error.message : labels.value.item + '列表加载失败';
+  } finally {
+    if (requestSequence === departmentLoadSequence) {
+      loading.value = false;
+    }
+  }
 }
 
 watch(
   departmentOptions,
   (options) => {
     if (!options.length) {
+      departmentLoadSequence += 1;
+      loading.value = false;
       selectedDepartment.value = '';
       draftRecords.value = [];
       savedSnapshot.value = '[]';
@@ -181,11 +391,17 @@ watch(
     }
     if (!options.some((item) => item.name === selectedDepartment.value)) {
       selectedDepartment.value = options[0].name;
-      loadDepartment(selectedDepartment.value);
+      void loadDepartment(selectedDepartment.value);
     }
   },
   { immediate: true },
 );
+
+watch([() => props.userId, () => props.isSuperAdmin], () => {
+  if (useHttpTaxonomySource && selectedDepartment.value) {
+    void loadDepartment(selectedDepartment.value);
+  }
+});
 
 function changeDepartment(event: Event): void {
   const select = event.target as HTMLSelectElement;
@@ -197,7 +413,7 @@ function changeDepartment(event: Event): void {
     return;
   }
   selectedDepartment.value = nextDepartment;
-  loadDepartment(nextDepartment);
+  void loadDepartment(nextDepartment);
 }
 
 function childRecords(parentId: string): TaxonomyRecord[] {
@@ -389,11 +605,14 @@ function resetToDefault(): void {
   notice.value = '已恢复为默认草稿，点击“保存修改”后生效。';
 }
 
-function saveAll(): void {
-  if (!selectedDepartment.value) return;
+async function saveAll(): Promise<void> {
+  if (!selectedDepartment.value || loading.value) return;
+  loading.value = true;
+  notice.value = '';
   try {
-    const records =
-      props.kind === 'scene'
+    const records = useHttpTaxonomySource
+      ? await saveHttpTaxonomyRecords(selectedDepartment.value)
+      : props.kind === 'scene'
         ? replaceScenesForDepartment(selectedDepartment.value, draftRecords.value as SceneRecord[])
         : replaceActivitiesForDepartment(
             selectedDepartment.value,
@@ -401,14 +620,20 @@ function saveAll(): void {
           );
     draftRecords.value = cloneRecords(records);
     savedSnapshot.value = JSON.stringify(draftRecords.value);
-    const groups =
-      props.kind === 'scene'
+    const groups = useHttpTaxonomySource
+      ? recordsToOptionGroups(records)
+      : props.kind === 'scene'
         ? getSceneOptionGroups(selectedDepartment.value)
         : getActivityOptionGroups(selectedDepartment.value);
+    if (useHttpTaxonomySource) {
+      notifyHarnessConfigurationChanged(props.kind, selectedDepartment.value);
+    }
     emit('changed', groups, selectedDepartment.value);
     notice.value = selectedDepartment.value + '的配置已全量保存。';
   } catch (error) {
     notice.value = error instanceof Error ? error.message : '保存失败，请检查配置';
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -474,7 +699,7 @@ function exportRecords(): void {
 }
 </script>
 <template>
-  <section class="taxonomy-workspace">
+  <section class="taxonomy-workspace" :aria-busy="loading">
     <header class="toolbar-card">
       <div class="toolbar-copy">
         <span class="eyebrow">{{ labels.eyebrow }}</span>
@@ -484,7 +709,7 @@ function exportRecords(): void {
       <div class="toolbar-controls">
         <label class="department-field">
           <span>配置部门</span>
-          <select :value="selectedDepartment" @change="changeDepartment">
+          <select :value="selectedDepartment" :disabled="loading" @change="changeDepartment">
             <option v-if="!departmentOptions.length" value="">暂无可配置部门</option>
             <option
               v-for="department in departmentOptions"
@@ -498,12 +723,12 @@ function exportRecords(): void {
         <button
           class="primary-button"
           type="button"
-          :disabled="!dirty || !selectedDepartment"
+          :disabled="loading || !dirty || !selectedDepartment"
           @click="saveAll"
         >
           保存修改
         </button>
-        <button type="button" :disabled="!selectedDepartment" @click="resetToDefault">
+        <button type="button" :disabled="loading || !selectedDepartment" @click="resetToDefault">
           恢复默认
         </button>
         <button type="button" :disabled="!selectedDepartment" @click="triggerImport">导入</button>
@@ -537,11 +762,14 @@ function exportRecords(): void {
       </div>
       <div>
         <strong>{{ totalSkillCount }}</strong
-        ><span>关联 Skill</span>
+        ><span>关联规划项</span>
       </div>
     </div>
 
-    <div v-if="selectedDepartment" class="taxonomy-grid">
+    <div v-if="loading" class="empty-department">
+      {{ '\u6b63\u5728\u52a0\u8f7d\u573a\u666f\u914d\u7f6e\u2026' }}
+    </div>
+    <div v-else-if="selectedDepartment" class="taxonomy-grid">
       <aside class="tree-panel">
         <div class="panel-heading">
           <div>
@@ -572,7 +800,7 @@ function exportRecords(): void {
                 <strong>{{ primary.name }}</strong>
                 <small>
                   {{ childRecords(primary.id).length }} 个{{ labels.secondary }} ·
-                  {{ usageCount(primary) }} 个 Skill
+                  {{ usageCount(primary) }} 个规划项
                 </small>
               </button>
               <button
@@ -645,7 +873,7 @@ function exportRecords(): void {
               <tr>
                 <th>排序</th>
                 <th>{{ labels.secondary }}</th>
-                <th>关联 Skill</th>
+                <th>关联规划项</th>
                 <th>状态</th>
                 <th>操作</th>
               </tr>
@@ -740,10 +968,10 @@ function exportRecords(): void {
       <div class="modal-card delete-card">
         <h3>删除{{ labels.item }}“{{ deleteTarget.name }}”</h3>
         <p v-if="usageCount(deleteTarget) > 0" class="warning-copy">
-          当前{{ labels.item }}已被 {{ usageCount(deleteTarget) }} 个 Skill 使用，删除后这些 Skill
+          当前{{ labels.item }}已被 {{ usageCount(deleteTarget) }} 个规划项使用，删除后这些规划项
           将失去归属。可先批量迁移，或强制删除。
         </p>
-        <p v-else>该项暂无关联 Skill，删除将在保存修改后生效。</p>
+        <p v-else>该项暂无关联规划，删除将在保存修改后生效。</p>
         <label v-if="migrationCandidates.length">
           <span>批量迁移到</span>
           <select v-model="migrationTargetId">

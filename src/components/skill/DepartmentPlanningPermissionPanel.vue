@@ -7,28 +7,42 @@ import {
   type DepartmentPlanningPermissionMember,
   type DepartmentPlanningPermissionRecord,
 } from '../../services/skillMarket/departmentPlanningPermissionService';
+import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import {
   querySkillPlanningUsers,
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
 
 type DepartmentNode = {
+  id?: string;
+  deptCode?: string;
   name: string;
   children?: DepartmentNode[];
+};
+
+type DepartmentPermissionRecord = DepartmentPlanningPermissionRecord & {
+  deptCode: string;
+  ownerUserId: string;
 };
 
 const props = withDefaults(
   defineProps<{
     departmentTree?: DepartmentNode[];
+    userId?: string;
     allowedDepartmentNames?: string[];
+    restrictToAllowedDepartments?: boolean;
   }>(),
   {
     departmentTree: () => [],
+    userId: '',
     allowedDepartmentNames: () => [],
+    restrictToAllowedDepartments: false,
   },
 );
 
-const records = ref<DepartmentPlanningPermissionRecord[]>([]);
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const records = ref<DepartmentPermissionRecord[]>([]);
 const selectedDepartment = ref('');
 const departmentKeyword = ref('');
 const toast = ref('');
@@ -62,7 +76,9 @@ const allDepartmentNames = computed(() => {
   records.value.forEach((record) => names.push(record.departmentName));
   const unique = [...new Set(names)];
   const scope = props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean);
-  return scope.length > 0 ? unique.filter((item) => scope.includes(item)) : unique;
+  return props.restrictToAllowedDepartments
+    ? unique.filter((item) => scope.includes(item))
+    : unique;
 });
 
 const filteredDepartments = computed(() => {
@@ -72,7 +88,7 @@ const filteredDepartments = computed(() => {
   );
 });
 
-const selectedRecord = computed<DepartmentPlanningPermissionRecord>(() =>
+const selectedRecord = computed<DepartmentPermissionRecord>(() =>
   recordForDepartment(selectedDepartment.value),
 );
 
@@ -83,21 +99,137 @@ const authorizedTotal = computed(() =>
   ),
 );
 
-function recordForDepartment(departmentName: string): DepartmentPlanningPermissionRecord {
+function recordForDepartment(departmentName: string): DepartmentPermissionRecord {
   return (
     records.value.find((record) => record.departmentName === departmentName) ?? {
       departmentName,
+      deptCode: findDepartmentCode(props.departmentTree, departmentName) || departmentName,
+      ownerUserId: '',
       members: [],
       updatedAt: '',
     }
   );
 }
 
-function reload(): void {
-  records.value = listDepartmentPlanningPermissions();
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function readText(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
+function readUserIds(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const record = asRecord(item);
+        return readText(record.userId ?? record.employeeNo ?? record.id ?? item);
+      })
+      .filter(Boolean);
+  }
+  return readText(value)
+    .split(/[,，;；\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function responseRows(response: unknown): unknown[] {
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  if (meta.success === false) {
+    throw new Error(readText(responseRecord.message) || '部门列表加载失败');
+  }
+  const data = responseRecord.data ?? response;
+  const dataRecord = asRecord(data);
+  return Array.isArray(data)
+    ? data
+    : (['list', 'records', 'items', 'rows']
+        .map((key) => dataRecord[key])
+        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+}
+
+function findDepartmentCode(nodes: DepartmentNode[], departmentName: string): string {
+  for (const node of nodes) {
+    if (node.name.trim() === departmentName.trim()) {
+      return readText(node.deptCode ?? node.id);
+    }
+    const childCode = findDepartmentCode(node.children ?? [], departmentName);
+    if (childCode) return childCode;
+  }
+  return '';
+}
+
+function normalizeDepartmentRecords(response: unknown): DepartmentPermissionRecord[] {
+  return responseRows(response).flatMap((item) => {
+    const record = asRecord(item);
+    const departmentName = readText(record.deptName ?? record.departmentName ?? record.name);
+    if (!departmentName) return [];
+    const deptCode =
+      readText(record.deptCode ?? record.departmentCode ?? record.id) ||
+      findDepartmentCode(props.departmentTree, departmentName) ||
+      departmentName;
+    const ownerUserId = readText(record.owner ?? record.ownerUserId);
+    const adminUserIds = readUserIds(record.adminUserIds ?? record.admin_user_ids ?? record.admins);
+    const memberIds = [...new Set([ownerUserId, ...adminUserIds].filter(Boolean))];
+    const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
+    return [
+      {
+        departmentName,
+        deptCode,
+        ownerUserId,
+        updatedAt,
+        members: memberIds.map((userId) => ({
+          userId,
+          userName: '',
+          label: userId === ownerUserId ? userId + '（Owner）' : userId,
+          departmentName,
+          grantedAt: updatedAt,
+        })),
+      },
+    ];
+  });
+}
+
+async function reload(): Promise<void> {
+  if (transportIsHttp) {
+    const userId = props.userId.trim();
+    if (!userId) {
+      records.value = [];
+      return;
+    }
+    const response = await skillBaseService.querySkillPlanningDepartments({ userId });
+    records.value = normalizeDepartmentRecords(response);
+  } else {
+    records.value = listDepartmentPlanningPermissions().map((record) => ({
+      ...record,
+      deptCode:
+        findDepartmentCode(props.departmentTree, record.departmentName) || record.departmentName,
+      ownerUserId: '',
+    }));
+  }
   if (!selectedDepartment.value || !allDepartmentNames.value.includes(selectedDepartment.value)) {
     selectedDepartment.value = allDepartmentNames.value[0] ?? '';
   }
+}
+
+async function updateRemoteAdmins(
+  record: DepartmentPermissionRecord,
+  adminUserIds: string[],
+): Promise<void> {
+  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins(record.deptCode, {
+    userId: props.userId.trim(),
+    adminUserIds: [
+      ...new Set(adminUserIds.filter((userId) => Boolean(userId) && userId !== record.ownerUserId)),
+    ],
+  });
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  if (meta.success === false) {
+    throw new Error(readText(responseRecord.message) || '管理员更新失败');
+  }
+  notifyHarnessConfigurationChanged('permission', record.departmentName);
+  await reload();
 }
 
 function showToast(message: string): void {
@@ -107,6 +239,13 @@ function showToast(message: string): void {
     toast.value = '';
     toastTimer = null;
   }, 2400);
+}
+
+function reloadSafely(): void {
+  void reload().catch((error) => {
+    records.value = [];
+    showToast(error instanceof Error ? error.message : '部门列表加载失败');
+  });
 }
 
 function selectDepartment(name: string): void {
@@ -175,19 +314,27 @@ function optionDepartment(option: SkillPlanningUserOption): string {
   return option.deptName || legacyDepartment || '';
 }
 
-function addPermission(option: SkillPlanningUserOption): void {
+async function addPermission(option: SkillPlanningUserOption): Promise<void> {
   try {
-    grantDepartmentPlanningPermission(selectedDepartment.value, {
-      userId: option.id,
-      userName: option.chName,
-      label: option.label,
-      departmentName: optionDepartment(option),
-    });
+    if (transportIsHttp) {
+      const record = selectedRecord.value;
+      await updateRemoteAdmins(record, [
+        ...record.members.map((member) => member.userId),
+        option.id,
+      ]);
+    } else {
+      grantDepartmentPlanningPermission(selectedDepartment.value, {
+        userId: option.id,
+        userName: option.chName,
+        label: option.label,
+        departmentName: optionDepartment(option),
+      });
+      await reload();
+    }
     personSearch.value = '';
     personSearch.options = [];
     closePersonSearch();
-    reload();
-    showToast(`已授予 ${option.label} Skill 规划配置权限`);
+    showToast('已授予 ' + option.label + ' Harness 规划与配置权限');
   } catch (error) {
     showToast(error instanceof Error ? error.message : '权限添加失败');
   }
@@ -201,12 +348,28 @@ function requestRevoke(member: DepartmentPlanningPermissionMember): void {
   });
 }
 
-function confirmRevoke(): void {
-  if (!revokeDialog.member) return;
-  revokeDepartmentPlanningPermission(revokeDialog.departmentName, revokeDialog.member.userId);
-  revokeDialog.open = false;
-  reload();
-  showToast('人员配置权限已移除');
+async function confirmRevoke(): Promise<void> {
+  const member = revokeDialog.member;
+  if (!member) return;
+  try {
+    const record = recordForDepartment(revokeDialog.departmentName);
+    if (transportIsHttp) {
+      if (member.userId === record.ownerUserId) {
+        throw new Error('部门 Owner 不可从管理员列表中移除');
+      }
+      await updateRemoteAdmins(
+        record,
+        record.members.map((item) => item.userId).filter((userId) => userId !== member.userId),
+      );
+    } else {
+      revokeDepartmentPlanningPermission(revokeDialog.departmentName, member.userId);
+      await reload();
+    }
+    revokeDialog.open = false;
+    showToast('人员配置权限已移除');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '权限移除失败');
+  }
 }
 
 function formatGrantedAt(value: string): string {
@@ -216,12 +379,17 @@ function formatGrantedAt(value: string): string {
 }
 
 watch(
-  () => [props.departmentTree, props.allowedDepartmentNames],
-  () => reload(),
+  () => [
+    props.userId,
+    props.departmentTree,
+    props.allowedDepartmentNames,
+    props.restrictToAllowedDepartments,
+  ],
+  reloadSafely,
   { deep: true },
 );
 
-onMounted(reload);
+onMounted(reloadSafely);
 onBeforeUnmount(() => {
   clearPersonSearchTimer();
   if (toastTimer !== null) window.clearTimeout(toastTimer);
@@ -233,8 +401,8 @@ onBeforeUnmount(() => {
     <div class="permission-hero">
       <div>
         <span>DEPARTMENT ACCESS CONTROL</span>
-        <h3>部门 Skill 规划权限</h3>
-        <p>由管理员或部门主任维护人员名单，只有被授权人员才能配置对应部门的 Skill 规划。</p>
+        <h3>部门 Harness 管理权限</h3>
+        <p>由管理员或部门主任维护人员名单，只有被授权人员才能管理对应部门的各项规划与公共配置。</p>
       </div>
       <div class="permission-metrics">
         <div>
@@ -279,7 +447,7 @@ onBeforeUnmount(() => {
           <div>
             <small>当前配置部门</small>
             <strong>{{ selectedDepartment || '暂无部门' }}</strong>
-            <p>已授权 {{ selectedRecord.members.length }} 人配置此部门的 Skill 规划。</p>
+            <p>已授权 {{ selectedRecord.members.length }} 人管理此部门的 Harness 规划与配置。</p>
           </div>
           <div class="person-search" @keydown.esc="closePersonSearch">
             <input
@@ -316,7 +484,10 @@ onBeforeUnmount(() => {
 
         <div class="permission-note">
           <span>权限范围</span>
-          <p>可新增、编辑、导入和批量维护该部门的 Skill 规划；场景与活动体系仍独立管理。</p>
+          <p>
+            覆盖 Command、Skill、Agent、Extension
+            的部门级规划能力，以及配置管理中的场景管理和活动管理。
+          </p>
         </div>
 
         <div class="member-table-wrap">
@@ -348,7 +519,7 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="selectedRecord.members.length === 0">
-                <td colspan="5" class="member-empty">该部门暂未配置 Skill 规划人员</td>
+                <td colspan="5" class="member-empty">该部门暂未配置 Harness 管理人员</td>
               </tr>
             </tbody>
           </table>
@@ -365,7 +536,7 @@ onBeforeUnmount(() => {
         <div class="permission-dialog">
           <i>!</i>
           <strong>移除 {{ revokeDialog.member?.label }} 的配置权限？</strong>
-          <p>移除后，该人员将不能继续配置“{{ revokeDialog.departmentName }}”的 Skill 规划。</p>
+          <p>移除后，该人员将不能继续管理“{{ revokeDialog.departmentName }}”的规划与公共配置。</p>
           <footer>
             <button type="button" @click="revokeDialog.open = false">取消</button>
             <button type="button" class="is-danger" @click="confirmRevoke">确认移除</button>

@@ -1,3 +1,5 @@
+import { skillBaseService } from './skillBaseService';
+
 export type SkillTaskStatus = 'todo' | 'inProgress' | 'done';
 type LegacySkillTaskStatus = SkillTaskStatus | 'published';
 export type SkillTaskPriority = 'high' | 'medium' | 'low';
@@ -200,6 +202,109 @@ function persistTasks(tasks: SkillPlanningTask[]): void {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function readText(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
+function normalizeHttpTaskStatus(value: unknown): SkillTaskStatus {
+  const status = readText(value).toLowerCase();
+  if (['已完成', 'done', 'completed', 'complete'].includes(status)) return 'done';
+  if (['待启动', '待办', '未开始', 'todo', 'pending', 'not_started'].includes(status)) {
+    return 'todo';
+  }
+  return 'inProgress';
+}
+
+function normalizeHttpTaskPriority(value: unknown): SkillTaskPriority {
+  const priority = readText(value).toLowerCase();
+  return priority === 'high' || priority === 'low' ? priority : 'medium';
+}
+
+function responseTaskRows(response: unknown): unknown[] {
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  if (meta.success === false) {
+    throw new Error(readText(responseRecord.message) || '待办任务加载失败');
+  }
+  const data = responseRecord.data ?? response;
+  const dataRecord = asRecord(data);
+  return Array.isArray(data)
+    ? data
+    : (['list', 'records', 'items', 'rows']
+        .map((key) => dataRecord[key])
+        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+}
+
+function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
+  const record = asRecord(value);
+  const status = normalizeHttpTaskStatus(record.status);
+  const numericProgress = Number(record.progress);
+  const progress = normalizeProgress(
+    Number.isFinite(numericProgress) ? numericProgress : undefined,
+    status,
+  );
+  const name = readText(record.skillName ?? record.skill_name ?? record.name) || '未命名 Skill';
+  const department = readText(
+    record.deptName ?? record.departmentName ?? record.department ?? record.deptCode,
+  );
+  const planningDepartment = readText(
+    record.planningDeptName ?? record.planningDepartment ?? record.deptName ?? record.deptCode,
+  );
+  const ownerId = readText(record.userId ?? record.ownerId ?? record.owner);
+  const description =
+    readText(record.description) ||
+    [
+      readText(record.level),
+      [readText(record.firstScene), readText(record.secondScene)].filter(Boolean).join(' / '),
+      [readText(record.activityNodeName), readText(record.subActivityNodeName)]
+        .filter(Boolean)
+        .join(' / '),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
+  const id =
+    readText(record.taskId ?? record.id) ||
+    [name, readText(record.deptCode), ownerId || index].filter(Boolean).join('::');
+
+  return {
+    id,
+    name,
+    description,
+    priority: normalizeHttpTaskPriority(record.priority),
+    status,
+    progress,
+    department,
+    planningDepartment,
+    ownerId,
+    owner: readText(record.userName ?? record.ownerName ?? record.owner) || ownerId,
+    dueDate: readText(record.dueDate ?? record.planedCompleteDate ?? record.plannedCompleteDate),
+    createdAt: readText(record.createdAt ?? record.createTime),
+    updatedAt,
+  };
+}
+
+export function usesRemoteSkillPlanningTasks(): boolean {
+  return import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+}
+
+export async function querySkillPlanningTasks(ownerId: string): Promise<SkillPlanningTask[]> {
+  const normalizedOwnerId = ownerId.trim();
+  if (!normalizedOwnerId) return [];
+  if (!usesRemoteSkillPlanningTasks()) return listSkillPlanningTasks(normalizedOwnerId);
+
+  const response = await skillBaseService.queryMySkillPlanningTasks({
+    userId: normalizedOwnerId,
+  });
+  return responseTaskRows(response)
+    .map(normalizeHttpTask)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 export function listSkillPlanningTasks(ownerId: string): SkillPlanningTask[] {

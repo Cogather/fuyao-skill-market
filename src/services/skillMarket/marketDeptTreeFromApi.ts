@@ -3,6 +3,7 @@ import type { DepartmentTreeNodeDto } from './apiTypes';
 /** 与 `UserMarketShell` 内原 `MarketDeptNode` 一致，供接口树映射 */
 export type MarketDeptForestNode = {
   id?: string;
+  deptCode?: string;
   name: string;
   path: string;
   levelNo: number;
@@ -29,8 +30,12 @@ export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeN
     const deptName = typeof namePart === 'string' ? namePart.trim() : String(namePart ?? '').trim();
     const deptLevel =
       typeof o.deptLevel === 'number' && Number.isFinite(o.deptLevel) ? o.deptLevel : 0;
-    const deptIdPart =
-      o.deptId ?? o.departmentId ?? o.id ?? o.departmentCode ?? o.deptCode ?? o.code ?? o.value;
+    const deptCodePart = o.deptCode ?? o.departmentCode ?? o.code;
+    const deptCode =
+      typeof deptCodePart === 'string' || typeof deptCodePart === 'number'
+        ? String(deptCodePart).trim()
+        : '';
+    const deptIdPart = o.deptId ?? o.departmentId ?? o.id ?? o.value ?? deptCodePart;
     const deptId =
       typeof deptIdPart === 'string' || typeof deptIdPart === 'number'
         ? String(deptIdPart).trim()
@@ -42,6 +47,7 @@ export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeN
         : [];
     out.push({
       ...(deptId ? { deptId } : {}),
+      ...(deptCode ? { deptCode } : {}),
       deptName,
       deptLevel,
       ...(children.length > 0 ? { children } : {}),
@@ -77,6 +83,9 @@ function mapOneDepartmentTreeNode(
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
   return {
     ...(n.deptId !== undefined && String(n.deptId).trim() ? { id: String(n.deptId).trim() } : {}),
+    ...(n.deptCode !== undefined && String(n.deptCode).trim()
+      ? { deptCode: String(n.deptCode).trim() }
+      : {}),
     name: n.deptName,
     path,
     levelNo,

@@ -1,6 +1,21 @@
 import httpRequest from '@/services/skillMarket/request';
 import type { ApiEnvelope, ExpertCheckDto } from './apiTypes';
 
+export interface SceneOptionGroupsParams {
+  userId?: string;
+  deptCode?: string;
+}
+
+export interface SceneOptionGroupRow {
+  deptCode: string;
+  deptName: string;
+  firstScene: string;
+  secondScene: string;
+  sort: number;
+}
+
+export type SceneOptionGroupsResponse = ApiEnvelope<SceneOptionGroupRow[]> | SceneOptionGroupRow[];
+
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
 export const corecode = _corecode_env;
@@ -299,6 +314,24 @@ export const skillBaseService = {
     });
   },
 
+  // 查询Skill规划部门列表
+  querySkillPlanningDepartments: (params: { userId: string }): any => {
+    return httpRequest.skill<any>({
+      url: '/config/department',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 更新部门管理员；body包含当前用户工号及管理员列表
+  updateSkillPlanningDepartmentAdmins: (deptCode: string, body: any): any => {
+    return httpRequest.skill<any>({
+      url: `/config/department/${encodeURIComponent(deptCode)}/admins`,
+      method: 'put',
+      data: body,
+    });
+  },
+
   createSkillPlanning: (body: any): any => {
     return httpRequest.skill<any>({
       url: '/config/add',
@@ -373,6 +406,69 @@ export const skillBaseService = {
       url: '/config/search_offering',
       method: 'get',
       params,
+    });
+  },
+
+  // harness 查询接口
+  // 获取场景列表（超级管理员需要传deptCode）
+  getSceneOptionGroups: (params: SceneOptionGroupsParams): Promise<SceneOptionGroupsResponse> => {
+    return httpRequest.skill<SceneOptionGroupsResponse>({
+      url: '/config/scene',
+      method: 'get',
+      params, // { userId, deptCode }
+    });
+  },
+
+  // 全量刷新指定部门的场景
+  refreshSceneOptionGroups: (body: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/scene',
+      method: 'post',
+      data: body, // { userId, deptCode, scenes }
+    });
+  },
+
+  // 获取活动列表
+  getActivityOptionGroups: (params: SceneOptionGroupsParams): any => {
+    return httpRequest.skill<any>({
+      url: '/config/activity',
+      method: 'get',
+      params, // { userId, deptCode }
+    });
+  },
+
+  // 全量刷新指定部门的活动
+  refreshActivityOptionGroups: (body: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/activity',
+      method: 'post',
+      data: body, // { userId, deptCode, activities }
+    });
+  },
+
+  // 查询当前用户的Skill规划待办
+  queryMySkillPlanningTasks: (params: { userId: string }): any => {
+    return httpRequest.skill<any>({
+      url: '/config/task/my',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 查询Skill规划操作日志
+  querySkillPlanningOperationLogs: (params: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/operation_log',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 内部定时任务：刷新规划表进度
+  refreshSkillPlanningTaskProgress: (): any => {
+    return httpRequest.skill<any>({
+      url: '/config/task/refresh-progress',
+      method: 'get',
     });
   },
 

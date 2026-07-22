@@ -21,6 +21,10 @@ import {
   type SkillMasterRecord,
   type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
+import {
+  querySkillPlanningUsers,
+  type SkillPlanningUserOption,
+} from '../../services/skillMarket/skillPlanningService';
 
 type DepartmentNode = { name: string; children?: DepartmentNode[] };
 type TaxonomyOption = { id: string; label: string };
@@ -51,6 +55,9 @@ function makeTaxonomyOptions(records: Array<SceneRecord | ActivityRecord>): Taxo
 }
 const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
+const ownerOptions = ref<SkillPlanningUserOption[]>([]);
+let ownerSearchTimer: number | null = null;
+let ownerSearchSequence = 0;
 
 const editor = reactive({
   open: false,
@@ -145,6 +152,40 @@ function resetEditor(): void {
     error: '',
   });
 }
+function resolveOwnerSelection(): void {
+  const value = editor.owner.trim();
+  const option = ownerOptions.value.find(
+    (item) => item.label === value || item.id === value || item.chName === value,
+  );
+  if (!option) return;
+  editor.owner = option.label;
+  editor.department = option.deptName;
+}
+
+function onOwnerInput(event: Event): void {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  const keyword = target?.value.trim() ?? '';
+  editor.owner = target?.value ?? '';
+  editor.department = '';
+  if (ownerSearchTimer !== null) window.clearTimeout(ownerSearchTimer);
+  const sequence = ++ownerSearchSequence;
+  if (!keyword) {
+    ownerOptions.value = [];
+    return;
+  }
+  ownerSearchTimer = window.setTimeout(async () => {
+    try {
+      const options = await querySkillPlanningUsers(keyword);
+      if (sequence !== ownerSearchSequence) return;
+      ownerOptions.value = options;
+      resolveOwnerSelection();
+    } catch {
+      if (sequence === ownerSearchSequence) ownerOptions.value = [];
+    } finally {
+      if (sequence === ownerSearchSequence) ownerSearchTimer = null;
+    }
+  }, 250);
+}
 function openCreate(): void {
   resetEditor();
   editor.mode = 'create';
@@ -172,6 +213,12 @@ function closeEditor(): void {
   editor.error = '';
 }
 function submitEditor(): void {
+  resolveOwnerSelection();
+  if (!editor.department.trim()) {
+    editor.error =
+      '\u8bf7\u9009\u62e9\u6709\u6548\u7684\u8d23\u4efb Owner\uff0c\u4ee5\u81ea\u52a8\u5e26\u51fa\u5176\u6240\u5728\u90e8\u95e8';
+    return;
+  }
   const payload: SkillMasterPayload = {
     name: editor.name,
     description: editor.description,
@@ -251,6 +298,7 @@ function confirmDelete(): void {
 onMounted(reload);
 onBeforeUnmount(() => {
   if (toastTimer !== null) window.clearTimeout(toastTimer);
+  if (ownerSearchTimer !== null) window.clearTimeout(ownerSearchTimer);
 });
 </script>
 
@@ -399,6 +447,26 @@ onBeforeUnmount(() => {
               </select></label
             >
             <label><span>产品 / 服务</span><input v-model.trim="editor.product" /></label>
+            <label class="owner-picker">
+              <span>&#36131;&#20219; Owner *</span>
+              <input
+                v-model.trim="editor.owner"
+                list="skill-master-owner-options"
+                autocomplete="off"
+                placeholder="&#36755;&#20837;&#22995;&#21517;&#25110;&#24037;&#21495;&#21518;&#36873;&#25321;"
+                @input="onOwnerInput"
+                @change="resolveOwnerSelection"
+              />
+              <datalist id="skill-master-owner-options">
+                <option
+                  v-for="item in ownerOptions"
+                  :key="item.id || item.label"
+                  :value="item.label"
+                >
+                  {{ item.deptName }}
+                </option>
+              </datalist>
+            </label>
             <label><span>责任 Owner *</span><input v-model.trim="editor.owner" /></label>
             <label
               ><span>Owner 所在部门</span
@@ -696,6 +764,7 @@ onBeforeUnmount(() => {
 }
 .table-wrap th:first-child {
   width: 260px;
+  padding-left: 53px;
 }
 .table-wrap th:nth-child(6) {
   width: 230px;
@@ -1026,5 +1095,8 @@ onBeforeUnmount(() => {
   .toolbar-actions input {
     width: 100%;
   }
+}
+.owner-picker + label {
+  display: none;
 }
 </style>

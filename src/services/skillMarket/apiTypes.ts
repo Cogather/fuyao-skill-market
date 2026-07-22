@@ -487,6 +487,7 @@ export type OrganizationUpsertBody = {
  */
 export type DepartmentTreeNodeDto = {
   deptId?: string | number;
+  deptCode?: string | number;
   deptName: string;
   deptLevel: number;
   children?: DepartmentTreeNodeDto[];

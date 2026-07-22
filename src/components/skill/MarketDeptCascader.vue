@@ -58,6 +58,7 @@ const open = ref(false);
 const wrapRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 const panelLayout = ref<{ left: number; top: number; maxWidth: number } | null>(null);
+const panelMaxHeight = ref(340);
 let panelScrollCleanup: (() => void) | null = null;
 
 const normalizedTree = computed(() => props.tree ?? []);
@@ -178,11 +179,28 @@ function updatePanelLayout(): void {
   const margin = 16;
   const fromLeft = Math.max(0, rect.left);
   const usable = Math.max(220, Math.floor(window.innerWidth - fromLeft - margin));
+  const gap = 4;
+  const availableBelow = Math.max(0, window.innerHeight - rect.bottom - margin - gap);
+  const availableAbove = Math.max(0, rect.top - margin - gap);
+  const measuredHeight = Math.max(
+    panelRef.value?.scrollHeight ?? 0,
+    panelRef.value?.getBoundingClientRect().height ?? 0,
+  );
+  const desiredHeight = Math.min(340, Math.max(220, measuredHeight));
+  const opensAbove = availableBelow < desiredHeight && availableAbove > availableBelow;
+  const availableHeight = opensAbove ? availableAbove : availableBelow;
+  const maxHeight = Math.min(340, Math.max(80, Math.floor(availableHeight)));
+  const renderedHeight = Math.min(desiredHeight, maxHeight);
+  const nextTop = opensAbove
+    ? Math.max(margin, Math.floor(rect.top - renderedHeight - gap))
+    : Math.floor(rect.bottom + gap);
   panelLayout.value = {
     left: Math.floor(fromLeft),
     top: Math.floor(rect.bottom + 4),
     maxWidth: Math.min(720, usable),
   };
+  if (panelLayout.value) panelLayout.value.top = nextTop;
+  panelMaxHeight.value = maxHeight;
 }
 
 const panelStyle = computed((): CSSProperties => {
@@ -195,6 +213,7 @@ const panelStyle = computed((): CSSProperties => {
     left: `${layout.left}px`,
     top: `${layout.top}px`,
     maxWidth: `${layout.maxWidth}px`,
+    maxHeight: `${panelMaxHeight.value}px`,
     zIndex: 2400,
   };
 });
@@ -461,9 +480,11 @@ onBeforeUnmount(() => {
 
 .market-dept-cascader-columns {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   width: 100%;
   min-width: 0;
+  min-height: 0;
   max-height: 280px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -537,12 +558,16 @@ onBeforeUnmount(() => {
 
 .market-dept-cascader-footer {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
   padding: 8px 12px;
   border-top: 1px solid #eef2f7;
   background: #fafbfc;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
 }
 
 .market-dept-cascader-clear {

@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   getSkillTaskAssociation,
-  listSkillPlanningTasks,
+  querySkillPlanningTasks,
   updateSkillTaskProgress,
   updateSkillTaskStatus,
+  usesRemoteSkillPlanningTasks,
   type SkillPlanningTask,
   type SkillTaskAssociation,
   type SkillTaskStatus,
@@ -21,6 +22,10 @@ type TaskNotice = {
 
 const props = withDefaults(defineProps<{ userId?: string }>(), { userId: '' });
 const tasks = ref<SkillPlanningTask[]>([]);
+const loading = ref(false);
+const loadError = ref('');
+const remoteTasks = usesRemoteSkillPlanningTasks();
+let reloadSequence = 0;
 const keyword = ref('');
 const statusFilter = ref<'all' | SkillTaskStatus>('all');
 const page = ref(1);
@@ -35,32 +40,36 @@ const detailDialog = reactive({
   association: null as SkillTaskAssociation | null,
 });
 
-const notices = ref<TaskNotice[]>([
-  {
-    id: 'notice-1',
-    day: '今天',
-    title: '新增 Skill 任务',
-    detail: '接口契约检查 Skill',
-    time: '09:30',
-    tone: 'new',
-  },
-  {
-    id: 'notice-2',
-    day: '昨天',
-    title: '负责人发生变化',
-    detail: '知识库质量巡检 Skill',
-    time: '16:45',
-    tone: 'change',
-  },
-  {
-    id: 'notice-3',
-    day: '昨天',
-    title: 'Skill 被删除',
-    detail: '旧版日志聚合 Skill',
-    time: '11:20',
-    tone: 'delete',
-  },
-]);
+const notices = ref<TaskNotice[]>(
+  remoteTasks
+    ? []
+    : [
+        {
+          id: 'notice-1',
+          day: '今天',
+          title: '新增 Skill 任务',
+          detail: '接口契约检查 Skill',
+          time: '09:30',
+          tone: 'new',
+        },
+        {
+          id: 'notice-2',
+          day: '昨天',
+          title: '负责人发生变化',
+          detail: '知识库质量巡检 Skill',
+          time: '16:45',
+          tone: 'change',
+        },
+        {
+          id: 'notice-3',
+          day: '昨天',
+          title: 'Skill 被删除',
+          detail: '旧版日志聚合 Skill',
+          time: '11:20',
+          tone: 'delete',
+        },
+      ],
+);
 
 const statusOptions: Array<{ value: SkillTaskStatus; label: string }> = [
   { value: 'todo', label: '未开始' },
@@ -99,12 +108,25 @@ const pageEnd = computed(() => Math.min(page.value * pageSize, filteredTasks.val
 const todayNotices = computed(() => notices.value.filter((notice) => notice.day === '今天'));
 const yesterdayNotices = computed(() => notices.value.filter((notice) => notice.day === '昨天'));
 
-function reload(): void {
-  tasks.value = listSkillPlanningTasks(props.userId);
-  tasks.value.forEach((task) => {
-    progressDrafts[task.id] = task.progress;
-  });
-  if (page.value > totalPages.value) page.value = totalPages.value;
+async function reload(): Promise<void> {
+  const requestSequence = ++reloadSequence;
+  loading.value = true;
+  loadError.value = '';
+  try {
+    const nextTasks = await querySkillPlanningTasks(props.userId);
+    if (requestSequence !== reloadSequence) return;
+    tasks.value = nextTasks;
+    tasks.value.forEach((task) => {
+      progressDrafts[task.id] = task.progress;
+    });
+    if (page.value > totalPages.value) page.value = totalPages.value;
+  } catch (error) {
+    if (requestSequence !== reloadSequence) return;
+    tasks.value = [];
+    loadError.value = error instanceof Error ? error.message : '待办任务加载失败';
+  } finally {
+    if (requestSequence === reloadSequence) loading.value = false;
+  }
 }
 
 function statusLabel(status: SkillTaskStatus): string {
@@ -152,6 +174,10 @@ function addNotice(title: string, detail: string, tone: TaskNotice['tone']): voi
 }
 
 function startTask(task: SkillPlanningTask): void {
+  if (remoteTasks) {
+    showToast('后端暂未提供待办状态流转接口');
+    return;
+  }
   updateSkillTaskStatus(task.id, 'inProgress');
   addNotice('任务已开始', task.name, 'change');
   reload();
@@ -159,6 +185,10 @@ function startTask(task: SkillPlanningTask): void {
 }
 
 function saveProgress(task: SkillPlanningTask): void {
+  if (remoteTasks) {
+    showToast('后端暂未提供待办进度更新接口');
+    return;
+  }
   const input = Number(progressDrafts[task.id]);
   const progress = Number.isFinite(input)
     ? Math.max(1, Math.min(99, Math.round(input)))
@@ -171,6 +201,10 @@ function saveProgress(task: SkillPlanningTask): void {
 }
 
 function completeTask(task: SkillPlanningTask): void {
+  if (remoteTasks) {
+    showToast('后端暂未提供待办状态流转接口');
+    return;
+  }
   updateSkillTaskStatus(task.id, 'done');
   addNotice('任务已完成', task.name, 'publish');
   reload();
@@ -196,8 +230,11 @@ function goPage(next: number): void {
 watch([keyword, statusFilter], () => {
   page.value = 1;
 });
-watch(() => props.userId, reload);
-onMounted(reload);
+watch(
+  () => props.userId,
+  () => void reload(),
+);
+onMounted(() => void reload());
 onBeforeUnmount(() => {
   if (toastTimer !== null) window.clearTimeout(toastTimer);
 });
@@ -297,7 +334,10 @@ onBeforeUnmount(() => {
                 <td>
                   <div class="progress-cell">
                     <div><i :style="{ width: task.progress + '%' }"></i></div>
-                    <label v-if="task.status === 'inProgress'" class="progress-input">
+                    <label
+                      v-if="task.status === 'inProgress' && !remoteTasks"
+                      class="progress-input"
+                    >
                       <input
                         v-model.number="progressDrafts[task.id]"
                         type="number"
@@ -316,14 +356,14 @@ onBeforeUnmount(() => {
                 <td>
                   <div class="task-actions">
                     <button
-                      v-if="task.status === 'todo'"
+                      v-if="task.status === 'todo' && !remoteTasks"
                       type="button"
                       class="is-primary"
                       @click="startTask(task)"
                     >
                       开始
                     </button>
-                    <template v-if="task.status === 'inProgress'">
+                    <template v-if="task.status === 'inProgress' && !remoteTasks">
                       <button type="button" class="is-secondary" @click="saveProgress(task)">
                         保存进度
                       </button>
@@ -339,7 +379,14 @@ onBeforeUnmount(() => {
               </tr>
               <tr v-if="pagedTasks.length === 0">
                 <td colspan="8" class="task-empty">
-                  {{ props.userId ? '当前没有符合条件的待办任务' : '正在获取当前用户信息…' }}
+                  {{
+                    loadError ||
+                    (loading
+                      ? '待办任务加载中…'
+                      : props.userId
+                        ? '当前没有符合条件的待办任务'
+                        : '正在获取当前用户信息…')
+                  }}
                 </td>
               </tr>
             </tbody>
