@@ -420,11 +420,12 @@ export const skillBaseService = {
   },
 
   // 全量刷新指定部门的场景
-  refreshSceneOptionGroups: (body: any): any => {
+  refreshSceneOptionGroups: (body: any, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/config/scene',
       method: 'post',
-      data: body, // { userId, deptCode, scenes }
+      params: { userId },
+      data: body, // { deptCode, scenes }
     });
   },
 
@@ -438,11 +439,12 @@ export const skillBaseService = {
   },
 
   // 全量刷新指定部门的活动
-  refreshActivityOptionGroups: (body: any): any => {
+  refreshActivityOptionGroups: (body: any, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/config/activity',
       method: 'post',
-      data: body, // { userId, deptCode, activities }
+      params: { userId },
+      data: body, // { deptCode, activities }
     });
   },
 

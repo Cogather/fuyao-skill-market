@@ -218,10 +218,8 @@ interface HttpTaxonomyRow {
 }
 
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
-  const responseRecord = asRecord(response);
-  const meta = asRecord(responseRecord.meta);
-  if (meta.success === false) {
-    throw new Error(readText(responseRecord.message) || fallbackMessage);
+  if (!response?.meta?.success) {
+    throw new Error(readText(response?.meta?.message) || fallbackMessage);
   }
 }
 
@@ -300,13 +298,12 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
   return records;
 }
 
-function httpDepartmentContext(departmentName: string): { userId: string; deptCode: string } {
+function httpDepartmentContext(departmentName: string): any {
   const userId = props.userId.trim();
   if (!userId) throw new Error('请先获取当前用户工号');
   const department = departmentOptions.value.find((item) => item.name === departmentName);
   const deptCode = department?.deptCode.trim() || departmentName.trim();
-  if (!deptCode) throw new Error('未找到当前配置部门的 deptCode');
-  return { userId, deptCode };
+  return !deptCode ? { userId } : { userId, deptCode };
 }
 
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
@@ -365,8 +362,14 @@ async function saveHttpTaxonomyRecords(departmentName: string): Promise<Taxonomy
   const items = toHttpTaxonomyItems(draftRecords.value);
   const response =
     props.kind === 'scene'
-      ? await skillBaseService.refreshSceneOptionGroups({ ...context, scenes: items })
-      : await skillBaseService.refreshActivityOptionGroups({ ...context, activities: items });
+      ? await skillBaseService.refreshSceneOptionGroups(
+          { deptCode: context.deptCode, scenes: items },
+          props.userId,
+        )
+      : await skillBaseService.refreshActivityOptionGroups(
+          { deptCode: context.deptCode, activities: items },
+          props.userId,
+        );
   assertHttpSuccess(response, labels.value.item + '配置保存失败');
   return fetchHttpTaxonomyRecords(departmentName);
 }
