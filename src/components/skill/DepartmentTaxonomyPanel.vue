@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   getActivityOptionGroups,
   getDefaultActivityRecords,
@@ -43,6 +43,7 @@ const props = withDefaults(
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
     isSuperAdmin?: boolean;
+    departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
     restrictToAllowedDepartments?: boolean;
   }>(),
@@ -50,6 +51,7 @@ const props = withDefaults(
     departmentTree: () => [],
     userId: '',
     isSuperAdmin: false,
+    departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
     restrictToAllowedDepartments: false,
   },
@@ -130,7 +132,16 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
   });
 }
 
-const departmentOptions = computed(() => flattenDepartments(props.departmentTree));
+const normalizedDepartmentPermissionPath = computed(() =>
+  normalizeDepartmentPath(props.departmentPermissionPath),
+);
+const departmentOptions = computed(() => {
+  const options = flattenDepartments(props.departmentTree);
+  const permissionPath = normalizedDepartmentPermissionPath.value;
+  return permissionPath.length > 0
+    ? options.filter((department) => departmentPathStartsWith(department.path, permissionPath))
+    : options;
+});
 const selectedDepartment = ref('');
 const selectedDepartmentPath = ref<string[]>([]);
 const configurableDepartmentPaths = computed(() =>
@@ -142,10 +153,26 @@ const savedSnapshot = ref('[]');
 const selectedPrimaryId = ref('');
 const collapsedPrimaryIds = ref(new Set<string>());
 const notice = ref('');
+const toast = ref('');
 const loading = ref(false);
 let departmentLoadSequence = 0;
+let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
+
+const DEPARTMENT_PERMISSION_MESSAGE =
+  '\u8bf7\u9009\u62e9\u60a8\u6240\u5c5e\u7684\u6700\u7ec6\u7c92\u5ea6\u90e8\u95e8\u3002';
+
+function showToast(message: string, ms = 3000): void {
+  toast.value = message;
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+  }
+  toastTimer = window.setTimeout(() => {
+    toast.value = '';
+    toastTimer = null;
+  }, ms);
+}
 
 function normalizeDepartmentPath(path: string[]): string[] {
   return path.map((segment) => segment.trim()).filter(Boolean);
@@ -157,6 +184,26 @@ function sameDepartmentPath(left: string[], right: string[]): boolean {
   return (
     normalizedLeft.length === normalizedRight.length &&
     normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
+  );
+}
+
+function departmentPathIsBeforePermissionDepartment(path: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const permissionPath = normalizedDepartmentPermissionPath.value;
+  return (
+    normalizedPath.length > 0 &&
+    normalizedPath.length < permissionPath.length &&
+    normalizedPath.every((segment, index) => segment === permissionPath[index])
   );
 }
 
@@ -436,8 +483,17 @@ watch([() => props.userId, () => props.isSuperAdmin], () => {
 });
 
 function guardDepartmentChange(path: string[]): boolean {
+  if (departmentPathIsBeforePermissionDepartment(path)) {
+    notice.value = DEPARTMENT_PERMISSION_MESSAGE;
+    showToast(DEPARTMENT_PERMISSION_MESSAGE);
+    return false;
+  }
+
   const nextDepartment = departmentByPath(path);
   if (!nextDepartment) {
+    showToast(
+      '\u8bf7\u9009\u62e9\u53ef\u914d\u7f6e\u7684\u4e94\u7ea7\u6216\u516d\u7ea7\u90e8\u95e8\u3002',
+    );
     notice.value = '请选择可配置的五级或六级部门。';
     return false;
   }
@@ -448,6 +504,13 @@ function guardDepartmentChange(path: string[]): boolean {
     window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？')
   );
 }
+
+onBeforeUnmount(() => {
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+});
 
 function changeDepartment(path: string[]): void {
   const nextDepartment = departmentByPath(path);
@@ -762,6 +825,8 @@ function exportRecords(): void {
             :tree="departmentTree"
             :max-level="6"
             :allowed-paths="configurableDepartmentPaths"
+            permission-mode="review-center"
+            :permission-path="normalizedDepartmentPermissionPath"
             :disabled="loading || !departmentOptions.length"
             :all-label="departmentOptions.length ? '请选择配置部门' : '暂无可配置部门'"
             empty-text="暂无可配置部门"
@@ -1057,9 +1122,31 @@ function exportRecords(): void {
         </div>
       </div>
     </div>
+    <Teleport to="body">
+      <div v-if="toast" class="configuration-toast" role="status" aria-live="polite">
+        {{ toast }}
+      </div>
+    </Teleport>
   </section>
 </template>
 <style scoped>
+.configuration-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 3000;
+  min-width: 240px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 13px 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.94);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.2);
+  color: #f8fafc;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .taxonomy-workspace {
   display: grid;
   gap: 22px;
@@ -1625,8 +1712,15 @@ td {
 
 .toolbar-controls button,
 .add-button {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 11px;
+  font-size: 11px;
+}
+
+:deep(.configuration-dept-cascader .market-dept-cascader-trigger) {
+  height: 36px;
+  min-height: 36px;
+  border-radius: 9px;
   font-size: 11px;
 }
 

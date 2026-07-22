@@ -26,15 +26,16 @@ export function marketRoleIsOrgAdmin(role: CurrentUserRoleDto | null): boolean {
   return role?.role === 'ORG_ADMIN' || roleFlagIsTrue(role?.orgAdmin);
 }
 
-/** 部门 Harness 规划与公共配置权限入口：管理员或部门主任。 */
+/** 部门 Owner 标识：优先使用新字段，同时兼容存量 departmentDirector。 */
+export function marketRoleIsDepartmentOwner(role: CurrentUserRoleDto | null): boolean {
+  return roleFlagIsTrue(role?.departmentOwner) || roleFlagIsTrue(role?.departmentDirector);
+}
+
+/** 部门权限配置入口仅允许当前 dept5 部门 Owner。 */
 export function marketRoleCanConfigurePlanningPermissions(
   role: CurrentUserRoleDto | null,
 ): boolean {
-  return (
-    marketRoleIsSuperAdmin(role) ||
-    marketRoleIsOrgAdmin(role) ||
-    roleFlagIsTrue(role?.departmentDirector)
-  );
+  return marketRoleIsDepartmentOwner(role);
 }
 
 export function marketRoleShowsAdminPerspective(role: CurrentUserRoleDto | null): boolean {

@@ -14,6 +14,11 @@ type DeptCascadeColumn = {
   active: string | undefined;
 };
 
+type DepartmentSearchResult = {
+  name: string;
+  path: string[];
+};
+
 const props = withDefaults(
   defineProps<{
     modelValue: string[];
@@ -32,6 +37,8 @@ const props = withDefaults(
     permissionMode?: 'none' | 'review-center';
     permissionPath?: string[];
     allowedPaths?: string[][];
+    searchable?: boolean;
+    searchPlaceholder?: string;
     disabled?: boolean;
   }>(),
   {
@@ -42,6 +49,8 @@ const props = withDefaults(
     permissionMode: 'none',
     permissionPath: () => [],
     allowedPaths: () => [],
+    searchable: false,
+    searchPlaceholder: '搜索部门',
     disabled: false,
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
@@ -63,6 +72,7 @@ const wrapRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 const panelLayout = ref<{ left: number; top: number; maxWidth: number } | null>(null);
 const panelMaxHeight = ref(340);
+const searchKeyword = ref('');
 let panelScrollCleanup: (() => void) | null = null;
 
 const normalizedTree = computed(() => props.tree ?? []);
@@ -142,6 +152,9 @@ const columns = computed<DeptCascadeColumn[]>(() => {
 });
 
 function hasChildren(levelIndex: number, name: string): boolean {
+  if (levelIndex + 1 >= props.maxLevel) {
+    return false;
+  }
   const node = nodeByPartial([...activePath.value.slice(0, levelIndex), name]);
   return Boolean(node?.children?.length);
 }
@@ -177,6 +190,39 @@ function pathAllowedByPermission(path: string[]): boolean {
 
   return true;
 }
+
+const searchResults = computed<DepartmentSearchResult[]>(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase();
+  if (!keyword) {
+    return [];
+  }
+
+  const results: DepartmentSearchResult[] = [];
+  const visit = (
+    nodes: MarketDeptCascaderNode[],
+    parentPath: string[],
+    levelIndex: number,
+  ): void => {
+    if (levelIndex >= props.maxLevel) {
+      return;
+    }
+    nodes.forEach((node) => {
+      const path = [...parentPath, node.name];
+      if (
+        pathAllowedByPermission(path) &&
+        path.some((segment) => segment.toLowerCase().includes(keyword))
+      ) {
+        results.push({ name: node.name, path });
+      }
+      if (node.children?.length && levelIndex + 1 < props.maxLevel) {
+        visit(node.children, path, levelIndex + 1);
+      }
+    });
+  };
+
+  visit(normalizedTree.value, [], 0);
+  return results.slice(0, 50);
+});
 
 function isOptionDisabled(levelIndex: number, name: string): boolean {
   return !pathAllowedByPermission([...activePath.value.slice(0, levelIndex), name]);
@@ -241,6 +287,9 @@ function setOpen(nextOpen: boolean): void {
   if (props.selectionMode === 'confirm') {
     draftPath.value = [...selectedPath.value];
   }
+  if (nextOpen) {
+    searchKeyword.value = '';
+  }
   open.value = nextOpen;
   if (nextOpen) {
     updatePanelLayout();
@@ -263,12 +312,27 @@ function select(levelIndex: number, name: string): void {
   }
 
   const nextValue = [...activePath.value.slice(0, levelIndex), name];
+  selectPath(nextValue);
+}
+
+function selectPath(nextValue: string[]): void {
   if (props.selectionMode === 'confirm') {
     draftPath.value = nextValue;
     return;
   }
   emit('update:modelValue', nextValue);
   emit('change', nextValue);
+}
+
+function selectSearchResult(path: string[]): void {
+  if (!pathAllowedByPermission(path)) {
+    return;
+  }
+  selectPath([...path]);
+  searchKeyword.value = '';
+  void nextTick(() => {
+    updatePanelLayout();
+  });
 }
 
 function clear(): void {
@@ -370,9 +434,33 @@ onBeforeUnmount(() => {
         class="market-dept-cascader-panel"
         :style="panelStyle"
         role="listbox"
-        @mousedown.prevent
+        @mousedown.stop
       >
-        <div v-if="columns.length === 0" class="market-dept-cascader-empty">
+        <label v-if="searchable" class="market-dept-cascader-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            v-model="searchKeyword"
+            type="search"
+            :placeholder="searchPlaceholder"
+            aria-label="搜索部门"
+          />
+        </label>
+        <div v-if="searchKeyword.trim()" class="market-dept-cascader-results">
+          <button
+            v-for="result in searchResults"
+            :key="result.path.join('/')"
+            type="button"
+            class="market-dept-cascader-result"
+            @click="selectSearchResult(result.path)"
+          >
+            <strong>{{ result.name }}</strong>
+            <small>{{ result.path.join(' / ') }}</small>
+          </button>
+          <div v-if="searchResults.length === 0" class="market-dept-cascader-empty">
+            未找到匹配部门
+          </div>
+        </div>
+        <div v-else-if="columns.length === 0" class="market-dept-cascader-empty">
           {{ emptyText }}
         </div>
         <div v-else class="market-dept-cascader-columns">
@@ -506,6 +594,77 @@ onBeforeUnmount(() => {
   color: #64748b;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.market-dept-cascader-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin: 10px 12px 8px;
+}
+
+.market-dept-cascader-search > span {
+  position: absolute;
+  left: 11px;
+  color: #94a3b8;
+  font-size: 17px;
+  pointer-events: none;
+}
+
+.market-dept-cascader-search input {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px 0 34px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  outline: none;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+}
+
+.market-dept-cascader-search input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.market-dept-cascader-results {
+  display: grid;
+  min-width: min(520px, calc(100vw - 32px));
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.market-dept-cascader-result {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+}
+
+.market-dept-cascader-result:hover {
+  background: #f1f5f9;
+}
+
+.market-dept-cascader-result strong {
+  font-size: 12px;
+}
+
+.market-dept-cascader-result small {
+  overflow: hidden;
+  color: #8491a4;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-dept-cascader-columns {

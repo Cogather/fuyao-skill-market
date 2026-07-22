@@ -331,7 +331,7 @@ onBeforeUnmount(() => {
               <th>层级</th>
               <th>产品 / 服务</th>
               <th>责任 Owner</th>
-              <th title="随责任 Owner 自动变化">Owner 所在部门</th>
+              <!-- <th title="随责任 Owner 自动变化">Owner 所在部门</th> -->
               <th>关联范围</th>
               <th>开发责任人</th>
               <th>计划完成</th>
@@ -355,7 +355,7 @@ onBeforeUnmount(() => {
               </td>
               <td>{{ record.product || '待明确' }}</td>
               <td>{{ record.owner }}</td>
-              <td>{{ record.department || '随 Owner 自动带出' }}</td>
+              <!-- <td>{{ record.department || '随 Owner 自动带出' }}</td> -->
               <td>
                 <div class="association-summary">
                   <span>场景 {{ associationFor(record.id).sceneIds.length }}</span
@@ -436,10 +436,10 @@ onBeforeUnmount(() => {
               </datalist>
             </label>
             <label><span>责任 Owner *</span><input v-model.trim="editor.owner" /></label>
-            <label
+            <!-- <label
               ><span>Owner 所在部门</span
               ><input v-model.trim="editor.department" placeholder="由 Owner 资料自动带出" readonly
-            /></label>
+            /></label> -->
             <label><span>开发责任人</span><input v-model.trim="editor.developOwner" /></label>
             <label
               ><span>计划完成时间</span><input v-model="editor.plannedCompleteDate" type="date"

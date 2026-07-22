@@ -13,12 +13,21 @@ import {
   querySkillPlanningUsers,
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
+import MarketDeptCascader from './MarketDeptCascader.vue';
 
 type DepartmentNode = {
   id?: string;
   deptCode?: string;
+  levelNo?: number;
   name: string;
   children?: DepartmentNode[];
+};
+
+type DepartmentOption = {
+  name: string;
+  deptCode: string;
+  level: number;
+  path: string[];
 };
 
 type DepartmentPermissionRecord = DepartmentPlanningPermissionRecord & {
@@ -30,12 +39,14 @@ const props = withDefaults(
   defineProps<{
     departmentTree?: DepartmentNode[];
     userId?: string;
+    departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
     departmentTree: () => [],
     userId: '',
+    departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
     restrictToAllowedDepartments: false,
   },
@@ -43,8 +54,7 @@ const props = withDefaults(
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const records = ref<DepartmentPermissionRecord[]>([]);
-const selectedDepartment = ref('');
-const departmentKeyword = ref('');
+const selectedDepartmentPath = ref<string[]>([]);
 const toast = ref('');
 let toastTimer: number | null = null;
 let personSearchTimer: number | null = null;
@@ -65,46 +75,93 @@ const revokeDialog = reactive({
   member: null as DepartmentPlanningPermissionMember | null,
 });
 
-const allDepartmentNames = computed(() => {
-  const names: string[] = [];
-  const visit = (nodes: DepartmentNode[]) => {
-    nodes.forEach((node) => {
-      if (node.children?.length) visit(node.children);
-      else if (node.name.trim()) names.push(node.name.trim());
+function normalizeDepartmentPath(path: string[]): string[] {
+  return path.map((segment) => segment.trim()).filter(Boolean);
+}
+
+function sameDepartmentPath(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizeDepartmentPath(left);
+  const normalizedRight = normalizeDepartmentPath(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function flattenDept5Departments(nodes: DepartmentNode[]): DepartmentOption[] {
+  const options: DepartmentOption[] = [];
+  const visit = (items: DepartmentNode[], parentPath: string[], depth: number): void => {
+    items.forEach((node) => {
+      const name = node.name.trim();
+      if (!name) return;
+      const path = [...parentPath, name];
+      const explicitLevel = Number(node.levelNo);
+      const level = Number.isFinite(explicitLevel) && explicitLevel > 0 ? explicitLevel : depth;
+      if (level === 5) {
+        options.push({
+          name,
+          deptCode: readText(node.deptCode ?? node.id) || name,
+          level,
+          path,
+        });
+        return;
+      }
+      if (level < 5 && node.children?.length) {
+        visit(node.children, path, depth + 1);
+      }
     });
   };
-  visit(props.departmentTree);
-  records.value.forEach((record) => names.push(record.departmentName));
-  const unique = [...new Set(names)];
-  const scope = props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean);
-  return props.restrictToAllowedDepartments
-    ? unique.filter((item) => scope.includes(item))
-    : unique;
-});
+  visit(nodes, [], 1);
+  return options;
+}
 
-const filteredDepartments = computed(() => {
-  const text = departmentKeyword.value.trim().toLowerCase();
-  return allDepartmentNames.value.filter((name) =>
-    text ? name.toLowerCase().includes(text) : true,
-  );
-});
+const normalizedOwnerDepartmentPath = computed(() =>
+  normalizeDepartmentPath(props.departmentPermissionPath),
+);
+const dept5DepartmentOptions = computed(() => flattenDept5Departments(props.departmentTree));
+const ownerDepartmentOption = computed(
+  () =>
+    dept5DepartmentOptions.value.find((option) =>
+      sameDepartmentPath(option.path, normalizedOwnerDepartmentPath.value),
+    ) ?? null,
+);
+const configurableDepartmentPaths = computed(() =>
+  ownerDepartmentOption.value ? [[...ownerDepartmentOption.value.path]] : [],
+);
+const allDepartmentNames = computed(() =>
+  ownerDepartmentOption.value ? [ownerDepartmentOption.value.name] : [],
+);
+const selectedDepartment = computed(() => selectedDepartmentPath.value.at(-1) ?? '');
+const selectedDepartmentPathLabel = computed(() => selectedDepartmentPath.value.join(' / '));
+const canEditSelectedDepartment = computed(
+  () =>
+    Boolean(ownerDepartmentOption.value) &&
+    sameDepartmentPath(selectedDepartmentPath.value, ownerDepartmentOption.value?.path ?? []),
+);
 
 const selectedRecord = computed<DepartmentPermissionRecord>(() =>
   recordForDepartment(selectedDepartment.value),
 );
 
-const authorizedTotal = computed(() =>
-  allDepartmentNames.value.reduce(
-    (total, departmentName) => total + recordForDepartment(departmentName).members.length,
-    0,
+const selectedAdministrators = computed(() =>
+  selectedRecord.value.members.filter(
+    (member) =>
+      !selectedRecord.value.ownerUserId ||
+      normalizeUserId(member.userId) !== normalizeUserId(selectedRecord.value.ownerUserId),
   ),
 );
+const authorizedTotal = computed(() => selectedAdministrators.value.length);
 
 function recordForDepartment(departmentName: string): DepartmentPermissionRecord {
+  const ownerOption =
+    ownerDepartmentOption.value?.name === departmentName ? ownerDepartmentOption.value : null;
   return (
     records.value.find((record) => record.departmentName === departmentName) ?? {
       departmentName,
-      deptCode: findDepartmentCode(props.departmentTree, departmentName) || departmentName,
+      deptCode:
+        ownerOption?.deptCode ||
+        findDepartmentCode(props.departmentTree, departmentName) ||
+        departmentName,
       ownerUserId: '',
       members: [],
       updatedAt: '',
@@ -251,6 +308,13 @@ async function enrichMemberProfiles(
 }
 
 async function reload(): Promise<void> {
+  const ownerOption = ownerDepartmentOption.value;
+  if (!ownerOption) {
+    records.value = [];
+    selectedDepartmentPath.value = [];
+    return;
+  }
+
   if (transportIsHttp) {
     const userId = props.userId.trim();
     if (!userId) {
@@ -258,29 +322,41 @@ async function reload(): Promise<void> {
       return;
     }
     const response = await skillBaseService.querySkillPlanningDepartments({ userId });
-    records.value = await enrichMemberProfiles(normalizeDepartmentRecords(response));
+    const departmentRecords = normalizeDepartmentRecords(response).filter(
+      (record) =>
+        record.deptCode === ownerOption.deptCode || record.departmentName === ownerOption.name,
+    );
+    records.value = await enrichMemberProfiles(departmentRecords);
   } else {
-    records.value = listDepartmentPlanningPermissions().map((record) => ({
-      ...record,
-      deptCode:
-        findDepartmentCode(props.departmentTree, record.departmentName) || record.departmentName,
-      ownerUserId: '',
-    }));
+    records.value = listDepartmentPlanningPermissions()
+      .filter((record) => record.departmentName === ownerOption.name)
+      .map((record) => ({
+        ...record,
+        deptCode: ownerOption.deptCode,
+        ownerUserId: '',
+      }));
   }
-  if (!selectedDepartment.value || !allDepartmentNames.value.includes(selectedDepartment.value)) {
-    selectedDepartment.value = allDepartmentNames.value[0] ?? '';
-  }
+  selectedDepartmentPath.value = [...ownerOption.path];
 }
 
 async function updateRemoteAdmins(
   record: DepartmentPermissionRecord,
   adminUserIds: string[],
 ): Promise<void> {
+  const ownerOption = ownerDepartmentOption.value;
+  if (
+    !ownerOption ||
+    !canEditSelectedDepartment.value ||
+    (record.deptCode !== ownerOption.deptCode && record.departmentName !== ownerOption.name)
+  ) {
+    throw new Error('仅部门 Owner 可以配置自己所属的 dept5 部门管理员');
+  }
+
   const response = await skillBaseService.updateSkillPlanningDepartmentAdmins(record.deptCode, {
     userId: props.userId.trim(),
     adminUserIds: [
       ...new Set(adminUserIds.filter((userId) => Boolean(userId) && userId !== record.ownerUserId)),
-    ],
+    ].join(','),
   });
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
@@ -307,8 +383,20 @@ function reloadSafely(): void {
   });
 }
 
-function selectDepartment(name: string): void {
-  selectedDepartment.value = name;
+function guardDepartmentSelection(path: string[]): boolean {
+  const ownerOption = ownerDepartmentOption.value;
+  if (!ownerOption || !sameDepartmentPath(path, ownerOption.path)) {
+    showToast('仅可选择您负责的 dept5 部门');
+    return false;
+  }
+  return true;
+}
+
+function selectDepartment(path: string[]): void {
+  if (!guardDepartmentSelection(path)) {
+    return;
+  }
+  selectedDepartmentPath.value = [...path];
   closePersonSearch();
 }
 
@@ -383,12 +471,15 @@ function optionDepartment(option: SkillPlanningUserOption): string {
 
 async function addPermission(option: SkillPlanningUserOption): Promise<void> {
   try {
+    if (!canEditSelectedDepartment.value) {
+      throw new Error('当前用户无权配置该部门管理员');
+    }
     cacheUserOptions([option]);
     if (transportIsHttp) {
       const record = selectedRecord.value;
       await updateRemoteAdmins(record, [
         ...record.members.map((member) => member.userId),
-        option.id,
+        option.raw.sAMAccountName,
       ]);
     } else {
       grantDepartmentPlanningPermission(selectedDepartment.value, {
@@ -409,6 +500,10 @@ async function addPermission(option: SkillPlanningUserOption): Promise<void> {
 }
 
 function requestRevoke(member: DepartmentPlanningPermissionMember): void {
+  if (!canEditSelectedDepartment.value) {
+    showToast('当前用户无权修改该部门管理员');
+    return;
+  }
   Object.assign(revokeDialog, {
     open: true,
     departmentName: selectedDepartment.value,
@@ -420,6 +515,9 @@ async function confirmRevoke(): Promise<void> {
   const member = revokeDialog.member;
   if (!member) return;
   try {
+    if (!canEditSelectedDepartment.value) {
+      throw new Error('当前用户无权修改该部门管理员');
+    }
     const record = recordForDepartment(revokeDialog.departmentName);
     if (transportIsHttp) {
       if (member.userId === record.ownerUserId) {
@@ -450,6 +548,7 @@ watch(
   () => [
     props.userId,
     props.departmentTree,
+    props.departmentPermissionPath,
     props.allowedDepartmentNames,
     props.restrictToAllowedDepartments,
   ],
@@ -467,10 +566,35 @@ onBeforeUnmount(() => {
 <template>
   <section class="permission-panel" aria-label="部门权限配置">
     <div class="permission-hero">
-      <div>
-        <span>DEPARTMENT ACCESS CONTROL</span>
-        <h3>部门 Harness 管理权限</h3>
-        <p>由管理员或部门主任维护人员名单，只有被授权人员才能管理对应部门的各项规划与公共配置。</p>
+      <div class="permission-department-field">
+        <span>选择配置部门</span>
+        <MarketDeptCascader
+          v-model="selectedDepartmentPath"
+          class="permission-dept-cascader"
+          :tree="departmentTree"
+          :max-level="5"
+          :allowed-paths="configurableDepartmentPaths"
+          permission-mode="review-center"
+          :permission-path="normalizedOwnerDepartmentPath"
+          :disabled="!ownerDepartmentOption"
+          :all-label="ownerDepartmentOption ? '请选择 dept5 部门' : '暂无可配置部门'"
+          empty-text="暂无可配置的 dept5 部门"
+          clear-text="恢复本部门"
+          clear-behavior="reset"
+          :clear-value="ownerDepartmentOption?.path ?? []"
+          selection-mode="confirm"
+          searchable
+          search-placeholder="搜索部门名称或路径"
+          aria-label="部门权限配置部门级联选择"
+          :before-clear="() => Boolean(ownerDepartmentOption)"
+          :before-done="guardDepartmentSelection"
+          @clear="selectDepartment"
+          @done="selectDepartment"
+        />
+        <p v-if="ownerDepartmentOption">
+          仅可配置您负责的 dept5 部门，dept5 以下组织不提供管理员配置入口。
+        </p>
+        <p v-else>当前账号未匹配到可配置的 dept5 Owner 部门。</p>
       </div>
       <div class="permission-metrics">
         <div>
@@ -482,46 +606,28 @@ onBeforeUnmount(() => {
           ><span>授权关系</span>
         </div>
         <div>
-          <strong>{{ selectedRecord.members.length }}</strong
-          ><span>当前部门人员</span>
+          <strong>{{ selectedAdministrators.length }}</strong
+          ><span>当前部门管理员</span>
         </div>
       </div>
     </div>
 
     <div class="permission-workspace">
-      <aside class="department-pane">
-        <header>
-          <strong>部门列表</strong>
-          <small>选择需要配置权限的部门</small>
-        </header>
-        <input v-model.trim="departmentKeyword" type="search" placeholder="搜索部门" />
-        <div class="department-list">
-          <button
-            v-for="name in filteredDepartments"
-            :key="name"
-            type="button"
-            :class="{ 'is-active': selectedDepartment === name }"
-            @click="selectDepartment(name)"
-          >
-            <span>{{ name }}</span
-            ><b>{{ recordForDepartment(name).members.length }}</b>
-          </button>
-          <p v-if="filteredDepartments.length === 0">暂无可配置部门</p>
-        </div>
-      </aside>
-
       <div class="member-pane">
         <header class="member-pane__head">
           <div>
             <small>当前配置部门</small>
             <strong>{{ selectedDepartment || '暂无部门' }}</strong>
-            <p>已授权 {{ selectedRecord.members.length }} 人管理此部门的 Harness 规划与配置。</p>
+            <p v-if="selectedDepartmentPathLabel" class="selected-department-path">
+              {{ selectedDepartmentPathLabel }}
+            </p>
+            <p>已授权 {{ selectedAdministrators.length }} 人管理此部门的 Harness 规划与配置。</p>
           </div>
           <div class="person-search" @keydown.esc="closePersonSearch">
             <input
               :value="personSearch.value"
               type="text"
-              :disabled="!selectedDepartment"
+              :disabled="!canEditSelectedDepartment"
               placeholder="输入姓名或工号添加人员"
               @focus="openPersonSearch"
               @input="onPersonInput"
@@ -558,6 +664,10 @@ onBeforeUnmount(() => {
           </p>
         </div>
 
+        <div class="member-table-head">
+          <strong>管理员列表</strong>
+          <span>仅展示当前 dept5 部门已授权的 Harness 管理员</span>
+        </div>
         <div class="member-table-wrap">
           <table class="member-table">
             <thead>
@@ -570,7 +680,7 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="member in selectedRecord.members" :key="member.userId">
+              <tr v-for="member in selectedAdministrators" :key="member.userId">
                 <td>
                   <div class="member-cell">
                     <span>{{ (member.userName || member.label).slice(0, 1) }}</span>
@@ -586,7 +696,7 @@ onBeforeUnmount(() => {
                   </button>
                 </td>
               </tr>
-              <tr v-if="selectedRecord.members.length === 0">
+              <tr v-if="selectedAdministrators.length === 0">
                 <td colspan="5" class="member-empty">该部门暂未配置 Harness 管理人员</td>
               </tr>
             </tbody>
@@ -636,23 +746,28 @@ onBeforeUnmount(() => {
     linear-gradient(110deg, #fff, #faf8ff);
   box-shadow: 0 12px 34px rgba(45, 58, 92, 0.07);
 }
-.permission-hero > div:first-child > span {
+.permission-department-field {
+  display: grid;
+  gap: 8px;
+  width: min(680px, 62%);
+}
+.permission-department-field > span {
   color: #7055bd;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-}
-.permission-hero h3 {
-  margin: 5px 0 6px;
-  color: #111d35;
-  font-size: 22px;
+  font-size: 11px;
   font-weight: 900;
 }
-.permission-hero p {
+.permission-department-field p {
   margin: 0;
   color: #66748b;
-  font-size: 13px;
+  font-size: 10px;
   line-height: 1.7;
+}
+:deep(.permission-dept-cascader .market-dept-cascader-trigger) {
+  min-height: 46px;
+  border-color: #d8d7eb;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
 }
 .permission-metrics {
   display: grid;
@@ -682,88 +797,12 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 .permission-workspace {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  min-height: 520px;
+  min-height: 430px;
   overflow: hidden;
   border: 1px solid #dfe6f1;
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 12px 30px rgba(35, 52, 84, 0.06);
-}
-.department-pane {
-  padding: 18px 14px;
-  border-right: 1px solid #e7ecf4;
-  background: #fafbfe;
-}
-.department-pane header {
-  display: grid;
-  gap: 3px;
-  padding: 0 4px 14px;
-}
-.department-pane header strong {
-  font-size: 15px;
-}
-.department-pane header small {
-  color: #8a95a6;
-  font-size: 10px;
-}
-.department-pane > input {
-  width: 100%;
-  height: 36px;
-  box-sizing: border-box;
-  padding: 0 10px;
-  border: 1px solid #dce3ed;
-  border-radius: 8px;
-  outline: 0;
-}
-.department-list {
-  display: grid;
-  gap: 5px;
-  max-height: 430px;
-  margin-top: 12px;
-  overflow-y: auto;
-}
-.department-list button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: #536178;
-  font-size: 11px;
-  font-weight: 750;
-  text-align: left;
-  cursor: pointer;
-}
-.department-list button:hover {
-  background: #f0f3f9;
-}
-.department-list button.is-active {
-  border-color: #cfc4ee;
-  background: #f3efff;
-  color: #6547b5;
-}
-.department-list button b {
-  display: grid;
-  min-width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 99px;
-  background: #e9edf4;
-  font-size: 9px;
-}
-.department-list button.is-active b {
-  background: #ddd3f6;
-}
-.department-list p {
-  color: #9aa4b3;
-  font-size: 10px;
-  text-align: center;
 }
 .member-pane {
   min-width: 0;
@@ -791,6 +830,13 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #818da0;
   font-size: 10px;
+}
+.selected-department-path {
+  max-width: 720px;
+  overflow: hidden;
+  color: #65748d !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .person-search {
   position: relative;
@@ -885,6 +931,21 @@ onBeforeUnmount(() => {
 .permission-note p {
   margin: 0;
   color: #6f7b8f;
+  font-size: 10px;
+}
+.member-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0 9px;
+}
+.member-table-head strong {
+  color: #25324a;
+  font-size: 13px;
+}
+.member-table-head span {
+  color: #8a96a8;
   font-size: 10px;
 }
 .member-table-wrap {
@@ -1040,16 +1101,11 @@ onBeforeUnmount(() => {
   padding: 20px 24px;
 }
 
-.permission-hero > div:first-child > span {
+.permission-department-field > span {
   font-size: 9px;
 }
 
-.permission-hero h3 {
-  margin: 4px 0 5px;
-  font-size: 18px;
-}
-
-.permission-hero p {
+.permission-department-field p {
   font-size: 11px;
   line-height: 1.55;
 }
@@ -1068,19 +1124,6 @@ onBeforeUnmount(() => {
 
 .permission-metrics span {
   font-size: 9px;
-}
-
-.department-pane {
-  padding: 15px 12px;
-}
-
-.department-pane header strong {
-  font-size: 13px;
-}
-
-.department-list button {
-  min-height: 36px;
-  font-size: 10px;
 }
 
 .member-pane {
@@ -1139,16 +1182,8 @@ onBeforeUnmount(() => {
   .permission-metrics {
     min-width: 0;
   }
-  .permission-workspace {
-    grid-template-columns: 1fr;
-  }
-  .department-pane {
-    border-right: 0;
-    border-bottom: 1px solid #e7ecf4;
-  }
-  .department-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: 190px;
+  .permission-department-field {
+    width: 100%;
   }
   .person-search {
     width: 100%;
@@ -1165,9 +1200,6 @@ onBeforeUnmount(() => {
     border-top: 1px solid #e9e4f2;
     border-left: 0;
   }
-  .department-list {
-    grid-template-columns: 1fr;
-  }
   .member-pane {
     padding: 15px;
   }
@@ -1175,13 +1207,6 @@ onBeforeUnmount(() => {
 
 /* Responsive permission typography for wide screens */
 @media (min-width: 1440px) {
-  .department-pane header strong {
-    font-size: clamp(13px, 0.8vw, 16px);
-  }
-
-  .department-pane header small,
-  .department-list button,
-  .department-list p,
   .member-pane__head p,
   .permission-note p,
   .person-search > input,

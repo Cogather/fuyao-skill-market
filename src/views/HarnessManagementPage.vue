@@ -10,6 +10,10 @@ import {
   mapDepartmentTreeDtoToForest,
 } from '../services/skillMarket/marketDeptTreeFromApi';
 import { listAuthorizedHarnessDepartmentNames } from '../services/skillMarket/departmentPlanningPermissionService';
+import {
+  extractExpertDepartmentPermission,
+  type ExpertDepartmentPermission,
+} from '../services/skillMarket/expertDepartmentPermission';
 import { harnessConfigurationRevision } from '../services/skillMarket/harnessConfigurationSyncService';
 import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marketDepartmentsTreeDefault';
 import {
@@ -18,6 +22,7 @@ import {
   marketRoleIsSuperAdmin,
 } from '../services/skillMarket/roleUi';
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
+import { querySkillPlanningUsers } from '../services/skillMarket/skillPlanningService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
 
@@ -26,6 +31,10 @@ const profileStore = useProfileStore();
 const currentUserRole = ref<CurrentUserRoleDto | null>(null);
 const roleContextReady = ref(false);
 const remotePermissionDepartmentNames = ref<string[]>([]);
+const currentUserDepartmentPermission = ref<ExpertDepartmentPermission>({
+  minimumDepartmentId: '',
+  path: [],
+});
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
 type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
@@ -58,14 +67,28 @@ const userId = computed(() => {
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
   const source =
-    Array.isArray(injectedDepartments) && injectedDepartments.length > 0
+    transportIsHttp && Array.isArray(injectedDepartments) && injectedDepartments.length > 0
       ? injectedDepartments
       : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
 
-const canConfigureDepartmentPermissions = computed(() =>
-  marketRoleCanConfigurePlanningPermissions(currentUserRole.value),
+function departmentLevelByPath(path: string[]): number {
+  let nodes = departmentTree.value;
+  let level = 0;
+  for (const segment of path.map((item) => item.trim()).filter(Boolean)) {
+    const node = nodes.find((item) => item.name === segment);
+    if (!node) return 0;
+    level = node.levelNo;
+    nodes = node.children;
+  }
+  return level;
+}
+
+const canConfigureDepartmentPermissions = computed(
+  () =>
+    marketRoleCanConfigurePlanningPermissions(currentUserRole.value) &&
+    departmentLevelByPath(currentUserDepartmentPermission.value.path) === 5,
 );
 
 const permissionDepartmentNames = computed(() => {
@@ -173,6 +196,40 @@ async function loadCurrentUserRole(): Promise<void> {
   }
 }
 
+async function loadCurrentUserDepartmentPermission(): Promise<void> {
+  const currentUserId = userId.value;
+  if (!currentUserId) return;
+
+  try {
+    const response = await skillBaseService.isReviewer({ userId: currentUserId });
+    if (response?.meta?.success && response.data) {
+      const permission = extractExpertDepartmentPermission(response.data);
+      if (permission.path.length > 0) {
+        currentUserDepartmentPermission.value = permission;
+        return;
+      }
+    }
+  } catch (error) {
+    if (transportIsHttp) {
+      console.error('Failed to load current user department from reviewer context:', error);
+    }
+  }
+
+  try {
+    const options = await querySkillPlanningUsers(currentUserId);
+    const normalizedUserId = currentUserId.toLowerCase();
+    const exactUser = options.find((option) => option.id.trim().toLowerCase() === normalizedUserId);
+    const currentUser = exactUser ?? (options.length === 1 ? options[0] : undefined);
+    if (currentUser) {
+      currentUserDepartmentPermission.value = extractExpertDepartmentPermission(currentUser.raw);
+    }
+  } catch (error) {
+    if (transportIsHttp) {
+      console.error('Failed to load current user department from user context:', error);
+    }
+  }
+}
+
 function updateTopbarElevation(): void {
   topbarElevated.value = window.scrollY > 8;
 }
@@ -183,6 +240,7 @@ onMounted(async () => {
   try {
     if (transportIsHttp) await waitForInjectedContext();
     await loadCurrentUserRole();
+    await loadCurrentUserDepartmentPermission();
     await loadHarnessDepartmentScope();
   } finally {
     roleContextReady.value = true;
@@ -270,6 +328,7 @@ onBeforeUnmount(() => {
       aria-labelledby="harness-tab-settings"
     >
       <HarnessConfigurationPage
+        :department-permission-path="currentUserDepartmentPermission.path"
         :department-tree="departmentTree"
         :user-id="userId"
         :is-super-admin="marketRoleIsSuperAdmin(currentUserRole)"

@@ -35,6 +35,8 @@ export type ExpertDeptDto = {
   dept4?: string;
   dept5?: string;
   dept6?: string;
+  dept7?: string;
+  dept8?: string;
   [key: string]: unknown;
 };
 export type ExpertCheckDto = {
@@ -62,7 +64,11 @@ export type CurrentUserRoleDto = {
   managedOrgIds: number[];
   managedOrgNames?: string[];
   organizationScope: OrganizationScope;
+  /** 当前用户是否为自身 dept5 部门 Owner。 */
+  departmentOwner?: boolean;
+  /** 兼容存量接口中的部门主任标识，与 departmentOwner 含义一致。 */
   departmentDirector?: boolean;
+  ownedDepartmentNames?: string[];
   managedDepartmentNames?: string[];
 };
 

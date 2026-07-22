@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
@@ -9,6 +9,7 @@ type ConfigurationTab = 'scenes' | 'activities' | 'permissions';
 type DepartmentTreeNode = {
   id?: string;
   deptCode?: string;
+  levelNo?: number;
   name: string;
   children?: DepartmentTreeNode[];
 };
@@ -19,6 +20,7 @@ const props = withDefaults(
     userId?: string;
     isSuperAdmin?: boolean;
     canConfigureDepartmentPermissions?: boolean;
+    departmentPermissionPath?: string[];
     permissionDepartmentNames?: string[];
     restrictToPermissionDepartments?: boolean;
   }>(),
@@ -27,6 +29,7 @@ const props = withDefaults(
     userId: '',
     isSuperAdmin: false,
     canConfigureDepartmentPermissions: false,
+    departmentPermissionPath: () => [],
     permissionDepartmentNames: () => [],
     restrictToPermissionDepartments: true,
   },
@@ -53,6 +56,15 @@ const configurationTabs = computed(() => {
 
   return tabs;
 });
+
+watch(
+  () => props.canConfigureDepartmentPermissions,
+  (canConfigure) => {
+    if (!canConfigure && activeConfigurationTab.value === 'permissions') {
+      activeConfigurationTab.value = 'scenes';
+    }
+  },
+);
 </script>
 
 <template>
@@ -103,6 +115,7 @@ const configurationTabs = computed(() => {
         :department-tree="props.departmentTree"
         :user-id="props.userId"
         :is-super-admin="props.isSuperAdmin"
+        :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
       />
@@ -118,6 +131,7 @@ const configurationTabs = computed(() => {
         :department-tree="props.departmentTree"
         :user-id="props.userId"
         :is-super-admin="props.isSuperAdmin"
+        :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
       />
@@ -132,6 +146,7 @@ const configurationTabs = computed(() => {
       <DepartmentPlanningPermissionPanel
         :department-tree="props.departmentTree"
         :user-id="props.userId"
+        :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
       />

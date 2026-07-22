@@ -1688,7 +1688,7 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'skills'"
       >
         <span class="planning-tab__icon" aria-hidden="true">01</span>
-        <span><strong>Skill 清单</strong><small>管理 Skill 内容</small></span>
+        <span><strong>Skill 规划</strong><small>规划 Skill 内容</small></span>
       </button>
       <button
         type="button"
@@ -1697,7 +1697,7 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'management'"
       >
         <span class="planning-tab__icon" aria-hidden="true">02</span>
-        <span><strong>Skill 管理</strong><small>维护独立 Skill 主体</small></span>
+        <span><strong>Skill 清单</strong><small>维护独立 Skill 主体</small></span>
       </button>
     </nav>
 
@@ -2123,7 +2123,7 @@ onBeforeUnmount(() => {
                 </th>
                 <th>产品</th>
                 <th>责任 Owner</th>
-                <th title="随责任 Owner 自动变化">Owner 所在部门</th>
+                <!-- <th title="随责任 Owner 自动变化">Owner 所在部门</th> -->
                 <th>规划部门</th>
                 <th>开发责任人</th>
                 <th>
@@ -2828,7 +2828,7 @@ onBeforeUnmount(() => {
                         </small>
                       </div>
                     </td>
-                    <td>
+                    <!-- <td>
                       <div class="planning-inline-field">
                         <input
                           :value="planningForm.deptName"
@@ -2842,7 +2842,7 @@ onBeforeUnmount(() => {
                           {{ formErrors.deptName }}
                         </small>
                       </div>
-                    </td>
+                    </td> -->
                     <td>
                       <div class="planning-inline-field">
                         <select
@@ -3241,7 +3241,7 @@ onBeforeUnmount(() => {
                 </div>
                 <small v-if="batchErrors.owner">{{ batchErrors.owner }}</small>
               </label>
-              <label class="planning-field">
+              <!-- <label class="planning-field">
                 <span>Owner 所在部门</span>
                 <input
                   :value="batchForm.deptName"
@@ -3251,7 +3251,7 @@ onBeforeUnmount(() => {
                   placeholder="随责任 Owner 自动带出"
                 />
                 <small v-if="batchErrors.deptName">{{ batchErrors.deptName }}</small>
-              </label>
+              </label> -->
               <label class="planning-field">
                 <span>规划部门</span>
                 <select v-model="batchForm.planningDeptName">
@@ -3548,7 +3548,7 @@ onBeforeUnmount(() => {
               </div>
               <small v-if="formErrors.owner">{{ formErrors.owner }}</small>
             </label>
-            <label class="planning-field">
+            <!-- <label class="planning-field">
               <span>Owner 所在部门 <em>*</em></span>
               <input
                 :value="planningForm.deptName"
@@ -3558,7 +3558,7 @@ onBeforeUnmount(() => {
                 placeholder="随责任 Owner 自动带出"
               />
               <small v-if="formErrors.deptName">{{ formErrors.deptName }}</small>
-            </label>
+            </label> -->
             <label class="planning-field">
               <span>规划部门 <em>*</em></span>
               <select

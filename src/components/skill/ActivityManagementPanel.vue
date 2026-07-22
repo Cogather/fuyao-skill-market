@@ -14,6 +14,7 @@ withDefaults(
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
     isSuperAdmin?: boolean;
+    departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
     restrictToAllowedDepartments?: boolean;
   }>(),
@@ -21,6 +22,7 @@ withDefaults(
     departmentTree: () => [],
     userId: '',
     isSuperAdmin: false,
+    departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
     restrictToAllowedDepartments: false,
   },
@@ -37,6 +39,7 @@ defineEmits<{
     :department-tree="departmentTree"
     :user-id="userId"
     :is-super-admin="isSuperAdmin"
+    :department-permission-path="departmentPermissionPath"
     :allowed-department-names="allowedDepartmentNames"
     :restrict-to-allowed-departments="restrictToAllowedDepartments"
     @changed="(groups, departmentName) => $emit('changed', groups, departmentName)"

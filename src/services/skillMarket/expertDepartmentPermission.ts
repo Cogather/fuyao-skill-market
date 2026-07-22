@@ -68,7 +68,10 @@ function permissionFromLevels(levels: DepartmentLevel[]): ExpertDepartmentPermis
   if (normalized.length === 0) {
     return null;
   }
-  const minimumDepartment = normalized[normalized.length - 1];
+  const minimumDepartment = normalized.at(-1);
+  if (!minimumDepartment) {
+    return null;
+  }
   return {
     minimumDepartmentId: minimumDepartment.id,
     path: normalized.map((level) => level.name),
@@ -78,7 +81,7 @@ function permissionFromLevels(levels: DepartmentLevel[]): ExpertDepartmentPermis
 function permissionFromArray(record: Record<string, unknown>): ExpertDepartmentPermission | null {
   const key = 'dept';
   const levels = [];
-  for (let i = 3; i < 7; i++) {
+  for (let i = 1; i <= 8; i += 1) {
     const source = record[`${key}${i.toString()}`];
     const level = readDepartmentLevel(source, i);
     if (level !== null) {
@@ -95,15 +98,19 @@ function permissionFromFlatLevels(
   const levels: DepartmentLevel[] = [];
   for (let level = 1; level <= 8; level += 1) {
     const value =
+      record[`hwDepartName${level}`] ??
       record[`departmentL${level}`] ??
+      record[`department_l${level}`] ??
       record[`dept${level}`] ??
       record[`deptL${level}`] ??
+      record[`dept_l${level}`] ??
       record[`departmentLevel${level}`];
     const department = readDepartmentLevel(value, level);
     if (!department) {
       continue;
     }
     const siblingId = firstText(record, [
+      `hwDepartCode${level}`,
       `departmentL${level}Id`,
       `departmentL${level}ID`,
       `departmentL${level}Code`,

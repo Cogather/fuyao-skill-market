@@ -1450,6 +1450,7 @@ function handleSkillRequest(
         dept4: '平台产品线',
         dept5: '平台工具组',
         dept6: 'DevOps部',
+        dept7: '持续交付组',
       },
     });
   }
@@ -1805,6 +1806,10 @@ function handleApiRequest(
       managedOrgNames: orgStore.filter((o) => managedIds.includes(o.id)).map((o) => o.orgName),
       organizationScope:
         role === 'SUPER_ADMIN' ? 'ALL' : role === 'ORG_ADMIN' ? 'MANAGED_ORG' : 'NONE',
+      departmentOwner: true,
+      departmentDirector: true,
+      ownedDepartmentNames: ['持续交付组'],
+      managedDepartmentNames: ['持续交付组'],
     });
   }
 

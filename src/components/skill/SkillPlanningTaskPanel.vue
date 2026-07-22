@@ -245,7 +245,7 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th>Skill 名称</th>
-                <th title="随责任 Owner 自动变化">Owner 所在部门</th>
+                <!-- <th title="随责任 Owner 自动变化">Owner 所在部门</th> -->
                 <th>规划部门</th>
                 <th>负责人</th>
                 <th>状态</th>
@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </td>
-                <td>{{ task.department || '待分配' }}</td>
+                <!-- <td>{{ task.department || '待分配' }}</td> -->
                 <td>{{ task.planningDepartment || '待明确' }}</td>
                 <td>
                   <div class="owner-cell">
@@ -371,10 +371,10 @@ onBeforeUnmount(() => {
           </div>
 
           <dl>
-            <div>
+            <!-- <div>
               <dt>Owner 所在部门</dt>
               <dd>{{ detailDialog.task.department || '待分配' }}</dd>
-            </div>
+            </div> -->
             <div>
               <dt>规划部门</dt>
               <dd>{{ detailDialog.task.planningDepartment || '待明确' }}</dd>
