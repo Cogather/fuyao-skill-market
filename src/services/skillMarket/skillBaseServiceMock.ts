@@ -74,6 +74,34 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
     department_l1: '云平台产品部',
     department_l2: '发布治理组',
   },
+  {
+    id: 'w30000006',
+    chName: '李明',
+    department_l1: '云核装备经营管理部',
+    department_l2: '智能终端产品部',
+    department_l3: '平台工具部',
+    department_l4: '接口开发组',
+  },
+  {
+    id: 'w30000007',
+    chName: '周扬',
+    department_l1: '云核装备经营管理部',
+    department_l2: '质量产品线',
+    department_l3: '质量工具组',
+  },
+  {
+    id: 'w30000008',
+    chName: '陈七',
+    department_l1: '数据与智能平台部',
+    department_l2: '数据产品线',
+    department_l3: '日志智能组',
+  },
+  {
+    id: 'w30000009',
+    chName: '刘岚',
+    department_l1: '研发效能产品部',
+    department_l2: '知识工程组',
+  },
 ] as const;
 
 type MockEnvelope<T> = {

@@ -37,6 +37,11 @@ export type {
 
 type SkillPlanningMockModule = typeof import('./skillPlanningMockService');
 
+export interface SkillPlanningTaxonomyOptionParams {
+  userId?: string;
+  deptCode?: string;
+}
+
 function useHttpTransport(): boolean {
   return (
     String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock')
@@ -123,6 +128,70 @@ function flattenGroupChildren(groups: SkillPlanningOptionGroup[]): string[] {
   return uniqueTextValues(groups.flatMap((group) => group.children));
 }
 
+function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  const fallback = /[^\x20-\x7e]/.test(fallbackMessage)
+    ? 'Option list load failed'
+    : fallbackMessage;
+  if (meta.success === false) {
+    throw new Error(
+      normalizeText(meta.message) || normalizeText(responseRecord.message) || fallback,
+    );
+  }
+}
+
+function responseRows(response: unknown): unknown[] {
+  const responseRecord = asRecord(response);
+  const data = responseRecord.data ?? response;
+  const dataRecord = asRecord(data);
+  return Array.isArray(data)
+    ? data
+    : (['list', 'records', 'items', 'rows']
+        .map((key) => dataRecord[key])
+        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+}
+
+function normalizeTaxonomyOptionGroupsFromRows(
+  response: unknown,
+  parentKeys: string[],
+  childKeys: string[],
+  fallbackMessage: string,
+): SkillPlanningOptionGroup[] {
+  assertHttpSuccess(response, fallbackMessage);
+
+  const groups = new Map<string, { children: string[]; sort: number; sourceIndex: number }>();
+
+  responseRows(response).forEach((item, index) => {
+    const record = asRecord(item);
+    const parent = readOptionText(item, parentKeys);
+    if (!parent) return;
+
+    const nextChildren = uniqueTextValues([
+      readOptionText(item, childKeys),
+      ...pickArray(record, ['childrenList', 'children', 'childList']).map((child) =>
+        readOptionText(child, childKeys),
+      ),
+    ]);
+    const parsedSort = readNumber(record.sort, index + 1);
+    const current = groups.get(parent);
+    groups.set(parent, {
+      children: uniqueTextValues([...(current?.children ?? []), ...nextChildren]),
+      sort: current ? Math.min(current.sort, parsedSort) : parsedSort,
+      sourceIndex: current?.sourceIndex ?? index,
+    });
+  });
+
+  return Array.from(groups, ([value, group]) => ({ value, ...group }))
+    .sort(
+      (left, right) =>
+        left.sort - right.sort ||
+        left.sourceIndex - right.sourceIndex ||
+        left.value.localeCompare(right.value, 'zh-Hans-CN'),
+    )
+    .map(({ value, children }) => ({ value, children }));
+}
+
 function normalizeHttpFilterOptions(response: unknown): SkillPlanningFilterOptions {
   const record = asRecord(unwrapResponseData<unknown>(response));
   const sceneGroups = normalizeOptionGroups(
@@ -168,10 +237,18 @@ function normalizeProductPlanningOptions(response: unknown): ProductPlanningOpti
     const record = asRecord(item);
     const offeringId = normalizeText(record.offeringId);
     const offeringName = normalizeText(record.offeringName);
+    const planningDeptName =
+      normalizeText(record.planningDeptName) ||
+      normalizeText(record.departmentName) ||
+      normalizeText(record.deptName);
     if (!offeringName) {
       return;
     }
-    optionMap.set(offeringId || offeringName, { offeringId, offeringName });
+    optionMap.set(`${planningDeptName}::${offeringId || offeringName}`, {
+      offeringId,
+      offeringName,
+      planningDeptName,
+    });
   });
 
   return Array.from(optionMap.values());
@@ -356,8 +433,61 @@ function toHttpSkillPlanningQuery(query: SkillPlanningQuery): Record<string, unk
   return body;
 }
 
-export async function getProductPlanning(offeringName = ''): Promise<ProductPlanningOption[]> {
-  const params = { offeringName: normalizeText(offeringName) };
+function normalizeTaxonomyRequestParams(
+  params: SkillPlanningTaxonomyOptionParams = {},
+): SkillPlanningTaxonomyOptionParams {
+  const userId = normalizeText(params.userId);
+  const deptCode = normalizeText(params.deptCode);
+  return {
+    ...(userId ? { userId } : {}),
+    ...(deptCode ? { deptCode } : {}),
+  };
+}
+
+export async function querySkillPlanningSceneOptionGroups(
+  params: SkillPlanningTaxonomyOptionParams = {},
+): Promise<SkillPlanningOptionGroup[]> {
+  if (!useHttpTransport()) {
+    return [];
+  }
+
+  const response = await skillBaseService.getSceneOptionGroups(
+    normalizeTaxonomyRequestParams(params),
+  );
+  return normalizeTaxonomyOptionGroupsFromRows(
+    response,
+    ['firstScene', 'scene', 'name', 'label', 'value'],
+    ['secondScene', 'scene', 'name', 'label', 'value'],
+    '场景列表加载失败',
+  );
+}
+
+export async function querySkillPlanningActivityOptionGroups(
+  params: SkillPlanningTaxonomyOptionParams = {},
+): Promise<SkillPlanningOptionGroup[]> {
+  if (!useHttpTransport()) {
+    return [];
+  }
+
+  const response = await skillBaseService.getActivityOptionGroups(
+    normalizeTaxonomyRequestParams(params),
+  );
+  return normalizeTaxonomyOptionGroupsFromRows(
+    response,
+    ['activityNodeName', 'activity', 'name', 'label', 'value'],
+    ['subActivityNodeName', 'activityNodeName', 'activity', 'name', 'label', 'value'],
+    '活动列表加载失败',
+  );
+}
+
+export async function getProductPlanning(
+  offeringName = '',
+  planningDeptName = '',
+): Promise<ProductPlanningOption[]> {
+  const params = {
+    offeringName: normalizeText(offeringName),
+    planningDeptName: normalizeText(planningDeptName),
+  };
   if (!useHttpTransport()) {
     return (await loadMockService()).getProductPlanning(params);
   }
@@ -378,13 +508,32 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
 
 export async function querySkillPlanningFilterOptions(
   userId = '',
+  taxonomyParams: SkillPlanningTaxonomyOptionParams = {},
 ): Promise<SkillPlanningFilterOptions> {
   if (!useHttpTransport()) {
     return (await loadMockService()).getPlanningOption();
   }
 
-  const response = await skillBaseService.getPlanningOption({ userId });
-  return normalizeHttpFilterOptions(response);
+  const normalizedUserId = normalizeText(taxonomyParams.userId) || normalizeText(userId);
+  const normalizedTaxonomyParams = normalizeTaxonomyRequestParams({
+    ...taxonomyParams,
+    userId: normalizedUserId,
+  });
+  const [response, sceneGroups, activityGroups] = await Promise.all([
+    skillBaseService.getPlanningOption({ userId: normalizedUserId }),
+    querySkillPlanningSceneOptionGroups(normalizedTaxonomyParams),
+    querySkillPlanningActivityOptionGroups(normalizedTaxonomyParams),
+  ]);
+  const options = normalizeHttpFilterOptions(response);
+  return {
+    ...options,
+    firstScene: sceneGroups.map((group) => group.value),
+    secondScene: flattenGroupChildren(sceneGroups),
+    activityNodeName: activityGroups.map((group) => group.value),
+    subActivityNodeName: flattenGroupChildren(activityGroups),
+    sceneGroups,
+    activityGroups,
+  };
 }
 
 export async function querySkillConfig(

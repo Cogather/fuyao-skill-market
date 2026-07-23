@@ -17,8 +17,8 @@ const levelFilter = ref('all');
 const toast = ref('');
 let toastTimer: number | null = null;
 
-const statusOptions: SkillMasterStatus[] = ['未开始', '开发中', '联调中', '已完成', '已延期'];
-const levelOptions = ['个人级', '部门级', '组织级', '平台级'];
+const statusOptions: SkillMasterStatus[] = ['未开始', '开发中', '已完成'];
+const levelOptions = ['部门级', '产品级'];
 
 const editor = reactive({
   open: false,
@@ -60,7 +60,7 @@ const filteredRecords = computed(() => {
 
 const metrics = computed(() => ({
   total: records.value.length,
-  building: records.value.filter((record) => ['开发中', '联调中'].includes(record.status)).length,
+  building: records.value.filter((record) => ['开发中'].includes(record.status)).length,
   complete: records.value.filter((record) => record.status === '已完成').length,
 }));
 

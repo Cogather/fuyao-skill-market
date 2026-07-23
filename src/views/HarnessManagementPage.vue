@@ -305,6 +305,7 @@ onBeforeUnmount(() => {
       <SkillPlanningPage
         :department-tree="departmentTree"
         :user-id="userId"
+        :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-names="permissionDepartmentNames"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
       />

@@ -1,4 +1,6 @@
-export type SkillMasterStatus = '未开始' | '开发中' | '联调中' | '已完成' | '已延期';
+import { skillMasterSeedRecords } from './mock/skillMasterSeed';
+
+export type SkillMasterStatus = '未开始' | '开发中' | '已完成';
 
 export interface SkillMasterRecord {
   id: string;
@@ -9,6 +11,7 @@ export interface SkillMasterRecord {
   owner: string;
   department: string;
   developOwner: string;
+  developOwnerDepartment?: string;
   plannedCompleteDate: string;
   status: SkillMasterStatus;
   createdAt: string;
@@ -17,66 +20,29 @@ export interface SkillMasterRecord {
 
 export type SkillMasterPayload = Omit<SkillMasterRecord, 'id' | 'createdAt' | 'updatedAt'>;
 
-const STORAGE_KEY = 'skill-market-master-records-v1';
+export interface SkillMasterQuery {
+  keyword?: string;
+  departmentName?: string;
+}
 
-const defaultRecords: SkillMasterRecord[] = [
-  {
-    id: 'skill-master-1001',
-    name: '接口 Mock 生成 Skill',
-    description: '根据接口定义自动生成 Mock 数据和联调示例，减少前后端等待时间。',
-    level: '平台级',
-    product: 'API 产品线',
-    owner: '张三',
-    department: '联调工具部',
-    developOwner: '李明',
-    plannedCompleteDate: '2026-08-15',
-    status: '开发中',
-    createdAt: '2026-07-18T09:00:00.000Z',
-    updatedAt: '2026-07-18T09:00:00.000Z',
-  },
-  {
-    id: 'skill-master-1002',
-    name: '测试用例评审 Skill',
-    description: '基于需求和历史缺陷生成测试用例评审建议，提升测试覆盖完整度。',
-    level: '部门级',
-    product: '质量产品线',
-    owner: '李四',
-    department: '评审小组',
-    developOwner: '周扬',
-    plannedCompleteDate: '2026-08-30',
-    status: '未开始',
-    createdAt: '2026-07-18T09:10:00.000Z',
-    updatedAt: '2026-07-18T09:10:00.000Z',
-  },
-  {
-    id: 'skill-master-1003',
-    name: '日志异常定位 Skill',
-    description: '汇总异常日志、调用链和发布记录，输出可执行的问题定位摘要。',
-    level: '组织级',
-    product: 'SRE 产品线',
-    owner: '王五',
-    department: '日志工具组',
-    developOwner: '陈七',
-    plannedCompleteDate: '2026-09-10',
-    status: '联调中',
-    createdAt: '2026-07-18T09:20:00.000Z',
-    updatedAt: '2026-07-18T09:20:00.000Z',
-  },
-  {
-    id: 'skill-master-1004',
-    name: '会议纪要沉淀 Skill',
-    description: '从会议记录中抽取决策、风险、待办和关联文档，沉淀为团队知识资产。',
-    level: '部门级',
-    product: '项目产品线',
-    owner: '赵六',
-    department: '项目管理部',
-    developOwner: '刘岚',
-    plannedCompleteDate: '2026-09-20',
-    status: '已完成',
-    createdAt: '2026-07-18T09:30:00.000Z',
-    updatedAt: '2026-07-18T09:30:00.000Z',
-  },
+const STORAGE_KEY = 'skill-market-master-records-v4';
+const LEGACY_STORAGE_KEYS = [
+  'skill-market-master-records-v3',
+  'skill-market-master-records-v2',
+  'skill-market-master-records-v1',
 ];
+const seedTimestamp = Date.parse('2026-07-18T09:00:00.000Z');
+const defaultRecords: SkillMasterRecord[] = skillMasterSeedRecords.map((record, index) => {
+  const timestamp = new Date(seedTimestamp + index * 10 * 60 * 1000).toISOString();
+  return {
+    ...record,
+    level: '',
+    product: '',
+    developOwnerDepartment: String(record.developOwnerDepartment ?? '').trim(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+});
 
 let memoryRecords: SkillMasterRecord[] | null = null;
 
@@ -88,15 +54,57 @@ function normalize(value: unknown): string {
   return String(value ?? '').trim();
 }
 
+function normalizeStoredStatus(value: unknown): SkillMasterStatus {
+  if (value === '已完成') return '已完成';
+  if (value === '未开始') return '未开始';
+  return '开发中';
+}
+
+function migrateLegacyRecords(records: SkillMasterRecord[]): SkillMasterRecord[] {
+  const defaultRecordById = new Map(defaultRecords.map((record) => [record.id, record]));
+  const employeeNumberPattern = /\b[a-zA-Z]\d{8}\b/;
+  const migrated = records.map((record) => {
+    const defaultRecord = defaultRecordById.get(record.id);
+    const isLegacyDefault =
+      defaultRecord &&
+      (!employeeNumberPattern.test(record.owner) ||
+        !employeeNumberPattern.test(record.developOwner));
+
+    if (defaultRecord && isLegacyDefault) {
+      return {
+        ...defaultRecord,
+        createdAt: normalize(record.createdAt) || defaultRecord.createdAt,
+        updatedAt: normalize(record.updatedAt) || defaultRecord.updatedAt,
+      };
+    }
+
+    return {
+      ...record,
+      developOwnerDepartment:
+        normalize(record.developOwnerDepartment) || defaultRecord?.developOwnerDepartment || '',
+      status: normalizeStoredStatus(record.status),
+    };
+  });
+  const existingIds = new Set(migrated.map((record) => record.id));
+  return [...migrated, ...defaultRecords.filter((record) => !existingIds.has(record.id))];
+}
+
 function readRecords(): SkillMasterRecord[] {
   if (memoryRecords) return memoryRecords;
   if (typeof window !== 'undefined') {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const currentRaw = window.localStorage.getItem(STORAGE_KEY);
+      const legacyRaw = LEGACY_STORAGE_KEYS.map((key) => window.localStorage.getItem(key)).find(
+        Boolean,
+      );
+      const raw = currentRaw || legacyRaw;
       if (raw) {
         const parsed = JSON.parse(raw) as SkillMasterRecord[];
         if (Array.isArray(parsed)) {
-          memoryRecords = parsed;
+          memoryRecords = currentRaw ? parsed : migrateLegacyRecords(parsed);
+          if (!currentRaw) {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryRecords));
+          }
           return memoryRecords;
         }
       }
@@ -124,6 +132,7 @@ function normalizePayload(payload: SkillMasterPayload): SkillMasterPayload {
     owner: normalize(payload.owner),
     department: normalize(payload.department),
     developOwner: normalize(payload.developOwner),
+    developOwnerDepartment: normalize(payload.developOwnerDepartment),
     plannedCompleteDate: normalize(payload.plannedCompleteDate),
     status: payload.status,
   };
@@ -132,7 +141,6 @@ function normalizePayload(payload: SkillMasterPayload): SkillMasterPayload {
 function validatePayload(payload: SkillMasterPayload): void {
   if (!payload.name) throw new Error('请输入 Skill 名称');
   if (!payload.description) throw new Error('请输入 Skill 说明');
-  if (!payload.level) throw new Error('请选择 Skill 层级');
   if (!payload.owner) throw new Error('请输入责任 Owner');
 }
 
@@ -140,6 +148,32 @@ export function listSkillMasterRecords(): SkillMasterRecord[] {
   return readRecords()
     .map(cloneRecord)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+/**
+ * Skill 规划选择器查询语义：
+ * - 无关键词时，只返回 Owner 或开发责任人属于指定部门的 Skill；
+ * - 有关键词时，跨部门模糊查询名称、描述、Owner 和开发责任人。
+ *
+ * 保持 Promise 接口，后续可直接替换为后端搜索请求。
+ */
+export async function querySkillMasterRecords(
+  query: SkillMasterQuery = {},
+): Promise<SkillMasterRecord[]> {
+  const keyword = normalize(query.keyword).toLocaleLowerCase();
+  const departmentName = normalize(query.departmentName);
+
+  return listSkillMasterRecords().filter((record) => {
+    if (keyword) {
+      return [record.name, record.description, record.owner, record.developOwner].some((value) =>
+        normalize(value).toLocaleLowerCase().includes(keyword),
+      );
+    }
+    if (!departmentName) return true;
+    return [record.department, record.developOwnerDepartment].some(
+      (value) => normalize(value) === departmentName,
+    );
+  });
 }
 
 export function createSkillMasterRecord(payload: SkillMasterPayload): SkillMasterRecord {
@@ -162,7 +196,7 @@ export function updateSkillMasterRecord(
 ): SkillMasterRecord {
   const records = readRecords();
   const record = records.find((item) => item.id === id);
-  if (!record) throw new Error('未找到该 Skill 规划');
+  if (!record) throw new Error('未找到该 Skill');
   const normalized = normalizePayload(payload);
   validatePayload(normalized);
   Object.assign(record, normalized, { updatedAt: new Date().toISOString() });
