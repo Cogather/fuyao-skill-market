@@ -242,6 +242,14 @@ onBeforeUnmount(() => {
 
         <div class="task-table-wrap">
           <table class="task-table">
+            <colgroup>
+              <col class="task-col-name" />
+              <col class="task-col-department" />
+              <col class="task-col-owner" />
+              <col class="task-col-status" />
+              <col class="task-col-updated" />
+              <col class="task-col-actions" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Skill 名称</th>
@@ -616,15 +624,39 @@ onBeforeUnmount(() => {
 }
 
 .task-table-wrap {
-  overflow-x: hidden;
+  width: 100%;
+  overflow-x: auto;
   overflow-y: visible;
 }
 
 .task-table {
-  width: 100%;
-  min-width: 1040px;
+  width: max(100%, 960px);
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+.task-col-name {
+  width: 34%;
+}
+
+.task-col-department {
+  width: 16%;
+}
+
+.task-col-owner {
+  width: 15%;
+}
+
+.task-col-status {
+  width: 10%;
+}
+
+.task-col-updated {
+  width: 12%;
+}
+
+.task-col-actions {
+  width: 13%;
 }
 
 .task-table th {
@@ -646,29 +678,8 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 
-.task-table th:first-child {
-  width: 245px;
-}
-.task-table th:nth-child(2) {
-  width: 106px;
-}
-.task-table th:nth-child(3) {
-  width: 106px;
-}
-.task-table th:nth-child(4) {
-  width: 96px;
-}
-.task-table th:nth-child(5) {
-  width: 78px;
-}
-.task-table th:nth-child(6) {
-  width: 124px;
-}
-.task-table th:nth-child(7) {
-  width: 78px;
-}
-.task-table th:last-child {
-  width: 186px;
+.task-table th:last-child,
+.task-table td:last-child {
   text-align: right;
 }
 
@@ -1245,10 +1256,6 @@ onBeforeUnmount(() => {
   .progress-input {
     flex-basis: clamp(64px, 4vw, 76px);
     width: clamp(64px, 4vw, 76px);
-  }
-
-  .task-table th:last-child {
-    width: clamp(184px, 10vw, 198px);
   }
 
   .task-actions button {

@@ -100,7 +100,6 @@ watch(
         </span>
         <span>
           <strong>{{ tab.label }}</strong>
-          <small>{{ tab.description }}</small>
         </span>
       </button>
     </nav>

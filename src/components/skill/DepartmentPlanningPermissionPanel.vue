@@ -591,10 +591,6 @@ onBeforeUnmount(() => {
           @clear="selectDepartment"
           @done="selectDepartment"
         />
-        <p v-if="ownerDepartmentOption">
-          仅可配置您负责的 dept5 部门，dept5 以下组织不提供管理员配置入口。
-        </p>
-        <p v-else>当前账号未匹配到可配置的 dept5 Owner 部门。</p>
       </div>
       <div class="permission-metrics">
         <div>

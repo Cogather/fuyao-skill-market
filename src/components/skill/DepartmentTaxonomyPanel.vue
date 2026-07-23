@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import {
   getActivityOptionGroups,
   getDefaultActivityRecords,
@@ -16,11 +16,16 @@ import {
 } from '../../services/skillMarket/sceneManagementService';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import {
+  getProductPlanning,
+  type ProductPlanningOption,
+} from '../../services/skillMarket/skillPlanningService';
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 
 type TaxonomyKind = 'scene' | 'activity';
 type TaxonomyRecord = SceneRecord | ActivityRecord;
+type ConfigurationLevel = '产品级' | '部门级';
 
 interface DepartmentTreeNode {
   id?: string;
@@ -142,12 +147,43 @@ const departmentOptions = computed(() => {
     ? options.filter((department) => departmentPathStartsWith(department.path, permissionPath))
     : options;
 });
+const configurationLevelOptions: ConfigurationLevel[] = ['产品级', '部门级'];
+const scopeForm = reactive({
+  level: '部门级' as ConfigurationLevel,
+  offeringId: '',
+  offeringName: '',
+});
 const selectedDepartment = ref('');
 const selectedDepartmentPath = ref<string[]>([]);
+const scopeDepartmentCommitted = ref(false);
+const productOptions = ref<ProductPlanningOption[]>([]);
+const productsLoading = ref(false);
 const configurableDepartmentPaths = computed(() =>
   departmentOptions.value.map((department) => [...department.path]),
 );
-const defaultDepartmentPath = computed(() => [...(departmentOptions.value[0]?.path ?? [])]);
+const defaultDepartmentPath = computed(() => {
+  const permissionPath = normalizedDepartmentPermissionPath.value;
+  const defaultDepartment =
+    departmentOptions.value.find((department) =>
+      sameDepartmentPath(department.path, permissionPath),
+    ) ?? departmentOptions.value[0];
+  return [...(defaultDepartment?.path ?? [])];
+});
+const selectedProduct = computed(
+  () => productOptions.value.find((item) => item.offeringName === scopeForm.offeringName) ?? null,
+);
+const scopeErrorMessage = computed(() => {
+  if (!departmentOptions.value.length) return '当前账号暂无可配置部门';
+  if (!scopeDepartmentCommitted.value || !selectedDepartment.value) {
+    return scopeForm.level === '产品级'
+      ? '请选择产品所属部门并点击完成'
+      : '请选择归属部门并点击完成';
+  }
+  if (scopeForm.level === '产品级' && !scopeForm.offeringName) return '请选择产品';
+  return '';
+});
+const hasCompleteScope = computed(() => !scopeErrorMessage.value);
+const scopeEmptyMessage = computed(() => scopeErrorMessage.value || '请选择配置范围');
 const draftRecords = ref<TaxonomyRecord[]>([]);
 const savedSnapshot = ref('[]');
 const selectedPrimaryId = ref('');
@@ -156,6 +192,7 @@ const notice = ref('');
 const toast = ref('');
 const loading = ref(false);
 let departmentLoadSequence = 0;
+let productLoadSequence = 0;
 let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
@@ -451,33 +488,120 @@ async function loadDepartment(departmentName: string): Promise<void> {
   }
 }
 
+function resetProductScope(): void {
+  scopeForm.offeringId = '';
+  scopeForm.offeringName = '';
+  productOptions.value = [];
+}
+
+function setSelectedDepartment(path: string[], committed: boolean): DepartmentOption | undefined {
+  const nextPath = normalizeDepartmentPath(path).slice(0, 6);
+  const nextDepartment = departmentByPath(nextPath);
+  selectedDepartmentPath.value = [...(nextDepartment?.path ?? nextPath)];
+  selectedDepartment.value = nextDepartment?.name ?? '';
+  scopeDepartmentCommitted.value = committed && Boolean(nextDepartment);
+  return nextDepartment;
+}
+
+function applyDefaultScopeSelection(): void {
+  scopeForm.level = '部门级';
+  resetProductScope();
+  setSelectedDepartment(defaultDepartmentPath.value, true);
+}
+
+async function loadProducts(): Promise<void> {
+  const requestSequence = ++productLoadSequence;
+  resetProductScope();
+  productsLoading.value = false;
+  const departmentName = selectedDepartment.value.trim();
+  if (scopeForm.level !== '产品级' || !scopeDepartmentCommitted.value || !departmentName) return;
+
+  productsLoading.value = true;
+  try {
+    const options = await getProductPlanning('', departmentName);
+    if (requestSequence !== productLoadSequence) return;
+    productOptions.value = options;
+  } catch (error) {
+    if (requestSequence !== productLoadSequence) return;
+    productOptions.value = [];
+    const message = error instanceof Error ? error.message : '产品列表加载失败';
+    notice.value = message;
+    showToast(message);
+  } finally {
+    if (requestSequence === productLoadSequence) {
+      productsLoading.value = false;
+    }
+  }
+}
+
+async function onScopeLevelChange(): Promise<void> {
+  const nextLevel = scopeForm.level;
+  const fallbackLevel: ConfigurationLevel = nextLevel === '产品级' ? '部门级' : '产品级';
+  const nextPath = defaultDepartmentPath.value.length
+    ? defaultDepartmentPath.value
+    : selectedDepartmentPath.value;
+  if (
+    !sameDepartmentPath(nextPath, selectedDepartmentPath.value) &&
+    !guardDepartmentChange(nextPath)
+  ) {
+    scopeForm.level = fallbackLevel;
+    return;
+  }
+
+  const previousDepartment = selectedDepartment.value;
+  const nextDepartment = setSelectedDepartment(nextPath, true);
+  resetProductScope();
+  await loadProducts();
+  if (nextDepartment && nextDepartment.name !== previousDepartment) {
+    await loadDepartment(nextDepartment.name);
+  }
+}
+
+function onProductChange(): void {
+  const product = selectedProduct.value;
+  scopeForm.offeringId = product?.offeringId ?? '';
+  scopeForm.offeringName = product?.offeringName ?? scopeForm.offeringName;
+}
+
 watch(
   departmentOptions,
   (options) => {
     if (!options.length) {
       departmentLoadSequence += 1;
+      productLoadSequence += 1;
       loading.value = false;
       selectedDepartment.value = '';
       selectedDepartmentPath.value = [];
+      scopeDepartmentCommitted.value = false;
+      resetProductScope();
       draftRecords.value = [];
       savedSnapshot.value = '[]';
+      selectedPrimaryId.value = '';
       return;
     }
     const currentDepartment = departmentByPath(selectedDepartmentPath.value);
     if (!currentDepartment) {
-      selectedDepartmentPath.value = [...options[0].path];
-      selectedDepartment.value = options[0].name;
-      void loadDepartment(selectedDepartment.value);
-    } else if (currentDepartment.name !== selectedDepartment.value) {
+      applyDefaultScopeSelection();
+      if (selectedDepartment.value) {
+        void loadProducts();
+        void loadDepartment(selectedDepartment.value);
+      }
+    } else if (
+      currentDepartment.name !== selectedDepartment.value ||
+      !scopeDepartmentCommitted.value
+    ) {
+      selectedDepartmentPath.value = [...currentDepartment.path];
       selectedDepartment.value = currentDepartment.name;
-      void loadDepartment(selectedDepartment.value);
+      scopeDepartmentCommitted.value = true;
+      void loadProducts();
+      void loadDepartment(currentDepartment.name);
     }
   },
   { immediate: true },
 );
 
 watch([() => props.userId, () => props.isSuperAdmin], () => {
-  if (useHttpTaxonomySource && selectedDepartment.value) {
+  if (useHttpTaxonomySource && hasCompleteScope.value && selectedDepartment.value) {
     void loadDepartment(selectedDepartment.value);
   }
 });
@@ -512,20 +636,38 @@ onBeforeUnmount(() => {
   }
 });
 
-function changeDepartment(path: string[]): void {
-  const nextDepartment = departmentByPath(path);
-  if (!nextDepartment || sameDepartmentPath(path, selectedDepartmentPath.value)) {
-    return;
-  }
+function onDepartmentChange(path: string[]): void {
+  const nextPath = normalizeDepartmentPath(path).slice(0, 6);
+  const nextDepartment = departmentByPath(nextPath);
+  selectedDepartmentPath.value = [...(nextDepartment?.path ?? nextPath)];
+  selectedDepartment.value = nextDepartment?.name ?? '';
+  scopeDepartmentCommitted.value = false;
+  productLoadSequence += 1;
+  resetProductScope();
+}
 
+async function changeDepartment(path: string[]): Promise<void> {
+  const nextDepartment = departmentByPath(path);
+  if (!nextDepartment) return;
+
+  const shouldLoadDepartment =
+    !scopeDepartmentCommitted.value ||
+    !sameDepartmentPath(path, selectedDepartmentPath.value) ||
+    nextDepartment.name !== selectedDepartment.value;
   selectedDepartmentPath.value = [...nextDepartment.path];
   selectedDepartment.value = nextDepartment.name;
-  void loadDepartment(nextDepartment.name);
+  scopeDepartmentCommitted.value = true;
+  resetProductScope();
+  await loadProducts();
+  if (shouldLoadDepartment) {
+    await loadDepartment(nextDepartment.name);
+  }
 }
 
 function clearDepartment(path: string[]): void {
-  changeDepartment(path);
+  void changeDepartment(path);
 }
+
 function childRecords(parentId: string): TaxonomyRecord[] {
   return draftRecords.value
     .filter((item) => item.parentId === parentId)
@@ -712,11 +854,14 @@ function resetToDefault(): void {
   const records = props.kind === 'scene' ? getDefaultSceneRecords() : getDefaultActivityRecords();
   draftRecords.value = cloneRecords(records);
   selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-  notice.value = '已恢复为默认草稿，点击“保存修改”后生效。';
+  notice.value = '已恢复为默认草稿，点击“确认更新”后生效。';
 }
 
 async function saveAll(): Promise<void> {
-  if (!selectedDepartment.value || loading.value) return;
+  if (!hasCompleteScope.value || !selectedDepartment.value || loading.value) {
+    if (scopeErrorMessage.value) showToast(scopeErrorMessage.value);
+    return;
+  }
   loading.value = true;
   notice.value = '';
   try {
@@ -785,7 +930,7 @@ async function importRecords(event: Event): Promise<void> {
     normalizeSort(null);
     primaryRecords.value.forEach((item) => normalizeSort(item.id));
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-    notice.value = '导入成功，当前仅为草稿，请点击“保存修改”。';
+    notice.value = '导入成功，当前仅为草稿，请点击“确认更新”。';
   } catch (error) {
     notice.value = error instanceof Error ? error.message : '导入失败';
   }
@@ -794,7 +939,10 @@ async function importRecords(event: Event): Promise<void> {
 function exportRecords(): void {
   const payload = {
     kind: props.kind,
+    level: scopeForm.level,
     departmentName: selectedDepartment.value,
+    offeringId: scopeForm.offeringId,
+    offeringName: scopeForm.offeringName,
     exportedAt: new Date().toISOString(),
     records: draftRecords.value,
     [labels.value.importKey]: draftRecords.value,
@@ -811,49 +959,71 @@ function exportRecords(): void {
 <template>
   <section class="taxonomy-workspace" :aria-busy="loading">
     <header class="toolbar-card">
-      <div class="toolbar-copy">
-        <span class="eyebrow">{{ labels.eyebrow }}</span>
-        <h2>{{ labels.title }}</h2>
-        <p>{{ labels.description }}</p>
-      </div>
       <div class="toolbar-controls">
-        <label class="department-field">
-          <span>配置部门</span>
-          <MarketDeptCascader
-            :model-value="selectedDepartmentPath"
-            class="configuration-dept-cascader"
-            :tree="departmentTree"
-            :max-level="6"
-            :allowed-paths="configurableDepartmentPaths"
-            permission-mode="review-center"
-            :permission-path="normalizedDepartmentPermissionPath"
-            :disabled="loading || !departmentOptions.length"
-            :all-label="departmentOptions.length ? '请选择配置部门' : '暂无可配置部门'"
-            empty-text="暂无可配置部门"
-            clear-text="恢复默认选择"
-            clear-behavior="reset"
-            :clear-value="defaultDepartmentPath"
-            selection-mode="confirm"
-            aria-label="配置部门级联选择"
-            :before-clear="() => guardDepartmentChange(defaultDepartmentPath)"
-            :before-done="guardDepartmentChange"
-            @clear="clearDepartment"
-            @done="changeDepartment"
-          />
-        </label>
-        <button
-          class="primary-button"
-          type="button"
-          :disabled="loading || !dirty || !selectedDepartment"
-          @click="saveAll"
+        <div
+          class="configuration-scope-grid"
+          :class="{ 'is-department-level': scopeForm.level === '部门级' }"
         >
-          保存修改
-        </button>
-        <button type="button" :disabled="loading || !selectedDepartment" @click="resetToDefault">
-          恢复默认
-        </button>
-        <button type="button" :disabled="!selectedDepartment" @click="triggerImport">导入</button>
-        <button type="button" :disabled="!selectedDepartment" @click="exportRecords">导出</button>
+          <label class="configuration-field configuration-field--level">
+            <span>层级 <em>*</em></span>
+            <select v-model="scopeForm.level" :disabled="loading" @change="onScopeLevelChange">
+              <option v-for="level in configurationLevelOptions" :key="level" :value="level">
+                {{ level }}
+              </option>
+            </select>
+          </label>
+          <div class="configuration-field configuration-field--dept">
+            <span>{{ scopeForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
+            <MarketDeptCascader
+              :model-value="selectedDepartmentPath"
+              class="configuration-dept-cascader"
+              :tree="departmentTree"
+              :max-level="6"
+              :allowed-paths="configurableDepartmentPaths"
+              permission-mode="review-center"
+              :permission-path="normalizedDepartmentPermissionPath"
+              :disabled="loading || !departmentOptions.length"
+              :all-label="departmentOptions.length ? '请选择部门' : '暂无可配置部门'"
+              empty-text="暂无可配置部门"
+              clear-text="恢复默认选择"
+              clear-behavior="reset"
+              :clear-value="defaultDepartmentPath"
+              selection-mode="confirm"
+              searchable
+              aria-label="配置范围部门级联选择"
+              :before-clear="() => guardDepartmentChange(defaultDepartmentPath)"
+              :before-done="guardDepartmentChange"
+              @change="onDepartmentChange"
+              @clear="clearDepartment"
+              @done="changeDepartment"
+            />
+          </div>
+          <label v-if="scopeForm.level === '产品级'" class="configuration-field">
+            <span>产品 <em>*</em></span>
+            <select
+              v-model="scopeForm.offeringName"
+              :disabled="loading || productsLoading || !scopeDepartmentCommitted"
+              @change="onProductChange"
+            >
+              <option value="">
+                {{
+                  !scopeDepartmentCommitted
+                    ? '请先选择部门'
+                    : productsLoading
+                      ? '产品加载中...'
+                      : '请选择产品'
+                }}
+              </option>
+              <option
+                v-for="product in productOptions"
+                :key="product.offeringId || product.offeringName"
+                :value="product.offeringName"
+              >
+                {{ product.offeringName }}
+              </option>
+            </select>
+          </label>
+        </div>
         <input
           ref="importInput"
           class="file-input"
@@ -869,28 +1039,39 @@ function exportRecords(): void {
     </header>
 
     <div class="summary-strip">
-      <div>
-        <strong>{{ primaryRecords.length }}</strong
-        ><span>{{ labels.primary }}</span>
+      <div class="summary-metrics">
+        <div>
+          <strong>{{ primaryRecords.length }}</strong
+          ><span>{{ labels.primary }}</span>
+        </div>
+        <div>
+          <strong>{{ draftRecords.length - primaryRecords.length }}</strong>
+          <span>{{ labels.secondary }}</span>
+        </div>
+        <div>
+          <strong>{{ enabledPrimaryCount }}</strong
+          ><span>启用一级项</span>
+        </div>
+        <div>
+          <strong>{{ totalSkillCount }}</strong
+          ><span>关联规划项</span>
+        </div>
       </div>
-      <div>
-        <strong>{{ draftRecords.length - primaryRecords.length }}</strong>
-        <span>{{ labels.secondary }}</span>
-      </div>
-      <div>
-        <strong>{{ enabledPrimaryCount }}</strong
-        ><span>启用一级项</span>
-      </div>
-      <div>
-        <strong>{{ totalSkillCount }}</strong
-        ><span>关联规划项</span>
+      <div class="summary-update">
+        <button
+          class="primary-button summary-confirm-button"
+          type="button"
+          :disabled="loading || !dirty || !hasCompleteScope"
+          @click="saveAll"
+        >
+          确认更新
+        </button>
       </div>
     </div>
-
     <div v-if="loading" class="empty-department">
       {{ '\u6b63\u5728\u52a0\u8f7d\u573a\u666f\u914d\u7f6e\u2026' }}
     </div>
-    <div v-else-if="selectedDepartment" class="taxonomy-grid">
+    <div v-else-if="hasCompleteScope" class="taxonomy-grid">
       <aside class="tree-panel">
         <div class="panel-heading">
           <div>
@@ -1059,9 +1240,7 @@ function exportRecords(): void {
       </section>
     </div>
 
-    <div v-else class="empty-department">
-      当前账号没有可配置的五级或六级部门，请联系部门主任或管理员授权。
-    </div>
+    <div v-else class="empty-department">{{ scopeEmptyMessage }}</div>
 
     <div v-if="editorOpen" class="modal-backdrop" @click.self="editorOpen = false">
       <form class="modal-card" @submit.prevent="saveEditor">
@@ -1092,7 +1271,7 @@ function exportRecords(): void {
           当前{{ labels.item }}已被 {{ usageCount(deleteTarget) }} 个规划项使用，删除后这些规划项
           将失去归属。可先批量迁移，或强制删除。
         </p>
-        <p v-else>该项暂无关联规划，删除将在保存修改后生效。</p>
+        <p v-else>该项暂无关联规划，删除将在确认更新后生效。</p>
         <label v-if="migrationCandidates.length">
           <span>批量迁移到</span>
           <select v-model="migrationTargetId">
@@ -1154,7 +1333,7 @@ function exportRecords(): void {
 }
 
 .toolbar-card,
-.summary-strip,
+.summary-metrics,
 .tree-panel,
 .list-panel,
 .empty-department {
@@ -1166,7 +1345,7 @@ function exportRecords(): void {
 .toolbar-card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(520px, auto);
+  grid-template-columns: minmax(300px, 0.8fr) minmax(860px, 1.4fr);
   gap: 24px;
   align-items: center;
   padding: 28px 34px;
@@ -1217,10 +1396,28 @@ p {
 }
 
 .toolbar-controls {
+  display: grid;
+  gap: 14px;
+  align-items: end;
+  justify-items: stretch;
+}
+
+.configuration-scope-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.65fr) minmax(260px, 1.4fr) minmax(180px, 0.9fr);
+  gap: 14px;
+  align-items: end;
+  min-width: 0;
+}
+
+.configuration-scope-grid.is-department-level {
+  grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr);
+}
+
+.configuration-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  align-items: end;
   gap: 10px;
 }
 
@@ -1243,17 +1440,22 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.department-field {
+.configuration-field {
   display: grid;
-  gap: 7px;
-  min-width: 260px;
+  gap: 6px;
+  min-width: 0;
 }
 
-.department-field span,
+.configuration-field span,
 .modal-card label span {
-  color: #63738d;
+  color: #52647d;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
+}
+
+.configuration-field em {
+  color: #dc2626;
+  font-style: normal;
 }
 
 select,
@@ -1271,6 +1473,37 @@ select:focus,
 input:focus {
   border-color: #6475f4;
   box-shadow: 0 0 0 3px rgba(100, 117, 244, 0.12);
+}
+
+.configuration-field select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid #d8e2f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #253857;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  box-sizing: border-box;
+  padding: 0 11px;
+  outline: none;
+}
+
+.configuration-field select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.configuration-field select:disabled {
+  background: #f7faff;
+  color: #94a3b8;
+}
+
+.configuration-dept-cascader {
+  width: 100%;
+  min-width: 0;
 }
 
 .primary-button {
@@ -1300,12 +1533,20 @@ input:focus {
 
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(0, 0.76fr) minmax(180px, 0.24fr);
+  align-items: stretch;
+  gap: 18px;
+}
+
+.summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
   border-radius: 16px;
   overflow: hidden;
 }
 
-.summary-strip div {
+.summary-metrics > div {
   display: grid;
   gap: 3px;
   justify-items: center;
@@ -1313,8 +1554,20 @@ input:focus {
   border-right: 1px solid #e6ebf4;
 }
 
-.summary-strip div:last-child {
-  border: 0;
+.summary-update {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  background: transparent;
+}
+
+.summary-confirm-button {
+  min-width: 128px;
+  min-height: 42px;
+  border-radius: 10px !important;
+  box-shadow: 0 12px 24px rgba(76, 92, 238, 0.18);
+  font-size: 13px;
 }
 
 .summary-strip strong {
@@ -1326,7 +1579,6 @@ input:focus {
   font-size: 12px;
   font-weight: 700;
 }
-
 .taxonomy-grid {
   display: grid;
   grid-template-columns: minmax(360px, 0.78fr) minmax(650px, 1.45fr);
@@ -1718,20 +1970,36 @@ td {
 }
 
 :deep(.configuration-dept-cascader .market-dept-cascader-trigger) {
-  height: 36px;
-  min-height: 36px;
-  border-radius: 9px;
-  font-size: 11px;
+  height: 38px;
+  min-height: 38px;
+  border-color: #d8e2f0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: none;
+  color: #253857;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 30px 0 11px;
 }
 
-.department-field span {
-  font-size: 10px;
+:deep(.configuration-dept-cascader .market-dept-cascader-trigger:hover),
+:deep(.configuration-dept-cascader .market-dept-cascader-trigger:focus-visible) {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
-.toolbar-controls select,
-.toolbar-controls input {
-  height: 36px;
+:deep(.configuration-dept-cascader .market-dept-cascader-trigger[aria-disabled='true']) {
+  background: #f7faff;
+  color: #94a3b8;
+}
+
+.configuration-field span {
   font-size: 12px;
+}
+
+.configuration-field select {
+  height: 38px;
+  font-size: 13px;
 }
 
 .save-state {
@@ -1739,7 +2007,7 @@ td {
   font-size: 10px;
 }
 
-.summary-strip div {
+.summary-metrics > div {
   padding: 12px;
 }
 
@@ -1750,6 +2018,11 @@ td {
 
 .summary-strip span {
   font-size: 10px;
+}
+
+.summary-confirm-button {
+  min-height: 38px;
+  font-size: 12px;
 }
 
 .panel-heading {
@@ -1864,12 +2137,17 @@ td strong {
   padding: 2px 3px;
   font-size: 10px;
 }
-@media (max-width: 1180px) {
+@media (max-width: 1320px) {
   .toolbar-card {
     grid-template-columns: 1fr;
   }
 
-  .toolbar-controls {
+  .configuration-scope-grid,
+  .configuration-scope-grid.is-department-level {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .configuration-actions {
     justify-content: flex-start;
   }
 
@@ -1887,12 +2165,26 @@ td strong {
     align-items: stretch;
   }
 
-  .department-field {
-    width: 100%;
+  .configuration-scope-grid,
+  .configuration-scope-grid.is-department-level {
+    grid-template-columns: 1fr;
+  }
+
+  .configuration-actions {
+    justify-content: flex-start;
   }
 
   .summary-strip {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
+  }
+
+  .summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-update {
+    justify-content: flex-start;
+    padding: 0;
   }
 }
 
