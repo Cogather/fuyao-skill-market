@@ -23,6 +23,12 @@ export type SkillMasterPayload = Omit<SkillMasterRecord, 'id' | 'createdAt' | 'u
 export interface SkillMasterQuery {
   keyword?: string;
   departmentName?: string;
+  planningDeptName?: string;
+  level?: string;
+  product?: string;
+  offeringId?: string;
+  offeringName?: string;
+  scopeStrict?: boolean;
 }
 
 const STORAGE_KEY = 'skill-market-master-records-v4';
@@ -161,18 +167,25 @@ export async function querySkillMasterRecords(
   query: SkillMasterQuery = {},
 ): Promise<SkillMasterRecord[]> {
   const keyword = normalize(query.keyword).toLocaleLowerCase();
-  const departmentName = normalize(query.departmentName);
+  const departmentName = normalize(query.planningDeptName) || normalize(query.departmentName);
+  const level = normalize(query.level);
+  const product = normalize(query.offeringName) || normalize(query.product);
 
   return listSkillMasterRecords().filter((record) => {
+    const matchesScope =
+      (!departmentName ||
+        [record.department, record.developOwnerDepartment].some(
+          (value) => normalize(value) === departmentName,
+        )) &&
+      (!level || !record.level || normalize(record.level) === level) &&
+      (!product || !record.product || normalize(record.product) === product);
+    if (query.scopeStrict && !matchesScope) return false;
     if (keyword) {
       return [record.name, record.description, record.owner, record.developOwner].some((value) =>
         normalize(value).toLocaleLowerCase().includes(keyword),
       );
     }
-    if (!departmentName) return true;
-    return [record.department, record.developOwnerDepartment].some(
-      (value) => normalize(value) === departmentName,
-    );
+    return matchesScope;
   });
 }
 

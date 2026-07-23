@@ -344,12 +344,6 @@ onBeforeUnmount(() => {
               <span>计划完成时间</span>
               <input v-model="editor.plannedCompleteDate" type="date" />
             </label>
-            <label>
-              <span>当前进展</span>
-              <select v-model="editor.status">
-                <option v-for="item in statusOptions" :key="item" :value="item">{{ item }}</option>
-              </select>
-            </label>
           </div>
 
           <p v-if="editor.error" class="master-error">{{ editor.error }}</p>

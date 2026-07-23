@@ -339,9 +339,10 @@ function findPlanningDepartmentNodeByPath(
   return findPlanningDepartmentNodeByPath(rest, node.children ?? []);
 }
 
-function currentPlanningTaxonomyParams(
-  departmentName = filterForm.planningDeptName,
-): { userId?: string; deptCode?: string } {
+function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
+  userId?: string;
+  deptCode?: string;
+} {
   const department = departmentName.trim();
   const selectedPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
   const departmentPath =
@@ -2215,7 +2216,7 @@ onBeforeUnmount(() => {
 
     <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
       <section class="planning-filter-card" aria-label="Skill 规划查询">
-        <div class="filter-grid">
+        <div class="filter-grid" :class="{ 'is-department-level': filterForm.level === '部门级' }">
           <label class="planning-field planning-field--level">
             <span>层级 <em>*</em></span>
             <select v-model="filterForm.level" @change="onPlanningScopeLevelChange">
@@ -2353,6 +2354,7 @@ onBeforeUnmount(() => {
               导出
             </button>
             <button
+              v-if="false"
               type="button"
               class="planning-btn planning-btn--soft"
               @click="openBatchEditDialog"
@@ -3590,6 +3592,10 @@ onBeforeUnmount(() => {
     <SkillMasterManagementPanel
       v-if="activePlanningTab === 'management'"
       :department-tree="planningDepartmentTree"
+      :user-id="props.userId"
+      :current-user-department-path="currentUserMinimumDepartmentPath"
+      :allowed-department-names="props.allowedDepartmentNames"
+      :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
     />
 
     <Teleport to="body">
@@ -3663,6 +3669,7 @@ onBeforeUnmount(() => {
 
             <div class="import-dialog__template">
               <button
+                v-if="false"
                 type="button"
                 class="import-template-link"
                 :disabled="templateDownloadPending"
@@ -4280,6 +4287,11 @@ onBeforeUnmount(() => {
     auto;
   gap: 14px;
   align-items: end;
+  min-width: 0;
+}
+
+.filter-grid.is-department-level {
+  grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr) minmax(320px, 2fr) auto;
 }
 
 .planning-field {
@@ -5781,7 +5793,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1280px) {
-  .filter-grid {
+  .filter-grid,
+  .filter-grid.is-department-level {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
 }
@@ -5808,6 +5821,7 @@ onBeforeUnmount(() => {
   }
 
   .filter-grid,
+  .filter-grid.is-department-level,
   .planning-form-grid,
   .batch-form__grid {
     grid-template-columns: 1fr;

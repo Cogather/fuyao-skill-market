@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 import { listScenes, type SceneRecord } from '../../services/skillMarket/sceneManagementService';
 import {
@@ -15,31 +15,46 @@ import {
 import {
   createSkillMasterRecord,
   deleteSkillMasterRecord,
-  listSkillMasterRecords,
+  querySkillMasterRecords,
   updateSkillMasterRecord,
   type SkillMasterPayload,
+  type SkillMasterQuery,
   type SkillMasterRecord,
   type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
 import {
+  getProductPlanning,
   querySkillPlanningUsers,
+  type ProductPlanningOption,
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
 
-type DepartmentNode = { name: string; children?: DepartmentNode[] };
+type PlanningLevel = '产品级' | '部门级';
+type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
 type TaxonomyOption = { id: string; label: string };
 
-const props = withDefaults(defineProps<{ departmentTree?: DepartmentNode[] }>(), {
-  departmentTree: () => [],
-});
+const props = withDefaults(
+  defineProps<{
+    departmentTree?: DepartmentNode[];
+    userId?: string;
+    currentUserDepartmentPath?: string[];
+    allowedDepartmentNames?: string[];
+    restrictToAllowedDepartments?: boolean;
+  }>(),
+  {
+    departmentTree: () => [],
+    userId: '',
+    currentUserDepartmentPath: () => [],
+    allowedDepartmentNames: () => [],
+    restrictToAllowedDepartments: false,
+  },
+);
 const records = ref<SkillMasterRecord[]>([]);
+const masterLoading = ref(false);
 const associations = ref<Record<string, SkillMasterAssociation>>({});
 const keyword = ref('');
-const statusFilter = ref<'all' | SkillMasterStatus>('all');
 const toast = ref('');
 let toastTimer: number | null = null;
-const statusOptions: SkillMasterStatus[] = ['未开始', '开发中', '已完成'];
-
 function makeTaxonomyOptions(records: Array<SceneRecord | ActivityRecord>): TaxonomyOption[] {
   const parentNames = new Map(records.map((item) => [item.id, item.name]));
   return records
@@ -88,11 +103,174 @@ const associationEditor = reactive({
 });
 const departmentPath = ref<string[]>([]);
 const deleteDialog = reactive({ open: false, id: '', name: '' });
+const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
+const masterScopeForm = reactive({
+  level: '部门级' as PlanningLevel,
+  planningDeptName: '',
+  offeringId: '',
+  offeringName: '',
+});
+const masterDepartmentSegments = ref<string[]>([]);
+const masterScopeDepartmentCommitted = ref(false);
+const masterProductOptions = ref<ProductPlanningOption[]>([]);
+const masterProductsLoading = ref(false);
+const selectedMasterIds = ref<string[]>([]);
+const batchDeleteDialog = reactive({ open: false, ids: [] as string[] });
+let masterProductLoadSequence = 0;
 
+function normalizeDepartmentPath(segments: string[] | undefined): string[] {
+  return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
+}
+
+function sameDepartmentPath(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizeDepartmentPath(left);
+  const normalizedRight = normalizeDepartmentPath(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
+  );
+}
+
+function filterDepartmentTree(
+  nodes: DepartmentNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+): DepartmentNode[] {
+  return nodes.flatMap((node) => {
+    const nodeAllowed = ancestorAllowed || allowedNames.has(node.name.trim());
+    const children = filterDepartmentTree(node.children ?? [], allowedNames, nodeAllowed);
+    if (!nodeAllowed && children.length === 0) return [];
+    return [{ ...node, children }];
+  });
+}
+
+const masterDepartmentTree = computed(() => {
+  const tree = props.departmentTree ?? [];
+  if (!props.restrictToAllowedDepartments) return tree;
+  return filterDepartmentTree(
+    tree,
+    new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
+  );
+});
+const currentUserMinimumDepartmentPath = computed(() =>
+  normalizeDepartmentPath(props.currentUserDepartmentPath),
+);
+const selectedMasterProduct = computed(() =>
+  masterProductOptions.value.find(
+    (item) =>
+      item.offeringName === masterScopeForm.offeringName &&
+      (!item.planningDeptName || item.planningDeptName === masterScopeForm.planningDeptName),
+  ),
+);
+const masterScopeErrorMessage = computed(() => {
+  if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
+    return '请先选择层级';
+  }
+  if (!masterScopeDepartmentCommitted.value || !masterScopeForm.planningDeptName.trim()) {
+    return masterScopeForm.level === '产品级'
+      ? '请选择产品所属部门并点击完成'
+      : '请选择归属部门并点击完成';
+  }
+  if (masterScopeForm.level === '产品级' && !masterScopeForm.offeringName.trim()) {
+    return '请选择产品';
+  }
+  return '';
+});
+const hasCompleteMasterScope = computed(() => !masterScopeErrorMessage.value);
+
+function syncMasterDepartment(segments = masterDepartmentSegments.value): void {
+  const nextSegments = normalizeDepartmentPath(segments).slice(0, 6);
+  masterDepartmentSegments.value = nextSegments;
+  masterScopeForm.planningDeptName = nextSegments[nextSegments.length - 1] ?? '';
+}
+
+function isMasterDepartmentSelectionAllowed(segments: string[]): boolean {
+  const requiredPath = currentUserMinimumDepartmentPath.value;
+  return requiredPath.length === 0 || departmentPathStartsWith(segments, requiredPath);
+}
+
+function guardMasterDepartmentSelection(segments: string[]): boolean {
+  if (isMasterDepartmentSelectionAllowed(segments)) return true;
+  showToast('请选择您所属的最细粒度部门或其下级部门。');
+  return false;
+}
+
+function ensureMasterScopeSelection(notify = false): boolean {
+  const message = masterScopeErrorMessage.value;
+  if (!message) return true;
+  if (notify) showToast(message);
+  return false;
+}
+
+function clearMasterList(): void {
+  records.value = [];
+  associations.value = {};
+}
+
+function buildMasterQuery(): SkillMasterQuery {
+  return {
+    keyword: keyword.value.trim(),
+    level: masterScopeForm.level,
+    departmentName: masterScopeForm.planningDeptName,
+    planningDeptName: masterScopeForm.planningDeptName,
+    offeringId: masterScopeForm.level === '产品级' ? masterScopeForm.offeringId : '',
+    offeringName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName : '',
+    scopeStrict: true,
+  };
+}
+
+function applyDefaultMasterScopeSelection(): boolean {
+  const defaultPath = currentUserMinimumDepartmentPath.value;
+  const changed =
+    masterScopeForm.level !== '部门级' ||
+    !sameDepartmentPath(masterDepartmentSegments.value, defaultPath) ||
+    masterScopeDepartmentCommitted.value !== defaultPath.length > 0;
+
+  masterScopeForm.level = '部门级';
+  masterScopeForm.offeringId = '';
+  masterScopeForm.offeringName = '';
+  masterDepartmentSegments.value = [...defaultPath];
+  syncMasterDepartment(defaultPath);
+  masterScopeDepartmentCommitted.value = defaultPath.length > 0;
+  return changed;
+}
+
+async function loadMasterProducts(): Promise<void> {
+  const requestSeq = ++masterProductLoadSequence;
+  masterScopeForm.offeringId = '';
+  masterScopeForm.offeringName = '';
+  masterProductOptions.value = [];
+  masterProductsLoading.value = false;
+  const departmentName = masterScopeForm.planningDeptName.trim();
+  if (masterScopeForm.level !== '产品级' || !departmentName) return;
+
+  masterProductsLoading.value = true;
+  try {
+    const options = await getProductPlanning('', departmentName);
+    if (requestSeq !== masterProductLoadSequence) return;
+    masterProductOptions.value = options;
+  } catch (error) {
+    if (requestSeq !== masterProductLoadSequence) return;
+    showToast(error instanceof Error ? error.message : '产品加载失败，请稍后重试');
+  } finally {
+    if (requestSeq === masterProductLoadSequence) {
+      masterProductsLoading.value = false;
+    }
+  }
+}
 const filteredRecords = computed(() => {
   const text = keyword.value.trim().toLowerCase();
   return records.value.filter((record) => {
-    if (statusFilter.value !== 'all' && record.status !== statusFilter.value) return false;
     if (!text) return true;
     return [record.name, record.description, record.owner, record.department, record.developOwner]
       .join(' ')
@@ -100,6 +278,15 @@ const filteredRecords = computed(() => {
       .includes(text);
   });
 });
+const selectedMasterRecords = computed(() =>
+  records.value.filter((record) => selectedMasterIds.value.includes(record.id)),
+);
+const hasSelectedMasterRows = computed(() => selectedMasterRecords.value.length > 0);
+const allFilteredMasterRowsSelected = computed(
+  () =>
+    filteredRecords.value.length > 0 &&
+    filteredRecords.value.every((record) => selectedMasterIds.value.includes(record.id)),
+);
 const metrics = computed(() => ({
   total: records.value.length,
   building: records.value.filter((record) => ['开发中', '联调中'].includes(record.status)).length,
@@ -162,12 +349,28 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
   }
 }
 
-function reload(): void {
-  records.value = listSkillMasterRecords();
-  associations.value = Object.fromEntries(
-    records.value.map((record) => [record.id, getSkillMasterAssociation(record.id)]),
-  );
-  void hydratePersonDisplayLabels(records.value);
+async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
+  if (!ensureMasterScopeSelection(Boolean(options.notifyOnMissingScope))) {
+    clearMasterList();
+    masterLoading.value = false;
+    return;
+  }
+  masterLoading.value = true;
+  try {
+    const nextRecords = await querySkillMasterRecords(buildMasterQuery());
+    records.value = nextRecords;
+    const nextRecordIds = new Set(nextRecords.map((record) => record.id));
+    selectedMasterIds.value = selectedMasterIds.value.filter((id) => nextRecordIds.has(id));
+    associations.value = Object.fromEntries(
+      records.value.map((record) => [record.id, getSkillMasterAssociation(record.id)]),
+    );
+    void hydratePersonDisplayLabels(records.value);
+  } catch (error) {
+    clearMasterList();
+    showToast(error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试');
+  } finally {
+    masterLoading.value = false;
+  }
 }
 function showToast(message: string): void {
   toast.value = message;
@@ -208,6 +411,36 @@ function resolveDevelopOwnerSelection(): void {
   if (!option) return;
   editor.developOwner = option.label;
   editor.developOwnerDepartment = option.deptName;
+}
+
+async function ensureOwnerSelection(): Promise<boolean> {
+  resolveOwnerSelection();
+  if (editor.department.trim()) return true;
+  const keyword = editor.owner.trim();
+  if (!keyword) return false;
+  try {
+    ownerOptions.value = await querySkillPlanningUsers(keyword);
+    resolveOwnerSelection();
+  } catch {
+    ownerOptions.value = [];
+  }
+  return Boolean(editor.department.trim());
+}
+
+async function ensureDevelopOwnerSelection(): Promise<boolean> {
+  resolveDevelopOwnerSelection();
+  if (!editor.developOwner.trim()) {
+    editor.developOwnerDepartment = '';
+    return true;
+  }
+  if (editor.developOwnerDepartment.trim()) return true;
+  try {
+    developOwnerOptions.value = await querySkillPlanningUsers(editor.developOwner.trim());
+    resolveDevelopOwnerSelection();
+  } catch {
+    developOwnerOptions.value = [];
+  }
+  return Boolean(editor.developOwnerDepartment.trim());
 }
 
 function onOwnerInput(event: Event): void {
@@ -260,6 +493,7 @@ function onDevelopOwnerInput(event: Event): void {
   }, 250);
 }
 function openCreate(): void {
+  if (!ensureMasterScopeSelection(true)) return;
   resetEditor();
   editor.mode = 'create';
   editor.open = true;
@@ -286,12 +520,14 @@ function closeEditor(): void {
   editor.open = false;
   editor.error = '';
 }
-function submitEditor(): void {
-  resolveOwnerSelection();
-  resolveDevelopOwnerSelection();
-  if (!editor.department.trim()) {
+async function submitEditor(): Promise<void> {
+  if (!(await ensureOwnerSelection())) {
     editor.error =
       '\u8bf7\u9009\u62e9\u6709\u6548\u7684\u8d23\u4efb Owner\uff0c\u4ee5\u81ea\u52a8\u5e26\u51fa\u5176\u6240\u5728\u90e8\u95e8';
+    return;
+  }
+  if (!(await ensureDevelopOwnerSelection())) {
+    editor.error = '请选择有效的开发责任人，请通过姓名或工号搜索后选择';
     return;
   }
   const payload: SkillMasterPayload = {
@@ -311,7 +547,7 @@ function submitEditor(): void {
       ? createSkillMasterRecord(payload)
       : updateSkillMasterRecord(editor.id, payload);
     closeEditor();
-    reload();
+    await reload();
     showToast(
       editor.mode === 'create' ? 'Skill 已添加，可前往 Skill 规划复用' : 'Skill 主体信息已更新',
     );
@@ -363,15 +599,152 @@ function saveAssociation(): void {
 function requestDelete(record: SkillMasterRecord): void {
   Object.assign(deleteDialog, { open: true, id: record.id, name: record.name });
 }
-function confirmDelete(): void {
+async function confirmDelete(): Promise<void> {
   deleteSkillMasterRecord(deleteDialog.id);
   removeSkillMasterAssociation(deleteDialog.id);
+  selectedMasterIds.value = selectedMasterIds.value.filter((id) => id !== deleteDialog.id);
   deleteDialog.open = false;
-  reload();
+  await reload();
   showToast('Skill 已删除');
 }
 
-onMounted(reload);
+function toggleMasterSelection(id: string): void {
+  selectedMasterIds.value = selectedMasterIds.value.includes(id)
+    ? selectedMasterIds.value.filter((item) => item !== id)
+    : [...selectedMasterIds.value, id];
+}
+
+function toggleAllMasterSelection(event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked;
+  const visibleIds = filteredRecords.value.map((record) => record.id);
+  if (checked) {
+    selectedMasterIds.value = Array.from(new Set([...selectedMasterIds.value, ...visibleIds]));
+    return;
+  }
+  selectedMasterIds.value = selectedMasterIds.value.filter((id) => !visibleIds.includes(id));
+}
+
+function triggerMasterImport(): void {
+  showToast('Skill 清单导入能力待接入');
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+function exportCurrentMasterData(): void {
+  const rows = filteredRecords.value;
+  if (rows.length === 0) {
+    showToast('暂无可导出的 Skill 清单');
+    return;
+  }
+  const headers = ['Skill', '描述', '责任 Owner', '归属部门', '开发责任人', '计划完成', '当前进展'];
+  const lines = rows.map((record) =>
+    [
+      record.name,
+      record.description,
+      personDisplayLabel(record.owner),
+      record.department,
+      personDisplayLabel(record.developOwner),
+      record.plannedCompleteDate,
+      record.status,
+    ]
+      .map(csvCell)
+      .join(','),
+  );
+  const blob = new Blob([`\ufeff${headers.map(csvCell).join(',')}\n${lines.join('\n')}`], {
+    type: 'text/csv;charset=utf-8;',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'Skill清单.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('已导出 Skill 清单');
+}
+
+function openBatchMasterEditDialog(): void {
+  if (!hasSelectedMasterRows.value) {
+    showToast('请先勾选至少一条需要批量修改的数据');
+    return;
+  }
+  showToast('Skill 清单批量修改能力待接入');
+}
+
+function requestBatchMasterDelete(): void {
+  if (!hasSelectedMasterRows.value) {
+    showToast('请先勾选需要批量删除的数据');
+    return;
+  }
+  Object.assign(batchDeleteDialog, { open: true, ids: [...selectedMasterIds.value] });
+}
+
+async function confirmBatchMasterDelete(): Promise<void> {
+  const ids = [...batchDeleteDialog.ids];
+  ids.forEach((id) => {
+    deleteSkillMasterRecord(id);
+    removeSkillMasterAssociation(id);
+  });
+  batchDeleteDialog.open = false;
+  selectedMasterIds.value = selectedMasterIds.value.filter((id) => !ids.includes(id));
+  await reload();
+  showToast(`已删除 ${ids.length} 条 Skill`);
+}
+async function onMasterScopeLevelChange(): Promise<void> {
+  const defaultPath = currentUserMinimumDepartmentPath.value;
+  masterScopeDepartmentCommitted.value = defaultPath.length > 0;
+  masterDepartmentSegments.value = [...defaultPath];
+  syncMasterDepartment(defaultPath);
+  await loadMasterProducts();
+  await reload();
+}
+
+function onMasterDepartmentChange(segments: string[]): void {
+  masterScopeDepartmentCommitted.value = false;
+  syncMasterDepartment(segments);
+}
+
+async function applyMasterDepartmentQuery(segments: string[]): Promise<void> {
+  masterDepartmentSegments.value = normalizeDepartmentPath(segments).slice(0, 6);
+  syncMasterDepartment(masterDepartmentSegments.value);
+  masterScopeDepartmentCommitted.value = masterDepartmentSegments.value.length > 0;
+  await loadMasterProducts();
+  await reload();
+}
+
+async function onMasterDepartmentDone(segments: string[]): Promise<void> {
+  await applyMasterDepartmentQuery(segments);
+}
+
+async function onMasterDepartmentClear(segments: string[] = []): Promise<void> {
+  await applyMasterDepartmentQuery(segments);
+}
+
+async function onMasterProductChange(): Promise<void> {
+  masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
+  await reload();
+}
+
+async function applyMasterQuery(): Promise<void> {
+  await reload({ notifyOnMissingScope: true });
+}
+
+async function resetMasterQuery(): Promise<void> {
+  keyword.value = '';
+  applyDefaultMasterScopeSelection();
+  await loadMasterProducts();
+  await reload();
+}
+
+watch(
+  () => props.currentUserDepartmentPath,
+  () => {
+    applyDefaultMasterScopeSelection();
+    void loadMasterProducts().then(() => reload());
+  },
+  { immediate: true, deep: true },
+);
 onBeforeUnmount(() => {
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   if (ownerSearchTimer !== null) window.clearTimeout(ownerSearchTimer);
@@ -381,24 +754,157 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="master-panel" aria-label="Skill 管理">
+    <section class="master-filter-card" aria-label="Skill 清单查询">
+      <div
+        class="master-scope-controls"
+        :class="{ 'is-department-level': masterScopeForm.level === '部门级' }"
+      >
+        <label class="master-scope-field master-scope-field--level">
+          <span>层级 <em>*</em></span>
+          <select v-model="masterScopeForm.level" @change="onMasterScopeLevelChange">
+            <option
+              v-for="item in planningLevelOptions"
+              :key="`master-level-${item}`"
+              :value="item"
+            >
+              {{ item }}
+            </option>
+          </select>
+        </label>
+        <div class="master-scope-field master-scope-field--dept">
+          <span>{{ masterScopeForm.level === '产品级' ? '产品所属部门 *' : '归属部门 *' }}</span>
+          <MarketDeptCascader
+            v-model="masterDepartmentSegments"
+            class="master-dept-cascader"
+            :tree="masterDepartmentTree"
+            :max-level="6"
+            :disabled="!masterScopeForm.level"
+            :all-label="masterScopeForm.level ? '请选择部门' : '请先选择层级'"
+            clear-behavior="reset"
+            :clear-value="currentUserMinimumDepartmentPath"
+            clear-text="恢复默认选择"
+            selection-mode="confirm"
+            permission-mode="review-center"
+            :permission-path="currentUserMinimumDepartmentPath"
+            :before-done="guardMasterDepartmentSelection"
+            searchable
+            aria-label="按部门筛选 Skill 清单"
+            @change="onMasterDepartmentChange"
+            @clear="onMasterDepartmentClear"
+            @done="onMasterDepartmentDone"
+          />
+        </div>
+        <label v-if="masterScopeForm.level === '产品级'" class="master-scope-field">
+          <span>产品 <em>*</em></span>
+          <select
+            v-model="masterScopeForm.offeringName"
+            :disabled="!masterScopeForm.planningDeptName || masterProductsLoading"
+            @change="onMasterProductChange"
+          >
+            <option value="">
+              {{
+                !masterScopeForm.planningDeptName
+                  ? '请先选择部门'
+                  : masterProductsLoading
+                    ? '产品加载中...'
+                    : '请选择产品'
+              }}
+            </option>
+            <option
+              v-for="item in masterProductOptions"
+              :key="item.offeringId || item.offeringName"
+              :value="item.offeringName"
+            >
+              {{ item.offeringName }}
+            </option>
+          </select>
+        </label>
+        <label class="master-scope-field master-scope-field--keyword">
+          <span>关键词</span>
+          <input
+            v-model.trim="keyword"
+            type="search"
+            placeholder="搜索 Skill 或 Owner"
+            @keydown.enter.prevent="applyMasterQuery"
+          />
+        </label>
+        <div class="master-scope-actions">
+          <button class="master-btn master-btn--primary" type="button" @click="applyMasterQuery">
+            查询
+          </button>
+          <button class="master-btn master-btn--ghost" type="button" @click="resetMasterQuery">
+            重置
+          </button>
+        </div>
+      </div>
+    </section>
+
     <div class="master-board">
       <header class="master-toolbar">
-        <div>
-          <strong>Skill 原子清单</strong
-          ><small>共 {{ filteredRecords.length }} 条 · 可被不同部门的规划复用</small>
+        <div class="master-toolbar__title">
+          <strong>Skill 原子清单</strong>
+          <small
+            >已选 {{ selectedMasterIds.length }} 条 / 共 {{ filteredRecords.length }} 条 ·
+            可被不同部门的规划复用</small
+          >
         </div>
         <div class="toolbar-actions">
-          <input v-model.trim="keyword" type="search" placeholder="搜索 Skill 或 Owner" />
-          <select v-model="statusFilter">
-            <option value="all">全部进展</option>
-            <option v-for="item in statusOptions" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <button class="primary" type="button" @click="openCreate">＋ 添加 Skill</button>
+          <button
+            class="master-btn master-btn--primary"
+            type="button"
+            :disabled="!hasCompleteMasterScope"
+            :title="masterScopeErrorMessage || '新增 Skill'"
+            @click="openCreate"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            新增
+          </button>
+          <button class="master-btn master-btn--soft" type="button" @click="triggerMasterImport">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
+            </svg>
+            导入
+          </button>
+          <button
+            class="master-btn master-btn--soft"
+            type="button"
+            @click="exportCurrentMasterData"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 20V10m0 10 4-4m-4 4-4-4M5 7V5h14v2" />
+            </svg>
+            导出
+          </button>
+          <button
+            v-if="false"
+            class="master-btn master-btn--soft"
+            type="button"
+            @click="openBatchMasterEditDialog"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m4 16 1 4 4-1L18.5 9.5a2.1 2.1 0 0 0-3-3L6 16Z" />
+              <path d="m13.5 7.5 3 3" />
+            </svg>
+            批量修改
+          </button>
+          <button
+            class="master-btn master-btn--danger-soft"
+            type="button"
+            @click="requestBatchMasterDelete"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
+            </svg>
+            批量删除
+          </button>
         </div>
       </header>
       <div class="table-wrap">
         <table>
           <colgroup>
+            <col class="selection-column" />
             <col class="skill-column" />
             <col class="description-column" />
             <col class="owner-column" />
@@ -409,6 +915,15 @@ onBeforeUnmount(() => {
           </colgroup>
           <thead>
             <tr>
+              <th class="selection-cell">
+                <input
+                  type="checkbox"
+                  :checked="allFilteredMasterRowsSelected"
+                  :disabled="filteredRecords.length === 0 || masterLoading"
+                  aria-label="全选 Skill 清单"
+                  @change="toggleAllMasterSelection"
+                />
+              </th>
               <th>Skill</th>
               <th>描述</th>
               <!-- <th>层级</th> -->
@@ -423,7 +938,18 @@ onBeforeUnmount(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="record in filteredRecords" :key="record.id">
+            <tr v-if="masterLoading">
+              <td colspan="8" class="empty">正在加载 Skill 清单...</td>
+            </tr>
+            <tr v-for="record in masterLoading ? [] : filteredRecords" :key="record.id">
+              <td class="selection-cell">
+                <input
+                  type="checkbox"
+                  :checked="selectedMasterIds.includes(record.id)"
+                  :aria-label="`选择 ${record.name}`"
+                  @change="toggleMasterSelection(record.id)"
+                />
+              </td>
               <td>
                 <div class="name-cell">
                   <i>{{ record.name.slice(0, 1) }}</i
@@ -460,8 +986,10 @@ onBeforeUnmount(() => {
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredRecords.length === 0">
-              <td colspan="7" class="empty">暂无符合条件的 Skill</td>
+            <tr v-if="!masterLoading && filteredRecords.length === 0">
+              <td colspan="8" class="empty">
+                {{ hasCompleteMasterScope ? '暂无符合条件的 Skill' : masterScopeErrorMessage }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -522,7 +1050,7 @@ onBeforeUnmount(() => {
                 v-model.trim="editor.developOwner"
                 list="skill-master-develop-owner-options"
                 autocomplete="off"
-                placeholder="输入姓名或工号后选择"
+                placeholder="输入工号或姓名后选择"
                 @input="onDevelopOwnerInput"
                 @change="resolveDevelopOwnerSelection"
               />
@@ -539,12 +1067,6 @@ onBeforeUnmount(() => {
             <label
               ><span>计划完成时间</span><input v-model="editor.plannedCompleteDate" type="date"
             /></label>
-            <label
-              ><span>当前进展</span
-              ><select v-model="editor.status">
-                <option v-for="item in statusOptions" :key="item" :value="item">{{ item }}</option>
-              </select></label
-            >
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
           <footer>
@@ -640,6 +1162,27 @@ onBeforeUnmount(() => {
           <footer>
             <button type="button" @click="deleteDialog.open = false">取消</button
             ><button class="danger-btn" type="button" @click="confirmDelete">确认删除</button>
+          </footer>
+        </div>
+      </div>
+    </Teleport>
+    <Teleport to="body">
+      <div
+        v-if="batchDeleteDialog.open"
+        class="overlay"
+        @click.self="batchDeleteDialog.open = false"
+      >
+        <div class="dialog delete-dialog">
+          <strong>批量删除 Skill？</strong>
+          <p>
+            确认删除已勾选的 {{ batchDeleteDialog.ids.length }} 条 Skill
+            吗？删除后将不能用于新规划。
+          </p>
+          <footer>
+            <button type="button" @click="batchDeleteDialog.open = false">取消</button
+            ><button class="danger-btn" type="button" @click="confirmBatchMasterDelete">
+              批量删除
+            </button>
           </footer>
         </div>
       </div>
@@ -752,44 +1295,181 @@ onBeforeUnmount(() => {
   color: #7c889b;
   font-size: 10px;
 }
+.master-filter-card,
 .master-board {
+  border: 1px solid rgba(224, 231, 243, 0.92);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 28px rgba(35, 52, 84, 0.06);
+}
+.master-filter-card {
+  padding: 18px;
+}
+.master-board {
+  min-height: clamp(500px, calc(100vh - 410px), 820px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  border: 1px solid #dfe6f1;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 12px 30px rgba(35, 52, 84, 0.06);
 }
 .master-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
   padding: 16px 18px;
-  border-bottom: 1px solid #e9eef5;
+  border-bottom: 1px solid #edf2f7;
 }
-.master-toolbar > div:first-child {
+.master-toolbar__title {
   display: grid;
-  gap: 3px;
+  min-width: 0;
+  gap: 4px;
+}
+.master-toolbar__title strong {
+  color: #101828;
+  font-size: 17px;
+  font-weight: 900;
 }
 .master-toolbar small {
-  color: #8b96a7;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
 }
+.master-scope-controls {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 0.65fr) minmax(260px, 1.4fr) minmax(180px, 0.9fr)
+    minmax(320px, 2fr) auto;
+  align-items: end;
+  gap: 14px;
+  min-width: 0;
+}
+.master-scope-controls.is-department-level {
+  grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr) minmax(320px, 2fr) auto;
+}
+.master-scope-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+.master-scope-field > span {
+  color: #52647d;
+  font-size: 12px;
+  font-weight: 800;
+}
+.master-scope-field em {
+  color: #dc2626;
+  font-style: normal;
+}
+.master-scope-field input,
+.master-scope-field select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  min-width: 0;
+  padding: 0 11px;
+  border: 1px solid #d8e2f0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #253857;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.master-scope-field input:focus,
+.master-scope-field select:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.master-dept-cascader {
+  min-width: 0;
+}
+.master-dept-cascader :deep(.market-dept-cascader-trigger) {
+  min-height: 38px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.master-dept-cascader :deep(.market-dept-cascader-trigger:hover) {
+  border-color: #c0ccdc;
+  background: #f8fbff;
+}
+.master-dept-cascader :deep(.market-dept-cascader-trigger.is-open),
+.master-dept-cascader :deep(.market-dept-cascader-trigger:focus) {
+  border-color: #5b8ff9;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.master-scope-actions,
 .toolbar-actions,
 .row-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
-.toolbar-actions input,
-.toolbar-actions select {
-  height: 36px;
-  padding: 0 11px;
-  border: 1px solid #d9e1ed;
-  border-radius: 8px;
-  background: #fff;
+.master-scope-actions,
+.toolbar-actions {
+  flex-wrap: wrap;
 }
-.toolbar-actions input {
-  width: 250px;
+.toolbar-actions {
+  justify-content: flex-end;
+}
+.master-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.master-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+.master-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.master-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.master-btn--primary {
+  border-color: #2563eb;
+  background: linear-gradient(135deg, #2f7df6, #7552ff);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(47, 125, 246, 0.18);
+}
+.master-btn--soft,
+.master-btn--ghost {
+  border-color: #dbe5f2;
+  background: #ffffff;
+  color: #253857;
+}
+.master-btn--soft:hover,
+.master-btn--ghost:hover {
+  border-color: #b9ccff;
+  background: #f6f9ff;
+}
+.master-btn--danger-soft {
+  border-color: #ffd7d7;
+  background: #fff7f7;
+  color: #dc2626;
 }
 .primary {
   height: 36px;
@@ -801,51 +1481,80 @@ onBeforeUnmount(() => {
   font-weight: 800;
   cursor: pointer;
 }
+.primary:disabled {
+  border-color: #aebcf3 !important;
+  background: #aebcf3 !important;
+  cursor: not-allowed;
+}
 .table-wrap {
+  flex: 1 1 auto;
   width: 100%;
-  overflow-x: hidden;
+  min-height: 0;
+  overflow: auto;
 }
 .table-wrap table {
   width: 100%;
-  min-width: 0;
-  border-collapse: collapse;
+  min-width: 1320px;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
 }
+.table-wrap col.selection-column {
+  width: 48px;
+}
 .table-wrap col.skill-column {
-  width: 19%;
+  width: 220px;
 }
 .table-wrap col.description-column {
-  width: 20%;
+  width: 330px;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
-  width: 14%;
+  width: 170px;
 }
 .table-wrap col.date-column {
-  width: 12%;
+  width: 140px;
 }
 .table-wrap col.status-column {
-  width: 11%;
+  width: 130px;
 }
 .table-wrap col.action-column {
-  width: 10%;
+  width: 140px;
+}
+.table-wrap th,
+.table-wrap td {
+  padding: 13px 12px;
+  border-bottom: 1px solid #edf2f7;
+  color: #334155;
+  font-size: 13px;
+  text-align: left;
+  vertical-align: middle;
+  word-break: break-word;
 }
 .table-wrap th {
-  height: 42px;
-  padding: 0 10px;
-  background: #f8f9fc;
-  color: #7f8b9e;
-  font-size: 11px;
-  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
 }
 .table-wrap td {
-  height: 76px;
-  padding: 8px 10px;
-  border-top: 1px solid #eff2f7;
-  color: #435169;
-  font-size: 11px;
+  height: 78px;
+  background: #ffffff;
+}
+.table-wrap tbody tr:hover td {
+  background: #f8fbff;
+}
+.table-wrap .selection-cell {
   text-align: center;
-  vertical-align: middle;
+}
+.selection-cell input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2563eb;
 }
 .table-wrap td.person-column {
   overflow: hidden;
@@ -856,7 +1565,7 @@ onBeforeUnmount(() => {
 .name-cell {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 9px;
   min-width: 0;
 }
@@ -891,7 +1600,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 0 8px;
   border-radius: 99px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 .level {
@@ -926,19 +1635,23 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 .row-actions {
-  justify-content: center;
+  justify-content: flex-start;
   white-space: nowrap;
 }
 .row-actions button {
-  height: 28px;
-  padding: 0 6px;
+  min-height: 30px;
+  padding: 0 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: #526b9d;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
+}
+.row-actions button:hover {
+  background: #eef3ff;
+  color: #3569e8;
 }
 .row-actions .associate {
   background: #eef3ff;
@@ -1142,16 +1855,24 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 @media (max-width: 1100px) {
-  .master-hero,
+  .master-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
   .master-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+  .master-scope-controls,
+  .master-scope-controls.is-department-level {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
   }
   .master-metrics {
     min-width: 0;
   }
   .toolbar-actions {
     flex-wrap: wrap;
+    justify-content: flex-start;
   }
   .relation-map {
     grid-template-columns: 1fr;
@@ -1165,7 +1886,9 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 680px) {
   .relation-map section,
-  .form-grid {
+  .form-grid,
+  .master-scope-controls,
+  .master-scope-controls.is-department-level {
     grid-template-columns: 1fr;
   }
   .form-grid .wide {
@@ -1174,11 +1897,5 @@ onBeforeUnmount(() => {
   .toolbar-actions > * {
     flex: 1 1 150px;
   }
-  .toolbar-actions input {
-    width: 100%;
-  }
-}
-.owner-picker + label {
-  display: none;
 }
 </style>
