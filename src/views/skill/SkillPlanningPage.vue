@@ -2201,7 +2201,7 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'skills'"
       >
         <span class="planning-tab__icon" aria-hidden="true">01</span>
-        <span><strong>Skill 规划</strong><small>规划 Skill 内容</small></span>
+        <span><strong>Skill 规划</strong></span>
       </button>
       <button
         type="button"
@@ -2210,7 +2210,7 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'management'"
       >
         <span class="planning-tab__icon" aria-hidden="true">02</span>
-        <span><strong>Skill 清单</strong><small>维护独立 Skill 主体</small></span>
+        <span><strong>Skill 清单</strong></span>
       </button>
     </nav>
 
