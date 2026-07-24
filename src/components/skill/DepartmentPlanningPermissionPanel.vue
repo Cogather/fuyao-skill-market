@@ -91,6 +91,16 @@ function sameDepartmentPath(left: string[], right: string[]): boolean {
   );
 }
 
+function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
+  );
+}
+
 function flattenDepartments(nodes: DepartmentNode[]): DepartmentOption[] {
   const options: DepartmentOption[] = [];
   const visit = (items: DepartmentNode[], parentPath: string[], depth: number): void => {
@@ -164,18 +174,40 @@ const defaultOwnerDepartmentOption = computed(() => ownerDepartmentOptions.value
 const configurableDepartmentPaths = computed(() =>
   ownerDepartmentOptions.value.map((option) => [...option.path]),
 );
+const ownerManageableDepartmentOptions = computed<DepartmentOption[]>(() => {
+  const options = allDepartmentOptions.value.filter((option) =>
+    ownerDepartmentOptions.value.some((ownerOption) =>
+      departmentPathStartsWith(option.path, ownerOption.path),
+    ),
+  );
+  ownerDepartmentOptions.value.forEach((ownerOption) => {
+    if (!options.some((option) => sameDepartmentPath(option.path, ownerOption.path))) {
+      options.push(ownerOption);
+    }
+  });
+  return options;
+});
 const allDepartmentNames = computed(() =>
-  ownerDepartmentOptions.value.map((option) => option.name),
+  ownerManageableDepartmentOptions.value.map((option) => option.name),
 );
 const selectedDepartment = computed(() => selectedDepartmentPath.value.at(-1) ?? '');
 const selectedDepartmentPathLabel = computed(() => selectedDepartmentPath.value.join(' / '));
-const selectedOwnerDepartmentOption = computed(
+const selectedDepartmentOption = computed(
   () =>
-    ownerDepartmentOptions.value.find((option) =>
+    ownerManageableDepartmentOptions.value.find((option) =>
       sameDepartmentPath(option.path, selectedDepartmentPath.value),
     ) ?? null,
 );
-const canEditSelectedDepartment = computed(() => Boolean(selectedOwnerDepartmentOption.value));
+const selectedOwnerDepartmentOption = computed(
+  () =>
+    [...ownerDepartmentOptions.value]
+      .sort((left, right) => right.path.length - left.path.length)
+      .find((option) => departmentPathStartsWith(selectedDepartmentPath.value, option.path)) ??
+    null,
+);
+const canEditSelectedDepartment = computed(() =>
+  Boolean(selectedOwnerDepartmentOption.value && selectedDepartmentOption.value),
+);
 
 const selectedRecord = computed<DepartmentPermissionRecord>(() =>
   recordForDepartment(selectedDepartment.value),
@@ -191,19 +223,15 @@ const selectedAdministrators = computed(() =>
 const authorizedTotal = computed(() => selectedAdministrators.value.length);
 
 function recordForDepartment(departmentName: string): DepartmentPermissionRecord {
-  const ownerOption = ownerDepartmentOptions.value.find(
-    (option) =>
-      option.name === departmentName &&
-      sameDepartmentPath(option.path, selectedDepartmentPath.value),
-  );
+  const departmentOption = selectedDepartmentOption.value;
   return (
     records.value.find(
-      (record) => ownerOption && departmentRecordMatchesOption(record, ownerOption),
+      (record) => departmentOption && departmentRecordMatchesOption(record, departmentOption),
     ) ??
     records.value.find((record) => record.departmentName === departmentName) ?? {
       departmentName,
       deptCode:
-        ownerOption?.deptCode ||
+        departmentOption?.deptCode ||
         findDepartmentCode(props.departmentTree, departmentName) ||
         departmentName,
       ownerUserId: '',
@@ -375,21 +403,28 @@ async function reload(): Promise<void> {
     }
     const response = await skillBaseService.querySkillPlanningDepartments({ userId });
     const departmentRecords = normalizeDepartmentRecords(response).filter((record) =>
-      ownerOptions.some((option) => departmentRecordMatchesOption(record, option)),
+      ownerManageableDepartmentOptions.value.some((option) =>
+        departmentRecordMatchesOption(record, option),
+      ),
     );
     records.value = await enrichMemberProfiles(departmentRecords);
   } else {
     records.value = listDepartmentPlanningPermissions()
-      .filter((record) => ownerOptions.some((option) => record.departmentName === option.name))
+      .filter((record) =>
+        ownerManageableDepartmentOptions.value.some(
+          (option) => record.departmentName === option.name,
+        ),
+      )
       .map((record) => ({
         ...record,
         deptCode:
-          ownerOptions.find((option) => option.name === record.departmentName)?.deptCode ??
-          record.departmentName,
+          ownerManageableDepartmentOptions.value.find(
+            (option) => option.name === record.departmentName,
+          )?.deptCode ?? record.departmentName,
         ownerUserId: '',
       }));
   }
-  const currentOption = ownerOptions.find((option) =>
+  const currentOption = ownerManageableDepartmentOptions.value.find((option) =>
     sameDepartmentPath(option.path, selectedDepartmentPath.value),
   );
   selectedDepartmentPath.value = [...(currentOption ?? ownerOptions[0]).path];
@@ -400,10 +435,12 @@ async function updateRemoteAdmins(
   adminUserIds: string[],
 ): Promise<void> {
   const ownerOption = selectedOwnerDepartmentOption.value;
+  const departmentOption = selectedDepartmentOption.value;
   if (
     !ownerOption ||
+    !departmentOption ||
     !canEditSelectedDepartment.value ||
-    !departmentRecordMatchesOption(record, ownerOption)
+    !departmentRecordMatchesOption(record, departmentOption)
   ) {
     throw new Error('仅部门 Owner 可以配置自己负责部门的管理员');
   }
@@ -441,10 +478,17 @@ function reloadSafely(): void {
 
 function guardDepartmentSelection(path: string[]): boolean {
   const ownerOption = ownerDepartmentOptions.value.find((option) =>
-    sameDepartmentPath(path, option.path),
+    departmentPathStartsWith(path, option.path),
   );
   if (!ownerOption) {
-    showToast('仅可选择您作为 Owner 负责的部门');
+    showToast('仅可选择您作为 Owner 负责的部门或其子部门');
+    return false;
+  }
+  const departmentOption = ownerManageableDepartmentOptions.value.find((option) =>
+    sameDepartmentPath(path, option.path),
+  );
+  if (!departmentOption) {
+    showToast('请选择有效的部门节点');
     return false;
   }
   return true;
@@ -720,7 +764,7 @@ onBeforeUnmount(() => {
 
         <div class="member-table-head">
           <strong>管理员列表</strong>
-          <span>仅展示当前 dept5 部门已授权的 Harness 管理员</span>
+          <span>仅展示当前所选部门已授权的 Harness 管理员</span>
         </div>
         <div class="member-table-wrap">
           <table class="member-table">

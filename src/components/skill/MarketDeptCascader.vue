@@ -164,11 +164,15 @@ function pathAllowedByPermission(path: string[]): boolean {
   const allowedPaths = normalizedAllowedPaths.value;
   if (
     allowedPaths.length > 0 &&
-    !allowedPaths.some(
-      (allowedPath) =>
+    !allowedPaths.some((allowedPath) => {
+      const pathIsBeforeAllowedDepartment =
         normalizedPath.length <= allowedPath.length &&
-        normalizedPath.every((segment, index) => segment === allowedPath[index]),
-    )
+        normalizedPath.every((segment, index) => segment === allowedPath[index]);
+      const pathIsInsideAllowedDepartment =
+        allowedPath.length <= normalizedPath.length &&
+        allowedPath.every((segment, index) => segment === normalizedPath[index]);
+      return pathIsBeforeAllowedDepartment || pathIsInsideAllowedDepartment;
+    })
   ) {
     return false;
   }
