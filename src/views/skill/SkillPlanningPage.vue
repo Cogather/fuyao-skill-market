@@ -78,6 +78,7 @@ const props = withDefaults(
     userId?: string;
     currentUserDepartmentPath?: string[];
     allowedDepartmentNames?: string[];
+    allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
@@ -85,6 +86,7 @@ const props = withDefaults(
     userId: '',
     currentUserDepartmentPath: () => [],
     allowedDepartmentNames: () => [],
+    allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
   },
 );
@@ -140,9 +142,20 @@ const emptyFilters = {
 };
 
 const filterForm = reactive({ ...emptyFilters });
+const normalizedAllowedPlanningDepartmentPaths = computed(() =>
+  (props.allowedDepartmentPaths ?? [])
+    .map(normalizePlanningDepartmentPath)
+    .filter((path) => path.length > 0),
+);
 const planningDepartmentTree = computed(() => {
   const tree = props.departmentTree ?? [];
   if (!props.restrictToAllowedDepartments) return tree;
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
+    return filterPlanningDepartmentTreeByPaths(
+      tree,
+      normalizedAllowedPlanningDepartmentPaths.value,
+    );
+  }
   return filterPlanningDepartmentTree(
     tree,
     new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
@@ -285,6 +298,29 @@ function filterPlanningDepartmentTree(
   });
 }
 
+function filterPlanningDepartmentTreeByPaths(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+): PlanningDepartmentTreeNode[] {
+  return nodes.flatMap((node) => {
+    const path = [...parentPath, node.name];
+    const pathIsRelevant = allowedPaths.some(
+      (allowedPath) =>
+        planningDepartmentPathStartsWith(path, allowedPath) ||
+        planningDepartmentPathStartsWith(allowedPath, path) ||
+        samePlanningDepartmentPath(path, allowedPath),
+    );
+    if (!pathIsRelevant) return [];
+    return [
+      {
+        ...node,
+        children: filterPlanningDepartmentTreeByPaths(node.children ?? [], allowedPaths, path),
+      },
+    ];
+  });
+}
+
 function normalizePlanningDepartmentPath(segments: string[] | undefined): string[] {
   return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
 }
@@ -310,6 +346,16 @@ function planningDepartmentPathStartsWith(path: string[], requiredPrefix: string
 
 const currentUserMinimumDepartmentPath = computed(() =>
   normalizePlanningDepartmentPath(props.currentUserDepartmentPath),
+);
+const defaultPlanningDepartmentPath = computed(() =>
+  normalizePlanningDepartmentPath(
+    normalizedAllowedPlanningDepartmentPaths.value[0] ?? currentUserMinimumDepartmentPath.value,
+  ),
+);
+const legacyPlanningPermissionPath = computed(() =>
+  normalizedAllowedPlanningDepartmentPaths.value.length > 0
+    ? []
+    : currentUserMinimumDepartmentPath.value,
 );
 
 function findPlanningDepartmentPathByName(
@@ -368,6 +414,14 @@ function resetPlanningTaxonomySelections(): void {
 }
 
 function isPlanningDepartmentSelectionAllowed(segments: string[]): boolean {
+  if (
+    props.restrictToAllowedDepartments &&
+    normalizedAllowedPlanningDepartmentPaths.value.length > 0
+  ) {
+    return normalizedAllowedPlanningDepartmentPaths.value.some((allowedPath) =>
+      planningDepartmentPathStartsWith(segments, allowedPath),
+    );
+  }
   const requiredPath = currentUserMinimumDepartmentPath.value;
   return requiredPath.length === 0 || planningDepartmentPathStartsWith(segments, requiredPath);
 }
@@ -398,7 +452,30 @@ function collectAuthorizedPlanningDepartmentNames(
   return values;
 }
 
+function collectPathAuthorizedPlanningDepartmentNames(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const path = [...parentPath, node.name];
+    const insideAuthorizedDepartment = allowedPaths.some((allowedPath) =>
+      planningDepartmentPathStartsWith(path, allowedPath),
+    );
+    if (insideAuthorizedDepartment && node.name.trim()) values.add(node.name.trim());
+    collectPathAuthorizedPlanningDepartmentNames(node.children ?? [], allowedPaths, path, values);
+  });
+  return values;
+}
+
 const manageablePlanningDepartmentNames = computed(() => {
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
+    return collectPathAuthorizedPlanningDepartmentNames(
+      planningDepartmentTree.value,
+      normalizedAllowedPlanningDepartmentPaths.value,
+    );
+  }
   const allowedNames = new Set(
     props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean),
   );
@@ -749,7 +826,11 @@ async function loadFilterProducts(): Promise<void> {
 
   filterProductsLoading.value = true;
   try {
-    const options = await getProductPlanning('', departmentName);
+    const options = await getProductPlanning(
+      '',
+      departmentName,
+      currentPlanningTaxonomyParams(departmentName).deptCode,
+    );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
   } catch (error) {
@@ -775,7 +856,11 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
   }
 
   try {
-    const options = await getProductPlanning(keyword, planningForm.planningDeptName);
+    const options = await getProductPlanning(
+      keyword,
+      planningForm.planningDeptName,
+      currentPlanningTaxonomyParams(planningForm.planningDeptName).deptCode,
+    );
     if (requestSeq !== productSearchSeq) {
       return;
     }
@@ -1216,7 +1301,7 @@ function onPlanningLevelChange(): void {
   planningForm.offeringId = '';
   planningForm.offeringName = '';
 
-  setPlanningFormDepartmentPath(currentUserMinimumDepartmentPath.value, false);
+  setPlanningFormDepartmentPath(defaultPlanningDepartmentPath.value, false);
   if (planningForm.level === '产品级' && planningForm.planningDeptName) {
     void searchPlanningProducts('');
   }
@@ -1418,7 +1503,7 @@ function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.valu
 }
 
 function applyDefaultPlanningScopeSelection(): boolean {
-  const defaultPath = currentUserMinimumDepartmentPath.value;
+  const defaultPath = defaultPlanningDepartmentPath.value;
   const changed =
     filterForm.level !== '部门级' ||
     !samePlanningDepartmentPath(planningDepartmentSegments.value, defaultPath) ||
@@ -1433,7 +1518,7 @@ function applyDefaultPlanningScopeSelection(): boolean {
 }
 
 async function onPlanningScopeLevelChange(): Promise<void> {
-  const defaultPath = currentUserMinimumDepartmentPath.value;
+  const defaultPath = defaultPlanningDepartmentPath.value;
   planningScopeDepartmentCommitted.value = defaultPath.length > 0;
   planningDepartmentSegments.value = [...defaultPath];
   syncPlanningDepartmentLevels(defaultPath);
@@ -2144,7 +2229,7 @@ async function initializePlanningScopeAndList(): Promise<void> {
 }
 
 watch(
-  () => currentUserMinimumDepartmentPath.value.join('\u0001'),
+  () => defaultPlanningDepartmentPath.value.join('\u0001'),
   () => {
     if (!planningScopeInitialLoadStarted || !applyDefaultPlanningScopeSelection()) return;
     void (async () => {
@@ -2235,11 +2320,11 @@ onBeforeUnmount(() => {
               :disabled="!filterForm.level"
               :all-label="filterForm.level ? '请选择部门' : '请先选择层级'"
               clear-behavior="reset"
-              :clear-value="currentUserMinimumDepartmentPath"
+              :clear-value="defaultPlanningDepartmentPath"
               clear-text="恢复默认选择"
               selection-mode="confirm"
               permission-mode="review-center"
-              :permission-path="currentUserMinimumDepartmentPath"
+              :permission-path="legacyPlanningPermissionPath"
               :before-done="guardPlanningDepartmentSelection"
               searchable
               aria-label="按规划部门筛选 Skill"
@@ -2982,11 +3067,11 @@ onBeforeUnmount(() => {
                             : '请先选层级'
                       "
                       clear-behavior="reset"
-                      :clear-value="currentUserMinimumDepartmentPath"
+                      :clear-value="defaultPlanningDepartmentPath"
                       clear-text="恢复默认选择"
                       selection-mode="confirm"
                       permission-mode="review-center"
-                      :permission-path="currentUserMinimumDepartmentPath"
+                      :permission-path="legacyPlanningPermissionPath"
                       :before-done="guardPlanningDepartmentSelection"
                       searchable
                       @clear="onPlanningFormDepartmentClear"
@@ -3398,11 +3483,11 @@ onBeforeUnmount(() => {
                                 : '请先选层级'
                           "
                           clear-behavior="reset"
-                          :clear-value="currentUserMinimumDepartmentPath"
+                          :clear-value="defaultPlanningDepartmentPath"
                           clear-text="恢复默认选择"
                           selection-mode="confirm"
                           permission-mode="review-center"
-                          :permission-path="currentUserMinimumDepartmentPath"
+                          :permission-path="legacyPlanningPermissionPath"
                           :before-done="guardPlanningDepartmentSelection"
                           searchable
                           @clear="onPlanningFormDepartmentClear"
@@ -3595,6 +3680,7 @@ onBeforeUnmount(() => {
       :user-id="props.userId"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :allowed-department-names="props.allowedDepartmentNames"
+      :allowed-department-paths="props.allowedDepartmentPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
     />
 
@@ -4043,11 +4129,11 @@ onBeforeUnmount(() => {
                 disabled
                 :all-label="planningForm.level ? '请选择部门' : '请先选择层级'"
                 clear-behavior="reset"
-                :clear-value="currentUserMinimumDepartmentPath"
+                :clear-value="defaultPlanningDepartmentPath"
                 clear-text="恢复默认选择"
                 selection-mode="confirm"
                 permission-mode="review-center"
-                :permission-path="currentUserMinimumDepartmentPath"
+                :permission-path="legacyPlanningPermissionPath"
                 :before-done="guardPlanningDepartmentSelection"
                 searchable
                 @clear="onPlanningFormDepartmentClear"

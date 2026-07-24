@@ -227,16 +227,31 @@ function normalizeHttpListResult(response: unknown): SkillPlanningListResult {
 }
 
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
+  assertHttpSuccess(response, '‰∫ßÂìÅÂàóË°®Âä†ËΩΩÂ§±Ë¥•');
   const data = unwrapResponseData<unknown>(response);
   const source = Array.isArray(data)
     ? data
-    : pickArray(asRecord(data), ['list', 'records', 'items', 'rows']);
+    : pickArray(asRecord(data), ['products', 'productList', 'list', 'records', 'items', 'rows']);
   const optionMap = new Map<string, ProductPlanningOption>();
 
   source.forEach((item) => {
     const record = asRecord(item);
-    const offeringId = normalizeText(record.offeringId);
-    const offeringName = normalizeText(record.offeringName);
+    const offeringId = readOptionText(item, [
+      'offeringId',
+      'productId',
+      'productCode',
+      'offeringCode',
+      'code',
+      'id',
+    ]);
+    const offeringName = readOptionText(item, [
+      'offeringName',
+      'productName',
+      'productNameCn',
+      'offeringNameCn',
+      'name',
+      'label',
+    ]);
     const planningDeptName =
       normalizeText(record.planningDeptName) ||
       normalizeText(record.departmentName) ||
@@ -458,7 +473,7 @@ export async function querySkillPlanningSceneOptionGroups(
     response,
     ['firstScene', 'scene', 'name', 'label', 'value'],
     ['secondScene', 'scene', 'name', 'label', 'value'],
-    '≥°æ∞¡–±Ìº”‘ÿ ß∞‹',
+    'Âú∫ÊôØÂàóË°®Âä†ËΩΩÂ§±Ë¥•',
   );
 }
 
@@ -476,13 +491,14 @@ export async function querySkillPlanningActivityOptionGroups(
     response,
     ['activityNodeName', 'activity', 'name', 'label', 'value'],
     ['subActivityNodeName', 'activityNodeName', 'activity', 'name', 'label', 'value'],
-    'ªÓ∂Ø¡–±Ìº”‘ÿ ß∞‹',
+    'Ê¥ªÂä®ÂàóË°®Âä†ËΩΩÂ§±Ë¥•',
   );
 }
 
 export async function getProductPlanning(
   offeringName = '',
   planningDeptName = '',
+  deptCode = '',
 ): Promise<ProductPlanningOption[]> {
   const params = {
     offeringName: normalizeText(offeringName),
@@ -492,8 +508,19 @@ export async function getProductPlanning(
     return (await loadMockService()).getProductPlanning(params);
   }
 
-  const response = await skillBaseService.getProductPlanning(params);
-  return normalizeProductPlanningOptions(response);
+  const normalizedDeptCode = normalizeText(deptCode) || params.planningDeptName;
+  if (!normalizedDeptCode) return [];
+
+  const response = await skillBaseService.queryHarnessDeptProducts({
+    deptCode: normalizedDeptCode,
+  });
+  const keyword = params.offeringName.toLowerCase();
+  return normalizeProductPlanningOptions(response)
+    .map((option) => ({
+      ...option,
+      planningDeptName: option.planningDeptName || params.planningDeptName,
+    }))
+    .filter((option) => !keyword || option.offeringName.toLowerCase().includes(keyword));
 }
 
 export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningUserOption[]> {

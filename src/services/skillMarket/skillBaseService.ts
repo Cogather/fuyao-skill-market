@@ -411,6 +411,25 @@ export const skillBaseService = {
   },
 
   // harness 查询接口
+
+  // 查询当前用户的部门管理权限（有哪些部门可以管理）
+  queryHarnessDeptPermissions: (params: { userId: string }): any => {
+    return httpRequest.api<any>({
+      url: '/harness/permission/user-depts',
+      method: 'get',
+      params, // { userId }
+    });
+  },
+
+  // 查询某个部门的产品列表
+  queryHarnessDeptProducts: (params: { deptCode: string }): any => {
+    return httpRequest.api<any>({
+      url: '/harness/smapi-product-by-dept',
+      method: 'get',
+      params, // { deptCode }
+    });
+  },
+
   // 获取场景列表（超级管理员需要传deptCode）
   getSceneOptionGroups: (params: SceneOptionGroupsParams): Promise<SceneOptionGroupsResponse> => {
     return httpRequest.skill<SceneOptionGroupsResponse>({

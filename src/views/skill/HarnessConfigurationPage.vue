@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
+import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 
 type ConfigurationTab = 'scenes' | 'activities' | 'permissions';
 type DepartmentTreeNode = {
@@ -20,8 +21,10 @@ const props = withDefaults(
     userId?: string;
     isSuperAdmin?: boolean;
     canConfigureDepartmentPermissions?: boolean;
+    ownerDepartments?: HarnessAuthorizedDepartment[];
     departmentPermissionPath?: string[];
     permissionDepartmentNames?: string[];
+    permissionDepartmentPaths?: string[][];
     restrictToPermissionDepartments?: boolean;
   }>(),
   {
@@ -29,8 +32,10 @@ const props = withDefaults(
     userId: '',
     isSuperAdmin: false,
     canConfigureDepartmentPermissions: false,
+    ownerDepartments: () => [],
     departmentPermissionPath: () => [],
     permissionDepartmentNames: () => [],
+    permissionDepartmentPaths: () => [],
     restrictToPermissionDepartments: true,
   },
 );
@@ -116,6 +121,7 @@ watch(
         :is-super-admin="props.isSuperAdmin"
         :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
+        :allowed-department-paths="props.permissionDepartmentPaths"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
       />
     </section>
@@ -132,6 +138,7 @@ watch(
         :is-super-admin="props.isSuperAdmin"
         :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
+        :allowed-department-paths="props.permissionDepartmentPaths"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
       />
     </section>
@@ -146,6 +153,7 @@ watch(
         :department-tree="props.departmentTree"
         :user-id="props.userId"
         :department-permission-path="props.departmentPermissionPath"
+        :owner-departments="props.ownerDepartments"
         :allowed-department-names="props.permissionDepartmentNames"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
       />

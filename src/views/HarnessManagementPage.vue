@@ -15,6 +15,12 @@ import {
   type ExpertDepartmentPermission,
 } from '../services/skillMarket/expertDepartmentPermission';
 import { harnessConfigurationRevision } from '../services/skillMarket/harnessConfigurationSyncService';
+import {
+  createEmptyHarnessDepartmentPermissions,
+  normalizeHarnessDepartmentPermissions,
+  type HarnessAccessLevel,
+  type HarnessAuthorizedDepartment,
+} from '../services/skillMarket/harnessDepartmentPermission';
 import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marketDepartmentsTreeDefault';
 import {
   marketRoleCanConfigurePlanningPermissions,
@@ -30,7 +36,7 @@ const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
 const currentUserRole = ref<CurrentUserRoleDto | null>(null);
 const roleContextReady = ref(false);
-const remotePermissionDepartmentNames = ref<string[]>([]);
+const harnessPermissions = ref(createEmptyHarnessDepartmentPermissions());
 const currentUserDepartmentPermission = ref<ExpertDepartmentPermission>({
   minimumDepartmentId: '',
   path: [],
@@ -85,16 +91,24 @@ function departmentLevelByPath(path: string[]): number {
   return level;
 }
 
-const canConfigureDepartmentPermissions = computed(
-  () =>
-    marketRoleCanConfigurePlanningPermissions(currentUserRole.value) &&
-    departmentLevelByPath(currentUserDepartmentPermission.value.path) === 5,
+const canConfigureDepartmentPermissions = computed(() =>
+  transportIsHttp
+    ? harnessPermissions.value.ownedOrgs.length > 0
+    : marketRoleCanConfigurePlanningPermissions(currentUserRole.value) &&
+      departmentLevelByPath(currentUserDepartmentPermission.value.path) === 5,
 );
 
 const permissionDepartmentNames = computed(() => {
   void harnessConfigurationRevision.value;
+  if (transportIsHttp) {
+    return [
+      ...new Set(
+        harnessPermissions.value.manageableOrgs.map((org) => org.deptName).filter(Boolean),
+      ),
+    ];
+  }
   const assignedDepartments = transportIsHttp
-    ? remotePermissionDepartmentNames.value
+    ? []
     : listAuthorizedHarnessDepartmentNames(userId.value);
   const role = currentUserRole.value;
   if (!role) return assignedDepartments;
@@ -103,6 +117,7 @@ const permissionDepartmentNames = computed(() => {
 });
 
 const restrictToPermissionDepartments = computed(() => {
+  if (transportIsHttp) return true;
   const role = currentUserRole.value;
   return !role || (!marketRoleIsSuperAdmin(role) && !marketRoleIsOrgAdmin(role));
 });
@@ -111,51 +126,36 @@ const canManageHarness = computed(
   () => !restrictToPermissionDepartments.value || permissionDepartmentNames.value.length > 0,
 );
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-}
+const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
+  transportIsHttp ? harnessPermissions.value.ownedOrgs : [],
+);
 
-function readText(value: unknown): string {
-  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
-}
+const permissionDepartmentPaths = computed(() =>
+  transportIsHttp ? harnessPermissions.value.manageableOrgs.map((org) => [...org.path]) : [],
+);
 
-function normalizeHarnessDepartmentNames(response: unknown): string[] {
-  const responseRecord = asRecord(response);
-  const meta = asRecord(responseRecord.meta);
-  if (meta.success === false) {
-    throw new Error(readText(responseRecord.message) || '部门列表加载失败');
-  }
+const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
+  if (transportIsHttp) return harnessPermissions.value.accessLevel;
+  if (!canManageHarness.value) return 'task-only';
+  return canConfigureDepartmentPermissions.value ? 'owner' : 'admin';
+});
 
-  const data = responseRecord.data ?? response;
-  const dataRecord = asRecord(data);
-  const rows = Array.isArray(data)
-    ? data
-    : (['list', 'records', 'items', 'rows']
-        .map((key) => dataRecord[key])
-        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
-
-  return [
-    ...new Set(
-      rows
-        .map((item) => {
-          const record = asRecord(item);
-          return readText(record.deptName ?? record.departmentName ?? record.name);
-        })
-        .filter(Boolean),
-    ),
-  ];
-}
+const visibleHarnessTabs = computed(() =>
+  harnessAccessLevel.value === 'task-only'
+    ? harnessTabs.filter((tab) => tab.key === 'tasks')
+    : harnessTabs,
+);
 
 async function loadHarnessDepartmentScope(): Promise<void> {
   if (!transportIsHttp || !userId.value) return;
   try {
-    const response = await skillBaseService.querySkillPlanningDepartments({
+    const response = await skillBaseService.queryHarnessDeptPermissions({
       userId: userId.value,
     });
-    remotePermissionDepartmentNames.value = normalizeHarnessDepartmentNames(response);
+    harnessPermissions.value = normalizeHarnessDepartmentPermissions(response);
   } catch (error) {
     console.error('Failed to load harness department scope:', error);
-    remotePermissionDepartmentNames.value = [];
+    harnessPermissions.value = createEmptyHarnessDepartmentPermissions();
   }
 }
 
@@ -240,8 +240,12 @@ onMounted(async () => {
   try {
     if (transportIsHttp) await waitForInjectedContext();
     await loadCurrentUserRole();
-    await loadCurrentUserDepartmentPermission();
-    await loadHarnessDepartmentScope();
+    if (transportIsHttp) {
+      await loadHarnessDepartmentScope();
+    } else {
+      await loadCurrentUserDepartmentPermission();
+    }
+    activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'planning';
   } finally {
     roleContextReady.value = true;
   }
@@ -257,14 +261,13 @@ onBeforeUnmount(() => {
     <header class="harness-topbar">
       <nav class="harness-tabs" role="tablist" aria-label="Harness 管理分区">
         <button
-          v-for="tab in harnessTabs"
+          v-for="tab in visibleHarnessTabs"
           :id="`harness-tab-${tab.key}`"
           :key="tab.key"
           type="button"
           class="harness-tab"
           role="tab"
           :class="{ 'is-active': activeHarnessTab === tab.key }"
-          :disabled="roleContextReady && !canManageHarness"
           :aria-selected="activeHarnessTab === tab.key"
           :aria-controls="`harness-panel-${tab.key}`"
           @click="activeHarnessTab = tab.key"
@@ -280,18 +283,15 @@ onBeforeUnmount(() => {
     </header>
 
     <section
-      v-if="!roleContextReady || !canManageHarness"
+      v-if="!roleContextReady"
       id="harness-panel-access"
       class="harness-tab-panel harness-placeholder-panel"
       role="tabpanel"
     >
       <div class="harness-placeholder">
         <span class="harness-placeholder__eyebrow">Harness Access</span>
-        <h1>{{ roleContextReady ? '暂无管理权限' : '正在加载权限' }}</h1>
-        <p v-if="roleContextReady">
-          当前账号尚未获得任何部门的 Harness 规划与配置权限，请联系管理员或部门主任授权。
-        </p>
-        <p v-else>正在确认当前账号可管理的部门范围，请稍候。</p>
+        <h1>正在加载权限</h1>
+        <p>正在确认当前账号可管理的部门范围，请稍候。</p>
       </div>
     </section>
 
@@ -307,6 +307,7 @@ onBeforeUnmount(() => {
         :user-id="userId"
         :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-names="permissionDepartmentNames"
+        :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
       />
     </section>
@@ -334,7 +335,9 @@ onBeforeUnmount(() => {
         :user-id="userId"
         :is-super-admin="marketRoleIsSuperAdmin(currentUserRole)"
         :can-configure-department-permissions="canConfigureDepartmentPermissions"
+        :owner-departments="ownerDepartments"
         :permission-department-names="permissionDepartmentNames"
+        :permission-department-paths="permissionDepartmentPaths"
         :restrict-to-permission-departments="restrictToPermissionDepartments"
       />
     </section>

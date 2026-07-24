@@ -16,6 +16,7 @@ withDefaults(
     isSuperAdmin?: boolean;
     departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
+    allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
@@ -24,6 +25,7 @@ withDefaults(
     isSuperAdmin: false,
     departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
+    allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
   },
 );
@@ -41,6 +43,7 @@ defineEmits<{
     :is-super-admin="isSuperAdmin"
     :department-permission-path="departmentPermissionPath"
     :allowed-department-names="allowedDepartmentNames"
+    :allowed-department-paths="allowedDepartmentPaths"
     :restrict-to-allowed-departments="restrictToAllowedDepartments"
     @changed="(groups, departmentName) => $emit('changed', groups, departmentName)"
   />

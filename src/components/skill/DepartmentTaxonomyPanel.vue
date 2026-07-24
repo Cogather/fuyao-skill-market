@@ -50,6 +50,7 @@ const props = withDefaults(
     isSuperAdmin?: boolean;
     departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
+    allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
@@ -58,6 +59,7 @@ const props = withDefaults(
     isSuperAdmin: false,
     departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
+    allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
   },
 );
@@ -115,9 +117,16 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
     candidates = rows.filter((item) => !item.hasChildren);
   }
 
+  const allowedPaths = (props.allowedDepartmentPaths ?? [])
+    .map(normalizeDepartmentPath)
+    .filter((path) => path.length > 0);
   const allowed = new Set(props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean));
   if (props.restrictToAllowedDepartments) {
-    candidates = candidates.filter((item) => item.path.some((name) => allowed.has(name)));
+    candidates = candidates.filter((item) =>
+      allowedPaths.length > 0
+        ? allowedPaths.some((path) => departmentPathStartsWith(item.path, path))
+        : item.path.some((name) => allowed.has(name)),
+    );
     if (!candidates.length && allowed.size) {
       candidates = [...allowed].map((name) => ({
         deptCode: '',
@@ -518,7 +527,8 @@ async function loadProducts(): Promise<void> {
 
   productsLoading.value = true;
   try {
-    const options = await getProductPlanning('', departmentName);
+    const department = departmentOptions.value.find((item) => item.name === departmentName);
+    const options = await getProductPlanning('', departmentName, department?.deptCode ?? '');
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
   } catch (error) {

@@ -39,6 +39,7 @@ const props = withDefaults(
     userId?: string;
     currentUserDepartmentPath?: string[];
     allowedDepartmentNames?: string[];
+    allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
@@ -46,6 +47,7 @@ const props = withDefaults(
     userId: '',
     currentUserDepartmentPath: () => [],
     allowedDepartmentNames: () => [],
+    allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
   },
 );
@@ -155,9 +157,41 @@ function filterDepartmentTree(
   });
 }
 
+function filterDepartmentTreeByPaths(
+  nodes: DepartmentNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+): DepartmentNode[] {
+  return nodes.flatMap((node) => {
+    const path = [...parentPath, node.name];
+    const relevant = allowedPaths.some(
+      (allowedPath) =>
+        departmentPathStartsWith(path, allowedPath) ||
+        departmentPathStartsWith(allowedPath, path) ||
+        sameDepartmentPath(path, allowedPath),
+    );
+    if (!relevant) return [];
+    return [
+      {
+        ...node,
+        children: filterDepartmentTreeByPaths(node.children ?? [], allowedPaths, path),
+      },
+    ];
+  });
+}
+
+const normalizedAllowedDepartmentPaths = computed(() =>
+  (props.allowedDepartmentPaths ?? [])
+    .map(normalizeDepartmentPath)
+    .filter((path) => path.length > 0),
+);
+
 const masterDepartmentTree = computed(() => {
   const tree = props.departmentTree ?? [];
   if (!props.restrictToAllowedDepartments) return tree;
+  if (normalizedAllowedDepartmentPaths.value.length > 0) {
+    return filterDepartmentTreeByPaths(tree, normalizedAllowedDepartmentPaths.value);
+  }
   return filterDepartmentTree(
     tree,
     new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
@@ -166,6 +200,25 @@ const masterDepartmentTree = computed(() => {
 const currentUserMinimumDepartmentPath = computed(() =>
   normalizeDepartmentPath(props.currentUserDepartmentPath),
 );
+const defaultMasterDepartmentPath = computed(() =>
+  normalizeDepartmentPath(
+    normalizedAllowedDepartmentPaths.value[0] ?? currentUserMinimumDepartmentPath.value,
+  ),
+);
+const legacyMasterPermissionPath = computed(() =>
+  normalizedAllowedDepartmentPaths.value.length > 0 ? [] : currentUserMinimumDepartmentPath.value,
+);
+
+function findMasterDepartmentNode(
+  segments: string[],
+  nodes = masterDepartmentTree.value,
+): DepartmentNode | undefined {
+  const [current, ...rest] = normalizeDepartmentPath(segments);
+  if (!current) return undefined;
+  const node = nodes.find((item) => item.name === current);
+  if (!node || rest.length === 0) return node;
+  return findMasterDepartmentNode(rest, node.children ?? []);
+}
 const selectedMasterProduct = computed(() =>
   masterProductOptions.value.find(
     (item) =>
@@ -206,6 +259,11 @@ function syncMasterDepartment(segments = masterDepartmentSegments.value): void {
 }
 
 function isMasterDepartmentSelectionAllowed(segments: string[]): boolean {
+  if (props.restrictToAllowedDepartments && normalizedAllowedDepartmentPaths.value.length > 0) {
+    return normalizedAllowedDepartmentPaths.value.some((allowedPath) =>
+      departmentPathStartsWith(segments, allowedPath),
+    );
+  }
   const requiredPath = currentUserMinimumDepartmentPath.value;
   return requiredPath.length === 0 || departmentPathStartsWith(segments, requiredPath);
 }
@@ -241,7 +299,7 @@ function buildMasterQuery(): SkillMasterQuery {
 }
 
 function applyDefaultMasterScopeSelection(): boolean {
-  const defaultPath = currentUserMinimumDepartmentPath.value;
+  const defaultPath = defaultMasterDepartmentPath.value;
   const changed =
     masterScopeForm.level !== '部门级' ||
     !sameDepartmentPath(masterDepartmentSegments.value, defaultPath) ||
@@ -267,7 +325,9 @@ async function loadMasterProducts(): Promise<void> {
 
   masterProductsLoading.value = true;
   try {
-    const options = await getProductPlanning('', departmentName);
+    const departmentNode = findMasterDepartmentNode(masterDepartmentSegments.value);
+    const deptCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim();
+    const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;
   } catch (error) {
@@ -745,7 +805,7 @@ async function confirmBatchMasterDelete(): Promise<void> {
   showToast(`已删除 ${ids.length} 条 Skill`);
 }
 async function onMasterScopeLevelChange(): Promise<void> {
-  const defaultPath = currentUserMinimumDepartmentPath.value;
+  const defaultPath = defaultMasterDepartmentPath.value;
   masterScopeDepartmentCommitted.value = defaultPath.length > 0;
   masterDepartmentSegments.value = [...defaultPath];
   syncMasterDepartment(defaultPath);
@@ -791,7 +851,7 @@ async function resetMasterQuery(): Promise<void> {
 }
 
 watch(
-  () => props.currentUserDepartmentPath,
+  () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths],
   () => {
     applyDefaultMasterScopeSelection();
     void loadMasterProducts().then(() => reload());
@@ -834,11 +894,11 @@ onBeforeUnmount(() => {
             :disabled="!masterScopeForm.level"
             :all-label="masterScopeForm.level ? '请选择部门' : '请先选择层级'"
             clear-behavior="reset"
-            :clear-value="currentUserMinimumDepartmentPath"
+            :clear-value="defaultMasterDepartmentPath"
             clear-text="恢复默认选择"
             selection-mode="confirm"
             permission-mode="review-center"
-            :permission-path="currentUserMinimumDepartmentPath"
+            :permission-path="legacyMasterPermissionPath"
             :before-done="guardMasterDepartmentSelection"
             searchable
             aria-label="按部门筛选 Skill 清单"
