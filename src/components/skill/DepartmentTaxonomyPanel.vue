@@ -101,7 +101,7 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
     items.forEach((item) => {
       const nextPath = [...path, item.name];
       rows.push({
-        deptCode: String(item.deptCode ?? item.id ?? '').trim(),
+        deptCode: String(item.deptCode ?? '').trim(),
         name: item.name,
         level: depth,
         path: nextPath,
@@ -391,12 +391,19 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
   return records;
 }
 
-function httpDepartmentContext(departmentName: string): any {
+function departmentForRequest(departmentName: string): DepartmentOption | undefined {
+  const normalizedName = departmentName.trim();
+  const selectedByPath = departmentByPath(selectedDepartmentPath.value);
+  if (selectedByPath?.name === normalizedName) return selectedByPath;
+  return departmentOptions.value.find((item) => item.name === normalizedName);
+}
+
+function httpDepartmentContext(departmentName: string): { userId: string; deptCode: string } {
   const userId = props.userId.trim();
   if (!userId) throw new Error('请先获取当前用户工号');
-  const department = departmentOptions.value.find((item) => item.name === departmentName);
-  const deptCode = department?.deptCode.trim() || departmentName.trim();
-  return !deptCode ? { userId } : { userId, deptCode };
+  const deptCode = departmentForRequest(departmentName)?.deptCode.trim() ?? '';
+  if (!deptCode) throw new Error('未获取到所选部门编码，请重新选择部门');
+  return { userId, deptCode };
 }
 
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
@@ -527,7 +534,7 @@ async function loadProducts(): Promise<void> {
 
   productsLoading.value = true;
   try {
-    const department = departmentOptions.value.find((item) => item.name === departmentName);
+    const department = departmentForRequest(departmentName);
     const options = await getProductPlanning('', departmentName, department?.deptCode ?? '');
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;

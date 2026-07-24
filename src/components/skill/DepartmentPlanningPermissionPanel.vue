@@ -112,7 +112,7 @@ function flattenDepartments(nodes: DepartmentNode[]): DepartmentOption[] {
       const level = Number.isFinite(explicitLevel) && explicitLevel > 0 ? explicitLevel : depth;
       options.push({
         name,
-        deptCode: readText(node.deptCode ?? node.id) || name,
+        deptCode: readText(node.deptCode),
         level,
         path,
       });
@@ -148,7 +148,7 @@ const ownerDepartmentOptions = computed<DepartmentOption[]>(() => {
     return [
       {
         name: department.deptName || normalizedPath.at(-1) || '',
-        deptCode: department.deptCode || department.deptName,
+        deptCode: department.deptCode,
         level: normalizedPath.length,
         path: normalizedPath,
       },
@@ -224,21 +224,24 @@ const authorizedTotal = computed(() => selectedAdministrators.value.length);
 
 function recordForDepartment(departmentName: string): DepartmentPermissionRecord {
   const departmentOption = selectedDepartmentOption.value;
-  return (
+  const record =
     records.value.find(
       (record) => departmentOption && departmentRecordMatchesOption(record, departmentOption),
-    ) ??
-    records.value.find((record) => record.departmentName === departmentName) ?? {
-      departmentName,
-      deptCode:
-        departmentOption?.deptCode ||
-        findDepartmentCode(props.departmentTree, departmentName) ||
-        departmentName,
-      ownerUserId: '',
-      members: [],
-      updatedAt: '',
-    }
-  );
+    ) ?? records.value.find((record) => record.departmentName === departmentName);
+  if (record) {
+    return {
+      ...record,
+      deptCode: departmentOption?.deptCode || record.deptCode,
+    };
+  }
+  return {
+    departmentName,
+    deptCode:
+      departmentOption?.deptCode || findDepartmentCode(props.departmentTree, departmentName),
+    ownerUserId: '',
+    members: [],
+    updatedAt: '',
+  };
 }
 
 function departmentRecordMatchesOption(
@@ -294,7 +297,7 @@ function responseRows(response: unknown): unknown[] {
 function findDepartmentCode(nodes: DepartmentNode[], departmentName: string): string {
   for (const node of nodes) {
     if (node.name.trim() === departmentName.trim()) {
-      return readText(node.deptCode ?? node.id);
+      return readText(node.deptCode);
     }
     const childCode = findDepartmentCode(node.children ?? [], departmentName);
     if (childCode) return childCode;
@@ -308,9 +311,8 @@ function normalizeDepartmentRecords(response: unknown): DepartmentPermissionReco
     const departmentName = readText(record.deptName ?? record.departmentName ?? record.name);
     if (!departmentName) return [];
     const deptCode =
-      readText(record.deptCode ?? record.departmentCode ?? record.id) ||
-      findDepartmentCode(props.departmentTree, departmentName) ||
-      departmentName;
+      readText(record.deptCode ?? record.departmentCode) ||
+      findDepartmentCode(props.departmentTree, departmentName);
     const ownerUserId = readText(record.owner ?? record.ownerUserId);
     const adminUserIds = readUserIds(record.adminUserIds ?? record.admin_user_ids ?? record.admins);
     const memberIds = [...new Set([ownerUserId, ...adminUserIds].filter(Boolean))];
@@ -420,7 +422,7 @@ async function reload(): Promise<void> {
         deptCode:
           ownerManageableDepartmentOptions.value.find(
             (option) => option.name === record.departmentName,
-          )?.deptCode ?? record.departmentName,
+          )?.deptCode ?? '',
         ownerUserId: '',
       }));
   }
@@ -445,7 +447,12 @@ async function updateRemoteAdmins(
     throw new Error('仅部门 Owner 可以配置自己负责部门的管理员');
   }
 
-  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins(record.deptCode, {
+  const deptCode = readText(record.deptCode);
+  if (!deptCode) {
+    throw new Error('未获取到所选部门编码，无法更新部门管理员');
+  }
+
+  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins(deptCode, {
     userId: props.userId.trim(),
     adminUserIds: [
       ...new Set(adminUserIds.filter((userId) => Boolean(userId) && userId !== record.ownerUserId)),
