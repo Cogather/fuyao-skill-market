@@ -144,10 +144,23 @@ function normalizePayload(payload: SkillMasterPayload): SkillMasterPayload {
   };
 }
 
+function productSkillNamePrefix(product: string): string {
+  return product.endsWith('-') ? product : product + '-';
+}
+
 function validatePayload(payload: SkillMasterPayload): void {
   if (!payload.name) throw new Error('请输入 Skill 名称');
   if (!payload.description) throw new Error('请输入 Skill 说明');
   if (!payload.owner) throw new Error('请输入责任 Owner');
+  if (payload.level === '产品级' && payload.product) {
+    const prefix = productSkillNamePrefix(payload.product);
+    if (!payload.name.startsWith(prefix)) {
+      throw new Error('产品级 Skill 名称需以“' + prefix + '”开头');
+    }
+    if (payload.name.length === prefix.length) {
+      throw new Error('请在“' + prefix + '”后补充 Skill 名称');
+    }
+  }
 }
 
 export function listSkillMasterRecords(): SkillMasterRecord[] {

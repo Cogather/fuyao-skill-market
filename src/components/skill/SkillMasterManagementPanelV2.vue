@@ -103,6 +103,7 @@ const associationEditor = reactive({
 });
 const departmentPath = ref<string[]>([]);
 const deleteDialog = reactive({ open: false, id: '', name: '' });
+const editorOverlayPointerStartedOnBackdrop = ref(false);
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 const masterScopeForm = reactive({
   level: '部门级' as PlanningLevel,
@@ -172,6 +173,16 @@ const selectedMasterProduct = computed(() =>
       (!item.planningDeptName || item.planningDeptName === masterScopeForm.planningDeptName),
   ),
 );
+const currentProductName = computed(() =>
+  masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
+);
+const requiredSkillNamePrefix = computed(() => {
+  const productName = currentProductName.value;
+  if (!productName) {
+    return '';
+  }
+  return productName.endsWith('-') ? productName : productName + '-';
+});
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
     return '请先选择层级';
@@ -398,6 +409,29 @@ function resetEditor(): void {
   ownerOptions.value = [];
   developOwnerOptions.value = [];
 }
+
+function applyCurrentScopeToEditor(): void {
+  editor.level = masterScopeForm.level;
+  editor.product = masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '';
+}
+
+function ensureProductSkillNamePrefix(): boolean {
+  const prefix = requiredSkillNamePrefix.value;
+  if (!prefix) {
+    return true;
+  }
+  const name = editor.name.trim();
+  if (!name.startsWith(prefix)) {
+    editor.error = '产品级 Skill 名称需以“' + prefix + '”开头';
+    return false;
+  }
+  if (name.length === prefix.length) {
+    editor.error = '请在“' + prefix + '”后补充 Skill 名称';
+    return false;
+  }
+  return true;
+}
+
 function resolveOwnerSelection(): void {
   const value = editor.owner.trim();
   const option = matchingPersonOption(ownerOptions.value, value);
@@ -496,6 +530,8 @@ function openCreate(): void {
   if (!ensureMasterScopeSelection(true)) return;
   resetEditor();
   editor.mode = 'create';
+  applyCurrentScopeToEditor();
+  editor.name = requiredSkillNamePrefix.value;
   editor.open = true;
 }
 function openEdit(record: SkillMasterRecord): void {
@@ -515,12 +551,29 @@ function openEdit(record: SkillMasterRecord): void {
     status: record.status,
     error: '',
   });
+  applyCurrentScopeToEditor();
 }
 function closeEditor(): void {
   editor.open = false;
   editor.error = '';
+  editorOverlayPointerStartedOnBackdrop.value = false;
 }
+
+function onEditorOverlayPointerDown(event: PointerEvent): void {
+  editorOverlayPointerStartedOnBackdrop.value = event.target === event.currentTarget;
+}
+
+function onEditorOverlayPointerUp(event: PointerEvent): void {
+  const endedOnBackdrop = event.target === event.currentTarget;
+  if (editorOverlayPointerStartedOnBackdrop.value && endedOnBackdrop) {
+    closeEditor();
+  }
+  editorOverlayPointerStartedOnBackdrop.value = false;
+}
+
 async function submitEditor(): Promise<void> {
+  applyCurrentScopeToEditor();
+  if (!ensureProductSkillNamePrefix()) return;
   if (!(await ensureOwnerSelection())) {
     editor.error =
       '\u8bf7\u9009\u62e9\u6709\u6548\u7684\u8d23\u4efb Owner\uff0c\u4ee5\u81ea\u52a8\u5e26\u51fa\u5176\u6240\u5728\u90e8\u95e8';
@@ -997,8 +1050,19 @@ onBeforeUnmount(() => {
     </div>
 
     <Teleport to="body">
-      <div v-if="editor.open" class="overlay" @click.self="closeEditor">
-        <form class="dialog" @submit.prevent="submitEditor">
+      <div
+        v-if="editor.open"
+        class="overlay"
+        @pointerdown="onEditorOverlayPointerDown"
+        @pointerup="onEditorOverlayPointerUp"
+      >
+        <form
+          class="dialog"
+          @click.stop
+          @pointerdown.stop
+          @pointerup.stop
+          @submit.prevent="submitEditor"
+        >
           <header>
             <div>
               <small>SKILL MASTER</small
@@ -1014,8 +1078,15 @@ onBeforeUnmount(() => {
           </div>
           <div class="form-grid">
             <label class="wide"
-              ><span>Skill 名称 *</span><input v-model.trim="editor.name" maxlength="60"
-            /></label>
+              ><span>Skill 名称 *</span
+              ><input
+                v-model.trim="editor.name"
+                maxlength="60"
+                :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
+              /><small v-if="requiredSkillNamePrefix" class="field-hint"
+                >需以“{{ requiredSkillNamePrefix }}”开头</small
+              ></label
+            >
             <label class="wide"
               ><span>Skill 说明 *</span
               ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
@@ -1733,6 +1804,11 @@ onBeforeUnmount(() => {
   font-size: 11px;
   font-weight: 800;
 }
+.field-hint {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
 .form-grid input,
 .form-grid select,
 .form-grid textarea {
@@ -1751,9 +1827,12 @@ onBeforeUnmount(() => {
   padding-top: 10px;
 }
 .error {
+  margin: 14px 0 0;
   padding: 9px 11px;
   background: #fff1f2;
   color: #d94851;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .dialog > footer {
   display: flex;
