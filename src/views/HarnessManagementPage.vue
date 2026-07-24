@@ -127,12 +127,58 @@ const canManageHarness = computed(
 );
 
 const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
-  transportIsHttp ? harnessPermissions.value.ownedOrgs : [],
+  transportIsHttp
+    ? harnessPermissions.value.ownedOrgs.map((department) => ({
+        ...department,
+        path: resolveAuthorizedDepartmentPath(department),
+      }))
+    : [],
 );
 
 const permissionDepartmentPaths = computed(() =>
-  transportIsHttp ? harnessPermissions.value.manageableOrgs.map((org) => [...org.path]) : [],
+  transportIsHttp
+    ? harnessPermissions.value.manageableOrgs.map((department) =>
+        resolveAuthorizedDepartmentPath(department),
+      )
+    : [],
 );
+
+function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment): string[] {
+  const expectedPath = department.path.map((item) => item.trim()).filter(Boolean);
+  const matchingPaths: string[][] = [];
+  let codeMatch: string[] | null = null;
+
+  const visit = (nodes: typeof departmentTree.value, parentPath: string[]): void => {
+    nodes.forEach((node) => {
+      const path = [...parentPath, node.name];
+      if (
+        department.deptCode &&
+        (node.deptCode === department.deptCode || node.id === department.deptCode)
+      ) {
+        codeMatch = path;
+      }
+      if (node.name === department.deptName || pathEndsWith(path, expectedPath)) {
+        matchingPaths.push(path);
+      }
+      if (node.children.length > 0) visit(node.children, path);
+    });
+  };
+
+  visit(departmentTree.value, []);
+  if (codeMatch) return [...codeMatch];
+
+  const suffixMatch = matchingPaths.find((path) => pathEndsWith(path, expectedPath));
+  if (suffixMatch) return [...suffixMatch];
+  const onlyMatch = matchingPaths.length === 1 ? matchingPaths[0] : undefined;
+  if (onlyMatch) return [...onlyMatch];
+  return [...expectedPath];
+}
+
+function pathEndsWith(path: string[], suffix: string[]): boolean {
+  if (suffix.length === 0 || suffix.length > path.length) return false;
+  const offset = path.length - suffix.length;
+  return suffix.every((segment, index) => path[offset + index] === segment);
+}
 
 const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
   if (transportIsHttp) return harnessPermissions.value.accessLevel;

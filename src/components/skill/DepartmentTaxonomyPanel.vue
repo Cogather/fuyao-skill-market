@@ -999,7 +999,6 @@ function exportRecords(): void {
               clear-behavior="reset"
               :clear-value="defaultDepartmentPath"
               selection-mode="confirm"
-              searchable
               aria-label="配置范围部门级联选择"
               :before-clear="() => guardDepartmentChange(defaultDepartmentPath)"
               :before-done="guardDepartmentChange"

@@ -40,7 +40,14 @@ export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeN
       typeof deptIdPart === 'string' || typeof deptIdPart === 'number'
         ? String(deptIdPart).trim()
         : '';
-    const childRaw = o.children;
+    const childRaw =
+      o.children ??
+      o.childrenList ??
+      o.childList ??
+      o.childDepartments ??
+      o.childDepartmentList ??
+      o.childDeptList ??
+      o.subDepartments;
     const children =
       Array.isArray(childRaw) && childRaw.length > 0
         ? coerceDepartmentTreeFromUnknown(childRaw)
@@ -62,8 +69,7 @@ export function mapDepartmentTreeDtoToForest(
   if (!nodes?.length) {
     return [];
   }
-  const mapped = nodes.map((n) => mapOneDepartmentTreeNode(n, ''));
-  return mapped.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+  return nodes.map((n) => mapOneDepartmentTreeNode(n, ''));
 }
 
 function mapOneDepartmentTreeNode(
@@ -78,9 +84,7 @@ function mapOneDepartmentTreeNode(
         ? parentPath.split('/').filter(Boolean).length + 1
         : 1;
   const rawChildren = n.children ?? [];
-  const children = rawChildren
-    .map((c) => mapOneDepartmentTreeNode(c, path))
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+  const children = rawChildren.map((c) => mapOneDepartmentTreeNode(c, path));
   return {
     ...(n.deptId !== undefined && String(n.deptId).trim() ? { id: String(n.deptId).trim() } : {}),
     ...(n.deptCode !== undefined && String(n.deptCode).trim()

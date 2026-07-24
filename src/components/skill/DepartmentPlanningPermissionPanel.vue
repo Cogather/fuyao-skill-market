@@ -685,8 +685,6 @@ onBeforeUnmount(() => {
           clear-behavior="reset"
           :clear-value="defaultOwnerDepartmentOption?.path ?? []"
           selection-mode="confirm"
-          searchable
-          search-placeholder="搜索部门名称或路径"
           aria-label="部门权限配置部门级联选择"
           :before-clear="() => Boolean(defaultOwnerDepartmentOption)"
           :before-done="guardDepartmentSelection"
