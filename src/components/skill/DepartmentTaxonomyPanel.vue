@@ -30,6 +30,7 @@ type ConfigurationLevel = '产品级' | '部门级';
 interface DepartmentTreeNode {
   id?: string;
   deptCode?: string;
+  levelNo?: number;
   name: string;
   children?: DepartmentTreeNode[];
 }
@@ -103,7 +104,7 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
       rows.push({
         deptCode: String(item.deptCode ?? item.id ?? '').trim(),
         name: item.name,
-        level: depth,
+        level: typeof item.levelNo === 'number' && item.levelNo > 0 ? item.levelNo : depth,
         path: nextPath,
         hasChildren: Boolean(item.children?.length),
       });
@@ -171,11 +172,15 @@ const configurableDepartmentPaths = computed(() =>
   departmentOptions.value.map((department) => [...department.path]),
 );
 const defaultDepartmentPath = computed(() => {
-  const permissionPath = normalizedDepartmentPermissionPath.value;
-  const defaultDepartment =
-    departmentOptions.value.find((department) =>
-      sameDepartmentPath(department.path, permissionPath),
-    ) ?? departmentOptions.value[0];
+  const candidatePaths = [
+    normalizedDepartmentPermissionPath.value,
+    ...(props.allowedDepartmentPaths ?? []).map(normalizeDepartmentPath),
+  ].filter((path) => path.length > 0);
+  const defaultDepartment = candidatePaths
+    .map((path) =>
+      departmentOptions.value.find((department) => sameDepartmentPath(department.path, path)),
+    )
+    .find(Boolean);
   return [...(defaultDepartment?.path ?? [])];
 });
 const selectedProduct = computed(
@@ -1000,7 +1005,10 @@ function exportRecords(): void {
               :clear-value="defaultDepartmentPath"
               selection-mode="confirm"
               aria-label="配置范围部门级联选择"
-              :before-clear="() => guardDepartmentChange(defaultDepartmentPath)"
+              :before-clear="
+                () =>
+                  defaultDepartmentPath.length === 0 || guardDepartmentChange(defaultDepartmentPath)
+              "
               :before-done="guardDepartmentChange"
               @change="onDepartmentChange"
               @clear="clearDepartment"
