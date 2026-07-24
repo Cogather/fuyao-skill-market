@@ -385,24 +385,19 @@ function findPlanningDepartmentNodeByPath(
   return findPlanningDepartmentNodeByPath(rest, node.children ?? []);
 }
 
-function currentPlanningTaxonomyParams(
-  departmentName = filterForm.planningDeptName,
-  selectedDepartmentPath = planningDepartmentSegments.value,
-): {
+function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
   userId?: string;
   deptCode?: string;
 } {
   const department = departmentName.trim();
-  const selectedPath = normalizePlanningDepartmentPath(selectedDepartmentPath);
+  const selectedPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
   const departmentPath =
     department && selectedPath.at(-1) === department
       ? selectedPath
       : findPlanningDepartmentPathByName(department);
   const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
-  const deptCode = String(departmentNode?.deptCode ?? '').trim();
-  if (transportIsHttp && department && !deptCode) {
-    throw new Error('未获取到所选部门编码，请重新选择部门');
-  }
+  const deptCode =
+    String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
   return {
     ...(props.userId.trim() ? { userId: props.userId.trim() } : {}),
     ...(deptCode ? { deptCode } : {}),
@@ -864,10 +859,7 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
     const options = await getProductPlanning(
       keyword,
       planningForm.planningDeptName,
-      currentPlanningTaxonomyParams(
-        planningForm.planningDeptName,
-        planningFormDepartmentSegments.value,
-      ).deptCode,
+      currentPlanningTaxonomyParams(planningForm.planningDeptName).deptCode,
     );
     if (requestSeq !== productSearchSeq) {
       return;

@@ -326,7 +326,7 @@ async function loadMasterProducts(): Promise<void> {
   masterProductsLoading.value = true;
   try {
     const departmentNode = findMasterDepartmentNode(masterDepartmentSegments.value);
-    const deptCode = String(departmentNode?.deptCode ?? '').trim();
+    const deptCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim();
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;

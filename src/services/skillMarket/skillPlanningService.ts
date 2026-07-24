@@ -508,10 +508,8 @@ export async function getProductPlanning(
     return (await loadMockService()).getProductPlanning(params);
   }
 
-  const normalizedDeptCode = normalizeText(deptCode);
-  if (!normalizedDeptCode) {
-    throw new Error('未获取到所选部门编码，无法查询产品列表');
-  }
+  const normalizedDeptCode = normalizeText(deptCode) || params.planningDeptName;
+  if (!normalizedDeptCode) return [];
 
   const response = await skillBaseService.queryHarnessDeptProducts({
     deptCode: normalizedDeptCode,
