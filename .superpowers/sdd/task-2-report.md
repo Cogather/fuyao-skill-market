@@ -140,5 +140,5 @@ Submit still uses local create/update services only — no `/management/add` bod
 ### Follow-up commit
 
 ```
-<SHA> fix: harden Skill master person picker close/search
+b275384 fix: harden Skill master person picker close/search
 ```
