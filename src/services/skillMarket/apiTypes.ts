@@ -487,6 +487,19 @@ export type OrganizationUpsertBody = {
   enabled: number;
 };
 
+export type SkillPlanningDepartmentAdminsBody = {
+  userId: string;
+  adminUserIds: string;
+  l3DeptCode: string | null;
+  l3DeptName: string | null;
+  l4DeptCode: string | null;
+  l4DeptName: string | null;
+  l5DeptCode: string | null;
+  l5DeptName: string | null;
+  l6DeptCode: string | null;
+  l6DeptName: string | null;
+};
+
 /**
  * 市场总览等部门级联：全量部门树（设计文档未定稿）。
  * 节点字段与 `DashboardOverviewDto.deptTree` 单节点对齐，便于后端与 Mock 复用。
