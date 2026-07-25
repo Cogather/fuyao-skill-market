@@ -5,6 +5,7 @@ import type {
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
+  UpdateSkillMasterManagementBody,
 } from './apiTypes';
 
 export interface SceneOptionGroupsParams {
@@ -363,11 +364,26 @@ export const skillBaseService = {
     });
   },
 
-  batchDeleteSkillMasterManagement: (skillNames: string[]): any => {
+  batchDeleteSkillMasterManagement: (ids: Array<string | number>): any => {
     return httpRequest.skill<any>({
       url: '/management/batch_delete',
       method: 'delete',
-      data: skillNames,
+      data: ids,
+    });
+  },
+
+  updateSkillMasterManagement: (body: UpdateSkillMasterManagementBody): any => {
+    return httpRequest.skill<any>({
+      url: '/management/update',
+      method: 'put',
+      data: body,
+    });
+  },
+
+  deleteSkillMasterManagement: (id: string | number): any => {
+    return httpRequest.skill<any>({
+      url: `/management/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
     });
   },
 

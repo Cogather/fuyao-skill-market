@@ -26,6 +26,7 @@ import type {
   CreateSkillMasterManagementBody,
   QuerySkillMasterManagementBody,
   SkillMasterManagementItemDto,
+  UpdateSkillMasterManagementBody,
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
@@ -347,8 +348,9 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
   const dimName = String(item.dimName ?? '').trim();
   const statusText = String(item.status ?? '').trim() || '未开始';
   const now = new Date().toISOString();
+  const id = String(item.id ?? '').trim() || skillName;
   return {
-    id: skillName,
+    id,
     name: skillName,
     description: String(item.skillDescription ?? '').trim(),
     level: dimType,
@@ -968,7 +970,69 @@ async function submitEditor(): Promise<void> {
     return;
   }
 
-  editor.error = '编辑能力暂未对接，请稍后使用更新接口';
+  const dim = resolveDimFields();
+  if (!dim) {
+    return;
+  }
+  if (!editor.id.trim()) {
+    editor.error = '缺少 Skill id，请刷新列表后重试';
+    return;
+  }
+  if (!editor.name.trim()) {
+    editor.error = '请填写 Skill 名称';
+    return;
+  }
+  if (!ensureProductSkillNamePrefix()) {
+    return;
+  }
+  if (!editor.description.trim()) {
+    editor.error = '请填写 Skill 说明';
+    return;
+  }
+  if (!ownerPicker.selected) {
+    editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+    return;
+  }
+  if (!developOwnerPicker.selected) {
+    editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+    return;
+  }
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return;
+  }
+
+  const updateBody: UpdateSkillMasterManagementBody = {
+    id: editor.id,
+    skillName: editor.name.trim(),
+    skillDescription: editor.description.trim(),
+    dimType: dim.dimType,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+    ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
+    ownerId: ownerPicker.selected.id,
+    developOwnerName:
+      developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+    developOwnerId: developOwnerPicker.selected.id,
+    planFinishDate: editor.plannedCompleteDate,
+  };
+
+  submitting.value = true;
+  try {
+    const response = await skillBaseService.updateSkillMasterManagement(updateBody);
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || '更新失败，请稍后重试'),
+      );
+    }
+    closeEditor();
+    await reload();
+    showToast('Skill 主体信息已更新');
+  } catch (error) {
+    editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    submitting.value = false;
+  }
 }
 function openAssociation(record: SkillMasterRecord): void {
   const association = getSkillMasterAssociation(record.id);
@@ -1015,8 +1079,27 @@ function requestDelete(record: SkillMasterRecord): void {
   Object.assign(deleteDialog, { open: true, id: record.id, name: record.name });
 }
 async function confirmDelete(): Promise<void> {
-  showToast('单条删除暂未对接，请使用批量删除');
-  deleteDialog.open = false;
+  const id = String(deleteDialog.id ?? '').trim();
+  if (!id) {
+    showToast('缺少 Skill id，请刷新后重试');
+    deleteDialog.open = false;
+    return;
+  }
+  try {
+    const response = await skillBaseService.deleteSkillMasterManagement(id);
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || '删除失败，请稍后重试'),
+      );
+    }
+    removeSkillMasterAssociation(id);
+    selectedMasterIds.value = selectedMasterIds.value.filter((item) => item !== id);
+    deleteDialog.open = false;
+    await reload();
+    showToast('Skill 已删除');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '删除失败，请稍后重试');
+  }
 }
 
 function toggleMasterSelection(id: string): void {
@@ -1092,25 +1175,25 @@ function requestBatchMasterDelete(): void {
 }
 
 async function confirmBatchMasterDelete(): Promise<void> {
-  const skillNames = [...batchDeleteDialog.ids].map((id) => id.trim()).filter(Boolean);
-  if (skillNames.length === 0) {
+  const ids = [...batchDeleteDialog.ids].map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) {
     showToast('请先勾选需要批量删除的数据');
     return;
   }
   try {
-    const response = await skillBaseService.batchDeleteSkillMasterManagement(skillNames);
+    const response = await skillBaseService.batchDeleteSkillMasterManagement(ids);
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || '批量删除失败，请稍后重试'),
       );
     }
-    skillNames.forEach((name) => {
-      removeSkillMasterAssociation(name);
+    ids.forEach((id) => {
+      removeSkillMasterAssociation(id);
     });
     batchDeleteDialog.open = false;
-    selectedMasterIds.value = selectedMasterIds.value.filter((id) => !skillNames.includes(id));
+    selectedMasterIds.value = selectedMasterIds.value.filter((id) => !ids.includes(id));
     await reload();
-    showToast(`已删除 ${skillNames.length} 条 Skill`);
+    showToast(`已删除 ${ids.length} 条 Skill`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '批量删除失败，请稍后重试');
   }
@@ -1405,7 +1488,8 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <div class="row-actions">
-                  <span class="row-actions__muted">暂不支持</span>
+                  <button type="button" @click="openEdit(record)">编辑</button
+                  ><button class="danger" type="button" @click="requestDelete(record)">删除</button>
                 </div>
               </td>
             </tr>

@@ -116,6 +116,7 @@ type MockEnvelope<T> = {
 };
 
 type MockSkillMasterManagementRecord = {
+  id: string;
   skillName: string;
   skillDescription: string;
   dimType: string;
@@ -146,8 +147,16 @@ function nowLocalDateTimeArray(): number[] {
   ];
 }
 
+let mockSkillMasterManagementIdSeq = 1000;
+
+function nextMockSkillMasterManagementId(): string {
+  mockSkillMasterManagementIdSeq += 1;
+  return String(mockSkillMasterManagementIdSeq);
+}
+
 const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
   {
+    id: '501',
     skillName: '稳定性日报 Skill',
     skillDescription: '汇总稳定性指标并生成日报摘要',
     dimType: '部门级',
@@ -165,6 +174,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     skillMatchLevel: null,
   },
   {
+    id: '502',
     skillName: '接口巡检 Skill',
     skillDescription: '定期巡检关键接口可用性',
     dimType: '部门级',
@@ -182,6 +192,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     skillMatchLevel: null,
   },
   {
+    id: '503',
     skillName: '产品A-发布检查 Skill',
     skillDescription: '产品级发布前检查清单',
     dimType: '产品级',
@@ -1656,6 +1667,7 @@ function handleSkillRequest(
     }
     const stamp = nowLocalDateTimeArray();
     const record: MockSkillMasterManagementRecord = {
+      id: nextMockSkillMasterManagementId(),
       skillName: String(body.skillName).trim(),
       skillDescription: String(body.skillDescription).trim(),
       dimType: String(body.dimType).trim(),
@@ -1681,7 +1693,6 @@ function handleSkillRequest(
     }
     mockSkillMasterManagementRecords.unshift(record);
     return ok({
-      id: `skill-mgmt-${Date.now()}`,
       ...record,
     });
   }
@@ -1697,26 +1708,87 @@ function handleSkillRequest(
     );
   }
 
+  if (method === 'put' && path === '/management/update') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const id = String(body.id ?? '').trim();
+    if (!id) {
+      return fail('缺少必填字段: id', null);
+    }
+    const requiredKeys = [
+      'skillName',
+      'skillDescription',
+      'dimType',
+      'dimCode',
+      'dimName',
+      'ownerName',
+      'ownerId',
+      'developOwnerName',
+      'developOwnerId',
+      'planFinishDate',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const target = mockSkillMasterManagementRecords.find((item) => item.id === id);
+    if (!target) {
+      return fail(`未找到 Skill: ${id}`, null);
+    }
+    Object.assign(target, {
+      skillName: String(body.skillName).trim(),
+      skillDescription: String(body.skillDescription).trim(),
+      dimType: String(body.dimType).trim(),
+      dimCode: String(body.dimCode).trim(),
+      dimName: String(body.dimName).trim(),
+      ownerName: String(body.ownerName).trim(),
+      ownerId: String(body.ownerId).trim(),
+      developOwnerName: String(body.developOwnerName).trim(),
+      developOwnerId: String(body.developOwnerId).trim(),
+      planFinishDate: String(body.planFinishDate).trim(),
+      updatedAt: nowLocalDateTimeArray(),
+    });
+    return ok({
+      ...target,
+    });
+  }
+
+  const deleteMatch = /^\/management\/delete\/([^/]+)$/.exec(path);
+  if (method === 'delete' && deleteMatch) {
+    const id = decodeURIComponent(deleteMatch[1] ?? '').trim();
+    if (!id) {
+      return fail('缺少删除 id', null);
+    }
+    const index = mockSkillMasterManagementRecords.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return fail(`未找到 Skill: ${id}`, null);
+    }
+    const [removed] = mockSkillMasterManagementRecords.splice(index, 1);
+    return ok({
+      id,
+      skillName: removed?.skillName ?? '',
+    });
+  }
+
   if (method === 'delete' && path === '/management/batch_delete') {
     const body = readSkillRequestBody(config.data);
-    const skillNames = Array.isArray(body)
+    const ids = Array.isArray(body)
       ? body.map((item) => String(item ?? '').trim()).filter(Boolean)
       : [];
-    if (skillNames.length === 0) {
+    if (ids.length === 0) {
       return fail('批量删除列表不能为空', null);
     }
-    const nameSet = new Set(skillNames);
+    const idSet = new Set(ids);
     const before = mockSkillMasterManagementRecords.length;
     for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {
       const current = mockSkillMasterManagementRecords[index];
-      if (current && nameSet.has(current.skillName)) {
+      if (current && idSet.has(current.id)) {
         mockSkillMasterManagementRecords.splice(index, 1);
       }
     }
     const removed = before - mockSkillMasterManagementRecords.length;
     return ok({
       removed,
-      skillNames,
+      ids,
     }, removed);
   }
 

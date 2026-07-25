@@ -663,6 +663,7 @@ export type QuerySkillMasterManagementBody = {
 
 /** Skill 清单查询行 */
 export type SkillMasterManagementItemDto = {
+  id: string | number;
   skillName: string;
   skillDescription: string;
   dimType: string;
@@ -678,4 +679,9 @@ export type SkillMasterManagementItemDto = {
   updatedAt?: number[] | string | null;
   skillMatchId?: string | null;
   skillMatchLevel?: string | null;
+};
+
+/** Skill 清单更新（PUT /management/update） */
+export type UpdateSkillMasterManagementBody = CreateSkillMasterManagementBody & {
+  id: string | number;
 };
