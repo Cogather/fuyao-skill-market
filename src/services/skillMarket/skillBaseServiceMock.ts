@@ -1469,6 +1469,43 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  if (method === 'post' && path === '/management/add') {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const requiredKeys = [
+      'skillName',
+      'skillDescription',
+      'dimType',
+      'dimCode',
+      'dimName',
+      'ownerName',
+      'ownerId',
+      'developOwnerName',
+      'developOwnerId',
+      'planFinishDate',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+      return fail('status 不应传入', null);
+    }
+    const id = `skill-mgmt-${Date.now()}`;
+    return ok({
+      id,
+      skillName: String(body.skillName).trim(),
+      skillDescription: String(body.skillDescription).trim(),
+      dimType: String(body.dimType).trim(),
+      dimCode: String(body.dimCode).trim(),
+      dimName: String(body.dimName).trim(),
+      ownerName: String(body.ownerName).trim(),
+      ownerId: String(body.ownerId).trim(),
+      developOwnerName: String(body.developOwnerName).trim(),
+      developOwnerId: String(body.developOwnerId).trim(),
+      planFinishDate: String(body.planFinishDate).trim(),
+    });
+  }
+
   if (method === 'get' && path === '/review/expert/check') {
     return ok({
       isExpert: true,

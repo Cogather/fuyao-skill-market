@@ -1,5 +1,5 @@
 import httpRequest from '@/services/skillMarket/request';
-import type { ApiEnvelope, ExpertCheckDto } from './apiTypes';
+import type { ApiEnvelope, CreateSkillMasterManagementBody, ExpertCheckDto } from './apiTypes';
 
 export interface SceneOptionGroupsParams {
   userId?: string;
@@ -336,6 +336,14 @@ export const skillBaseService = {
   createSkillPlanning: (body: any): any => {
     return httpRequest.skill<any>({
       url: '/config/add',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  createSkillMasterManagement: (body: CreateSkillMasterManagementBody): any => {
+    return httpRequest.skill<any>({
+      url: '/management/add',
       method: 'post',
       data: body,
     });

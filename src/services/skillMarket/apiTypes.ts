@@ -619,3 +619,17 @@ export type ExpertReviewSubmitBody = {
   badgeReason?: string;
   overallOpinion?: string;
 };
+
+/** Skill 清单新增（POST /management/add） */
+export type CreateSkillMasterManagementBody = {
+  skillName: string;
+  skillDescription: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  planFinishDate: string;
+};
