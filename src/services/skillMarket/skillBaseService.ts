@@ -1,5 +1,10 @@
 import httpRequest from '@/services/skillMarket/request';
-import type { ApiEnvelope, CreateSkillMasterManagementBody, ExpertCheckDto } from './apiTypes';
+import type {
+  ApiEnvelope,
+  CreateSkillMasterManagementBody,
+  ExpertCheckDto,
+  SkillPlanningDepartmentAdminsBody,
+} from './apiTypes';
 
 export interface SceneOptionGroupsParams {
   userId?: string;
@@ -325,9 +330,9 @@ export const skillBaseService = {
   },
 
   // 更新部门管理员；body包含当前用户工号及管理员列表
-  updateSkillPlanningDepartmentAdmins: (deptCode: string, body: any): any => {
+  updateSkillPlanningDepartmentAdmins: (body: SkillPlanningDepartmentAdminsBody): any => {
     return httpRequest.skill<any>({
-      url: `/config/department/${deptCode}/admins`,
+      url: '/config/department/admins',
       method: 'put',
       data: body,
     });

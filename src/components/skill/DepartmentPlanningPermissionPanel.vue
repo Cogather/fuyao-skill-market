@@ -24,11 +24,18 @@ type DepartmentNode = {
   children?: DepartmentNode[];
 };
 
+type DepartmentPathSegment = {
+  name: string;
+  deptCode: string;
+  level: number;
+};
+
 type DepartmentOption = {
   name: string;
   deptCode: string;
   level: number;
   path: string[];
+  levelPath: DepartmentPathSegment[];
 };
 
 type DepartmentPermissionRecord = DepartmentPlanningPermissionRecord & {
@@ -103,26 +110,42 @@ function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boo
 
 function flattenDepartments(nodes: DepartmentNode[]): DepartmentOption[] {
   const options: DepartmentOption[] = [];
-  const visit = (items: DepartmentNode[], parentPath: string[], depth: number): void => {
+  const visit = (
+    items: DepartmentNode[],
+    parentPath: string[],
+    parentLevelPath: DepartmentPathSegment[],
+    depth: number,
+  ): void => {
     items.forEach((node) => {
       const name = node.name.trim();
       if (!name) return;
       const path = [...parentPath, name];
       const explicitLevel = Number(node.levelNo);
       const level = Number.isFinite(explicitLevel) && explicitLevel > 0 ? explicitLevel : depth;
+      const deptCode = readText(node.deptCode ?? node.id) || name;
+      const levelPath = [...parentLevelPath, { name, deptCode, level }];
       options.push({
         name,
-        deptCode: readText(node.deptCode ?? node.id) || name,
+        deptCode,
         level,
         path,
+        levelPath,
       });
       if (node.children?.length) {
-        visit(node.children, path, depth + 1);
+        visit(node.children, path, levelPath, depth + 1);
       }
     });
   };
-  visit(nodes, [], 1);
+  visit(nodes, [], [], 1);
   return options;
+}
+
+function fallbackLevelPath(path: string[], codePath: string[] = []): DepartmentPathSegment[] {
+  return normalizeDepartmentPath(path).map((name, index) => ({
+    name,
+    deptCode: readText(codePath[index]) || name,
+    level: index + 3,
+  }));
 }
 
 const normalizedOwnerDepartmentPath = computed(() =>
@@ -142,15 +165,21 @@ const ownerDepartmentOptions = computed<DepartmentOption[]>(() => {
         (item) => item.name === department.deptName && item.path.at(-1) === normalizedPath.at(-1),
       );
     if (option) {
-      return [{ ...option, deptCode: department.deptCode || option.deptCode }];
+      const levelPath = option.levelPath.map((segment, index) => ({
+        ...segment,
+        deptCode: readText(department.codePath[index]) || segment.deptCode,
+      }));
+      return [{ ...option, deptCode: department.deptCode || option.deptCode, levelPath }];
     }
     if (!normalizedPath.length) return [];
+    const levelPath = fallbackLevelPath(normalizedPath, department.codePath);
     return [
       {
         name: department.deptName || normalizedPath.at(-1) || '',
         deptCode: department.deptCode || department.deptName,
-        level: normalizedPath.length,
+        level: levelPath.at(-1)?.level ?? normalizedPath.length,
         path: normalizedPath,
+        levelPath,
       },
     ];
   });
@@ -430,6 +459,58 @@ async function reload(): Promise<void> {
   selectedDepartmentPath.value = [...(currentOption ?? ownerOptions[0]).path];
 }
 
+type DepartmentAdminBodyLevels = {
+  l3DeptCode: string | null;
+  l3DeptName: string | null;
+  l4DeptCode: string | null;
+  l4DeptName: string | null;
+  l5DeptCode: string | null;
+  l5DeptName: string | null;
+  l6DeptCode: string | null;
+  l6DeptName: string | null;
+};
+
+function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBodyLevels {
+  const firstLevel = option.levelPath[0]?.level ?? 0;
+  const normalizedLevelPath =
+    firstLevel > 0 && firstLevel < 3
+      ? fallbackLevelPath(
+          option.path,
+          option.levelPath.map((segment) => segment.deptCode),
+        )
+      : option.levelPath;
+  const byLevel = new Map<number, DepartmentPathSegment>();
+
+  normalizedLevelPath.forEach((segment) => {
+    if (segment.level >= 3 && segment.level <= 6 && !byLevel.has(segment.level)) {
+      byLevel.set(segment.level, segment);
+    }
+  });
+
+  const pick = (level: number): { code: string | null; name: string | null } => {
+    const segment = byLevel.get(level);
+    return {
+      code: segment?.deptCode || null,
+      name: segment?.name || null,
+    };
+  };
+
+  const l3 = pick(3);
+  const l4 = pick(4);
+  const l5 = pick(5);
+  const l6 = pick(6);
+  return {
+    l3DeptCode: l3.code,
+    l3DeptName: l3.name,
+    l4DeptCode: l4.code,
+    l4DeptName: l4.name,
+    l5DeptCode: l5.code,
+    l5DeptName: l5.name,
+    l6DeptCode: l6.code,
+    l6DeptName: l6.name,
+  };
+}
+
 async function updateRemoteAdmins(
   record: DepartmentPermissionRecord,
   adminUserIds: string[],
@@ -445,11 +526,13 @@ async function updateRemoteAdmins(
     throw new Error('仅部门 Owner 可以配置自己负责部门的管理员');
   }
 
-  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins(record.deptCode, {
+  const departmentLevels = departmentAdminBodyLevels(departmentOption);
+  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins({
     userId: props.userId.trim(),
     adminUserIds: [
       ...new Set(adminUserIds.filter((userId) => Boolean(userId) && userId !== record.ownerUserId)),
     ].join(','),
+    ...departmentLevels,
   });
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
