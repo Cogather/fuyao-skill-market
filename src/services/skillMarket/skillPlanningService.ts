@@ -1,4 +1,5 @@
 import { skillBaseService } from './skillBaseService';
+import type { CreateSkillPlanningSupplementBody } from './apiTypes';
 import {
   exportSkillPlanningToExcel,
   normalizeProgress,
@@ -39,7 +40,10 @@ type SkillPlanningMockModule = typeof import('./skillPlanningMockService');
 
 export interface SkillPlanningTaxonomyOptionParams {
   userId?: string;
-  deptCode?: string;
+  /** DEPT=部门级，PROD=产品级 */
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
 }
 
 function useHttpTransport(): boolean {
@@ -452,10 +456,14 @@ function normalizeTaxonomyRequestParams(
   params: SkillPlanningTaxonomyOptionParams = {},
 ): SkillPlanningTaxonomyOptionParams {
   const userId = normalizeText(params.userId);
-  const deptCode = normalizeText(params.deptCode);
+  const dimType = normalizeText(params.dimType);
+  const dimCode = normalizeText(params.dimCode);
+  const dimName = normalizeText(params.dimName);
   return {
     ...(userId ? { userId } : {}),
-    ...(deptCode ? { deptCode } : {}),
+    ...(dimType ? { dimType } : {}),
+    ...(dimCode ? { dimCode } : {}),
+    ...(dimName ? { dimName } : {}),
   };
 }
 
@@ -608,6 +616,13 @@ export async function createSkillPlanning(
   }
 
   const response = await skillBaseService.createSkillPlanning(payload);
+  return response;
+}
+
+export async function createSkillPlanningSupplement(
+  body: CreateSkillPlanningSupplementBody,
+): Promise<any> {
+  const response = await skillBaseService.createSkillPlanningSupplement(body);
   return response;
 }
 

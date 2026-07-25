@@ -396,16 +396,45 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
   return records;
 }
 
-function httpDepartmentContext(departmentName: string): any {
+function httpDimContext(departmentName: string): {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+} {
   const userId = props.userId.trim();
-  if (!userId) throw new Error('请先获取当前用户工号');
+  if (!userId) {
+    throw new Error('请先获取当前用户工号');
+  }
+  if (scopeForm.level === '产品级') {
+    const dimCode = scopeForm.offeringId.trim();
+    const dimName = scopeForm.offeringName.trim();
+    if (!dimCode || !dimName) {
+      throw new Error('请先选择产品');
+    }
+    return {
+      userId,
+      dimType: 'PROD',
+      dimCode,
+      dimName,
+    };
+  }
   const department = departmentOptions.value.find((item) => item.name === departmentName);
-  const deptCode = department?.deptCode.trim() || departmentName.trim();
-  return !deptCode ? { userId } : { userId, deptCode };
+  const dimCode = department?.deptCode.trim() || departmentName.trim();
+  const dimName = departmentName.trim();
+  if (!dimCode || !dimName) {
+    throw new Error('请先选择归属部门');
+  }
+  return {
+    userId,
+    dimType: 'DEPT',
+    dimCode,
+    dimName,
+  };
 }
 
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
-  const params = httpDepartmentContext(departmentName);
+  const params = httpDimContext(departmentName);
   const response =
     props.kind === 'scene'
       ? await skillBaseService.getSceneOptionGroups(params)
@@ -413,9 +442,12 @@ async function fetchHttpTaxonomyRecords(departmentName: string): Promise<Taxonom
   return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
 }
 
-function toHttpTaxonomyItems(records: TaxonomyRecord[]): Array<Record<string, unknown>> {
+function toHttpTaxonomyItems(
+  records: TaxonomyRecord[],
+  dim: { dimType: string; dimCode: string; dimName: string },
+): Array<Record<string, unknown>> {
   const rows: Array<Record<string, unknown>> = [];
-  let sort = 1;
+  let sort = 0;
   records
     .filter((record) => record.parentId === null)
     .sort((left, right) => left.sort - right.sort)
@@ -425,13 +457,23 @@ function toHttpTaxonomyItems(records: TaxonomyRecord[]): Array<Record<string, un
         .sort((left, right) => left.sort - right.sort);
       const values = children.length > 0 ? children : [null];
       values.forEach((child) => {
+        const dimFields = {
+          dimType: dim.dimType,
+          dimCode: dim.dimCode,
+          dimName: dim.dimName,
+          sort: sort++,
+        };
         rows.push(
           props.kind === 'scene'
-            ? { firstScene: parent.name, secondScene: child?.name ?? '', sort: sort++ }
+            ? {
+                firstScene: parent.name,
+                secondScene: child?.name ?? '',
+                ...dimFields,
+              }
             : {
                 activityNodeName: parent.name,
                 subActivityNodeName: child?.name ?? '',
-                sort: sort++,
+                ...dimFields,
               },
         );
       });
@@ -456,16 +498,27 @@ function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGr
 }
 
 async function saveHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
-  const context = httpDepartmentContext(departmentName);
-  const items = toHttpTaxonomyItems(draftRecords.value);
+  const context = httpDimContext(departmentName);
+  const dim = {
+    dimType: context.dimType,
+    dimCode: context.dimCode,
+    dimName: context.dimName,
+  };
+  const items = toHttpTaxonomyItems(draftRecords.value, dim);
   const response =
     props.kind === 'scene'
       ? await skillBaseService.refreshSceneOptionGroups(
-          { deptCode: context.deptCode, scenes: items },
+          {
+            scenes: items,
+            ...dim,
+          },
           props.userId,
         )
       : await skillBaseService.refreshActivityOptionGroups(
-          { deptCode: context.deptCode, activities: items },
+          {
+            activities: items,
+            ...dim,
+          },
           props.userId,
         );
   assertHttpSuccess(response, labels.value.item + '配置保存失败');

@@ -1644,6 +1644,39 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  if (method === 'post' && path === '/config/supplement/add') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const requiredKeys = [
+      'skillName',
+      'firstScene',
+      'secondScene',
+      'activityNodeName',
+      'subActivityNodeName',
+      'dimType',
+      'dimCode',
+      'dimName',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const dimType = String(body.dimType).trim().toUpperCase();
+    if (dimType !== 'DEPT' && dimType !== 'PROD') {
+      return fail('dimType 仅支持 DEPT 或 PROD', null);
+    }
+    return ok({
+      id: `planning-supplement-${Date.now()}`,
+      skillName: String(body.skillName).trim(),
+      firstScene: String(body.firstScene).trim(),
+      secondScene: String(body.secondScene).trim(),
+      activityNodeName: String(body.activityNodeName).trim(),
+      subActivityNodeName: String(body.subActivityNodeName).trim(),
+      dimType,
+      dimCode: String(body.dimCode).trim(),
+      dimName: String(body.dimName).trim(),
+    });
+  }
+
   if (method === 'post' && path === '/management/add') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
     const requiredKeys = [

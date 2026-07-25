@@ -5,7 +5,7 @@ import SkillMasterManagementPanel from '../../components/skill/SkillMasterManage
 import {
   batchDeleteSkillPlanning,
   batchUpdateSkillPlanning,
-  createSkillPlanning,
+  createSkillPlanningSupplement,
   deleteSkillPlanning,
   downloadSkillPlanningTemplate,
   importSkillPlanningFromExcel,
@@ -35,10 +35,15 @@ import {
   getActivityOptionGroups,
 } from '../../services/skillMarket/activityManagementService';
 import {
-  listSkillMasterRecords,
-  querySkillMasterRecords,
   type SkillMasterRecord,
+  type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
+import type {
+  CreateSkillPlanningSupplementBody,
+  QuerySkillMasterManagementBody,
+  SkillMasterManagementItemDto,
+} from '../../services/skillMarket/apiTypes';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { openLink } from '@/utils/common';
 
@@ -387,8 +392,25 @@ function findPlanningDepartmentNodeByPath(
 
 function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
   userId?: string;
-  deptCode?: string;
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
 } {
+  const userId = props.userId.trim();
+  const level = filterForm.level as PlanningLevel;
+  if (level === '产品级') {
+    const dimCode = String(
+      selectedFilterProduct.value?.offeringId || filterForm.offeringId || '',
+    ).trim();
+    const dimName = filterForm.offeringName.trim();
+    return {
+      ...(userId ? { userId } : {}),
+      dimType: 'PROD',
+      ...(dimCode ? { dimCode } : {}),
+      ...(dimName ? { dimName } : {}),
+    };
+  }
+
   const department = departmentName.trim();
   const selectedPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
   const departmentPath =
@@ -396,11 +418,13 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
       ? selectedPath
       : findPlanningDepartmentPathByName(department);
   const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
-  const deptCode =
+  const dimCode =
     String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
   return {
-    ...(props.userId.trim() ? { userId: props.userId.trim() } : {}),
-    ...(deptCode ? { deptCode } : {}),
+    ...(userId ? { userId } : {}),
+    dimType: 'DEPT',
+    ...(dimCode ? { dimCode } : {}),
+    ...(department ? { dimName: department } : {}),
   };
 }
 
@@ -603,7 +627,123 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
 }
 
 function refreshSkillMasterOptions(): void {
-  skillMasterOptions.value = listSkillMasterRecords();
+  // Skill 选项改为走 /management/query；保留已选记录供校验回显
+  const selected = findSkillMasterForPlanning();
+  skillMasterOptions.value = selected ? [selected] : [];
+}
+
+function mapManagementItemToSkillMasterRecord(
+  item: SkillMasterManagementItemDto,
+): SkillMasterRecord {
+  const skillName = String(item.skillName ?? '').trim();
+  const ownerName = String(item.ownerName ?? '').trim();
+  const ownerId = String(item.ownerId ?? '').trim();
+  const developOwnerName = String(item.developOwnerName ?? '').trim();
+  const developOwnerId = String(item.developOwnerId ?? '').trim();
+  const dimType = String(item.dimType ?? '').trim();
+  const dimName = String(item.dimName ?? '').trim();
+  const statusText = String(item.status ?? '').trim() || '未开始';
+  const now = new Date().toISOString();
+  return {
+    id: String(item.id ?? '').trim() || skillName,
+    name: skillName,
+    description: String(item.skillDescription ?? '').trim(),
+    level: dimType,
+    product: dimType === '产品级' ? dimName : '',
+    owner: `${ownerName} ${ownerId}`.trim(),
+    department: dimType === '部门级' ? dimName : '',
+    developOwner: `${developOwnerName} ${developOwnerId}`.trim(),
+    developOwnerDepartment: '',
+    plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
+    status: statusText as SkillMasterStatus,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function resolvePlanningDimFields(): {
+  level: PlanningLevel;
+  dimTypeApi: 'DEPT' | 'PROD';
+  dimTypeQuery: '部门级' | '产品级';
+  dimCode: string;
+  dimName: string;
+} | null {
+  const level = planningForm.level as PlanningLevel;
+  if (!planningLevelOptions.includes(level)) {
+    return null;
+  }
+  if (level === '产品级') {
+    const dimCode = String(
+      planningForm.offeringId || selectedFilterProduct.value?.offeringId || '',
+    ).trim();
+    const dimName = planningForm.offeringName.trim();
+    if (!dimCode || !dimName) {
+      return null;
+    }
+    return {
+      level,
+      dimTypeApi: 'PROD',
+      dimTypeQuery: '产品级',
+      dimCode,
+      dimName,
+    };
+  }
+  const departmentPath = selectedPlanningScopeDepartmentPath();
+  const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
+  const dimCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim();
+  const dimName = planningForm.planningDeptName.trim();
+  if (!dimCode || !dimName) {
+    return null;
+  }
+  return {
+    level,
+    dimTypeApi: 'DEPT',
+    dimTypeQuery: '部门级',
+    dimCode,
+    dimName,
+  };
+}
+
+function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null {
+  const dim = resolvePlanningDimFields();
+  if (!dim) {
+    return null;
+  }
+  const skillName = planningForm.name.trim();
+  const firstScene = planningForm.firstScene.trim();
+  const secondScene = planningForm.secondScene.trim();
+  const activityNodeName = planningForm.activityNodeName.trim();
+  const subActivityNodeName = planningForm.subActivityNodeName.trim();
+  if (
+    !skillName ||
+    !firstScene ||
+    !secondScene ||
+    !activityNodeName ||
+    !subActivityNodeName
+  ) {
+    return null;
+  }
+  return {
+    skillName,
+    firstScene,
+    secondScene,
+    activityNodeName,
+    subActivityNodeName,
+    dimType: dim.dimTypeApi,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+  };
+}
+
+function findSkillMasterForPlanning(
+  skillId = planningForm.skillId ?? '',
+  skillName = planningForm.name,
+): SkillMasterRecord | undefined {
+  const pools = [...planningSkillOptions.value, ...skillMasterOptions.value];
+  return (
+    pools.find((record) => record.id === skillId) ||
+    pools.find((record) => record.name === skillName)
+  );
 }
 
 function clearPlanningSkillSearchTimer(): void {
@@ -625,16 +765,6 @@ function resetPlanningSkillSearchState(): void {
   planningSkillSearching.value = false;
   planningSkillSearchMessage.value = '';
   planningSkillOptions.value = [];
-}
-
-function findSkillMasterForPlanning(
-  skillId = planningForm.skillId ?? '',
-  skillName = planningForm.name,
-): SkillMasterRecord | undefined {
-  return (
-    skillMasterOptions.value.find((record) => record.id === skillId) ||
-    skillMasterOptions.value.find((record) => record.name === skillName)
-  );
 }
 
 function applySkillMasterToPlanningForm(record: SkillMasterRecord): void {
@@ -676,13 +806,35 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
   planningSkillSearchMessage.value = '';
 
   try {
-    refreshSkillMasterOptions();
-    const records = await querySkillMasterRecords({
-      keyword: normalizedKeyword,
-      departmentName: normalizedKeyword ? '' : planningForm.planningDeptName,
-    });
-    if (requestSeq !== planningSkillSearchSeq) return;
+    const queryBody: QuerySkillMasterManagementBody = {
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+      pageNum: 1,
+      pageSize: 100,
+    };
+    if (normalizedKeyword) {
+      queryBody.keyword = normalizedKeyword;
+    } else {
+      const dim = resolvePlanningDimFields();
+      if (dim) {
+        queryBody.dimType = dim.dimTypeQuery;
+        queryBody.dimCode = dim.dimCode;
+      }
+    }
 
+    const response = await skillBaseService.querySkillMasterManagement(queryBody);
+    if (requestSeq !== planningSkillSearchSeq) {
+      return;
+    }
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
+      );
+    }
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const records = rows.map((item: SkillMasterManagementItemDto) =>
+      mapManagementItemToSkillMasterRecord(item),
+    );
     const selectedRecord = findSkillMasterForPlanning();
     planningSkillOptions.value =
       !normalizedKeyword &&
@@ -690,13 +842,18 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
       !records.some((record) => record.id === selectedRecord.id)
         ? [selectedRecord, ...records]
         : records;
+    if (selectedRecord) {
+      skillMasterOptions.value = [selectedRecord];
+    }
     if (planningSkillOptions.value.length === 0) {
       planningSkillSearchMessage.value = normalizedKeyword
         ? '未找到匹配的 Skill，可调整名称、描述或人员关键词'
         : `${planningForm.planningDeptName || '当前部门'}暂无相关 Skill，可搜索其他部门 Skill`;
     }
   } catch (error) {
-    if (requestSeq !== planningSkillSearchSeq) return;
+    if (requestSeq !== planningSkillSearchSeq) {
+      return;
+    }
     planningSkillOptions.value = [];
     planningSkillSearchMessage.value =
       error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试';
@@ -743,6 +900,7 @@ function clearPlanningSkillSearch(): void {
 
 function choosePlanningSkill(record: SkillMasterRecord): void {
   applySkillMasterToPlanningForm(record);
+  skillMasterOptions.value = [record];
   planningSkillSearchKeyword.value = '';
   closePlanningSkillSelect();
 }
@@ -829,7 +987,7 @@ async function loadFilterProducts(): Promise<void> {
     const options = await getProductPlanning(
       '',
       departmentName,
-      currentPlanningTaxonomyParams(departmentName).deptCode,
+      currentPlanningTaxonomyParams(departmentName).dimCode,
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
@@ -859,7 +1017,7 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
     const options = await getProductPlanning(
       keyword,
       planningForm.planningDeptName,
-      currentPlanningTaxonomyParams(planningForm.planningDeptName).deptCode,
+      currentPlanningTaxonomyParams(planningForm.planningDeptName).dimCode,
     );
     if (requestSeq !== productSearchSeq) {
       return;
@@ -1782,11 +1940,20 @@ async function confirmInlineCreate() {
 
   try {
     inlineCreateSubmitting.value = true;
-    const createRes = await createSkillPlanning({ ...planningForm });
-    const toastStr = !createRes?.meta?.success
-      ? (createRes.meta?.message ?? 'SKill已存在')
-      : '已新增 Skill 规划';
+    const body = buildPlanningSupplementBody();
+    if (!body) {
+      showToast('请完善层级、部门/产品与场景活动信息');
+      return;
+    }
+    const createRes = await createSkillPlanningSupplement(body);
+    const toastStr =
+      createRes?.meta?.success !== true
+        ? (createRes?.meta?.message ?? 'Skill 规划新增失败')
+        : '已新增 Skill 规划';
     showToast(toastStr);
+    if (createRes?.meta?.success !== true) {
+      return;
+    }
     pageNum.value = 1;
     cancelInlineCreate(true);
     await loadPlanningFilterOptions();
@@ -1902,7 +2069,17 @@ async function submitPlanningForm() {
 
   try {
     if (formMode.value === 'create') {
-      await createSkillPlanning({ ...planningForm });
+      const body = buildPlanningSupplementBody();
+      if (!body) {
+        showToast('请完善层级、部门/产品与场景活动信息');
+        return;
+      }
+      const createRes = await createSkillPlanningSupplement(body);
+      if (createRes?.meta?.success !== true) {
+        throw new Error(
+          String(createRes?.meta?.message || createRes?.message || '新增 Skill 规划失败'),
+        );
+      }
       showToast('已新增 Skill 规划');
     } else {
       await updateSkillPlanning(editingId.value, { ...planningForm });

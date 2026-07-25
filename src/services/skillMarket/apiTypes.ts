@@ -685,3 +685,16 @@ export type SkillMasterManagementItemDto = {
 export type UpdateSkillMasterManagementBody = CreateSkillMasterManagementBody & {
   id: string | number;
 };
+
+/** Skill 规划补充新增（POST /config/supplement/add） */
+export type CreateSkillPlanningSupplementBody = {
+  skillName: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  /** DEPT=部门级，PROD=产品级 */
+  dimType: 'DEPT' | 'PROD' | string;
+  dimCode: string;
+  dimName: string;
+};

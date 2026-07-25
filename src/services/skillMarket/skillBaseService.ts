@@ -2,6 +2,7 @@ import httpRequest from '@/services/skillMarket/request';
 import type {
   ApiEnvelope,
   CreateSkillMasterManagementBody,
+  CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
@@ -10,7 +11,10 @@ import type {
 
 export interface SceneOptionGroupsParams {
   userId?: string;
-  deptCode?: string;
+  /** DEPT=部门级，PROD=产品级 */
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
 }
 
 export interface SceneOptionGroupRow {
@@ -348,6 +352,14 @@ export const skillBaseService = {
     });
   },
 
+  createSkillPlanningSupplement: (body: CreateSkillPlanningSupplementBody): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/add',
+      method: 'post',
+      data: body,
+    });
+  },
+
   createSkillMasterManagement: (body: CreateSkillMasterManagementBody): any => {
     return httpRequest.skill<any>({
       url: '/management/add',
@@ -476,22 +488,22 @@ export const skillBaseService = {
     });
   },
 
-  // 获取场景列表（超级管理员需要传deptCode）
+  // 获取场景列表
   getSceneOptionGroups: (params: SceneOptionGroupsParams): Promise<SceneOptionGroupsResponse> => {
     return httpRequest.skill<SceneOptionGroupsResponse>({
       url: '/config/scene',
       method: 'get',
-      params, // { userId, deptCode }
+      params, // { userId, dimType, dimCode, dimName }
     });
   },
 
-  // 全量刷新指定部门的场景
+  // 全量刷新场景配置
   refreshSceneOptionGroups: (body: any, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/config/scene',
       method: 'post',
       params: { userId },
-      data: body, // { deptCode, scenes }
+      data: body, // { scenes, dimType, dimCode, dimName }
     });
   },
 
@@ -500,17 +512,17 @@ export const skillBaseService = {
     return httpRequest.skill<any>({
       url: '/config/activity',
       method: 'get',
-      params, // { userId, deptCode }
+      params, // { userId, dimType, dimCode, dimName }
     });
   },
 
-  // 全量刷新指定部门的活动
+  // 全量刷新活动配置
   refreshActivityOptionGroups: (body: any, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/config/activity',
       method: 'post',
       params: { userId },
-      data: body, // { deptCode, activities }
+      data: body, // { activities, dimType, dimCode, dimName }
     });
   },
 
