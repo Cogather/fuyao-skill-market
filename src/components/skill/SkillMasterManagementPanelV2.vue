@@ -28,6 +28,8 @@ import {
   type ProductPlanningOption,
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
+import type { CreateSkillMasterManagementBody } from '../../services/skillMarket/apiTypes';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
@@ -522,6 +524,40 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 
+function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
+  if (!ensureMasterScopeSelection(true)) {
+    return null;
+  }
+  const dimType = masterScopeForm.level;
+  if (dimType === '产品级') {
+    const dimCode = String(
+      selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
+    ).trim();
+    const dimName = masterScopeForm.offeringName.trim();
+    if (!dimCode || !dimName) {
+      editor.error = '请选择有效产品（需包含产品编码）';
+      return null;
+    }
+    return {
+      dimType,
+      dimCode,
+      dimName,
+    };
+  }
+  const node = findMasterDepartmentNode(masterDepartmentSegments.value);
+  const dimCode = String(node?.deptCode ?? node?.id ?? '').trim();
+  const dimName = masterScopeForm.planningDeptName.trim();
+  if (!dimCode || !dimName) {
+    editor.error = '请选择有效归属部门（需包含部门编码）';
+    return null;
+  }
+  return {
+    dimType,
+    dimCode,
+    dimName,
+  };
+}
+
 function clearOwnerSearchTimer(): void {
   if (ownerSearchTimer !== null) {
     window.clearTimeout(ownerSearchTimer);
@@ -811,6 +847,75 @@ function onEditorOverlayPointerUp(event: PointerEvent): void {
 
 async function submitEditor(): Promise<void> {
   applyCurrentScopeToEditor();
+  editor.error = '';
+
+  if (editor.mode === 'create') {
+    const dim = resolveDimFields();
+    if (!dim) {
+      return;
+    }
+    if (!ensureProductSkillNamePrefix()) {
+      return;
+    }
+    if (!editor.description.trim()) {
+      editor.error = '请填写 Skill 说明';
+      return;
+    }
+    if (!ownerPicker.selected) {
+      editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+      return;
+    }
+    if (!developOwnerPicker.selected) {
+      editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+      return;
+    }
+    if (!editor.plannedCompleteDate) {
+      editor.error = '请选择计划完成时间';
+      return;
+    }
+
+    const body: CreateSkillMasterManagementBody = {
+      skillName: editor.name.trim(),
+      skillDescription: editor.description.trim(),
+      dimType: dim.dimType,
+      dimCode: dim.dimCode,
+      dimName: dim.dimName,
+      ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
+      ownerId: ownerPicker.selected.id,
+      developOwnerName:
+        developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+      developOwnerId: developOwnerPicker.selected.id,
+      planFinishDate: editor.plannedCompleteDate,
+    };
+
+    try {
+      const response = await skillBaseService.createSkillMasterManagement(body);
+      if (response?.meta?.success !== true) {
+        throw new Error(
+          String(response?.meta?.message || response?.message || '新增失败，请稍后重试'),
+        );
+      }
+      createSkillMasterRecord({
+        name: body.skillName,
+        description: body.skillDescription,
+        level: body.dimType,
+        product: body.dimType === '产品级' ? body.dimName : '',
+        owner: `${body.ownerName} ${body.ownerId}`.trim(),
+        department: ownerPicker.selected?.deptName || '',
+        developOwner: `${body.developOwnerName} ${body.developOwnerId}`.trim(),
+        developOwnerDepartment: developOwnerPicker.selected?.deptName || '',
+        plannedCompleteDate: body.planFinishDate,
+        status: '未开始',
+      });
+      closeEditor();
+      await reload();
+      showToast('Skill 已添加，可前往 Skill 规划复用');
+    } catch (error) {
+      editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
+    }
+    return;
+  }
+
   if (!ensureProductSkillNamePrefix()) {
     return;
   }
@@ -835,14 +940,10 @@ async function submitEditor(): Promise<void> {
     status: editor.status,
   };
   try {
-    editor.mode === 'create'
-      ? createSkillMasterRecord(payload)
-      : updateSkillMasterRecord(editor.id, payload);
+    updateSkillMasterRecord(editor.id, payload);
     closeEditor();
     await reload();
-    showToast(
-      editor.mode === 'create' ? 'Skill 已添加，可前往 Skill 规划复用' : 'Skill 主体信息已更新',
-    );
+    showToast('Skill 主体信息已更新');
   } catch (error) {
     editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
   }
@@ -1404,7 +1505,8 @@ onBeforeUnmount(() => {
               </div>
             </label>
             <label
-              ><span>计划完成时间</span><input v-model="editor.plannedCompleteDate" type="date"
+              ><span>计划完成时间 *</span
+              ><input v-model="editor.plannedCompleteDate" type="date"
             /></label>
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
