@@ -127,6 +127,7 @@ const associationEditor = reactive({
 const departmentPath = ref<string[]>([]);
 const deleteDialog = reactive({ open: false, id: '', name: '' });
 const editorOverlayPointerStartedOnBackdrop = ref(false);
+const submitting = ref(false);
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 const masterScopeForm = reactive({
   level: '部门级' as PlanningLevel,
@@ -846,12 +847,19 @@ function onEditorOverlayPointerUp(event: PointerEvent): void {
 }
 
 async function submitEditor(): Promise<void> {
+  if (submitting.value) {
+    return;
+  }
   applyCurrentScopeToEditor();
   editor.error = '';
 
   if (editor.mode === 'create') {
     const dim = resolveDimFields();
     if (!dim) {
+      return;
+    }
+    if (!editor.name.trim()) {
+      editor.error = '请填写 Skill 名称';
       return;
     }
     if (!ensureProductSkillNamePrefix()) {
@@ -888,6 +896,7 @@ async function submitEditor(): Promise<void> {
       planFinishDate: editor.plannedCompleteDate,
     };
 
+    submitting.value = true;
     try {
       const response = await skillBaseService.createSkillMasterManagement(body);
       if (response?.meta?.success !== true) {
@@ -912,6 +921,8 @@ async function submitEditor(): Promise<void> {
       showToast('Skill 已添加，可前往 Skill 规划复用');
     } catch (error) {
       editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
+    } finally {
+      submitting.value = false;
     }
     return;
   }
@@ -939,6 +950,7 @@ async function submitEditor(): Promise<void> {
     plannedCompleteDate: editor.plannedCompleteDate,
     status: editor.status,
   };
+  submitting.value = true;
   try {
     updateSkillMasterRecord(editor.id, payload);
     closeEditor();
@@ -946,6 +958,8 @@ async function submitEditor(): Promise<void> {
     showToast('Skill 主体信息已更新');
   } catch (error) {
     editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    submitting.value = false;
   }
 }
 function openAssociation(record: SkillMasterRecord): void {
@@ -1512,7 +1526,7 @@ onBeforeUnmount(() => {
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
           <footer>
             <button type="button" @click="closeEditor">取消</button
-            ><button class="primary" type="submit">保存</button>
+            ><button class="primary" type="submit" :disabled="submitting">保存</button>
           </footer>
         </form>
       </div>
