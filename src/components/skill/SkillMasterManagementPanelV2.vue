@@ -1625,7 +1625,8 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="deleteDialog.open" class="overlay" @click.self="deleteDialog.open = false">
-        <div class="dialog delete-dialog">
+        <div class="dialog delete-dialog" role="dialog" aria-modal="true">
+          <i class="delete-dialog__icon" aria-hidden="true">!</i>
           <strong>删除“{{ deleteDialog.name }}”？</strong>
           <p>删除后将不能用于新规划，已有规划仍保留历史快照。</p>
           <footer>
@@ -1641,7 +1642,8 @@ onBeforeUnmount(() => {
         class="overlay"
         @click.self="batchDeleteDialog.open = false"
       >
-        <div class="dialog delete-dialog">
+        <div class="dialog delete-dialog" role="dialog" aria-modal="true">
+          <i class="delete-dialog__icon" aria-hidden="true">!</i>
           <strong>批量删除 Skill？</strong>
           <p>
             确认删除已勾选的 {{ batchDeleteDialog.ids.length }} 条 Skill
@@ -2388,13 +2390,48 @@ onBeforeUnmount(() => {
   color: #8b96a7;
 }
 .delete-dialog {
-  width: min(420px, calc(100vw - 32px));
+  width: min(430px, calc(100vw - 32px));
   text-align: center;
+}
+.delete-dialog__icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #fff0f1;
+  color: #dc4651;
+  font-size: 24px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+}
+.delete-dialog > strong {
+  display: block;
+  color: #17233d;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+.delete-dialog > p {
+  margin: 10px 0 0;
+  color: #748095;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.delete-dialog > footer {
+  margin-top: 20px;
+}
+.delete-dialog > footer button {
+  color: #526079;
+  font-size: 12px;
+  font-weight: 800;
 }
 .danger-btn {
   border-color: #dc4651 !important;
   background: #dc4651 !important;
-  color: #fff;
+  color: #fff !important;
 }
 .toast {
   position: fixed;
