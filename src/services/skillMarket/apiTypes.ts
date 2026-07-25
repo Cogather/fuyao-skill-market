@@ -633,3 +633,36 @@ export type CreateSkillMasterManagementBody = {
   developOwnerId: string;
   planFinishDate: string;
 };
+
+/** Skill 清单查询（POST /management/query）；字段均可为空 */
+export type QuerySkillMasterManagementBody = {
+  keyword?: string;
+  dimType?: string;
+  dimCode?: string;
+  statusList?: string[];
+  ownerId?: string;
+  developOwnerId?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  pageNum?: number;
+  pageSize?: number;
+};
+
+/** Skill 清单查询行 */
+export type SkillMasterManagementItemDto = {
+  skillName: string;
+  skillDescription: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  status: string;
+  planFinishDate: string;
+  createdAt?: number[] | string | null;
+  updatedAt?: number[] | string | null;
+  skillMatchId?: string | null;
+  skillMatchLevel?: string | null;
+};

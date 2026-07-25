@@ -1,6 +1,6 @@
 import { skillMasterSeedRecords } from './mock/skillMasterSeed';
 
-export type SkillMasterStatus = '未开始' | '开发中' | '已完成';
+export type SkillMasterStatus = '未开始' | '开发中' | '已完成' | '进行中' | '联调中';
 
 export interface SkillMasterRecord {
   id: string;
@@ -63,6 +63,8 @@ function normalize(value: unknown): string {
 function normalizeStoredStatus(value: unknown): SkillMasterStatus {
   if (value === '已完成') return '已完成';
   if (value === '未开始') return '未开始';
+  if (value === '进行中') return '进行中';
+  if (value === '联调中') return '联调中';
   return '开发中';
 }
 

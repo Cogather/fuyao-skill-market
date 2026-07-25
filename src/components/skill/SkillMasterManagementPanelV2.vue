@@ -13,12 +13,6 @@ import {
   type SkillMasterAssociation,
 } from '../../services/skillMarket/skillMasterAssociationService';
 import {
-  createSkillMasterRecord,
-  deleteSkillMasterRecord,
-  querySkillMasterRecords,
-  updateSkillMasterRecord,
-  type SkillMasterPayload,
-  type SkillMasterQuery,
   type SkillMasterRecord,
   type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
@@ -28,7 +22,11 @@ import {
   type ProductPlanningOption,
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
-import type { CreateSkillMasterManagementBody } from '../../services/skillMarket/apiTypes';
+import type {
+  CreateSkillMasterManagementBody,
+  QuerySkillMasterManagementBody,
+  SkillMasterManagementItemDto,
+} from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
 type PlanningLevel = '产品级' | '部门级';
@@ -308,15 +306,61 @@ function clearMasterList(): void {
   associations.value = {};
 }
 
-function buildMasterQuery(): SkillMasterQuery {
+function resolveCurrentDimCode(): string {
+  if (masterScopeForm.level === '产品级') {
+    return String(
+      selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
+    ).trim();
+  }
+  const node = findMasterDepartmentNode(masterDepartmentSegments.value);
+  return String(node?.deptCode ?? node?.id ?? '').trim();
+}
+
+function buildManagementQueryBody(): QuerySkillMasterManagementBody {
+  const body: QuerySkillMasterManagementBody = {
+    sortBy: 'updatedAt',
+    sortOrder: 'desc',
+    pageNum: 1,
+    pageSize: 100,
+  };
+  const nextKeyword = keyword.value.trim();
+  if (nextKeyword) {
+    body.keyword = nextKeyword;
+  }
+  if (masterScopeForm.level) {
+    body.dimType = masterScopeForm.level;
+  }
+  const dimCode = resolveCurrentDimCode();
+  if (dimCode) {
+    body.dimCode = dimCode;
+  }
+  return body;
+}
+
+function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMasterRecord {
+  const skillName = String(item.skillName ?? '').trim();
+  const ownerName = String(item.ownerName ?? '').trim();
+  const ownerId = String(item.ownerId ?? '').trim();
+  const developOwnerName = String(item.developOwnerName ?? '').trim();
+  const developOwnerId = String(item.developOwnerId ?? '').trim();
+  const dimType = String(item.dimType ?? '').trim();
+  const dimName = String(item.dimName ?? '').trim();
+  const statusText = String(item.status ?? '').trim() || '未开始';
+  const now = new Date().toISOString();
   return {
-    keyword: keyword.value.trim(),
-    level: masterScopeForm.level,
-    departmentName: masterScopeForm.planningDeptName,
-    planningDeptName: masterScopeForm.planningDeptName,
-    offeringId: masterScopeForm.level === '产品级' ? masterScopeForm.offeringId : '',
-    offeringName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName : '',
-    scopeStrict: true,
+    id: skillName,
+    name: skillName,
+    description: String(item.skillDescription ?? '').trim(),
+    level: dimType,
+    product: dimType === '产品级' ? dimName : '',
+    owner: `${ownerName} ${ownerId}`.trim(),
+    department: dimType === '部门级' ? dimName : '',
+    developOwner: `${developOwnerName} ${developOwnerId}`.trim(),
+    developOwnerDepartment: '',
+    plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
+    status: statusText as SkillMasterStatus,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -450,7 +494,16 @@ async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise
   }
   masterLoading.value = true;
   try {
-    const nextRecords = await querySkillMasterRecords(buildMasterQuery());
+    const response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
+      );
+    }
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const nextRecords = rows.map((item: SkillMasterManagementItemDto) =>
+      mapManagementItemToRecord(item),
+    );
     records.value = nextRecords;
     const nextRecordIds = new Set(nextRecords.map((record) => record.id));
     selectedMasterIds.value = selectedMasterIds.value.filter((id) => nextRecordIds.has(id));
@@ -904,18 +957,6 @@ async function submitEditor(): Promise<void> {
           String(response?.meta?.message || response?.message || '新增失败，请稍后重试'),
         );
       }
-      createSkillMasterRecord({
-        name: body.skillName,
-        description: body.skillDescription,
-        level: body.dimType,
-        product: body.dimType === '产品级' ? body.dimName : '',
-        owner: `${body.ownerName} ${body.ownerId}`.trim(),
-        department: ownerPicker.selected?.deptName || '',
-        developOwner: `${body.developOwnerName} ${body.developOwnerId}`.trim(),
-        developOwnerDepartment: developOwnerPicker.selected?.deptName || '',
-        plannedCompleteDate: body.planFinishDate,
-        status: '未开始',
-      });
       closeEditor();
       await reload();
       showToast('Skill 已添加，可前往 Skill 规划复用');
@@ -927,40 +968,7 @@ async function submitEditor(): Promise<void> {
     return;
   }
 
-  if (!ensureProductSkillNamePrefix()) {
-    return;
-  }
-  if (!ensureOwnerSelection()) {
-    editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
-    return;
-  }
-  if (!ensureDevelopOwnerSelection()) {
-    editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
-    return;
-  }
-  const payload: SkillMasterPayload = {
-    name: editor.name,
-    description: editor.description,
-    level: editor.level,
-    product: editor.product,
-    owner: editor.owner,
-    department: editor.department,
-    developOwner: editor.developOwner,
-    developOwnerDepartment: editor.developOwnerDepartment,
-    plannedCompleteDate: editor.plannedCompleteDate,
-    status: editor.status,
-  };
-  submitting.value = true;
-  try {
-    updateSkillMasterRecord(editor.id, payload);
-    closeEditor();
-    await reload();
-    showToast('Skill 主体信息已更新');
-  } catch (error) {
-    editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
-  } finally {
-    submitting.value = false;
-  }
+  editor.error = '编辑能力暂未对接，请稍后使用更新接口';
 }
 function openAssociation(record: SkillMasterRecord): void {
   const association = getSkillMasterAssociation(record.id);
@@ -1007,12 +1015,8 @@ function requestDelete(record: SkillMasterRecord): void {
   Object.assign(deleteDialog, { open: true, id: record.id, name: record.name });
 }
 async function confirmDelete(): Promise<void> {
-  deleteSkillMasterRecord(deleteDialog.id);
-  removeSkillMasterAssociation(deleteDialog.id);
-  selectedMasterIds.value = selectedMasterIds.value.filter((id) => id !== deleteDialog.id);
+  showToast('单条删除暂未对接，请使用批量删除');
   deleteDialog.open = false;
-  await reload();
-  showToast('Skill 已删除');
 }
 
 function toggleMasterSelection(id: string): void {
@@ -1088,15 +1092,28 @@ function requestBatchMasterDelete(): void {
 }
 
 async function confirmBatchMasterDelete(): Promise<void> {
-  const ids = [...batchDeleteDialog.ids];
-  ids.forEach((id) => {
-    deleteSkillMasterRecord(id);
-    removeSkillMasterAssociation(id);
-  });
-  batchDeleteDialog.open = false;
-  selectedMasterIds.value = selectedMasterIds.value.filter((id) => !ids.includes(id));
-  await reload();
-  showToast(`已删除 ${ids.length} 条 Skill`);
+  const skillNames = [...batchDeleteDialog.ids].map((id) => id.trim()).filter(Boolean);
+  if (skillNames.length === 0) {
+    showToast('请先勾选需要批量删除的数据');
+    return;
+  }
+  try {
+    const response = await skillBaseService.batchDeleteSkillMasterManagement(skillNames);
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || '批量删除失败，请稍后重试'),
+      );
+    }
+    skillNames.forEach((name) => {
+      removeSkillMasterAssociation(name);
+    });
+    batchDeleteDialog.open = false;
+    selectedMasterIds.value = selectedMasterIds.value.filter((id) => !skillNames.includes(id));
+    await reload();
+    showToast(`已删除 ${skillNames.length} 条 Skill`);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '批量删除失败，请稍后重试');
+  }
 }
 async function onMasterScopeLevelChange(): Promise<void> {
   const defaultPath = defaultMasterDepartmentPath.value;
@@ -1388,10 +1405,7 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <div class="row-actions">
-                  <!-- <button class="associate" type="button" @click="openAssociation(record)">
-                    关联</button> -->
-                  <button type="button" @click="openEdit(record)">编辑</button
-                  ><button class="danger" type="button" @click="requestDelete(record)">删除</button>
+                  <span class="row-actions__muted">暂不支持</span>
                 </div>
               </td>
             </tr>
@@ -2067,7 +2081,8 @@ onBeforeUnmount(() => {
   color: #66758c;
 }
 .status.is-开发中,
-.status.is-联调中 {
+.status.is-联调中,
+.status.is-进行中 {
   background: #fff3df;
   color: #aa6415;
 }
@@ -2092,6 +2107,10 @@ onBeforeUnmount(() => {
 .row-actions {
   justify-content: flex-start;
   white-space: nowrap;
+}
+.row-actions__muted {
+  color: #94a0b4;
+  font-size: 12px;
 }
 .row-actions button {
   min-height: 30px;

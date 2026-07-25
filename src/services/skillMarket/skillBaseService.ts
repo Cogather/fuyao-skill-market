@@ -1,5 +1,10 @@
 import httpRequest from '@/services/skillMarket/request';
-import type { ApiEnvelope, CreateSkillMasterManagementBody, ExpertCheckDto } from './apiTypes';
+import type {
+  ApiEnvelope,
+  CreateSkillMasterManagementBody,
+  ExpertCheckDto,
+  QuerySkillMasterManagementBody,
+} from './apiTypes';
 
 export interface SceneOptionGroupsParams {
   userId?: string;
@@ -346,6 +351,22 @@ export const skillBaseService = {
       url: '/management/add',
       method: 'post',
       data: body,
+    });
+  },
+
+  querySkillMasterManagement: (body: QuerySkillMasterManagementBody): any => {
+    return httpRequest.skill<any>({
+      url: '/management/query',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  batchDeleteSkillMasterManagement: (skillNames: string[]): any => {
+    return httpRequest.skill<any>({
+      url: '/management/batch_delete',
+      method: 'delete',
+      data: skillNames,
     });
   },
 
