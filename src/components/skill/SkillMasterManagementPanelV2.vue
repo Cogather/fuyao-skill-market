@@ -32,6 +32,25 @@ import {
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
 type TaxonomyOption = { id: string; label: string };
+type PersonPickerState = {
+  keyword: string;
+  open: boolean;
+  loading: boolean;
+  options: SkillPlanningUserOption[];
+  message: string;
+  selected: SkillPlanningUserOption | null;
+};
+
+function createPersonPickerState(): PersonPickerState {
+  return {
+    keyword: '',
+    open: false,
+    loading: false,
+    options: [],
+    message: '请输入人员信息',
+    selected: null,
+  };
+}
 
 const props = withDefaults(
   defineProps<{
@@ -70,8 +89,8 @@ function makeTaxonomyOptions(records: Array<SceneRecord | ActivityRecord>): Taxo
 }
 const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
-const ownerOptions = ref<SkillPlanningUserOption[]>([]);
-const developOwnerOptions = ref<SkillPlanningUserOption[]>([]);
+const ownerPicker = reactive(createPersonPickerState());
+const developOwnerPicker = reactive(createPersonPickerState());
 const personDisplayLabels = ref<Record<string, string>>({});
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -451,6 +470,10 @@ function showToast(message: string): void {
     toastTimer = null;
   }, 2400);
 }
+function resetPersonPicker(picker: PersonPickerState): void {
+  Object.assign(picker, createPersonPickerState());
+}
+
 function resetEditor(): void {
   Object.assign(editor, {
     id: '',
@@ -466,8 +489,8 @@ function resetEditor(): void {
     status: '未开始',
     error: '',
   });
-  ownerOptions.value = [];
-  developOwnerOptions.value = [];
+  resetPersonPicker(ownerPicker);
+  resetPersonPicker(developOwnerPicker);
 }
 
 function applyCurrentScopeToEditor(): void {
@@ -492,109 +515,224 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 
-function resolveOwnerSelection(): void {
-  const value = editor.owner.trim();
-  const option = matchingPersonOption(ownerOptions.value, value);
-  if (!option) return;
+function clearOwnerSearchTimer(): void {
+  if (ownerSearchTimer !== null) {
+    window.clearTimeout(ownerSearchTimer);
+    ownerSearchTimer = null;
+  }
+}
+
+function clearDevelopOwnerSearchTimer(): void {
+  if (developOwnerSearchTimer !== null) {
+    window.clearTimeout(developOwnerSearchTimer);
+    developOwnerSearchTimer = null;
+  }
+}
+
+function applyOwnerSelection(option: SkillPlanningUserOption): void {
+  ownerPicker.selected = option;
+  ownerPicker.keyword = option.label;
+  ownerPicker.open = false;
   editor.owner = option.label;
   editor.department = option.deptName;
 }
 
-function resolveDevelopOwnerSelection(): void {
-  const option = matchingPersonOption(developOwnerOptions.value, editor.developOwner);
-  if (!option) return;
+function applyDevelopOwnerSelection(option: SkillPlanningUserOption): void {
+  developOwnerPicker.selected = option;
+  developOwnerPicker.keyword = option.label;
+  developOwnerPicker.open = false;
   editor.developOwner = option.label;
   editor.developOwnerDepartment = option.deptName;
 }
 
-async function ensureOwnerSelection(): Promise<boolean> {
-  resolveOwnerSelection();
-  if (editor.department.trim()) return true;
-  const keyword = editor.owner.trim();
-  if (!keyword) return false;
-  try {
-    ownerOptions.value = await querySkillPlanningUsers(keyword);
-    resolveOwnerSelection();
-  } catch {
-    ownerOptions.value = [];
-  }
-  return Boolean(editor.department.trim());
+function selectOwner(option: SkillPlanningUserOption): void {
+  applyOwnerSelection(option);
 }
 
-async function ensureDevelopOwnerSelection(): Promise<boolean> {
-  resolveDevelopOwnerSelection();
+function selectDevelopOwner(option: SkillPlanningUserOption): void {
+  applyDevelopOwnerSelection(option);
+}
+
+async function searchOwnerUsers(keyword = ownerPicker.keyword): Promise<void> {
+  const text = keyword.trim();
+  ownerPicker.open = true;
+  ownerPicker.message = '';
+  if (!text) {
+    ownerPicker.loading = false;
+    ownerPicker.options = [];
+    ownerPicker.message = '请输入人员信息';
+    return;
+  }
+
+  const requestSeq = ++ownerSearchSequence;
+  ownerPicker.loading = true;
+  try {
+    const options = await querySkillPlanningUsers(text);
+    if (requestSeq !== ownerSearchSequence) {
+      return;
+    }
+    ownerPicker.options = options;
+    ownerPicker.message = options.length > 0 ? '' : '暂无匹配人员';
+  } catch (error) {
+    if (requestSeq !== ownerSearchSequence) {
+      return;
+    }
+    ownerPicker.options = [];
+    ownerPicker.message = error instanceof Error ? error.message : '人员查询失败，请稍后重试';
+  } finally {
+    if (requestSeq === ownerSearchSequence) {
+      ownerPicker.loading = false;
+    }
+  }
+}
+
+async function searchDevelopOwnerUsers(keyword = developOwnerPicker.keyword): Promise<void> {
+  const text = keyword.trim();
+  developOwnerPicker.open = true;
+  developOwnerPicker.message = '';
+  if (!text) {
+    developOwnerPicker.loading = false;
+    developOwnerPicker.options = [];
+    developOwnerPicker.message = '请输入人员信息';
+    return;
+  }
+
+  const requestSeq = ++developOwnerSearchSequence;
+  developOwnerPicker.loading = true;
+  try {
+    const options = await querySkillPlanningUsers(text);
+    if (requestSeq !== developOwnerSearchSequence) {
+      return;
+    }
+    developOwnerPicker.options = options;
+    developOwnerPicker.message = options.length > 0 ? '' : '暂无匹配人员';
+  } catch (error) {
+    if (requestSeq !== developOwnerSearchSequence) {
+      return;
+    }
+    developOwnerPicker.options = [];
+    developOwnerPicker.message =
+      error instanceof Error ? error.message : '人员查询失败，请稍后重试';
+  } finally {
+    if (requestSeq === developOwnerSearchSequence) {
+      developOwnerPicker.loading = false;
+    }
+  }
+}
+
+function onOwnerPickerFocus(): void {
+  ownerPicker.open = true;
+  if (ownerPicker.keyword.trim()) {
+    void searchOwnerUsers();
+  } else {
+    ownerPicker.message = '请输入人员信息';
+  }
+}
+
+function onDevelopOwnerPickerFocus(): void {
+  developOwnerPicker.open = true;
+  if (developOwnerPicker.keyword.trim()) {
+    void searchDevelopOwnerUsers();
+  } else {
+    developOwnerPicker.message = '请输入人员信息';
+  }
+}
+
+function onOwnerPickerInput(event: Event): void {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  const nextKeyword = target?.value ?? '';
+  ownerPicker.keyword = nextKeyword;
+  ownerPicker.open = true;
+  if (!ownerPicker.selected || ownerPicker.selected.label !== nextKeyword) {
+    ownerPicker.selected = null;
+    editor.owner = nextKeyword;
+    editor.department = '';
+  }
+  clearOwnerSearchTimer();
+  ownerSearchTimer = window.setTimeout(() => {
+    void searchOwnerUsers();
+  }, 250);
+}
+
+function onDevelopOwnerPickerInput(event: Event): void {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  const nextKeyword = target?.value ?? '';
+  developOwnerPicker.keyword = nextKeyword;
+  developOwnerPicker.open = true;
+  if (!developOwnerPicker.selected || developOwnerPicker.selected.label !== nextKeyword) {
+    developOwnerPicker.selected = null;
+    editor.developOwner = nextKeyword;
+    editor.developOwnerDepartment = '';
+  }
+  clearDevelopOwnerSearchTimer();
+  developOwnerSearchTimer = window.setTimeout(() => {
+    void searchDevelopOwnerUsers();
+  }, 250);
+}
+
+function ensureOwnerSelection(): boolean {
+  if (ownerPicker.selected) {
+    applyOwnerSelection(ownerPicker.selected);
+    return true;
+  }
+  if (editor.mode === 'create') {
+    return false;
+  }
+  return Boolean(editor.owner.trim() && editor.department.trim());
+}
+
+function ensureDevelopOwnerSelection(): boolean {
+  if (developOwnerPicker.selected) {
+    applyDevelopOwnerSelection(developOwnerPicker.selected);
+    return true;
+  }
+  if (editor.mode === 'create') {
+    return false;
+  }
   if (!editor.developOwner.trim()) {
     editor.developOwnerDepartment = '';
     return true;
   }
-  if (editor.developOwnerDepartment.trim()) return true;
-  try {
-    developOwnerOptions.value = await querySkillPlanningUsers(editor.developOwner.trim());
-    resolveDevelopOwnerSelection();
-  } catch {
-    developOwnerOptions.value = [];
-  }
   return Boolean(editor.developOwnerDepartment.trim());
 }
 
-function onOwnerInput(event: Event): void {
-  const target = event.target instanceof HTMLInputElement ? event.target : null;
-  const keyword = target?.value.trim() ?? '';
-  editor.owner = target?.value ?? '';
-  editor.department = '';
-  if (ownerSearchTimer !== null) window.clearTimeout(ownerSearchTimer);
-  const sequence = ++ownerSearchSequence;
-  if (!keyword) {
-    ownerOptions.value = [];
+function hydratePickerFromValue(
+  picker: PersonPickerState,
+  value: string,
+  department: string,
+): void {
+  resetPersonPicker(picker);
+  const label = value.trim();
+  if (!label) {
     return;
   }
-  ownerSearchTimer = window.setTimeout(async () => {
-    try {
-      const options = await querySkillPlanningUsers(keyword);
-      if (sequence !== ownerSearchSequence) return;
-      ownerOptions.value = options;
-      resolveOwnerSelection();
-    } catch {
-      if (sequence === ownerSearchSequence) ownerOptions.value = [];
-    } finally {
-      if (sequence === ownerSearchSequence) ownerSearchTimer = null;
-    }
-  }, 250);
+  picker.keyword = label;
+  if (looksLikePersonLabel(label) && department.trim()) {
+    const [chName = '', id = ''] = label.split(/\s+/);
+    picker.selected = {
+      id,
+      chName,
+      label,
+      deptName: department.trim(),
+      raw: {},
+    };
+  }
 }
 
-function onDevelopOwnerInput(event: Event): void {
-  const target = event.target instanceof HTMLInputElement ? event.target : null;
-  const keyword = target?.value.trim() ?? '';
-  editor.developOwner = target?.value ?? '';
-  editor.developOwnerDepartment = '';
-  if (developOwnerSearchTimer !== null) window.clearTimeout(developOwnerSearchTimer);
-  const sequence = ++developOwnerSearchSequence;
-  if (!keyword) {
-    developOwnerOptions.value = [];
+function openCreate(): void {
+  if (!ensureMasterScopeSelection(true)) {
     return;
   }
-  developOwnerSearchTimer = window.setTimeout(async () => {
-    try {
-      const options = await querySkillPlanningUsers(keyword);
-      if (sequence !== developOwnerSearchSequence) return;
-      developOwnerOptions.value = options;
-      resolveDevelopOwnerSelection();
-    } catch {
-      if (sequence === developOwnerSearchSequence) developOwnerOptions.value = [];
-    } finally {
-      if (sequence === developOwnerSearchSequence) developOwnerSearchTimer = null;
-    }
-  }, 250);
-}
-function openCreate(): void {
-  if (!ensureMasterScopeSelection(true)) return;
   resetEditor();
   editor.mode = 'create';
   applyCurrentScopeToEditor();
   editor.name = requiredSkillNamePrefix.value;
   editor.open = true;
 }
+
 function openEdit(record: SkillMasterRecord): void {
+  const ownerLabel = personDisplayLabel(record.owner);
+  const developOwnerLabel = personDisplayLabel(record.developOwner);
   Object.assign(editor, {
     open: true,
     mode: 'edit',
@@ -603,20 +741,31 @@ function openEdit(record: SkillMasterRecord): void {
     description: record.description,
     level: record.level,
     product: record.product,
-    owner: personDisplayLabel(record.owner),
+    owner: ownerLabel === '待认领' ? '' : ownerLabel,
     department: record.department,
-    developOwner: personDisplayLabel(record.developOwner),
+    developOwner: developOwnerLabel === '待认领' ? '' : developOwnerLabel,
     developOwnerDepartment: record.developOwnerDepartment || '',
     plannedCompleteDate: record.plannedCompleteDate,
     status: record.status,
     error: '',
   });
+  hydratePickerFromValue(ownerPicker, editor.owner, editor.department);
+  hydratePickerFromValue(
+    developOwnerPicker,
+    editor.developOwner,
+    editor.developOwnerDepartment,
+  );
   applyCurrentScopeToEditor();
 }
+
 function closeEditor(): void {
   editor.open = false;
   editor.error = '';
   editorOverlayPointerStartedOnBackdrop.value = false;
+  resetPersonPicker(ownerPicker);
+  resetPersonPicker(developOwnerPicker);
+  clearOwnerSearchTimer();
+  clearDevelopOwnerSearchTimer();
 }
 
 function onEditorOverlayPointerDown(event: PointerEvent): void {
@@ -633,14 +782,15 @@ function onEditorOverlayPointerUp(event: PointerEvent): void {
 
 async function submitEditor(): Promise<void> {
   applyCurrentScopeToEditor();
-  if (!ensureProductSkillNamePrefix()) return;
-  if (!(await ensureOwnerSelection())) {
-    editor.error =
-      '\u8bf7\u9009\u62e9\u6709\u6548\u7684\u8d23\u4efb Owner\uff0c\u4ee5\u81ea\u52a8\u5e26\u51fa\u5176\u6240\u5728\u90e8\u95e8';
+  if (!ensureProductSkillNamePrefix()) {
     return;
   }
-  if (!(await ensureDevelopOwnerSelection())) {
-    editor.error = '请选择有效的开发责任人，请通过姓名或工号搜索后选择';
+  if (!ensureOwnerSelection()) {
+    editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+    return;
+  }
+  if (!ensureDevelopOwnerSelection()) {
+    editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
     return;
   }
   const payload: SkillMasterPayload = {
@@ -859,9 +1009,11 @@ watch(
   { immediate: true, deep: true },
 );
 onBeforeUnmount(() => {
-  if (toastTimer !== null) window.clearTimeout(toastTimer);
-  if (ownerSearchTimer !== null) window.clearTimeout(ownerSearchTimer);
-  if (developOwnerSearchTimer !== null) window.clearTimeout(developOwnerSearchTimer);
+  if (toastTimer !== null) {
+    window.clearTimeout(toastTimer);
+  }
+  clearOwnerSearchTimer();
+  clearDevelopOwnerSearchTimer();
 });
 </script>
 
@@ -1151,49 +1303,76 @@ onBeforeUnmount(() => {
               ><span>Skill 说明 *</span
               ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
             </label>
-            <label class="owner-picker">
-              <span>&#36131;&#20219; Owner *</span>
+            <label class="owner-picker person-search" @keydown.esc="ownerPicker.open = false">
+              <span>责任 Owner *</span>
               <input
-                v-model.trim="editor.owner"
-                list="skill-master-owner-options"
+                :value="ownerPicker.keyword"
+                type="text"
                 autocomplete="off"
-                placeholder="&#36755;&#20837;&#22995;&#21517;&#25110;&#24037;&#21495;&#21518;&#36873;&#25321;"
-                @input="onOwnerInput"
-                @change="resolveOwnerSelection"
+                placeholder="输入姓名或工号后选择"
+                @focus="onOwnerPickerFocus"
+                @input="onOwnerPickerInput"
               />
-              <datalist id="skill-master-owner-options">
-                <option
-                  v-for="item in ownerOptions"
-                  :key="item.id || item.label"
-                  :value="item.label"
-                >
-                  {{ item.deptName }}
-                </option>
-              </datalist>
+              <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                <template v-else>
+                  <button
+                    v-for="option in ownerPicker.options"
+                    :key="option.id || option.label"
+                    type="button"
+                    @click="selectOwner(option)"
+                  >
+                    <span
+                      ><strong>{{ option.chName || option.label }}</strong
+                      ><small>{{ option.id }}</small></span
+                    >
+                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                  </button>
+                  <span v-if="ownerPicker.message" class="person-search__empty">{{
+                    ownerPicker.message
+                  }}</span>
+                </template>
+              </div>
             </label>
             <!-- <label
               ><span>Owner 所在部门</span
               ><input v-model.trim="editor.department" placeholder="由 Owner 资料自动带出" readonly
             /></label> -->
-            <label class="develop-owner-picker">
-              <span>开发责任人</span>
+            <label
+              class="develop-owner-picker person-search"
+              @keydown.esc="developOwnerPicker.open = false"
+            >
+              <span>开发责任人 *</span>
               <input
-                v-model.trim="editor.developOwner"
-                list="skill-master-develop-owner-options"
+                :value="developOwnerPicker.keyword"
+                type="text"
                 autocomplete="off"
-                placeholder="输入工号或姓名后选择"
-                @input="onDevelopOwnerInput"
-                @change="resolveDevelopOwnerSelection"
+                placeholder="输入姓名或工号后选择"
+                @focus="onDevelopOwnerPickerFocus"
+                @input="onDevelopOwnerPickerInput"
               />
-              <datalist id="skill-master-develop-owner-options">
-                <option
-                  v-for="item in developOwnerOptions"
-                  :key="item.id || item.label"
-                  :value="item.label"
+              <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                <span v-if="developOwnerPicker.loading" class="person-search__empty"
+                  >查询中...</span
                 >
-                  {{ item.deptName }}
-                </option>
-              </datalist>
+                <template v-else>
+                  <button
+                    v-for="option in developOwnerPicker.options"
+                    :key="option.id || option.label"
+                    type="button"
+                    @click="selectDevelopOwner(option)"
+                  >
+                    <span
+                      ><strong>{{ option.chName || option.label }}</strong
+                      ><small>{{ option.id }}</small></span
+                    >
+                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                  </button>
+                  <span v-if="developOwnerPicker.message" class="person-search__empty">{{
+                    developOwnerPicker.message
+                  }}</span>
+                </template>
+              </div>
             </label>
             <label
               ><span>计划完成时间</span><input v-model="editor.plannedCompleteDate" type="date"
@@ -1885,6 +2064,79 @@ onBeforeUnmount(() => {
 }
 .form-grid textarea {
   padding-top: 10px;
+}
+.person-search {
+  position: relative;
+  width: 100%;
+}
+.person-search > input {
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid #d7dfeb;
+  border-radius: 8px;
+  outline: 0;
+  color: #344159;
+  background: #fff;
+}
+.person-search > input:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.person-search__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #dce3ee;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(39, 51, 80, 0.16);
+}
+.person-search__panel > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.person-search__panel > button:hover {
+  background: #f5f8ff;
+}
+.person-search__panel > button > span {
+  display: grid;
+  gap: 2px;
+}
+.person-search__panel strong {
+  color: #2c3950;
+  font-size: 11px;
+}
+.person-search__panel small {
+  color: #8c97a8;
+  font-size: 9px;
+}
+.person-search__panel em {
+  color: #78869a;
+  font-size: 9px;
+  font-style: normal;
+}
+.person-search__empty {
+  display: block;
+  padding: 16px 10px;
+  color: #98a2b1;
+  font-size: 10px;
+  text-align: center;
 }
 .error {
   margin: 14px 0 0;
