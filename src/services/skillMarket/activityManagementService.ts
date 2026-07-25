@@ -1,4 +1,5 @@
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
+import { notifyHarnessConfigurationChanged } from './harnessConfigurationSyncService';
 
 export type ActivityStatus = 'enabled' | 'disabled';
 
@@ -318,6 +319,7 @@ function persistActivities(activities: ActivityRecord[], departmentName = ''): v
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(DEPARTMENT_STORAGE_KEY, JSON.stringify(store));
   }
+  notifyHarnessConfigurationChanged('activity', departmentName);
 }
 
 function nextActivityId(): string {
@@ -478,7 +480,7 @@ export function deleteActivity(
   if (!activity) return;
   const usageCount = getActivityUsageCount(id, departmentName);
   if (usageCount > 0 && !options.force && !options.migrateToId) {
-    throw new Error('当前活动已被 ' + usageCount + ' 个 Skill 使用，请选择迁移或强制删除');
+    throw new Error('当前活动已被 ' + usageCount + ' 个规划项使用，请选择迁移或强制删除');
   }
 
   const migrationTarget = options.migrateToId

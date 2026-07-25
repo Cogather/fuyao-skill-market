@@ -35,6 +35,8 @@ export type ExpertDeptDto = {
   dept4?: string;
   dept5?: string;
   dept6?: string;
+  dept7?: string;
+  dept8?: string;
   [key: string]: unknown;
 };
 export type ExpertCheckDto = {
@@ -62,7 +64,11 @@ export type CurrentUserRoleDto = {
   managedOrgIds: number[];
   managedOrgNames?: string[];
   organizationScope: OrganizationScope;
+  /** 当前用户是否为自身 dept5 部门 Owner。 */
+  departmentOwner?: boolean;
+  /** 兼容存量接口中的部门主任标识，与 departmentOwner 含义一致。 */
   departmentDirector?: boolean;
+  ownedDepartmentNames?: string[];
   managedDepartmentNames?: string[];
 };
 
@@ -481,12 +487,26 @@ export type OrganizationUpsertBody = {
   enabled: number;
 };
 
+export type SkillPlanningDepartmentAdminsBody = {
+  userId: string;
+  adminUserIds: string;
+  l3DeptCode: string | null;
+  l3DeptName: string | null;
+  l4DeptCode: string | null;
+  l4DeptName: string | null;
+  l5DeptCode: string | null;
+  l5DeptName: string | null;
+  l6DeptCode: string | null;
+  l6DeptName: string | null;
+};
+
 /**
  * 市场总览等部门级联：全量部门树（设计文档未定稿）。
  * 节点字段与 `DashboardOverviewDto.deptTree` 单节点对齐，便于后端与 Mock 复用。
  */
 export type DepartmentTreeNodeDto = {
   deptId?: string | number;
+  deptCode?: string | number;
   deptName: string;
   deptLevel: number;
   children?: DepartmentTreeNodeDto[];
@@ -611,4 +631,51 @@ export type ExpertReviewSubmitBody = {
   badgeIds: string[];
   badgeReason?: string;
   overallOpinion?: string;
+};
+
+/** Skill 清单新增（POST /management/add） */
+export type CreateSkillMasterManagementBody = {
+  skillName: string;
+  skillDescription: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  planFinishDate: string;
+};
+
+/** Skill 清单查询（POST /management/query）；字段均可为空 */
+export type QuerySkillMasterManagementBody = {
+  keyword?: string;
+  dimType?: string;
+  dimCode?: string;
+  statusList?: string[];
+  ownerId?: string;
+  developOwnerId?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  pageNum?: number;
+  pageSize?: number;
+};
+
+/** Skill 清单查询行 */
+export type SkillMasterManagementItemDto = {
+  skillName: string;
+  skillDescription: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  status: string;
+  planFinishDate: string;
+  createdAt?: number[] | string | null;
+  updatedAt?: number[] | string | null;
+  skillMatchId?: string | null;
+  skillMatchLevel?: string | null;
 };

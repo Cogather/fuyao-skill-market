@@ -1,3 +1,5 @@
+import { notifyHarnessConfigurationChanged } from './harnessConfigurationSyncService';
+
 export interface DepartmentPlanningPermissionMember {
   userId: string;
   userName: string;
@@ -99,6 +101,17 @@ export function listDepartmentPlanningPermissions(): DepartmentPlanningPermissio
   return readRecords().map(cloneRecord);
 }
 
+export function listAuthorizedHarnessDepartmentNames(userId: string): string[] {
+  const normalizedUserId = normalize(userId);
+  if (!normalizedUserId) return [];
+  return readRecords()
+    .filter((record) =>
+      record.members.some((member) => normalize(member.userId) === normalizedUserId),
+    )
+    .map((record) => record.departmentName)
+    .filter(Boolean);
+}
+
 export function grantDepartmentPlanningPermission(
   departmentName: string,
   member: Omit<DepartmentPlanningPermissionMember, 'grantedAt'>,
@@ -116,7 +129,7 @@ export function grantDepartmentPlanningPermission(
     records.push(record);
   }
   if (record.members.some((item) => item.userId === userId)) {
-    throw new Error('该人员已拥有此部门的 Skill 规划配置权限');
+    throw new Error('该人员已拥有此部门的 Harness 规划与配置权限');
   }
   record.members.push({
     userId,
@@ -128,6 +141,7 @@ export function grantDepartmentPlanningPermission(
   });
   record.updatedAt = now;
   persist(records);
+  notifyHarnessConfigurationChanged('permission', normalizedDepartment);
   return cloneRecord(record);
 }
 
@@ -141,5 +155,6 @@ export function revokeDepartmentPlanningPermission(
   record.members = record.members.filter((item) => item.userId !== userId);
   record.updatedAt = new Date().toISOString();
   persist(records);
+  notifyHarnessConfigurationChanged('permission', departmentName);
   return cloneRecord(record);
 }

@@ -1,4 +1,5 @@
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
+import { notifyHarnessConfigurationChanged } from './harnessConfigurationSyncService';
 
 export type SceneStatus = 'enabled' | 'disabled';
 
@@ -359,6 +360,7 @@ function persistScenes(scenes: SceneRecord[], departmentName = ''): void {
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(DEPARTMENT_STORAGE_KEY, JSON.stringify(store));
   }
+  notifyHarnessConfigurationChanged('scene', departmentName);
 }
 
 function nextSceneId(): string {
@@ -515,7 +517,7 @@ export function deleteScene(
   if (!scene) return;
   const usageCount = getSceneUsageCount(id, departmentName);
   if (usageCount > 0 && !options.force && !options.migrateToId) {
-    throw new Error('当前场景已被 ' + usageCount + ' 个 Skill 使用，请选择迁移或强制删除');
+    throw new Error('当前场景已被 ' + usageCount + ' 个规划项使用，请选择迁移或强制删除');
   }
 
   const migrationTarget = options.migrateToId

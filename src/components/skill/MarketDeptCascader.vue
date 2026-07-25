@@ -14,6 +14,11 @@ type DeptCascadeColumn = {
   active: string | undefined;
 };
 
+type DepartmentSearchResult = {
+  name: string;
+  path: string[];
+};
+
 const props = withDefaults(
   defineProps<{
     modelValue: string[];
@@ -31,6 +36,10 @@ const props = withDefaults(
     selectionMode?: 'immediate' | 'confirm';
     permissionMode?: 'none' | 'review-center';
     permissionPath?: string[];
+    allowedPaths?: string[][];
+    searchable?: boolean;
+    searchPlaceholder?: string;
+    disabled?: boolean;
   }>(),
   {
     maxLevel: 6,
@@ -39,6 +48,10 @@ const props = withDefaults(
     selectionMode: 'immediate',
     permissionMode: 'none',
     permissionPath: () => [],
+    allowedPaths: () => [],
+    searchable: false,
+    searchPlaceholder: '搜索部门',
+    disabled: false,
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
     clearText: '清空部门',
@@ -58,6 +71,8 @@ const open = ref(false);
 const wrapRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 const panelLayout = ref<{ left: number; top: number; maxWidth: number } | null>(null);
+const panelMaxHeight = ref(340);
+const searchKeyword = ref('');
 let panelScrollCleanup: (() => void) | null = null;
 
 const normalizedTree = computed(() => props.tree ?? []);
@@ -70,6 +85,9 @@ const selectedLabel = computed(() =>
   selectedPath.value.length > 0 ? selectedPath.value.join(' / ') : props.allLabel,
 );
 const normalizedPermissionPath = computed(() => normalizePath(props.permissionPath ?? []));
+const normalizedAllowedPaths = computed(() =>
+  (props.allowedPaths ?? []).map((path) => normalizePath(path)).filter((path) => path.length > 0),
+);
 
 function normalizePath(segments: string[]): string[] {
   return segments.map((segment) => segment.trim()).filter(Boolean);
@@ -134,29 +152,81 @@ const columns = computed<DeptCascadeColumn[]>(() => {
 });
 
 function hasChildren(levelIndex: number, name: string): boolean {
+  if (levelIndex + 1 >= props.maxLevel) {
+    return false;
+  }
   const node = nodeByPartial([...activePath.value.slice(0, levelIndex), name]);
   return Boolean(node?.children?.length);
 }
 
 function pathAllowedByPermission(path: string[]): boolean {
-  if (props.permissionMode !== 'review-center') {
-    return true;
-  }
-
-  const permissionPath = normalizedPermissionPath.value;
   const normalizedPath = normalizePath(path);
-  if (permissionPath.length === 0 || normalizedPath.length === 0) {
-    return true;
+  const allowedPaths = normalizedAllowedPaths.value;
+  if (
+    allowedPaths.length > 0 &&
+    !allowedPaths.some((allowedPath) => {
+      const pathIsBeforeAllowedDepartment =
+        normalizedPath.length <= allowedPath.length &&
+        normalizedPath.every((segment, index) => segment === allowedPath[index]);
+      const pathIsInsideAllowedDepartment =
+        allowedPath.length <= normalizedPath.length &&
+        allowedPath.every((segment, index) => segment === normalizedPath[index]);
+      return pathIsBeforeAllowedDepartment || pathIsInsideAllowedDepartment;
+    })
+  ) {
+    return false;
   }
 
-  const pathIsBeforePermissionDept =
-    normalizedPath.length <= permissionPath.length &&
-    normalizedPath.every((segment, index) => segment === permissionPath[index]);
-  const pathIsInsidePermissionDept = permissionPath.every(
-    (segment, index) => normalizedPath[index] === segment,
-  );
-  return pathIsBeforePermissionDept || pathIsInsidePermissionDept;
+  if (props.permissionMode === 'review-center') {
+    const permissionPath = normalizedPermissionPath.value;
+    if (permissionPath.length === 0 || normalizedPath.length === 0) {
+      return true;
+    }
+
+    const pathIsBeforePermissionDept =
+      normalizedPath.length <= permissionPath.length &&
+      normalizedPath.every((segment, index) => segment === permissionPath[index]);
+    const pathIsInsidePermissionDept = permissionPath.every(
+      (segment, index) => normalizedPath[index] === segment,
+    );
+    return pathIsBeforePermissionDept || pathIsInsidePermissionDept;
+  }
+
+  return true;
 }
+
+const searchResults = computed<DepartmentSearchResult[]>(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase();
+  if (!keyword) {
+    return [];
+  }
+
+  const results: DepartmentSearchResult[] = [];
+  const visit = (
+    nodes: MarketDeptCascaderNode[],
+    parentPath: string[],
+    levelIndex: number,
+  ): void => {
+    if (levelIndex >= props.maxLevel) {
+      return;
+    }
+    nodes.forEach((node) => {
+      const path = [...parentPath, node.name];
+      if (
+        pathAllowedByPermission(path) &&
+        path.some((segment) => segment.toLowerCase().includes(keyword))
+      ) {
+        results.push({ name: node.name, path });
+      }
+      if (node.children?.length && levelIndex + 1 < props.maxLevel) {
+        visit(node.children, path, levelIndex + 1);
+      }
+    });
+  };
+
+  visit(normalizedTree.value, [], 0);
+  return results.slice(0, 50);
+});
 
 function isOptionDisabled(levelIndex: number, name: string): boolean {
   return !pathAllowedByPermission([...activePath.value.slice(0, levelIndex), name]);
@@ -178,11 +248,28 @@ function updatePanelLayout(): void {
   const margin = 16;
   const fromLeft = Math.max(0, rect.left);
   const usable = Math.max(220, Math.floor(window.innerWidth - fromLeft - margin));
+  const gap = 4;
+  const availableBelow = Math.max(0, window.innerHeight - rect.bottom - margin - gap);
+  const availableAbove = Math.max(0, rect.top - margin - gap);
+  const measuredHeight = Math.max(
+    panelRef.value?.scrollHeight ?? 0,
+    panelRef.value?.getBoundingClientRect().height ?? 0,
+  );
+  const desiredHeight = Math.min(340, Math.max(220, measuredHeight));
+  const opensAbove = availableBelow < desiredHeight && availableAbove > availableBelow;
+  const availableHeight = opensAbove ? availableAbove : availableBelow;
+  const maxHeight = Math.min(340, Math.max(80, Math.floor(availableHeight)));
+  const renderedHeight = Math.min(desiredHeight, maxHeight);
+  const nextTop = opensAbove
+    ? Math.max(margin, Math.floor(rect.top - renderedHeight - gap))
+    : Math.floor(rect.bottom + gap);
   panelLayout.value = {
     left: Math.floor(fromLeft),
     top: Math.floor(rect.bottom + 4),
     maxWidth: Math.min(720, usable),
   };
+  if (panelLayout.value) panelLayout.value.top = nextTop;
+  panelMaxHeight.value = maxHeight;
 }
 
 const panelStyle = computed((): CSSProperties => {
@@ -195,6 +282,7 @@ const panelStyle = computed((): CSSProperties => {
     left: `${layout.left}px`,
     top: `${layout.top}px`,
     maxWidth: `${layout.maxWidth}px`,
+    maxHeight: `${panelMaxHeight.value}px`,
     zIndex: 2400,
   };
 });
@@ -202,6 +290,9 @@ const panelStyle = computed((): CSSProperties => {
 function setOpen(nextOpen: boolean): void {
   if (props.selectionMode === 'confirm') {
     draftPath.value = [...selectedPath.value];
+  }
+  if (nextOpen) {
+    searchKeyword.value = '';
   }
   open.value = nextOpen;
   if (nextOpen) {
@@ -213,6 +304,9 @@ function setOpen(nextOpen: boolean): void {
 }
 
 function toggle(): void {
+  if (props.disabled) {
+    return;
+  }
   setOpen(!open.value);
 }
 
@@ -222,12 +316,27 @@ function select(levelIndex: number, name: string): void {
   }
 
   const nextValue = [...activePath.value.slice(0, levelIndex), name];
+  selectPath(nextValue);
+}
+
+function selectPath(nextValue: string[]): void {
   if (props.selectionMode === 'confirm') {
     draftPath.value = nextValue;
     return;
   }
   emit('update:modelValue', nextValue);
   emit('change', nextValue);
+}
+
+function selectSearchResult(path: string[]): void {
+  if (!pathAllowedByPermission(path)) {
+    return;
+  }
+  selectPath([...path]);
+  searchKeyword.value = '';
+  void nextTick(() => {
+    updatePanelLayout();
+  });
 }
 
 function clear(): void {
@@ -311,6 +420,7 @@ onBeforeUnmount(() => {
       type="button"
       class="market-dept-cascader-trigger"
       :class="{ 'is-open': open }"
+      :disabled="disabled"
       aria-haspopup="true"
       :aria-expanded="open"
       @click.stop="toggle"
@@ -328,9 +438,33 @@ onBeforeUnmount(() => {
         class="market-dept-cascader-panel"
         :style="panelStyle"
         role="listbox"
-        @mousedown.prevent
+        @mousedown.stop
       >
-        <div v-if="columns.length === 0" class="market-dept-cascader-empty">
+        <label v-if="searchable" class="market-dept-cascader-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            v-model="searchKeyword"
+            type="search"
+            :placeholder="searchPlaceholder"
+            aria-label="搜索部门"
+          />
+        </label>
+        <div v-if="searchKeyword.trim()" class="market-dept-cascader-results">
+          <button
+            v-for="result in searchResults"
+            :key="result.path.join('/')"
+            type="button"
+            class="market-dept-cascader-result"
+            @click="selectSearchResult(result.path)"
+          >
+            <strong>{{ result.name }}</strong>
+            <small>{{ result.path.join(' / ') }}</small>
+          </button>
+          <div v-if="searchResults.length === 0" class="market-dept-cascader-empty">
+            未找到匹配部门
+          </div>
+        </div>
+        <div v-else-if="columns.length === 0" class="market-dept-cascader-empty">
           {{ emptyText }}
         </div>
         <div v-else class="market-dept-cascader-columns">
@@ -413,6 +547,13 @@ onBeforeUnmount(() => {
   border-color: #c5d0e0;
 }
 
+.market-dept-cascader-trigger:disabled {
+  border-color: #dfe6f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .market-dept-cascader-trigger.is-open,
 .market-dept-cascader-trigger:focus {
   border-color: #1677ff;
@@ -459,11 +600,84 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 
+.market-dept-cascader-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin: 10px 12px 8px;
+}
+
+.market-dept-cascader-search > span {
+  position: absolute;
+  left: 11px;
+  color: #94a3b8;
+  font-size: 17px;
+  pointer-events: none;
+}
+
+.market-dept-cascader-search input {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 12px 0 34px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  outline: none;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+}
+
+.market-dept-cascader-search input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.market-dept-cascader-results {
+  display: grid;
+  min-width: min(520px, calc(100vw - 32px));
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.market-dept-cascader-result {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+}
+
+.market-dept-cascader-result:hover {
+  background: #f1f5f9;
+}
+
+.market-dept-cascader-result strong {
+  font-size: 12px;
+}
+
+.market-dept-cascader-result small {
+  overflow: hidden;
+  color: #8491a4;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .market-dept-cascader-columns {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: nowrap;
   width: 100%;
   min-width: 0;
+  min-height: 0;
   max-height: 280px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -537,12 +751,16 @@ onBeforeUnmount(() => {
 
 .market-dept-cascader-footer {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
   padding: 8px 12px;
   border-top: 1px solid #eef2f7;
   background: #fafbfc;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
 }
 
 .market-dept-cascader-clear {

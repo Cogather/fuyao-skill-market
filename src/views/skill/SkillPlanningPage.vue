@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
-import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
-import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import {
   batchDeleteSkillPlanning,
@@ -37,10 +34,21 @@ import {
   findActivityIdByNames,
   getActivityOptionGroups,
 } from '../../services/skillMarket/activityManagementService';
+import {
+  listSkillMasterRecords,
+  querySkillMasterRecords,
+  type SkillMasterRecord,
+} from '../../services/skillMarket/skillMasterManagementService';
+import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { openLink } from '@/utils/common';
 
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+
 type PlanningFormMode = 'create' | 'edit';
+type PlanningLevel = '产品级' | '部门级';
 type PlanningDepartmentTreeNode = {
+  id?: string;
+  deptCode?: string;
   name: string;
   children?: PlanningDepartmentTreeNode[];
 };
@@ -67,23 +75,25 @@ type PlanningPersonSearchState = {
 const props = withDefaults(
   defineProps<{
     departmentTree?: PlanningDepartmentTreeNode[];
-    canConfigureDepartmentPermissions?: boolean;
-    permissionDepartmentNames?: string[];
+    userId?: string;
+    currentUserDepartmentPath?: string[];
+    allowedDepartmentNames?: string[];
+    allowedDepartmentPaths?: string[][];
+    restrictToAllowedDepartments?: boolean;
   }>(),
   {
     departmentTree: () => [],
-    canConfigureDepartmentPermissions: false,
-    permissionDepartmentNames: () => [],
+    userId: '',
+    currentUserDepartmentPath: () => [],
+    allowedDepartmentNames: () => [],
+    allowedDepartmentPaths: () => [],
+    restrictToAllowedDepartments: false,
   },
 );
 
-const progressOptions = ref<SkillPlanningProgress[]>([
-  '未开始',
-  '开发中',
-  '联调中',
-  '已完成',
-  '已延期',
-]);
+const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
+
+const progressOptions = ref<SkillPlanningProgress[]>(['未开始', '开发中', '已完成']);
 const planningHeaderFilterKeys = [
   'firstScene',
   'secondScene',
@@ -98,14 +108,17 @@ const batchReadonlyHeaders = [
   '二级场景',
   '归属活动',
   '归属子活动',
-  'SKILL名称',
+  'Skill',
+  '描述',
+  '责任 Owner',
+  '开发责任人',
+  '计划完成',
+  '当前进展',
   '层级',
   '产品',
 ] as const;
 
-const activePlanningTab = ref<'skills' | 'scenes' | 'activities' | 'management' | 'permissions'>(
-  'skills',
-);
+const activePlanningTab = ref<'skills' | 'management'>('skills');
 
 const emptyFilters = {
   planningDeptName: '',
@@ -113,11 +126,13 @@ const emptyFilters = {
   departmentL4: '',
   departmentL5: '',
   departmentL6: '',
+  departmentL7: '',
+  departmentL8: '',
   firstScene: '',
   secondScene: '',
   activityNodeName: '',
   subActivityNodeName: '',
-  level: '',
+  level: '部门级',
   offeringName: '',
   status: '',
   owner: '',
@@ -127,17 +142,40 @@ const emptyFilters = {
 };
 
 const filterForm = reactive({ ...emptyFilters });
-const planningDepartmentTree = computed(() => props.departmentTree ?? []);
+const normalizedAllowedPlanningDepartmentPaths = computed(() =>
+  (props.allowedDepartmentPaths ?? [])
+    .map(normalizePlanningDepartmentPath)
+    .filter((path) => path.length > 0),
+);
+const planningDepartmentTree = computed(() => {
+  const tree = props.departmentTree ?? [];
+  if (!props.restrictToAllowedDepartments) return tree;
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
+    return filterPlanningDepartmentTreeByPaths(
+      tree,
+      normalizedAllowedPlanningDepartmentPaths.value,
+    );
+  }
+  return filterPlanningDepartmentTree(
+    tree,
+    new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
+  );
+});
 const planningDepartmentSegments = ref<string[]>([]);
+const planningScopeDepartmentCommitted = ref(false);
 const departmentL3 = ref('');
 const departmentL4 = ref('');
 const departmentL5 = ref('');
 const departmentL6 = ref('');
+const departmentL7 = ref('');
+const departmentL8 = ref('');
 const planningDepartmentLevelRefs = [
   departmentL3,
   departmentL4,
   departmentL5,
   departmentL6,
+  departmentL7,
+  departmentL8,
 ] as const;
 const rows = ref<SkillPlanningItem[]>([]);
 const total = ref(0);
@@ -151,7 +189,7 @@ const activityOptions = ref<string[]>([]);
 const subActivityOptions = ref<string[]>([]);
 const sceneOptionGroups = ref<SkillPlanningOptionGroup[]>([]);
 const activityOptionGroups = ref<SkillPlanningOptionGroup[]>([]);
-const levelOptions = ref<string[]>([]);
+const levelOptions = ref<string[]>([...planningLevelOptions]);
 const headerFilterOpenKey = ref<PlanningHeaderFilterKey | null>(null);
 const headerFilterSelections = reactive<PlanningHeaderFilterSelections>({
   firstScene: [],
@@ -182,6 +220,15 @@ const inlineEditId = ref('');
 const inlineEditSubmitting = ref(false);
 const formErrors = reactive<Partial<Record<keyof SkillPlanningPayload, string>>>({});
 const planningForm = reactive<SkillPlanningPayload>(createEmptyPlanningForm());
+const skillMasterOptions = ref<SkillMasterRecord[]>([]);
+const planningSkillOptions = ref<SkillMasterRecord[]>([]);
+const planningSkillDropdownOpen = ref(false);
+const planningSkillSearchKeyword = ref('');
+const planningSkillSearching = ref(false);
+const planningSkillSearchMessage = ref('');
+let planningSkillSearchTimer: number | null = null;
+let planningSkillSearchSeq = 0;
+const planningFormDepartmentSegments = ref<string[]>([]);
 const productDropdownOpen = ref(false);
 const productSearchKeyword = ref('');
 const productOptions = ref<ProductPlanningOption[]>([]);
@@ -189,6 +236,31 @@ const productSearching = ref(false);
 const productSearchMessage = ref('');
 let productSearchTimer: number | null = null;
 let productSearchSeq = 0;
+const filterProductOptions = ref<ProductPlanningOption[]>([]);
+const filterProductsLoading = ref(false);
+let filterProductSearchSeq = 0;
+const selectedFilterProduct = computed(() =>
+  filterProductOptions.value.find(
+    (item) =>
+      item.offeringName === filterForm.offeringName &&
+      (!item.planningDeptName || item.planningDeptName === filterForm.planningDeptName),
+  ),
+);
+const planningScopeErrorMessage = computed(() => {
+  if (!planningLevelOptions.includes(filterForm.level as PlanningLevel)) {
+    return '请先选择规划层级';
+  }
+  if (!planningScopeDepartmentCommitted.value || !filterForm.planningDeptName.trim()) {
+    return filterForm.level === '产品级'
+      ? '请选择产品所属部门并点击完成'
+      : '请选择归属部门并点击完成';
+  }
+  if (filterForm.level === '产品级' && !filterForm.offeringName.trim()) {
+    return '请选择具体产品';
+  }
+  return '';
+});
+const hasCompletePlanningScope = computed(() => !planningScopeErrorMessage.value);
 const personSearchStates = reactive<Record<PlanningPersonField, PlanningPersonSearchState>>({
   owner: createEmptyPersonSearchState(),
   developOwner: createEmptyPersonSearchState(),
@@ -213,8 +285,215 @@ function collectPlanningDepartmentNames(
   return values;
 }
 
+function filterPlanningDepartmentTree(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+): PlanningDepartmentTreeNode[] {
+  return nodes.flatMap((node) => {
+    const nodeAllowed = ancestorAllowed || allowedNames.has(node.name.trim());
+    const children = filterPlanningDepartmentTree(node.children ?? [], allowedNames, nodeAllowed);
+    if (!nodeAllowed && children.length === 0) return [];
+    return [{ ...node, children }];
+  });
+}
+
+function filterPlanningDepartmentTreeByPaths(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+): PlanningDepartmentTreeNode[] {
+  return nodes.flatMap((node) => {
+    const path = [...parentPath, node.name];
+    const pathIsRelevant = allowedPaths.some(
+      (allowedPath) =>
+        planningDepartmentPathStartsWith(path, allowedPath) ||
+        planningDepartmentPathStartsWith(allowedPath, path) ||
+        samePlanningDepartmentPath(path, allowedPath),
+    );
+    if (!pathIsRelevant) return [];
+    return [
+      {
+        ...node,
+        children: filterPlanningDepartmentTreeByPaths(node.children ?? [], allowedPaths, path),
+      },
+    ];
+  });
+}
+
+function normalizePlanningDepartmentPath(segments: string[] | undefined): string[] {
+  return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
+}
+
+function samePlanningDepartmentPath(left: string[], right: string[]): boolean {
+  const normalizedLeft = normalizePlanningDepartmentPath(left);
+  const normalizedRight = normalizePlanningDepartmentPath(right);
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function planningDepartmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizePlanningDepartmentPath(path);
+  const normalizedPrefix = normalizePlanningDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
+  );
+}
+
+const currentUserMinimumDepartmentPath = computed(() =>
+  normalizePlanningDepartmentPath(props.currentUserDepartmentPath),
+);
+const defaultPlanningDepartmentPath = computed(() =>
+  normalizePlanningDepartmentPath(
+    normalizedAllowedPlanningDepartmentPaths.value[0] ?? currentUserMinimumDepartmentPath.value,
+  ),
+);
+const legacyPlanningPermissionPath = computed(() =>
+  normalizedAllowedPlanningDepartmentPaths.value.length > 0
+    ? []
+    : currentUserMinimumDepartmentPath.value,
+);
+
+function findPlanningDepartmentPathByName(
+  targetName: string,
+  nodes = planningDepartmentTree.value,
+  parentPath: string[] = [],
+): string[] {
+  const normalizedTarget = targetName.trim();
+  if (!normalizedTarget) return [];
+  for (const node of nodes) {
+    const path = [...parentPath, node.name];
+    if (node.name === normalizedTarget) return path;
+    const childPath = findPlanningDepartmentPathByName(normalizedTarget, node.children ?? [], path);
+    if (childPath.length > 0) return childPath;
+  }
+  return [];
+}
+
+function findPlanningDepartmentNodeByPath(
+  segments: string[],
+  nodes = planningDepartmentTree.value,
+): PlanningDepartmentTreeNode | undefined {
+  const [current, ...rest] = normalizePlanningDepartmentPath(segments);
+  if (!current) return undefined;
+  const node = nodes.find((item) => item.name === current);
+  if (!node || rest.length === 0) return node;
+  return findPlanningDepartmentNodeByPath(rest, node.children ?? []);
+}
+
+function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
+  userId?: string;
+  deptCode?: string;
+} {
+  const department = departmentName.trim();
+  const selectedPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
+  const departmentPath =
+    department && selectedPath.at(-1) === department
+      ? selectedPath
+      : findPlanningDepartmentPathByName(department);
+  const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
+  const deptCode =
+    String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
+  return {
+    ...(props.userId.trim() ? { userId: props.userId.trim() } : {}),
+    ...(deptCode ? { deptCode } : {}),
+  };
+}
+
+function resetPlanningTaxonomySelections(): void {
+  planningForm.firstScene = '';
+  planningForm.secondScene = '';
+  planningForm.sceneId = '';
+  planningForm.activityNodeName = '';
+  planningForm.subActivityNodeName = '';
+  planningForm.activityId = '';
+}
+
+function isPlanningDepartmentSelectionAllowed(segments: string[]): boolean {
+  if (
+    props.restrictToAllowedDepartments &&
+    normalizedAllowedPlanningDepartmentPaths.value.length > 0
+  ) {
+    return normalizedAllowedPlanningDepartmentPaths.value.some((allowedPath) =>
+      planningDepartmentPathStartsWith(segments, allowedPath),
+    );
+  }
+  const requiredPath = currentUserMinimumDepartmentPath.value;
+  return requiredPath.length === 0 || planningDepartmentPathStartsWith(segments, requiredPath);
+}
+
+function guardPlanningDepartmentSelection(segments: string[]): boolean {
+  if (isPlanningDepartmentSelectionAllowed(segments)) return true;
+  showToast('请选择您所属的最细粒度部门或其下级部门。');
+  return false;
+}
+
+function collectAuthorizedPlanningDepartmentNames(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const name = node.name.trim();
+    const nodeAllowed = ancestorAllowed || allowedNames.has(name);
+    if (nodeAllowed && name) values.add(name);
+    collectAuthorizedPlanningDepartmentNames(
+      node.children ?? [],
+      allowedNames,
+      nodeAllowed,
+      values,
+    );
+  });
+  return values;
+}
+
+function collectPathAuthorizedPlanningDepartmentNames(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const path = [...parentPath, node.name];
+    const insideAuthorizedDepartment = allowedPaths.some((allowedPath) =>
+      planningDepartmentPathStartsWith(path, allowedPath),
+    );
+    if (insideAuthorizedDepartment && node.name.trim()) values.add(node.name.trim());
+    collectPathAuthorizedPlanningDepartmentNames(node.children ?? [], allowedPaths, path, values);
+  });
+  return values;
+}
+
+const manageablePlanningDepartmentNames = computed(() => {
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
+    return collectPathAuthorizedPlanningDepartmentNames(
+      planningDepartmentTree.value,
+      normalizedAllowedPlanningDepartmentPaths.value,
+    );
+  }
+  const allowedNames = new Set(
+    props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean),
+  );
+  return collectAuthorizedPlanningDepartmentNames(planningDepartmentTree.value, allowedNames);
+});
+
+function canManagePlanningDepartment(departmentName: string): boolean {
+  return (
+    !props.restrictToAllowedDepartments ||
+    manageablePlanningDepartmentNames.value.has(departmentName.trim())
+  );
+}
+
 const planningDepartmentOptions = computed(() => {
   const values = collectPlanningDepartmentNames(planningDepartmentTree.value);
+  if (props.restrictToAllowedDepartments) {
+    return Array.from(manageablePlanningDepartmentNames.value);
+  }
   rows.value.forEach((row) => {
     if (row.planningDeptName) values.add(row.planningDeptName);
   });
@@ -242,8 +521,13 @@ const pageStart = computed(() =>
   total.value === 0 ? 0 : (pageNum.value - 1) * pageSize.value + 1,
 );
 const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
+const selectableRows = computed(() =>
+  rows.value.filter((row) => canManagePlanningDepartment(row.planningDeptName)),
+);
 const allPageSelected = computed(
-  () => rows.value.length > 0 && rows.value.every((row) => selectedIds.value.includes(row.id)),
+  () =>
+    selectableRows.value.length > 0 &&
+    selectableRows.value.every((row) => selectedIds.value.includes(row.id)),
 );
 const hasSelectedRows = computed(() => selectedIds.value.length > 0);
 const selectedImportFileSize = computed(() => {
@@ -296,6 +580,7 @@ const subActivitySelectDisabled = computed(
 
 function createEmptyPlanningForm(): SkillPlanningPayload {
   return {
+    skillId: '',
     sceneId: '',
     activityId: '',
     firstScene: '',
@@ -315,6 +600,151 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     planedCompleteDate: '',
     status: '未开始',
   };
+}
+
+function refreshSkillMasterOptions(): void {
+  skillMasterOptions.value = listSkillMasterRecords();
+}
+
+function clearPlanningSkillSearchTimer(): void {
+  if (planningSkillSearchTimer !== null) {
+    window.clearTimeout(planningSkillSearchTimer);
+    planningSkillSearchTimer = null;
+  }
+}
+
+function closePlanningSkillSelect(): void {
+  planningSkillDropdownOpen.value = false;
+  clearPlanningSkillSearchTimer();
+}
+
+function resetPlanningSkillSearchState(): void {
+  closePlanningSkillSelect();
+  planningSkillSearchSeq += 1;
+  planningSkillSearchKeyword.value = '';
+  planningSkillSearching.value = false;
+  planningSkillSearchMessage.value = '';
+  planningSkillOptions.value = [];
+}
+
+function findSkillMasterForPlanning(
+  skillId = planningForm.skillId ?? '',
+  skillName = planningForm.name,
+): SkillMasterRecord | undefined {
+  return (
+    skillMasterOptions.value.find((record) => record.id === skillId) ||
+    skillMasterOptions.value.find((record) => record.name === skillName)
+  );
+}
+
+function applySkillMasterToPlanningForm(record: SkillMasterRecord): void {
+  Object.assign(planningForm, {
+    skillId: record.id,
+    name: record.name,
+    description: record.description,
+    owner: record.owner,
+    deptCode: '',
+    deptName: record.department,
+    developOwner: record.developOwner,
+    planedCompleteDate: record.plannedCompleteDate,
+    status: record.status,
+  });
+  (
+    ['skillId', 'name', 'description', 'owner', 'deptName', 'developOwner'] as Array<
+      keyof SkillPlanningPayload
+    >
+  ).forEach(clearPlanningFormError);
+  markPlanningPersonValueSelected('owner', planningForm.owner);
+  markPlanningPersonValueSelected('developOwner', planningForm.developOwner);
+}
+
+function planningSkillDepartmentSummary(record: SkillMasterRecord): string {
+  const departments = [
+    ...new Set(
+      [record.department, record.developOwnerDepartment]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+  return departments.join(' / ') || '人员部门待补充';
+}
+
+async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value): Promise<void> {
+  const normalizedKeyword = keyword.trim();
+  const requestSeq = ++planningSkillSearchSeq;
+  planningSkillSearching.value = true;
+  planningSkillSearchMessage.value = '';
+
+  try {
+    refreshSkillMasterOptions();
+    const records = await querySkillMasterRecords({
+      keyword: normalizedKeyword,
+      departmentName: normalizedKeyword ? '' : planningForm.planningDeptName,
+    });
+    if (requestSeq !== planningSkillSearchSeq) return;
+
+    const selectedRecord = findSkillMasterForPlanning();
+    planningSkillOptions.value =
+      !normalizedKeyword &&
+      selectedRecord &&
+      !records.some((record) => record.id === selectedRecord.id)
+        ? [selectedRecord, ...records]
+        : records;
+    if (planningSkillOptions.value.length === 0) {
+      planningSkillSearchMessage.value = normalizedKeyword
+        ? '未找到匹配的 Skill，可调整名称、描述或人员关键词'
+        : `${planningForm.planningDeptName || '当前部门'}暂无相关 Skill，可搜索其他部门 Skill`;
+    }
+  } catch (error) {
+    if (requestSeq !== planningSkillSearchSeq) return;
+    planningSkillOptions.value = [];
+    planningSkillSearchMessage.value =
+      error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试';
+  } finally {
+    if (requestSeq === planningSkillSearchSeq) {
+      planningSkillSearching.value = false;
+    }
+  }
+}
+
+function openPlanningSkillSelect(): void {
+  planningSkillDropdownOpen.value = true;
+  planningSkillSearchKeyword.value = '';
+  void searchPlanningSkills('');
+}
+
+function togglePlanningSkillSelect(): void {
+  if (planningSkillDropdownOpen.value) {
+    closePlanningSkillSelect();
+    return;
+  }
+  openPlanningSkillSelect();
+}
+
+function onPlanningSkillSearchInput(event: Event): void {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  planningSkillSearchKeyword.value = target?.value ?? '';
+  clearPlanningSkillSearchTimer();
+  planningSkillSearchTimer = window.setTimeout(() => {
+    void searchPlanningSkills(planningSkillSearchKeyword.value);
+  }, 250);
+}
+
+function searchPlanningSkillsImmediately(): void {
+  clearPlanningSkillSearchTimer();
+  void searchPlanningSkills(planningSkillSearchKeyword.value);
+}
+
+function clearPlanningSkillSearch(): void {
+  planningSkillSearchKeyword.value = '';
+  clearPlanningSkillSearchTimer();
+  void searchPlanningSkills('');
+}
+
+function choosePlanningSkill(record: SkillMasterRecord): void {
+  applySkillMasterToPlanningForm(record);
+  planningSkillSearchKeyword.value = '';
+  closePlanningSkillSelect();
 }
 
 function createEmptyBatchForm(): PlanningBatchForm {
@@ -379,9 +809,38 @@ function closePlanningProductSelect(): void {
 
 function resetProductSearchState(): void {
   closePlanningProductSelect();
+  productSearchSeq += 1;
+  productSearching.value = false;
   productSearchKeyword.value = '';
   productOptions.value = [];
   productSearchMessage.value = '';
+}
+
+async function loadFilterProducts(): Promise<void> {
+  const requestSeq = ++filterProductSearchSeq;
+  const departmentName = filterForm.planningDeptName.trim();
+  filterForm.offeringName = '';
+  filterProductOptions.value = [];
+  filterProductsLoading.value = false;
+  if (filterForm.level !== '产品级' || !departmentName) return;
+
+  filterProductsLoading.value = true;
+  try {
+    const options = await getProductPlanning(
+      '',
+      departmentName,
+      currentPlanningTaxonomyParams(departmentName).deptCode,
+    );
+    if (requestSeq !== filterProductSearchSeq) return;
+    filterProductOptions.value = options;
+  } catch (error) {
+    if (requestSeq !== filterProductSearchSeq) return;
+    showToast(error instanceof Error ? error.message : '产品加载失败，请稍后重试');
+  } finally {
+    if (requestSeq === filterProductSearchSeq) {
+      filterProductsLoading.value = false;
+    }
+  }
 }
 
 async function searchPlanningProducts(keyword = productSearchKeyword.value): Promise<void> {
@@ -389,8 +848,19 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
   productSearching.value = true;
   productSearchMessage.value = '';
 
+  if (planningForm.level !== '产品级' || !planningForm.planningDeptName.trim()) {
+    productOptions.value = [];
+    productSearching.value = false;
+    productSearchMessage.value = '请先选择产品所属部门';
+    return;
+  }
+
   try {
-    const options = await getProductPlanning(keyword);
+    const options = await getProductPlanning(
+      keyword,
+      planningForm.planningDeptName,
+      currentPlanningTaxonomyParams(planningForm.planningDeptName).deptCode,
+    );
     if (requestSeq !== productSearchSeq) {
       return;
     }
@@ -411,6 +881,14 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
 }
 
 function openPlanningProductSelect(): void {
+  if (planningForm.level !== '产品级') {
+    showToast('仅产品级 Skill 需要选择产品');
+    return;
+  }
+  if (!planningForm.planningDeptName.trim()) {
+    showToast('请先选择产品所属部门');
+    return;
+  }
   productDropdownOpen.value = true;
   productSearchKeyword.value = planningForm.offeringName;
   void searchPlanningProducts(productSearchKeyword.value);
@@ -451,6 +929,7 @@ function clearPlanningProduct(): void {
 function choosePlanningProduct(option: ProductPlanningOption): void {
   planningForm.offeringId = option.offeringId;
   planningForm.offeringName = option.offeringName;
+  clearPlanningFormError('offeringName');
   closePlanningProductSelect();
 }
 
@@ -777,9 +1256,55 @@ function scheduleClearUnselectedBatchOwnerInput(): void {
   window.setTimeout(clearUnselectedBatchOwnerInput, 160);
 }
 
-function onPlanningDepartmentFieldChange(): void {
+function setPlanningFormDepartmentPath(segments: string[], clearSelectedProduct = true): void {
+  const normalized = normalizePlanningDepartmentPath(segments);
+  const previousDepartment = planningForm.planningDeptName;
+  planningFormDepartmentSegments.value = normalized;
+  planningForm.planningDeptName = normalized.at(-1) ?? '';
   clearPlanningFormError('planningDeptName');
-  syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
+
+  if (previousDepartment !== planningForm.planningDeptName) {
+    resetPlanningTaxonomySelections();
+  }
+  if (!transportIsHttp) {
+    syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
+  }
+
+  if (
+    clearSelectedProduct &&
+    previousDepartment !== planningForm.planningDeptName &&
+    planningForm.level === '产品级'
+  ) {
+    clearPlanningProduct();
+  }
+}
+
+function onPlanningFormDepartmentDone(segments: string[]): void {
+  setPlanningFormDepartmentPath(segments);
+  if (planningForm.level === '产品级' && planningForm.planningDeptName) {
+    void searchPlanningProducts('');
+  }
+}
+
+function onPlanningFormDepartmentClear(segments: string[]): void {
+  setPlanningFormDepartmentPath(segments);
+  if (planningForm.level === '产品级' && planningForm.planningDeptName) {
+    void searchPlanningProducts('');
+  }
+}
+
+function onPlanningLevelChange(): void {
+  clearPlanningFormError('level');
+  clearPlanningFormError('planningDeptName');
+  clearPlanningFormError('offeringName');
+  resetProductSearchState();
+  planningForm.offeringId = '';
+  planningForm.offeringName = '';
+
+  setPlanningFormDepartmentPath(defaultPlanningDepartmentPath.value, false);
+  if (planningForm.level === '产品级' && planningForm.planningDeptName) {
+    void searchPlanningProducts('');
+  }
 }
 
 function onPlanningFirstSceneChange(): void {
@@ -841,33 +1366,38 @@ function syncManagedTaxonomiesForDepartment(departmentName = ''): void {
   activityOptionGroups.value = managedActivityGroups;
 }
 
-async function loadPlanningFilterOptions(): Promise<void> {
-  const options = await querySkillPlanningFilterOptions();
-  syncManagedTaxonomiesForDepartment(planningForm.planningDeptName);
-  levelOptions.value = options.level;
+async function loadPlanningFilterOptions(
+  departmentName = filterForm.planningDeptName,
+): Promise<void> {
+  const options = await querySkillPlanningFilterOptions(
+    props.userId,
+    currentPlanningTaxonomyParams(departmentName),
+  );
+  if (transportIsHttp) {
+    primarySceneOptions.value = options.firstScene;
+    secondarySceneOptions.value = options.secondScene;
+    activityOptions.value = options.activityNodeName;
+    subActivityOptions.value = options.subActivityNodeName;
+    sceneOptionGroups.value = options.sceneGroups;
+    activityOptionGroups.value = options.activityGroups;
+  } else {
+    syncManagedTaxonomiesForDepartment(departmentName);
+  }
+  levelOptions.value = [...planningLevelOptions];
   progressOptions.value = options.status as SkillPlanningProgress[];
   syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
 }
 
-function handleManagedScenesChanged(
-  groups: SkillPlanningOptionGroup[],
-  _departmentName: string,
-): void {
-  sceneOptionGroups.value = groups;
-  primarySceneOptions.value = groups.map((group) => group.value);
-  secondarySceneOptions.value = groups.flatMap((group) => group.children);
-  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
-}
+watch(harnessConfigurationRevision, () => {
+  if (transportIsHttp) void loadPlanningFilterOptions();
+  else syncManagedTaxonomiesForDepartment(filterForm.planningDeptName);
+});
 
-function handleManagedActivitiesChanged(
-  groups: SkillPlanningOptionGroup[],
-  _departmentName: string,
-): void {
-  activityOptionGroups.value = groups;
-  activityOptions.value = groups.map((group) => group.value);
-  subActivityOptions.value = groups.flatMap((group) => group.children);
-  syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
-}
+watch(activePlanningTab, (tab) => {
+  if (tab !== 'skills') return;
+  refreshSkillMasterOptions();
+  void reloadList();
+});
 
 function headerFilterOptionList(key: PlanningHeaderFilterKey): string[] {
   return planningHeaderFilterOptions.value[key];
@@ -896,12 +1426,20 @@ async function applyPlanningTableFilters(): Promise<void> {
 
 async function onSearchKeyword() {
   pageNum.value = 1;
+  await reloadList({ notifyOnMissingScope: true });
+}
+
+async function onSearchKeywordInput() {
+  pageNum.value = 1;
   await reloadList();
 }
 
 async function resetQuery() {
-  filterForm.keyword = '';
-  await onSearchKeyword();
+  Object.assign(filterForm, { ...emptyFilters });
+  applyDefaultPlanningScopeSelection();
+  await loadFilterProducts();
+  pageNum.value = 1;
+  await reloadList();
 }
 
 async function toggleHeaderFilterOption(
@@ -942,6 +1480,9 @@ function handlePlanningHeaderFilterOutsideClick(event: MouseEvent): void {
   if (!target.closest('.planning-product-select')) {
     closePlanningProductSelect();
   }
+  if (!target.closest('.planning-skill-select')) {
+    closePlanningSkillSelect();
+  }
   if (!target.closest('.planning-person-select')) {
     closeAllPlanningPersonSelects();
     closeAllBatchPersonSelects();
@@ -961,13 +1502,48 @@ function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.valu
   filterForm.planningDeptName = nextSegments[nextSegments.length - 1] ?? '';
 }
 
+function applyDefaultPlanningScopeSelection(): boolean {
+  const defaultPath = defaultPlanningDepartmentPath.value;
+  const changed =
+    filterForm.level !== '部门级' ||
+    !samePlanningDepartmentPath(planningDepartmentSegments.value, defaultPath) ||
+    planningScopeDepartmentCommitted.value !== defaultPath.length > 0;
+
+  filterForm.level = '部门级';
+  filterForm.offeringName = '';
+  planningDepartmentSegments.value = [...defaultPath];
+  syncPlanningDepartmentLevels(defaultPath);
+  planningScopeDepartmentCommitted.value = defaultPath.length > 0;
+  return changed;
+}
+
+async function onPlanningScopeLevelChange(): Promise<void> {
+  const defaultPath = defaultPlanningDepartmentPath.value;
+  planningScopeDepartmentCommitted.value = defaultPath.length > 0;
+  planningDepartmentSegments.value = [...defaultPath];
+  syncPlanningDepartmentLevels(defaultPath);
+  await loadPlanningFilterOptions();
+  await loadFilterProducts();
+  pageNum.value = 1;
+  await reloadList();
+}
+
+async function onFilterProductChange(): Promise<void> {
+  pageNum.value = 1;
+  await reloadList();
+}
+
 function onPlanningDepartmentChange(segments: string[]): void {
+  planningScopeDepartmentCommitted.value = false;
   syncPlanningDepartmentLevels(segments);
 }
 
 async function applyPlanningDepartmentQuery(segments: string[]): Promise<void> {
   planningDepartmentSegments.value = segments.slice(0, planningDepartmentLevelRefs.length);
   syncPlanningDepartmentLevels(planningDepartmentSegments.value);
+  planningScopeDepartmentCommitted.value = planningDepartmentSegments.value.length > 0;
+  await loadPlanningFilterOptions();
+  await loadFilterProducts();
   pageNum.value = 1;
   await reloadList();
 }
@@ -976,11 +1552,24 @@ async function onPlanningDepartmentDone(segments: string[]): Promise<void> {
   await applyPlanningDepartmentQuery(segments);
 }
 
-async function onPlanningDepartmentClear(): Promise<void> {
-  await applyPlanningDepartmentQuery([]);
+async function onPlanningDepartmentClear(segments: string[] = []): Promise<void> {
+  await applyPlanningDepartmentQuery(segments);
 }
 
 const queryFilterObj = reactive<SkillPlanningQuery>({});
+
+function ensurePlanningScopeSelection(notify = false): boolean {
+  const message = planningScopeErrorMessage.value;
+  if (!message) return true;
+  if (notify) showToast(message);
+  return false;
+}
+
+function clearPlanningList(): void {
+  rows.value = [];
+  total.value = 0;
+  selectedIds.value = [];
+}
 
 function assignQueryValue(
   query: SkillPlanningQuery,
@@ -1023,13 +1612,19 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignHeaderFilterQueryValue(nextQuery, 'subActivityNodeName', 'subActivityNodeName');
   assignHeaderFilterQueryValue(nextQuery, 'level', 'level');
   assignHeaderFilterQueryValue(nextQuery, 'status', 'status');
+  assignQueryValue(nextQuery, 'level', filterForm.level);
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
   assignQueryValue(nextQuery, 'planningDeptName', filterForm.planningDeptName);
-  planningDepartmentSegments.value
-    .slice(0, planningDepartmentLevelRefs.length)
-    .forEach((segment, index) => {
-      assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
-    });
+  if (filterForm.level === '产品级') {
+    assignQueryValue(nextQuery, 'offeringName', filterForm.offeringName);
+  }
+  if (filterForm.level === '部门级') {
+    planningDepartmentSegments.value
+      .slice(0, planningDepartmentLevelRefs.length)
+      .forEach((segment, index) => {
+        assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
+      });
+  }
 
   if (plannedFinishSortOrder.value) {
     nextQuery.sortBy = 'planedCompleteDate';
@@ -1048,7 +1643,12 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   return { ...queryFilterObj };
 }
 
-async function reloadList() {
+async function reloadList(options: { notifyOnMissingScope?: boolean } = {}) {
+  if (!ensurePlanningScopeSelection(Boolean(options.notifyOnMissingScope))) {
+    clearPlanningList();
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   try {
     const result = await querySkillConfig(syncQueryFilterObj());
@@ -1068,15 +1668,53 @@ async function reloadList() {
 
 function resetPlanningForm() {
   resetProductSearchState();
+  resetPlanningSkillSearchState();
   Object.assign(planningForm, createEmptyPlanningForm());
+  planningFormDepartmentSegments.value = [];
   Object.keys(formErrors).forEach((key) => {
     delete formErrors[key as keyof SkillPlanningPayload];
   });
   resetPlanningPersonSearchStates();
 }
 
+function selectedPlanningScopeDepartmentPath(): string[] {
+  const selectedPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
+  if (selectedPath.at(-1) === filterForm.planningDeptName) return selectedPath;
+  return findPlanningDepartmentPathByName(filterForm.planningDeptName);
+}
+
+function applySelectedPlanningScopeToForm(): void {
+  const level = filterForm.level as PlanningLevel;
+  const departmentPath = selectedPlanningScopeDepartmentPath();
+  planningForm.level = level;
+  setPlanningFormDepartmentPath(departmentPath, false);
+  planningForm.planningDeptName = filterForm.planningDeptName.trim();
+
+  if (level === '产品级') {
+    planningForm.offeringId = selectedFilterProduct.value?.offeringId ?? '';
+    planningForm.offeringName = filterForm.offeringName.trim();
+  } else {
+    planningForm.offeringId = '';
+    planningForm.offeringName = '';
+  }
+
+  planningForm.sceneId = findSceneIdByNames(
+    planningForm.firstScene,
+    planningForm.secondScene,
+    planningForm.planningDeptName,
+  );
+  planningForm.activityId = findActivityIdByNames(
+    planningForm.activityNodeName,
+    planningForm.subActivityNodeName,
+    planningForm.planningDeptName,
+  );
+}
+
 function fillPlanningFormFromRow(row: SkillPlanningItem) {
+  const normalizedLevel: PlanningLevel = row.level === '部门级' ? '部门级' : '产品级';
+  const master = findSkillMasterForPlanning(row.skillId, row.name);
   Object.assign(planningForm, {
+    skillId: master?.id || row.skillId || '',
     sceneId:
       row.sceneId || findSceneIdByNames(row.firstScene, row.secondScene, row.planningDeptName),
     activityId:
@@ -1086,32 +1724,41 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     secondScene: row.secondScene,
     activityNodeName: row.activityNodeName,
     subActivityNodeName: row.subActivityNodeName,
-    name: row.name,
-    description: row.description,
-    level: row.level,
+    name: master?.name || row.name,
+    description: master?.description || row.description,
+    level: normalizedLevel,
     offeringId: row.offeringId,
     offeringName: row.offeringName,
-    owner: row.owner,
-    deptName: row.deptName,
+    owner: master?.owner || row.owner,
+    deptName: master?.department || row.deptName,
     planningDeptName: row.planningDeptName,
-    developOwner: row.developOwner,
-    planedCompleteDate: row.planedCompleteDate,
-    status: row.status,
+    developOwner: master?.developOwner || row.developOwner,
+    planedCompleteDate: master?.plannedCompleteDate || row.planedCompleteDate,
+    status: master?.status || row.status,
   });
-  syncManagedTaxonomiesForDepartment(row.planningDeptName);
+  planningFormDepartmentSegments.value = findPlanningDepartmentPathByName(row.planningDeptName);
+  if (!transportIsHttp) {
+    syncManagedTaxonomiesForDepartment(row.planningDeptName);
+  }
   markPlanningPersonValueSelected('owner', planningPersonValue('owner'));
   markPlanningPersonValueSelected('developOwner', planningPersonValue('developOwner'));
 }
 
-function startInlineCreate() {
+async function startInlineCreate() {
   if (inlineCreateSubmitting.value || inlineEditSubmitting.value) {
     return;
   }
+  if (!ensurePlanningScopeSelection(true)) return;
   formMode.value = 'create';
   editingId.value = '';
   inlineEditId.value = '';
-  inlineCreateActive.value = true;
+  inlineCreateActive.value = false;
+  refreshSkillMasterOptions();
   resetPlanningForm();
+  applySelectedPlanningScopeToForm();
+  await loadPlanningFilterOptions(planningForm.planningDeptName);
+  formDialogOpen.value = true;
+  void searchPlanningSkills('');
 }
 
 function cancelInlineCreate(force = false) {
@@ -1151,16 +1798,22 @@ async function confirmInlineCreate() {
   }
 }
 
-function startInlineEdit(row: SkillPlanningItem) {
+async function startInlineEdit(row: SkillPlanningItem) {
   if (inlineCreateSubmitting.value || inlineEditSubmitting.value) {
     return;
   }
+  if (!ensurePlanningScopeSelection(true)) return;
   inlineCreateActive.value = false;
   formMode.value = 'edit';
   editingId.value = row.id;
-  inlineEditId.value = row.id;
+  inlineEditId.value = '';
+  refreshSkillMasterOptions();
   resetPlanningForm();
   fillPlanningFormFromRow(row);
+  applySelectedPlanningScopeToForm();
+  await loadPlanningFilterOptions(planningForm.planningDeptName);
+  formDialogOpen.value = true;
+  void searchPlanningSkills('');
 }
 
 function cancelInlineEdit(force = false) {
@@ -1202,6 +1855,8 @@ async function confirmInlineEdit() {
 
 function closeFormDialog() {
   formDialogOpen.value = false;
+  editingId.value = '';
+  resetPlanningForm();
 }
 
 function validateForm(): boolean {
@@ -1209,17 +1864,13 @@ function validateForm(): boolean {
     delete formErrors[key as keyof SkillPlanningPayload];
   });
   const requiredFields: Array<keyof SkillPlanningPayload> = [
+    'skillId',
     'firstScene',
     'secondScene',
     'activityNodeName',
     'subActivityNodeName',
-    'name',
-    'description',
     'level',
-    'owner',
-    'deptName',
     'planningDeptName',
-    'developOwner',
   ];
 
   requiredFields.forEach((field) => {
@@ -1228,36 +1879,42 @@ function validateForm(): boolean {
     }
   });
 
-  (['owner', 'developOwner'] as const).forEach((field) => {
-    if (isPlanningPersonSelectionMissing(field)) {
-      formErrors[field as keyof SkillPlanningPayload] = '请选择人员';
-    }
-  });
-
-  if (planningForm.description.length > 300) {
-    formErrors.description = '最多 300 字';
+  if (!planningLevelOptions.includes(planningForm.level as PlanningLevel)) {
+    formErrors.level = '请选择产品级或部门级';
+  }
+  if (!findSkillMasterForPlanning()) {
+    formErrors.skillId = '请选择 Skill 清单中的 Skill';
+  }
+  if (planningForm.level === '产品级' && !planningForm.offeringName.trim()) {
+    formErrors.offeringName = '请选择产品';
   }
 
   return Object.keys(formErrors).length === 0;
 }
 
 async function submitPlanningForm() {
+  if (!ensurePlanningScopeSelection(true)) return;
+  applySelectedPlanningScopeToForm();
   if (!validateForm()) {
     showToast('请补充必填信息');
     return;
   }
 
-  if (formMode.value === 'create') {
-    await createSkillPlanning({ ...planningForm });
-    showToast('已新增 Skill 规划');
-  } else {
-    await updateSkillPlanning(editingId.value, { ...planningForm });
-    showToast('已保存修改');
-  }
+  try {
+    if (formMode.value === 'create') {
+      await createSkillPlanning({ ...planningForm });
+      showToast('已新增 Skill 规划');
+    } else {
+      await updateSkillPlanning(editingId.value, { ...planningForm });
+      showToast('已保存修改');
+    }
 
-  closeFormDialog();
-  await loadPlanningFilterOptions();
-  await reloadList();
+    closeFormDialog();
+    await loadPlanningFilterOptions();
+    await reloadList();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '保存 Skill 规划失败，请稍后重试');
+  }
 }
 
 function resetBatchErrors() {
@@ -1293,43 +1950,13 @@ function closeBatchEditDialog() {
 
 function validateBatchForm(): boolean {
   resetBatchErrors();
-
-  if (batchForm.description.trim().length > 300) {
-    batchErrors.description = '最多 300 字';
-  }
-
-  (['owner', 'developOwner'] as const).forEach((field) => {
-    if (isBatchPersonSelectionMissing(field)) {
-      batchErrors[field as PlanningBatchField] = '请选择人员';
-    }
-  });
-
-  if (batchForm.owner.trim() && !batchForm.deptName.trim()) {
-    batchErrors.deptName = '请重新选择责任 Owner 带出部门';
-  }
-
-  return Object.keys(batchErrors).length === 0;
+  return true;
 }
 
 function collectBatchPatch(): SkillPlanningBatchPatch {
   const patch: SkillPlanningBatchPatch = {};
-  const description = batchForm.description.trim();
-  const offeringName = batchForm.offeringName.trim();
-  const owner = batchForm.owner.trim();
-  const deptName = batchForm.deptName.trim();
   const planningDeptName = batchForm.planningDeptName.trim();
-  const developOwner = batchForm.developOwner.trim();
-  const planedCompleteDate = batchForm.planedCompleteDate.trim();
-  const status = batchForm.status.trim();
-
-  if (description) patch.description = description;
-  if (offeringName) patch.offeringName = offeringName;
-  if (owner) patch.owner = owner;
-  if (deptName) patch.deptName = deptName;
   if (planningDeptName) patch.planningDeptName = planningDeptName;
-  if (developOwner) patch.developOwner = developOwner;
-  if (planedCompleteDate) patch.planedCompleteDate = planedCompleteDate;
-  if (status) patch.status = status as SkillPlanningProgress;
 
   return patch;
 }
@@ -1556,13 +2183,15 @@ function requestBatchDelete() {
 }
 
 function toggleRowSelection(id: string) {
+  const row = rows.value.find((item) => item.id === id);
+  if (!row || !canManagePlanningDepartment(row.planningDeptName)) return;
   selectedIds.value = selectedIds.value.includes(id)
     ? selectedIds.value.filter((item) => item !== id)
     : [...selectedIds.value, id];
 }
 
 function togglePageSelection() {
-  const pageIds = rows.value.map((row) => row.id);
+  const pageIds = selectableRows.value.map((row) => row.id);
   if (allPageSelected.value) {
     selectedIds.value = selectedIds.value.filter((id) => !pageIds.includes(id));
     return;
@@ -1584,24 +2213,51 @@ function progressClass(status: SkillPlanningProgress): string {
   const classMap: Record<SkillPlanningProgress, string> = {
     未开始: 'status-idle',
     开发中: 'status-dev',
-    联调中: 'status-test',
     已完成: 'status-done',
-    已延期: 'status-delay',
   };
   return classMap[status];
 }
 
+let planningScopeInitialLoadStarted = false;
+
+async function initializePlanningScopeAndList(): Promise<void> {
+  if (planningScopeInitialLoadStarted) return;
+  planningScopeInitialLoadStarted = true;
+  applyDefaultPlanningScopeSelection();
+  await loadFilterProducts();
+  await reloadList();
+}
+
+watch(
+  () => defaultPlanningDepartmentPath.value.join('\u0001'),
+  () => {
+    if (!planningScopeInitialLoadStarted || !applyDefaultPlanningScopeSelection()) return;
+    void (async () => {
+      await loadPlanningFilterOptions();
+      await loadFilterProducts();
+      pageNum.value = 1;
+      await reloadList();
+    })();
+  },
+);
+
 onMounted(() => {
   document.addEventListener('mousedown', handlePlanningHeaderFilterOutsideClick);
+  refreshSkillMasterOptions();
+  applyDefaultPlanningScopeSelection();
   void (async () => {
     await loadPlanningFilterOptions();
-    await reloadList();
+    await initializePlanningScopeAndList();
   })();
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handlePlanningHeaderFilterOutsideClick);
+  filterProductSearchSeq += 1;
+  productSearchSeq += 1;
+  planningSkillSearchSeq += 1;
   clearProductSearchTimer();
+  clearPlanningSkillSearchTimer();
   (['owner', 'developOwner'] as const).forEach(clearPlanningPersonSearchTimer);
   (['owner', 'developOwner'] as const).forEach(clearBatchPersonSearchTimer);
   if (toastTimer) {
@@ -1622,11 +2278,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <nav
-      class="planning-tabs"
-      :class="{ 'has-permission-tab': props.canConfigureDepartmentPermissions }"
-      aria-label="Skill planning tabs"
-    >
+    <nav class="planning-tabs" aria-label="Skill planning tabs">
       <button
         type="button"
         class="planning-tab"
@@ -1634,25 +2286,7 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'skills'"
       >
         <span class="planning-tab__icon" aria-hidden="true">01</span>
-        <span><strong>Skill 清单</strong><small>管理 Skill 内容</small></span>
-      </button>
-      <button
-        type="button"
-        class="planning-tab"
-        :class="{ 'is-active': activePlanningTab === 'scenes' }"
-        @click="activePlanningTab = 'scenes'"
-      >
-        <span class="planning-tab__icon" aria-hidden="true">02</span>
-        <span><strong>场景设置</strong><small>管理分类体系</small></span>
-      </button>
-      <button
-        type="button"
-        class="planning-tab"
-        :class="{ 'is-active': activePlanningTab === 'activities' }"
-        @click="activePlanningTab = 'activities'"
-      >
-        <span class="planning-tab__icon" aria-hidden="true">03</span>
-        <span><strong>活动管理</strong><small>管理 Skill 活动体系</small></span>
+        <span><strong>Skill 规划</strong></span>
       </button>
       <button
         type="button"
@@ -1660,45 +2294,69 @@ onBeforeUnmount(() => {
         :class="{ 'is-active': activePlanningTab === 'management' }"
         @click="activePlanningTab = 'management'"
       >
-        <span class="planning-tab__icon" aria-hidden="true">04</span>
-        <span><strong>Skill 管理</strong><small>维护独立 Skill 主体</small></span>
-      </button>
-      <button
-        v-if="props.canConfigureDepartmentPermissions"
-        type="button"
-        class="planning-tab"
-        :class="{ 'is-active': activePlanningTab === 'permissions' }"
-        @click="activePlanningTab = 'permissions'"
-      >
-        <span class="planning-tab__icon" aria-hidden="true">05</span>
-        <span><strong>部门权限配置</strong><small>管理 Skill 规划人员</small></span>
+        <span class="planning-tab__icon" aria-hidden="true">02</span>
+        <span><strong>Skill 清单</strong></span>
       </button>
     </nav>
 
     <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
       <section class="planning-filter-card" aria-label="Skill 规划查询">
-        <div class="filter-grid">
+        <div class="filter-grid" :class="{ 'is-department-level': filterForm.level === '部门级' }">
+          <label class="planning-field planning-field--level">
+            <span>层级 <em>*</em></span>
+            <select v-model="filterForm.level" @change="onPlanningScopeLevelChange">
+              <option v-for="item in planningLevelOptions" :key="`scope-${item}`" :value="item">
+                {{ item }}
+              </option>
+            </select>
+          </label>
           <div class="planning-field planning-field--dept">
-            <span>规划部门</span>
+            <span>{{ filterForm.level === '产品级' ? '产品所属部门 *' : '归属部门 *' }}</span>
             <MarketDeptCascader
               v-model="planningDepartmentSegments"
               class="planning-dept-cascader"
               :tree="planningDepartmentTree"
-              :max-level="4"
+              :max-level="6"
+              :disabled="!filterForm.level"
+              :all-label="filterForm.level ? '请选择部门' : '请先选择层级'"
+              clear-behavior="reset"
+              :clear-value="defaultPlanningDepartmentPath"
+              clear-text="恢复默认选择"
               selection-mode="confirm"
+              permission-mode="review-center"
+              :permission-path="legacyPlanningPermissionPath"
+              :before-done="guardPlanningDepartmentSelection"
+              searchable
               aria-label="按规划部门筛选 Skill"
               @change="onPlanningDepartmentChange"
               @clear="onPlanningDepartmentClear"
               @done="onPlanningDepartmentDone"
             />
           </div>
-          <label v-if="false" class="planning-field">
-            <span>产品</span>
-            <input
-              v-model.trim="filterForm.offeringName"
-              type="search"
-              placeholder="输入产品关键字搜索"
-            />
+          <label v-if="filterForm.level === '产品级'" class="planning-field">
+            <span>产品 <em>*</em></span>
+            <select
+              v-model="filterForm.offeringName"
+              :disabled="!filterForm.planningDeptName || filterProductsLoading"
+              @change="onFilterProductChange"
+            >
+              <option value="">
+                {{
+                  !filterForm.planningDeptName
+                    ? '请先选择部门'
+                    : filterProductsLoading
+                      ? '产品加载中...'
+                      : '请选择产品'
+                }}
+              </option>
+              <option
+                v-for="item in filterProductOptions"
+                :key="item.offeringId || item.offeringName"
+                :value="item.offeringName"
+              >
+                {{ item.offeringName }}
+              </option>
+            </select>
           </label>
           <label v-if="false" class="planning-field">
             <span>计划开始</span>
@@ -1714,8 +2372,8 @@ onBeforeUnmount(() => {
               v-model.trim="filterForm.keyword"
               type="search"
               placeholder="按 产品、Skill 名称、说明、责任Owner、开发责任人查询"
-              @keydown.enter="onSearchKeyword"
-              @input="onSearchKeyword"
+              @keydown.enter.prevent="onSearchKeyword"
+              @input="onSearchKeywordInput"
             />
           </label>
           <div class="filter-actions">
@@ -1756,6 +2414,7 @@ onBeforeUnmount(() => {
               type="button"
               class="planning-btn planning-btn--primary"
               :disabled="inlineCreateActive || inlineEditId !== ''"
+              :title="planningScopeErrorMessage || '新增 Skill 规划'"
               @click="startInlineCreate"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1780,6 +2439,7 @@ onBeforeUnmount(() => {
               导出
             </button>
             <button
+              v-if="false"
               type="button"
               class="planning-btn planning-btn--soft"
               @click="openBatchEditDialog"
@@ -1815,7 +2475,12 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th class="select-col">
-                  <input type="checkbox" :checked="allPageSelected" @change="togglePageSelection" />
+                  <input
+                    type="checkbox"
+                    :checked="allPageSelected"
+                    :disabled="selectableRows.length === 0"
+                    @change="togglePageSelection"
+                  />
                 </th>
                 <th>
                   <div
@@ -2035,65 +2700,9 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </th>
-                <th>Skill 名称</th>
-                <th class="desc-col">Skill 说明</th>
-                <th>
-                  <div
-                    class="planning-th-filter"
-                    :class="{
-                      'is-open': isHeaderFilterOpen('level'),
-                      'is-active': headerFilterSelectedCount('level') > 0,
-                    }"
-                  >
-                    <button
-                      type="button"
-                      class="planning-th-filter__trigger"
-                      @click.stop="toggleHeaderFilterMenu('level')"
-                    >
-                      <span>层级</span>
-                      <span
-                        class="planning-th-filter__indicator"
-                        :class="{ 'is-filtered': hasHeaderFilterSelection('level') }"
-                        aria-hidden="true"
-                      ></span>
-                    </button>
-                    <div v-if="isHeaderFilterOpen('level')" class="planning-th-filter__menu">
-                      <div class="planning-th-filter__menu-head">
-                        <strong>层级</strong>
-                        <button
-                          type="button"
-                          class="planning-th-filter__clear"
-                          :disabled="headerFilterSelectedCount('level') === 0"
-                          @click.stop="clearHeaderFilter('level')"
-                        >
-                          清空
-                        </button>
-                      </div>
-                      <div
-                        v-if="headerFilterOptionList('level').length"
-                        class="planning-th-filter__options"
-                      >
-                        <label
-                          v-for="item in headerFilterOptionList('level')"
-                          :key="`level-${item}`"
-                          class="planning-th-filter__option"
-                        >
-                          <input
-                            type="checkbox"
-                            :checked="headerFilterSelections.level.includes(item)"
-                            @change="toggleHeaderFilterOption('level', item)"
-                          />
-                          <span>{{ item }}</span>
-                        </label>
-                      </div>
-                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                    </div>
-                  </div>
-                </th>
-                <th>产品</th>
+                <th>Skill</th>
+                <th class="desc-col">描述</th>
                 <th>责任 Owner</th>
-                <th title="随责任 Owner 自动变化">Owner 所在部门</th>
-                <th>规划部门</th>
                 <th>开发责任人</th>
                 <th>
                   <button
@@ -2103,7 +2712,7 @@ onBeforeUnmount(() => {
                     :title="`计划完成时间排序：${plannedFinishSortSymbol}`"
                     @click="togglePlannedFinishSort"
                   >
-                    <span>计划完成时间</span>
+                    <span>计划完成</span>
                     <span class="planning-th-sort__symbol" aria-hidden="true">
                       {{ plannedFinishSortSymbol }}
                     </span>
@@ -2289,7 +2898,9 @@ onBeforeUnmount(() => {
                       v-model="planningForm.level"
                       class="planning-inline-control"
                       :class="{ 'has-error': formErrors.level }"
+                      @change="onPlanningLevelChange"
                     >
+                      <option value="">请选择</option>
                       <option v-for="item in levelOptions" :key="item" :value="item">
                         {{ item }}
                       </option>
@@ -2306,9 +2917,17 @@ onBeforeUnmount(() => {
                         type="button"
                         class="planning-inline-control planning-product-trigger"
                         :class="{ 'is-placeholder': !planningForm.offeringName }"
+                        :disabled="
+                          planningForm.level !== '产品级' || !planningForm.planningDeptName
+                        "
                         @click="togglePlanningProductSelect"
                       >
-                        <span>{{ planningForm.offeringName || '产品' }}</span>
+                        <span>{{
+                          planningForm.level === '产品级'
+                            ? planningForm.offeringName ||
+                              (planningForm.planningDeptName ? '请选择产品' : '请先选部门')
+                            : '—'
+                        }}</span>
                         <span class="planning-product-caret">⌄</span>
                       </button>
                       <div
@@ -2360,6 +2979,9 @@ onBeforeUnmount(() => {
                         </div>
                       </div>
                     </div>
+                    <small v-if="formErrors.offeringName" class="planning-inline-error">
+                      {{ formErrors.offeringName }}
+                    </small>
                   </div>
                 </td>
                 <td>
@@ -2430,17 +3052,31 @@ onBeforeUnmount(() => {
                 </td>
                 <td>
                   <div class="planning-inline-field">
-                    <select
-                      v-model="planningForm.planningDeptName"
-                      class="planning-inline-control"
+                    <MarketDeptCascader
+                      v-model="planningFormDepartmentSegments"
+                      class="planning-dept-cascader planning-inline-dept-cascader"
                       :class="{ 'has-error': formErrors.planningDeptName }"
-                      @change="onPlanningDepartmentFieldChange"
-                    >
-                      <option value="">请选择</option>
-                      <option v-for="item in planningDepartmentOptions" :key="item" :value="item">
-                        {{ item }}
-                      </option>
-                    </select>
+                      :tree="planningDepartmentTree"
+                      :max-level="6"
+                      :disabled="!planningForm.level"
+                      :all-label="
+                        planningForm.level === '产品级'
+                          ? '产品所属部门'
+                          : planningForm.level === '部门级'
+                            ? '归属部门'
+                            : '请先选层级'
+                      "
+                      clear-behavior="reset"
+                      :clear-value="defaultPlanningDepartmentPath"
+                      clear-text="恢复默认选择"
+                      selection-mode="confirm"
+                      permission-mode="review-center"
+                      :permission-path="legacyPlanningPermissionPath"
+                      :before-done="guardPlanningDepartmentSelection"
+                      searchable
+                      @clear="onPlanningFormDepartmentClear"
+                      @done="onPlanningFormDepartmentDone"
+                    />
                     <small v-if="formErrors.planningDeptName" class="planning-inline-error">{{
                       formErrors.planningDeptName
                     }}</small>
@@ -2540,10 +3176,16 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="loading">
-                <td colspan="16" class="planning-empty">正在加载 Skill 规划数据...</td>
+                <td colspan="12" class="planning-empty">正在加载 Skill 规划数据...</td>
               </tr>
               <tr v-else-if="rows.length === 0 && !inlineCreateActive">
-                <td colspan="16" class="planning-empty">暂无符合条件的 Skill 规划</td>
+                <td colspan="12" class="planning-empty">
+                  {{
+                    hasCompletePlanningScope
+                      ? '暂无符合条件的 Skill 规划'
+                      : planningScopeErrorMessage
+                  }}
+                </td>
               </tr>
               <template v-else>
                 <template v-for="row in rows" :key="row.id">
@@ -2670,6 +3312,7 @@ onBeforeUnmount(() => {
                           v-model="planningForm.level"
                           class="planning-inline-control"
                           :class="{ 'has-error': formErrors.level }"
+                          @change="onPlanningLevelChange"
                         >
                           <option value="">请选择</option>
                           <option v-for="item in levelOptions" :key="item" :value="item">
@@ -2688,9 +3331,17 @@ onBeforeUnmount(() => {
                             type="button"
                             class="planning-inline-control planning-product-trigger"
                             :class="{ 'is-placeholder': !planningForm.offeringName }"
+                            :disabled="
+                              planningForm.level !== '产品级' || !planningForm.planningDeptName
+                            "
                             @click="togglePlanningProductSelect"
                           >
-                            <span>{{ planningForm.offeringName || '产品' }}</span>
+                            <span>{{
+                              planningForm.level === '产品级'
+                                ? planningForm.offeringName ||
+                                  (planningForm.planningDeptName ? '请选择产品' : '请先选部门')
+                                : '—'
+                            }}</span>
                             <span class="planning-product-caret">⌄</span>
                           </button>
                           <div
@@ -2744,6 +3395,9 @@ onBeforeUnmount(() => {
                             </div>
                           </div>
                         </div>
+                        <small v-if="formErrors.offeringName" class="planning-inline-error">
+                          {{ formErrors.offeringName }}
+                        </small>
                       </div>
                     </td>
                     <td>
@@ -2797,7 +3451,7 @@ onBeforeUnmount(() => {
                         </small>
                       </div>
                     </td>
-                    <td>
+                    <!-- <td>
                       <div class="planning-inline-field">
                         <input
                           :value="planningForm.deptName"
@@ -2811,24 +3465,34 @@ onBeforeUnmount(() => {
                           {{ formErrors.deptName }}
                         </small>
                       </div>
-                    </td>
+                    </td> -->
                     <td>
                       <div class="planning-inline-field">
-                        <select
-                          v-model="planningForm.planningDeptName"
-                          class="planning-inline-control"
+                        <MarketDeptCascader
+                          v-model="planningFormDepartmentSegments"
+                          class="planning-dept-cascader planning-inline-dept-cascader"
                           :class="{ 'has-error': formErrors.planningDeptName }"
-                          @change="onPlanningDepartmentFieldChange"
-                        >
-                          <option value="">请选择</option>
-                          <option
-                            v-for="item in planningDepartmentOptions"
-                            :key="item"
-                            :value="item"
-                          >
-                            {{ item }}
-                          </option>
-                        </select>
+                          :tree="planningDepartmentTree"
+                          :max-level="6"
+                          :disabled="!planningForm.level"
+                          :all-label="
+                            planningForm.level === '产品级'
+                              ? '产品所属部门'
+                              : planningForm.level === '部门级'
+                                ? '归属部门'
+                                : '请先选层级'
+                          "
+                          clear-behavior="reset"
+                          :clear-value="defaultPlanningDepartmentPath"
+                          clear-text="恢复默认选择"
+                          selection-mode="confirm"
+                          permission-mode="review-center"
+                          :permission-path="legacyPlanningPermissionPath"
+                          :before-done="guardPlanningDepartmentSelection"
+                          searchable
+                          @clear="onPlanningFormDepartmentClear"
+                          @done="onPlanningFormDepartmentDone"
+                        />
                         <small v-if="formErrors.planningDeptName" class="planning-inline-error">{{
                           formErrors.planningDeptName
                         }}</small>
@@ -2934,6 +3598,7 @@ onBeforeUnmount(() => {
                       <input
                         type="checkbox"
                         :checked="selectedIds.includes(row.id)"
+                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
                         @change="toggleRowSelection(row.id)"
                       />
                     </td>
@@ -2947,11 +3612,7 @@ onBeforeUnmount(() => {
                     <td class="desc-col">
                       <span :title="row.description">{{ row.description }}</span>
                     </td>
-                    <td>{{ row.level }}</td>
-                    <td>{{ row.offeringName }}</td>
                     <td>{{ row.owner }}</td>
-                    <td>{{ row.deptName }}</td>
-                    <td>{{ row.planningDeptName || '待明确' }}</td>
                     <td>{{ row.developOwner }}</td>
                     <td>{{ row.planedCompleteDate }}</td>
                     <td>
@@ -2963,6 +3624,7 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn"
+                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
                         title="编辑"
                         aria-label="编辑"
                         @click="startInlineEdit(row)"
@@ -2975,6 +3637,7 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn icon-btn--danger"
+                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
                         title="删除"
                         aria-label="删除"
                         @click="requestDeleteRow(row)"
@@ -3011,29 +3674,14 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <SceneSettingsPanel
-      v-if="activePlanningTab === 'scenes'"
-      :department-tree="planningDepartmentTree"
-      :allowed-department-names="props.permissionDepartmentNames"
-      @changed="handleManagedScenesChanged"
-    />
-
-    <ActivityManagementPanel
-      v-if="activePlanningTab === 'activities'"
-      :department-tree="planningDepartmentTree"
-      :allowed-department-names="props.permissionDepartmentNames"
-      @changed="handleManagedActivitiesChanged"
-    />
-
     <SkillMasterManagementPanel
       v-if="activePlanningTab === 'management'"
       :department-tree="planningDepartmentTree"
-    />
-
-    <DepartmentPlanningPermissionPanel
-      v-if="props.canConfigureDepartmentPermissions && activePlanningTab === 'permissions'"
-      :department-tree="planningDepartmentTree"
-      :allowed-department-names="props.permissionDepartmentNames"
+      :user-id="props.userId"
+      :current-user-department-path="currentUserMinimumDepartmentPath"
+      :allowed-department-names="props.allowedDepartmentNames"
+      :allowed-department-paths="props.allowedDepartmentPaths"
+      :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
     />
 
     <Teleport to="body">
@@ -3107,6 +3755,7 @@ onBeforeUnmount(() => {
 
             <div class="import-dialog__template">
               <button
+                v-if="false"
                 type="button"
                 class="import-template-link"
                 :disabled="templateDownloadPending"
@@ -3160,7 +3809,10 @@ onBeforeUnmount(() => {
           <div class="planning-dialog__head">
             <div>
               <strong>批量修改 Skill 规划</strong>
-              <p>已选 {{ selectedIds.length }} 条，未填写字段将保持原值。</p>
+              <p>
+                已选 {{ selectedIds.length }} 条，本入口仅修改规划关系；原子 Skill 信息请在 Skill
+                清单维护。
+              </p>
             </div>
             <button
               type="button"
@@ -3173,71 +3825,13 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div class="batch-form">
-            <div class="batch-form__locked" aria-label="不可修改字段">
-              <strong>不可修改字段</strong>
+            <div class="batch-form__locked" aria-label="批量修改不可编辑字段">
+              <strong>批量修改不可编辑</strong>
               <div class="batch-form__locked-list">
                 <span v-for="item in batchReadonlyHeaders" :key="item">{{ item }}</span>
               </div>
             </div>
             <div class="batch-form__grid">
-              <label class="planning-field">
-                <span>责任 Owner</span>
-                <div class="planning-person-select planning-person-select--dialog">
-                  <input
-                    :value="batchForm.owner"
-                    type="text"
-                    :class="{ 'has-error': batchErrors.owner }"
-                    placeholder="不填写则不修改"
-                    @focus="openBatchPersonSelect('owner')"
-                    @input="onBatchPersonInput('owner', $event)"
-                    @keydown.enter.prevent="searchBatchUsers('owner')"
-                    @blur="scheduleClearUnselectedBatchOwnerInput"
-                  />
-                  <div
-                    v-if="batchPersonSearchStates.owner.open"
-                    class="planning-person-panel"
-                    @mousedown.stop
-                  >
-                    <div class="planning-person-list">
-                      <span
-                        v-if="batchPersonSearchStates.owner.loading"
-                        class="planning-person-empty"
-                        >查询中...</span
-                      >
-                      <template v-else>
-                        <button
-                          v-for="item in batchPersonSearchStates.owner.options"
-                          :key="'batch-owner-' + item.label"
-                          type="button"
-                          class="planning-person-option"
-                          :class="{ 'is-selected': item.label === batchForm.owner }"
-                          @click="chooseBatchPerson('owner', item)"
-                        >
-                          {{ item.label }}
-                        </button>
-                        <span
-                          v-if="batchPersonSearchStates.owner.message"
-                          class="planning-person-empty"
-                        >
-                          {{ batchPersonSearchStates.owner.message }}
-                        </span>
-                      </template>
-                    </div>
-                  </div>
-                </div>
-                <small v-if="batchErrors.owner">{{ batchErrors.owner }}</small>
-              </label>
-              <label class="planning-field">
-                <span>Owner 所在部门</span>
-                <input
-                  :value="batchForm.deptName"
-                  type="text"
-                  readonly
-                  :class="{ 'has-error': batchErrors.deptName }"
-                  placeholder="随责任 Owner 自动带出"
-                />
-                <small v-if="batchErrors.deptName">{{ batchErrors.deptName }}</small>
-              </label>
               <label class="planning-field">
                 <span>规划部门</span>
                 <select v-model="batchForm.planningDeptName">
@@ -3246,74 +3840,6 @@ onBeforeUnmount(() => {
                     {{ item }}
                   </option>
                 </select>
-              </label>
-              <label class="planning-field">
-                <span>开发责任人</span>
-                <div class="planning-person-select planning-person-select--dialog">
-                  <input
-                    :value="batchForm.developOwner"
-                    type="text"
-                    :class="{ 'has-error': batchErrors.developOwner }"
-                    placeholder="不填写则不修改"
-                    @focus="openBatchPersonSelect('developOwner')"
-                    @input="onBatchPersonInput('developOwner', $event)"
-                    @keydown.enter.prevent="searchBatchUsers('developOwner')"
-                  />
-                  <div
-                    v-if="batchPersonSearchStates.developOwner.open"
-                    class="planning-person-panel"
-                    @mousedown.stop
-                  >
-                    <div class="planning-person-list">
-                      <span
-                        v-if="batchPersonSearchStates.developOwner.loading"
-                        class="planning-person-empty"
-                        >查询中...</span
-                      >
-                      <template v-else>
-                        <button
-                          v-for="item in batchPersonSearchStates.developOwner.options"
-                          :key="'batch-developOwner-' + item.label"
-                          type="button"
-                          class="planning-person-option"
-                          :class="{ 'is-selected': item.label === batchForm.developOwner }"
-                          @click="chooseBatchPerson('developOwner', item)"
-                        >
-                          {{ item.label }}
-                        </button>
-                        <span
-                          v-if="batchPersonSearchStates.developOwner.message"
-                          class="planning-person-empty"
-                        >
-                          {{ batchPersonSearchStates.developOwner.message }}
-                        </span>
-                      </template>
-                    </div>
-                  </div>
-                </div>
-                <small v-if="batchErrors.developOwner">{{ batchErrors.developOwner }}</small>
-              </label>
-              <label class="planning-field">
-                <span>计划完成时间</span>
-                <input v-model="batchForm.planedCompleteDate" type="date" />
-              </label>
-              <label class="planning-field">
-                <span>当前进展</span>
-                <select v-model="batchForm.status">
-                  <option value="">不修改</option>
-                  <option v-for="item in progressOptions" :key="item" :value="item">
-                    {{ item }}
-                  </option>
-                </select>
-              </label>
-              <label class="planning-field planning-field--textarea">
-                <span>Skill 说明</span>
-                <textarea
-                  v-model.trim="batchForm.description"
-                  maxlength="300"
-                  placeholder="不填写则不修改，最多 300 字"
-                />
-                <small v-if="batchErrors.description">{{ batchErrors.description }}</small>
               </label>
             </div>
           </div>
@@ -3349,7 +3875,7 @@ onBeforeUnmount(() => {
           <div class="planning-dialog__head">
             <div>
               <strong>{{ formMode === 'create' ? '新增 Skill 规划' : '编辑 Skill 规划' }}</strong>
-              <p>请按表格字段填写规划建设信息。</p>
+              <p>层级及归属部门/产品继承顶部当前选择；请选择原子 Skill 和场景、活动。</p>
             </div>
             <button type="button" class="dialog-close" aria-label="关闭" @click="closeFormDialog">
               ×
@@ -3426,29 +3952,108 @@ onBeforeUnmount(() => {
                 formErrors.subActivityNodeName
               }}</small>
             </label>
+            <div class="planning-field planning-field--wide">
+              <span>选择 Skill <em>*</em></span>
+              <div class="planning-skill-select">
+                <button
+                  type="button"
+                  class="planning-skill-trigger"
+                  :class="{ 'is-placeholder': !planningForm.skillId }"
+                  aria-haspopup="listbox"
+                  :aria-expanded="planningSkillDropdownOpen"
+                  @click="togglePlanningSkillSelect"
+                >
+                  <span>{{
+                    planningForm.name ||
+                    `请选择 ${planningForm.planningDeptName || '当前部门'}相关的原子 Skill`
+                  }}</span>
+                  <span class="planning-skill-caret">⌄</span>
+                </button>
+                <div v-if="planningSkillDropdownOpen" class="planning-skill-panel" @mousedown.stop>
+                  <div class="planning-skill-search-wrap">
+                    <input
+                      :value="planningSkillSearchKeyword"
+                      type="search"
+                      class="planning-skill-search"
+                      placeholder="跨部门搜索：Skill 名称、描述、Owner、开发责任人"
+                      @input="onPlanningSkillSearchInput"
+                      @keydown.enter.prevent="searchPlanningSkillsImmediately"
+                    />
+                    <button
+                      v-if="planningSkillSearchKeyword"
+                      type="button"
+                      class="planning-skill-clear"
+                      aria-label="清空 Skill 搜索"
+                      title="清空搜索并恢复当前部门 Skill"
+                      @click="clearPlanningSkillSearch"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p class="planning-skill-scope">
+                    {{
+                      planningSkillSearchKeyword.trim()
+                        ? '正在全部部门的 Skill 清单中搜索'
+                        : `默认展示 Owner 或开发责任人在「${planningForm.planningDeptName}」的 Skill`
+                    }}
+                  </p>
+                  <div class="planning-skill-list" role="listbox">
+                    <span v-if="planningSkillSearching" class="planning-skill-empty">
+                      正在查询 Skill...
+                    </span>
+                    <template v-else>
+                      <button
+                        v-for="record in planningSkillOptions"
+                        :key="record.id"
+                        type="button"
+                        class="planning-skill-option"
+                        :class="{ 'is-selected': record.id === planningForm.skillId }"
+                        role="option"
+                        :aria-selected="record.id === planningForm.skillId"
+                        @click="choosePlanningSkill(record)"
+                      >
+                        <span class="planning-skill-option__main">
+                          <strong>{{ record.name }}</strong>
+                          <small>{{ record.description }}</small>
+                        </span>
+                        <span class="planning-skill-option__meta">
+                          <small>Owner：{{ record.owner }}</small>
+                          <small>开发：{{ record.developOwner || '待明确' }}</small>
+                          <small>{{ planningSkillDepartmentSummary(record) }}</small>
+                        </span>
+                      </button>
+                      <span v-if="planningSkillSearchMessage" class="planning-skill-empty">
+                        {{ planningSkillSearchMessage }}
+                      </span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <small v-if="formErrors.skillId">{{ formErrors.skillId }}</small>
+            </div>
             <label class="planning-field">
-              <span>Skill 名称 <em>*</em></span>
-              <input v-model.trim="planningForm.name" type="text" />
-              <small v-if="formErrors.name">{{ formErrors.name }}</small>
-            </label>
-            <label class="planning-field">
-              <span>层级 <em>*</em></span>
-              <select v-model="planningForm.level">
+              <span>层级（顶部已选）<em>*</em></span>
+              <select v-model="planningForm.level" disabled>
                 <option value="">请选择</option>
                 <option v-for="item in levelOptions" :key="item" :value="item">{{ item }}</option>
               </select>
               <small v-if="formErrors.level">{{ formErrors.level }}</small>
             </label>
             <label class="planning-field planning-field--product">
-              <span>产品</span>
+              <span>产品（顶部已选）</span>
               <div class="planning-product-select planning-product-select--dialog">
                 <button
                   type="button"
                   class="planning-product-trigger planning-product-trigger--dialog"
                   :class="{ 'is-placeholder': !planningForm.offeringName }"
-                  @click="togglePlanningProductSelect"
+                  disabled
                 >
-                  <span>{{ planningForm.offeringName || '请选择产品' }}</span>
+                  <span>{{
+                    planningForm.level === '产品级'
+                      ? planningForm.offeringName ||
+                        (planningForm.planningDeptName ? '请选择产品' : '请先选择产品所属部门')
+                      : '部门级无需选择产品'
+                  }}</span>
                   <span class="planning-product-caret">⌄</span>
                 </button>
                 <div v-if="productDropdownOpen" class="planning-product-panel" @mousedown.stop>
@@ -3492,49 +4097,13 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
               </div>
+              <small v-if="formErrors.offeringName">{{ formErrors.offeringName }}</small>
             </label>
             <label class="planning-field">
               <span>责任 Owner <em>*</em></span>
-              <div class="planning-person-select planning-person-select--dialog">
-                <input
-                  :value="planningForm.owner"
-                  type="text"
-                  :class="{ 'has-error': formErrors.owner }"
-                  @focus="openPlanningPersonSelect('owner')"
-                  @input="onPlanningPersonInput('owner', $event)"
-                  @keydown.enter.prevent="searchPlanningUsers('owner')"
-                  @blur="scheduleClearUnselectedPlanningOwnerInput"
-                />
-                <div
-                  v-if="personSearchStates.owner.open"
-                  class="planning-person-panel"
-                  @mousedown.stop
-                >
-                  <div class="planning-person-list">
-                    <span v-if="personSearchStates.owner.loading" class="planning-person-empty"
-                      >查询中...</span
-                    >
-                    <template v-else>
-                      <button
-                        v-for="item in personSearchStates.owner.options"
-                        :key="'dialog-owner-' + item.label"
-                        type="button"
-                        class="planning-person-option"
-                        :class="{ 'is-selected': item.label === planningForm.owner }"
-                        @click="choosePlanningPerson('owner', item)"
-                      >
-                        {{ item.label }}
-                      </button>
-                      <span v-if="personSearchStates.owner.message" class="planning-person-empty">
-                        {{ personSearchStates.owner.message }}
-                      </span>
-                    </template>
-                  </div>
-                </div>
-              </div>
-              <small v-if="formErrors.owner">{{ formErrors.owner }}</small>
+              <input :value="planningForm.owner" type="text" readonly placeholder="随 Skill 带出" />
             </label>
-            <label class="planning-field">
+            <!-- <label class="planning-field">
               <span>Owner 所在部门 <em>*</em></span>
               <input
                 :value="planningForm.deptName"
@@ -3544,73 +4113,50 @@ onBeforeUnmount(() => {
                 placeholder="随责任 Owner 自动带出"
               />
               <small v-if="formErrors.deptName">{{ formErrors.deptName }}</small>
-            </label>
-            <label class="planning-field">
-              <span>规划部门 <em>*</em></span>
-              <select
-                v-model="planningForm.planningDeptName"
+            </label> -->
+            <label class="planning-field planning-field--dept">
+              <span>{{
+                planningForm.level === '产品级'
+                  ? '产品所属部门（顶部已选）*'
+                  : '归属部门（顶部已选）*'
+              }}</span>
+              <MarketDeptCascader
+                v-model="planningFormDepartmentSegments"
+                class="planning-dept-cascader"
                 :class="{ 'has-error': formErrors.planningDeptName }"
-                @change="onPlanningDepartmentFieldChange"
-              >
-                <option value="">请选择规划部门</option>
-                <option v-for="item in planningDepartmentOptions" :key="item" :value="item">
-                  {{ item }}
-                </option>
-              </select>
+                :tree="planningDepartmentTree"
+                :max-level="6"
+                disabled
+                :all-label="planningForm.level ? '请选择部门' : '请先选择层级'"
+                clear-behavior="reset"
+                :clear-value="defaultPlanningDepartmentPath"
+                clear-text="恢复默认选择"
+                selection-mode="confirm"
+                permission-mode="review-center"
+                :permission-path="legacyPlanningPermissionPath"
+                :before-done="guardPlanningDepartmentSelection"
+                searchable
+                @clear="onPlanningFormDepartmentClear"
+                @done="onPlanningFormDepartmentDone"
+              />
               <small v-if="formErrors.planningDeptName">{{ formErrors.planningDeptName }}</small>
             </label>
             <label class="planning-field">
               <span>开发责任人 <em>*</em></span>
-              <div class="planning-person-select planning-person-select--dialog">
-                <input
-                  :value="planningForm.developOwner"
-                  type="text"
-                  :class="{ 'has-error': formErrors.developOwner }"
-                  @focus="openPlanningPersonSelect('developOwner')"
-                  @input="onPlanningPersonInput('developOwner', $event)"
-                  @keydown.enter.prevent="searchPlanningUsers('developOwner')"
-                />
-                <div
-                  v-if="personSearchStates.developOwner.open"
-                  class="planning-person-panel"
-                  @mousedown.stop
-                >
-                  <div class="planning-person-list">
-                    <span
-                      v-if="personSearchStates.developOwner.loading"
-                      class="planning-person-empty"
-                      >查询中...</span
-                    >
-                    <template v-else>
-                      <button
-                        v-for="item in personSearchStates.developOwner.options"
-                        :key="'dialog-developOwner-' + item.label"
-                        type="button"
-                        class="planning-person-option"
-                        :class="{ 'is-selected': item.label === planningForm.developOwner }"
-                        @click="choosePlanningPerson('developOwner', item)"
-                      >
-                        {{ item.label }}
-                      </button>
-                      <span
-                        v-if="personSearchStates.developOwner.message"
-                        class="planning-person-empty"
-                      >
-                        {{ personSearchStates.developOwner.message }}
-                      </span>
-                    </template>
-                  </div>
-                </div>
-              </div>
-              <small v-if="formErrors.developOwner">{{ formErrors.developOwner }}</small>
+              <input
+                :value="planningForm.developOwner"
+                type="text"
+                readonly
+                placeholder="随 Skill 带出"
+              />
             </label>
             <label class="planning-field">
               <span>计划完成时间</span>
-              <input v-model="planningForm.planedCompleteDate" type="date" />
+              <input :value="planningForm.planedCompleteDate" type="date" readonly />
             </label>
             <label class="planning-field">
               <span>当前进展</span>
-              <select v-model="planningForm.status">
+              <select v-model="planningForm.status" disabled>
                 <option v-for="item in progressOptions" :key="item" :value="item">
                   {{ item }}
                 </option>
@@ -3619,11 +4165,11 @@ onBeforeUnmount(() => {
             <label class="planning-field planning-field--textarea">
               <span>Skill 说明 <em>*</em></span>
               <textarea
-                v-model.trim="planningForm.description"
+                :value="planningForm.description"
                 maxlength="300"
-                placeholder="最多 300 字"
+                placeholder="随 Skill 带出"
+                readonly
               />
-              <small v-if="formErrors.description">{{ formErrors.description }}</small>
             </label>
           </div>
           <div class="planning-dialog__actions">
@@ -3819,9 +4365,19 @@ onBeforeUnmount(() => {
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns:
+    minmax(120px, 0.65fr)
+    minmax(260px, 1.4fr)
+    minmax(180px, 0.9fr)
+    minmax(320px, 2fr)
+    auto;
   gap: 14px;
   align-items: end;
+  min-width: 0;
+}
+
+.filter-grid.is-department-level {
+  grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr) minmax(320px, 2fr) auto;
 }
 
 .planning-field {
@@ -3870,6 +4426,10 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.planning-field--wide {
+  grid-column: span 2;
+}
+
 .planning-dept-cascader {
   width: 100%;
   min-width: 0;
@@ -3900,6 +4460,15 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
 
+.planning-dept-cascader :deep(.market-dept-cascader-trigger:disabled) {
+  border-color: #d8e2f0;
+  background: #f8fbff;
+  color: #64748b;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .planning-dept-cascader :deep(.market-dept-cascader-caret) {
   right: 10px;
 }
@@ -3924,7 +4493,7 @@ onBeforeUnmount(() => {
 }
 
 .planning-field--keyword {
-  grid-column: span 2;
+  grid-column: auto;
 }
 
 .filter-actions {
@@ -4059,7 +4628,7 @@ onBeforeUnmount(() => {
 
 .planning-table {
   width: 100%;
-  min-width: 1920px;
+  min-width: 1480px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -4330,11 +4899,33 @@ onBeforeUnmount(() => {
   background: #fff7f7;
 }
 
+.planning-inline-dept-cascader :deep(.market-dept-cascader-trigger) {
+  height: 34px;
+  min-height: 34px;
+  padding-right: 26px;
+  font-size: 12px;
+}
+
+.planning-inline-dept-cascader.has-error :deep(.market-dept-cascader-trigger),
+.planning-dept-cascader.has-error :deep(.market-dept-cascader-trigger) {
+  border-color: #fca5a5;
+  background: #fff7f7;
+}
+
 .planning-inline-control--readonly,
-.planning-field input[readonly] {
+.planning-field input[readonly],
+.planning-field textarea[readonly],
+.planning-field select:disabled {
+  border-color: #d8e2f0;
   background: #f8fbff;
   color: #64748b;
   cursor: not-allowed;
+  opacity: 1;
+  -webkit-text-fill-color: #64748b;
+}
+
+.planning-field textarea[readonly] {
+  resize: none;
 }
 
 .planning-person-select {
@@ -4424,6 +5015,14 @@ onBeforeUnmount(() => {
 
 .planning-product-trigger.is-placeholder {
   color: #7f8fa6;
+}
+
+.planning-product-trigger:disabled {
+  border-color: #d8e2f0;
+  background: #f8fbff;
+  color: #64748b;
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .planning-product-trigger:focus {
@@ -4545,6 +5144,200 @@ onBeforeUnmount(() => {
   color: #70839d;
   font-size: 12px;
 }
+
+.planning-skill-select {
+  position: relative;
+  min-width: 0;
+}
+
+.planning-skill-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #d8e2f0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #10243f;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planning-skill-trigger > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-skill-trigger.is-placeholder {
+  color: #7f8fa6;
+}
+
+.planning-skill-trigger:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+  outline: none;
+}
+
+.planning-skill-caret {
+  flex: 0 0 auto;
+  color: #8aa0b7;
+  font-size: 12px;
+}
+
+.planning-skill-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 75;
+  width: 100%;
+  min-width: min(720px, calc(100vw - 80px));
+  padding: 10px;
+  border: 1px solid #dbe6f5;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 20px 48px rgba(33, 53, 84, 0.2);
+  box-sizing: border-box;
+}
+
+.planning-skill-search-wrap {
+  position: relative;
+}
+
+.planning-skill-search {
+  width: 100%;
+  height: 38px;
+  min-width: 0;
+  padding: 0 36px 0 11px;
+  border: 1px solid #d8e2f0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #10243f;
+  font-size: 13px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.planning-skill-search:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+
+.planning-skill-clear {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #63758d;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.planning-skill-clear:hover {
+  background: #eef5ff;
+  color: #1263e6;
+}
+
+.planning-skill-scope {
+  margin: 8px 2px 4px;
+  color: #6d7f98;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.planning-skill-list {
+  display: grid;
+  gap: 5px;
+  max-height: 286px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+
+.planning-skill-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 34%);
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 62px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #253852;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planning-skill-option:hover,
+.planning-skill-option.is-selected {
+  background: #eef5ff;
+  color: #1263e6;
+}
+
+.planning-skill-option__main,
+.planning-skill-option__meta {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.planning-skill-option__main strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-skill-option__main small,
+.planning-skill-option__meta small {
+  overflow: hidden;
+  color: #6f8098;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-skill-option.is-selected .planning-skill-option__main small,
+.planning-skill-option.is-selected .planning-skill-option__meta small {
+  color: #5277ae;
+}
+
+.planning-skill-empty {
+  display: block;
+  padding: 16px 10px;
+  color: #70839d;
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .planning-skill-panel {
+    min-width: 100%;
+  }
+
+  .planning-skill-option {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
 .planning-inline-error {
   color: #dc2626;
   font-size: 11px;
@@ -5086,7 +5879,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1280px) {
-  .filter-grid {
+  .filter-grid,
+  .filter-grid.is-department-level {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
 }
@@ -5095,12 +5889,8 @@ onBeforeUnmount(() => {
   .planning-tabs {
     display: grid;
     width: 100%;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     box-sizing: border-box;
-  }
-
-  .planning-tabs.has-permission-tab {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .planning-tab {
@@ -5117,6 +5907,7 @@ onBeforeUnmount(() => {
   }
 
   .filter-grid,
+  .filter-grid.is-department-level,
   .planning-form-grid,
   .batch-form__grid {
     grid-template-columns: 1fr;

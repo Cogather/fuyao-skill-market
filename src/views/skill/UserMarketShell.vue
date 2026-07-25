@@ -7,9 +7,8 @@ import SkillCard from '../../components/skill/SkillCard.vue';
 import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
-import SkillPlanningTaskPanel from '../../components/skill/SkillPlanningTaskPanel.vue';
+
 import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
-import SkillPlanningPage from '../skill/SkillPlanningPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
   BusinessDimensionDto,
@@ -33,7 +32,6 @@ import {
   marketRoleIsOrgAdmin,
   marketRoleIsSuperAdmin,
   marketRoleCanCreateOrganization,
-  marketRoleCanConfigurePlanningPermissions,
   marketRoleShowsOrgManagement,
 } from '../../services/skillMarket/roleUi';
 import type {
@@ -121,11 +119,6 @@ const innerTabAliases: Record<string, UserInnerTab> = {
   审核中心: 'approval',
   review: 'review',
   评审中心: 'review',
-  planning: 'planning',
-  skillPlanning: 'planning',
-  Skill规划: 'planning',
-  'Skill 规划': 'planning',
-  skill规划: 'planning',
 };
 
 const helpLink = () => {
@@ -197,14 +190,6 @@ let overviewScrollRaf = 0;
 const toast = ref('');
 const showAdminModules = computed(() => marketRoleShowsOrgManagement(currentUserRole.value));
 const canCreateOrg = computed(() => marketRoleCanCreateOrganization(currentUserRole.value));
-const canConfigureDepartmentPermissions = computed(() =>
-  marketRoleCanConfigurePlanningPermissions(currentUserRole.value),
-);
-const permissionDepartmentNames = computed(() => {
-  const role = currentUserRole.value;
-  if (!role || marketRoleIsSuperAdmin(role) || marketRoleIsOrgAdmin(role)) return [];
-  return role.managedDepartmentNames ?? [];
-});
 
 const adminOrganizations = ref<OrganizationDto[]>([]);
 const orgListLoading = ref(false);
@@ -2774,7 +2759,6 @@ type ReleaseFilterKey =
   | 'reviewing'
   | 'rejected'
   | 'aiEvolution'
-  | 'tasks'
   | 'coreApply';
 
 const releaseFilter = ref<ReleaseFilterKey>('all');
@@ -2786,7 +2770,6 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'reviewing', label: '组织审核中' },
   { key: 'rejected', label: '组织已驳回' },
   { key: 'aiEvolution', label: '自进化审批' },
-  { key: 'tasks', label: '待办任务' },
 ];
 
 type AiEvolutionStatus = 'pending' | 'approved' | 'rejected';
@@ -3020,9 +3003,7 @@ function releaseSyncActionText(row: {
 
 const onClickFilterRelease = async (key: any) => {
   releaseFilter.value = key;
-  if (key === 'tasks') {
-    return;
-  }
+
   if (key === 'aiEvolution') {
     await loadAiEvolutionSkills();
     return;
@@ -3623,8 +3604,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             innerTab === 'ops' ||
             innerTab === 'org' ||
             innerTab === 'approval' ||
-            innerTab === 'review' ||
-            innerTab === 'planning',
+            innerTab === 'review',
         }"
         aria-label="市场分区"
       >
@@ -3695,14 +3675,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           @click="goTab('review')"
         >
           评审中心
-        </button>
-        <button
-          type="button"
-          class="sub-tab"
-          :class="{ on: innerTab === 'planning' }"
-          @click="goTab('planning')"
-        >
-          Skill 规划
         </button>
       </nav>
 
@@ -4422,8 +4394,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </div>
 
-        <SkillPlanningTaskPanel v-if="releaseFilter === 'tasks'" :user-id="userId" />
-
         <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
           <div class="ai-evolution-intro-title">
             <span class="ai-evolution-tag">AI 自进化</span>
@@ -4543,11 +4513,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </table>
         </div>
 
-        <div
-          v-else-if="releaseFilter !== 'tasks'"
-          class="table-wrap my-table-wrap"
-          ref="myReleaseTableWrapRef"
-        >
+        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
           <table class="table my-table">
             <thead>
               <tr>
@@ -5284,19 +5250,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         :expert-check-loaded="expertCheckLoaded"
         :is-expert-reviewer="isExpertReviewer"
         @open-detail="openReviewSkillDetail"
-      />
-    </div>
-
-    <div
-      v-else-if="innerTab === 'planning'"
-      ref="tabPanelRef"
-      class="panel tab-panel planning-panel"
-      :style="tabPanelFillStyle"
-    >
-      <SkillPlanningPage
-        :department-tree="marketOverviewDeptTree"
-        :can-configure-department-permissions="canConfigureDepartmentPermissions"
-        :permission-department-names="permissionDepartmentNames"
       />
     </div>
 

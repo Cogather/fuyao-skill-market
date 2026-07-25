@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { findActivityIdByNames, getActivitySortRank } from './activityManagementService';
 import { findSceneIdByNames, getSceneSortRank } from './sceneManagementService';
+import { listSkillMasterRecords } from './skillMasterManagementService';
 import {
   cloneSkillPlanningItem,
   exportSkillPlanningTemplateToExcel,
@@ -9,8 +10,8 @@ import {
   normalizeText,
   normalizeTextArray,
   rowToSkillPlanningPayload,
-  skillPlanningExportHeaders,
   skillPlanningFieldMap,
+  skillPlanningImportHeaders,
   type ProductPlanningOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningFilterOptions,
@@ -75,7 +76,7 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
     deptName: '日志工具组',
     developOwner: '陈七',
     planedCompleteDate: '2026-06-30',
-    status: '联调中',
+    status: '开发中',
   },
   {
     id: 'plan-1004',
@@ -111,7 +112,7 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
     deptName: '发布工具组',
     developOwner: '吴越',
     planedCompleteDate: '2026-06-20',
-    status: '已延期',
+    status: '开发中',
   },
   {
     id: 'plan-1006',
@@ -183,7 +184,7 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
     deptName: 'SQL治理组',
     developOwner: '唐可',
     planedCompleteDate: '2026-07-22',
-    status: '联调中',
+    status: '开发中',
   },
   {
     id: 'plan-1010',
@@ -309,43 +310,139 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
     deptName: '联调工具部',
     developOwner: '秦川',
     planedCompleteDate: '2026-08-02',
-    status: '联调中',
+    status: '开发中',
   },
 ];
 
 const mockProductPlanningOptions: ProductPlanningOption[] = [
-  { offeringId: 'offering-api', offeringName: 'API产品线' },
-  { offeringId: 'offering-quality', offeringName: '质量产品线' },
-  { offeringId: 'offering-sre', offeringName: 'SRE产品线' },
-  { offeringId: 'offering-project', offeringName: '项目产品线' },
-  { offeringId: 'offering-devops', offeringName: '平台产品线' },
-  { offeringId: 'offering-cloud-service', offeringName: '云服务产品线' },
-  { offeringId: 'offering-platform-tools', offeringName: '平台工具产品线' },
-  { offeringId: 'offering-data', offeringName: '数据产品线' },
-  { offeringId: 'offering-business', offeringName: '业务产品线' },
-  { offeringId: 'offering-design', offeringName: '设计产品线' },
-  { offeringId: 'offering-mobile', offeringName: '移动端产品线' },
+  {
+    offeringId: 'offering-harness-pipeline',
+    offeringName: 'Harness 流水线平台',
+    planningDeptName: '持续交付组',
+  },
+  {
+    offeringId: 'offering-devops-console',
+    offeringName: 'DevOps 管理工作台',
+    planningDeptName: '流水线平台小组',
+  },
+  {
+    offeringId: 'offering-release-orchestration',
+    offeringName: '发布编排平台',
+    planningDeptName: '变更管控小组',
+  },
+  {
+    offeringId: 'offering-api',
+    offeringName: 'API产品线',
+    planningDeptName: '联调工具部',
+  },
+  {
+    offeringId: 'offering-quality',
+    offeringName: '质量产品线',
+    planningDeptName: '评审小组',
+  },
+  {
+    offeringId: 'offering-sre',
+    offeringName: 'SRE产品线',
+    planningDeptName: '日志工具组',
+  },
+  {
+    offeringId: 'offering-project',
+    offeringName: '项目产品线',
+    planningDeptName: '项目管理部',
+  },
+  {
+    offeringId: 'offering-devops',
+    offeringName: '平台产品线',
+    planningDeptName: '发布工具组',
+  },
+  {
+    offeringId: 'offering-cloud-service',
+    offeringName: '云服务产品线',
+    planningDeptName: 'SRE团队',
+  },
+  {
+    offeringId: 'offering-platform-tools',
+    offeringName: '平台工具产品线',
+    planningDeptName: '变更分析组',
+  },
+  {
+    offeringId: 'offering-data',
+    offeringName: '数据产品线',
+    planningDeptName: 'SQL治理组',
+  },
+  {
+    offeringId: 'offering-business',
+    offeringName: '业务产品线',
+    planningDeptName: '需求分析组',
+  },
+  {
+    offeringId: 'offering-design',
+    offeringName: '设计产品线',
+    planningDeptName: '体验设计部',
+  },
+  {
+    offeringId: 'offering-mobile',
+    offeringName: '移动端产品线',
+    planningDeptName: '平台工具部',
+  },
 ];
 
-const mockPlanningDepartments = [
-  '研发效能部',
-  '质量工具组',
-  '平台稳定部',
-  '项目管理部',
-  'DevOps部',
-  '云服务产品线',
-  '平台工具组',
-  '数据平台部',
-];
+const mockPlanningDepartmentByItemId: Record<string, string> = {
+  'plan-1001': '持续交付组',
+  'plan-1002': '持续交付组',
+  'plan-1003': '日志工具组',
+  'plan-1004': '流水线平台小组',
+  'plan-1005': '发布工具组',
+  'plan-1006': 'SRE团队',
+  'plan-1007': '变更分析组',
+  'plan-1008': '持续交付组',
+  'plan-1009': 'SQL治理组',
+  'plan-1010': '需求分析组',
+  'plan-1011': '体验设计部',
+  'plan-1012': '变更管控小组',
+  'plan-1013': '流水线平台小组',
+  'plan-1014': '平台工具部',
+  'plan-1015': 'SRE团队',
+  'plan-1016': '联调工具部',
+};
 
 let skillPlanningItems: SkillPlanningItem[] = initialSkillPlanningItems.map((item, index) => ({
   ...item,
-  planningDeptName:
-    mockPlanningDepartments[index % mockPlanningDepartments.length] ?? item.deptName,
+  skillId: `skill-master-${item.id.slice('plan-'.length)}`,
+  level: item.level === '部门级' ? '部门级' : '产品级',
+  ...(index === 0
+    ? {
+        offeringId: 'offering-harness-pipeline',
+        offeringName: 'Harness 流水线平台',
+      }
+    : {}),
+  planningDeptName: mockPlanningDepartmentByItemId[item.id] ?? item.deptName,
   sceneId: findSceneIdByNames(item.firstScene, item.secondScene),
   activityId: findActivityIdByNames(item.activityNodeName, item.subActivityNodeName),
 }));
 let idSeed = 2000;
+
+function getHydratedSkillPlanningItems(): SkillPlanningItem[] {
+  const masterRecords = listSkillMasterRecords();
+  const masterById = new Map(masterRecords.map((record) => [record.id, record]));
+  const masterByName = new Map(masterRecords.map((record) => [record.name, record]));
+
+  return skillPlanningItems.map((item) => {
+    const master = (item.skillId && masterById.get(item.skillId)) || masterByName.get(item.name);
+    if (!master) return item;
+    return {
+      ...item,
+      skillId: master.id,
+      name: master.name,
+      description: master.description,
+      owner: master.owner,
+      deptName: master.department,
+      developOwner: master.developOwner,
+      planedCompleteDate: master.plannedCompleteDate,
+      status: master.status,
+    };
+  });
+}
 
 function matchesDateRange(item: SkillPlanningItem, query: SkillPlanningQuery): boolean {
   const date = item.planedCompleteDate;
@@ -360,6 +457,10 @@ function matchesDateRange(item: SkillPlanningItem, query: SkillPlanningQuery): b
 
 function matchesDiscreteFilter(value: string, values: string[]): boolean {
   return values.length === 0 || values.includes(value);
+}
+
+function normalizeQuerySelections(value: unknown): string[] {
+  return normalizeTextArray(Array.isArray(value) ? value : [value]);
 }
 
 function sortItems(items: SkillPlanningItem[], query: SkillPlanningQuery): SkillPlanningItem[] {
@@ -408,12 +509,13 @@ function createOptionGroups(
 
 function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   const keyword = normalizeText(query.keyword).toLowerCase();
-  const firstScene = normalizeTextArray(query.firstScene);
-  const secondScene = normalizeTextArray(query.secondScene);
-  const activityNodeName = normalizeTextArray(query.activityNodeName);
-  const subActivityNodeName = normalizeTextArray(query.subActivityNodeName);
-  const level = normalizeTextArray(query.level);
-  const status = normalizeTextArray(query.status);
+  const offeringName = normalizeText(query.offeringName);
+  const firstScene = normalizeQuerySelections(query.firstScene);
+  const secondScene = normalizeQuerySelections(query.secondScene);
+  const activityNodeName = normalizeQuerySelections(query.activityNodeName);
+  const subActivityNodeName = normalizeQuerySelections(query.subActivityNodeName);
+  const level = normalizeQuerySelections(query.level);
+  const status = normalizeQuerySelections(query.status);
   const ownerDepartment =
     normalizeText(query.deptName) ||
     normalizeText((query as { department?: unknown }).department) ||
@@ -433,9 +535,10 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
     '';
   const owner = normalizeText(query.owner);
 
-  return skillPlanningItems.filter((item) => {
+  return getHydratedSkillPlanningItems().filter((item) => {
     if (ownerDepartment && item.deptName !== ownerDepartment) return false;
     if (planningDepartment && item.planningDeptName !== planningDepartment) return false;
+    if (offeringName && item.offeringName !== offeringName) return false;
     if (!matchesDiscreteFilter(item.firstScene, firstScene)) return false;
     if (!matchesDiscreteFilter(item.secondScene, secondScene)) return false;
     if (!matchesDiscreteFilter(item.activityNodeName, activityNodeName)) return false;
@@ -464,14 +567,15 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
 export async function getPlanningOption(): Promise<SkillPlanningFilterOptions> {
   const sceneGroups = createOptionGroups('firstScene', 'secondScene');
   const activityGroups = createOptionGroups('activityNodeName', 'subActivityNodeName');
+  const hydratedItems = getHydratedSkillPlanningItems();
 
   return {
     firstScene: sceneGroups.map((group) => group.value),
     secondScene: distinctValuesInOrder(sceneGroups.flatMap((group) => group.children)),
     activityNodeName: activityGroups.map((group) => group.value),
     subActivityNodeName: distinctValuesInOrder(activityGroups.flatMap((group) => group.children)),
-    level: distinctValuesInOrder(skillPlanningItems.map((item) => item.level)),
-    status: distinctValuesInOrder(skillPlanningItems.map((item) => item.status)),
+    level: distinctValuesInOrder(hydratedItems.map((item) => item.level)),
+    status: distinctValuesInOrder(hydratedItems.map((item) => item.status)),
     sceneGroups,
     activityGroups,
   };
@@ -498,24 +602,34 @@ export async function exportAllSkillPlanningList(
 }
 
 export async function getProductPlanning(
-  params: { offeringName?: string } = {},
+  params: { offeringName?: string; planningDeptName?: string } = {},
 ): Promise<ProductPlanningOption[]> {
   const keyword = normalizeText(params.offeringName).toLowerCase();
+  const planningDeptName = normalizeText(params.planningDeptName);
   const optionMap = new Map<string, ProductPlanningOption>();
 
-  [...mockProductPlanningOptions, ...skillPlanningItems].forEach((item) => {
+  [
+    ...mockProductPlanningOptions,
+    ...skillPlanningItems.filter((item) => item.level === '产品级'),
+  ].forEach((item) => {
     const option = {
       offeringId: normalizeText(item.offeringId),
       offeringName: normalizeText(item.offeringName),
+      planningDeptName: normalizeText(item.planningDeptName),
     };
     if (!option.offeringName) {
       return;
     }
-    optionMap.set(option.offeringId || option.offeringName, option);
+    optionMap.set(
+      `${option.planningDeptName}::${option.offeringId || option.offeringName}`,
+      option,
+    );
   });
 
-  return Array.from(optionMap.values()).filter((option) =>
-    keyword ? option.offeringName.toLowerCase().includes(keyword) : true,
+  return Array.from(optionMap.values()).filter(
+    (option) =>
+      (!planningDeptName || option.planningDeptName === planningDeptName) &&
+      (!keyword || option.offeringName.toLowerCase().includes(keyword)),
   );
 }
 
@@ -622,7 +736,14 @@ export async function importSkillPlanningFromExcel(file: File): Promise<SkillPla
   const firstSheetName = workbook.SheetNames[0];
   const sheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
   if (!sheet) {
-    return { created: 0, missingFields: [...skillPlanningExportHeaders] };
+    return {
+      created: 0,
+      missingFields: [...skillPlanningImportHeaders],
+      totalCount: 0,
+      successCount: 0,
+      failCount: 0,
+      errorList: [{ rowNum: 1, errMsg: '未找到可导入的工作表' }],
+    };
   }
 
   const headerRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
@@ -633,20 +754,74 @@ export async function importSkillPlanningFromExcel(file: File): Promise<SkillPla
       .filter(Boolean),
   );
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
-  const missingFields = skillPlanningExportHeaders.filter((header) => {
+  const missingFields = skillPlanningImportHeaders.filter((header) => {
     const key = skillPlanningFieldMap[header];
     return !presentKeys.has(key);
   });
 
   if (missingFields.length > 0) {
-    return { created: 0, missingFields };
+    return {
+      created: 0,
+      missingFields,
+      totalCount: rows.length,
+      successCount: 0,
+      failCount: rows.length,
+      errorList: [{ rowNum: 1, errMsg: `缺少表头：${missingFields.join('、')}` }],
+    };
   }
 
-  const imported = rows
-    .map(rowToSkillPlanningPayload)
-    .filter(
-      (payload) => payload.name && payload.deptName && payload.planningDeptName && payload.owner,
-    );
+  const skillMasterByName = new Map(
+    listSkillMasterRecords().map((record) => [record.name.trim().toLocaleLowerCase(), record]),
+  );
+  const errorList: SkillPlanningImportResult['errorList'] = [];
+  const imported = rows.flatMap((row, index) => {
+    const payload = rowToSkillPlanningPayload(row);
+    const rowNum = index + 2;
+    const skillMaster = skillMasterByName.get(payload.name.toLocaleLowerCase());
+    const missingRelations = [
+      ['一级场景', payload.firstScene],
+      ['二级场景', payload.secondScene],
+      ['归属活动', payload.activityNodeName],
+      ['归属子活动', payload.subActivityNodeName],
+      ['层级', payload.level],
+      ['规划部门', payload.planningDeptName],
+    ]
+      .filter(([, value]) => !value)
+      .map(([label]) => label);
+
+    if (!payload.name) {
+      errorList.push({ rowNum, errMsg: '请选择 Skill 清单中的 Skill' });
+      return [];
+    }
+    if (!skillMaster) {
+      errorList.push({ rowNum, errMsg: `Skill「${payload.name}」不存在于 Skill 清单` });
+      return [];
+    }
+    if (missingRelations.length > 0) {
+      errorList.push({ rowNum, errMsg: `缺少规划关系字段：${missingRelations.join('、')}` });
+      return [];
+    }
+    if (payload.level === '产品级' && !payload.offeringName) {
+      errorList.push({ rowNum, errMsg: '产品级规划必须填写产品' });
+      return [];
+    }
+
+    return [
+      {
+        ...payload,
+        skillId: skillMaster.id,
+        name: skillMaster.name,
+        description: skillMaster.description,
+        owner: skillMaster.owner,
+        deptName: skillMaster.department,
+        developOwner: skillMaster.developOwner,
+        planedCompleteDate: skillMaster.plannedCompleteDate,
+        status: skillMaster.status,
+        offeringId: payload.level === '部门级' ? '' : payload.offeringId,
+        offeringName: payload.level === '部门级' ? '' : payload.offeringName,
+      },
+    ];
+  });
 
   const createdItems = imported.map((payload) => ({
     id: `plan-${idSeed++}`,
@@ -654,5 +829,12 @@ export async function importSkillPlanningFromExcel(file: File): Promise<SkillPla
   }));
 
   skillPlanningItems = [...createdItems, ...skillPlanningItems];
-  return { created: createdItems.length, missingFields: [] };
+  return {
+    created: createdItems.length,
+    missingFields: [],
+    totalCount: rows.length,
+    successCount: createdItems.length,
+    failCount: errorList.length,
+    errorList,
+  };
 }

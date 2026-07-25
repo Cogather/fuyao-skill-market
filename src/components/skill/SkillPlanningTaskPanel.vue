@@ -2,9 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   getSkillTaskAssociation,
-  listSkillPlanningTasks,
+  querySkillPlanningTasks,
   updateSkillTaskProgress,
   updateSkillTaskStatus,
+  usesRemoteSkillPlanningTasks,
   type SkillPlanningTask,
   type SkillTaskAssociation,
   type SkillTaskStatus,
@@ -21,6 +22,10 @@ type TaskNotice = {
 
 const props = withDefaults(defineProps<{ userId?: string }>(), { userId: '' });
 const tasks = ref<SkillPlanningTask[]>([]);
+const loading = ref(false);
+const loadError = ref('');
+const remoteTasks = usesRemoteSkillPlanningTasks();
+let reloadSequence = 0;
 const keyword = ref('');
 const statusFilter = ref<'all' | SkillTaskStatus>('all');
 const page = ref(1);
@@ -35,32 +40,36 @@ const detailDialog = reactive({
   association: null as SkillTaskAssociation | null,
 });
 
-const notices = ref<TaskNotice[]>([
-  {
-    id: 'notice-1',
-    day: '今天',
-    title: '新增 Skill 任务',
-    detail: '接口契约检查 Skill',
-    time: '09:30',
-    tone: 'new',
-  },
-  {
-    id: 'notice-2',
-    day: '昨天',
-    title: '负责人发生变化',
-    detail: '知识库质量巡检 Skill',
-    time: '16:45',
-    tone: 'change',
-  },
-  {
-    id: 'notice-3',
-    day: '昨天',
-    title: 'Skill 被删除',
-    detail: '旧版日志聚合 Skill',
-    time: '11:20',
-    tone: 'delete',
-  },
-]);
+const notices = ref<TaskNotice[]>(
+  remoteTasks
+    ? []
+    : [
+        {
+          id: 'notice-1',
+          day: '今天',
+          title: '新增 Skill 任务',
+          detail: '接口契约检查 Skill',
+          time: '09:30',
+          tone: 'new',
+        },
+        {
+          id: 'notice-2',
+          day: '昨天',
+          title: '负责人发生变化',
+          detail: '知识库质量巡检 Skill',
+          time: '16:45',
+          tone: 'change',
+        },
+        {
+          id: 'notice-3',
+          day: '昨天',
+          title: 'Skill 被删除',
+          detail: '旧版日志聚合 Skill',
+          time: '11:20',
+          tone: 'delete',
+        },
+      ],
+);
 
 const statusOptions: Array<{ value: SkillTaskStatus; label: string }> = [
   { value: 'todo', label: '未开始' },
@@ -99,12 +108,25 @@ const pageEnd = computed(() => Math.min(page.value * pageSize, filteredTasks.val
 const todayNotices = computed(() => notices.value.filter((notice) => notice.day === '今天'));
 const yesterdayNotices = computed(() => notices.value.filter((notice) => notice.day === '昨天'));
 
-function reload(): void {
-  tasks.value = listSkillPlanningTasks(props.userId);
-  tasks.value.forEach((task) => {
-    progressDrafts[task.id] = task.progress;
-  });
-  if (page.value > totalPages.value) page.value = totalPages.value;
+async function reload(): Promise<void> {
+  const requestSequence = ++reloadSequence;
+  loading.value = true;
+  loadError.value = '';
+  try {
+    const nextTasks = await querySkillPlanningTasks(props.userId);
+    if (requestSequence !== reloadSequence) return;
+    tasks.value = nextTasks;
+    tasks.value.forEach((task) => {
+      progressDrafts[task.id] = task.progress;
+    });
+    if (page.value > totalPages.value) page.value = totalPages.value;
+  } catch (error) {
+    if (requestSequence !== reloadSequence) return;
+    tasks.value = [];
+    loadError.value = error instanceof Error ? error.message : '待办任务加载失败';
+  } finally {
+    if (requestSequence === reloadSequence) loading.value = false;
+  }
 }
 
 function statusLabel(status: SkillTaskStatus): string {
@@ -136,47 +158,6 @@ function selectStatus(status: SkillTaskStatus): void {
   statusFilter.value = statusFilter.value === status ? 'all' : status;
 }
 
-function addNotice(title: string, detail: string, tone: TaskNotice['tone']): void {
-  notices.value.unshift({
-    id: 'notice-' + Date.now(),
-    day: '今天',
-    title,
-    detail,
-    time: new Date().toLocaleTimeString('zh-CN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }),
-    tone,
-  });
-}
-
-function startTask(task: SkillPlanningTask): void {
-  updateSkillTaskStatus(task.id, 'inProgress');
-  addNotice('任务已开始', task.name, 'change');
-  reload();
-  showToast('“' + task.name + '”已进入开发中');
-}
-
-function saveProgress(task: SkillPlanningTask): void {
-  const input = Number(progressDrafts[task.id]);
-  const progress = Number.isFinite(input)
-    ? Math.max(1, Math.min(99, Math.round(input)))
-    : task.progress;
-  progressDrafts[task.id] = progress;
-  updateSkillTaskProgress(task.id, progress);
-  addNotice('进度已更新', `${task.name}：${progress}%`, 'change');
-  reload();
-  showToast(`“${task.name}”进度已更新为 ${progress}%`);
-}
-
-function completeTask(task: SkillPlanningTask): void {
-  updateSkillTaskStatus(task.id, 'done');
-  addNotice('任务已完成', task.name, 'publish');
-  reload();
-  showToast('“' + task.name + '”已完成');
-}
-
 function openSkill(task: SkillPlanningTask): void {
   Object.assign(detailDialog, {
     open: true,
@@ -196,8 +177,11 @@ function goPage(next: number): void {
 watch([keyword, statusFilter], () => {
   page.value = 1;
 });
-watch(() => props.userId, reload);
-onMounted(reload);
+watch(
+  () => props.userId,
+  () => void reload(),
+);
+onMounted(() => void reload());
 onBeforeUnmount(() => {
   if (toastTimer !== null) window.clearTimeout(toastTimer);
 });
@@ -258,14 +242,21 @@ onBeforeUnmount(() => {
 
         <div class="task-table-wrap">
           <table class="task-table">
+            <colgroup>
+              <col class="task-col-name" />
+              <col class="task-col-department" />
+              <col class="task-col-owner" />
+              <col class="task-col-status" />
+              <col class="task-col-updated" />
+              <col class="task-col-actions" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Skill 名称</th>
-                <th title="随责任 Owner 自动变化">Owner 所在部门</th>
+                <!-- <th title="随责任 Owner 自动变化">Owner 所在部门</th> -->
                 <th>规划部门</th>
                 <th>负责人</th>
                 <th>状态</th>
-                <th>进度 %</th>
                 <th>更新时间</th>
                 <th>操作</th>
               </tr>
@@ -281,7 +272,7 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </td>
-                <td>{{ task.department || '待分配' }}</td>
+                <!-- <td>{{ task.department || '待分配' }}</td> -->
                 <td>{{ task.planningDepartment || '待明确' }}</td>
                 <td>
                   <div class="owner-cell">
@@ -294,43 +285,9 @@ onBeforeUnmount(() => {
                     {{ statusLabel(task.status) }}
                   </span>
                 </td>
-                <td>
-                  <div class="progress-cell">
-                    <div><i :style="{ width: task.progress + '%' }"></i></div>
-                    <label v-if="task.status === 'inProgress'" class="progress-input">
-                      <input
-                        v-model.number="progressDrafts[task.id]"
-                        type="number"
-                        min="1"
-                        max="99"
-                        step="1"
-                        aria-label="当前进度百分比"
-                        @keyup.enter="saveProgress(task)"
-                      />
-                      <span>%</span>
-                    </label>
-                    <strong v-else>{{ task.progress }}%</strong>
-                  </div>
-                </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
                 <td>
                   <div class="task-actions">
-                    <button
-                      v-if="task.status === 'todo'"
-                      type="button"
-                      class="is-primary"
-                      @click="startTask(task)"
-                    >
-                      开始
-                    </button>
-                    <template v-if="task.status === 'inProgress'">
-                      <button type="button" class="is-secondary" @click="saveProgress(task)">
-                        保存进度
-                      </button>
-                      <button type="button" class="is-primary" @click="completeTask(task)">
-                        完成
-                      </button>
-                    </template>
                     <button type="button" class="is-link" @click="openSkill(task)">
                       查看 Skill
                     </button>
@@ -339,7 +296,14 @@ onBeforeUnmount(() => {
               </tr>
               <tr v-if="pagedTasks.length === 0">
                 <td colspan="8" class="task-empty">
-                  {{ props.userId ? '当前没有符合条件的待办任务' : '正在获取当前用户信息…' }}
+                  {{
+                    loadError ||
+                    (loading
+                      ? '待办任务加载中…'
+                      : props.userId
+                        ? '当前没有符合条件的待办任务'
+                        : '正在获取当前用户信息…')
+                  }}
                 </td>
               </tr>
             </tbody>
@@ -415,10 +379,10 @@ onBeforeUnmount(() => {
           </div>
 
           <dl>
-            <div>
+            <!-- <div>
               <dt>Owner 所在部门</dt>
               <dd>{{ detailDialog.task.department || '待分配' }}</dd>
-            </div>
+            </div> -->
             <div>
               <dt>规划部门</dt>
               <dd>{{ detailDialog.task.planningDepartment || '待明确' }}</dd>
@@ -660,15 +624,39 @@ onBeforeUnmount(() => {
 }
 
 .task-table-wrap {
-  overflow-x: hidden;
+  width: 100%;
+  overflow-x: auto;
   overflow-y: visible;
 }
 
 .task-table {
-  width: 100%;
-  min-width: 1040px;
+  width: max(100%, 960px);
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+.task-col-name {
+  width: 34%;
+}
+
+.task-col-department {
+  width: 16%;
+}
+
+.task-col-owner {
+  width: 15%;
+}
+
+.task-col-status {
+  width: 10%;
+}
+
+.task-col-updated {
+  width: 12%;
+}
+
+.task-col-actions {
+  width: 13%;
 }
 
 .task-table th {
@@ -690,29 +678,8 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 
-.task-table th:first-child {
-  width: 245px;
-}
-.task-table th:nth-child(2) {
-  width: 106px;
-}
-.task-table th:nth-child(3) {
-  width: 106px;
-}
-.task-table th:nth-child(4) {
-  width: 96px;
-}
-.task-table th:nth-child(5) {
-  width: 78px;
-}
-.task-table th:nth-child(6) {
-  width: 124px;
-}
-.task-table th:nth-child(7) {
-  width: 78px;
-}
-.task-table th:last-child {
-  width: 186px;
+.task-table th:last-child,
+.task-table td:last-child {
   text-align: right;
 }
 
@@ -1289,10 +1256,6 @@ onBeforeUnmount(() => {
   .progress-input {
     flex-basis: clamp(64px, 4vw, 76px);
     width: clamp(64px, 4vw, 76px);
-  }
-
-  .task-table th:last-child {
-    width: clamp(184px, 10vw, 198px);
   }
 
   .task-actions button {
