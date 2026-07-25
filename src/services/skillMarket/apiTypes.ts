@@ -698,3 +698,51 @@ export type CreateSkillPlanningSupplementBody = {
   dimCode: string;
   dimName: string;
 };
+
+/** Skill 规划补充查询（GET /config/supplement/query） */
+export type QuerySkillPlanningSupplementParams = {
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
+  keyword?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  pageNum?: number;
+  pageSize?: number;
+};
+
+/** Skill 规划补充列表行（查询返回；展示字段可能随 Skill 清单关联带回） */
+export type SkillPlanningSupplementItemDto = {
+  id: string | number;
+  skillName: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  skillDescription?: string;
+  description?: string;
+  ownerName?: string;
+  ownerId?: string;
+  owner?: string;
+  developOwnerName?: string;
+  developOwnerId?: string;
+  developOwner?: string;
+  status?: string;
+  planFinishDate?: string;
+  planedCompleteDate?: string;
+  planningDeptName?: string;
+  name?: string;
+};
+
+/** Skill 规划补充更新（PUT /config/supplement/update） */
+export type UpdateSkillPlanningSupplementBody = CreateSkillPlanningSupplementBody & {
+  id: string | number;
+};
+
+/** Skill 规划补充批量删除（DELETE /config/supplement/batch_delete） */
+export type BatchDeleteSkillPlanningSupplementBody = {
+  ids: Array<string | number>;
+};

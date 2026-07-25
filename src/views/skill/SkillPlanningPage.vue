@@ -14,7 +14,7 @@ import {
   querySkillPlanningFilterOptions,
   exportAllSkillPlanningList,
   querySkillConfig,
-  updateSkillPlanning,
+  updateSkillPlanningSupplement,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
   type SkillPlanningBatchPatch,
@@ -1784,6 +1784,11 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
       });
   }
 
+  const dim = currentPlanningTaxonomyParams();
+  assignQueryValue(nextQuery, 'dimType', dim.dimType);
+  assignQueryValue(nextQuery, 'dimCode', dim.dimCode);
+  assignQueryValue(nextQuery, 'dimName', dim.dimName);
+
   if (plannedFinishSortOrder.value) {
     nextQuery.sortBy = 'planedCompleteDate';
     nextQuery.sortOrder = plannedFinishSortOrder.value;
@@ -2004,12 +2009,23 @@ async function confirmInlineEdit() {
 
   try {
     inlineEditSubmitting.value = true;
-
-    const updateRes = await updateSkillPlanning(editingId.value, { ...planningForm });
-    const toastStr = !updateRes?.meta?.success
-      ? (updateRes.meta?.message ?? '更新后的SKill已存在')
-      : '已保存修改';
+    const body = buildPlanningSupplementBody();
+    if (!body) {
+      showToast('请完善层级、部门/产品与场景活动信息');
+      return;
+    }
+    const updateRes = await updateSkillPlanningSupplement({
+      id: editingId.value,
+      ...body,
+    });
+    const toastStr =
+      updateRes?.meta?.success !== true
+        ? (updateRes?.meta?.message ?? 'Skill 规划更新失败')
+        : '已保存修改';
     showToast(toastStr);
+    if (updateRes?.meta?.success !== true) {
+      return;
+    }
     cancelInlineEdit(true);
     await loadPlanningFilterOptions();
     await reloadList();
@@ -2082,7 +2098,23 @@ async function submitPlanningForm() {
       }
       showToast('已新增 Skill 规划');
     } else {
-      await updateSkillPlanning(editingId.value, { ...planningForm });
+      if (!editingId.value) {
+        throw new Error('缺少 Skill 规划 id，无法更新');
+      }
+      const body = buildPlanningSupplementBody();
+      if (!body) {
+        showToast('请完善层级、部门/产品与场景活动信息');
+        return;
+      }
+      const updateRes = await updateSkillPlanningSupplement({
+        id: editingId.value,
+        ...body,
+      });
+      if (updateRes?.meta?.success !== true) {
+        throw new Error(
+          String(updateRes?.meta?.message || updateRes?.message || '更新 Skill 规划失败'),
+        );
+      }
       showToast('已保存修改');
     }
 

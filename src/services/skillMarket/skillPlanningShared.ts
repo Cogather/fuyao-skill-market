@@ -57,6 +57,10 @@ export interface SkillPlanningQuery {
   plannedStartDate?: string;
   plannedEndDate?: string;
   keyword?: string;
+  /** 补充查询维度：DEPT / PROD */
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
   sortBy?: SkillPlanningSortField;
   sortOrder?: SkillPlanningSortOrder;
   pageNum?: number;

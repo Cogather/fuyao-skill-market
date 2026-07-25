@@ -134,6 +134,25 @@ type MockSkillMasterManagementRecord = {
   skillMatchLevel: string | null;
 };
 
+type MockSkillPlanningSupplementRecord = {
+  id: string;
+  skillName: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  skillDescription: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  status: string;
+  planFinishDate: string;
+};
+
 function nowLocalDateTimeArray(): number[] {
   const now = new Date();
   return [
@@ -153,6 +172,15 @@ function nextMockSkillMasterManagementId(): string {
   mockSkillMasterManagementIdSeq += 1;
   return String(mockSkillMasterManagementIdSeq);
 }
+
+let mockSkillPlanningSupplementIdSeq = 8000;
+
+function nextMockSkillPlanningSupplementId(): string {
+  mockSkillPlanningSupplementIdSeq += 1;
+  return String(mockSkillPlanningSupplementIdSeq);
+}
+
+const mockSkillPlanningSupplementRecords: MockSkillPlanningSupplementRecord[] = [];
 
 const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
   {
@@ -288,6 +316,53 @@ function filterMockSkillMasterManagement(
   const pageSize = Math.max(1, Number(body.pageSize) || list.length || 10);
   const start = (pageNum - 1) * pageSize;
   return list.slice(start, start + pageSize);
+}
+
+function filterMockSkillPlanningSupplement(
+  params: Record<string, unknown>,
+): { list: MockSkillPlanningSupplementRecord[]; total: number } {
+  const keyword = String(params.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  const dimType = String(params.dimType ?? '')
+    .trim()
+    .toUpperCase();
+  const dimCode = String(params.dimCode ?? '').trim();
+  const dimName = String(params.dimName ?? '').trim();
+
+  let list = mockSkillPlanningSupplementRecords.slice();
+  if (dimType) {
+    list = list.filter((item) => item.dimType.toUpperCase() === dimType);
+  }
+  if (dimCode) {
+    list = list.filter((item) => item.dimCode === dimCode);
+  }
+  if (dimName) {
+    list = list.filter((item) => item.dimName === dimName);
+  }
+  if (keyword) {
+    list = list.filter((item) =>
+      [
+        item.skillName,
+        item.firstScene,
+        item.secondScene,
+        item.activityNodeName,
+        item.subActivityNodeName,
+        item.skillDescription,
+        item.ownerName,
+        item.developOwnerName,
+      ].some((field) => field.toLowerCase().includes(keyword)),
+    );
+  }
+
+  const total = list.length;
+  const pageNum = Math.max(1, Number(params.pageNum) || 1);
+  const pageSize = Math.max(1, Number(params.pageSize) || total || 10);
+  const start = (pageNum - 1) * pageSize;
+  return {
+    list: list.slice(start, start + pageSize),
+    total,
+  };
 }
 
 type PagedArray<T> = T[] & {
@@ -1664,9 +1739,11 @@ function handleSkillRequest(
     if (dimType !== 'DEPT' && dimType !== 'PROD') {
       return fail('dimType 仅支持 DEPT 或 PROD', null);
     }
-    return ok({
-      id: `planning-supplement-${Date.now()}`,
-      skillName: String(body.skillName).trim(),
+    const skillName = String(body.skillName).trim();
+    const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
+    const record: MockSkillPlanningSupplementRecord = {
+      id: nextMockSkillPlanningSupplementId(),
+      skillName,
       firstScene: String(body.firstScene).trim(),
       secondScene: String(body.secondScene).trim(),
       activityNodeName: String(body.activityNodeName).trim(),
@@ -1674,7 +1751,105 @@ function handleSkillRequest(
       dimType,
       dimCode: String(body.dimCode).trim(),
       dimName: String(body.dimName).trim(),
+      skillDescription: master?.skillDescription ?? '',
+      ownerName: master?.ownerName ?? '',
+      ownerId: master?.ownerId ?? '',
+      developOwnerName: master?.developOwnerName ?? '',
+      developOwnerId: master?.developOwnerId ?? '',
+      status: master?.status ?? '未开始',
+      planFinishDate: master?.planFinishDate ?? '',
+    };
+    mockSkillPlanningSupplementRecords.unshift(record);
+    return ok({ ...record });
+  }
+
+  if (method === 'get' && path === '/config/supplement/query') {
+    const result = filterMockSkillPlanningSupplement(params);
+    return ok(result.list, result.total);
+  }
+
+  if (method === 'put' && path === '/config/supplement/update') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const id = String(body.id ?? '').trim();
+    if (!id) {
+      return fail('缺少 id', null);
+    }
+    const requiredKeys = [
+      'skillName',
+      'firstScene',
+      'secondScene',
+      'activityNodeName',
+      'subActivityNodeName',
+      'dimType',
+      'dimCode',
+      'dimName',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const dimType = String(body.dimType).trim().toUpperCase();
+    if (dimType !== 'DEPT' && dimType !== 'PROD') {
+      return fail('dimType 仅支持 DEPT 或 PROD', null);
+    }
+    const target = mockSkillPlanningSupplementRecords.find((item) => item.id === id);
+    if (!target) {
+      return fail('Skill 规划不存在', null);
+    }
+    const skillName = String(body.skillName).trim();
+    const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
+    Object.assign(target, {
+      skillName,
+      firstScene: String(body.firstScene).trim(),
+      secondScene: String(body.secondScene).trim(),
+      activityNodeName: String(body.activityNodeName).trim(),
+      subActivityNodeName: String(body.subActivityNodeName).trim(),
+      dimType,
+      dimCode: String(body.dimCode).trim(),
+      dimName: String(body.dimName).trim(),
+      skillDescription: master?.skillDescription ?? target.skillDescription,
+      ownerName: master?.ownerName ?? target.ownerName,
+      ownerId: master?.ownerId ?? target.ownerId,
+      developOwnerName: master?.developOwnerName ?? target.developOwnerName,
+      developOwnerId: master?.developOwnerId ?? target.developOwnerId,
+      status: master?.status ?? target.status,
+      planFinishDate: master?.planFinishDate ?? target.planFinishDate,
     });
+    return ok({ ...target });
+  }
+
+  const supplementDeleteMatch = /^\/config\/supplement\/delete\/([^/]+)$/.exec(path);
+  if (method === 'delete' && supplementDeleteMatch) {
+    const id = decodeURIComponent(supplementDeleteMatch[1] ?? '').trim();
+    if (!id) {
+      return fail('缺少删除 id', null);
+    }
+    const index = mockSkillPlanningSupplementRecords.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return fail('Skill 规划不存在', null);
+    }
+    const [removed] = mockSkillPlanningSupplementRecords.splice(index, 1);
+    return ok(removed);
+  }
+
+  if (method === 'delete' && path === '/config/supplement/batch_delete') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map((item) => String(item ?? '').trim()).filter(Boolean)
+      : [];
+    if (ids.length === 0) {
+      return fail('ids 不能为空', null);
+    }
+    const idSet = new Set(ids);
+    const before = mockSkillPlanningSupplementRecords.length;
+    for (let index = mockSkillPlanningSupplementRecords.length - 1; index >= 0; index -= 1) {
+      const current = mockSkillPlanningSupplementRecords[index];
+      if (idSet.has(current.id)) {
+        mockSkillPlanningSupplementRecords.splice(index, 1);
+      }
+    }
+    const removed = before - mockSkillPlanningSupplementRecords.length;
+    return ok({ removed }, removed);
   }
 
   if (method === 'post' && path === '/management/add') {

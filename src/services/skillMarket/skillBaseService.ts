@@ -1,12 +1,15 @@
 import httpRequest from '@/services/skillMarket/request';
 import type {
   ApiEnvelope,
+  BatchDeleteSkillPlanningSupplementBody,
   CreateSkillMasterManagementBody,
   CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
+  QuerySkillPlanningSupplementParams,
   UpdateSkillMasterManagementBody,
+  UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
 
 export interface SceneOptionGroupsParams {
@@ -356,6 +359,37 @@ export const skillBaseService = {
     return httpRequest.skill<any>({
       url: '/config/supplement/add',
       method: 'post',
+      data: body,
+    });
+  },
+
+  querySkillPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/query',
+      method: 'get',
+      params,
+    });
+  },
+
+  updateSkillPlanningSupplement: (body: UpdateSkillPlanningSupplementBody): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/update',
+      method: 'put',
+      data: body,
+    });
+  },
+
+  deleteSkillPlanningSupplement: (id: string | number): any => {
+    return httpRequest.skill<any>({
+      url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+    });
+  },
+
+  batchDeleteSkillPlanningSupplement: (body: BatchDeleteSkillPlanningSupplementBody): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/batch_delete',
+      method: 'delete',
       data: body,
     });
   },

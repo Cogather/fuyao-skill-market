@@ -1,5 +1,10 @@
 import { skillBaseService } from './skillBaseService';
-import type { CreateSkillPlanningSupplementBody } from './apiTypes';
+import type {
+  CreateSkillPlanningSupplementBody,
+  QuerySkillPlanningSupplementParams,
+  SkillPlanningSupplementItemDto,
+  UpdateSkillPlanningSupplementBody,
+} from './apiTypes';
 import {
   exportSkillPlanningToExcel,
   normalizeProgress,
@@ -223,11 +228,103 @@ function normalizeHttpFilterOptions(response: unknown): SkillPlanningFilterOptio
   };
 }
 
-function normalizeHttpListResult(response: unknown): SkillPlanningListResult {
+function mapPersonDisplay(
+  name: unknown,
+  id: unknown,
+  fallback: unknown = '',
+): string {
+  const joined = `${normalizeText(name)} ${normalizeText(id)}`.trim();
+  return joined || normalizeText(fallback);
+}
+
+function mapSupplementItemToPlanningItem(
+  item: SkillPlanningSupplementItemDto | Record<string, unknown>,
+): SkillPlanningItem {
+  const record = asRecord(item);
+  const dimTypeRaw = normalizeText(record.dimType).toUpperCase();
+  const isProd = dimTypeRaw === 'PROD' || normalizeText(record.dimType) === '产品级';
+  const dimCode = normalizeText(record.dimCode);
+  const dimName = normalizeText(record.dimName);
+  const skillName = normalizeText(record.skillName) || normalizeText(record.name);
+  const planningDeptName =
+    normalizeText(record.planningDeptName) || (!isProd ? dimName : '');
+
   return {
-    list: response?.data ?? [],
-    total: response?.meta?.number ?? 0,
+    id: normalizeText(record.id),
+    skillId: normalizeText(record.skillId) || undefined,
+    sceneId: normalizeText(record.sceneId) || undefined,
+    activityId: normalizeText(record.activityId) || undefined,
+    firstScene: normalizeText(record.firstScene),
+    secondScene: normalizeText(record.secondScene),
+    activityNodeName: normalizeText(record.activityNodeName),
+    subActivityNodeName: normalizeText(record.subActivityNodeName),
+    name: skillName,
+    description:
+      normalizeText(record.skillDescription) || normalizeText(record.description),
+    level: isProd ? '产品级' : '部门级',
+    offeringId: isProd ? dimCode : '',
+    offeringName: isProd ? dimName : '',
+    owner: mapPersonDisplay(record.ownerName, record.ownerId, record.owner),
+    deptCode: !isProd ? dimCode : '',
+    deptName: !isProd ? dimName : '',
+    planningDeptName,
+    developOwner: mapPersonDisplay(
+      record.developOwnerName,
+      record.developOwnerId,
+      record.developOwner,
+    ),
+    planedCompleteDate:
+      normalizeText(record.planFinishDate) || normalizeText(record.planedCompleteDate),
+    status: normalizeProgress(record.status),
   };
+}
+
+function normalizeSupplementListResult(response: unknown): SkillPlanningListResult {
+  assertHttpSuccess(response, 'Skill 规划列表加载失败');
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  const rows = responseRows(response);
+  return {
+    list: rows.map((item) =>
+      mapSupplementItemToPlanningItem(item as SkillPlanningSupplementItemDto),
+    ),
+    total: readNumber(meta.number, rows.length),
+  };
+}
+
+function toHttpSkillPlanningSupplementQuery(
+  query: SkillPlanningQuery,
+): QuerySkillPlanningSupplementParams {
+  const params: QuerySkillPlanningSupplementParams = {};
+  const dimType = normalizeText(query.dimType);
+  const dimCode = normalizeText(query.dimCode);
+  const dimName = normalizeText(query.dimName);
+  const keyword = normalizeText(query.keyword);
+  if (dimType) {
+    params.dimType = dimType;
+  }
+  if (dimCode) {
+    params.dimCode = dimCode;
+  }
+  if (dimName) {
+    params.dimName = dimName;
+  }
+  if (keyword) {
+    params.keyword = keyword;
+  }
+  if (normalizeText(query.sortBy)) {
+    params.sortBy = normalizeText(query.sortBy);
+  }
+  if (normalizeText(query.sortOrder)) {
+    params.sortOrder = normalizeText(query.sortOrder);
+  }
+  if (typeof query.pageNum === 'number' && Number.isFinite(query.pageNum)) {
+    params.pageNum = query.pageNum;
+  }
+  if (typeof query.pageSize === 'number' && Number.isFinite(query.pageSize)) {
+    params.pageSize = query.pageSize;
+  }
+  return params;
 }
 
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
@@ -578,8 +675,10 @@ export async function querySkillConfig(
     return (await loadMockService()).querySkillConfig(query);
   }
 
-  const response = await skillBaseService.querySkillConfig(toHttpSkillPlanningQuery(query));
-  return normalizeHttpListResult(response);
+  const response = await skillBaseService.querySkillPlanningSupplement(
+    toHttpSkillPlanningSupplementQuery(query),
+  );
+  return normalizeSupplementListResult(response);
 }
 
 export async function exportSkillConfig(body: any): Promise<any> {
@@ -602,10 +701,12 @@ export async function exportAllSkillPlanningList(
   delete nextQuery.pageNum;
   delete nextQuery.pageSize;
 
-  const result = await exportSkillConfig({
+  const result = await querySkillConfig({
     ...nextQuery,
+    pageNum: 1,
+    pageSize: 10000,
   });
-  return result;
+  return result.list;
 }
 
 export async function createSkillPlanning(
@@ -623,6 +724,13 @@ export async function createSkillPlanningSupplement(
   body: CreateSkillPlanningSupplementBody,
 ): Promise<any> {
   const response = await skillBaseService.createSkillPlanningSupplement(body);
+  return response;
+}
+
+export async function updateSkillPlanningSupplement(
+  body: UpdateSkillPlanningSupplementBody,
+): Promise<any> {
+  const response = await skillBaseService.updateSkillPlanningSupplement(body);
   return response;
 }
 
@@ -657,7 +765,8 @@ export async function deleteSkillPlanning(id: string): Promise<void> {
     return (await loadMockService()).deleteSkillPlanning(id);
   }
 
-  await skillBaseService.deleteSkillPlanning({ id });
+  const response = await skillBaseService.deleteSkillPlanningSupplement(id);
+  assertHttpSuccess(response, '删除 Skill 规划失败');
 }
 
 export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
@@ -665,7 +774,8 @@ export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
     return (await loadMockService()).batchDeleteSkillPlanning(ids);
   }
 
-  await skillBaseService.batchDeleteSkillPlanning(ids);
+  const response = await skillBaseService.batchDeleteSkillPlanningSupplement({ ids });
+  assertHttpSuccess(response, '批量删除 Skill 规划失败');
   return ids.length;
 }
 
