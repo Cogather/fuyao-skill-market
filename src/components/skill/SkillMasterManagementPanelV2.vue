@@ -471,6 +471,13 @@ function showToast(message: string): void {
   }, 2400);
 }
 function resetPersonPicker(picker: PersonPickerState): void {
+  if (picker === ownerPicker) {
+    clearOwnerSearchTimer();
+    ownerSearchSequence += 1;
+  } else if (picker === developOwnerPicker) {
+    clearDevelopOwnerSearchTimer();
+    developOwnerSearchSequence += 1;
+  }
   Object.assign(picker, createPersonPickerState());
 }
 
@@ -529,10 +536,24 @@ function clearDevelopOwnerSearchTimer(): void {
   }
 }
 
+function closeOwnerPersonSearch(): void {
+  ownerPicker.open = false;
+  clearOwnerSearchTimer();
+  ownerSearchSequence += 1;
+  ownerPicker.loading = false;
+}
+
+function closeDevelopOwnerPersonSearch(): void {
+  developOwnerPicker.open = false;
+  clearDevelopOwnerSearchTimer();
+  developOwnerSearchSequence += 1;
+  developOwnerPicker.loading = false;
+}
+
 function applyOwnerSelection(option: SkillPlanningUserOption): void {
   ownerPicker.selected = option;
   ownerPicker.keyword = option.label;
-  ownerPicker.open = false;
+  closeOwnerPersonSearch();
   editor.owner = option.label;
   editor.department = option.deptName;
 }
@@ -540,7 +561,7 @@ function applyOwnerSelection(option: SkillPlanningUserOption): void {
 function applyDevelopOwnerSelection(option: SkillPlanningUserOption): void {
   developOwnerPicker.selected = option;
   developOwnerPicker.keyword = option.label;
-  developOwnerPicker.open = false;
+  closeDevelopOwnerPersonSearch();
   editor.developOwner = option.label;
   editor.developOwnerDepartment = option.deptName;
 }
@@ -558,6 +579,7 @@ async function searchOwnerUsers(keyword = ownerPicker.keyword): Promise<void> {
   ownerPicker.open = true;
   ownerPicker.message = '';
   if (!text) {
+    ownerSearchSequence += 1;
     ownerPicker.loading = false;
     ownerPicker.options = [];
     ownerPicker.message = '请输入人员信息';
@@ -591,6 +613,7 @@ async function searchDevelopOwnerUsers(keyword = developOwnerPicker.keyword): Pr
   developOwnerPicker.open = true;
   developOwnerPicker.message = '';
   if (!text) {
+    developOwnerSearchSequence += 1;
     developOwnerPicker.loading = false;
     developOwnerPicker.options = [];
     developOwnerPicker.message = '请输入人员信息';
@@ -625,6 +648,9 @@ function onOwnerPickerFocus(): void {
   if (ownerPicker.keyword.trim()) {
     void searchOwnerUsers();
   } else {
+    ownerSearchSequence += 1;
+    ownerPicker.loading = false;
+    ownerPicker.options = [];
     ownerPicker.message = '请输入人员信息';
   }
 }
@@ -634,6 +660,9 @@ function onDevelopOwnerPickerFocus(): void {
   if (developOwnerPicker.keyword.trim()) {
     void searchDevelopOwnerUsers();
   } else {
+    developOwnerSearchSequence += 1;
+    developOwnerPicker.loading = false;
+    developOwnerPicker.options = [];
     developOwnerPicker.message = '请输入人员信息';
   }
 }
@@ -708,7 +737,9 @@ function hydratePickerFromValue(
   }
   picker.keyword = label;
   if (looksLikePersonLabel(label) && department.trim()) {
-    const [chName = '', id = ''] = label.split(/\s+/);
+    const parts = label.split(/\s+/).filter(Boolean);
+    const id = parts[parts.length - 1] ?? '';
+    const chName = parts.slice(0, -1).join(' ');
     picker.selected = {
       id,
       chName,
@@ -764,8 +795,6 @@ function closeEditor(): void {
   editorOverlayPointerStartedOnBackdrop.value = false;
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
-  clearOwnerSearchTimer();
-  clearDevelopOwnerSearchTimer();
 }
 
 function onEditorOverlayPointerDown(event: PointerEvent): void {
@@ -1303,7 +1332,7 @@ onBeforeUnmount(() => {
               ><span>Skill 说明 *</span
               ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
             </label>
-            <label class="owner-picker person-search" @keydown.esc="ownerPicker.open = false">
+            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
               <input
                 :value="ownerPicker.keyword"
@@ -1340,7 +1369,7 @@ onBeforeUnmount(() => {
             /></label> -->
             <label
               class="develop-owner-picker person-search"
-              @keydown.esc="developOwnerPicker.open = false"
+              @keydown.esc="closeDevelopOwnerPersonSearch"
             >
               <span>开发责任人 *</span>
               <input
