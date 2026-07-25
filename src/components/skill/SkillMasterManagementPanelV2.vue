@@ -99,6 +99,42 @@ let ownerSearchSequence = 0;
 let developOwnerSearchSequence = 0;
 let personLabelLoadSequence = 0;
 
+type PersonSubmitValue = {
+  label: string;
+  name: string;
+  id: string;
+};
+
+function createEmptyPersonSubmitValue(): PersonSubmitValue {
+  return {
+    label: '',
+    name: '',
+    id: '',
+  };
+}
+
+function parsePersonSubmitValue(value: string): PersonSubmitValue {
+  const label = value.trim();
+  if (!label) {
+    return createEmptyPersonSubmitValue();
+  }
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    return {
+      label,
+      name: label,
+      id: '',
+    };
+  }
+  const id = parts[parts.length - 1] ?? '';
+  const name = parts.slice(0, -1).join(' ');
+  return {
+    label,
+    name,
+    id,
+  };
+}
+
 const editor = reactive({
   open: false,
   mode: 'create' as 'create' | 'edit',
@@ -115,6 +151,8 @@ const editor = reactive({
   status: '未开始' as SkillMasterStatus,
   error: '',
 });
+const initialOwnerValue = reactive(createEmptyPersonSubmitValue());
+const initialDevelopOwnerValue = reactive(createEmptyPersonSubmitValue());
 const associationEditor = reactive({
   open: false,
   skillId: '',
@@ -554,6 +592,8 @@ function resetEditor(): void {
     status: '未开始',
     error: '',
   });
+  Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
+  Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -820,7 +860,7 @@ function ensureDevelopOwnerSelection(): boolean {
 function hydratePickerFromValue(
   picker: PersonPickerState,
   value: string,
-  department: string,
+  department = '',
 ): void {
   resetPersonPicker(picker);
   const label = value.trim();
@@ -828,18 +868,47 @@ function hydratePickerFromValue(
     return;
   }
   picker.keyword = label;
-  if (looksLikePersonLabel(label) && department.trim()) {
-    const parts = label.split(/\s+/).filter(Boolean);
-    const id = parts[parts.length - 1] ?? '';
-    const chName = parts.slice(0, -1).join(' ');
+  const parsed = parsePersonSubmitValue(label);
+  if (looksLikePersonLabel(label) && parsed.id) {
     picker.selected = {
-      id,
-      chName,
+      id: parsed.id,
+      chName: parsed.name,
       label,
       deptName: department.trim(),
       raw: {},
     };
   }
+}
+
+function resolvePersonForSubmit(
+  picker: PersonPickerState,
+  initialValue: PersonSubmitValue,
+  role: 'owner' | 'developOwner',
+): PersonSubmitValue | null {
+  if (picker.selected) {
+    return {
+      label: picker.selected.label,
+      name: picker.selected.chName || picker.selected.label,
+      id: picker.selected.id,
+    };
+  }
+  const currentLabel = picker.keyword.trim();
+  if (
+    editor.mode === 'edit' &&
+    currentLabel &&
+    currentLabel === initialValue.label &&
+    initialValue.id
+  ) {
+    return {
+      label: initialValue.label,
+      name: initialValue.name,
+      id: initialValue.id,
+    };
+  }
+  if (editor.mode === 'edit' && role === 'developOwner' && !currentLabel && !initialValue.label) {
+    return createEmptyPersonSubmitValue();
+  }
+  return null;
 }
 
 function openCreate(): void {
@@ -856,6 +925,8 @@ function openCreate(): void {
 function openEdit(record: SkillMasterRecord): void {
   const ownerLabel = personDisplayLabel(record.owner);
   const developOwnerLabel = personDisplayLabel(record.developOwner);
+  const nextOwnerLabel = ownerLabel === '待认领' ? '' : ownerLabel;
+  const nextDevelopOwnerLabel = developOwnerLabel === '待认领' ? '' : developOwnerLabel;
   Object.assign(editor, {
     open: true,
     mode: 'edit',
@@ -864,18 +935,20 @@ function openEdit(record: SkillMasterRecord): void {
     description: record.description,
     level: record.level,
     product: record.product,
-    owner: ownerLabel === '待认领' ? '' : ownerLabel,
+    owner: nextOwnerLabel,
     department: record.department,
-    developOwner: developOwnerLabel === '待认领' ? '' : developOwnerLabel,
+    developOwner: nextDevelopOwnerLabel,
     developOwnerDepartment: record.developOwnerDepartment || '',
     plannedCompleteDate: record.plannedCompleteDate,
     status: record.status,
     error: '',
   });
-  hydratePickerFromValue(ownerPicker, editor.owner, editor.department);
+  Object.assign(initialOwnerValue, parsePersonSubmitValue(nextOwnerLabel));
+  Object.assign(initialDevelopOwnerValue, parsePersonSubmitValue(nextDevelopOwnerLabel));
+  hydratePickerFromValue(ownerPicker, nextOwnerLabel, editor.department);
   hydratePickerFromValue(
     developOwnerPicker,
-    editor.developOwner,
+    nextDevelopOwnerLabel,
     editor.developOwnerDepartment,
   );
   applyCurrentScopeToEditor();
@@ -885,6 +958,8 @@ function closeEditor(): void {
   editor.open = false;
   editor.error = '';
   editorOverlayPointerStartedOnBackdrop.value = false;
+  Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
+  Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -989,11 +1064,17 @@ async function submitEditor(): Promise<void> {
     editor.error = '请填写 Skill 说明';
     return;
   }
-  if (!ownerPicker.selected) {
+  const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
+  if (!ownerValue || !ownerValue.id) {
     editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
     return;
   }
-  if (!developOwnerPicker.selected) {
+  const developOwnerValue = resolvePersonForSubmit(
+    developOwnerPicker,
+    initialDevelopOwnerValue,
+    'developOwner',
+  );
+  if (!developOwnerValue || !developOwnerValue.id) {
     editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
     return;
   }
@@ -1009,11 +1090,10 @@ async function submitEditor(): Promise<void> {
     dimType: dim.dimType,
     dimCode: dim.dimCode,
     dimName: dim.dimName,
-    ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-    ownerId: ownerPicker.selected.id,
-    developOwnerName:
-      developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-    developOwnerId: developOwnerPicker.selected.id,
+    ownerName: ownerValue.name,
+    ownerId: ownerValue.id,
+    developOwnerName: developOwnerValue.name,
+    developOwnerId: developOwnerValue.id,
     planFinishDate: editor.plannedCompleteDate,
   };
 
