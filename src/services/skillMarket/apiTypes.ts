@@ -693,8 +693,7 @@ export type CreateSkillPlanningSupplementBody = {
   secondScene: string;
   activityNodeName: string;
   subActivityNodeName: string;
-  /** DEPT=部门级，PROD=产品级 */
-  dimType: 'DEPT' | 'PROD' | string;
+  dimType: '部门级' | '产品级' | string;
   dimCode: string;
   dimName: string;
 };

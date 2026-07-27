@@ -324,15 +324,13 @@ function filterMockSkillPlanningSupplement(
   const keyword = String(params.keyword ?? '')
     .trim()
     .toLowerCase();
-  const dimType = String(params.dimType ?? '')
-    .trim()
-    .toUpperCase();
+  const dimType = String(params.dimType ?? '').trim();
   const dimCode = String(params.dimCode ?? '').trim();
   const dimName = String(params.dimName ?? '').trim();
 
   let list = mockSkillPlanningSupplementRecords.slice();
   if (dimType) {
-    list = list.filter((item) => item.dimType.toUpperCase() === dimType);
+    list = list.filter((item) => item.dimType === dimType);
   }
   if (dimCode) {
     list = list.filter((item) => item.dimCode === dimCode);
@@ -1735,9 +1733,9 @@ function handleSkillRequest(
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
-    const dimType = String(body.dimType).trim().toUpperCase();
-    if (dimType !== 'DEPT' && dimType !== 'PROD') {
-      return fail('dimType 仅支持 DEPT 或 PROD', null);
+    const dimType = String(body.dimType).trim();
+    if (dimType !== '部门级' && dimType !== '产品级') {
+      return fail('dimType 仅支持 部门级 或 产品级', null);
     }
     const skillName = String(body.skillName).trim();
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
@@ -1788,9 +1786,9 @@ function handleSkillRequest(
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
-    const dimType = String(body.dimType).trim().toUpperCase();
-    if (dimType !== 'DEPT' && dimType !== 'PROD') {
-      return fail('dimType 仅支持 DEPT 或 PROD', null);
+    const dimType = String(body.dimType).trim();
+    if (dimType !== '部门级' && dimType !== '产品级') {
+      return fail('dimType 仅支持 部门级 或 产品级', null);
     }
     const target = mockSkillPlanningSupplementRecords.find((item) => item.id === id);
     if (!target) {

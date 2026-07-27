@@ -57,7 +57,7 @@ export interface SkillPlanningQuery {
   plannedStartDate?: string;
   plannedEndDate?: string;
   keyword?: string;
-  /** 补充查询维度：DEPT / PROD */
+  /** 补充查询维度：部门级 / 产品级 */
   dimType?: string;
   dimCode?: string;
   dimName?: string;

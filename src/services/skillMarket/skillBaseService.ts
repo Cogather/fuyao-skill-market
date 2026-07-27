@@ -14,7 +14,7 @@ import type {
 
 export interface SceneOptionGroupsParams {
   userId?: string;
-  /** DEPT=部门级，PROD=产品级 */
+  /** 部门级 / 产品级 */
   dimType?: string;
   dimCode?: string;
   dimName?: string;

@@ -45,7 +45,7 @@ type SkillPlanningMockModule = typeof import('./skillPlanningMockService');
 
 export interface SkillPlanningTaxonomyOptionParams {
   userId?: string;
-  /** DEPT=部门级，PROD=产品级 */
+  /** 部门级 / 产品级 */
   dimType?: string;
   dimCode?: string;
   dimName?: string;

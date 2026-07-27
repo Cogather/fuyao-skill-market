@@ -414,7 +414,7 @@ function httpDimContext(departmentName: string): {
     }
     return {
       userId,
-      dimType: 'PROD',
+      dimType: '产品级',
       dimCode,
       dimName,
     };
@@ -427,7 +427,7 @@ function httpDimContext(departmentName: string): {
   }
   return {
     userId,
-    dimType: 'DEPT',
+    dimType: '部门级',
     dimCode,
     dimName,
   };

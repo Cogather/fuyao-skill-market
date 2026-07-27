@@ -405,7 +405,7 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
     const dimName = filterForm.offeringName.trim();
     return {
       ...(userId ? { userId } : {}),
-      dimType: 'PROD',
+      dimType: '产品级',
       ...(dimCode ? { dimCode } : {}),
       ...(dimName ? { dimName } : {}),
     };
@@ -422,7 +422,7 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
     String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
   return {
     ...(userId ? { userId } : {}),
-    dimType: 'DEPT',
+    dimType: '部门级',
     ...(dimCode ? { dimCode } : {}),
     ...(department ? { dimName: department } : {}),
   };
@@ -663,8 +663,7 @@ function mapManagementItemToSkillMasterRecord(
 
 function resolvePlanningDimFields(): {
   level: PlanningLevel;
-  dimTypeApi: 'DEPT' | 'PROD';
-  dimTypeQuery: '部门级' | '产品级';
+  dimType: '部门级' | '产品级';
   dimCode: string;
   dimName: string;
 } | null {
@@ -682,8 +681,7 @@ function resolvePlanningDimFields(): {
     }
     return {
       level,
-      dimTypeApi: 'PROD',
-      dimTypeQuery: '产品级',
+      dimType: '产品级',
       dimCode,
       dimName,
     };
@@ -697,8 +695,7 @@ function resolvePlanningDimFields(): {
   }
   return {
     level,
-    dimTypeApi: 'DEPT',
-    dimTypeQuery: '部门级',
+    dimType: '部门级',
     dimCode,
     dimName,
   };
@@ -729,7 +726,7 @@ function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null
     secondScene,
     activityNodeName,
     subActivityNodeName,
-    dimType: dim.dimTypeApi,
+    dimType: dim.dimType,
     dimCode: dim.dimCode,
     dimName: dim.dimName,
   };
@@ -817,7 +814,7 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
     } else {
       const dim = resolvePlanningDimFields();
       if (dim) {
-        queryBody.dimType = dim.dimTypeQuery;
+        queryBody.dimType = dim.dimType;
         queryBody.dimCode = dim.dimCode;
       }
     }
