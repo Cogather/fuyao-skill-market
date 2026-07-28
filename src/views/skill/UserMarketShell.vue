@@ -2385,11 +2385,6 @@ const updateSkillData = async (object: any, callback: any) => {
   } catch (error) {
     callback.reject(error);
   }
-  const formData = await onDownloadToFormData(id, currentVersion);
-  if (formData) {
-    const res = await skillBaseService.clearAndUploadWorkspace(formData, userId.value, agentId);
-    console.log(res);
-  }
 };
 
 function onViewVersions(id: string): void {

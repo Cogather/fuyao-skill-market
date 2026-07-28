@@ -894,6 +894,7 @@ const updateSkill = async (skill: any) => {
         { resolve, reject },
       );
     });
+    goToDebugPage(skill);
   } catch (error) {
     console.error(error);
   }
