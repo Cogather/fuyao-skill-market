@@ -741,17 +741,35 @@ export type CreateSkillPlanningSupplementBody = {
   skillConfigEntity: SkillPlanningSupplementEntity;
 };
 
-/** Skill 规划补充查询（GET /config/query） */
+/** Skill 规划补充查询（POST /config/query） */
 export type QuerySkillPlanningSupplementParams = {
   userId: string;
-  dimType?: string;
-  dimCode?: string;
-  dimName?: string;
+};
+
+export type QuerySkillPlanningSupplementQuery = {
+  activityNodeName?: string[];
+  departmentL3?: string;
+  departmentL4?: string;
+  departmentL5?: string;
+  departmentL6?: string;
+  departmentL7?: string;
+  departmentL8?: string;
+  deptCode?: string;
+  deptCodes?: string[];
+  firstScene?: string[];
   keyword?: string;
-  sortBy?: string;
-  sortOrder?: string;
+  level?: string[];
   pageNum?: number;
   pageSize?: number;
+  secondScene?: string[];
+  sortBy?: string;
+  sortOrder?: string;
+  status?: string[];
+  subActivityNodeName?: string[];
+};
+
+export type QuerySkillPlanningSupplementBody = {
+  query: QuerySkillPlanningSupplementQuery;
 };
 
 /** Skill 规划补充列表行（查询返回；展示字段可能随 Skill 清单关联带回） */

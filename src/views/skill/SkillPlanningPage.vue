@@ -14,7 +14,7 @@ import {
   querySkillPlanningSceneOptionGroups,
   querySkillPlanningUsers,
   exportAllSkillPlanningList,
-  querySkillConfig,
+  querySkillPlanningSupplement,
   updateSkillPlanningSupplement,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
@@ -1833,18 +1833,12 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   if (filterForm.level === '产品级') {
     assignQueryValue(nextQuery, 'offeringName', filterForm.offeringName);
   }
-  if (filterForm.level === '部门级') {
-    planningDepartmentSegments.value
-      .slice(0, planningDepartmentLevelRefs.length)
-      .forEach((segment, index) => {
-        assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
-      });
-  }
-
-  const dim = currentPlanningTaxonomyParams();
-  assignQueryValue(nextQuery, 'dimType', dim.dimType);
-  assignQueryValue(nextQuery, 'dimCode', dim.dimCode);
-  assignQueryValue(nextQuery, 'dimName', dim.dimName);
+  const departmentPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
+  departmentPath.slice(0, planningDepartmentLevelRefs.length).forEach((segment, index) => {
+    assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
+  });
+  const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
+  assignQueryValue(nextQuery, 'deptCode', departmentNode?.deptCode ?? departmentNode?.id);
 
   if (plannedFinishSortOrder.value) {
     nextQuery.sortBy = 'planedCompleteDate';
@@ -1871,12 +1865,12 @@ async function reloadList(options: { notifyOnMissingScope?: boolean } = {}) {
   }
   loading.value = true;
   try {
-    const result = await querySkillConfig(syncQueryFilterObj());
+    const result = await querySkillPlanningSupplement(syncQueryFilterObj());
     rows.value = result.list;
     total.value = result.total;
     if (pageNum.value > totalPages.value) {
       pageNum.value = totalPages.value;
-      const nextResult = await querySkillConfig(syncQueryFilterObj());
+      const nextResult = await querySkillPlanningSupplement(syncQueryFilterObj());
       rows.value = nextResult.list;
       total.value = nextResult.total;
     }

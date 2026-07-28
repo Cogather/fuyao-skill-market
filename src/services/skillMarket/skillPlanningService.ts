@@ -1,7 +1,8 @@
 import { skillBaseService } from './skillBaseService';
 import type {
   CreateSkillPlanningSupplementBody,
-  QuerySkillPlanningSupplementParams,
+  QuerySkillPlanningSupplementBody,
+  QuerySkillPlanningSupplementQuery,
   SkillPlanningSupplementItemDto,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
@@ -251,37 +252,45 @@ function normalizeSupplementListResult(response: unknown): SkillPlanningListResu
 
 function toHttpSkillPlanningSupplementQuery(
   query: SkillPlanningQuery,
-): QuerySkillPlanningSupplementParams {
-  const params: QuerySkillPlanningSupplementParams = {
-    userId: normalizeText(query.userId),
+): QuerySkillPlanningSupplementQuery {
+  const body: QuerySkillPlanningSupplementQuery = {};
+  const assignText = (key: keyof QuerySkillPlanningSupplementQuery, value: unknown): void => {
+    const text = normalizeText(value);
+    if (text) {
+      (body as Record<string, unknown>)[key] = text;
+    }
   };
-  const dimType = normalizeText(query.dimType);
-  const dimCode = normalizeText(query.dimCode);
-  const dimName = normalizeText(query.dimName);
-  const keyword = normalizeText(query.keyword);
-  if (dimType) {
-    params.dimType = dimType;
-  }
-  if (dimCode && dimName) {
-    params.dimCode = dimCode;
-    params.dimName = dimName;
-  }
-  if (keyword) {
-    params.keyword = keyword;
-  }
-  if (normalizeText(query.sortBy)) {
-    params.sortBy = normalizeText(query.sortBy);
-  }
-  if (normalizeText(query.sortOrder)) {
-    params.sortOrder = normalizeText(query.sortOrder);
-  }
+  const assignTextArray = (key: keyof QuerySkillPlanningSupplementQuery, value: unknown): void => {
+    const values = normalizeTextArray(Array.isArray(value) ? value : [value]);
+    if (values.length > 0) {
+      (body as Record<string, unknown>)[key] = values;
+    }
+  };
+
+  assignTextArray('activityNodeName', query.activityNodeName);
+  assignText('departmentL3', query.departmentL3);
+  assignText('departmentL4', query.departmentL4);
+  assignText('departmentL5', query.departmentL5);
+  assignText('departmentL6', query.departmentL6);
+  assignText('departmentL7', query.departmentL7);
+  assignText('departmentL8', query.departmentL8);
+  assignText('deptCode', query.deptCode ?? query.dimCode);
+  assignTextArray('deptCodes', query.deptCodes);
+  assignTextArray('firstScene', query.firstScene);
+  assignText('keyword', query.keyword);
+  assignTextArray('level', query.level);
   if (typeof query.pageNum === 'number' && Number.isFinite(query.pageNum)) {
-    params.pageNum = query.pageNum;
+    body.pageNum = query.pageNum;
   }
   if (typeof query.pageSize === 'number' && Number.isFinite(query.pageSize)) {
-    params.pageSize = query.pageSize;
+    body.pageSize = query.pageSize;
   }
-  return params;
+  assignTextArray('secondScene', query.secondScene);
+  assignText('sortBy', query.sortBy);
+  assignText('sortOrder', query.sortOrder);
+  assignTextArray('status', query.status);
+  assignTextArray('subActivityNodeName', query.subActivityNodeName);
+  return body;
 }
 
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
@@ -447,65 +456,6 @@ function normalizeHttpDownloadUrl(response: unknown): string {
   return text;
 }
 
-const planningHeaderFilterHttpParamPairs = [
-  ['firstScene', 'firstScene'],
-  ['secondScene', 'secondScene'],
-  ['activityNodeName', 'activityNodeName'],
-  ['subActivityNodeName', 'subActivityNodeName'],
-  ['level', 'level'],
-  ['status', 'status'],
-] as const satisfies ReadonlyArray<readonly [keyof SkillPlanningQuery, keyof SkillPlanningQuery]>;
-
-const planningHeaderFilterHttpMultiKeys = new Set<string>(
-  planningHeaderFilterHttpParamPairs.map(([, multiKey]) => multiKey),
-);
-
-function assignHttpQueryValue(
-  body: Record<string, unknown>,
-  key: keyof SkillPlanningQuery,
-  value: unknown,
-): void {
-  if (Array.isArray(value)) {
-    const values = normalizeTextArray(value);
-    if (values.length > 0) {
-      body[key] = values.length === 1 ? values[0] : values;
-    }
-    return;
-  }
-
-  if (typeof value === 'number') {
-    body[key] = value;
-    return;
-  }
-
-  const text = normalizeText(value);
-  if (text) {
-    body[key] = text;
-  }
-}
-
-function toHttpSkillPlanningQuery(query: SkillPlanningQuery): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-
-  Object.entries(query).forEach(([key, value]) => {
-    if (planningHeaderFilterHttpMultiKeys.has(key)) {
-      return;
-    }
-    assignHttpQueryValue(body, key as keyof SkillPlanningQuery, value);
-  });
-
-  planningHeaderFilterHttpParamPairs.forEach(([valueKey, multiKey]) => {
-    const values = normalizeTextArray(query[multiKey]);
-    if (values.length > 0) {
-      body[valueKey] = values;
-      return;
-    }
-    assignHttpQueryValue(body, valueKey, query[valueKey]);
-  });
-
-  return body;
-}
-
 function normalizeTaxonomyRequestParams(
   params: SkillPlanningTaxonomyOptionParams = {},
 ): SkillPlanningTaxonomyOptionParams {
@@ -595,22 +545,24 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
   return normalizeUserDepartmentOptions(response);
 }
 
-export async function querySkillConfig(
+export async function querySkillPlanningSupplement(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillConfig(query);
+    return (await loadMockService()).querySkillPlanningSupplement(query);
   }
 
-  const response = await skillBaseService.querySkillPlanningSupplement(
-    toHttpSkillPlanningSupplementQuery(query),
-  );
+  const userId = normalizeText(query.userId);
+  const body: QuerySkillPlanningSupplementBody = {
+    query: toHttpSkillPlanningSupplementQuery(query),
+  };
+  const response = await skillBaseService.querySkillPlanningSupplement(body, userId);
   return normalizeSupplementListResult(response);
 }
 
 export async function exportSkillConfig(body: any): Promise<any> {
   if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillConfig(body);
+    return (await loadMockService()).querySkillPlanningSupplement(body);
   }
 
   const response = await skillBaseService.exportSkillPlanning(body);
@@ -628,7 +580,7 @@ export async function exportAllSkillPlanningList(
   delete nextQuery.pageNum;
   delete nextQuery.pageSize;
 
-  const result = await querySkillConfig({
+  const result = await querySkillPlanningSupplement({
     ...nextQuery,
     pageNum: 1,
     pageSize: 10000,

@@ -540,7 +540,7 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   });
 }
 
-export async function querySkillConfig(
+export async function querySkillPlanningSupplement(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   const pageNum = Math.max(1, Number(query.pageNum ?? 1));

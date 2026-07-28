@@ -7,7 +7,7 @@ import type {
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
-  QuerySkillPlanningSupplementParams,
+  QuerySkillPlanningSupplementBody,
   UpdateSkillMasterManagementBody,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
@@ -311,15 +311,6 @@ export const skillBaseService = {
    *
    * Skill 规划相关接口
    */
-  // skill查询接口
-  querySkillConfig: (params: { userId: string; [key: string]: unknown }): any => {
-    return httpRequest.skill<any>({
-      url: '/config/query',
-      method: 'get',
-      params,
-    });
-  },
-
   // 查询Skill规划部门列表
   querySkillPlanningDepartments: (params: { userId: string }): any => {
     return httpRequest.skill<any>({
@@ -356,11 +347,12 @@ export const skillBaseService = {
     });
   },
 
-  querySkillPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
+  querySkillPlanningSupplement: (body: QuerySkillPlanningSupplementBody, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/config/query',
-      method: 'get',
-      params,
+      method: 'post',
+      data: body,
+      params: { userId },
     });
   },
 

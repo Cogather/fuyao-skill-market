@@ -351,45 +351,102 @@ function filterMockSkillMasterManagement(
   return list.slice(start, start + pageSize);
 }
 
-function filterMockSkillPlanningSupplement(params: Record<string, unknown>): {
+function mockPlanningQueryValues(value: unknown): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
+  return [...new Set(source.map((item) => String(item ?? '').trim()).filter(Boolean))];
+}
+
+function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
   list: MockSkillPlanningSupplementRecord[];
   total: number;
 } {
-  const keyword = String(params.keyword ?? '')
+  const keyword = String(query.keyword ?? '')
     .trim()
     .toLowerCase();
-  const dimType = String(params.dimType ?? '').trim();
-  const dimCode = String(params.dimCode ?? '').trim();
-  const dimName = String(params.dimName ?? '').trim();
+  const firstScenes = mockPlanningQueryValues(query.firstScene);
+  const secondScenes = mockPlanningQueryValues(query.secondScene);
+  const activities = mockPlanningQueryValues(query.activityNodeName);
+  const subActivities = mockPlanningQueryValues(query.subActivityNodeName);
+  const levels = mockPlanningQueryValues(query.level);
+  const statuses = mockPlanningQueryValues(query.status);
+  const deptCodes = mockPlanningQueryValues([
+    ...mockPlanningQueryValues(query.deptCodes),
+    ...mockPlanningQueryValues(query.deptCode),
+  ]);
+  const departmentFilters = [
+    [query.departmentL3, 'l3DeptName'],
+    [query.departmentL4, 'l4DeptName'],
+    [query.departmentL5, 'l5DeptName'],
+    [query.departmentL6, 'l6DeptName'],
+    [query.departmentL7, 'l7DeptName'],
+    [query.departmentL8, 'l8DeptName'],
+  ] as const;
 
-  let list = mockSkillPlanningSupplementRecords.slice();
-  if (dimType) {
-    list = list.filter((item) => item.dimType === dimType);
-  }
-  if (dimCode) {
-    list = list.filter((item) => item.dimCode === dimCode);
-  }
-  if (dimName) {
-    list = list.filter((item) => item.dimName === dimName);
-  }
-  if (keyword) {
-    list = list.filter((item) =>
-      [
-        item.skillName,
-        item.firstScene,
-        item.secondScene,
-        item.activityNodeName,
-        item.subActivityNodeName,
-        item.skillDescription,
-        item.ownerName,
-        item.developOwnerName,
-      ].some((field) => field.toLowerCase().includes(keyword)),
-    );
+  let list = mockSkillPlanningSupplementRecords.filter((item) => {
+    const record = item as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+    if (firstScenes.length > 0 && !firstScenes.includes(item.firstScene)) return false;
+    if (secondScenes.length > 0 && !secondScenes.includes(item.secondScene)) return false;
+    if (activities.length > 0 && !activities.includes(item.activityNodeName)) return false;
+    if (subActivities.length > 0 && !subActivities.includes(item.subActivityNodeName)) return false;
+    if (levels.length > 0 && !levels.includes(item.level || item.dimType)) return false;
+    if (statuses.length > 0 && !statuses.includes(item.status)) return false;
+    if (
+      deptCodes.length > 0 &&
+      ![item.deptCode, item.planDeptCode, item.dimCode].some((value) =>
+        deptCodes.includes(String(value ?? '').trim()),
+      )
+    ) {
+      return false;
+    }
+    if (
+      departmentFilters.some(
+        ([value, key]) =>
+          String(value ?? '').trim() && String(record[key] ?? '').trim() !== String(value).trim(),
+      )
+    ) {
+      return false;
+    }
+    if (!keyword) return true;
+    return [
+      item.skillName,
+      item.firstScene,
+      item.secondScene,
+      item.activityNodeName,
+      item.subActivityNodeName,
+      item.skillDescription,
+      item.ownerName,
+      item.developOwnerName,
+    ].some((field) => field.toLowerCase().includes(keyword));
+  });
+
+  const sortBy = String(query.sortBy ?? '').trim();
+  const sortOrder =
+    String(query.sortOrder ?? '')
+      .trim()
+      .toLowerCase() === 'asc'
+      ? 1
+      : -1;
+  if (sortBy) {
+    list = [...list].sort((left, right) => {
+      const leftRecord = left as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+      const rightRecord = right as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+      const leftValue = String(
+        sortBy === 'planedCompleteDate' ? left.planFinishDate : (leftRecord[sortBy] ?? ''),
+      );
+      const rightValue = String(
+        sortBy === 'planedCompleteDate' ? right.planFinishDate : (rightRecord[sortBy] ?? ''),
+      );
+      return leftValue.localeCompare(rightValue) * sortOrder;
+    });
   }
 
   const total = list.length;
-  const pageNum = Math.max(1, Number(params.pageNum) || 1);
-  const pageSize = Math.max(1, Number(params.pageSize) || total || 10);
+  const pageNum = Math.max(1, Number(query.pageNum) || 1);
+  const pageSize = Math.max(1, Number(query.pageSize) || total || 10);
   const start = (pageNum - 1) * pageSize;
   return {
     list: list.slice(start, start + pageSize),
@@ -1837,8 +1894,11 @@ function handleSkillRequest(
     return ok({ ...record });
   }
 
-  if (method === 'get' && path === '/config/query') {
-    const result = filterMockSkillPlanningSupplement(params);
+  if (method === 'post' && path === '/config/query') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const query =
+      body.query && typeof body.query === 'object' ? (body.query as Record<string, unknown>) : {};
+    const result = filterMockSkillPlanningSupplement(query);
     return ok(result.list, result.total);
   }
 
