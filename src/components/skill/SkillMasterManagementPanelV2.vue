@@ -857,11 +857,7 @@ function ensureDevelopOwnerSelection(): boolean {
   return Boolean(editor.developOwnerDepartment.trim());
 }
 
-function hydratePickerFromValue(
-  picker: PersonPickerState,
-  value: string,
-  department = '',
-): void {
+function hydratePickerFromValue(picker: PersonPickerState, value: string, department = ''): void {
   resetPersonPicker(picker);
   const label = value.trim();
   if (!label) {
@@ -946,11 +942,7 @@ function openEdit(record: SkillMasterRecord): void {
   Object.assign(initialOwnerValue, parsePersonSubmitValue(nextOwnerLabel));
   Object.assign(initialDevelopOwnerValue, parsePersonSubmitValue(nextDevelopOwnerLabel));
   hydratePickerFromValue(ownerPicker, nextOwnerLabel, editor.department);
-  hydratePickerFromValue(
-    developOwnerPicker,
-    nextDevelopOwnerLabel,
-    editor.developOwnerDepartment,
-  );
+  hydratePickerFromValue(developOwnerPicker, nextDevelopOwnerLabel, editor.developOwnerDepartment);
   applyCurrentScopeToEditor();
 }
 
@@ -1020,8 +1012,7 @@ async function submitEditor(): Promise<void> {
       dimName: dim.dimName,
       ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
       ownerId: ownerPicker.selected.id,
-      developOwnerName:
-        developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+      developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
       developOwnerId: developOwnerPicker.selected.id,
       planFinishDate: editor.plannedCompleteDate,
     };
@@ -1697,8 +1688,7 @@ onBeforeUnmount(() => {
               </div>
             </label>
             <label
-              ><span>计划完成时间 *</span
-              ><input v-model="editor.plannedCompleteDate" type="date"
+              ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
             /></label>
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>

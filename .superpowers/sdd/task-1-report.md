@@ -70,11 +70,11 @@ Added `POST /management/add` branch in `handleSkillRequest` (after `/publish-to-
 
 ## Verification
 
-| Check | Result |
-|-------|--------|
-| `npm run build` | ✅ Pass (exit 0, 245 modules) |
-| ESLint / IDE lints on changed files | ✅ No errors |
-| Vue panel untouched | ✅ Confirmed |
+| Check                               | Result                        |
+| ----------------------------------- | ----------------------------- |
+| `npm run build`                     | ✅ Pass (exit 0, 245 modules) |
+| ESLint / IDE lints on changed files | ✅ No errors                  |
+| Vue panel untouched                 | ✅ Confirmed                  |
 
 **Manual smoke (optional, not run in CI):** With mock enabled, call:
 
@@ -90,7 +90,7 @@ skillBaseService.createSkillMasterManagement({
   developOwnerName: '李四',
   developOwnerId: 'w002',
   planFinishDate: '2026-12-31',
-})
+});
 ```
 
 Expected: `meta.success === true`, `data.id` starts with `skill-mgmt-`.

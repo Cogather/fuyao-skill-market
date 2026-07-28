@@ -171,17 +171,32 @@ const productsLoading = ref(false);
 const configurableDepartmentPaths = computed(() =>
   departmentOptions.value.map((department) => [...department.path]),
 );
+function findDefaultDepartmentForPath(path: string[]): DepartmentOption | undefined {
+  const normalizedPath = normalizeDepartmentPath(path);
+  if (!normalizedPath.length) return undefined;
+  return (
+    departmentOptions.value.find((department) =>
+      sameDepartmentPath(department.path, normalizedPath),
+    ) ??
+    departmentOptions.value.find((department) =>
+      departmentPathStartsWith(department.path, normalizedPath),
+    ) ??
+    departmentOptions.value.find((department) =>
+      departmentPathStartsWith(normalizedPath, department.path),
+    )
+  );
+}
+
 const defaultDepartmentPath = computed(() => {
   const candidatePaths = [
     normalizedDepartmentPermissionPath.value,
     ...(props.allowedDepartmentPaths ?? []).map(normalizeDepartmentPath),
   ].filter((path) => path.length > 0);
-  const defaultDepartment = candidatePaths
-    .map((path) =>
-      departmentOptions.value.find((department) => sameDepartmentPath(department.path, path)),
-    )
-    .find(Boolean);
-  return [...(defaultDepartment?.path ?? [])];
+  const defaultDepartment = candidatePaths.map(findDefaultDepartmentForPath).find(Boolean);
+  const fallbackDepartment = props.restrictToAllowedDepartments
+    ? departmentOptions.value[0]
+    : undefined;
+  return [...(defaultDepartment?.path ?? fallbackDepartment?.path ?? [])];
 });
 const selectedProduct = computed(
   () => productOptions.value.find((item) => item.offeringName === scopeForm.offeringName) ?? null,

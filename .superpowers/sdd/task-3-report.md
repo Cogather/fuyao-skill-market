@@ -55,23 +55,23 @@ Unchanged local path: prefix/owner/developOwner checks + `updateSkillMasterRecor
 
 ## Spec Coverage
 
-| Spec 要求 | 状态 |
-|-----------|------|
-| Body 字段齐全且不含 status | ✅ |
-| dimType/dimCode/dimName 映射 | ✅ |
-| 弹窗必填（名称前缀/说明/Owner/开发责任人/计划完成时间） | ✅ |
-| success 校验 + 本地同步列表 | ✅ |
-| 编辑不改后端接口 | ✅ |
-| 不抽公共组件 | ✅ |
+| Spec 要求                                               | 状态 |
+| ------------------------------------------------------- | ---- |
+| Body 字段齐全且不含 status                              | ✅   |
+| dimType/dimCode/dimName 映射                            | ✅   |
+| 弹窗必填（名称前缀/说明/Owner/开发责任人/计划完成时间） | ✅   |
+| success 校验 + 本地同步列表                             | ✅   |
+| 编辑不改后端接口                                        | ✅   |
+| 不抽公共组件                                            | ✅   |
 
 ---
 
 ## Verification
 
-| Check | Result |
-|-------|--------|
+| Check           | Result                                |
+| --------------- | ------------------------------------- |
 | `npm run build` | ✅ Pass (exit 0, 245 modules, ~15.6s) |
-| Unit tests | N/A（仓库无单测框架） |
+| Unit tests      | N/A（仓库无单测框架）                 |
 
 ### Manual E2E checklist（未在本环境实点 UI）
 

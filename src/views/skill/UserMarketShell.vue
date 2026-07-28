@@ -2371,7 +2371,20 @@ async function onDownloadToFormData(id: string, version?: string): Promise<FormD
     return null;
   }
 }
-const updateSkillData = async (id: string, currentVersion: string) => {
+const updateSkillData = async (object: any, callback: any) => {
+  console.log('父组件收到事件:', object);
+  try {
+    const formData = await onDownloadToFormData(object.id, object.currentVersion);
+    if (!formData) {
+      callback.reject(new Error('下载失败'));
+      return;
+    }
+    const res = await skillBaseService.clearAndUploadWorkspace(formData, userId.value, agentId);
+    console.log(res);
+    callback.resolve();
+  } catch (error) {
+    callback.reject(error);
+  }
   const formData = await onDownloadToFormData(id, currentVersion);
   if (formData) {
     const res = await skillBaseService.clearAndUploadWorkspace(formData, userId.value, agentId);

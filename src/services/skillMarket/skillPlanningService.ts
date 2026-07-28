@@ -228,11 +228,7 @@ function normalizeHttpFilterOptions(response: unknown): SkillPlanningFilterOptio
   };
 }
 
-function mapPersonDisplay(
-  name: unknown,
-  id: unknown,
-  fallback: unknown = '',
-): string {
+function mapPersonDisplay(name: unknown, id: unknown, fallback: unknown = ''): string {
   const joined = `${normalizeText(name)} ${normalizeText(id)}`.trim();
   return joined || normalizeText(fallback);
 }
@@ -246,8 +242,7 @@ function mapSupplementItemToPlanningItem(
   const dimCode = normalizeText(record.dimCode);
   const dimName = normalizeText(record.dimName);
   const skillName = normalizeText(record.skillName) || normalizeText(record.name);
-  const planningDeptName =
-    normalizeText(record.planningDeptName) || (!isProd ? dimName : '');
+  const planningDeptName = normalizeText(record.planningDeptName) || (!isProd ? dimName : '');
 
   return {
     id: normalizeText(record.id),
@@ -259,8 +254,7 @@ function mapSupplementItemToPlanningItem(
     activityNodeName: normalizeText(record.activityNodeName),
     subActivityNodeName: normalizeText(record.subActivityNodeName),
     name: skillName,
-    description:
-      normalizeText(record.skillDescription) || normalizeText(record.description),
+    description: normalizeText(record.skillDescription) || normalizeText(record.description),
     level: isProd ? '产品级' : '部门级',
     offeringId: isProd ? dimCode : '',
     offeringName: isProd ? dimName : '',

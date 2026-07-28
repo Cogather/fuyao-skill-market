@@ -44,7 +44,7 @@ Removed `ownerOptions` / `developOwnerOptions` datalist refs and related resolve
 
 - `searchOwnerUsers` / `searchDevelopOwnerUsers` → `querySkillPlanningUsers`
 - Debounce 250ms on input; `ownerSearchSequence` / `developOwnerSearchSequence` for race safety
-- Click: set `selected`, `keyword = option.label`, sync `editor.owner` / `editor.department` (or develop-* fields), close panel
+- Click: set `selected`, `keyword = option.label`, sync `editor.owner` / `editor.department` (or develop-\* fields), close panel
 - Input clears `selected` when keyword ≠ selected label
 - Focus opens panel; empty keyword shows「请输入人员信息」
 - Esc closes panel
@@ -57,11 +57,11 @@ Removed `ownerOptions` / `developOwnerOptions` datalist refs and related resolve
 
 #### 4. Create / edit / submit
 
-| Mode | Behavior |
-|------|----------|
-| Create | Reset pickers; submit requires both `selected` non-null |
-| Edit | Backfill `keyword`; hydrate `selected` from label+dept when possible; local `updateSkillMasterRecord` unchanged |
-| Close | Reset both pickers + clear search timers |
+| Mode   | Behavior                                                                                                        |
+| ------ | --------------------------------------------------------------------------------------------------------------- |
+| Create | Reset pickers; submit requires both `selected` non-null                                                         |
+| Edit   | Backfill `keyword`; hydrate `selected` from label+dept when possible; local `updateSkillMasterRecord` unchanged |
+| Close  | Reset both pickers + clear search timers                                                                        |
 
 Submit still uses local create/update services only — no `/management/add` body.
 
@@ -69,10 +69,10 @@ Submit still uses local create/update services only — no `/management/add` bod
 
 ## Verification
 
-| Check | Result |
-|-------|--------|
-| `npm run build` | ✅ Pass (exit 0, 245 modules, ~16.5s) |
-| IDE lints on changed file | ✅ No errors |
+| Check                                 | Result                                                 |
+| ------------------------------------- | ------------------------------------------------------ |
+| `npm run build`                       | ✅ Pass (exit 0, 245 modules, ~16.5s)                  |
+| IDE lints on changed file             | ✅ No errors                                           |
 | Create API / Task 1 types unused here | ✅ Confirmed (no `createSkillMasterManagement` import) |
 
 **Manual smoke (UI, not run in headless CI):** Open「添加 Skill」→ type name/工号 → mock users in dropdown → click → input shows「姓名 工号」→ edit keyword clears selection and requires re-pick.
@@ -132,10 +132,10 @@ Submit still uses local create/update services only — no `/management/add` bod
 
 ### Verification
 
-| Check | Result |
-|-------|--------|
-| `npm run build` | ✅ Pass (exit 0, 245 modules, ~12.8s) |
-| IDE lints on changed file | ✅ No errors |
+| Check                     | Result                                |
+| ------------------------- | ------------------------------------- |
+| `npm run build`           | ✅ Pass (exit 0, 245 modules, ~12.8s) |
+| IDE lints on changed file | ✅ No errors                          |
 
 ### Follow-up commit
 

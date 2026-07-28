@@ -524,8 +524,8 @@ export const skillBaseService = {
 
   // 获取场景列表
   getSceneOptionGroups: (params: SceneOptionGroupsParams): Promise<SceneOptionGroupsResponse> => {
-    return httpRequest.skill<SceneOptionGroupsResponse>({
-      url: '/config/scene',
+    return httpRequest.api<SceneOptionGroupsResponse>({
+      url: '/scene-activity/scene',
       method: 'get',
       params, // { userId, dimType, dimCode, dimName }
     });
@@ -533,8 +533,8 @@ export const skillBaseService = {
 
   // 全量刷新场景配置
   refreshSceneOptionGroups: (body: any, userId: string): any => {
-    return httpRequest.skill<any>({
-      url: '/config/scene',
+    return httpRequest.api<any>({
+      url: '/scene-activity/scene',
       method: 'post',
       params: { userId },
       data: body, // { scenes, dimType, dimCode, dimName }
@@ -543,8 +543,8 @@ export const skillBaseService = {
 
   // 获取活动列表
   getActivityOptionGroups: (params: SceneOptionGroupsParams): any => {
-    return httpRequest.skill<any>({
-      url: '/config/activity',
+    return httpRequest.api<any>({
+      url: '/scene-activity/activity',
       method: 'get',
       params, // { userId, dimType, dimCode, dimName }
     });
@@ -552,8 +552,8 @@ export const skillBaseService = {
 
   // 全量刷新活动配置
   refreshActivityOptionGroups: (body: any, userId: string): any => {
-    return httpRequest.skill<any>({
-      url: '/config/activity',
+    return httpRequest.api<any>({
+      url: '/scene-activity/activity',
       method: 'post',
       params: { userId },
       data: body, // { activities, dimType, dimCode, dimName }

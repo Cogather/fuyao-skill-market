@@ -418,8 +418,7 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
       ? selectedPath
       : findPlanningDepartmentPathByName(department);
   const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
-  const dimCode =
-    String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
+  const dimCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
   return {
     ...(userId ? { userId } : {}),
     dimType: '部门级',
@@ -711,13 +710,7 @@ function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null
   const secondScene = planningForm.secondScene.trim();
   const activityNodeName = planningForm.activityNodeName.trim();
   const subActivityNodeName = planningForm.subActivityNodeName.trim();
-  if (
-    !skillName ||
-    !firstScene ||
-    !secondScene ||
-    !activityNodeName ||
-    !subActivityNodeName
-  ) {
+  if (!skillName || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
     return null;
   }
   return {

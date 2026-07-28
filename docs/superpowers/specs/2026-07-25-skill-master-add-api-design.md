@@ -92,29 +92,29 @@ export type CreateSkillMasterManagementBody = {
 
 来源：面板顶部 `masterScopeForm` + 部门路径，**不在弹窗内选择**。
 
-| 条件 | dimType | dimCode | dimName |
-|------|---------|---------|---------|
+| 条件   | dimType                               | dimCode                          | dimName         |
+| ------ | ------------------------------------- | -------------------------------- | --------------- |
 | 部门级 | `masterScopeForm.level`（「部门级」） | 末级部门 `deptCode`（或等价 id） | 末级部门 `name` |
-| 产品级 | 「产品级」 | `offeringId` | `offeringName` |
+| 产品级 | 「产品级」                            | `offeringId`                     | `offeringName`  |
 
 顶部层级/部门/产品未就绪时：禁止新增或提交前拦截并提示（与现有 scope 门禁一致）。
 
 ## 弹窗字段与校验
 
-| UI 字段 | 必填 | 提交字段 |
-|---------|------|----------|
-| Skill 名称 | 是（产品级仍要求 `{产品名}-` 前缀） | `skillName` |
-| Skill 说明 | 是 | `skillDescription` |
-| 责任 Owner | 是（必须点选搜索结果） | `ownerName` + `ownerId` |
-| 开发责任人 | 是（必须点选搜索结果） | `developOwnerName` + `developOwnerId` |
-| 计划完成时间 | 是 | `planFinishDate`（`YYYY-MM-DD`） |
+| UI 字段      | 必填                                | 提交字段                              |
+| ------------ | ----------------------------------- | ------------------------------------- |
+| Skill 名称   | 是（产品级仍要求 `{产品名}-` 前缀） | `skillName`                           |
+| Skill 说明   | 是                                  | `skillDescription`                    |
+| 责任 Owner   | 是（必须点选搜索结果）              | `ownerName` + `ownerId`               |
+| 开发责任人   | 是（必须点选搜索结果）              | `developOwnerName` + `developOwnerId` |
+| 计划完成时间 | 是                                  | `planFinishDate`（`YYYY-MM-DD`）      |
 
 提交前顺序：
 
-1. 顶部 scope 完整  
-2. 名称 / 说明合法  
-3. Owner、开发责任人已选中（有 id + name）  
-4. 计划完成时间非空  
+1. 顶部 scope 完整
+2. 名称 / 说明合法
+3. Owner、开发责任人已选中（有 id + name）
+4. 计划完成时间非空
 
 ## 人员搜索 UI
 
@@ -134,24 +134,24 @@ Owner / 开发责任人两套独立搜索状态（keyword、options、selected�
 
 ## 本地列表映射（调用方在接口 success 后同步）
 
-| API / body | 本地 `SkillMasterRecord` |
-|------------|--------------------------|
-| skillName | name |
-| skillDescription | description |
-| dimType | level |
-| dimName（产品级） | product（部门级可空字符串，与现逻辑一致） |
-| ownerName + ownerId | owner（展示用「姓名 工号」或现有 `personDisplayLabel` 约定） |
-| developOwnerName + developOwnerId | developOwner |
-| planFinishDate | plannedCompleteDate |
-| （不传） | status 默认 `'未开始'`（仅展示） |
+| API / body                        | 本地 `SkillMasterRecord`                                     |
+| --------------------------------- | ------------------------------------------------------------ |
+| skillName                         | name                                                         |
+| skillDescription                  | description                                                  |
+| dimType                           | level                                                        |
+| dimName（产品级）                 | product（部门级可空字符串，与现逻辑一致）                    |
+| ownerName + ownerId               | owner（展示用「姓名 工号」或现有 `personDisplayLabel` 约定） |
+| developOwnerName + developOwnerId | developOwner                                                 |
+| planFinishDate                    | plannedCompleteDate                                          |
+| （不传）                          | status 默认 `'未开始'`（仅展示）                             |
 
 ## 测试要点
 
-- Mock 成功：body 字段齐全，列表出现新记录，status 展示为未开始且未进请求 body  
-- Mock 失败：缺字段返回 `meta.success: false`，弹窗报错  
-- 人员：只输入不点选无法保存；点选后 id/name 正确进 body  
-- 部门级 / 产品级各自 dimCode、dimName 正确  
-- 开发责任人、计划完成时间为空时拦截  
+- Mock 成功：body 字段齐全，列表出现新记录，status 展示为未开始且未进请求 body
+- Mock 失败：缺字段返回 `meta.success: false`，弹窗报错
+- 人员：只输入不点选无法保存；点选后 id/name 正确进 body
+- 部门级 / 产品级各自 dimCode、dimName 正确
+- 开发责任人、计划完成时间为空时拦截
 
 ## 影响文件（预期）
 

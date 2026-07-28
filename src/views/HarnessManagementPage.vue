@@ -103,7 +103,9 @@ const permissionDepartmentNames = computed(() => {
   if (transportIsHttp) {
     return [
       ...new Set(
-        harnessPermissions.value.manageableOrgs.map((org) => org.deptName).filter(Boolean),
+        sortHarnessDepartmentsByLevel(harnessPermissions.value.manageableOrgs)
+          .map((org) => org.deptName)
+          .filter(Boolean),
       ),
     ];
   }
@@ -126,6 +128,23 @@ const canManageHarness = computed(
   () => !restrictToPermissionDepartments.value || permissionDepartmentNames.value.length > 0,
 );
 
+function harnessDepartmentLevel(department: HarnessAuthorizedDepartment): number {
+  const levelNo = Number(department.levelNo);
+  if (Number.isFinite(levelNo) && levelNo > 0) return levelNo;
+  return (
+    departmentLevelByPath(resolveAuthorizedDepartmentPath(department)) || Number.MAX_SAFE_INTEGER
+  );
+}
+
+function sortHarnessDepartmentsByLevel(
+  departments: HarnessAuthorizedDepartment[],
+): HarnessAuthorizedDepartment[] {
+  return departments
+    .map((department, index) => ({ department, index, level: harnessDepartmentLevel(department) }))
+    .sort((left, right) => left.level - right.level || left.index - right.index)
+    .map(({ department }) => department);
+}
+
 const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
   transportIsHttp
     ? harnessPermissions.value.ownedOrgs.map((department) => ({
@@ -137,7 +156,7 @@ const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
 
 const permissionDepartmentPaths = computed(() =>
   transportIsHttp
-    ? harnessPermissions.value.manageableOrgs.map((department) =>
+    ? sortHarnessDepartmentsByLevel(harnessPermissions.value.manageableOrgs).map((department) =>
         resolveAuthorizedDepartmentPath(department),
       )
     : [],
@@ -145,6 +164,8 @@ const permissionDepartmentPaths = computed(() =>
 
 function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment): string[] {
   const expectedPath = department.path.map((item) => item.trim()).filter(Boolean);
+  const expectedLevelNo = Number(department.levelNo);
+  const hasExpectedLevelNo = Number.isFinite(expectedLevelNo) && expectedLevelNo > 0;
   const matchingPaths: string[][] = [];
   let codeMatch: string[] | null = null;
 
@@ -153,7 +174,8 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
       const path = [...parentPath, node.name];
       if (
         department.deptCode &&
-        (node.deptCode === department.deptCode || node.id === department.deptCode)
+        (node.deptCode === department.deptCode || node.id === department.deptCode) &&
+        (!hasExpectedLevelNo || node.levelNo === expectedLevelNo)
       ) {
         codeMatch = path;
       }

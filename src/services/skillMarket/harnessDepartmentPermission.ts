@@ -5,6 +5,7 @@ export type HarnessAuthorizedDepartment = {
   deptCode: string;
   path: string[];
   codePath: string[];
+  levelNo: number;
 };
 
 export type HarnessDepartmentPermissions = {
@@ -46,23 +47,25 @@ function normalizeHarnessOrg(value: unknown): HarnessAuthorizedDepartment | null
   const record = asRecord(value);
   const path: string[] = [];
   const codePath: string[] = [];
+  let deepestLevelNo = 0;
 
   HARNESS_DEPARTMENT_LEVELS.forEach((level) => {
     const name = firstText(record, [
-      `deptNameL${level}`,
-      `departmentNameL${level}`,
-      `deptL${level}Name`,
-      `departmentL${level}`,
-      `deptL${level}`,
+      'deptNameL' + level,
+      'departmentNameL' + level,
+      'deptL' + level + 'Name',
+      'departmentL' + level,
+      'deptL' + level,
     ]);
     const code = firstText(record, [
-      `deptCodeL${level}`,
-      `departmentCodeL${level}`,
-      `deptL${level}Code`,
+      'deptCodeL' + level,
+      'departmentCodeL' + level,
+      'deptL' + level + 'Code',
     ]);
     if (name) {
       path.push(name);
       codePath.push(code);
+      deepestLevelNo = level;
     }
   });
 
@@ -90,6 +93,19 @@ function normalizeHarnessOrg(value: unknown): HarnessAuthorizedDepartment | null
   }
   if (path.length === 0) return null;
 
+  const explicitLevelNo = Number(
+    firstText(record, [
+      'deptLevel',
+      'departmentLevel',
+      'levelNo',
+      'level',
+      'orgLevel',
+      'deptLevelNo',
+      'departmentLevelNo',
+    ]),
+  );
+  const levelNo =
+    Number.isFinite(explicitLevelNo) && explicitLevelNo > 0 ? explicitLevelNo : deepestLevelNo;
   const fallbackCode = firstText(record, ['deptCode', 'departmentCode', 'orgCode', 'code', 'id']);
   const deepestCode = [...codePath].reverse().find(Boolean) ?? fallbackCode;
   return {
@@ -97,6 +113,7 @@ function normalizeHarnessOrg(value: unknown): HarnessAuthorizedDepartment | null
     deptCode: deepestCode,
     path,
     codePath,
+    levelNo,
   };
 }
 

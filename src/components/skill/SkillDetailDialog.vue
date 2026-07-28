@@ -35,14 +35,23 @@ const props = withDefaults(
   },
 );
 
-const emit = defineEmits<{
-  close: [];
-  trySkill: [];
-  download: [];
-  deleteClick: [evt: MouseEvent];
-  versionManage: [];
-  updateSkillData: [id: string, currentVersion: string];
-}>();
+// const emit = defineEmits<{
+//   close: [];
+//   trySkill: [];
+//   download: [];
+//   deleteClick: [evt: MouseEvent];
+//   versionManage: [];
+//   updateSkillData: [id: string, currentVersion: string];
+// }>();
+
+const emit = defineEmits([
+  'close',
+  'trySkill',
+  'download',
+  'deleteClick',
+  'versionManage',
+  'updateSkillData',
+]);
 
 const detailMoreWrapRef = ref<HTMLElement | null>(null);
 const detailMoreMenuOpen = ref(false);
@@ -874,13 +883,26 @@ const goToDebugPage = (skill) => {
     query: { id: currentSkillId(), skillName: skill.name },
   });
 };
-const updateSkill = async (skill) => {
+const updateSkill = async (skill: any) => {
+  console.log('updateSkill called with skill:', skill);
+  console.log('showTrySkill:', props.showTrySkill, 'previewOnly:', props.previewOnly);
   try {
-    await emit('updateSkillData', skill.id, skill.currentVersion);
-    goToDebugPage(skill);
-  } catch (err) {
-    console.error(err);
+    await new Promise<void>((resolve, reject) => {
+      emit(
+        'updateSkillData',
+        { id: skill.id, currentVersion: skill.currentVersion },
+        { resolve, reject },
+      );
+    });
+  } catch (error) {
+    console.error(error);
   }
+  // try {
+  //   await emit('updateSkillData', skill.id, skill.currentVersion);
+  //   goToDebugPage(skill);
+  // } catch (err) {
+  //   console.error(err);
+  // }
 };
 onBeforeUnmount(() => {
   removeDetailMoreMenuListeners();
@@ -986,7 +1008,7 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="isPageMode ? showPageActionCard : !previewOnly" class="detail-actions">
             <button
-              v-if="showTrySkill"
+              v-if="showTrySkill && !previewOnly"
               type="button"
               class="detail-btn ghost"
               @click="updateSkill(skill)"

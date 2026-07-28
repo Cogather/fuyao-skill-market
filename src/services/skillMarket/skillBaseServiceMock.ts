@@ -296,7 +296,12 @@ function filterMockSkillMasterManagement(
   }
 
   const sortBy = String(body.sortBy ?? '').trim();
-  const sortOrder = String(body.sortOrder ?? 'desc').trim().toLowerCase() === 'asc' ? 1 : -1;
+  const sortOrder =
+    String(body.sortOrder ?? 'desc')
+      .trim()
+      .toLowerCase() === 'asc'
+      ? 1
+      : -1;
   if (sortBy === 'updatedAt' || sortBy === 'createdAt' || sortBy === 'planFinishDate') {
     list.sort((left, right) => {
       const leftValue = String(
@@ -318,9 +323,10 @@ function filterMockSkillMasterManagement(
   return list.slice(start, start + pageSize);
 }
 
-function filterMockSkillPlanningSupplement(
-  params: Record<string, unknown>,
-): { list: MockSkillPlanningSupplementRecord[]; total: number } {
+function filterMockSkillPlanningSupplement(params: Record<string, unknown>): {
+  list: MockSkillPlanningSupplementRecord[];
+  total: number;
+} {
   const keyword = String(params.keyword ?? '')
     .trim()
     .toLowerCase();
@@ -1992,10 +1998,13 @@ function handleSkillRequest(
       }
     }
     const removed = before - mockSkillMasterManagementRecords.length;
-    return ok({
+    return ok(
+      {
+        removed,
+        ids,
+      },
       removed,
-      ids,
-    }, removed);
+    );
   }
 
   if (method === 'get' && path === '/review/expert/check') {

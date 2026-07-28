@@ -6,13 +6,13 @@
 
 ## 范围
 
-| 能力 | 接口 | 本次 |
-|------|------|------|
-| 新增 | `POST /management/add` | 已有；成功后改为只 `reload`，不再写 localStorage |
-| 查询 | `POST /management/query` | 做 |
-| 批量删除 | `DELETE /management/batch_delete` | 做；body 为 id 列表 |
-| 更新 | `PUT /management/update` | 做；body 含查询返回 id |
-| 单删 | `DELETE /management/delete/{id}` | 做；path 为查询返回 id |
+| 能力     | 接口                              | 本次                                             |
+| -------- | --------------------------------- | ------------------------------------------------ |
+| 新增     | `POST /management/add`            | 已有；成功后改为只 `reload`，不再写 localStorage |
+| 查询     | `POST /management/query`          | 做                                               |
+| 批量删除 | `DELETE /management/batch_delete` | 做；body 为 id 列表                              |
+| 更新     | `PUT /management/update`          | 做；body 含查询返回 id                           |
+| 单删     | `DELETE /management/delete/{id}`  | 做；path 为查询返回 id                           |
 
 列表数据源全面切 HTTP：不再用 localStorage 作为 Skill 清单数据源。
 
