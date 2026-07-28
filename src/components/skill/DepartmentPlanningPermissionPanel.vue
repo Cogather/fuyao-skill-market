@@ -152,6 +152,43 @@ function fallbackLevelPath(path: string[], codePath: string[] = []): DepartmentP
   }));
 }
 
+function normalizedDepartmentLevelPath(option: DepartmentOption): DepartmentPathSegment[] {
+  const firstLevel = option.levelPath[0]?.level ?? 0;
+  return firstLevel > 0 && firstLevel < 3
+    ? fallbackLevelPath(
+        option.path,
+        option.levelPath.map((segment) => segment.deptCode),
+      )
+    : option.levelPath;
+}
+
+function mergeAuthorizedDepartmentCodes(
+  option: DepartmentOption,
+  department: HarnessAuthorizedDepartment,
+): DepartmentPathSegment[] {
+  const apiCodes = department.codePath.map(readText);
+  if (!apiCodes.some(Boolean)) return option.levelPath;
+
+  const normalizedLevelPath = normalizedDepartmentLevelPath(option);
+  const explicitDeepestLevel = Number(department.levelNo);
+  const deepestLevel =
+    Number.isFinite(explicitDeepestLevel) && explicitDeepestLevel > 0
+      ? explicitDeepestLevel
+      : (normalizedLevelPath.at(-1)?.level ?? 0);
+  const firstCodeLevel = deepestLevel - apiCodes.length + 1;
+  const codeByLevel = new Map<number, string>();
+
+  apiCodes.forEach((code, index) => {
+    if (code) codeByLevel.set(firstCodeLevel + index, code);
+  });
+
+  return option.levelPath.map((segment, index) => ({
+    ...segment,
+    deptCode:
+      codeByLevel.get(normalizedLevelPath[index]?.level ?? segment.level) || segment.deptCode,
+  }));
+}
+
 const normalizedOwnerDepartmentPath = computed(() =>
   normalizeDepartmentPath(props.departmentPermissionPath),
 );
@@ -169,21 +206,21 @@ const ownerDepartmentOptions = computed<DepartmentOption[]>(() => {
         (item) => item.name === department.deptName && item.path.at(-1) === normalizedPath.at(-1),
       );
     if (option) {
-      const levelPath = option.levelPath.map((segment, index) => ({
-        ...segment,
-        deptCode: readText(department.codePath[index]) || segment.deptCode,
-      }));
+      const levelPath = mergeAuthorizedDepartmentCodes(option, department);
       return [{ ...option, deptCode: department.deptCode || option.deptCode, levelPath }];
     }
     if (!normalizedPath.length) return [];
-    const levelPath = fallbackLevelPath(normalizedPath, department.codePath);
+    const fallbackOption: DepartmentOption = {
+      name: department.deptName || normalizedPath.at(-1) || '',
+      deptCode: department.deptCode || department.deptName,
+      level: department.levelNo || normalizedPath.length + 2,
+      path: normalizedPath,
+      levelPath: fallbackLevelPath(normalizedPath),
+    };
     return [
       {
-        name: department.deptName || normalizedPath.at(-1) || '',
-        deptCode: department.deptCode || department.deptName,
-        level: levelPath.at(-1)?.level ?? normalizedPath.length,
-        path: normalizedPath,
-        levelPath,
+        ...fallbackOption,
+        levelPath: mergeAuthorizedDepartmentCodes(fallbackOption, department),
       },
     ];
   });
@@ -574,14 +611,7 @@ type DepartmentAdminBodyLevels = {
 };
 
 function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBodyLevels {
-  const firstLevel = option.levelPath[0]?.level ?? 0;
-  const normalizedLevelPath =
-    firstLevel > 0 && firstLevel < 3
-      ? fallbackLevelPath(
-          option.path,
-          option.levelPath.map((segment) => segment.deptCode),
-        )
-      : option.levelPath;
+  const normalizedLevelPath = normalizedDepartmentLevelPath(option);
   const byLevel = new Map<number, DepartmentPathSegment>();
 
   normalizedLevelPath.forEach((segment) => {

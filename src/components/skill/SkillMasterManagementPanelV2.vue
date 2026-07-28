@@ -24,9 +24,11 @@ import {
 } from '../../services/skillMarket/skillPlanningService';
 import type {
   CreateSkillMasterManagementBody,
+  CreateSkillMasterManagementParams,
   QuerySkillMasterManagementBody,
   SkillMasterManagementItemDto,
   UpdateSkillMasterManagementBody,
+  UpdateSkillMasterManagementParams,
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 
@@ -1006,11 +1008,13 @@ async function submitEditor(): Promise<void> {
       return;
     }
 
-    const body: CreateSkillMasterManagementBody = {
+    const params: CreateSkillMasterManagementParams = {
       userId: props.userId.trim(),
       dimType: dim.dimType,
       dimCode: dim.dimCode,
       dimName: dim.dimName,
+    };
+    const body: CreateSkillMasterManagementBody = {
       entity: {
         skillName: editor.name.trim(),
         skillDescription: editor.description.trim(),
@@ -1024,7 +1028,7 @@ async function submitEditor(): Promise<void> {
 
     submitting.value = true;
     try {
-      const response = await skillBaseService.createSkillMasterManagement(body);
+      const response = await skillBaseService.createSkillMasterManagement(body, params);
       if (response?.meta?.success !== true) {
         throw new Error(
           String(response?.meta?.message || response?.message || '新增失败，请稍后重试'),
@@ -1079,11 +1083,13 @@ async function submitEditor(): Promise<void> {
     return;
   }
 
-  const updateBody: UpdateSkillMasterManagementBody = {
+  const updateParams: UpdateSkillMasterManagementParams = {
     userId: props.userId.trim(),
     dimType: dim.dimType,
     dimCode: dim.dimCode,
     dimName: dim.dimName,
+  };
+  const updateBody: UpdateSkillMasterManagementBody = {
     skillConfigEntity: {
       id: editor.id,
       skillName: editor.name.trim(),
@@ -1098,7 +1104,7 @@ async function submitEditor(): Promise<void> {
 
   submitting.value = true;
   try {
-    const response = await skillBaseService.updateSkillMasterManagement(updateBody);
+    const response = await skillBaseService.updateSkillMasterManagement(updateBody, updateParams);
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || '更新失败，请稍后重试'),

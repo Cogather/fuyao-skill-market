@@ -658,11 +658,14 @@ export type ExpertReviewSubmitBody = {
 };
 
 /** Skill 清单新增（POST /management/add） */
-export type CreateSkillMasterManagementBody = {
+export type CreateSkillMasterManagementParams = {
   userId: string;
   dimType: string;
   dimCode: string;
   dimName: string;
+};
+
+export type CreateSkillMasterManagementBody = {
   entity: {
     skillName: string;
     skillDescription: string;
@@ -711,11 +714,14 @@ export type SkillMasterManagementItemDto = {
 };
 
 /** Skill 清单更新（PUT /management/update） */
-export type UpdateSkillMasterManagementBody = {
+export type UpdateSkillMasterManagementParams = {
   userId: string;
   dimType: string;
   dimCode: string;
   dimName: string;
+};
+
+export type UpdateSkillMasterManagementBody = {
   skillConfigEntity: {
     id: string | number;
     skillName?: string;

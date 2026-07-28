@@ -3,6 +3,7 @@ import type {
   ApiEnvelope,
   BatchDeleteSkillPlanningSupplementBody,
   CreateSkillMasterManagementBody,
+  CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
@@ -11,6 +12,7 @@ import type {
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
   UpdateSkillMasterManagementBody,
+  UpdateSkillMasterManagementParams,
   UpdateHarnessPermissionUsersBody,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
@@ -394,11 +396,15 @@ export const skillBaseService = {
   },
 
   // skill 原子能力相关接口
-  createSkillMasterManagement: (body: CreateSkillMasterManagementBody): any => {
+  createSkillMasterManagement: (
+    body: CreateSkillMasterManagementBody,
+    params: CreateSkillMasterManagementParams,
+  ): any => {
     return httpRequest.skill<any>({
       url: '/management/add',
       method: 'post',
       data: body,
+      params,
     });
   },
 
@@ -419,11 +425,15 @@ export const skillBaseService = {
     });
   },
 
-  updateSkillMasterManagement: (body: UpdateSkillMasterManagementBody): any => {
+  updateSkillMasterManagement: (
+    body: UpdateSkillMasterManagementBody,
+    params: UpdateSkillMasterManagementParams,
+  ): any => {
     return httpRequest.skill<any>({
       url: '/management/update',
       method: 'put',
       data: body,
+      params,
     });
   },
 

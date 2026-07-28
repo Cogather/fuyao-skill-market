@@ -2093,7 +2093,7 @@ function handleSkillRequest(
       body.entity && typeof body.entity === 'object'
         ? (body.entity as Record<string, unknown>)
         : {};
-    const payload = { ...body, ...entity };
+    const payload = { ...params, ...body, ...entity };
     const requiredKeys = [
       'userId',
       'skillName',
@@ -2162,7 +2162,7 @@ function handleSkillRequest(
       body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
         ? (body.skillConfigEntity as Record<string, unknown>)
         : {};
-    const payload = { ...body, ...entity };
+    const payload = { ...params, ...body, ...entity };
     const id = String(payload.id ?? '').trim();
     if (!id) {
       return fail('缺少必填字段: id', null);

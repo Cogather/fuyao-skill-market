@@ -28,8 +28,9 @@ export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeN
     const o = item as Record<string, unknown>;
     const namePart = o.deptName ?? o.name ?? o.label ?? o.departmentName ?? o.title;
     const deptName = typeof namePart === 'string' ? namePart.trim() : String(namePart ?? '').trim();
-    const deptLevel =
-      typeof o.deptLevel === 'number' && Number.isFinite(o.deptLevel) ? o.deptLevel : 0;
+    const deptLevelValue = o.deptLevel ?? o.levelNo;
+    const parsedDeptLevel = Number(deptLevelValue);
+    const deptLevel = Number.isFinite(parsedDeptLevel) && parsedDeptLevel > 0 ? parsedDeptLevel : 0;
     const deptCodePart = o.deptCode ?? o.departmentCode ?? o.code;
     const deptCode =
       typeof deptCodePart === 'string' || typeof deptCodePart === 'number'
