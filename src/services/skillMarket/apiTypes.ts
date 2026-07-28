@@ -701,6 +701,7 @@ export type CreateSkillPlanningSupplementBody = {
 
 /** Skill 规划补充查询（GET /config/supplement/query） */
 export type QuerySkillPlanningSupplementParams = {
+  userId: string;
   dimType?: string;
   dimCode?: string;
   dimName?: string;

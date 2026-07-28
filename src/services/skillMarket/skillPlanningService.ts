@@ -289,7 +289,9 @@ function normalizeSupplementListResult(response: unknown): SkillPlanningListResu
 function toHttpSkillPlanningSupplementQuery(
   query: SkillPlanningQuery,
 ): QuerySkillPlanningSupplementParams {
-  const params: QuerySkillPlanningSupplementParams = {};
+  const params: QuerySkillPlanningSupplementParams = {
+    userId: normalizeText(query.userId),
+  };
   const dimType = normalizeText(query.dimType);
   const dimCode = normalizeText(query.dimCode);
   const dimName = normalizeText(query.dimName);

@@ -38,6 +38,7 @@ export interface SkillPlanningItem {
 }
 
 export interface SkillPlanningQuery {
+  userId?: string;
   deptName?: string;
   planningDeptName?: string;
   offeringName?: string;

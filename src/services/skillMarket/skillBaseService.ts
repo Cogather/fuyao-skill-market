@@ -312,11 +312,11 @@ export const skillBaseService = {
    * Skill 规划相关接口
    */
   // skill查询接口
-  querySkillConfig: (body: any): any => {
+  querySkillConfig: (params: { userId: string; [key: string]: unknown }): any => {
     return httpRequest.skill<any>({
       url: '/config/query',
-      method: 'post',
-      data: body,
+      method: 'get',
+      params,
     });
   },
 

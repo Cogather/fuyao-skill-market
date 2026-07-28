@@ -1755,7 +1755,9 @@ function assignHeaderFilterQueryValue(
 }
 
 function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
-  const nextQuery: SkillPlanningQuery = {};
+  const nextQuery: SkillPlanningQuery = {
+    userId: props.userId.trim(),
+  };
   assignHeaderFilterQueryValue(nextQuery, 'firstScene', 'firstScene');
   assignHeaderFilterQueryValue(nextQuery, 'secondScene', 'secondScene');
   assignHeaderFilterQueryValue(nextQuery, 'activityNodeName', 'activityNodeName');
