@@ -499,6 +499,30 @@ export type SkillPlanningDepartmentAdminsBody = {
   l6DeptCode: string | null;
   l6DeptName: string | null;
 };
+export type QueryHarnessPermissionUsersParams = {
+  userId: string;
+  l3DeptCode: string;
+  l4DeptCode: string;
+  l5DeptCode: string;
+  l6DeptCode: string;
+};
+
+export type UpdateHarnessPermissionUsersRequest = {
+  adminUserIds: string;
+  l3DeptCode: string;
+  l3DeptName: string;
+  l4DeptCode: string;
+  l4DeptName: string;
+  l5DeptCode: string;
+  l5DeptName: string;
+  l6DeptCode: string;
+  l6DeptName: string;
+  userId: string;
+};
+
+export type UpdateHarnessPermissionUsersBody = {
+  request: UpdateHarnessPermissionUsersRequest;
+};
 
 /**
  * 市场总览等部门级联：全量部门树（设计文档未定稿）。
@@ -737,13 +761,33 @@ export type SkillPlanningSupplementEntity = {
 };
 
 /** Skill 规划补充新增（POST /config/add） */
+export type SkillPlanningSupplementMutationParams = {
+  userId: string;
+  dimCode: string;
+  dimType: string;
+  dimName: string;
+};
+
 export type CreateSkillPlanningSupplementBody = {
-  skillConfigEntity: SkillPlanningSupplementEntity;
+  activityNodeName: string;
+  dimCode: string;
+  dimName: string;
+  dimType: string;
+  firstScene: string;
+  secondScene: string;
+  skillName: string;
+  subActivityNodeName: string;
 };
 
 /** Skill 规划补充查询（POST /config/query） */
 export type QuerySkillPlanningSupplementParams = {
   userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  skillName?: string;
+  pageNum?: number;
+  pageSize?: number;
 };
 
 export type QuerySkillPlanningSupplementQuery = {
@@ -818,10 +862,8 @@ export type SkillPlanningSupplementItemDto = {
 };
 
 /** Skill 规划补充更新（PUT /config/update） */
-export type UpdateSkillPlanningSupplementBody = {
-  skillConfigEntity: SkillPlanningSupplementEntity & {
-    id: string | number;
-  };
+export type UpdateSkillPlanningSupplementBody = CreateSkillPlanningSupplementBody & {
+  id: string | number;
 };
 
 /** Skill 规划补充批量删除（DELETE /config/batch_delete） */

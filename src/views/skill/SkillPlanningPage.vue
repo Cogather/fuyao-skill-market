@@ -703,52 +703,6 @@ function resolvePlanningDimFields(): {
   };
 }
 
-function resolvePlanningDepartmentEntityFields() {
-  const segments = normalizePlanningDepartmentPath(planningFormDepartmentSegments.value);
-  const pathNodes: PlanningDepartmentTreeNode[] = [];
-  let candidates = planningDepartmentTree.value;
-  segments.forEach((segment) => {
-    const node = candidates.find((item) => item.name === segment);
-    if (!node) return;
-    pathNodes.push(node);
-    candidates = node.children ?? [];
-  });
-
-  const nodesByLevel = new Map<number, PlanningDepartmentTreeNode>();
-  pathNodes.forEach((node, index) => {
-    const explicitLevel = Number(node.deptLevel);
-    nodesByLevel.set(
-      Number.isFinite(explicitLevel) && explicitLevel > 0 ? explicitLevel : index + 3,
-      node,
-    );
-  });
-  const formFields = planningForm as unknown as Record<string, unknown>;
-  const readLevelField = (level: number, field: 'Code' | 'Name'): string => {
-    const formValue = String(formFields[`l${level}Dept${field}`] ?? '').trim();
-    if (formValue) return formValue;
-    const node = nodesByLevel.get(level);
-    return field === 'Code'
-      ? String(node?.deptCode ?? node?.id ?? '').trim()
-      : String(node?.name ?? '').trim();
-  };
-  const planningDepartment = pathNodes.at(-1);
-
-  return {
-    planDeptCode: String(planningDepartment?.deptCode ?? planningDepartment?.id ?? '').trim(),
-    planDeptName: planningForm.planningDeptName.trim(),
-    l5DeptCode: readLevelField(5, 'Code'),
-    l5DeptName: readLevelField(5, 'Name'),
-    l4DeptCode: readLevelField(4, 'Code'),
-    l4DeptName: readLevelField(4, 'Name'),
-    l3DeptCode: readLevelField(3, 'Code'),
-    l3DeptName: readLevelField(3, 'Name'),
-    l2DeptCode: readLevelField(2, 'Code'),
-    l2DeptName: readLevelField(2, 'Name'),
-    l1DeptCode: readLevelField(1, 'Code'),
-    l1DeptName: readLevelField(1, 'Name'),
-  };
-}
-
 function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null {
   const dim = resolvePlanningDimFields();
   if (!dim) {
@@ -762,29 +716,15 @@ function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null
   if (!name || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
     return null;
   }
-  const timestamp = new Date().toISOString();
-
   return {
-    skillConfigEntity: {
-      activityNodeName,
-      firstScene,
-      level: dim.level,
-      name,
-      offeringId: planningForm.offeringId.trim(),
-      offeringName: planningForm.offeringName.trim(),
-      secondScene,
-      subActivityNodeName,
-      description: planningForm.description.trim(),
-      owner: planningForm.owner.trim(),
-      developOwner: planningForm.developOwner.trim(),
-      planedCompleteDate: planningForm.planedCompleteDate.trim(),
-      status: planningForm.status,
-      deptCode: planningForm.deptCode.trim(),
-      deptName: planningForm.deptName.trim(),
-      ...resolvePlanningDepartmentEntityFields(),
-      createTime: timestamp,
-      updateTime: timestamp,
-    },
+    activityNodeName,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+    dimType: dim.dimType,
+    firstScene,
+    secondScene,
+    skillName: name,
+    subActivityNodeName,
   };
 }
 
@@ -1818,8 +1758,12 @@ function assignHeaderFilterQueryValue(
 }
 
 function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
+  const taxonomyParams = currentPlanningTaxonomyParams();
   const nextQuery: SkillPlanningQuery = {
-    userId: props.userId.trim(),
+    userId: taxonomyParams.userId ?? props.userId.trim(),
+    dimType: taxonomyParams.dimType ?? '',
+    dimCode: taxonomyParams.dimCode ?? '',
+    dimName: taxonomyParams.dimName ?? '',
   };
   assignHeaderFilterQueryValue(nextQuery, 'firstScene', 'firstScene');
   assignHeaderFilterQueryValue(nextQuery, 'secondScene', 'secondScene');
@@ -1829,6 +1773,7 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignHeaderFilterQueryValue(nextQuery, 'status', 'status');
   assignQueryValue(nextQuery, 'level', filterForm.level);
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
+  assignQueryValue(nextQuery, 'skillName', filterForm.keyword);
   assignQueryValue(nextQuery, 'planningDeptName', filterForm.planningDeptName);
   if (filterForm.level === '产品级') {
     assignQueryValue(nextQuery, 'offeringName', filterForm.offeringName);
@@ -2078,10 +2023,8 @@ async function confirmInlineEdit() {
     }
     const updateRes = await updateSkillPlanningSupplement(
       {
-        skillConfigEntity: {
-          ...body.skillConfigEntity,
-          id: editingId.value,
-        },
+        ...body,
+        id: editingId.value,
       },
       props.userId.trim(),
     );
@@ -2175,10 +2118,8 @@ async function submitPlanningForm() {
       }
       const updateRes = await updateSkillPlanningSupplement(
         {
-          skillConfigEntity: {
-            ...body.skillConfigEntity,
-            id: editingId.value,
-          },
+          ...body,
+          id: editingId.value,
         },
         props.userId.trim(),
       );

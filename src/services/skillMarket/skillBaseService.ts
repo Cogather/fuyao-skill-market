@@ -7,8 +7,11 @@ import type {
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
-  QuerySkillPlanningSupplementBody,
+  QueryHarnessPermissionUsersParams,
+  QuerySkillPlanningSupplementParams,
+  SkillPlanningSupplementMutationParams,
   UpdateSkillMasterManagementBody,
+  UpdateHarnessPermissionUsersBody,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
 
@@ -338,36 +341,41 @@ export const skillBaseService = {
   },
 
   // skill 规划补充相关接口
-  createSkillPlanningSupplement: (body: CreateSkillPlanningSupplementBody, userId: string): any => {
+  createSkillPlanningSupplement: (
+    body: CreateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
     return httpRequest.skill<any>({
       url: '/config/add',
       method: 'post',
       data: body,
-      params: { userId },
+      params,
     });
   },
 
-  querySkillPlanningSupplement: (body: QuerySkillPlanningSupplementBody, userId: string): any => {
+  querySkillPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
     return httpRequest.skill<any>({
-      url: '/config/query',
-      method: 'post',
-      data: body,
-      params: { userId },
+      url: '/config/supplement/query',
+      method: 'get',
+      params,
     });
   },
 
-  updateSkillPlanningSupplement: (body: UpdateSkillPlanningSupplementBody, userId: string): any => {
+  updateSkillPlanningSupplement: (
+    body: UpdateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
     return httpRequest.skill<any>({
-      url: '/config/update',
+      url: '/config/supplement/update',
       method: 'put',
       data: body,
-      params: { userId },
+      params,
     });
   },
 
   deleteSkillPlanningSupplement: (id: string | number, userId: string): any => {
     return httpRequest.skill<any>({
-      url: `/config/delete/${encodeURIComponent(String(id))}`,
+      url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
       method: 'delete',
       params: { userId },
     });
@@ -378,7 +386,7 @@ export const skillBaseService = {
     userId: string,
   ): any => {
     return httpRequest.skill<any>({
-      url: '/config/batch_delete',
+      url: '/config/supplement/batch_delete',
       method: 'delete',
       data: body,
       params: { userId },
@@ -504,6 +512,24 @@ export const skillBaseService = {
       url: '/harness/permission/user-depts',
       method: 'get',
       params, // { userId }
+    });
+  },
+
+  // harness 权限人员列表查询
+  queryHarnessPermissionUsers: (params: QueryHarnessPermissionUsersParams): any => {
+    return httpRequest.api<any>({
+      url: '/harness/permission/query',
+      method: 'get',
+      params,
+    });
+  },
+
+  // harness 权限人员更新
+  updateHarnessPermissionUsers: (body: UpdateHarnessPermissionUsersBody): any => {
+    return httpRequest.api<any>({
+      url: '/harness/permission/update',
+      method: 'put',
+      data: body, // { request }
     });
   },
 

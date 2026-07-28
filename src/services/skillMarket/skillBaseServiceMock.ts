@@ -367,6 +367,12 @@ function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
   const keyword = String(query.keyword ?? '')
     .trim()
     .toLowerCase();
+  const skillName = String(query.skillName ?? '')
+    .trim()
+    .toLowerCase();
+  const dimType = String(query.dimType ?? '').trim();
+  const dimCode = String(query.dimCode ?? '').trim();
+  const dimName = String(query.dimName ?? '').trim();
   const firstScenes = mockPlanningQueryValues(query.firstScene);
   const secondScenes = mockPlanningQueryValues(query.secondScene);
   const activities = mockPlanningQueryValues(query.activityNodeName);
@@ -376,6 +382,7 @@ function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
   const deptCodes = mockPlanningQueryValues([
     ...mockPlanningQueryValues(query.deptCodes),
     ...mockPlanningQueryValues(query.deptCode),
+    ...mockPlanningQueryValues(query.dimCode),
   ]);
   const departmentFilters = [
     [query.departmentL3, 'l3DeptName'],
@@ -394,6 +401,25 @@ function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
     if (subActivities.length > 0 && !subActivities.includes(item.subActivityNodeName)) return false;
     if (levels.length > 0 && !levels.includes(item.level || item.dimType)) return false;
     if (statuses.length > 0 && !statuses.includes(item.status)) return false;
+    if (dimType && String(item.dimType || item.level).trim() !== dimType) {
+      return false;
+    }
+    if (
+      dimCode &&
+      ![item.dimCode, item.deptCode, item.planDeptCode, item.offeringId].some(
+        (value) => String(value ?? '').trim() === dimCode,
+      )
+    ) {
+      return false;
+    }
+    if (
+      dimName &&
+      ![item.dimName, item.planDeptName, item.offeringName].some(
+        (value) => String(value ?? '').trim() === dimName,
+      )
+    ) {
+      return false;
+    }
     if (
       deptCodes.length > 0 &&
       ![item.deptCode, item.planDeptCode, item.dimCode].some((value) =>
@@ -408,6 +434,9 @@ function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
           String(value ?? '').trim() && String(record[key] ?? '').trim() !== String(value).trim(),
       )
     ) {
+      return false;
+    }
+    if (skillName && !item.skillName.toLowerCase().includes(skillName)) {
       return false;
     }
     if (!keyword) return true;
@@ -1808,22 +1837,50 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  const isSkillPlanningSupplementQuery =
+    path === '/config/query' || path === '/config/supplement/query';
+  const isSkillPlanningSupplementUpdate =
+    path === '/config/update' || path === '/config/supplement/update';
+  const isSkillPlanningSupplementBatchDelete =
+    path === '/config/batch_delete' || path === '/config/supplement/batch_delete';
+  const supplementDeleteMatch = /^\/config\/(?:supplement\/)?delete\/([^/]+)$/.exec(path);
   const skillPlanningSupplementRequiresUserId =
     path === '/config/add' ||
-    path === '/config/query' ||
-    path === '/config/update' ||
-    path === '/config/batch_delete' ||
-    /^\/config\/delete\/[^/]+$/.test(path);
+    isSkillPlanningSupplementQuery ||
+    isSkillPlanningSupplementUpdate ||
+    isSkillPlanningSupplementBatchDelete ||
+    Boolean(supplementDeleteMatch);
   if (skillPlanningSupplementRequiresUserId && !String(params.userId ?? '').trim()) {
     return fail('缺少必填参数: userId', null);
   }
 
-  if (method === 'post' && path === '/config/add') {
+  if (path === '/config/add' || isSkillPlanningSupplementQuery || isSkillPlanningSupplementUpdate) {
+    const missingMutationParams = ['dimCode', 'dimType', 'dimName'].filter(
+      (key) => !String(params[key] ?? '').trim(),
+    );
+    if (missingMutationParams.length > 0) {
+      return fail(
+        `\u7f3a\u5c11\u5fc5\u586b\u53c2\u6570: ${missingMutationParams.join(', ')}`,
+        null,
+      );
+    }
+  }
+  const readPlanningSupplementPayload = (): Record<string, unknown> => {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
     const entity =
       body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
         ? (body.skillConfigEntity as Record<string, unknown>)
         : {};
+    return { ...body, ...entity };
+  };
+  if (method === 'post' && path === '/config/add') {
+    const entity = readPlanningSupplementPayload();
+    entity.name = entity.skillName ?? entity.name;
+    entity.level = entity.dimType ?? entity.level;
+    entity.offeringId = entity.dimCode ?? entity.offeringId;
+    entity.offeringName = entity.dimName ?? entity.offeringName;
+    entity.planDeptCode = entity.dimCode ?? entity.planDeptCode;
+    entity.planDeptName = entity.dimName ?? entity.planDeptName;
     const requiredKeys = [
       'name',
       'firstScene',
@@ -1894,20 +1951,25 @@ function handleSkillRequest(
     return ok({ ...record });
   }
 
-  if (method === 'post' && path === '/config/query') {
-    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+  if ((method === 'get' || method === 'post') && isSkillPlanningSupplementQuery) {
+    const body =
+      method === 'post' ? (readSkillRequestBody(config.data) as Record<string, unknown>) : {};
     const query =
-      body.query && typeof body.query === 'object' ? (body.query as Record<string, unknown>) : {};
+      method === 'post' && body.query && typeof body.query === 'object'
+        ? (body.query as Record<string, unknown>)
+        : params;
     const result = filterMockSkillPlanningSupplement(query);
     return ok(result.list, result.total);
   }
 
-  if (method === 'put' && path === '/config/update') {
-    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const entity =
-      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
-        ? (body.skillConfigEntity as Record<string, unknown>)
-        : {};
+  if (method === 'put' && isSkillPlanningSupplementUpdate) {
+    const entity = readPlanningSupplementPayload();
+    entity.name = entity.skillName ?? entity.name;
+    entity.level = entity.dimType ?? entity.level;
+    entity.offeringId = entity.dimCode ?? entity.offeringId;
+    entity.offeringName = entity.dimName ?? entity.offeringName;
+    entity.planDeptCode = entity.dimCode ?? entity.planDeptCode;
+    entity.planDeptName = entity.dimName ?? entity.planDeptName;
     const id = String(entity.id ?? '').trim();
     if (!id) {
       return fail('缺少 id', null);
@@ -1992,7 +2054,6 @@ function handleSkillRequest(
     return ok({ ...target });
   }
 
-  const supplementDeleteMatch = /^\/config\/delete\/([^/]+)$/.exec(path);
   if (method === 'delete' && supplementDeleteMatch) {
     const id = decodeURIComponent(supplementDeleteMatch[1] ?? '').trim();
     if (!id) {
@@ -2006,7 +2067,7 @@ function handleSkillRequest(
     return ok(removed);
   }
 
-  if (method === 'delete' && path === '/config/batch_delete') {
+  if (method === 'delete' && isSkillPlanningSupplementBatchDelete) {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
     const ids = Array.isArray(body.ids)
       ? body.ids.map((item) => String(item ?? '').trim()).filter(Boolean)

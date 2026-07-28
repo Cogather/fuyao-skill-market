@@ -7,6 +7,10 @@ import {
   type DepartmentPlanningPermissionMember,
   type DepartmentPlanningPermissionRecord,
 } from '../../services/skillMarket/departmentPlanningPermissionService';
+import type {
+  QueryHarnessPermissionUsersParams,
+  UpdateHarnessPermissionUsersRequest,
+} from '../../services/skillMarket/apiTypes';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
@@ -361,6 +365,104 @@ function normalizeDepartmentRecords(response: unknown): DepartmentPermissionReco
     ];
   });
 }
+function responsePayload(response: unknown): unknown {
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  if (meta.success === false) {
+    throw new Error(readText(responseRecord.message) || 'Permission users load failed');
+  }
+  return responseRecord.data ?? response;
+}
+
+function pickResponseArray(value: unknown): unknown[] {
+  const record = asRecord(value);
+  return Array.isArray(value)
+    ? value
+    : (['list', 'records', 'items', 'rows', 'users', 'adminUsers']
+        .map((key) => record[key])
+        .find((candidate): candidate is unknown[] => Array.isArray(candidate)) ?? []);
+}
+
+function normalizeHarnessPermissionRecord(
+  response: unknown,
+  option: DepartmentOption,
+): DepartmentPermissionRecord {
+  const payload = responsePayload(response);
+  const payloadRecord = asRecord(payload);
+  const requestRecord = asRecord(payloadRecord.request);
+  const record = Object.keys(requestRecord).length > 0 ? requestRecord : payloadRecord;
+  const rows = pickResponseArray(payload);
+  const ownerUserId = readText(record.owner ?? record.ownerUserId ?? record.ownerId);
+  const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
+  const memberDetails = new Map<string, Partial<DepartmentPlanningPermissionMember>>();
+  const memberIds = new Set<string>();
+  const addMemberId = (value: unknown): void => {
+    const userId = readText(value);
+    if (userId) memberIds.add(userId);
+  };
+
+  readUserIds(record.adminUserIds ?? record.admin_user_ids ?? record.admins).forEach(addMemberId);
+  rows.forEach((item) => {
+    const row = asRecord(item);
+    const rowIds = readUserIds(row.adminUserIds ?? row.admin_user_ids ?? row.admins);
+    if (rowIds.length > 0) {
+      rowIds.forEach(addMemberId);
+      return;
+    }
+    const userId = readText(
+      row.userId ?? row.adminUserId ?? row.employeeNo ?? row.sAMAccountName ?? row.id ?? item,
+    );
+    if (!userId) return;
+    addMemberId(userId);
+    memberDetails.set(normalizeUserId(userId), {
+      userName: readText(row.userName ?? row.chName ?? row.employeeName ?? row.name),
+      label: readText(row.label),
+      departmentName: readText(row.departmentName ?? row.deptName ?? row.department),
+      grantedAt: readText(row.grantedAt ?? row.createTime ?? row.createdAt ?? updatedAt),
+    });
+  });
+  if (ownerUserId) memberIds.add(ownerUserId);
+
+  const departmentName =
+    readText(
+      record.l6DeptName ??
+        record.l5DeptName ??
+        record.l4DeptName ??
+        record.l3DeptName ??
+        record.deptName ??
+        record.departmentName,
+    ) || option.name;
+  const deptCode =
+    readText(
+      record.l6DeptCode ??
+        record.l5DeptCode ??
+        record.l4DeptCode ??
+        record.l3DeptCode ??
+        record.deptCode ??
+        record.departmentCode,
+    ) || option.deptCode;
+
+  return {
+    departmentName,
+    deptCode,
+    ownerUserId,
+    updatedAt,
+    members: [...memberIds].map((userId) => {
+      const detail = memberDetails.get(normalizeUserId(userId)) ?? {};
+      const label =
+        readText(detail.label) ||
+        [readText(detail.userName), userId].filter(Boolean).join(' ') ||
+        userId;
+      return {
+        userId,
+        userName: readText(detail.userName),
+        label: userId === ownerUserId ? `${label} (Owner)` : label,
+        departmentName: readText(detail.departmentName),
+        grantedAt: readText(detail.grantedAt) || updatedAt,
+      };
+    }),
+  };
+}
 
 function cacheUserOptions(options: SkillPlanningUserOption[]): void {
   options.forEach((option) => {
@@ -424,19 +526,24 @@ async function reload(): Promise<void> {
     return;
   }
 
+  const currentOption =
+    ownerManageableDepartmentOptions.value.find((option) =>
+      sameDepartmentPath(option.path, selectedDepartmentPath.value),
+    ) ?? ownerOptions[0];
+  selectedDepartmentPath.value = [...currentOption.path];
+
   if (transportIsHttp) {
     const userId = props.userId.trim();
     if (!userId) {
       records.value = [];
       return;
     }
-    const response = await skillBaseService.querySkillPlanningDepartments({ userId });
-    const departmentRecords = normalizeDepartmentRecords(response).filter((record) =>
-      ownerManageableDepartmentOptions.value.some((option) =>
-        departmentRecordMatchesOption(record, option),
-      ),
+    const response = await skillBaseService.queryHarnessPermissionUsers(
+      departmentPermissionQueryParams(currentOption),
     );
-    records.value = await enrichMemberProfiles(departmentRecords);
+    records.value = await enrichMemberProfiles([
+      normalizeHarnessPermissionRecord(response, currentOption),
+    ]);
   } else {
     records.value = listDepartmentPlanningPermissions()
       .filter((record) =>
@@ -453,21 +560,17 @@ async function reload(): Promise<void> {
         ownerUserId: '',
       }));
   }
-  const currentOption = ownerManageableDepartmentOptions.value.find((option) =>
-    sameDepartmentPath(option.path, selectedDepartmentPath.value),
-  );
-  selectedDepartmentPath.value = [...(currentOption ?? ownerOptions[0]).path];
 }
 
 type DepartmentAdminBodyLevels = {
-  l3DeptCode: string | null;
-  l3DeptName: string | null;
-  l4DeptCode: string | null;
-  l4DeptName: string | null;
-  l5DeptCode: string | null;
-  l5DeptName: string | null;
-  l6DeptCode: string | null;
-  l6DeptName: string | null;
+  l3DeptCode: string;
+  l3DeptName: string;
+  l4DeptCode: string;
+  l4DeptName: string;
+  l5DeptCode: string;
+  l5DeptName: string;
+  l6DeptCode: string;
+  l6DeptName: string;
 };
 
 function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBodyLevels {
@@ -487,11 +590,11 @@ function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBod
     }
   });
 
-  const pick = (level: number): { code: string | null; name: string | null } => {
+  const pick = (level: number): { code: string; name: string } => {
     const segment = byLevel.get(level);
     return {
-      code: segment?.deptCode || null,
-      name: segment?.name || null,
+      code: segment?.deptCode || '',
+      name: segment?.name || '',
     };
   };
 
@@ -508,6 +611,18 @@ function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBod
     l5DeptName: l5.name,
     l6DeptCode: l6.code,
     l6DeptName: l6.name,
+  };
+}
+function departmentPermissionQueryParams(
+  option: DepartmentOption,
+): QueryHarnessPermissionUsersParams {
+  const levels = departmentAdminBodyLevels(option);
+  return {
+    userId: props.userId.trim(),
+    l3DeptCode: levels.l3DeptCode,
+    l4DeptCode: levels.l4DeptCode,
+    l5DeptCode: levels.l5DeptCode,
+    l6DeptCode: levels.l6DeptCode,
   };
 }
 
@@ -527,12 +642,15 @@ async function updateRemoteAdmins(
   }
 
   const departmentLevels = departmentAdminBodyLevels(departmentOption);
-  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins({
-    userId: props.userId.trim(),
+  const request: UpdateHarnessPermissionUsersRequest = {
     adminUserIds: [
       ...new Set(adminUserIds.filter((userId) => Boolean(userId) && userId !== record.ownerUserId)),
     ].join(','),
     ...departmentLevels,
+    userId: props.userId.trim(),
+  };
+  const response = await skillBaseService.updateHarnessPermissionUsers({
+    request,
   });
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
@@ -583,6 +701,9 @@ function selectDepartment(path: string[]): void {
   }
   selectedDepartmentPath.value = [...path];
   closePersonSearch();
+  if (transportIsHttp) {
+    reloadSafely();
+  }
 }
 
 function clearPersonSearchTimer(): void {
@@ -664,7 +785,7 @@ async function addPermission(option: SkillPlanningUserOption): Promise<void> {
       const record = selectedRecord.value;
       await updateRemoteAdmins(record, [
         ...record.members.map((member) => member.userId),
-        option.raw.sAMAccountName,
+        option.id,
       ]);
     } else {
       grantDepartmentPlanningPermission(selectedDepartment.value, {

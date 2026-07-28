@@ -1,8 +1,7 @@
 import { skillBaseService } from './skillBaseService';
 import type {
   CreateSkillPlanningSupplementBody,
-  QuerySkillPlanningSupplementBody,
-  QuerySkillPlanningSupplementQuery,
+  QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementItemDto,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
@@ -10,7 +9,6 @@ import {
   exportSkillPlanningToExcel,
   normalizeProgress,
   normalizeText,
-  normalizeTextArray,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
   type SkillPlanningBatchPatch,
@@ -250,47 +248,26 @@ function normalizeSupplementListResult(response: unknown): SkillPlanningListResu
   };
 }
 
-function toHttpSkillPlanningSupplementQuery(
+function toHttpSkillPlanningSupplementParams(
   query: SkillPlanningQuery,
-): QuerySkillPlanningSupplementQuery {
-  const body: QuerySkillPlanningSupplementQuery = {};
-  const assignText = (key: keyof QuerySkillPlanningSupplementQuery, value: unknown): void => {
-    const text = normalizeText(value);
-    if (text) {
-      (body as Record<string, unknown>)[key] = text;
-    }
+): QuerySkillPlanningSupplementParams {
+  const params: QuerySkillPlanningSupplementParams = {
+    userId: normalizeText(query.userId),
+    dimType: normalizeText(query.dimType),
+    dimCode: normalizeText(query.dimCode),
+    dimName: normalizeText(query.dimName),
   };
-  const assignTextArray = (key: keyof QuerySkillPlanningSupplementQuery, value: unknown): void => {
-    const values = normalizeTextArray(Array.isArray(value) ? value : [value]);
-    if (values.length > 0) {
-      (body as Record<string, unknown>)[key] = values;
-    }
-  };
-
-  assignTextArray('activityNodeName', query.activityNodeName);
-  assignText('departmentL3', query.departmentL3);
-  assignText('departmentL4', query.departmentL4);
-  assignText('departmentL5', query.departmentL5);
-  assignText('departmentL6', query.departmentL6);
-  assignText('departmentL7', query.departmentL7);
-  assignText('departmentL8', query.departmentL8);
-  assignText('deptCode', query.deptCode ?? query.dimCode);
-  assignTextArray('deptCodes', query.deptCodes);
-  assignTextArray('firstScene', query.firstScene);
-  assignText('keyword', query.keyword);
-  assignTextArray('level', query.level);
+  const skillName = normalizeText(query.skillName ?? query.keyword);
+  if (skillName) {
+    params.skillName = skillName;
+  }
   if (typeof query.pageNum === 'number' && Number.isFinite(query.pageNum)) {
-    body.pageNum = query.pageNum;
+    params.pageNum = query.pageNum;
   }
   if (typeof query.pageSize === 'number' && Number.isFinite(query.pageSize)) {
-    body.pageSize = query.pageSize;
+    params.pageSize = query.pageSize;
   }
-  assignTextArray('secondScene', query.secondScene);
-  assignText('sortBy', query.sortBy);
-  assignText('sortOrder', query.sortOrder);
-  assignTextArray('status', query.status);
-  assignTextArray('subActivityNodeName', query.subActivityNodeName);
-  return body;
+  return params;
 }
 
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
@@ -552,11 +529,8 @@ export async function querySkillPlanningSupplement(
     return (await loadMockService()).querySkillPlanningSupplement(query);
   }
 
-  const userId = normalizeText(query.userId);
-  const body: QuerySkillPlanningSupplementBody = {
-    query: toHttpSkillPlanningSupplementQuery(query),
-  };
-  const response = await skillBaseService.querySkillPlanningSupplement(body, userId);
+  const params = toHttpSkillPlanningSupplementParams(query);
+  const response = await skillBaseService.querySkillPlanningSupplement(params);
   return normalizeSupplementListResult(response);
 }
 
@@ -603,7 +577,12 @@ export async function createSkillPlanningSupplement(
   body: CreateSkillPlanningSupplementBody,
   userId: string,
 ): Promise<any> {
-  const response = await skillBaseService.createSkillPlanningSupplement(body, userId);
+  const response = await skillBaseService.createSkillPlanningSupplement(body, {
+    userId,
+    dimCode: body.dimCode,
+    dimType: body.dimType,
+    dimName: body.dimName,
+  });
   return response;
 }
 
@@ -611,7 +590,12 @@ export async function updateSkillPlanningSupplement(
   body: UpdateSkillPlanningSupplementBody,
   userId: string,
 ): Promise<any> {
-  const response = await skillBaseService.updateSkillPlanningSupplement(body, userId);
+  const response = await skillBaseService.updateSkillPlanningSupplement(body, {
+    userId,
+    dimCode: body.dimCode,
+    dimType: body.dimType,
+    dimName: body.dimName,
+  });
   return response;
 }
 
