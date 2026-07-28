@@ -355,45 +355,54 @@ export const skillBaseService = {
     });
   },
 
-  createSkillPlanningSupplement: (body: CreateSkillPlanningSupplementBody): any => {
+  // skill 规划补充相关接口
+  createSkillPlanningSupplement: (body: CreateSkillPlanningSupplementBody, userId: string): any => {
     return httpRequest.skill<any>({
-      url: '/config/supplement/add',
+      url: '/config/add',
       method: 'post',
       data: body,
+      params: { userId },
     });
   },
 
   querySkillPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
     return httpRequest.skill<any>({
-      url: '/config/supplement/query',
+      url: '/config/query',
       method: 'get',
       params,
     });
   },
 
-  updateSkillPlanningSupplement: (body: UpdateSkillPlanningSupplementBody): any => {
+  updateSkillPlanningSupplement: (body: UpdateSkillPlanningSupplementBody, userId: string): any => {
     return httpRequest.skill<any>({
-      url: '/config/supplement/update',
+      url: '/config/update',
       method: 'put',
       data: body,
+      params: { userId },
     });
   },
 
-  deleteSkillPlanningSupplement: (id: string | number): any => {
+  deleteSkillPlanningSupplement: (id: string | number, userId: string): any => {
     return httpRequest.skill<any>({
-      url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
+      url: `/config/delete/${encodeURIComponent(String(id))}`,
       method: 'delete',
+      params: { userId },
     });
   },
 
-  batchDeleteSkillPlanningSupplement: (body: BatchDeleteSkillPlanningSupplementBody): any => {
+  batchDeleteSkillPlanningSupplement: (
+    body: BatchDeleteSkillPlanningSupplementBody,
+    userId: string,
+  ): any => {
     return httpRequest.skill<any>({
-      url: '/config/supplement/batch_delete',
+      url: '/config/batch_delete',
       method: 'delete',
       data: body,
+      params: { userId },
     });
   },
 
+  // skill 原子能力相关接口
   createSkillMasterManagement: (body: CreateSkillMasterManagementBody): any => {
     return httpRequest.skill<any>({
       url: '/management/add',
@@ -405,16 +414,17 @@ export const skillBaseService = {
   querySkillMasterManagement: (body: QuerySkillMasterManagementBody): any => {
     return httpRequest.skill<any>({
       url: '/management/query',
-      method: 'post',
-      data: body,
+      method: 'get',
+      params: body,
     });
   },
 
-  batchDeleteSkillMasterManagement: (ids: Array<string | number>): any => {
+  batchDeleteSkillMasterManagement: (ids: Array<string | number>, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/management/batch_delete',
       method: 'delete',
       data: ids,
+      params: { userId },
     });
   },
 
@@ -426,10 +436,11 @@ export const skillBaseService = {
     });
   },
 
-  deleteSkillMasterManagement: (id: string | number): any => {
+  deleteSkillMasterManagement: (id: string | number, userId: string): any => {
     return httpRequest.skill<any>({
       url: `/management/delete/${encodeURIComponent(String(id))}`,
       method: 'delete',
+      params: { userId },
     });
   },
 

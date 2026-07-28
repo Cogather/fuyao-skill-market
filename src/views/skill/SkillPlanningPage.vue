@@ -53,6 +53,7 @@ type PlanningFormMode = 'create' | 'edit';
 type PlanningLevel = '产品级' | '部门级';
 type PlanningDepartmentTreeNode = {
   id?: string;
+  deptLevel?: number;
   deptCode?: string;
   name: string;
   children?: PlanningDepartmentTreeNode[];
@@ -701,28 +702,88 @@ function resolvePlanningDimFields(): {
   };
 }
 
+function resolvePlanningDepartmentEntityFields() {
+  const segments = normalizePlanningDepartmentPath(planningFormDepartmentSegments.value);
+  const pathNodes: PlanningDepartmentTreeNode[] = [];
+  let candidates = planningDepartmentTree.value;
+  segments.forEach((segment) => {
+    const node = candidates.find((item) => item.name === segment);
+    if (!node) return;
+    pathNodes.push(node);
+    candidates = node.children ?? [];
+  });
+
+  const nodesByLevel = new Map<number, PlanningDepartmentTreeNode>();
+  pathNodes.forEach((node, index) => {
+    const explicitLevel = Number(node.deptLevel);
+    nodesByLevel.set(
+      Number.isFinite(explicitLevel) && explicitLevel > 0 ? explicitLevel : index + 3,
+      node,
+    );
+  });
+  const formFields = planningForm as unknown as Record<string, unknown>;
+  const readLevelField = (level: number, field: 'Code' | 'Name'): string => {
+    const formValue = String(formFields[`l${level}Dept${field}`] ?? '').trim();
+    if (formValue) return formValue;
+    const node = nodesByLevel.get(level);
+    return field === 'Code'
+      ? String(node?.deptCode ?? node?.id ?? '').trim()
+      : String(node?.name ?? '').trim();
+  };
+  const planningDepartment = pathNodes.at(-1);
+
+  return {
+    planDeptCode: String(planningDepartment?.deptCode ?? planningDepartment?.id ?? '').trim(),
+    planDeptName: planningForm.planningDeptName.trim(),
+    l5DeptCode: readLevelField(5, 'Code'),
+    l5DeptName: readLevelField(5, 'Name'),
+    l4DeptCode: readLevelField(4, 'Code'),
+    l4DeptName: readLevelField(4, 'Name'),
+    l3DeptCode: readLevelField(3, 'Code'),
+    l3DeptName: readLevelField(3, 'Name'),
+    l2DeptCode: readLevelField(2, 'Code'),
+    l2DeptName: readLevelField(2, 'Name'),
+    l1DeptCode: readLevelField(1, 'Code'),
+    l1DeptName: readLevelField(1, 'Name'),
+  };
+}
+
 function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null {
   const dim = resolvePlanningDimFields();
   if (!dim) {
     return null;
   }
-  const skillName = planningForm.name.trim();
+  const name = planningForm.name.trim();
   const firstScene = planningForm.firstScene.trim();
   const secondScene = planningForm.secondScene.trim();
   const activityNodeName = planningForm.activityNodeName.trim();
   const subActivityNodeName = planningForm.subActivityNodeName.trim();
-  if (!skillName || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
+  if (!name || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
     return null;
   }
+  const timestamp = new Date().toISOString();
+
   return {
-    skillName,
-    firstScene,
-    secondScene,
-    activityNodeName,
-    subActivityNodeName,
-    dimType: dim.dimType,
-    dimCode: dim.dimCode,
-    dimName: dim.dimName,
+    skillConfigEntity: {
+      activityNodeName,
+      firstScene,
+      level: dim.level,
+      name,
+      offeringId: planningForm.offeringId.trim(),
+      offeringName: planningForm.offeringName.trim(),
+      secondScene,
+      subActivityNodeName,
+      description: planningForm.description.trim(),
+      owner: planningForm.owner.trim(),
+      developOwner: planningForm.developOwner.trim(),
+      planedCompleteDate: planningForm.planedCompleteDate.trim(),
+      status: planningForm.status,
+      deptCode: planningForm.deptCode.trim(),
+      deptName: planningForm.deptName.trim(),
+      ...resolvePlanningDepartmentEntityFields(),
+      createTime: timestamp,
+      updateTime: timestamp,
+    },
   };
 }
 
@@ -798,6 +859,7 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
 
   try {
     const queryBody: QuerySkillMasterManagementBody = {
+      userId: props.userId.trim(),
       sortBy: 'updatedAt',
       sortOrder: 'desc',
       pageNum: 1,
@@ -1887,8 +1949,19 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     offeringId: row.offeringId,
     offeringName: row.offeringName,
     owner: master?.owner || row.owner,
+    deptCode: row.deptCode,
     deptName: master?.department || row.deptName,
     planningDeptName: row.planningDeptName,
+    l5DeptCode: row.l5DeptCode,
+    l5DeptName: row.l5DeptName,
+    l4DeptCode: row.l4DeptCode,
+    l4DeptName: row.l4DeptName,
+    l3DeptCode: row.l3DeptCode,
+    l3DeptName: row.l3DeptName,
+    l2DeptCode: row.l2DeptCode,
+    l2DeptName: row.l2DeptName,
+    l1DeptCode: row.l1DeptCode,
+    l1DeptName: row.l1DeptName,
     developOwner: master?.developOwner || row.developOwner,
     planedCompleteDate: master?.plannedCompleteDate || row.planedCompleteDate,
     status: master?.status || row.status,
@@ -1944,7 +2017,7 @@ async function confirmInlineCreate() {
       showToast('请完善层级、部门/产品与场景活动信息');
       return;
     }
-    const createRes = await createSkillPlanningSupplement(body);
+    const createRes = await createSkillPlanningSupplement(body, props.userId.trim());
     const toastStr =
       createRes?.meta?.success !== true
         ? (createRes?.meta?.message ?? 'Skill 规划新增失败')
@@ -2008,10 +2081,15 @@ async function confirmInlineEdit() {
       showToast('请完善层级、部门/产品与场景活动信息');
       return;
     }
-    const updateRes = await updateSkillPlanningSupplement({
-      id: editingId.value,
-      ...body,
-    });
+    const updateRes = await updateSkillPlanningSupplement(
+      {
+        skillConfigEntity: {
+          ...body.skillConfigEntity,
+          id: editingId.value,
+        },
+      },
+      props.userId.trim(),
+    );
     const toastStr =
       updateRes?.meta?.success !== true
         ? (updateRes?.meta?.message ?? 'Skill 规划更新失败')
@@ -2084,7 +2162,7 @@ async function submitPlanningForm() {
         showToast('请完善层级、部门/产品与场景活动信息');
         return;
       }
-      const createRes = await createSkillPlanningSupplement(body);
+      const createRes = await createSkillPlanningSupplement(body, props.userId.trim());
       if (createRes?.meta?.success !== true) {
         throw new Error(
           String(createRes?.meta?.message || createRes?.message || '新增 Skill 规划失败'),
@@ -2100,10 +2178,15 @@ async function submitPlanningForm() {
         showToast('请完善层级、部门/产品与场景活动信息');
         return;
       }
-      const updateRes = await updateSkillPlanningSupplement({
-        id: editingId.value,
-        ...body,
-      });
+      const updateRes = await updateSkillPlanningSupplement(
+        {
+          skillConfigEntity: {
+            ...body.skillConfigEntity,
+            id: editingId.value,
+          },
+        },
+        props.userId.trim(),
+      );
       if (updateRes?.meta?.success !== true) {
         throw new Error(
           String(updateRes?.meta?.message || updateRes?.message || '更新 Skill 规划失败'),
@@ -2357,7 +2440,7 @@ function requestDeleteRow(row: SkillPlanningItem) {
     `确认删除「${row.name}」吗？删除后将无法恢复。`,
     '确认删除',
     async () => {
-      await deleteSkillPlanning(row.id);
+      await deleteSkillPlanning(row.id, props.userId.trim());
       selectedIds.value = selectedIds.value.filter((id) => id !== row.id);
       showToast('已删除');
       await loadPlanningFilterOptions();
@@ -2376,7 +2459,7 @@ function requestBatchDelete() {
     `确认删除已勾选的 ${selectedIds.value.length} 条数据吗？删除后将无法恢复。`,
     '批量删除',
     async () => {
-      const count = await batchDeleteSkillPlanning(selectedIds.value);
+      const count = await batchDeleteSkillPlanning(selectedIds.value, props.userId.trim());
       selectedIds.value = [];
       showToast(`已删除 ${count} 条数据`);
       await loadPlanningFilterOptions();

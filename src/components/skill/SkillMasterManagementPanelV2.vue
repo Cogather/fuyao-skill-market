@@ -363,6 +363,7 @@ function resolveCurrentDimFields(): { dimCode: string; dimName: string } {
 
 function buildManagementQueryBody(): QuerySkillMasterManagementBody {
   const body: QuerySkillMasterManagementBody = {
+    userId: props.userId.trim(),
     sortBy: 'updatedAt',
     sortOrder: 'desc',
     pageNum: 1,
@@ -1006,16 +1007,19 @@ async function submitEditor(): Promise<void> {
     }
 
     const body: CreateSkillMasterManagementBody = {
-      skillName: editor.name.trim(),
-      skillDescription: editor.description.trim(),
+      userId: props.userId.trim(),
       dimType: dim.dimType,
       dimCode: dim.dimCode,
       dimName: dim.dimName,
-      ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-      ownerId: ownerPicker.selected.id,
-      developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-      developOwnerId: developOwnerPicker.selected.id,
-      planFinishDate: editor.plannedCompleteDate,
+      entity: {
+        skillName: editor.name.trim(),
+        skillDescription: editor.description.trim(),
+        ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
+        ownerId: ownerPicker.selected.id,
+        developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+        developOwnerId: developOwnerPicker.selected.id,
+        planFinishDate: editor.plannedCompleteDate,
+      },
     };
 
     submitting.value = true;
@@ -1076,17 +1080,20 @@ async function submitEditor(): Promise<void> {
   }
 
   const updateBody: UpdateSkillMasterManagementBody = {
-    id: editor.id,
-    skillName: editor.name.trim(),
-    skillDescription: editor.description.trim(),
+    userId: props.userId.trim(),
     dimType: dim.dimType,
     dimCode: dim.dimCode,
     dimName: dim.dimName,
-    ownerName: ownerValue.name,
-    ownerId: ownerValue.id,
-    developOwnerName: developOwnerValue.name,
-    developOwnerId: developOwnerValue.id,
-    planFinishDate: editor.plannedCompleteDate,
+    skillConfigEntity: {
+      id: editor.id,
+      skillName: editor.name.trim(),
+      skillDescription: editor.description.trim(),
+      ownerName: ownerValue.name,
+      ownerId: ownerValue.id,
+      developOwnerName: developOwnerValue.name,
+      developOwnerId: developOwnerValue.id,
+      planFinishDate: editor.plannedCompleteDate,
+    },
   };
 
   submitting.value = true;
@@ -1158,7 +1165,7 @@ async function confirmDelete(): Promise<void> {
     return;
   }
   try {
-    const response = await skillBaseService.deleteSkillMasterManagement(id);
+    const response = await skillBaseService.deleteSkillMasterManagement(id, props.userId.trim());
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || '删除失败，请稍后重试'),
@@ -1253,7 +1260,10 @@ async function confirmBatchMasterDelete(): Promise<void> {
     return;
   }
   try {
-    const response = await skillBaseService.batchDeleteSkillMasterManagement(ids);
+    const response = await skillBaseService.batchDeleteSkillMasterManagement(
+      ids,
+      props.userId.trim(),
+    );
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || '批量删除失败，请稍后重试'),

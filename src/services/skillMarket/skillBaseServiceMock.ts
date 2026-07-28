@@ -137,6 +137,7 @@ type MockSkillMasterManagementRecord = {
 type MockSkillPlanningSupplementRecord = {
   id: string;
   skillName: string;
+  name?: string;
   firstScene: string;
   secondScene: string;
   activityNodeName: string;
@@ -144,13 +145,36 @@ type MockSkillPlanningSupplementRecord = {
   dimType: string;
   dimCode: string;
   dimName: string;
+  level?: string;
+  offeringId?: string;
+  offeringName?: string;
   skillDescription: string;
+  description?: string;
   ownerName: string;
   ownerId: string;
+  owner?: string;
   developOwnerName: string;
   developOwnerId: string;
+  developOwner?: string;
   status: string;
   planFinishDate: string;
+  planedCompleteDate?: string;
+  deptCode?: string;
+  deptName?: string;
+  planDeptCode?: string;
+  planDeptName?: string;
+  l5DeptCode?: string;
+  l5DeptName?: string;
+  l4DeptCode?: string;
+  l4DeptName?: string;
+  l3DeptCode?: string;
+  l3DeptName?: string;
+  l2DeptCode?: string;
+  l2DeptName?: string;
+  l1DeptCode?: string;
+  l1DeptName?: string;
+  createTime?: string;
+  updateTime?: string;
 };
 
 function nowLocalDateTimeArray(): number[] {
@@ -1727,106 +1751,188 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
-  if (method === 'post' && path === '/config/supplement/add') {
+  const skillPlanningSupplementRequiresUserId =
+    path === '/config/add' ||
+    path === '/config/query' ||
+    path === '/config/update' ||
+    path === '/config/batch_delete' ||
+    /^\/config\/delete\/[^/]+$/.test(path);
+  if (skillPlanningSupplementRequiresUserId && !String(params.userId ?? '').trim()) {
+    return fail('缺少必填参数: userId', null);
+  }
+
+  if (method === 'post' && path === '/config/add') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const entity =
+      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
+        ? (body.skillConfigEntity as Record<string, unknown>)
+        : {};
     const requiredKeys = [
-      'skillName',
+      'name',
       'firstScene',
       'secondScene',
       'activityNodeName',
       'subActivityNodeName',
-      'dimType',
-      'dimCode',
-      'dimName',
+      'level',
     ] as const;
-    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    const missing = requiredKeys.filter((key) => !String(entity[key] ?? '').trim());
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
-    const dimType = String(body.dimType).trim();
+    const dimType = String(entity.level).trim();
     if (dimType !== '部门级' && dimType !== '产品级') {
-      return fail('dimType 仅支持 部门级 或 产品级', null);
+      return fail('level 仅支持 部门级 或 产品级', null);
     }
-    const skillName = String(body.skillName).trim();
+    const dimCode = String(dimType === '产品级' ? entity.offeringId : entity.planDeptCode).trim();
+    const dimName = String(dimType === '产品级' ? entity.offeringName : entity.planDeptName).trim();
+    if (!dimCode || !dimName) {
+      return fail('缺少维度编码或名称', null);
+    }
+    const skillName = String(entity.name).trim();
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
     const record: MockSkillPlanningSupplementRecord = {
       id: nextMockSkillPlanningSupplementId(),
       skillName,
-      firstScene: String(body.firstScene).trim(),
-      secondScene: String(body.secondScene).trim(),
-      activityNodeName: String(body.activityNodeName).trim(),
-      subActivityNodeName: String(body.subActivityNodeName).trim(),
+      name: skillName,
+      firstScene: String(entity.firstScene).trim(),
+      secondScene: String(entity.secondScene).trim(),
+      activityNodeName: String(entity.activityNodeName).trim(),
+      subActivityNodeName: String(entity.subActivityNodeName).trim(),
       dimType,
-      dimCode: String(body.dimCode).trim(),
-      dimName: String(body.dimName).trim(),
-      skillDescription: master?.skillDescription ?? '',
-      ownerName: master?.ownerName ?? '',
+      dimCode,
+      dimName,
+      level: dimType,
+      offeringId: String(entity.offeringId ?? '').trim(),
+      offeringName: String(entity.offeringName ?? '').trim(),
+      skillDescription: String(entity.description ?? '').trim() || master?.skillDescription || '',
+      description: String(entity.description ?? '').trim(),
+      ownerName: String(entity.owner ?? '').trim() || master?.ownerName || '',
       ownerId: master?.ownerId ?? '',
-      developOwnerName: master?.developOwnerName ?? '',
+      owner: String(entity.owner ?? '').trim(),
+      developOwnerName: String(entity.developOwner ?? '').trim() || master?.developOwnerName || '',
       developOwnerId: master?.developOwnerId ?? '',
-      status: master?.status ?? '未开始',
-      planFinishDate: master?.planFinishDate ?? '',
+      developOwner: String(entity.developOwner ?? '').trim(),
+      status: String(entity.status ?? '').trim() || master?.status || '未开始',
+      planFinishDate:
+        String(entity.planedCompleteDate ?? '').trim() || master?.planFinishDate || '',
+      planedCompleteDate: String(entity.planedCompleteDate ?? '').trim(),
+      deptCode: String(entity.deptCode ?? '').trim(),
+      deptName: String(entity.deptName ?? '').trim(),
+      planDeptCode: String(entity.planDeptCode ?? '').trim(),
+      planDeptName: String(entity.planDeptName ?? '').trim(),
+      l5DeptCode: String(entity.l5DeptCode ?? '').trim(),
+      l5DeptName: String(entity.l5DeptName ?? '').trim(),
+      l4DeptCode: String(entity.l4DeptCode ?? '').trim(),
+      l4DeptName: String(entity.l4DeptName ?? '').trim(),
+      l3DeptCode: String(entity.l3DeptCode ?? '').trim(),
+      l3DeptName: String(entity.l3DeptName ?? '').trim(),
+      l2DeptCode: String(entity.l2DeptCode ?? '').trim(),
+      l2DeptName: String(entity.l2DeptName ?? '').trim(),
+      l1DeptCode: String(entity.l1DeptCode ?? '').trim(),
+      l1DeptName: String(entity.l1DeptName ?? '').trim(),
+      createTime: String(entity.createTime ?? '').trim(),
+      updateTime: String(entity.updateTime ?? '').trim(),
     };
     mockSkillPlanningSupplementRecords.unshift(record);
     return ok({ ...record });
   }
 
-  if (method === 'get' && path === '/config/supplement/query') {
+  if (method === 'get' && path === '/config/query') {
     const result = filterMockSkillPlanningSupplement(params);
     return ok(result.list, result.total);
   }
 
-  if (method === 'put' && path === '/config/supplement/update') {
+  if (method === 'put' && path === '/config/update') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const id = String(body.id ?? '').trim();
+    const entity =
+      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
+        ? (body.skillConfigEntity as Record<string, unknown>)
+        : {};
+    const id = String(entity.id ?? '').trim();
     if (!id) {
       return fail('缺少 id', null);
     }
     const requiredKeys = [
-      'skillName',
+      'name',
       'firstScene',
       'secondScene',
       'activityNodeName',
       'subActivityNodeName',
-      'dimType',
-      'dimCode',
-      'dimName',
+      'level',
     ] as const;
-    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    const missing = requiredKeys.filter((key) => !String(entity[key] ?? '').trim());
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
-    const dimType = String(body.dimType).trim();
+    const dimType = String(entity.level).trim();
     if (dimType !== '部门级' && dimType !== '产品级') {
-      return fail('dimType 仅支持 部门级 或 产品级', null);
+      return fail('level 仅支持 部门级 或 产品级', null);
+    }
+    const dimCode = String(dimType === '产品级' ? entity.offeringId : entity.planDeptCode).trim();
+    const dimName = String(dimType === '产品级' ? entity.offeringName : entity.planDeptName).trim();
+    if (!dimCode || !dimName) {
+      return fail('缺少维度编码或名称', null);
     }
     const target = mockSkillPlanningSupplementRecords.find((item) => item.id === id);
     if (!target) {
       return fail('Skill 规划不存在', null);
     }
-    const skillName = String(body.skillName).trim();
+    const skillName = String(entity.name).trim();
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
     Object.assign(target, {
       skillName,
-      firstScene: String(body.firstScene).trim(),
-      secondScene: String(body.secondScene).trim(),
-      activityNodeName: String(body.activityNodeName).trim(),
-      subActivityNodeName: String(body.subActivityNodeName).trim(),
+      name: skillName,
+      firstScene: String(entity.firstScene).trim(),
+      secondScene: String(entity.secondScene).trim(),
+      activityNodeName: String(entity.activityNodeName).trim(),
+      subActivityNodeName: String(entity.subActivityNodeName).trim(),
       dimType,
-      dimCode: String(body.dimCode).trim(),
-      dimName: String(body.dimName).trim(),
-      skillDescription: master?.skillDescription ?? target.skillDescription,
-      ownerName: master?.ownerName ?? target.ownerName,
+      dimCode,
+      dimName,
+      level: dimType,
+      offeringId: String(entity.offeringId ?? '').trim(),
+      offeringName: String(entity.offeringName ?? '').trim(),
+      skillDescription:
+        String(entity.description ?? '').trim() ||
+        master?.skillDescription ||
+        target.skillDescription,
+      description: String(entity.description ?? '').trim(),
+      ownerName: String(entity.owner ?? '').trim() || master?.ownerName || target.ownerName,
       ownerId: master?.ownerId ?? target.ownerId,
-      developOwnerName: master?.developOwnerName ?? target.developOwnerName,
+      owner: String(entity.owner ?? '').trim(),
+      developOwnerName:
+        String(entity.developOwner ?? '').trim() ||
+        master?.developOwnerName ||
+        target.developOwnerName,
       developOwnerId: master?.developOwnerId ?? target.developOwnerId,
-      status: master?.status ?? target.status,
-      planFinishDate: master?.planFinishDate ?? target.planFinishDate,
+      developOwner: String(entity.developOwner ?? '').trim(),
+      status: String(entity.status ?? '').trim() || master?.status || target.status,
+      planFinishDate:
+        String(entity.planedCompleteDate ?? '').trim() ||
+        master?.planFinishDate ||
+        target.planFinishDate,
+      planedCompleteDate: String(entity.planedCompleteDate ?? '').trim(),
+      deptCode: String(entity.deptCode ?? '').trim(),
+      deptName: String(entity.deptName ?? '').trim(),
+      planDeptCode: String(entity.planDeptCode ?? '').trim(),
+      planDeptName: String(entity.planDeptName ?? '').trim(),
+      l5DeptCode: String(entity.l5DeptCode ?? '').trim(),
+      l5DeptName: String(entity.l5DeptName ?? '').trim(),
+      l4DeptCode: String(entity.l4DeptCode ?? '').trim(),
+      l4DeptName: String(entity.l4DeptName ?? '').trim(),
+      l3DeptCode: String(entity.l3DeptCode ?? '').trim(),
+      l3DeptName: String(entity.l3DeptName ?? '').trim(),
+      l2DeptCode: String(entity.l2DeptCode ?? '').trim(),
+      l2DeptName: String(entity.l2DeptName ?? '').trim(),
+      l1DeptCode: String(entity.l1DeptCode ?? '').trim(),
+      l1DeptName: String(entity.l1DeptName ?? '').trim(),
+      createTime: String(entity.createTime ?? '').trim(),
+      updateTime: String(entity.updateTime ?? '').trim(),
     });
     return ok({ ...target });
   }
 
-  const supplementDeleteMatch = /^\/config\/supplement\/delete\/([^/]+)$/.exec(path);
+  const supplementDeleteMatch = /^\/config\/delete\/([^/]+)$/.exec(path);
   if (method === 'delete' && supplementDeleteMatch) {
     const id = decodeURIComponent(supplementDeleteMatch[1] ?? '').trim();
     if (!id) {
@@ -1840,7 +1946,7 @@ function handleSkillRequest(
     return ok(removed);
   }
 
-  if (method === 'delete' && path === '/config/supplement/batch_delete') {
+  if (method === 'delete' && path === '/config/batch_delete') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
     const ids = Array.isArray(body.ids)
       ? body.ids.map((item) => String(item ?? '').trim()).filter(Boolean)
@@ -1862,7 +1968,13 @@ function handleSkillRequest(
 
   if (method === 'post' && path === '/management/add') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const entity =
+      body.entity && typeof body.entity === 'object'
+        ? (body.entity as Record<string, unknown>)
+        : {};
+    const payload = { ...body, ...entity };
     const requiredKeys = [
+      'userId',
       'skillName',
       'skillDescription',
       'dimType',
@@ -1874,27 +1986,27 @@ function handleSkillRequest(
       'developOwnerId',
       'planFinishDate',
     ] as const;
-    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    const missing = requiredKeys.filter((key) => !String(payload[key] ?? '').trim());
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
-    if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+    if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
       return fail('status 不应传入', null);
     }
     const stamp = nowLocalDateTimeArray();
     const record: MockSkillMasterManagementRecord = {
       id: nextMockSkillMasterManagementId(),
-      skillName: String(body.skillName).trim(),
-      skillDescription: String(body.skillDescription).trim(),
-      dimType: String(body.dimType).trim(),
-      dimCode: String(body.dimCode).trim(),
-      dimName: String(body.dimName).trim(),
-      ownerName: String(body.ownerName).trim(),
-      ownerId: String(body.ownerId).trim(),
-      developOwnerName: String(body.developOwnerName).trim(),
-      developOwnerId: String(body.developOwnerId).trim(),
+      skillName: String(payload.skillName).trim(),
+      skillDescription: String(payload.skillDescription).trim(),
+      dimType: String(payload.dimType).trim(),
+      dimCode: String(payload.dimCode).trim(),
+      dimName: String(payload.dimName).trim(),
+      ownerName: String(payload.ownerName).trim(),
+      ownerId: String(payload.ownerId).trim(),
+      developOwnerName: String(payload.developOwnerName).trim(),
+      developOwnerId: String(payload.developOwnerId).trim(),
       status: '未开始',
-      planFinishDate: String(body.planFinishDate).trim(),
+      planFinishDate: String(payload.planFinishDate).trim(),
       createdAt: stamp,
       updatedAt: stamp,
       skillMatchId: null,
@@ -1913,9 +2025,8 @@ function handleSkillRequest(
     });
   }
 
-  if (method === 'post' && path === '/management/query') {
-    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const matched = filterMockSkillMasterManagement(body);
+  if (method === 'get' && path === '/management/query') {
+    const matched = filterMockSkillMasterManagement(params);
     return ok(
       matched.map((item) => ({
         ...item,
@@ -1926,12 +2037,18 @@ function handleSkillRequest(
 
   if (method === 'put' && path === '/management/update') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const id = String(body.id ?? '').trim();
+    const entity =
+      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
+        ? (body.skillConfigEntity as Record<string, unknown>)
+        : {};
+    const payload = { ...body, ...entity };
+    const id = String(payload.id ?? '').trim();
     if (!id) {
       return fail('缺少必填字段: id', null);
     }
     const requiredKeys = [
       'skillName',
+      'userId',
       'skillDescription',
       'dimType',
       'dimCode',
@@ -1942,7 +2059,7 @@ function handleSkillRequest(
       'developOwnerId',
       'planFinishDate',
     ] as const;
-    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    const missing = requiredKeys.filter((key) => !String(payload[key] ?? '').trim());
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
@@ -1951,16 +2068,16 @@ function handleSkillRequest(
       return fail(`未找到 Skill: ${id}`, null);
     }
     Object.assign(target, {
-      skillName: String(body.skillName).trim(),
-      skillDescription: String(body.skillDescription).trim(),
-      dimType: String(body.dimType).trim(),
-      dimCode: String(body.dimCode).trim(),
-      dimName: String(body.dimName).trim(),
-      ownerName: String(body.ownerName).trim(),
-      ownerId: String(body.ownerId).trim(),
-      developOwnerName: String(body.developOwnerName).trim(),
-      developOwnerId: String(body.developOwnerId).trim(),
-      planFinishDate: String(body.planFinishDate).trim(),
+      skillName: String(payload.skillName).trim(),
+      skillDescription: String(payload.skillDescription).trim(),
+      dimType: String(payload.dimType).trim(),
+      dimCode: String(payload.dimCode).trim(),
+      dimName: String(payload.dimName).trim(),
+      ownerName: String(payload.ownerName).trim(),
+      ownerId: String(payload.ownerId).trim(),
+      developOwnerName: String(payload.developOwnerName).trim(),
+      developOwnerId: String(payload.developOwnerId).trim(),
+      planFinishDate: String(payload.planFinishDate).trim(),
       updatedAt: nowLocalDateTimeArray(),
     });
     return ok({

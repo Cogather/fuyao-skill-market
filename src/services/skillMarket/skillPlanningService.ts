@@ -236,13 +236,23 @@ function mapPersonDisplay(name: unknown, id: unknown, fallback: unknown = ''): s
 function mapSupplementItemToPlanningItem(
   item: SkillPlanningSupplementItemDto | Record<string, unknown>,
 ): SkillPlanningItem {
-  const record = asRecord(item);
-  const dimTypeRaw = normalizeText(record.dimType).toUpperCase();
-  const isProd = dimTypeRaw === 'PROD' || normalizeText(record.dimType) === '产品级';
+  const outerRecord = asRecord(item);
+  const entityRecord = asRecord(outerRecord.skillConfigEntity);
+  const record = Object.keys(entityRecord).length
+    ? { ...outerRecord, ...entityRecord }
+    : outerRecord;
+  const level = normalizeText(record.level) || normalizeText(record.dimType);
+  const levelUpper = level.toUpperCase();
+  const isProd = levelUpper === 'PROD' || level === '产品级';
   const dimCode = normalizeText(record.dimCode);
   const dimName = normalizeText(record.dimName);
-  const skillName = normalizeText(record.skillName) || normalizeText(record.name);
-  const planningDeptName = normalizeText(record.planningDeptName) || (!isProd ? dimName : '');
+  const skillName = normalizeText(record.name) || normalizeText(record.skillName);
+  const offeringId = normalizeText(record.offeringId) || (isProd ? dimCode : '');
+  const offeringName = normalizeText(record.offeringName) || (isProd ? dimName : '');
+  const planningDeptName =
+    normalizeText(record.planDeptName) ||
+    normalizeText(record.planningDeptName) ||
+    (!isProd ? dimName : '');
 
   return {
     id: normalizeText(record.id),
@@ -254,13 +264,13 @@ function mapSupplementItemToPlanningItem(
     activityNodeName: normalizeText(record.activityNodeName),
     subActivityNodeName: normalizeText(record.subActivityNodeName),
     name: skillName,
-    description: normalizeText(record.skillDescription) || normalizeText(record.description),
+    description: normalizeText(record.description) || normalizeText(record.skillDescription),
     level: isProd ? '产品级' : '部门级',
-    offeringId: isProd ? dimCode : '',
-    offeringName: isProd ? dimName : '',
+    offeringId,
+    offeringName,
     owner: mapPersonDisplay(record.ownerName, record.ownerId, record.owner),
-    deptCode: !isProd ? dimCode : '',
-    deptName: !isProd ? dimName : '',
+    deptCode: normalizeText(record.deptCode) || (!isProd ? dimCode : ''),
+    deptName: normalizeText(record.deptName) || (!isProd ? dimName : ''),
     planningDeptName,
     developOwner: mapPersonDisplay(
       record.developOwnerName,
@@ -268,11 +278,20 @@ function mapSupplementItemToPlanningItem(
       record.developOwner,
     ),
     planedCompleteDate:
-      normalizeText(record.planFinishDate) || normalizeText(record.planedCompleteDate),
+      normalizeText(record.planedCompleteDate) || normalizeText(record.planFinishDate),
     status: normalizeProgress(record.status),
+    l5DeptCode: normalizeText(record.l5DeptCode),
+    l5DeptName: normalizeText(record.l5DeptName),
+    l4DeptCode: normalizeText(record.l4DeptCode),
+    l4DeptName: normalizeText(record.l4DeptName),
+    l3DeptCode: normalizeText(record.l3DeptCode),
+    l3DeptName: normalizeText(record.l3DeptName),
+    l2DeptCode: normalizeText(record.l2DeptCode),
+    l2DeptName: normalizeText(record.l2DeptName),
+    l1DeptCode: normalizeText(record.l1DeptCode),
+    l1DeptName: normalizeText(record.l1DeptName),
   };
 }
-
 function normalizeSupplementListResult(response: unknown): SkillPlanningListResult {
   assertHttpSuccess(response, 'Skill 规划列表加载失败');
   const responseRecord = asRecord(response);
@@ -716,15 +735,17 @@ export async function createSkillPlanning(
 
 export async function createSkillPlanningSupplement(
   body: CreateSkillPlanningSupplementBody,
+  userId: string,
 ): Promise<any> {
-  const response = await skillBaseService.createSkillPlanningSupplement(body);
+  const response = await skillBaseService.createSkillPlanningSupplement(body, userId);
   return response;
 }
 
 export async function updateSkillPlanningSupplement(
   body: UpdateSkillPlanningSupplementBody,
+  userId: string,
 ): Promise<any> {
-  const response = await skillBaseService.updateSkillPlanningSupplement(body);
+  const response = await skillBaseService.updateSkillPlanningSupplement(body, userId);
   return response;
 }
 
@@ -754,21 +775,21 @@ export async function batchUpdateSkillPlanning(
   return ids.length;
 }
 
-export async function deleteSkillPlanning(id: string): Promise<void> {
+export async function deleteSkillPlanning(id: string, userId: string): Promise<void> {
   if (!useHttpTransport()) {
     return (await loadMockService()).deleteSkillPlanning(id);
   }
 
-  const response = await skillBaseService.deleteSkillPlanningSupplement(id);
+  const response = await skillBaseService.deleteSkillPlanningSupplement(id, userId);
   assertHttpSuccess(response, '删除 Skill 规划失败');
 }
 
-export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
+export async function batchDeleteSkillPlanning(ids: string[], userId: string): Promise<number> {
   if (!useHttpTransport()) {
     return (await loadMockService()).batchDeleteSkillPlanning(ids);
   }
 
-  const response = await skillBaseService.batchDeleteSkillPlanningSupplement({ ids });
+  const response = await skillBaseService.batchDeleteSkillPlanningSupplement({ ids }, userId);
   assertHttpSuccess(response, '批量删除 Skill 规划失败');
   return ids.length;
 }

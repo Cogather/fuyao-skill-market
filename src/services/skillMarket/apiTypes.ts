@@ -635,20 +635,24 @@ export type ExpertReviewSubmitBody = {
 
 /** Skill 清单新增（POST /management/add） */
 export type CreateSkillMasterManagementBody = {
-  skillName: string;
-  skillDescription: string;
+  userId: string;
   dimType: string;
   dimCode: string;
   dimName: string;
-  ownerName: string;
-  ownerId: string;
-  developOwnerName: string;
-  developOwnerId: string;
-  planFinishDate: string;
+  entity: {
+    skillName: string;
+    skillDescription: string;
+    ownerName: string;
+    ownerId: string;
+    developOwnerName: string;
+    developOwnerId: string;
+    planFinishDate: string;
+  };
 };
 
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
 export type QuerySkillMasterManagementBody = {
+  userId: string;
   keyword?: string;
   dimType?: string;
   dimCode?: string;
@@ -683,23 +687,61 @@ export type SkillMasterManagementItemDto = {
 };
 
 /** Skill 清单更新（PUT /management/update） */
-export type UpdateSkillMasterManagementBody = CreateSkillMasterManagementBody & {
-  id: string | number;
-};
-
-/** Skill 规划补充新增（POST /config/supplement/add） */
-export type CreateSkillPlanningSupplementBody = {
-  skillName: string;
-  firstScene: string;
-  secondScene: string;
-  activityNodeName: string;
-  subActivityNodeName: string;
-  dimType: '部门级' | '产品级' | string;
+export type UpdateSkillMasterManagementBody = {
+  userId: string;
+  dimType: string;
   dimCode: string;
   dimName: string;
+  skillConfigEntity: {
+    id: string | number;
+    skillName?: string;
+    skillDescription?: string;
+    ownerName?: string;
+    ownerId?: string;
+    developOwnerName?: string;
+    developOwnerId?: string;
+    planFinishDate?: string;
+  };
 };
 
-/** Skill 规划补充查询（GET /config/supplement/query） */
+export type SkillPlanningSupplementEntity = {
+  activityNodeName: string;
+  firstScene: string;
+  level: string;
+  name: string;
+  offeringId: string;
+  offeringName: string;
+  secondScene: string;
+  subActivityNodeName: string;
+  description: string;
+  owner: string;
+  developOwner: string;
+  planedCompleteDate: string;
+  status: string;
+  deptCode: string;
+  deptName: string;
+  planDeptCode: string;
+  planDeptName: string;
+  l5DeptCode: string;
+  l5DeptName: string;
+  l4DeptCode: string;
+  l4DeptName: string;
+  l3DeptCode: string;
+  l3DeptName: string;
+  l2DeptCode: string;
+  l2DeptName: string;
+  l1DeptCode: string;
+  l1DeptName: string;
+  createTime: string;
+  updateTime: string;
+};
+
+/** Skill 规划补充新增（POST /config/add） */
+export type CreateSkillPlanningSupplementBody = {
+  skillConfigEntity: SkillPlanningSupplementEntity;
+};
+
+/** Skill 规划补充查询（GET /config/query） */
 export type QuerySkillPlanningSupplementParams = {
   userId: string;
   dimType?: string;
@@ -715,14 +757,18 @@ export type QuerySkillPlanningSupplementParams = {
 /** Skill 规划补充列表行（查询返回；展示字段可能随 Skill 清单关联带回） */
 export type SkillPlanningSupplementItemDto = {
   id: string | number;
-  skillName: string;
+  skillName?: string;
+  name?: string;
   firstScene: string;
   secondScene: string;
   activityNodeName: string;
   subActivityNodeName: string;
-  dimType: string;
-  dimCode: string;
-  dimName: string;
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
+  level?: string;
+  offeringId?: string;
+  offeringName?: string;
   skillDescription?: string;
   description?: string;
   ownerName?: string;
@@ -734,16 +780,33 @@ export type SkillPlanningSupplementItemDto = {
   status?: string;
   planFinishDate?: string;
   planedCompleteDate?: string;
+  deptCode?: string;
+  deptName?: string;
+  planDeptCode?: string;
+  planDeptName?: string;
   planningDeptName?: string;
-  name?: string;
+  l5DeptCode?: string;
+  l5DeptName?: string;
+  l4DeptCode?: string;
+  l4DeptName?: string;
+  l3DeptCode?: string;
+  l3DeptName?: string;
+  l2DeptCode?: string;
+  l2DeptName?: string;
+  l1DeptCode?: string;
+  l1DeptName?: string;
+  createTime?: string;
+  updateTime?: string;
 };
 
-/** Skill 规划补充更新（PUT /config/supplement/update） */
-export type UpdateSkillPlanningSupplementBody = CreateSkillPlanningSupplementBody & {
-  id: string | number;
+/** Skill 规划补充更新（PUT /config/update） */
+export type UpdateSkillPlanningSupplementBody = {
+  skillConfigEntity: SkillPlanningSupplementEntity & {
+    id: string | number;
+  };
 };
 
-/** Skill 规划补充批量删除（DELETE /config/supplement/batch_delete） */
+/** Skill 规划补充批量删除（DELETE /config/batch_delete） */
 export type BatchDeleteSkillPlanningSupplementBody = {
   ids: Array<string | number>;
 };
