@@ -10,8 +10,9 @@ import {
   downloadSkillPlanningTemplate,
   importSkillPlanningFromExcel,
   getProductPlanning,
+  querySkillPlanningActivityOptionGroups,
+  querySkillPlanningSceneOptionGroups,
   querySkillPlanningUsers,
-  querySkillPlanningFilterOptions,
   exportAllSkillPlanningList,
   querySkillConfig,
   updateSkillPlanningSupplement,
@@ -1581,22 +1582,22 @@ function syncManagedTaxonomiesForDepartment(departmentName = ''): void {
 async function loadPlanningFilterOptions(
   departmentName = filterForm.planningDeptName,
 ): Promise<void> {
-  const options = await querySkillPlanningFilterOptions(
-    props.userId,
-    currentPlanningTaxonomyParams(departmentName),
-  );
   if (transportIsHttp) {
-    primarySceneOptions.value = options.firstScene;
-    secondarySceneOptions.value = options.secondScene;
-    activityOptions.value = options.activityNodeName;
-    subActivityOptions.value = options.subActivityNodeName;
-    sceneOptionGroups.value = options.sceneGroups;
-    activityOptionGroups.value = options.activityGroups;
+    const taxonomyParams = currentPlanningTaxonomyParams(departmentName);
+    const [sceneGroups, activityGroups] = await Promise.all([
+      querySkillPlanningSceneOptionGroups(taxonomyParams),
+      querySkillPlanningActivityOptionGroups(taxonomyParams),
+    ]);
+    primarySceneOptions.value = sceneGroups.map((group) => group.value);
+    secondarySceneOptions.value = sceneGroups.flatMap((group) => group.children);
+    activityOptions.value = activityGroups.map((group) => group.value);
+    subActivityOptions.value = activityGroups.flatMap((group) => group.children);
+    sceneOptionGroups.value = sceneGroups;
+    activityOptionGroups.value = activityGroups;
   } else {
     syncManagedTaxonomiesForDepartment(departmentName);
   }
   levelOptions.value = [...planningLevelOptions];
-  progressOptions.value = options.status as SkillPlanningProgress[];
   syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
 }
 

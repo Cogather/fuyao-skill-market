@@ -14,7 +14,6 @@ import {
   type SkillPlanningUserOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningBatchUpdatePayload,
-  type SkillPlanningFilterOptions,
   type SkillPlanningImportResult,
   type SkillPlanningOptionGroup,
   type SkillPlanningItem,
@@ -109,34 +108,6 @@ function readOptionText(value: unknown, keys: string[]): string {
   return '';
 }
 
-function normalizeOptionGroups(
-  items: unknown[],
-  parentKeys: string[],
-  childKeys: string[],
-): SkillPlanningOptionGroup[] {
-  const groupMap = new Map<string, string[]>();
-
-  items.forEach((item) => {
-    const parent = readOptionText(item, parentKeys);
-    if (!parent) {
-      return;
-    }
-
-    const children = uniqueTextValues(
-      pickArray(asRecord(item), ['childrenList', 'children', 'childList']).map((child) =>
-        readOptionText(child, childKeys),
-      ),
-    );
-    groupMap.set(parent, uniqueTextValues([...(groupMap.get(parent) ?? []), ...children]));
-  });
-
-  return Array.from(groupMap, ([value, children]) => ({ value, children }));
-}
-
-function flattenGroupChildren(groups: SkillPlanningOptionGroup[]): string[] {
-  return uniqueTextValues(groups.flatMap((group) => group.children));
-}
-
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
@@ -199,33 +170,6 @@ function normalizeTaxonomyOptionGroupsFromRows(
         left.value.localeCompare(right.value, 'zh-Hans-CN'),
     )
     .map(({ value, children }) => ({ value, children }));
-}
-
-function normalizeHttpFilterOptions(response: unknown): SkillPlanningFilterOptions {
-  const record = asRecord(unwrapResponseData<unknown>(response));
-  const sceneGroups = normalizeOptionGroups(
-    pickArray(record, ['skillSceneVoList']),
-    ['scene', 'firstScene', 'name', 'label', 'value'],
-    ['scene', 'secondScene', 'name', 'label', 'value'],
-  );
-  const activityGroups = normalizeOptionGroups(
-    pickArray(record, ['skillActivityVoList']),
-    ['activityNodeName', 'activity', 'name', 'label', 'value'],
-    ['subActivityNodeName', 'activityNodeName', 'activity', 'name', 'label', 'value'],
-  );
-
-  return {
-    firstScene: sceneGroups.map((group) => group.value),
-    secondScene: flattenGroupChildren(sceneGroups),
-    activityNodeName: activityGroups.map((group) => group.value),
-    subActivityNodeName: flattenGroupChildren(activityGroups),
-    level: normalizeTextArray(pickArray(record, ['levelList', 'level'])),
-    status: normalizeTextArray(pickArray(record, ['statusList', 'statuses'])).map(
-      normalizeProgress,
-    ),
-    sceneGroups,
-    activityGroups,
-  };
 }
 
 function mapPersonDisplay(name: unknown, id: unknown, fallback: unknown = ''): string {
@@ -649,36 +593,6 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
 
   const response = await skillBaseService.getUserDepartment({ info: keyword });
   return normalizeUserDepartmentOptions(response);
-}
-
-export async function querySkillPlanningFilterOptions(
-  userId = '',
-  taxonomyParams: SkillPlanningTaxonomyOptionParams = {},
-): Promise<SkillPlanningFilterOptions> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).getPlanningOption();
-  }
-
-  const normalizedUserId = normalizeText(taxonomyParams.userId) || normalizeText(userId);
-  const normalizedTaxonomyParams = normalizeTaxonomyRequestParams({
-    ...taxonomyParams,
-    userId: normalizedUserId,
-  });
-  const [response, sceneGroups, activityGroups] = await Promise.all([
-    skillBaseService.getPlanningOption({ userId: normalizedUserId }),
-    querySkillPlanningSceneOptionGroups(normalizedTaxonomyParams),
-    querySkillPlanningActivityOptionGroups(normalizedTaxonomyParams),
-  ]);
-  const options = normalizeHttpFilterOptions(response);
-  return {
-    ...options,
-    firstScene: sceneGroups.map((group) => group.value),
-    secondScene: flattenGroupChildren(sceneGroups),
-    activityNodeName: activityGroups.map((group) => group.value),
-    subActivityNodeName: flattenGroupChildren(activityGroups),
-    sceneGroups,
-    activityGroups,
-  };
 }
 
 export async function querySkillConfig(

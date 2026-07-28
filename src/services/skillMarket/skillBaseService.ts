@@ -320,15 +320,6 @@ export const skillBaseService = {
     });
   },
 
-  // 查询枚举列表
-  getPlanningOption: (params: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/query_option_config',
-      method: 'get',
-      params,
-    });
-  },
-
   // 查询Skill规划部门列表
   querySkillPlanningDepartments: (params: { userId: string }): any => {
     return httpRequest.skill<any>({
