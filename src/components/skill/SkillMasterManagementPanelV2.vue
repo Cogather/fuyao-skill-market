@@ -345,14 +345,20 @@ function clearMasterList(): void {
   associations.value = {};
 }
 
-function resolveCurrentDimCode(): string {
+function resolveCurrentDimFields(): { dimCode: string; dimName: string } {
   if (masterScopeForm.level === '产品级') {
-    return String(
-      selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
-    ).trim();
+    return {
+      dimCode: String(
+        selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
+      ).trim(),
+      dimName: masterScopeForm.offeringName.trim(),
+    };
   }
   const node = findMasterDepartmentNode(masterDepartmentSegments.value);
-  return String(node?.deptCode ?? node?.id ?? '').trim();
+  return {
+    dimCode: String(node?.deptCode ?? node?.id ?? '').trim(),
+    dimName: masterScopeForm.planningDeptName.trim(),
+  };
 }
 
 function buildManagementQueryBody(): QuerySkillMasterManagementBody {
@@ -369,9 +375,10 @@ function buildManagementQueryBody(): QuerySkillMasterManagementBody {
   if (masterScopeForm.level) {
     body.dimType = masterScopeForm.level;
   }
-  const dimCode = resolveCurrentDimCode();
-  if (dimCode) {
-    body.dimCode = dimCode;
+  const dim = resolveCurrentDimFields();
+  if (dim.dimCode && dim.dimName) {
+    body.dimCode = dim.dimCode;
+    body.dimName = dim.dimName;
   }
   return body;
 }
@@ -625,11 +632,8 @@ function resolveDimFields(): { dimType: string; dimCode: string; dimName: string
     return null;
   }
   const dimType = masterScopeForm.level;
+  const { dimCode, dimName } = resolveCurrentDimFields();
   if (dimType === '产品级') {
-    const dimCode = String(
-      selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
-    ).trim();
-    const dimName = masterScopeForm.offeringName.trim();
     if (!dimCode || !dimName) {
       editor.error = '请选择有效产品（需包含产品编码）';
       return null;
@@ -640,9 +644,6 @@ function resolveDimFields(): { dimType: string; dimCode: string; dimName: string
       dimName,
     };
   }
-  const node = findMasterDepartmentNode(masterDepartmentSegments.value);
-  const dimCode = String(node?.deptCode ?? node?.id ?? '').trim();
-  const dimName = masterScopeForm.planningDeptName.trim();
   if (!dimCode || !dimName) {
     editor.error = '请选择有效归属部门（需包含部门编码）';
     return null;

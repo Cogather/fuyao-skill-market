@@ -652,6 +652,7 @@ export type QuerySkillMasterManagementBody = {
   keyword?: string;
   dimType?: string;
   dimCode?: string;
+  dimName?: string;
   statusList?: string[];
   ownerId?: string;
   developOwnerId?: string;

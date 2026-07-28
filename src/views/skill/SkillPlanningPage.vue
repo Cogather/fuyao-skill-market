@@ -403,11 +403,11 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
       selectedFilterProduct.value?.offeringId || filterForm.offeringId || '',
     ).trim();
     const dimName = filterForm.offeringName.trim();
+    const dimFields = dimCode && dimName ? { dimCode, dimName } : {};
     return {
       ...(userId ? { userId } : {}),
       dimType: '产品级',
-      ...(dimCode ? { dimCode } : {}),
-      ...(dimName ? { dimName } : {}),
+      ...dimFields,
     };
   }
 
@@ -419,11 +419,12 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
       : findPlanningDepartmentPathByName(department);
   const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
   const dimCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
+  const dimName = department;
+  const dimFields = dimCode && dimName ? { dimCode, dimName } : {};
   return {
     ...(userId ? { userId } : {}),
     dimType: '部门级',
-    ...(dimCode ? { dimCode } : {}),
-    ...(department ? { dimName: department } : {}),
+    ...dimFields,
   };
 }
 
@@ -809,6 +810,7 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
       if (dim) {
         queryBody.dimType = dim.dimType;
         queryBody.dimCode = dim.dimCode;
+        queryBody.dimName = dim.dimName;
       }
     }
 

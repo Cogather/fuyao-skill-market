@@ -297,10 +297,8 @@ function toHttpSkillPlanningSupplementQuery(
   if (dimType) {
     params.dimType = dimType;
   }
-  if (dimCode) {
+  if (dimCode && dimName) {
     params.dimCode = dimCode;
-  }
-  if (dimName) {
     params.dimName = dimName;
   }
   if (keyword) {
@@ -550,11 +548,11 @@ function normalizeTaxonomyRequestParams(
   const dimType = normalizeText(params.dimType);
   const dimCode = normalizeText(params.dimCode);
   const dimName = normalizeText(params.dimName);
+  const dimFields = dimCode && dimName ? { dimCode, dimName } : {};
   return {
     ...(userId ? { userId } : {}),
     ...(dimType ? { dimType } : {}),
-    ...(dimCode ? { dimCode } : {}),
-    ...(dimName ? { dimName } : {}),
+    ...dimFields,
   };
 }
 

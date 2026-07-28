@@ -265,6 +265,7 @@ function filterMockSkillMasterManagement(
     .toLowerCase();
   const dimType = String(body.dimType ?? '').trim();
   const dimCode = String(body.dimCode ?? '').trim();
+  const dimName = String(body.dimName ?? '').trim();
   const ownerId = String(body.ownerId ?? '').trim();
   const developOwnerId = String(body.developOwnerId ?? '').trim();
   const statusList = Array.isArray(body.statusList)
@@ -277,6 +278,9 @@ function filterMockSkillMasterManagement(
   }
   if (dimCode) {
     list = list.filter((item) => item.dimCode === dimCode);
+  }
+  if (dimName) {
+    list = list.filter((item) => item.dimName === dimName);
   }
   if (ownerId) {
     list = list.filter((item) => item.ownerId === ownerId);
