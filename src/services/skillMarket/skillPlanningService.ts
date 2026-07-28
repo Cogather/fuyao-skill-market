@@ -42,11 +42,11 @@ export type {
 type SkillPlanningMockModule = typeof import('./skillPlanningMockService');
 
 export interface SkillPlanningTaxonomyOptionParams {
-  userId?: string;
+  userId: string;
   /** 部门级 / 产品级 */
-  dimType?: string;
-  dimCode?: string;
-  dimName?: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 }
 
 function useHttpTransport(): boolean {
@@ -434,22 +434,25 @@ function normalizeHttpDownloadUrl(response: unknown): string {
 }
 
 function normalizeTaxonomyRequestParams(
-  params: SkillPlanningTaxonomyOptionParams = {},
+  params: SkillPlanningTaxonomyOptionParams,
 ): SkillPlanningTaxonomyOptionParams {
-  const userId = normalizeText(params.userId);
-  const dimType = normalizeText(params.dimType);
-  const dimCode = normalizeText(params.dimCode);
-  const dimName = normalizeText(params.dimName);
-  const dimFields = dimCode && dimName ? { dimCode, dimName } : {};
-  return {
-    ...(userId ? { userId } : {}),
-    ...(dimType ? { dimType } : {}),
-    ...dimFields,
+  const normalized = {
+    userId: normalizeText(params.userId),
+    dimType: normalizeText(params.dimType),
+    dimCode: normalizeText(params.dimCode),
+    dimName: normalizeText(params.dimName),
   };
+  const missing = Object.entries(normalized)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    throw new Error('场景/活动列表查询缺少必填参数: ' + missing.join(', '));
+  }
+  return normalized;
 }
 
 export async function querySkillPlanningSceneOptionGroups(
-  params: SkillPlanningTaxonomyOptionParams = {},
+  params: SkillPlanningTaxonomyOptionParams,
 ): Promise<SkillPlanningOptionGroup[]> {
   if (!useHttpTransport()) {
     return [];
@@ -467,7 +470,7 @@ export async function querySkillPlanningSceneOptionGroups(
 }
 
 export async function querySkillPlanningActivityOptionGroups(
-  params: SkillPlanningTaxonomyOptionParams = {},
+  params: SkillPlanningTaxonomyOptionParams,
 ): Promise<SkillPlanningOptionGroup[]> {
   if (!useHttpTransport()) {
     return [];

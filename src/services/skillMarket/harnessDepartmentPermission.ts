@@ -45,40 +45,58 @@ function readPath(value: unknown): string[] {
 
 function normalizeHarnessOrg(value: unknown): HarnessAuthorizedDepartment | null {
   const record = asRecord(value);
-  const path: string[] = [];
-  const codePath: string[] = [];
-  let deepestLevelNo = 0;
-
-  HARNESS_DEPARTMENT_LEVELS.forEach((level) => {
-    const name = firstText(record, [
+  const levelSegments = HARNESS_DEPARTMENT_LEVELS.map((level) => ({
+    level,
+    name: firstText(record, [
       'deptNameL' + level,
       'departmentNameL' + level,
       'deptL' + level + 'Name',
       'departmentL' + level,
       'deptL' + level,
-    ]);
-    const code = firstText(record, [
+    ]),
+    code: firstText(record, [
       'deptCodeL' + level,
       'departmentCodeL' + level,
       'deptL' + level + 'Code',
-    ]);
-    if (name) {
-      path.push(name);
-      codePath.push(code);
-      deepestLevelNo = level;
-    }
-  });
+    ]),
+  }));
+  const deepestCodedSegment = [...levelSegments].reverse().find((segment) => segment.code);
+  const deepestNamedLevelNo =
+    [...levelSegments].reverse().find((segment) => segment.name)?.level ?? 0;
+  const explicitLevelNo = Number(
+    firstText(record, [
+      'deptLevel',
+      'departmentLevel',
+      'levelNo',
+      'level',
+      'orgLevel',
+      'deptLevelNo',
+      'departmentLevelNo',
+    ]),
+  );
+  const authorizationLevelNo =
+    deepestCodedSegment?.level ??
+    (Number.isFinite(explicitLevelNo) && explicitLevelNo > 0
+      ? explicitLevelNo
+      : deepestNamedLevelNo);
+  const authorizedSegments = levelSegments.filter(
+    (segment) => segment.name && (!authorizationLevelNo || segment.level <= authorizationLevelNo),
+  );
+  const path = authorizedSegments.map((segment) => segment.name);
+  const codePath = authorizedSegments.map((segment) => segment.code);
 
   if (path.length === 0) {
-    path.push(
-      ...readPath(
-        record.path ??
-          record.deptPath ??
-          record.departmentPath ??
-          record.deptNamePath ??
-          record.departmentNamePath,
-      ),
+    const fallbackPath = readPath(
+      record.path ??
+        record.deptPath ??
+        record.departmentPath ??
+        record.deptNamePath ??
+        record.departmentNamePath,
     );
+    const fallbackPathLength = deepestCodedSegment
+      ? Math.max(1, deepestCodedSegment.level - HARNESS_DEPARTMENT_LEVELS[0] + 1)
+      : fallbackPath.length;
+    path.push(...fallbackPath.slice(0, fallbackPathLength));
   }
 
   const fallbackName = firstText(record, [
@@ -93,27 +111,13 @@ function normalizeHarnessOrg(value: unknown): HarnessAuthorizedDepartment | null
   }
   if (path.length === 0) return null;
 
-  const explicitLevelNo = Number(
-    firstText(record, [
-      'deptLevel',
-      'departmentLevel',
-      'levelNo',
-      'level',
-      'orgLevel',
-      'deptLevelNo',
-      'departmentLevelNo',
-    ]),
-  );
-  const levelNo =
-    Number.isFinite(explicitLevelNo) && explicitLevelNo > 0 ? explicitLevelNo : deepestLevelNo;
   const fallbackCode = firstText(record, ['deptCode', 'departmentCode', 'orgCode', 'code', 'id']);
-  const deepestCode = [...codePath].reverse().find(Boolean) ?? fallbackCode;
   return {
     deptName: path.at(-1) ?? fallbackName,
-    deptCode: deepestCode,
+    deptCode: deepestCodedSegment?.code ?? fallbackCode,
     path,
     codePath,
-    levelNo,
+    levelNo: authorizationLevelNo,
   };
 }
 

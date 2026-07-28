@@ -18,11 +18,11 @@ import type {
 } from './apiTypes';
 
 export interface SceneOptionGroupsParams {
-  userId?: string;
+  userId: string;
   /** 部门级 / 产品级 */
-  dimType?: string;
-  dimCode?: string;
-  dimName?: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 }
 
 export interface SceneOptionGroupRow {
@@ -395,8 +395,28 @@ export const skillBaseService = {
     });
   },
 
+  importSkillPlanningSupplement: (formData: FormData, params: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportSkillPlanningSupplement: (params: any): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/export',
+      method: 'get',
+      params,
+    });
+  },
+
   // skill 原子能力相关接口
-  
+
   createSkillMasterManagement: (
     body: CreateSkillMasterManagementBody,
     params: CreateSkillMasterManagementParams,
@@ -443,6 +463,26 @@ export const skillBaseService = {
       url: `/management/delete/${encodeURIComponent(String(id))}`,
       method: 'delete',
       params: { userId },
+    });
+  },
+
+  importSkillMasterManagement: (formData: FormData, params: any): any => {
+    return httpRequest.skill<any>({
+      url: '/management/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportSkillMasterManagement: (params: any): any => {
+    return httpRequest.skill<any>({
+      url: '/management/export',
+      method: 'get',
+      params,
     });
   },
 

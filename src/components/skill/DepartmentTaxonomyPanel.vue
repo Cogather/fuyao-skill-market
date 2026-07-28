@@ -123,11 +123,12 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
     .filter((path) => path.length > 0);
   const allowed = new Set(props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean));
   if (props.restrictToAllowedDepartments) {
-    candidates = candidates.filter((item) =>
+    candidates =
       allowedPaths.length > 0
-        ? allowedPaths.some((path) => departmentPathStartsWith(item.path, path))
-        : item.path.some((name) => allowed.has(name)),
-    );
+        ? rows.filter((item) =>
+            allowedPaths.some((path) => departmentPathStartsWith(item.path, path)),
+          )
+        : candidates.filter((item) => item.path.some((name) => allowed.has(name)));
     if (!candidates.length && allowed.size) {
       candidates = [...allowed].map((name) => ({
         deptCode: '',

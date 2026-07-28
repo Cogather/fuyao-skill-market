@@ -393,23 +393,19 @@ function findPlanningDepartmentNodeByPath(
 }
 
 function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
-  userId?: string;
-  dimType?: string;
-  dimCode?: string;
-  dimName?: string;
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 } {
   const userId = props.userId.trim();
   const level = filterForm.level as PlanningLevel;
   if (level === '产品级') {
-    const dimCode = String(
-      selectedFilterProduct.value?.offeringId || filterForm.offeringId || '',
-    ).trim();
-    const dimName = filterForm.offeringName.trim();
-    const dimFields = dimCode && dimName ? { dimCode, dimName } : {};
     return {
-      ...(userId ? { userId } : {}),
+      userId,
       dimType: '产品级',
-      ...dimFields,
+      dimCode: String(selectedFilterProduct.value?.offeringId || '').trim(),
+      dimName: filterForm.offeringName.trim(),
     };
   }
 
@@ -420,13 +416,12 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
       ? selectedPath
       : findPlanningDepartmentPathByName(department);
   const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
-  const dimCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
-  const dimName = department;
-  const dimFields = dimCode && dimName ? { dimCode, dimName } : {};
   return {
-    ...(userId ? { userId } : {}),
+    userId,
     dimType: '部门级',
-    ...dimFields,
+    dimCode:
+      String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department,
+    dimName: department,
   };
 }
 
@@ -1524,10 +1519,18 @@ async function loadPlanningFilterOptions(
 ): Promise<void> {
   if (transportIsHttp) {
     const taxonomyParams = currentPlanningTaxonomyParams(departmentName);
-    const [sceneGroups, activityGroups] = await Promise.all([
-      querySkillPlanningSceneOptionGroups(taxonomyParams),
-      querySkillPlanningActivityOptionGroups(taxonomyParams),
-    ]);
+    const hasRequiredParams = [
+      taxonomyParams.userId,
+      taxonomyParams.dimType,
+      taxonomyParams.dimCode,
+      taxonomyParams.dimName,
+    ].every(Boolean);
+    const [sceneGroups, activityGroups] = hasRequiredParams
+      ? await Promise.all([
+          querySkillPlanningSceneOptionGroups(taxonomyParams),
+          querySkillPlanningActivityOptionGroups(taxonomyParams),
+        ])
+      : [[], []];
     primarySceneOptions.value = sceneGroups.map((group) => group.value);
     secondarySceneOptions.value = sceneGroups.flatMap((group) => group.children);
     activityOptions.value = activityGroups.map((group) => group.value);
@@ -1675,13 +1678,14 @@ async function onPlanningScopeLevelChange(): Promise<void> {
   planningScopeDepartmentCommitted.value = defaultPath.length > 0;
   planningDepartmentSegments.value = [...defaultPath];
   syncPlanningDepartmentLevels(defaultPath);
-  await loadPlanningFilterOptions();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
 
 async function onFilterProductChange(): Promise<void> {
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
@@ -1695,8 +1699,8 @@ async function applyPlanningDepartmentQuery(segments: string[]): Promise<void> {
   planningDepartmentSegments.value = segments.slice(0, planningDepartmentLevelRefs.length);
   syncPlanningDepartmentLevels(planningDepartmentSegments.value);
   planningScopeDepartmentCommitted.value = planningDepartmentSegments.value.length > 0;
-  await loadPlanningFilterOptions();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
