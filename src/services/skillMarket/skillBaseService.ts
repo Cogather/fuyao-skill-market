@@ -13,7 +13,7 @@ import type {
   SkillPlanningSupplementMutationParams,
   UpdateSkillMasterManagementBody,
   UpdateSkillMasterManagementParams,
-  UpdateHarnessPermissionUsersBody,
+  UpdateHarnessPermissionUsersRequest,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
 
@@ -535,11 +535,11 @@ export const skillBaseService = {
   },
 
   // harness 权限人员更新
-  updateHarnessPermissionUsers: (body: UpdateHarnessPermissionUsersBody): any => {
+  updateHarnessPermissionUsers: (body: UpdateHarnessPermissionUsersRequest): any => {
     return httpRequest.api<any>({
       url: '/harness/permission/update',
       method: 'put',
-      data: body, // { request }
+      data: body,
     });
   },
 

@@ -2089,11 +2089,7 @@ function handleSkillRequest(
 
   if (method === 'post' && path === '/management/add') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const entity =
-      body.entity && typeof body.entity === 'object'
-        ? (body.entity as Record<string, unknown>)
-        : {};
-    const payload = { ...params, ...body, ...entity };
+    const payload = { ...params, ...body };
     const requiredKeys = [
       'userId',
       'skillName',
@@ -2158,11 +2154,7 @@ function handleSkillRequest(
 
   if (method === 'put' && path === '/management/update') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const entity =
-      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
-        ? (body.skillConfigEntity as Record<string, unknown>)
-        : {};
-    const payload = { ...params, ...body, ...entity };
+    const payload = { ...params, ...body };
     const id = String(payload.id ?? '').trim();
     if (!id) {
       return fail('缺少必填字段: id', null);

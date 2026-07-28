@@ -1015,15 +1015,13 @@ async function submitEditor(): Promise<void> {
       dimName: dim.dimName,
     };
     const body: CreateSkillMasterManagementBody = {
-      entity: {
-        skillName: editor.name.trim(),
-        skillDescription: editor.description.trim(),
-        ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-        ownerId: ownerPicker.selected.id,
-        developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-        developOwnerId: developOwnerPicker.selected.id,
-        planFinishDate: editor.plannedCompleteDate,
-      },
+      skillName: editor.name.trim(),
+      skillDescription: editor.description.trim(),
+      ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
+      ownerId: ownerPicker.selected.id,
+      developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+      developOwnerId: developOwnerPicker.selected.id,
+      planFinishDate: editor.plannedCompleteDate,
     };
 
     submitting.value = true;
@@ -1090,16 +1088,14 @@ async function submitEditor(): Promise<void> {
     dimName: dim.dimName,
   };
   const updateBody: UpdateSkillMasterManagementBody = {
-    skillConfigEntity: {
-      id: editor.id,
-      skillName: editor.name.trim(),
-      skillDescription: editor.description.trim(),
-      ownerName: ownerValue.name,
-      ownerId: ownerValue.id,
-      developOwnerName: developOwnerValue.name,
-      developOwnerId: developOwnerValue.id,
-      planFinishDate: editor.plannedCompleteDate,
-    },
+    id: editor.id,
+    skillName: editor.name.trim(),
+    skillDescription: editor.description.trim(),
+    ownerName: ownerValue.name,
+    ownerId: ownerValue.id,
+    developOwnerName: developOwnerValue.name,
+    developOwnerId: developOwnerValue.id,
+    planFinishDate: editor.plannedCompleteDate,
   };
 
   submitting.value = true;

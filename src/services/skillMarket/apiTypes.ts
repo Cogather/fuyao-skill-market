@@ -520,9 +520,6 @@ export type UpdateHarnessPermissionUsersRequest = {
   userId: string;
 };
 
-export type UpdateHarnessPermissionUsersBody = {
-  request: UpdateHarnessPermissionUsersRequest;
-};
 
 /**
  * 市场总览等部门级联：全量部门树（设计文档未定稿）。
@@ -666,15 +663,13 @@ export type CreateSkillMasterManagementParams = {
 };
 
 export type CreateSkillMasterManagementBody = {
-  entity: {
-    skillName: string;
-    skillDescription: string;
-    ownerName: string;
-    ownerId: string;
-    developOwnerName: string;
-    developOwnerId: string;
-    planFinishDate: string;
-  };
+  skillName: string;
+  skillDescription: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  planFinishDate: string;
 };
 
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
@@ -722,16 +717,14 @@ export type UpdateSkillMasterManagementParams = {
 };
 
 export type UpdateSkillMasterManagementBody = {
-  skillConfigEntity: {
-    id: string | number;
-    skillName?: string;
-    skillDescription?: string;
-    ownerName?: string;
-    ownerId?: string;
-    developOwnerName?: string;
-    developOwnerId?: string;
-    planFinishDate?: string;
-  };
+  id: string | number;
+  skillName?: string;
+  skillDescription?: string;
+  ownerName?: string;
+  ownerId?: string;
+  developOwnerName?: string;
+  developOwnerId?: string;
+  planFinishDate?: string;
 };
 
 export type SkillPlanningSupplementEntity = {

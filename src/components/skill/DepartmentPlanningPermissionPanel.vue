@@ -679,9 +679,7 @@ async function updateRemoteAdmins(
     ...departmentLevels,
     userId: props.userId.trim(),
   };
-  const response = await skillBaseService.updateHarnessPermissionUsers({
-    request,
-  });
+  const response = await skillBaseService.updateHarnessPermissionUsers(request);
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
   if (meta.success === false) {
