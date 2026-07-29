@@ -892,6 +892,7 @@ function hydratePickerFromValue(picker: PersonPickerState, value: string, depart
   if (looksLikePersonLabel(label) && parsed.id) {
     picker.selected = {
       id: parsed.id,
+      sAMAccountName: '',
       chName: parsed.name,
       label,
       deptName: department.trim(),
@@ -1023,6 +1024,16 @@ async function submitEditor(): Promise<void> {
       editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
       return;
     }
+    const ownerSamAccountName = ownerPicker.selected.sAMAccountName.trim();
+    if (!ownerSamAccountName) {
+      editor.error = '\u8d23\u4efb Owner \u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+      return;
+    }
+    const developOwnerSamAccountName = developOwnerPicker.selected.sAMAccountName.trim();
+    if (!developOwnerSamAccountName) {
+      editor.error = '\u5f00\u53d1\u8d23\u4efb\u4eba\u7684\u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+      return;
+    }
     if (!editor.plannedCompleteDate) {
       editor.error = '请选择计划完成时间';
       return;
@@ -1038,9 +1049,9 @@ async function submitEditor(): Promise<void> {
       skillName: editor.name.trim(),
       skillDescription: editor.description.trim(),
       ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-      ownerId: ownerPicker.selected.id,
+      ownerId: ownerSamAccountName,
       developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-      developOwnerId: developOwnerPicker.selected.id,
+      developOwnerId: developOwnerSamAccountName,
       planFinishDate: editor.plannedCompleteDate,
     };
 

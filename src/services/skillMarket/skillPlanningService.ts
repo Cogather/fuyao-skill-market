@@ -326,6 +326,7 @@ function normalizeProductPlanningOptions(response: unknown): ProductPlanningOpti
 }
 
 const userIdKeys = ['id', 'userId', 'employeeNo', 'account', 'uid', 'empNo', 'Account'];
+const userSamAccountNameKeys = ['sAMAccountName', 'samAccountName'];
 const userNameKeys = [
   'chName',
   'cnName',
@@ -406,6 +407,7 @@ function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOpt
   source.forEach((item) => {
     const record = asRecord(item);
     const id = readFirstText(record, userIdKeys);
+    const sAMAccountName = readFirstText(record, userSamAccountNameKeys);
     const chName = readFirstText(record, userNameKeys);
     const label = [chName, id].filter(Boolean).join(' ');
     if (!label) {
@@ -414,6 +416,7 @@ function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOpt
 
     optionMap.set(label, {
       id,
+      sAMAccountName,
       chName,
       label,
       deptName: readDeepestDepartment(record),

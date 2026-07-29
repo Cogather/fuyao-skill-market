@@ -89,6 +89,7 @@ export interface ProductPlanningOption {
 
 export interface SkillPlanningUserOption {
   id: string;
+  sAMAccountName: string;
   chName: string;
   label: string;
   deptName: string;
