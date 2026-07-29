@@ -46,6 +46,7 @@ import type {
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import { downloadSkillExportResponse } from '../../services/skillMarket/skillTransferService';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
@@ -393,17 +394,8 @@ function findPlanningDepartmentNodeByPath(
   return findPlanningDepartmentNodeByPath(rest, node.children ?? []);
 }
 
-function currentSelectedPlanningDepartmentCode(
-  departmentName: string,
-  preferredPath: string[],
-): string {
-  const department = departmentName.trim();
-  const selectedPath = normalizePlanningDepartmentPath(preferredPath);
-  const departmentPath =
-    department && selectedPath.at(-1) === department
-      ? selectedPath
-      : findPlanningDepartmentPathByName(department);
-  return String(findPlanningDepartmentNodeByPath(departmentPath)?.deptCode ?? '').trim();
+function currentSelectedPlanningDepartmentCode(selectedPath: string[]): string {
+  return getDepartmentNodeCode(findPlanningDepartmentNodeByPath(selectedPath));
 }
 
 function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
@@ -990,7 +982,7 @@ async function loadFilterProducts(): Promise<void> {
     const options = await getProductPlanning(
       '',
       departmentName,
-      currentSelectedPlanningDepartmentCode(departmentName, planningDepartmentSegments.value),
+      currentSelectedPlanningDepartmentCode(planningDepartmentSegments.value),
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
@@ -1020,10 +1012,7 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
     const options = await getProductPlanning(
       keyword,
       planningForm.planningDeptName,
-      currentSelectedPlanningDepartmentCode(
-        planningForm.planningDeptName,
-        planningFormDepartmentSegments.value,
-      ),
+      currentSelectedPlanningDepartmentCode(planningFormDepartmentSegments.value),
     );
     if (requestSeq !== productSearchSeq) {
       return;

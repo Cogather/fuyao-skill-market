@@ -512,7 +512,7 @@ export async function getProductPlanning(
   }
 
   const normalizedDeptCode = normalizeText(deptCode);
-  if (!normalizedDeptCode) {
+  if (!normalizedDeptCode || /^(undefined|null)$/i.test(normalizedDeptCode)) {
     throw new Error(
       '\u4ea7\u54c1\u5217\u8868\u67e5\u8be2\u7f3a\u5c11\u5f53\u524d\u6240\u9009\u6700\u5c0f\u90e8\u95e8\u7f16\u7801',
     );

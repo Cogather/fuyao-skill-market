@@ -32,6 +32,7 @@ import type {
   UpdateSkillMasterManagementParams,
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   downloadSkillExportResponse,
   normalizeSkillImportResponse,
@@ -461,7 +462,7 @@ async function loadMasterProducts(): Promise<void> {
   masterProductsLoading.value = true;
   try {
     const departmentNode = findMasterDepartmentNode(masterDepartmentSegments.value);
-    const deptCode = String(departmentNode?.deptCode ?? '').trim();
+    const deptCode = getDepartmentNodeCode(departmentNode);
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;

@@ -24,6 +24,7 @@ import {
   type ProductPlanningOption,
 } from '../../services/skillMarket/skillPlanningService';
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 
 type TaxonomyKind = 'scene' | 'activity';
@@ -105,7 +106,7 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
     items.forEach((item) => {
       const nextPath = [...path, item.name];
       rows.push({
-        deptCode: String(item.deptCode ?? '').trim(),
+        deptCode: getDepartmentNodeCode(item),
         name: item.name,
         level: typeof item.levelNo === 'number' && item.levelNo > 0 ? item.levelNo : depth,
         path: nextPath,

@@ -10,6 +10,20 @@ export type MarketDeptForestNode = {
   children: MarketDeptForestNode[];
 };
 
+type DepartmentCodeNode = {
+  id?: string | number | null;
+  deptCode?: string | number | null;
+};
+
+function normalizeDepartmentCode(value: unknown): string {
+  const code = String(value ?? '').trim();
+  return code && code !== 'undefined' && code !== 'null' ? code : '';
+}
+
+export function getDepartmentNodeCode(node: DepartmentCodeNode | null | undefined): string {
+  return normalizeDepartmentCode(node?.deptCode) || normalizeDepartmentCode(node?.id);
+}
+
 /**
  * 将后端 / Mock 返回的 `DepartmentTreeNodeDto` 转为市场级联使用的森林（各级名称有序）。
  */
@@ -31,7 +45,14 @@ export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeN
     const deptLevelValue = o.deptLevel ?? o.levelNo;
     const parsedDeptLevel = Number(deptLevelValue);
     const deptLevel = Number.isFinite(parsedDeptLevel) && parsedDeptLevel > 0 ? parsedDeptLevel : 0;
-    const deptCodePart = o.deptCode ?? o.departmentCode ?? o.code;
+    const deptCodePart =
+      o.deptCode ??
+      o.departmentCode ??
+      o.dept_code ??
+      o.department_code ??
+      o.orgCode ??
+      o.organizationCode ??
+      o.code;
     const deptCode =
       typeof deptCodePart === 'string' || typeof deptCodePart === 'number'
         ? String(deptCodePart).trim()
