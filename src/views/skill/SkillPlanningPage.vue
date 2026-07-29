@@ -393,6 +393,19 @@ function findPlanningDepartmentNodeByPath(
   return findPlanningDepartmentNodeByPath(rest, node.children ?? []);
 }
 
+function currentSelectedPlanningDepartmentCode(
+  departmentName: string,
+  preferredPath: string[],
+): string {
+  const department = departmentName.trim();
+  const selectedPath = normalizePlanningDepartmentPath(preferredPath);
+  const departmentPath =
+    department && selectedPath.at(-1) === department
+      ? selectedPath
+      : findPlanningDepartmentPathByName(department);
+  return String(findPlanningDepartmentNodeByPath(departmentPath)?.deptCode ?? '').trim();
+}
+
 function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
   userId: string;
   dimType: string;
@@ -977,7 +990,7 @@ async function loadFilterProducts(): Promise<void> {
     const options = await getProductPlanning(
       '',
       departmentName,
-      currentPlanningTaxonomyParams(departmentName).dimCode,
+      currentSelectedPlanningDepartmentCode(departmentName, planningDepartmentSegments.value),
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
@@ -1007,7 +1020,10 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
     const options = await getProductPlanning(
       keyword,
       planningForm.planningDeptName,
-      currentPlanningTaxonomyParams(planningForm.planningDeptName).dimCode,
+      currentSelectedPlanningDepartmentCode(
+        planningForm.planningDeptName,
+        planningFormDepartmentSegments.value,
+      ),
     );
     if (requestSeq !== productSearchSeq) {
       return;

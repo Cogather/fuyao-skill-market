@@ -105,7 +105,7 @@ function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
     items.forEach((item) => {
       const nextPath = [...path, item.name];
       rows.push({
-        deptCode: String(item.deptCode ?? item.id ?? '').trim(),
+        deptCode: String(item.deptCode ?? '').trim(),
         name: item.name,
         level: typeof item.levelNo === 'number' && item.levelNo > 0 ? item.levelNo : depth,
         path: nextPath,
@@ -574,7 +574,7 @@ async function loadProducts(): Promise<void> {
 
   productsLoading.value = true;
   try {
-    const department = departmentOptions.value.find((item) => item.name === departmentName);
+    const department = departmentByPath(selectedDepartmentPath.value);
     const options = await getProductPlanning('', departmentName, department?.deptCode ?? '');
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
