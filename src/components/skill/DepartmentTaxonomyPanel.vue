@@ -160,8 +160,9 @@ const manageableDepartmentCodes = computed(
         .filter(Boolean),
     ),
 );
-const departmentOptions = computed(() => {
-  const options = flattenDepartments(props.departmentTree);
+const allDepartmentOptions = computed(() => flattenDepartments(props.departmentTree));
+const manageableDepartmentRootOptions = computed(() => {
+  const options = allDepartmentOptions.value;
   if (!props.restrictToAllowedDepartments) return options;
 
   if (transportIsHttp || props.manageableDepartments.length > 0) {
@@ -181,6 +182,15 @@ const departmentOptions = computed(() => {
   );
   return options.filter((department) => allowedNames.has(department.name));
 });
+const departmentOptions = computed(() => {
+  const options = allDepartmentOptions.value;
+  if (!props.restrictToAllowedDepartments) return options;
+
+  const manageableRoots = manageableDepartmentRootOptions.value;
+  return options.filter((department) =>
+    manageableRoots.some((root) => departmentPathStartsWith(department.path, root.path)),
+  );
+});
 const departmentCascadeMaxLevel = computed(() =>
   Math.max(1, departmentTreeDepth(props.departmentTree)),
 );
@@ -196,7 +206,7 @@ const scopeDepartmentCommitted = ref(false);
 const productOptions = ref<ProductPlanningOption[]>([]);
 const productsLoading = ref(false);
 const configurableDepartmentPaths = computed(() =>
-  departmentOptions.value.map((department) => [...department.path]),
+  manageableDepartmentRootOptions.value.map((department) => [...department.path]),
 );
 const systemDefaultDepartmentPath = computed(() => {
   const configuredDefault = normalizedDepartmentPermissionPath.value;
@@ -270,6 +280,16 @@ function sameDepartmentPath(left: string[], right: string[]): boolean {
   return (
     normalizedLeft.length === normalizedRight.length &&
     normalizedLeft.every((segment, index) => segment === normalizedRight[index])
+  );
+}
+
+function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
+  const normalizedPath = normalizeDepartmentPath(path);
+  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
+  return (
+    normalizedPrefix.length > 0 &&
+    normalizedPath.length >= normalizedPrefix.length &&
+    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
   );
 }
 
@@ -1061,7 +1081,6 @@ function exportRecords(): void {
               :tree="departmentTree"
               :max-level="departmentCascadeMaxLevel"
               :allowed-paths="configurableDepartmentPaths"
-              allowed-path-mode="exact"
               :disabled="
                 loading ||
                 departmentPermissionsLoading ||

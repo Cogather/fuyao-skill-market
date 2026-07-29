@@ -28,7 +28,6 @@ const props = withDefaults(
     emptyText?: string;
     clearText?: string;
     doneText?: string;
-    allowedPathMode?: 'subtree' | 'exact';
     ariaLabel?: string;
     beforeClear?: () => boolean;
     beforeDone?: (value: string[]) => boolean;
@@ -50,7 +49,6 @@ const props = withDefaults(
     permissionMode: 'none',
     permissionPath: () => [],
     allowedPaths: () => [],
-    allowedPathMode: 'subtree',
     searchable: false,
     searchPlaceholder: '搜索部门',
     disabled: false,
@@ -164,18 +162,12 @@ function hasChildren(levelIndex: number, name: string): boolean {
 function pathAllowedByPermission(path: string[]): boolean {
   const normalizedPath = normalizePath(path);
   const allowedPaths = normalizedAllowedPaths.value;
-  if (props.allowedPathMode === 'exact' && allowedPaths.length === 0) {
-    return false;
-  }
   if (
     allowedPaths.length > 0 &&
     !allowedPaths.some((allowedPath) => {
       const pathIsBeforeAllowedDepartment =
         normalizedPath.length <= allowedPath.length &&
         normalizedPath.every((segment, index) => segment === allowedPath[index]);
-      if (props.allowedPathMode === 'exact') {
-        return pathIsBeforeAllowedDepartment;
-      }
       const pathIsInsideAllowedDepartment =
         allowedPath.length <= normalizedPath.length &&
         allowedPath.every((segment, index) => segment === normalizedPath[index]);
