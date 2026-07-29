@@ -26,6 +26,9 @@ const props = withDefaults(
     permissionDepartmentNames?: string[];
     permissionDepartmentPaths?: string[][];
     restrictToPermissionDepartments?: boolean;
+    manageableDepartments?: HarnessAuthorizedDepartment[];
+    departmentPermissionsLoading?: boolean;
+    departmentPermissionsError?: string;
   }>(),
   {
     departmentTree: () => [],
@@ -37,6 +40,9 @@ const props = withDefaults(
     permissionDepartmentNames: () => [],
     permissionDepartmentPaths: () => [],
     restrictToPermissionDepartments: true,
+    manageableDepartments: () => [],
+    departmentPermissionsLoading: false,
+    departmentPermissionsError: '',
   },
 );
 
@@ -123,6 +129,9 @@ watch(
         :allowed-department-names="props.permissionDepartmentNames"
         :allowed-department-paths="props.permissionDepartmentPaths"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
+        :manageable-departments="props.manageableDepartments"
+        :department-permissions-loading="props.departmentPermissionsLoading"
+        :department-permissions-error="props.departmentPermissionsError"
       />
     </section>
 
@@ -140,6 +149,9 @@ watch(
         :allowed-department-names="props.permissionDepartmentNames"
         :allowed-department-paths="props.permissionDepartmentPaths"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
+        :manageable-departments="props.manageableDepartments"
+        :department-permissions-loading="props.departmentPermissionsLoading"
+        :department-permissions-error="props.departmentPermissionsError"
       />
     </section>
 

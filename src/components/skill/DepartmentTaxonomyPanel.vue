@@ -25,6 +25,7 @@ import {
 } from '../../services/skillMarket/skillPlanningService';
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 
 type TaxonomyKind = 'scene' | 'activity';
@@ -42,9 +43,7 @@ interface DepartmentTreeNode {
 interface DepartmentOption {
   deptCode: string;
   name: string;
-  level: number;
   path: string[];
-  hasChildren: boolean;
 }
 
 const props = withDefaults(
@@ -57,6 +56,9 @@ const props = withDefaults(
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    manageableDepartments?: HarnessAuthorizedDepartment[];
+    departmentPermissionsLoading?: boolean;
+    departmentPermissionsError?: string;
   }>(),
   {
     departmentTree: () => [],
@@ -66,6 +68,9 @@ const props = withDefaults(
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    manageableDepartments: () => [],
+    departmentPermissionsLoading: false,
+    departmentPermissionsError: '',
   },
 );
 
@@ -82,7 +87,7 @@ const labels = computed(() =>
         eyebrow: 'DEPARTMENT SCENE TAXONOMY',
         title: '部门场景配置',
         description:
-          '五级、六级部门分别维护自己的场景树，保存后自动同步至各项规划能力的关联与筛选。',
+          '在当前用户有管理权限的部门下维护场景树，保存后自动同步至各项规划能力的关联与筛选。',
         primary: '一级场景',
         secondary: '二级场景',
         item: '场景',
@@ -92,7 +97,7 @@ const labels = computed(() =>
         eyebrow: 'DEPARTMENT ACTIVITY TAXONOMY',
         title: '部门活动配置',
         description:
-          '五级、六级部门分别维护自己的活动树，保存后自动同步至各项规划能力的关联与筛选。',
+          '在当前用户有管理权限的部门下维护活动树，保存后自动同步至各项规划能力的关联与筛选。',
         primary: '归属活动',
         secondary: '归属子活动',
         item: '活动',
@@ -100,68 +105,85 @@ const labels = computed(() =>
       },
 );
 
+function normalizeDepartmentCode(value: unknown): string {
+  const code = String(value ?? '').trim();
+  return code && code !== 'undefined' && code !== 'null' ? code : '';
+}
+
 function flattenDepartments(nodes: DepartmentTreeNode[]): DepartmentOption[] {
   const rows: DepartmentOption[] = [];
-  const walk = (items: DepartmentTreeNode[], depth: number, path: string[]): void => {
+  const walk = (items: DepartmentTreeNode[], path: string[]): void => {
     items.forEach((item) => {
       const nextPath = [...path, item.name];
       rows.push({
         deptCode: getDepartmentNodeCode(item),
         name: item.name,
-        level: typeof item.levelNo === 'number' && item.levelNo > 0 ? item.levelNo : depth,
         path: nextPath,
-        hasChildren: Boolean(item.children?.length),
       });
-      if (item.children?.length) walk(item.children, depth + 1, nextPath);
+      if (item.children?.length) walk(item.children, nextPath);
     });
   };
-  walk(nodes, 1, []);
-
-  let candidates = rows.filter((item) => item.level === 5 || item.level === 6);
-  if (!candidates.length) {
-    candidates = rows.filter((item) => !item.hasChildren);
-  }
-
-  const allowedPaths = (props.allowedDepartmentPaths ?? [])
-    .map(normalizeDepartmentPath)
-    .filter((path) => path.length > 0);
-  const allowed = new Set(props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean));
-  if (props.restrictToAllowedDepartments) {
-    candidates =
-      allowedPaths.length > 0
-        ? rows.filter((item) =>
-            allowedPaths.some((path) => departmentPathStartsWith(item.path, path)),
-          )
-        : candidates.filter((item) => item.path.some((name) => allowed.has(name)));
-    if (!candidates.length && allowed.size) {
-      candidates = [...allowed].map((name) => ({
-        deptCode: '',
-        name,
-        level: 5,
-        path: [name],
-        hasChildren: false,
-      }));
-    }
-  }
+  walk(nodes, []);
 
   const seen = new Set<string>();
-  return candidates.filter((item) => {
-    if (seen.has(item.name)) return false;
-    seen.add(item.name);
+  return rows.filter((item) => {
+    const key = item.deptCode ? `code:${item.deptCode}` : `path:${item.path.join('/')}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
+}
+function departmentTreeDepth(nodes: DepartmentTreeNode[]): number {
+  return nodes.reduce(
+    (maxDepth, node) => Math.max(maxDepth, 1 + departmentTreeDepth(node.children ?? [])),
+    0,
+  );
 }
 
 const normalizedDepartmentPermissionPath = computed(() =>
   normalizeDepartmentPath(props.departmentPermissionPath),
 );
+const normalizedLegacyAllowedPaths = computed(() =>
+  (props.allowedDepartmentPaths ?? [])
+    .map(normalizeDepartmentPath)
+    .filter((path) => path.length > 0),
+);
+const manageableDepartmentCodes = computed(
+  () =>
+    new Set(
+      props.manageableDepartments
+        .map((department) =>
+          normalizeDepartmentCode(
+            department.deptCode || [...department.codePath].reverse().find(Boolean),
+          ),
+        )
+        .filter(Boolean),
+    ),
+);
 const departmentOptions = computed(() => {
   const options = flattenDepartments(props.departmentTree);
-  const permissionPath = normalizedDepartmentPermissionPath.value;
-  return permissionPath.length > 0
-    ? options.filter((department) => departmentPathStartsWith(department.path, permissionPath))
-    : options;
+  if (!props.restrictToAllowedDepartments) return options;
+
+  if (transportIsHttp || props.manageableDepartments.length > 0) {
+    const codes = manageableDepartmentCodes.value;
+    return options.filter((department) => codes.has(normalizeDepartmentCode(department.deptCode)));
+  }
+
+  const allowedPaths = normalizedLegacyAllowedPaths.value;
+  if (allowedPaths.length > 0) {
+    return options.filter((department) =>
+      allowedPaths.some((path) => sameDepartmentPath(department.path, path)),
+    );
+  }
+
+  const allowedNames = new Set(
+    props.allowedDepartmentNames.map((item) => item.trim()).filter(Boolean),
+  );
+  return options.filter((department) => allowedNames.has(department.name));
 });
+const departmentCascadeMaxLevel = computed(() =>
+  Math.max(1, departmentTreeDepth(props.departmentTree)),
+);
 const configurationLevelOptions: ConfigurationLevel[] = ['产品级', '部门级'];
 const scopeForm = reactive({
   level: '部门级' as ConfigurationLevel,
@@ -176,22 +198,24 @@ const productsLoading = ref(false);
 const configurableDepartmentPaths = computed(() =>
   departmentOptions.value.map((department) => [...department.path]),
 );
+const systemDefaultDepartmentPath = computed(() => {
+  const configuredDefault = normalizedDepartmentPermissionPath.value;
+  if (configuredDefault.length > 0) return [...configuredDefault];
+  return [...(configurableDepartmentPaths.value[0] ?? [])];
+});
 const defaultDepartmentPath = computed(() => {
-  const candidatePaths = [
-    normalizedDepartmentPermissionPath.value,
-    ...(props.allowedDepartmentPaths ?? []).map(normalizeDepartmentPath),
-  ].filter((path) => path.length > 0);
-  const defaultDepartment = candidatePaths
-    .map((path) =>
-      departmentOptions.value.find((department) => sameDepartmentPath(department.path, path)),
-    )
-    .find(Boolean);
+  const defaultDepartment = departmentOptions.value.find((department) =>
+    sameDepartmentPath(department.path, systemDefaultDepartmentPath.value),
+  );
   return [...(defaultDepartment?.path ?? [])];
 });
 const selectedProduct = computed(
   () => productOptions.value.find((item) => item.offeringName === scopeForm.offeringName) ?? null,
 );
 const scopeErrorMessage = computed(() => {
+  if (props.departmentPermissionsLoading) return DEPARTMENT_PERMISSION_LOADING_MESSAGE;
+  if (props.departmentPermissionsError)
+    return props.departmentPermissionsError.trim() || DEPARTMENT_PERMISSION_LOAD_FAILED_MESSAGE;
   if (!departmentOptions.value.length) return '当前账号暂无可配置部门';
   if (!scopeDepartmentCommitted.value || !selectedDepartment.value) {
     return scopeForm.level === '产品级'
@@ -217,7 +241,13 @@ const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
 
 const DEPARTMENT_PERMISSION_MESSAGE =
-  '\u8bf7\u9009\u62e9\u60a8\u6240\u5c5e\u7684\u6700\u7ec6\u7c92\u5ea6\u90e8\u95e8\u3002';
+  '\u8bf7\u9009\u62e9\u60a8\u6709\u7ba1\u7406\u6743\u9650\u7684\u90e8\u95e8\u3002';
+const DEPARTMENT_PERMISSION_LOADING_MESSAGE =
+  '\u6b63\u5728\u52a0\u8f7d\u90e8\u95e8\u6743\u9650\uff0c\u8bf7\u7a0d\u5019\u3002';
+const DEPARTMENT_PERMISSION_LOAD_FAILED_MESSAGE =
+  '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002';
+const DEFAULT_DEPARTMENT_PERMISSION_MESSAGE =
+  '\u9ed8\u8ba4\u90e8\u95e8\u4e0d\u5728\u5f53\u524d\u7528\u6237\u7ba1\u7406\u6743\u9650\u8303\u56f4\u5185\uff0c\u65e0\u6cd5\u6062\u590d\u3002';
 
 function showToast(message: string, ms = 3000): void {
   toast.value = message;
@@ -240,26 +270,6 @@ function sameDepartmentPath(left: string[], right: string[]): boolean {
   return (
     normalizedLeft.length === normalizedRight.length &&
     normalizedLeft.every((segment, index) => segment === normalizedRight[index])
-  );
-}
-
-function departmentPathStartsWith(path: string[], requiredPrefix: string[]): boolean {
-  const normalizedPath = normalizeDepartmentPath(path);
-  const normalizedPrefix = normalizeDepartmentPath(requiredPrefix);
-  return (
-    normalizedPrefix.length > 0 &&
-    normalizedPath.length >= normalizedPrefix.length &&
-    normalizedPrefix.every((segment, index) => normalizedPath[index] === segment)
-  );
-}
-
-function departmentPathIsBeforePermissionDepartment(path: string[]): boolean {
-  const normalizedPath = normalizeDepartmentPath(path);
-  const permissionPath = normalizedDepartmentPermissionPath.value;
-  return (
-    normalizedPath.length > 0 &&
-    normalizedPath.length < permissionPath.length &&
-    normalizedPath.every((segment, index) => segment === permissionPath[index])
   );
 }
 
@@ -552,7 +562,7 @@ function resetProductScope(): void {
 }
 
 function setSelectedDepartment(path: string[], committed: boolean): DepartmentOption | undefined {
-  const nextPath = normalizeDepartmentPath(path).slice(0, 6);
+  const nextPath = normalizeDepartmentPath(path);
   const nextDepartment = departmentByPath(nextPath);
   selectedDepartmentPath.value = [...(nextDepartment?.path ?? nextPath)];
   selectedDepartment.value = nextDepartment?.name ?? '';
@@ -665,18 +675,22 @@ watch([() => props.userId, () => props.isSuperAdmin], () => {
 });
 
 function guardDepartmentChange(path: string[]): boolean {
-  if (departmentPathIsBeforePermissionDepartment(path)) {
-    notice.value = DEPARTMENT_PERMISSION_MESSAGE;
-    showToast(DEPARTMENT_PERMISSION_MESSAGE);
+  if (props.departmentPermissionsLoading) {
+    showToast(DEPARTMENT_PERMISSION_LOADING_MESSAGE);
+    return false;
+  }
+  if (props.departmentPermissionsError) {
+    const message =
+      props.departmentPermissionsError.trim() || DEPARTMENT_PERMISSION_LOAD_FAILED_MESSAGE;
+    notice.value = message;
+    showToast(message);
     return false;
   }
 
   const nextDepartment = departmentByPath(path);
   if (!nextDepartment) {
-    showToast(
-      '\u8bf7\u9009\u62e9\u53ef\u914d\u7f6e\u7684\u4e94\u7ea7\u6216\u516d\u7ea7\u90e8\u95e8\u3002',
-    );
-    notice.value = '请选择可配置的五级或六级部门。';
+    showToast(DEPARTMENT_PERMISSION_MESSAGE);
+    notice.value = DEPARTMENT_PERMISSION_MESSAGE;
     return false;
   }
 
@@ -687,6 +701,15 @@ function guardDepartmentChange(path: string[]): boolean {
   );
 }
 
+function guardDefaultDepartmentRestore(): boolean {
+  if (defaultDepartmentPath.value.length === 0) {
+    notice.value = DEFAULT_DEPARTMENT_PERMISSION_MESSAGE;
+    showToast(DEFAULT_DEPARTMENT_PERMISSION_MESSAGE);
+    return false;
+  }
+  return guardDepartmentChange(defaultDepartmentPath.value);
+}
+
 onBeforeUnmount(() => {
   if (toastTimer) {
     window.clearTimeout(toastTimer);
@@ -695,7 +718,7 @@ onBeforeUnmount(() => {
 });
 
 function onDepartmentChange(path: string[]): void {
-  const nextPath = normalizeDepartmentPath(path).slice(0, 6);
+  const nextPath = normalizeDepartmentPath(path);
   const nextDepartment = departmentByPath(nextPath);
   selectedDepartmentPath.value = [...(nextDepartment?.path ?? nextPath)];
   selectedDepartment.value = nextDepartment?.name ?? '';
@@ -1015,7 +1038,7 @@ function exportRecords(): void {
 }
 </script>
 <template>
-  <section class="taxonomy-workspace" :aria-busy="loading">
+  <section class="taxonomy-workspace" :aria-busy="loading || departmentPermissionsLoading">
     <header class="toolbar-card">
       <div class="toolbar-controls">
         <div
@@ -1036,11 +1059,15 @@ function exportRecords(): void {
               :model-value="selectedDepartmentPath"
               class="configuration-dept-cascader"
               :tree="departmentTree"
-              :max-level="6"
+              :max-level="departmentCascadeMaxLevel"
               :allowed-paths="configurableDepartmentPaths"
-              permission-mode="review-center"
-              :permission-path="normalizedDepartmentPermissionPath"
-              :disabled="loading || !departmentOptions.length"
+              allowed-path-mode="exact"
+              :disabled="
+                loading ||
+                departmentPermissionsLoading ||
+                Boolean(departmentPermissionsError) ||
+                !departmentOptions.length
+              "
               :all-label="departmentOptions.length ? '请选择部门' : '暂无可配置部门'"
               empty-text="暂无可配置部门"
               clear-text="恢复默认选择"
@@ -1048,10 +1075,7 @@ function exportRecords(): void {
               :clear-value="defaultDepartmentPath"
               selection-mode="confirm"
               aria-label="配置范围部门级联选择"
-              :before-clear="
-                () =>
-                  defaultDepartmentPath.length === 0 || guardDepartmentChange(defaultDepartmentPath)
-              "
+              :before-clear="guardDefaultDepartmentRestore"
               :before-done="guardDepartmentChange"
               @change="onDepartmentChange"
               @clear="clearDepartment"

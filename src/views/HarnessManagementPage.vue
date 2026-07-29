@@ -42,6 +42,13 @@ const currentUserDepartmentPermission = ref<ExpertDepartmentPermission>({
   path: [],
 });
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+type HarnessPermissionLoadState = 'loading' | 'ready' | 'error';
+const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
+  transportIsHttp ? 'loading' : 'ready',
+);
+const harnessPermissionError = ref('');
+const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
+  '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
 
 type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
@@ -103,9 +110,7 @@ const permissionDepartmentNames = computed(() => {
   if (transportIsHttp) {
     return [
       ...new Set(
-        sortHarnessDepartmentsByLevel(harnessPermissions.value.manageableOrgs)
-          .map((org) => org.deptName)
-          .filter(Boolean),
+        manageableDepartments.value.map((department) => department.deptName).filter(Boolean),
       ),
     ];
   }
@@ -145,6 +150,14 @@ function sortHarnessDepartmentsByLevel(
     .map(({ department }) => department);
 }
 
+const manageableDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
+  transportIsHttp
+    ? sortHarnessDepartmentsByLevel(harnessPermissions.value.manageableOrgs).map((department) => ({
+        ...department,
+        path: resolveAuthorizedDepartmentPath(department),
+      }))
+    : [],
+);
 const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
   transportIsHttp
     ? harnessPermissions.value.ownedOrgs.map((department) => ({
@@ -155,11 +168,7 @@ const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
 );
 
 const permissionDepartmentPaths = computed(() =>
-  transportIsHttp
-    ? sortHarnessDepartmentsByLevel(harnessPermissions.value.manageableOrgs).map((department) =>
-        resolveAuthorizedDepartmentPath(department),
-      )
-    : [],
+  transportIsHttp ? manageableDepartments.value.map((department) => [...department.path]) : [],
 );
 
 function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment): string[] {
@@ -215,15 +224,27 @@ const visibleHarnessTabs = computed(() =>
 );
 
 async function loadHarnessDepartmentScope(): Promise<void> {
-  if (!transportIsHttp || !userId.value) return;
+  if (!transportIsHttp) return;
+  harnessPermissionLoadState.value = 'loading';
+  harnessPermissionError.value = '';
+  if (!userId.value) {
+    harnessPermissions.value = createEmptyHarnessDepartmentPermissions();
+    harnessPermissionLoadState.value = 'error';
+    harnessPermissionError.value = HARNESS_PERMISSION_LOAD_FAILED_MESSAGE;
+    return;
+  }
+
   try {
     const response = await skillBaseService.queryHarnessDeptPermissions({
       userId: userId.value,
     });
     harnessPermissions.value = normalizeHarnessDepartmentPermissions(response);
+    harnessPermissionLoadState.value = 'ready';
   } catch (error) {
     console.error('Failed to load harness department scope:', error);
     harnessPermissions.value = createEmptyHarnessDepartmentPermissions();
+    harnessPermissionLoadState.value = 'error';
+    harnessPermissionError.value = HARNESS_PERMISSION_LOAD_FAILED_MESSAGE;
   }
 }
 
@@ -350,6 +371,14 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <div
+      v-if="harnessPermissionLoadState === 'error'"
+      class="harness-permission-alert"
+      role="alert"
+    >
+      {{ harnessPermissionError || HARNESS_PERMISSION_LOAD_FAILED_MESSAGE }}
+    </div>
+
     <section
       v-if="!roleContextReady"
       id="harness-panel-access"
@@ -404,9 +433,12 @@ onBeforeUnmount(() => {
         :is-super-admin="marketRoleIsSuperAdmin(currentUserRole)"
         :can-configure-department-permissions="canConfigureDepartmentPermissions"
         :owner-departments="ownerDepartments"
+        :manageable-departments="manageableDepartments"
         :permission-department-names="permissionDepartmentNames"
         :permission-department-paths="permissionDepartmentPaths"
         :restrict-to-permission-departments="restrictToPermissionDepartments"
+        :department-permissions-loading="harnessPermissionLoadState === 'loading'"
+        :department-permissions-error="harnessPermissionError"
       />
     </section>
 
@@ -591,6 +623,23 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 950;
   box-shadow: 0 8px 20px rgba(47, 125, 246, 0.22);
+}
+
+.harness-permission-alert {
+  position: fixed;
+  top: calc(var(--harness-topbar-height) + 14px);
+  right: 24px;
+  z-index: 90;
+  max-width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 12px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff1f2;
+  color: #b42318;
+  box-shadow: 0 12px 30px rgba(180, 35, 24, 0.12);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .harness-tab-panel {
