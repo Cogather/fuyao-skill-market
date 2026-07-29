@@ -67,6 +67,7 @@ const props = withDefaults(
 );
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const DEPARTMENT_PERMISSION_MAX_DEPTH = 3;
 const records = ref<DepartmentPermissionRecord[]>([]);
 const selectedDepartmentPath = ref<string[]>([]);
 const toast = ref('');
@@ -240,17 +241,26 @@ const ownerDepartmentOptions = computed<DepartmentOption[]>(() => {
     return true;
   });
 });
-const defaultOwnerDepartmentOption = computed(() => ownerDepartmentOptions.value[0] ?? null);
+const selectableOwnerDepartmentOptions = computed(() =>
+  ownerDepartmentOptions.value.filter(
+    (option) => option.path.length <= DEPARTMENT_PERMISSION_MAX_DEPTH,
+  ),
+);
+const defaultOwnerDepartmentOption = computed(
+  () => selectableOwnerDepartmentOptions.value[0] ?? null,
+);
 const configurableDepartmentPaths = computed(() =>
-  ownerDepartmentOptions.value.map((option) => [...option.path]),
+  selectableOwnerDepartmentOptions.value.map((option) => [...option.path]),
 );
 const ownerManageableDepartmentOptions = computed<DepartmentOption[]>(() => {
-  const options = allDepartmentOptions.value.filter((option) =>
-    ownerDepartmentOptions.value.some((ownerOption) =>
-      departmentPathStartsWith(option.path, ownerOption.path),
-    ),
+  const options = allDepartmentOptions.value.filter(
+    (option) =>
+      option.path.length <= DEPARTMENT_PERMISSION_MAX_DEPTH &&
+      selectableOwnerDepartmentOptions.value.some((ownerOption) =>
+        departmentPathStartsWith(option.path, ownerOption.path),
+      ),
   );
-  ownerDepartmentOptions.value.forEach((ownerOption) => {
+  selectableOwnerDepartmentOptions.value.forEach((ownerOption) => {
     if (!options.some((option) => sameDepartmentPath(option.path, ownerOption.path))) {
       options.push(ownerOption);
     }
@@ -270,7 +280,7 @@ const selectedDepartmentOption = computed(
 );
 const selectedOwnerDepartmentOption = computed(
   () =>
-    [...ownerDepartmentOptions.value]
+    [...selectableOwnerDepartmentOptions.value]
       .sort((left, right) => right.path.length - left.path.length)
       .find((option) => departmentPathStartsWith(selectedDepartmentPath.value, option.path)) ??
     null,
@@ -556,7 +566,7 @@ async function enrichMemberProfiles(
 }
 
 async function reload(): Promise<void> {
-  const ownerOptions = ownerDepartmentOptions.value;
+  const ownerOptions = selectableOwnerDepartmentOptions.value;
   if (!ownerOptions.length) {
     records.value = [];
     selectedDepartmentPath.value = [];
@@ -706,7 +716,13 @@ function reloadSafely(): void {
 }
 
 function guardDepartmentSelection(path: string[]): boolean {
-  const ownerOption = ownerDepartmentOptions.value.find((option) =>
+  if (path.length > DEPARTMENT_PERMISSION_MAX_DEPTH) {
+    showToast(
+      '\u90e8\u95e8\u6743\u9650\u914d\u7f6e\u6700\u591a\u9009\u62e9\u5230\u7b2c\u4e09\u7ea7\u90e8\u95e8',
+    );
+    return false;
+  }
+  const ownerOption = selectableOwnerDepartmentOptions.value.find((option) =>
     departmentPathStartsWith(path, option.path),
   );
   if (!ownerOption) {
@@ -907,10 +923,10 @@ onBeforeUnmount(() => {
           v-model="selectedDepartmentPath"
           class="permission-dept-cascader"
           :tree="departmentTree"
-          :max-level="6"
+          :max-level="DEPARTMENT_PERMISSION_MAX_DEPTH"
           :allowed-paths="configurableDepartmentPaths"
           permission-mode="none"
-          :disabled="!ownerDepartmentOptions.length"
+          :disabled="!selectableOwnerDepartmentOptions.length"
           :all-label="ownerDepartmentOptions.length ? '请选择 Owner 部门' : '暂无可配置部门'"
           empty-text="暂无可配置的 Owner 部门"
           clear-text="恢复默认部门"

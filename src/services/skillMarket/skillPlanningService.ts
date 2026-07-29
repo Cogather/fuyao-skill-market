@@ -3,8 +3,10 @@ import type {
   CreateSkillPlanningSupplementBody,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementItemDto,
+  SkillTransferParams,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
+import { normalizeSkillImportResponse, normalizeSkillTransferParams } from './skillTransferService';
 import {
   exportSkillPlanningToExcel,
   normalizeProgress,
@@ -268,6 +270,15 @@ function toHttpSkillPlanningSupplementParams(
     params.pageSize = query.pageSize;
   }
   return params;
+}
+
+function toSkillTransferParams(query: SkillPlanningQuery): SkillTransferParams {
+  return normalizeSkillTransferParams({
+    userId: normalizeText(query.userId),
+    dimType: normalizeText(query.dimType),
+    dimCode: normalizeText(query.dimCode),
+    dimName: normalizeText(query.dimName),
+  });
 }
 
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
@@ -565,6 +576,18 @@ export async function exportAllSkillPlanningList(
   return result.list;
 }
 
+export async function exportSkillPlanningSupplementFile(
+  query: SkillPlanningQuery,
+): Promise<unknown> {
+  const params = toSkillTransferParams(query);
+  if (!useHttpTransport()) {
+    const rows = await (await loadMockService()).exportAllSkillPlanningList(query);
+    await exportSkillPlanningToExcel(rows);
+    return null;
+  }
+  return skillBaseService.exportSkillPlanningSupplement(params);
+}
+
 export async function createSkillPlanning(
   payload: SkillPlanningPayload,
 ): Promise<SkillPlanningItem> {
@@ -647,18 +670,19 @@ export async function batchDeleteSkillPlanning(ids: string[], userId: string): P
   return ids.length;
 }
 
-export async function importSkillPlanningFromExcel(file: File): Promise<any> {
+export async function importSkillPlanningFromExcel(
+  file: File,
+  query: SkillPlanningQuery,
+): Promise<SkillPlanningImportResult> {
+  const params = toSkillTransferParams(query);
   if (!useHttpTransport()) {
     return (await loadMockService()).importSkillPlanningFromExcel(file);
   }
 
   const formData = new FormData();
   formData.append('file', file);
-  const response = await skillBaseService.importSkillPlanning(formData);
-  if (response?.meta?.success && response?.data) {
-    return response.data;
-  }
-  return {};
+  const response = await skillBaseService.importSkillPlanningSupplement(formData, params);
+  return normalizeSkillImportResponse(response);
 }
 
 export async function downloadSkillPlanningTemplate(): Promise<string | void> {

@@ -27,10 +27,16 @@ import type {
   CreateSkillMasterManagementParams,
   QuerySkillMasterManagementBody,
   SkillMasterManagementItemDto,
+  SkillTransferParams,
   UpdateSkillMasterManagementBody,
   UpdateSkillMasterManagementParams,
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import {
+  downloadSkillExportResponse,
+  normalizeSkillImportResponse,
+  normalizeSkillTransferParams,
+} from '../../services/skillMarket/skillTransferService';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
@@ -180,6 +186,9 @@ const masterProductOptions = ref<ProductPlanningOption[]>([]);
 const masterProductsLoading = ref(false);
 const selectedMasterIds = ref<string[]>([]);
 const batchDeleteDialog = reactive({ open: false, ids: [] as string[] });
+const masterImportInputRef = ref<HTMLInputElement | null>(null);
+const masterImportSubmitting = ref(false);
+const masterExportSubmitting = ref(false);
 let masterProductLoadSequence = 0;
 
 function normalizeDepartmentPath(segments: string[] | undefined): string[] {
@@ -384,6 +393,16 @@ function buildManagementQueryBody(): QuerySkillMasterManagementBody {
     body.dimName = dim.dimName;
   }
   return body;
+}
+
+function buildMasterTransferParams(): SkillTransferParams {
+  const dim = resolveCurrentDimFields();
+  return normalizeSkillTransferParams({
+    userId: props.userId,
+    dimType: masterScopeForm.level,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+  });
 }
 
 function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMasterRecord {
@@ -1200,43 +1219,66 @@ function toggleAllMasterSelection(event: Event): void {
 }
 
 function triggerMasterImport(): void {
-  showToast('Skill 清单导入能力待接入');
+  if (masterImportSubmitting.value || !ensureMasterScopeSelection(true)) return;
+  if (masterImportInputRef.value) {
+    masterImportInputRef.value.value = '';
+    masterImportInputRef.value.click();
+  }
 }
 
-function csvCell(value: unknown): string {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
-
-function exportCurrentMasterData(): void {
-  const rows = filteredRecords.value;
-  if (rows.length === 0) {
-    showToast('暂无可导出的 Skill 清单');
+async function handleMasterImportFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    showToast('仅支持 .xlsx 或 .xls 格式的 Excel 文件');
+    input.value = '';
     return;
   }
-  const headers = ['Skill', '描述', '责任 Owner', '归属部门', '开发责任人', '计划完成', '当前进展'];
-  const lines = rows.map((record) =>
-    [
-      record.name,
-      record.description,
-      personDisplayLabel(record.owner),
-      record.department,
-      personDisplayLabel(record.developOwner),
-      record.plannedCompleteDate,
-      record.status,
-    ]
-      .map(csvCell)
-      .join(','),
-  );
-  const blob = new Blob([`\ufeff${headers.map(csvCell).join(',')}\n${lines.join('\n')}`], {
-    type: 'text/csv;charset=utf-8;',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'Skill清单.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-  showToast('已导出 Skill 清单');
+  try {
+    masterImportSubmitting.value = true;
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await skillBaseService.importSkillMasterManagement(
+      formData,
+      buildMasterTransferParams(),
+    );
+    const result = normalizeSkillImportResponse(response);
+    await reload();
+    if (result.errorList.length > 0) {
+      const firstError = result.errorList[0];
+      showToast(
+        `Skill 清单导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条${firstError ? `;第 ${firstError.rowNum} 行：${firstError.errMsg}` : ''}`,
+      );
+    } else {
+      showToast(
+        result.totalCount > 0
+          ? `Skill 清单已成功导入 ${result.successCount} 条`
+          : 'Skill 清单导入完成',
+      );
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Skill 清单导入失败，请稍后重试');
+  } finally {
+    masterImportSubmitting.value = false;
+    input.value = '';
+  }
+}
+
+async function exportCurrentMasterData(): Promise<void> {
+  if (masterExportSubmitting.value || !ensureMasterScopeSelection(true)) return;
+  try {
+    masterExportSubmitting.value = true;
+    const response = await skillBaseService.exportSkillMasterManagement(
+      buildMasterTransferParams(),
+    );
+    const downloaded = await downloadSkillExportResponse(response, 'Skill清单.xlsx');
+    showToast(downloaded ? '已开始导出 Skill 清单' : '导出请求已提交');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Skill 清单导出失败，请稍后重试');
+  } finally {
+    masterExportSubmitting.value = false;
+  }
 }
 
 function openBatchMasterEditDialog(): void {
@@ -1442,6 +1484,13 @@ onBeforeUnmount(() => {
           >
         </div>
         <div class="toolbar-actions">
+          <input
+            ref="masterImportInputRef"
+            hidden
+            type="file"
+            accept=".xlsx,.xls"
+            @change="handleMasterImportFile"
+          />
           <button
             class="master-btn master-btn--primary"
             type="button"
@@ -1454,7 +1503,13 @@ onBeforeUnmount(() => {
             </svg>
             新增
           </button>
-          <button class="master-btn master-btn--soft" type="button" @click="triggerMasterImport">
+          <button
+            class="master-btn master-btn--soft"
+            type="button"
+            :disabled="!hasCompleteMasterScope || masterImportSubmitting"
+            :title="masterScopeErrorMessage || '导入 Skill 清单'"
+            @click="triggerMasterImport"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
             </svg>
@@ -1463,6 +1518,8 @@ onBeforeUnmount(() => {
           <button
             class="master-btn master-btn--soft"
             type="button"
+            :disabled="!hasCompleteMasterScope || masterExportSubmitting"
+            :title="masterScopeErrorMessage || '导出 Skill 清单'"
             @click="exportCurrentMasterData"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">

@@ -11,6 +11,7 @@ import type {
   QueryHarnessPermissionUsersParams,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
+  SkillTransferParams,
   UpdateSkillMasterManagementBody,
   UpdateSkillMasterManagementParams,
   UpdateHarnessPermissionUsersRequest,
@@ -395,8 +396,11 @@ export const skillBaseService = {
     });
   },
 
-  importSkillPlanningSupplement: (formData: FormData, params: any): any => {
-    return httpRequest.skill<any>({
+  importSkillPlanningSupplement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.skill<unknown>({
       url: '/config/supplement/import',
       method: 'post',
       data: formData,
@@ -407,11 +411,12 @@ export const skillBaseService = {
     });
   },
 
-  exportSkillPlanningSupplement: (params: any): any => {
-    return httpRequest.skill<any>({
+  exportSkillPlanningSupplement: (params: SkillTransferParams): Promise<unknown> => {
+    return httpRequest.skill<unknown>({
       url: '/config/supplement/export',
       method: 'get',
       params,
+      responseType: 'blob',
     });
   },
 
@@ -466,8 +471,11 @@ export const skillBaseService = {
     });
   },
 
-  importSkillMasterManagement: (formData: FormData, params: any): any => {
-    return httpRequest.skill<any>({
+  importSkillMasterManagement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.skill<unknown>({
       url: '/management/import',
       method: 'post',
       data: formData,
@@ -478,11 +486,12 @@ export const skillBaseService = {
     });
   },
 
-  exportSkillMasterManagement: (params: any): any => {
-    return httpRequest.skill<any>({
+  exportSkillMasterManagement: (params: SkillTransferParams): Promise<unknown> => {
+    return httpRequest.skill<unknown>({
       url: '/management/export',
       method: 'get',
       params,
+      responseType: 'blob',
     });
   },
 

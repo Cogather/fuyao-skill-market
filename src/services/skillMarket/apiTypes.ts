@@ -520,7 +520,6 @@ export type UpdateHarnessPermissionUsersRequest = {
   userId: string;
 };
 
-
 /**
  * 市场总览等部门级联：全量部门树（设计文档未定稿）。
  * 节点字段与 `DashboardOverviewDto.deptTree` 单节点对齐，便于后端与 Mock 复用。
@@ -725,6 +724,14 @@ export type UpdateSkillMasterManagementBody = {
   developOwnerName?: string;
   developOwnerId?: string;
   planFinishDate?: string;
+};
+
+/** Shared query params for Skill planning/master import and export. */
+export type SkillTransferParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 };
 
 export type SkillPlanningSupplementEntity = {

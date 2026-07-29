@@ -13,7 +13,7 @@ import {
   querySkillPlanningActivityOptionGroups,
   querySkillPlanningSceneOptionGroups,
   querySkillPlanningUsers,
-  exportAllSkillPlanningList,
+  exportSkillPlanningSupplementFile,
   querySkillPlanningSupplement,
   updateSkillPlanningSupplement,
   type ProductPlanningOption,
@@ -46,7 +46,7 @@ import type {
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
-import { openLink } from '@/utils/common';
+import { downloadSkillExportResponse } from '../../services/skillMarket/skillTransferService';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
@@ -211,6 +211,7 @@ const importInputRef = ref<HTMLInputElement | null>(null);
 const importDialogOpen = ref(false);
 const importDragging = ref(false);
 const importSubmitting = ref(false);
+const exportSubmitting = ref(false);
 const templateDownloadPending = ref(false);
 const selectedImportFile = ref<File | null>(null);
 const importError = ref('');
@@ -419,8 +420,7 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
   return {
     userId,
     dimType: '部门级',
-    dimCode:
-      String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department,
+    dimCode: String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department,
     dimName: department,
   };
 }
@@ -2231,6 +2231,9 @@ async function submitBatchEdit() {
 }
 
 function triggerImport() {
+  if (!ensurePlanningScopeSelection(true)) {
+    return;
+  }
   importDialogOpen.value = true;
   importDragging.value = false;
   importError.value = '';
@@ -2316,10 +2319,13 @@ async function submitImportFile() {
 
   try {
     importSubmitting.value = true;
-    const result = await importSkillPlanningFromExcel(selectedImportFile.value);
+    const result = await importSkillPlanningFromExcel(
+      selectedImportFile.value,
+      syncQueryFilterObj(false),
+    );
     if (result.errorList.length > 0) {
       importError.value = `Skill 规划已成功导入 ${result.successCount} 条，${result.failCount ? '失败导入 ' + result.failCount + ' 条' : ''}（共需要导入 ${result.totalCount} 条）`;
-      importError.value = `\n其中导入失败的有：${result.errorList.reduce((pre, curr) => pre + `\n    第${curr.rowNum}行：` + curr.errMsg, '')}`;
+      importError.value += `\n其中导入失败的有：${result.errorList.reduce((pre, curr) => pre + `\n    第${curr.rowNum}行：` + curr.errMsg, '')}`;
       return;
     } else {
       importSuccess.value = `Skill 规划已成功导入 ${result.successCount} 条（共需要导入 ${result.totalCount} 条）`;
@@ -2328,6 +2334,7 @@ async function submitImportFile() {
 
     importSubmitting.value = false;
     closeImportDialog();
+    showToast(importSuccess.value || 'Skill 规划导入完成');
     pageNum.value = 1;
     await loadPlanningFilterOptions();
     await reloadList();
@@ -2340,10 +2347,19 @@ async function submitImportFile() {
 }
 
 async function exportCurrentData() {
-  const result = await exportAllSkillPlanningList(syncQueryFilterObj(false));
-  if (result?.data) {
-    openLink(result.data);
-    showToast('导出文件完成');
+  if (exportSubmitting.value || !ensurePlanningScopeSelection(true)) {
+    return;
+  }
+  try {
+    exportSubmitting.value = true;
+    const response = await exportSkillPlanningSupplementFile(syncQueryFilterObj(false));
+    const downloaded =
+      response === null ? true : await downloadSkillExportResponse(response, 'Skill规划清单.xlsx');
+    showToast(downloaded ? '已开始导出 Skill 规划' : '导出请求已提交');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Skill 规划导出失败，请稍后重试');
+  } finally {
+    exportSubmitting.value = false;
   }
 }
 
@@ -2648,7 +2664,13 @@ onBeforeUnmount(() => {
               </svg>
               新增
             </button>
-            <button type="button" class="planning-btn planning-btn--soft" @click="triggerImport">
+            <button
+              type="button"
+              class="planning-btn planning-btn--soft"
+              :disabled="!hasCompletePlanningScope || importSubmitting"
+              :title="planningScopeErrorMessage || '导入 Skill 规划'"
+              @click="triggerImport"
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
               </svg>
@@ -2657,6 +2679,8 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="planning-btn planning-btn--soft"
+              :disabled="!hasCompletePlanningScope || exportSubmitting"
+              :title="planningScopeErrorMessage || '导出 Skill 规划'"
               @click="exportCurrentData"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
