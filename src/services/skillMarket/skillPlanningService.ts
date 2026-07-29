@@ -1,5 +1,6 @@
 import { skillBaseService } from './skillBaseService';
 import type {
+  ApiEnvelope,
   CreateSkillPlanningSupplementBody,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementItemDto,
@@ -582,7 +583,7 @@ export async function exportAllSkillPlanningList(
 
 export async function exportSkillPlanningSupplementFile(
   query: SkillPlanningQuery,
-): Promise<unknown> {
+): Promise<ApiEnvelope<string> | null> {
   const params = toSkillTransferParams(query);
   if (!useHttpTransport()) {
     const rows = await (await loadMockService()).exportAllSkillPlanningList(query);

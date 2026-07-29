@@ -427,12 +427,11 @@ export const skillBaseService = {
     });
   },
 
-  exportSkillPlanningSupplement: (params: SkillTransferParams): Promise<unknown> => {
-    return httpRequest.skill<unknown>({
+  exportSkillPlanningSupplement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.skill<ApiEnvelope<string>>({
       url: '/config/supplement/export',
       method: 'get',
       params,
-      responseType: 'blob',
     });
   },
 
@@ -502,12 +501,11 @@ export const skillBaseService = {
     });
   },
 
-  exportSkillMasterManagement: (params: SkillTransferParams): Promise<unknown> => {
-    return httpRequest.skill<unknown>({
+  exportSkillMasterManagement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.skill<ApiEnvelope<string>>({
       url: '/management/export',
       method: 'get',
       params,
-      responseType: 'blob',
     });
   },
 

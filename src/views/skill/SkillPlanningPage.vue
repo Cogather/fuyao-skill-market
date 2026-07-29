@@ -47,7 +47,7 @@ import type {
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
-import { downloadSkillExportResponse } from '../../services/skillMarket/skillTransferService';
+import { openSkillExportResponse } from '../../services/skillMarket/skillTransferService';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
@@ -2358,9 +2358,10 @@ async function exportCurrentData() {
   try {
     exportSubmitting.value = true;
     const response = await exportSkillPlanningSupplementFile(syncQueryFilterObj(false));
-    const downloaded =
-      response === null ? true : await downloadSkillExportResponse(response, 'Skill规划清单.xlsx');
-    showToast(downloaded ? '已开始导出 Skill 规划' : '导出请求已提交');
+    if (response !== null) {
+      openSkillExportResponse(response);
+    }
+    showToast('已开始导出 Skill 规划');
   } catch (error) {
     showToast(error instanceof Error ? error.message : 'Skill 规划导出失败，请稍后重试');
   } finally {

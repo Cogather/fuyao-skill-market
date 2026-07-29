@@ -34,9 +34,9 @@ import type {
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
-  downloadSkillExportResponse,
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
+  openSkillExportResponse,
 } from '../../services/skillMarket/skillTransferService';
 
 type PlanningLevel = '产品级' | '部门级';
@@ -1273,8 +1273,8 @@ async function exportCurrentMasterData(): Promise<void> {
     const response = await skillBaseService.exportSkillMasterManagement(
       buildMasterTransferParams(),
     );
-    const downloaded = await downloadSkillExportResponse(response, 'Skill清单.xlsx');
-    showToast(downloaded ? '已开始导出 Skill 清单' : '导出请求已提交');
+    openSkillExportResponse(response);
+    showToast('已开始导出 Skill 清单');
   } catch (error) {
     showToast(error instanceof Error ? error.message : 'Skill 清单导出失败，请稍后重试');
   } finally {
