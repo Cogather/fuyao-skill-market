@@ -15,7 +15,10 @@ import {
   type SceneRecord,
 } from '../../services/skillMarket/sceneManagementService';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
-import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import {
+  skillBaseService,
+  type RefreshTaxonomyItem,
+} from '../../services/skillMarket/skillBaseService';
 import {
   getProductPlanning,
   type ProductPlanningOption,
@@ -443,11 +446,8 @@ async function fetchHttpTaxonomyRecords(departmentName: string): Promise<Taxonom
   return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
 }
 
-function toHttpTaxonomyItems(
-  records: TaxonomyRecord[],
-  dim: { dimType: string; dimCode: string; dimName: string },
-): Array<Record<string, unknown>> {
-  const rows: Array<Record<string, unknown>> = [];
+function toHttpTaxonomyItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
+  const rows: RefreshTaxonomyItem[] = [];
   let sort = 0;
   records
     .filter((record) => record.parentId === null)
@@ -458,23 +458,18 @@ function toHttpTaxonomyItems(
         .sort((left, right) => left.sort - right.sort);
       const values = children.length > 0 ? children : [null];
       values.forEach((child) => {
-        const dimFields = {
-          dimType: dim.dimType,
-          dimCode: dim.dimCode,
-          dimName: dim.dimName,
-          sort: sort++,
-        };
+        const itemSort = sort++;
         rows.push(
           props.kind === 'scene'
             ? {
                 firstScene: parent.name,
                 secondScene: child?.name ?? '',
-                ...dimFields,
+                sort: itemSort,
               }
             : {
                 activityNodeName: parent.name,
                 subActivityNodeName: child?.name ?? '',
-                ...dimFields,
+                sort: itemSort,
               },
         );
       });
@@ -500,27 +495,20 @@ function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGr
 
 async function saveHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
   const context = httpDimContext(departmentName);
-  const dim = {
-    dimType: context.dimType,
-    dimCode: context.dimCode,
-    dimName: context.dimName,
-  };
-  const items = toHttpTaxonomyItems(draftRecords.value, dim);
+  const items = toHttpTaxonomyItems(draftRecords.value);
   const response =
     props.kind === 'scene'
       ? await skillBaseService.refreshSceneOptionGroups(
           {
             scenes: items,
-            ...dim,
           },
-          props.userId,
+          context,
         )
       : await skillBaseService.refreshActivityOptionGroups(
           {
             activities: items,
-            ...dim,
           },
-          props.userId,
+          context,
         );
   assertHttpSuccess(response, labels.value.item + '配置保存失败');
   return fetchHttpTaxonomyRecords(departmentName);

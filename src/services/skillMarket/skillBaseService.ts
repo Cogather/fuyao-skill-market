@@ -36,6 +36,22 @@ export interface SceneOptionGroupRow {
 
 export type SceneOptionGroupsResponse = ApiEnvelope<SceneOptionGroupRow[]> | SceneOptionGroupRow[];
 
+export interface RefreshTaxonomyItem {
+  firstScene?: string;
+  secondScene?: string;
+  activityNodeName?: string;
+  subActivityNodeName?: string;
+  sort: number;
+}
+
+export interface RefreshSceneOptionGroupsBody {
+  scenes: RefreshTaxonomyItem[];
+}
+
+export interface RefreshActivityOptionGroupsBody {
+  activities: RefreshTaxonomyItem[];
+}
+
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
 export const corecode = _corecode_env;
@@ -612,12 +628,15 @@ export const skillBaseService = {
   },
 
   // 全量刷新场景配置
-  refreshSceneOptionGroups: (body: any, userId: string): any => {
-    return httpRequest.api<any>({
+  refreshSceneOptionGroups: (
+    body: RefreshSceneOptionGroupsBody,
+    params: SceneOptionGroupsParams,
+  ): Promise<unknown> => {
+    return httpRequest.api<unknown>({
       url: '/scene-activity/scene',
       method: 'post',
-      params: { userId },
-      data: body, // { scenes, dimType, dimCode, dimName }
+      params,
+      data: body,
     });
   },
 
@@ -631,12 +650,15 @@ export const skillBaseService = {
   },
 
   // 全量刷新活动配置
-  refreshActivityOptionGroups: (body: any, userId: string): any => {
-    return httpRequest.api<any>({
+  refreshActivityOptionGroups: (
+    body: RefreshActivityOptionGroupsBody,
+    params: SceneOptionGroupsParams,
+  ): Promise<unknown> => {
+    return httpRequest.api<unknown>({
       url: '/scene-activity/activity',
       method: 'post',
-      params: { userId },
-      data: body, // { activities, dimType, dimCode, dimName }
+      params,
+      data: body,
     });
   },
 
