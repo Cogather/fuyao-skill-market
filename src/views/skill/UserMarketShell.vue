@@ -9,7 +9,6 @@ import SkillVersionManageDialog from '../../components/skill/SkillVersionManageD
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
 import DeptSkillReviewPanel from './DeptSkillReviewPanel.vue';
 import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
-import SkillPlanningPage from '../skill/SkillPlanningPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
   BusinessDimensionDto,
@@ -120,11 +119,6 @@ const innerTabAliases: Record<string, UserInnerTab> = {
   审核中心: 'approval',
   review: 'review',
   评审中心: 'review',
-  planning: 'planning',
-  skillPlanning: 'planning',
-  Skill规划: 'planning',
-  'Skill 规划': 'planning',
-  skill规划: 'planning',
 };
 
 const helpLink = () => {
@@ -2470,7 +2464,6 @@ async function openHotSkillDetail(skill: any): Promise<void> {
   await openSkillDetailRoute(skill.id, false, 'hot');
 }
 
-
 async function openReviewSkillDetail(skillId: string): Promise<void> {
   await openSkillDetailRoute(skillId, false, 'review');
 }
@@ -3029,6 +3022,7 @@ function releaseSyncActionText(row: {
 
 const onClickFilterRelease = async (key: any) => {
   releaseFilter.value = key;
+
   if (key === 'aiEvolution') {
     await loadAiEvolutionSkills();
     return;
@@ -3633,8 +3627,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             innerTab === 'ops' ||
             innerTab === 'org' ||
             innerTab === 'approval' ||
-            innerTab === 'review' ||
-            innerTab === 'planning',
+            innerTab === 'review',
         }"
         aria-label="市场分区"
       >
@@ -3705,14 +3698,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           @click="goTab('review')"
         >
           评审中心
-        </button>
-        <button
-          type="button"
-          class="sub-tab"
-          :class="{ on: innerTab === 'planning' }"
-          @click="goTab('planning')"
-        >
-          Skill 规划
         </button>
       </nav>
 
@@ -5299,15 +5284,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         :is-expert-reviewer="isExpertReviewer"
         @open-detail="openReviewSkillDetail"
       />
-    </div>
-
-    <div
-      v-else-if="innerTab === 'planning'"
-      ref="tabPanelRef"
-      class="panel tab-panel planning-panel"
-      :style="tabPanelFillStyle"
-    >
-      <SkillPlanningPage :department-tree="marketOverviewDeptTree" />
     </div>
 
     <Teleport to="body">

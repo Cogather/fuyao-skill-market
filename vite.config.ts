@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
   const fuyaoTarget = 'https://fuyao.rnd.huawei.com';
 
   return {
-    base: env.VITE_BASE || '/skill-market/',
+    base: env.VITE_BASE || '/',
     plugins: [vue()],
     resolve: {
       alias: {

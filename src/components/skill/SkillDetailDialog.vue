@@ -949,13 +949,12 @@ onBeforeUnmount(() => {
                 {{ tag }}
               </span>
             </template>
-
             <span v-if="!isPageMode" class="detail-pill pill-id">{{ skill.name }}</span>
             <span v-if="!aiEvolution" class="detail-pill"
               >版本 {{ skill.currentVersion ?? skill.version }}</span
             >
             <span v-if="!previewOnly && !aiEvolution" class="detail-pill"
-              >作者 {{ skill.author }}</span
+              >作者: {{ `${skill.createdName} ${skill.createdBy}` }}</span
             >
             <span v-if="!previewOnly" class="detail-pill" :class="skillScopeClass(skill)">
               {{ skill.level }}

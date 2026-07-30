@@ -4,6 +4,11 @@ import type { DepartmentTreeNodeDto } from '../apiTypes';
  * 与 `builtInSkills` 种子及 HTTP Mock 列表中的部门路径对齐，保证级联选项覆盖演示数据。
  */
 const MOCK_DEPT_FULL_PATHS: string[] = [
+  // Current mock user's department descendants, used to preview Harness configuration scoping.
+  '\u90e8\u95e81/\u5e73\u53f0\u4ea7\u54c1\u7ebf/\u5e73\u53f0\u5de5\u5177\u7ec4/DevOps\u90e8/\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  '\u90e8\u95e81/\u5e73\u53f0\u4ea7\u54c1\u7ebf/\u5e73\u53f0\u5de5\u5177\u7ec4/DevOps\u90e8/\u6301\u7eed\u4ea4\u4ed8\u7ec4/\u6d41\u6c34\u7ebf\u5e73\u53f0\u5c0f\u7ec4',
+  '\u90e8\u95e81/\u5e73\u53f0\u4ea7\u54c1\u7ebf/\u5e73\u53f0\u5de5\u5177\u7ec4/DevOps\u90e8/\u53d1\u5e03\u6cbb\u7406\u7ec4',
+  '\u90e8\u95e81/\u5e73\u53f0\u4ea7\u54c1\u7ebf/\u5e73\u53f0\u5de5\u5177\u7ec4/DevOps\u90e8/\u53d1\u5e03\u6cbb\u7406\u7ec4/\u53d8\u66f4\u7ba1\u63a7\u5c0f\u7ec4',
   '部门1/SRE产品线/平台稳定部/日志工具组',
   '部门1/API产品线/联调工具部',
   '部门1/质量产品线/质量工具组/评审小组',

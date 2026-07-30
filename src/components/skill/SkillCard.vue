@@ -39,7 +39,7 @@ function skillLevelText(): string {
 }
 
 const ownerText = computed(() => {
-  return text(props.skill.createdBy) || '未配置创建人';
+  return `${props.skill.createdName} ${props.skill.createdBy}` || '';
 });
 
 const deptText = computed(() => {
@@ -538,12 +538,10 @@ function onOpenDetail(): void {
   align-items: center;
   gap: 11px;
   min-width: 0;
-  padding-right: 34px;
   margin-bottom: 10px;
 }
 
 .card-overview-market .card-title-row {
-  padding-right: 112px;
   margin-bottom: 9px;
 }
 

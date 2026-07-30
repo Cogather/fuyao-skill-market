@@ -83,6 +83,34 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
     department_l1: '云平台产品部',
     department_l2: '发布治理组',
   },
+  {
+    id: 'w30000006',
+    chName: '李明',
+    department_l1: '云核装备经营管理部',
+    department_l2: '智能终端产品部',
+    department_l3: '平台工具部',
+    department_l4: '接口开发组',
+  },
+  {
+    id: 'w30000007',
+    chName: '周扬',
+    department_l1: '云核装备经营管理部',
+    department_l2: '质量产品线',
+    department_l3: '质量工具组',
+  },
+  {
+    id: 'w30000008',
+    chName: '陈七',
+    department_l1: '数据与智能平台部',
+    department_l2: '数据产品线',
+    department_l3: '日志智能组',
+  },
+  {
+    id: 'w30000009',
+    chName: '刘岚',
+    department_l1: '研发效能产品部',
+    department_l2: '知识工程组',
+  },
 ] as const;
 
 type MockEnvelope<T> = {
@@ -95,6 +123,170 @@ type MockEnvelope<T> = {
   };
   data: T;
 };
+
+type MockSkillMasterManagementRecord = {
+  skillName: string;
+  skillDescription: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  status: string;
+  planFinishDate: string;
+  createdAt: number[];
+  updatedAt: number[];
+  skillMatchId: string | null;
+  skillMatchLevel: string | null;
+};
+
+function nowLocalDateTimeArray(): number[] {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    now.getMonth() + 1,
+    now.getDate(),
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds() * 1_000_000,
+  ];
+}
+
+const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
+  {
+    skillName: '稳定性日报 Skill',
+    skillDescription: '汇总稳定性指标并生成日报摘要',
+    dimType: '部门级',
+    dimCode: 'D001',
+    dimName: '持续交付组',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李四',
+    developOwnerId: 'w30000002',
+    status: '已完成',
+    planFinishDate: '2026-06-26',
+    createdAt: [2026, 6, 1, 10, 0, 0, 0],
+    updatedAt: [2026, 6, 26, 18, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+  },
+  {
+    skillName: '接口巡检 Skill',
+    skillDescription: '定期巡检关键接口可用性',
+    dimType: '部门级',
+    dimCode: 'D001',
+    dimName: '持续交付组',
+    ownerName: '王五',
+    ownerId: 'w30000003',
+    developOwnerName: '赵六',
+    developOwnerId: 'w30000004',
+    status: '进行中',
+    planFinishDate: '2026-08-31',
+    createdAt: [2026, 7, 1, 9, 0, 0, 0],
+    updatedAt: [2026, 7, 20, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+  },
+  {
+    skillName: '产品A-发布检查 Skill',
+    skillDescription: '产品级发布前检查清单',
+    dimType: '产品级',
+    dimCode: 'P001',
+    dimName: '产品A',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李四',
+    developOwnerId: 'w30000002',
+    status: '未开始',
+    planFinishDate: '2026-09-15',
+    createdAt: [2026, 7, 10, 8, 0, 0, 0],
+    updatedAt: [2026, 7, 10, 8, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+  },
+];
+
+function readSkillRequestBody(data: unknown): unknown {
+  if (data === undefined || data === null || data === '') {
+    return {};
+  }
+  if (typeof data === 'string') {
+    const text = data.trim();
+    if (!text) {
+      return {};
+    }
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  return data;
+}
+
+function filterMockSkillMasterManagement(
+  body: Record<string, unknown>,
+): MockSkillMasterManagementRecord[] {
+  const keyword = String(body.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  const dimType = String(body.dimType ?? '').trim();
+  const dimCode = String(body.dimCode ?? '').trim();
+  const ownerId = String(body.ownerId ?? '').trim();
+  const developOwnerId = String(body.developOwnerId ?? '').trim();
+  const statusList = Array.isArray(body.statusList)
+    ? body.statusList.map((item) => String(item ?? '').trim()).filter(Boolean)
+    : [];
+
+  let list = mockSkillMasterManagementRecords.slice();
+  if (dimType) {
+    list = list.filter((item) => item.dimType === dimType);
+  }
+  if (dimCode) {
+    list = list.filter((item) => item.dimCode === dimCode);
+  }
+  if (ownerId) {
+    list = list.filter((item) => item.ownerId === ownerId);
+  }
+  if (developOwnerId) {
+    list = list.filter((item) => item.developOwnerId === developOwnerId);
+  }
+  if (statusList.length > 0) {
+    list = list.filter((item) => statusList.includes(item.status));
+  }
+  if (keyword) {
+    list = list.filter((item) =>
+      [item.skillName, item.skillDescription, item.ownerName, item.developOwnerName].some((field) =>
+        field.toLowerCase().includes(keyword),
+      ),
+    );
+  }
+
+  const sortBy = String(body.sortBy ?? '').trim();
+  const sortOrder = String(body.sortOrder ?? 'desc').trim().toLowerCase() === 'asc' ? 1 : -1;
+  if (sortBy === 'updatedAt' || sortBy === 'createdAt' || sortBy === 'planFinishDate') {
+    list.sort((left, right) => {
+      const leftValue = String(
+        sortBy === 'planFinishDate' ? left.planFinishDate : JSON.stringify(left[sortBy]),
+      );
+      const rightValue = String(
+        sortBy === 'planFinishDate' ? right.planFinishDate : JSON.stringify(right[sortBy]),
+      );
+      if (leftValue === rightValue) {
+        return 0;
+      }
+      return leftValue > rightValue ? sortOrder : -sortOrder;
+    });
+  }
+
+  const pageNum = Math.max(1, Number(body.pageNum) || 1);
+  const pageSize = Math.max(1, Number(body.pageSize) || list.length || 10);
+  const start = (pageNum - 1) * pageSize;
+  return list.slice(start, start + pageSize);
+}
 
 type PagedArray<T> = T[] & {
   records: T[];
@@ -1450,6 +1642,93 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  if (method === 'post' && path === '/management/add') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const requiredKeys = [
+      'skillName',
+      'skillDescription',
+      'dimType',
+      'dimCode',
+      'dimName',
+      'ownerName',
+      'ownerId',
+      'developOwnerName',
+      'developOwnerId',
+      'planFinishDate',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+      return fail('status 不应传入', null);
+    }
+    const stamp = nowLocalDateTimeArray();
+    const record: MockSkillMasterManagementRecord = {
+      skillName: String(body.skillName).trim(),
+      skillDescription: String(body.skillDescription).trim(),
+      dimType: String(body.dimType).trim(),
+      dimCode: String(body.dimCode).trim(),
+      dimName: String(body.dimName).trim(),
+      ownerName: String(body.ownerName).trim(),
+      ownerId: String(body.ownerId).trim(),
+      developOwnerName: String(body.developOwnerName).trim(),
+      developOwnerId: String(body.developOwnerId).trim(),
+      status: '未开始',
+      planFinishDate: String(body.planFinishDate).trim(),
+      createdAt: stamp,
+      updatedAt: stamp,
+      skillMatchId: null,
+      skillMatchLevel: null,
+    };
+    if (
+      mockSkillMasterManagementRecords.some(
+        (item) => item.skillName === record.skillName && item.dimCode === record.dimCode,
+      )
+    ) {
+      return fail(`Skill 已存在: ${record.skillName}`, null);
+    }
+    mockSkillMasterManagementRecords.unshift(record);
+    return ok({
+      id: `skill-mgmt-${Date.now()}`,
+      ...record,
+    });
+  }
+
+  if (method === 'post' && path === '/management/query') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const matched = filterMockSkillMasterManagement(body);
+    return ok(
+      matched.map((item) => ({
+        ...item,
+      })),
+      matched.length,
+    );
+  }
+
+  if (method === 'delete' && path === '/management/batch_delete') {
+    const body = readSkillRequestBody(config.data);
+    const skillNames = Array.isArray(body)
+      ? body.map((item) => String(item ?? '').trim()).filter(Boolean)
+      : [];
+    if (skillNames.length === 0) {
+      return fail('批量删除列表不能为空', null);
+    }
+    const nameSet = new Set(skillNames);
+    const before = mockSkillMasterManagementRecords.length;
+    for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {
+      const current = mockSkillMasterManagementRecords[index];
+      if (current && nameSet.has(current.skillName)) {
+        mockSkillMasterManagementRecords.splice(index, 1);
+      }
+    }
+    const removed = before - mockSkillMasterManagementRecords.length;
+    return ok({
+      removed,
+      skillNames,
+    }, removed);
+  }
+
   if (method === 'get' && path === '/review/expert/check') {
     return ok({
       isExpert: true,
@@ -1459,6 +1738,7 @@ function handleSkillRequest(
         dept4: '平台产品线',
         dept5: '平台工具组',
         dept6: 'DevOps部',
+        dept7: '持续交付组',
       },
     });
   }
@@ -1814,6 +2094,10 @@ function handleApiRequest(
       managedOrgNames: orgStore.filter((o) => managedIds.includes(o.id)).map((o) => o.orgName),
       organizationScope:
         role === 'SUPER_ADMIN' ? 'ALL' : role === 'ORG_ADMIN' ? 'MANAGED_ORG' : 'NONE',
+      departmentOwner: true,
+      departmentDirector: true,
+      ownedDepartmentNames: ['持续交付组'],
+      managedDepartmentNames: ['持续交付组'],
     });
   }
 
