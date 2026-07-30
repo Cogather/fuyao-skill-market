@@ -382,36 +382,6 @@ function findDepartmentCode(nodes: DepartmentNode[], departmentName: string): st
   return '';
 }
 
-function normalizeDepartmentRecords(response: unknown): DepartmentPermissionRecord[] {
-  return responseRows(response).flatMap((item) => {
-    const record = asRecord(item);
-    const departmentName = readText(record.deptName ?? record.departmentName ?? record.name);
-    if (!departmentName) return [];
-    const deptCode =
-      readText(record.deptCode ?? record.departmentCode ?? record.id) ||
-      findDepartmentCode(props.departmentTree, departmentName) ||
-      departmentName;
-    const ownerUserId = readText(record.owner ?? record.ownerUserId);
-    const adminUserIds = readUserIds(record.adminUserIds ?? record.admin_user_ids ?? record.admins);
-    const memberIds = [...new Set([ownerUserId, ...adminUserIds].filter(Boolean))];
-    const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
-    return [
-      {
-        departmentName,
-        deptCode,
-        ownerUserId,
-        updatedAt,
-        members: memberIds.map((userId) => ({
-          userId,
-          userName: '',
-          label: userId === ownerUserId ? userId + '（Owner）' : userId,
-          departmentName: '',
-          grantedAt: updatedAt,
-        })),
-      },
-    ];
-  });
-}
 function responsePayload(response: unknown): unknown {
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
@@ -819,7 +789,7 @@ function optionDepartment(option: SkillPlanningUserOption): string {
   return hwDepartment || option.deptName || legacyDepartment || '';
 }
 
-async function addPermission(option: SkillPlanningUserOption): Promise<void> {
+async function addPermission(option: any): Promise<void> {
   try {
     if (!canEditSelectedDepartment.value) {
       throw new Error('当前用户无权配置该部门管理员');
@@ -829,11 +799,11 @@ async function addPermission(option: SkillPlanningUserOption): Promise<void> {
       const record = selectedRecord.value;
       await updateRemoteAdmins(record, [
         ...record.members.map((member) => member.userId),
-        option.id,
+        option.sAMAccountName,
       ]);
     } else {
       grantDepartmentPlanningPermission(selectedDepartment.value, {
-        userId: option.id,
+        userId: option.sAMAccountName,
         userName: option.chName,
         label: option.label,
         departmentName: optionDepartment(option),
