@@ -600,19 +600,21 @@ async function onScopeLevelChange(): Promise<void> {
     return;
   }
 
-  const previousDepartment = selectedDepartment.value;
   const nextDepartment = setSelectedDepartment(nextPath, true);
   resetProductScope();
   await loadProducts();
-  if (nextDepartment && nextDepartment.name !== previousDepartment) {
+  if (nextDepartment && hasCompleteScope.value) {
     await loadDepartment(nextDepartment.name);
   }
 }
 
-function onProductChange(): void {
+async function onProductChange(): Promise<void> {
   const product = selectedProduct.value;
   scopeForm.offeringId = product?.offeringId ?? '';
   scopeForm.offeringName = product?.offeringName ?? scopeForm.offeringName;
+  if (product && hasCompleteScope.value && selectedDepartment.value) {
+    await loadDepartment(selectedDepartment.value);
+  }
 }
 
 watch(
@@ -724,7 +726,7 @@ async function changeDepartment(path: string[]): Promise<void> {
   scopeDepartmentCommitted.value = true;
   resetProductScope();
   await loadProducts();
-  if (shouldLoadDepartment) {
+  if (shouldLoadDepartment && hasCompleteScope.value) {
     await loadDepartment(nextDepartment.name);
   }
 }
