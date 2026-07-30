@@ -494,23 +494,7 @@ const allFilteredMasterRowsSelected = computed(
     filteredRecords.value.length > 0 &&
     filteredRecords.value.every((record) => selectedMasterIds.value.includes(record.id)),
 );
-const metrics = computed(() => ({
-  total: records.value.length,
-  building: records.value.filter((record) => ['开发中', '联调中'].includes(record.status)).length,
-  complete: records.value.filter((record) => record.status === '已完成').length,
-}));
 
-function associationFor(skillId: string): SkillMasterAssociation {
-  return (
-    associations.value[skillId] ?? {
-      skillId,
-      sceneIds: [],
-      activityIds: [],
-      planningDepartments: [],
-      updatedAt: '',
-    }
-  );
-}
 function looksLikePersonLabel(value: string): boolean {
   return /\s+\S+$/.test(value.trim());
 }
