@@ -1343,6 +1343,7 @@ function goTab(tab: UserInnerTab, replace = false): void {
   const target = {
     name: 'skill-square',
     query: {
+      ...route.query,
       tab,
     },
   };
