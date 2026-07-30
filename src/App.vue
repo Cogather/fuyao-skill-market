@@ -46,7 +46,7 @@ function syncRouteFromParent(payload: Record<string, unknown>): void {
 
   if (payload.tab != null) {
     void router.push({
-      name: 'skill-market',
+      name: 'skill-square',
       query: { tab },
     });
   }

@@ -21,22 +21,22 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/skill-market',
+      redirect: '/skill-market/skill-square',
     },
     {
-      path: '/skill-market',
-      name: 'skill-market',
+      path: '/skill-market/skill-square',
+      name: 'skill-square',
       component: SkillMarketPage,
       beforeEnter: (to) =>
         isLegacyPlanningTab(to.query.tab) ? { name: 'harness-management' } : true,
     },
     {
-      path: '/harness-management',
+      path: '/skill-market/harness-management',
       name: 'harness-management',
       component: HarnessManagementPage,
     },
     {
-      path: '/skill-market/detail/:skillId',
+      path: '/skill-market/skill-detail/:skillId',
       name: 'skill-detail',
       component: SkillDetailPage,
       props: true,

@@ -1341,7 +1341,7 @@ function goTab(tab: UserInnerTab, replace = false): void {
   innerTab.value = tab;
   closeDetailPanel();
   const target = {
-    name: 'skill-market',
+    name: 'skill-square',
     query: {
       tab,
     },
@@ -1633,7 +1633,7 @@ async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean
   versionManageShowOperations.value = true;
   if (syncRoute) {
     await router.push({
-      name: 'skill-market',
+      name: 'skill-square',
       query: {
         ...route.query,
         tab: 'releases',
@@ -2586,7 +2586,7 @@ function closeVersionPanel(): void {
   if (q.releaseSkillId != null || q.releaseView != null) {
     delete q.releaseSkillId;
     delete q.releaseView;
-    void router.replace({ name: 'skill-market', query: q as Record<string, string | string[]> });
+    void router.replace({ name: 'skill-square', query: q as Record<string, string | string[]> });
   }
 }
 
