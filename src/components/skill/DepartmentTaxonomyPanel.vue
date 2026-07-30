@@ -21,6 +21,7 @@ import {
 } from '../../services/skillMarket/skillBaseService';
 import {
   getProductPlanning,
+  httpDimContext,
   type ProductPlanningOption,
 } from '../../services/skillMarket/skillPlanningService';
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
@@ -431,45 +432,8 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
   return records;
 }
 
-function httpDimContext(departmentName: string): {
-  userId: string;
-  dimType: string;
-  dimCode: string;
-  dimName: string;
-} {
-  const userId = props.userId.trim();
-  if (!userId) {
-    throw new Error('请先获取当前用户工号');
-  }
-  if (scopeForm.level === '产品级') {
-    const dimCode = scopeForm.offeringId.trim();
-    const dimName = scopeForm.offeringName.trim();
-    if (!dimCode || !dimName) {
-      throw new Error('请先选择产品');
-    }
-    return {
-      userId,
-      dimType: '产品级',
-      dimCode,
-      dimName,
-    };
-  }
-  const department = departmentOptions.value.find((item) => item.name === departmentName);
-  const dimCode = department?.deptCode.trim() || departmentName.trim();
-  const dimName = departmentName.trim();
-  if (!dimCode || !dimName) {
-    throw new Error('请先选择归属部门');
-  }
-  return {
-    userId,
-    dimType: '部门级',
-    dimCode,
-    dimName,
-  };
-}
-
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
-  const params = httpDimContext(departmentName);
+  const params = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
   const response =
     props.kind === 'scene'
       ? await skillBaseService.getSceneOptionGroups(params)
@@ -525,7 +489,7 @@ function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGr
 }
 
 async function saveHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
-  const context = httpDimContext(departmentName);
+  const context = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
   const items = toHttpTaxonomyItems(draftRecords.value);
   const response =
     props.kind === 'scene'

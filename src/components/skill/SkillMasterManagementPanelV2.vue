@@ -1010,12 +1010,14 @@ async function submitEditor(): Promise<void> {
     }
     const ownerSamAccountName = ownerPicker.selected.sAMAccountName.trim();
     if (!ownerSamAccountName) {
-      editor.error = '\u8d23\u4efb Owner \u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+      editor.error =
+        '\u8d23\u4efb Owner \u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
       return;
     }
     const developOwnerSamAccountName = developOwnerPicker.selected.sAMAccountName.trim();
     if (!developOwnerSamAccountName) {
-      editor.error = '\u5f00\u53d1\u8d23\u4efb\u4eba\u7684\u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+      editor.error =
+        '\u5f00\u53d1\u8d23\u4efb\u4eba\u7684\u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
       return;
     }
     if (!editor.plannedCompleteDate) {

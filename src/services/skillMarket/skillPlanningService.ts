@@ -485,6 +485,47 @@ export async function querySkillPlanningSceneOptionGroups(
   );
 }
 
+export function httpDimContext(
+  departmentName: string,
+  userId: string,
+  scopeForm: any,
+  deptOptions: any,
+): {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+} {
+  if (!userId) {
+    throw new Error('请先获取当前用户工号');
+  }
+  if (scopeForm.level === '产品级') {
+    const dimCode = scopeForm.offeringId.trim();
+    const dimName = scopeForm.offeringName.trim();
+    if (!dimCode || !dimName) {
+      throw new Error('请先选择产品');
+    }
+    return {
+      userId,
+      dimType: '产品级',
+      dimCode,
+      dimName,
+    };
+  }
+  const department = deptOptions.find((item) => item.name === departmentName);
+  const dimCode = department?.deptCode.trim() || departmentName.trim();
+  const dimName = departmentName.trim();
+  if (!dimCode || !dimName) {
+    throw new Error('请先选择归属部门');
+  }
+  return {
+    userId,
+    dimType: '部门级',
+    dimCode,
+    dimName,
+  };
+}
+
 export async function querySkillPlanningActivityOptionGroups(
   params: SkillPlanningTaxonomyOptionParams,
 ): Promise<SkillPlanningOptionGroup[]> {
