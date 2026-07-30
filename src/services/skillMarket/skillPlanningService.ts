@@ -596,17 +596,6 @@ export async function exportSkillPlanningSupplementFile(
   return skillBaseService.exportSkillPlanningSupplement(params);
 }
 
-export async function createSkillPlanning(
-  payload: SkillPlanningPayload,
-): Promise<SkillPlanningItem> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).createSkillPlanning(payload);
-  }
-
-  const response = await skillBaseService.createSkillPlanning(payload);
-  return response;
-}
-
 export async function createSkillPlanningSupplement(
   body: CreateSkillPlanningSupplementBody,
   userId: string,

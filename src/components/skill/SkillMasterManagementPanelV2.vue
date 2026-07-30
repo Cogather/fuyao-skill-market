@@ -1059,9 +1059,10 @@ async function submitEditor(): Promise<void> {
     try {
       const response = await skillBaseService.createSkillMasterManagement(body, params);
       if (response?.meta?.success !== true) {
-        throw new Error(
-          String(response?.meta?.message || response?.message || '新增失败，请稍后重试'),
+        editor.error = String(
+          response?.meta?.message || response?.message || '新增失败，请稍后重试',
         );
+        return;
       }
       closeEditor();
       await reload();

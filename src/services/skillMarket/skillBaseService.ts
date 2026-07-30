@@ -351,21 +351,13 @@ export const skillBaseService = {
     });
   },
 
-  createSkillPlanning: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/add',
-      method: 'post',
-      data: body,
-    });
-  },
-
   // skill 规划补充相关接口
   createSkillPlanningSupplement: (
     body: CreateSkillPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
     return httpRequest.skill<any>({
-      url: '/config/add',
+      url: '/config/supplement/add',
       method: 'post',
       data: body,
       params,
