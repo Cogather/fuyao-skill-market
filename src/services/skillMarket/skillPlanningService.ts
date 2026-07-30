@@ -10,7 +10,6 @@ import type {
 import { normalizeSkillImportResponse, normalizeSkillTransferParams } from './skillTransferService';
 import {
   exportSkillPlanningToExcel,
-  normalizeProgress,
   normalizeText,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
@@ -36,7 +35,6 @@ export type {
   SkillPlanningItem,
   SkillPlanningListResult,
   SkillPlanningPayload,
-  SkillPlanningProgress,
   SkillPlanningQuery,
   SkillPlanningSortField,
   SkillPlanningSortOrder,
@@ -199,6 +197,7 @@ function mapSupplementItemToPlanningItem(
     normalizeText(record.planDeptName) ||
     normalizeText(record.planningDeptName) ||
     (!isProd ? dimName : '');
+  const status = normalizeText(outerRecord.status) || normalizeText(entityRecord.status);
 
   return {
     id: normalizeText(record.id),
@@ -225,7 +224,9 @@ function mapSupplementItemToPlanningItem(
     ),
     planedCompleteDate:
       normalizeText(record.planedCompleteDate) || normalizeText(record.planFinishDate),
-    status: normalizeProgress(record.status),
+    // 查询结果顶层 status 来自关联的 Skill 清单，优先级高于规划实体中的历史状态。
+    // 状态由后端定义，前端仅去除首尾空白并原样展示。
+    status: normalizeText(status),
     l5DeptCode: normalizeText(record.l5DeptCode),
     l5DeptName: normalizeText(record.l5DeptName),
     l4DeptCode: normalizeText(record.l4DeptCode),

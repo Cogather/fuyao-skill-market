@@ -23,7 +23,6 @@ import {
   type SkillPlanningItem,
   type SkillPlanningOptionGroup,
   type SkillPlanningPayload,
-  type SkillPlanningProgress,
   type SkillPlanningQuery,
   type SkillPlanningSortOrder,
 } from '../../services/skillMarket/skillPlanningService';
@@ -65,8 +64,7 @@ type PlanningHeaderFilterKey =
   | 'secondScene'
   | 'activityNodeName'
   | 'subActivityNodeName'
-  | 'level'
-  | 'status';
+  | 'level';
 type PlanningHeaderFilterSelections = Record<PlanningHeaderFilterKey, string[]>;
 type PlanningBatchField = keyof SkillPlanningBatchPatch;
 type PlanningBatchForm = Record<PlanningBatchField, string>;
@@ -101,14 +99,12 @@ const props = withDefaults(
 
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 
-const progressOptions = ref<SkillPlanningProgress[]>(['未开始', '开发中', '已完成']);
 const planningHeaderFilterKeys = [
   'firstScene',
   'secondScene',
   'activityNodeName',
   'subActivityNodeName',
   'level',
-  'status',
 ] as const;
 const pageSizeOptions = [5, 10, 20, 50];
 const batchReadonlyHeaders = [
@@ -142,7 +138,6 @@ const emptyFilters = {
   subActivityNodeName: '',
   level: '部门级',
   offeringName: '',
-  status: '',
   owner: '',
   plannedStartDate: '',
   plannedEndDate: '',
@@ -205,7 +200,6 @@ const headerFilterSelections = reactive<PlanningHeaderFilterSelections>({
   activityNodeName: [],
   subActivityNodeName: [],
   level: [],
-  status: [],
 });
 const plannedFinishSortOrder = ref<SkillPlanningSortOrder | ''>('');
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -569,7 +563,6 @@ const planningHeaderFilterOptions = computed<SkillPlanningFilterOptions>(() => (
   activityNodeName: activityOptions.value,
   subActivityNodeName: subActivityOptions.value,
   level: levelOptions.value,
-  status: progressOptions.value,
   sceneGroups: sceneOptionGroups.value,
   activityGroups: activityOptionGroups.value,
 }));
@@ -624,7 +617,7 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
-    status: '未开始',
+    status: '',
   };
 }
 
@@ -644,7 +637,7 @@ function mapManagementItemToSkillMasterRecord(
   const developOwnerId = String(item.developOwnerId ?? '').trim();
   const dimType = String(item.dimType ?? '').trim();
   const dimName = String(item.dimName ?? '').trim();
-  const statusText = String(item.status ?? '').trim() || '未开始';
+  const statusText = String(item.status ?? '').trim();
   const now = new Date().toISOString();
   return {
     id: String(item.id ?? '').trim() || skillName,
@@ -909,7 +902,6 @@ function createEmptyBatchForm(): PlanningBatchForm {
     planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
-    status: '',
   };
 }
 
@@ -1779,7 +1771,6 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignHeaderFilterQueryValue(nextQuery, 'activityNodeName', 'activityNodeName');
   assignHeaderFilterQueryValue(nextQuery, 'subActivityNodeName', 'subActivityNodeName');
   assignHeaderFilterQueryValue(nextQuery, 'level', 'level');
-  assignHeaderFilterQueryValue(nextQuery, 'status', 'status');
   assignQueryValue(nextQuery, 'level', filterForm.level);
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
   assignQueryValue(nextQuery, 'skillName', filterForm.keyword);
@@ -1913,7 +1904,7 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     l1DeptName: row.l1DeptName,
     developOwner: master?.developOwner || row.developOwner,
     planedCompleteDate: master?.plannedCompleteDate || row.planedCompleteDate,
-    status: master?.status || row.status,
+    status: row.status,
   });
   planningFormDepartmentSegments.value = findPlanningDepartmentPathByName(row.planningDeptName);
   if (!transportIsHttp) {
@@ -2457,15 +2448,6 @@ async function changePageSize() {
   await reloadList();
 }
 
-function progressClass(status: SkillPlanningProgress): string {
-  const classMap: Record<SkillPlanningProgress, string> = {
-    未开始: 'status-idle',
-    开发中: 'status-dev',
-    已完成: 'status-done',
-  };
-  return classMap[status];
-}
-
 let planningScopeInitialLoadStarted = false;
 
 async function initializePlanningScopeAndList(): Promise<void> {
@@ -2974,59 +2956,7 @@ onBeforeUnmount(() => {
                     </span>
                   </button>
                 </th>
-                <th>
-                  <div
-                    class="planning-th-filter"
-                    :class="{
-                      'is-open': isHeaderFilterOpen('status'),
-                      'is-active': headerFilterSelectedCount('status') > 0,
-                    }"
-                  >
-                    <button
-                      type="button"
-                      class="planning-th-filter__trigger"
-                      @click.stop="toggleHeaderFilterMenu('status')"
-                    >
-                      <span>当前进展</span>
-                      <span
-                        class="planning-th-filter__indicator"
-                        :class="{ 'is-filtered': hasHeaderFilterSelection('status') }"
-                        aria-hidden="true"
-                      ></span>
-                    </button>
-                    <div v-if="isHeaderFilterOpen('status')" class="planning-th-filter__menu">
-                      <div class="planning-th-filter__menu-head">
-                        <strong>当前进展</strong>
-                        <button
-                          type="button"
-                          class="planning-th-filter__clear"
-                          :disabled="headerFilterSelectedCount('status') === 0"
-                          @click.stop="clearHeaderFilter('status')"
-                        >
-                          清空
-                        </button>
-                      </div>
-                      <div
-                        v-if="headerFilterOptionList('status').length"
-                        class="planning-th-filter__options"
-                      >
-                        <label
-                          v-for="item in headerFilterOptionList('status')"
-                          :key="`status-${item}`"
-                          class="planning-th-filter__option"
-                        >
-                          <input
-                            type="checkbox"
-                            :checked="headerFilterSelections.status.includes(item)"
-                            @change="toggleHeaderFilterOption('status', item)"
-                          />
-                          <span>{{ item }}</span>
-                        </label>
-                      </div>
-                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                    </div>
-                  </div>
-                </th>
+                <th>当前进展</th>
                 <th class="action-col">操作</th>
               </tr>
             </thead>
@@ -3399,11 +3329,7 @@ onBeforeUnmount(() => {
                 </td>
                 <td>
                   <div class="planning-inline-field">
-                    <select v-model="planningForm.status" class="planning-inline-control">
-                      <option v-for="item in progressOptions" :key="item" :value="item">
-                        {{ item }}
-                      </option>
-                    </select>
+                    <span class="status-pill">{{ planningForm.status || '—' }}</span>
                   </div>
                 </td>
                 <td class="action-col">
@@ -3817,11 +3743,7 @@ onBeforeUnmount(() => {
                     </td>
                     <td>
                       <div class="planning-inline-field">
-                        <select v-model="planningForm.status" class="planning-inline-control">
-                          <option v-for="item in progressOptions" :key="item" :value="item">
-                            {{ item }}
-                          </option>
-                        </select>
+                        <span class="status-pill">{{ planningForm.status || '—' }}</span>
                       </div>
                     </td>
                     <td class="action-col">
@@ -3872,9 +3794,7 @@ onBeforeUnmount(() => {
                     <td>{{ row.developOwner }}</td>
                     <td>{{ row.planedCompleteDate }}</td>
                     <td>
-                      <span class="status-pill" :class="progressClass(row.status)">
-                        {{ row.status }}
-                      </span>
+                      <span class="status-pill">{{ row.status || '—' }}</span>
                     </td>
                     <td class="action-col">
                       <button
@@ -4412,11 +4332,7 @@ onBeforeUnmount(() => {
             </label>
             <label class="planning-field">
               <span>当前进展</span>
-              <select v-model="planningForm.status" disabled>
-                <option v-for="item in progressOptions" :key="item" :value="item">
-                  {{ item }}
-                </option>
-              </select>
+              <input :value="planningForm.status || '—'" type="text" readonly />
             </label>
             <label class="planning-field planning-field--textarea">
               <span>Skill 说明 <em>*</em></span>
@@ -5636,33 +5552,11 @@ onBeforeUnmount(() => {
   min-height: 26px;
   padding: 0 9px;
   border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
   font-size: 12px;
   font-weight: 900;
-}
-
-.status-idle {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.status-dev {
-  background: #eef6ff;
-  color: #2563eb;
-}
-
-.status-test {
-  background: #ecfeff;
-  color: #0891b2;
-}
-
-.status-done {
-  background: #ecfdf5;
-  color: #059669;
-}
-
-.status-delay {
-  background: #fff1f2;
-  color: #e11d48;
 }
 
 .icon-btn {

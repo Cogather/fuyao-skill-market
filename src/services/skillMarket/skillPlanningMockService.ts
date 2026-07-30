@@ -5,7 +5,6 @@ import { listSkillMasterRecords } from './skillMasterManagementService';
 import {
   cloneSkillPlanningItem,
   exportSkillPlanningTemplateToExcel,
-  normalizeProgress,
   normalizeSkillPlanningPayload,
   normalizeText,
   normalizeTextArray,
@@ -638,7 +637,6 @@ function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): Skill
   const planningDeptName = normalizeText(patch.planningDeptName);
   const developOwner = normalizeText(patch.developOwner);
   const planedCompleteDate = normalizeText(patch.planedCompleteDate);
-  const status = normalizeText(patch.status);
 
   if (description) next.description = description;
   if (offeringName) next.offeringName = offeringName;
@@ -647,8 +645,6 @@ function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): Skill
   if (planningDeptName) next.planningDeptName = planningDeptName;
   if (developOwner) next.developOwner = developOwner;
   if (planedCompleteDate) next.planedCompleteDate = planedCompleteDate;
-  if (status) next.status = normalizeProgress(status);
-
   return next;
 }
 

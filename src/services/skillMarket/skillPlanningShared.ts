@@ -1,6 +1,5 @@
 import * as XLSX from 'xlsx';
 
-export type SkillPlanningProgress = '未开始' | '开发中' | '已完成';
 export type SkillPlanningSortField = 'planedCompleteDate';
 export type SkillPlanningSortOrder = 'asc' | 'desc';
 
@@ -24,7 +23,7 @@ export interface SkillPlanningItem {
   planningDeptName: string;
   developOwner: string;
   planedCompleteDate: string;
-  status: SkillPlanningProgress;
+  status: string;
   l5DeptCode?: string;
   l5DeptName?: string;
   l4DeptCode?: string;
@@ -102,7 +101,6 @@ export interface SkillPlanningFilterOptions {
   activityNodeName: string[];
   subActivityNodeName: string[];
   level: string[];
-  status: string[];
   sceneGroups: SkillPlanningOptionGroup[];
   activityGroups: SkillPlanningOptionGroup[];
 }
@@ -130,7 +128,6 @@ export type SkillPlanningBatchPatch = Partial<
     | 'planningDeptName'
     | 'developOwner'
     | 'planedCompleteDate'
-    | 'status'
   >
 >;
 export type SkillPlanningBatchUpdatePayload = { ids: string[] } & SkillPlanningBatchPatch;
@@ -156,7 +153,6 @@ export const skillPlanningFieldMap: Record<string, keyof SkillPlanningPayload> =
   规划部门: 'planningDeptName',
   开发责任人: 'developOwner',
   计划完成时间: 'planedCompleteDate',
-  当前进展: 'status',
 };
 
 export const skillPlanningExportHeaders: Array<keyof typeof skillPlanningFieldMap> = [
@@ -187,8 +183,6 @@ export const skillPlanningImportHeaders: Array<keyof typeof skillPlanningFieldMa
   '规划部门',
 ];
 
-const defaultProgress: SkillPlanningProgress = '未开始';
-
 export function normalizeText(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -197,14 +191,6 @@ function normalizeSkillPlanningLevel(value: unknown): string {
   const level = normalizeText(value);
   if (!level) return '';
   return level === '部门级' ? '部门级' : '产品级';
-}
-
-export function normalizeProgress(value: unknown): SkillPlanningProgress {
-  const text = normalizeText(value);
-  if (['未开始', '开发中', '已完成'].includes(text)) {
-    return text as SkillPlanningProgress;
-  }
-  return defaultProgress;
 }
 
 export function normalizeTextArray(value: unknown): string[] {
@@ -233,7 +219,7 @@ export function createEmptySkillPlanningPayload(): SkillPlanningPayload {
     planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
-    status: defaultProgress,
+    status: '',
   };
 }
 
@@ -269,7 +255,7 @@ export function normalizeSkillPlanningPayload(
     l1DeptName: normalizeText(payload.l1DeptName),
     developOwner: normalizeText(payload.developOwner),
     planedCompleteDate: normalizeText(payload.planedCompleteDate),
-    status: normalizeProgress(payload.status),
+    status: normalizeText(payload.status),
   };
 }
 
@@ -309,7 +295,7 @@ export function normalizeSkillPlanningItem(value: unknown): SkillPlanningItem {
     l1DeptName: normalizeText(record.l1DeptName),
     developOwner: normalizeText(record.developOwner),
     planedCompleteDate: normalizeText(record.planedCompleteDate),
-    status: normalizeProgress(record.status),
+    status: normalizeText(record.status),
   };
 }
 
@@ -321,11 +307,7 @@ export function rowToSkillPlanningPayload(row: Record<string, unknown>): SkillPl
   const payload = createEmptySkillPlanningPayload();
   for (const [label, key] of Object.entries(skillPlanningFieldMap)) {
     if (row[label] !== undefined) {
-      if (key === 'status') {
-        payload.status = normalizeProgress(row[label]);
-      } else {
-        (payload as unknown as Record<string, string>)[key] = normalizeText(row[label]);
-      }
+      (payload as unknown as Record<string, string>)[key] = normalizeText(row[label]);
     }
   }
   return normalizeSkillPlanningPayload(payload);
