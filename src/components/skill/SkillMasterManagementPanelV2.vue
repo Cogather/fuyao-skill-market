@@ -305,7 +305,8 @@ const requiredSkillNamePrefix = computed(() => {
   if (!productName) {
     return '';
   }
-  return productName.endsWith('-') ? productName : productName + '-';
+  const lowercaseProductName = productName.toLowerCase();
+  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -624,7 +625,7 @@ function ensureProductSkillNamePrefix(): boolean {
   }
   const name = editor.name.trim();
   if (!name.startsWith(prefix)) {
-    editor.error = '产品级 Skill 名称需以“' + prefix + '”开头';
+    editor.error = '产品级 Skill 名称需以产品名称的小写形式“' + prefix + '”开头';
     return false;
   }
   if (name.length === prefix.length) {
@@ -1678,7 +1679,7 @@ onBeforeUnmount(() => {
                 maxlength="60"
                 :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
               /><small v-if="requiredSkillNamePrefix" class="field-hint"
-                >需以“{{ requiredSkillNamePrefix }}”开头</small
+                >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
               ></label
             >
             <label class="wide"
