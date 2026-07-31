@@ -51,6 +51,7 @@ const MOCK_VALIDATE_USER = {
 const MOCK_USER_DEPARTMENT_OPTIONS = [
   {
     id: 'w30000001',
+    sAMAccountName: 'w30000001',
     chName: '张三',
     department_l1: '云核装备经营管理部',
     department_l2: '智能终端产品部',
@@ -59,6 +60,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000002',
+    sAMAccountName: 'w30000002',
     chName: '李四',
     department_l1: '云核装备经营管理部',
     department_l2: '质量产品线',
@@ -66,6 +68,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000003',
+    sAMAccountName: 'w30000003',
     chName: '王五',
     department_l1: '数据与智能平台部',
     department_l2: '数据产品线',
@@ -73,18 +76,21 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000004',
+    sAMAccountName: 'w30000004',
     chName: '赵六',
     department_l1: '研发效能产品部',
     department_l2: '知识工程组',
   },
   {
     id: 'w30000005',
+    sAMAccountName: 'w30000005',
     chName: '钱慧',
     department_l1: '云平台产品部',
     department_l2: '发布治理组',
   },
   {
     id: 'w30000006',
+    sAMAccountName: 'w30000006',
     chName: '李明',
     department_l1: '云核装备经营管理部',
     department_l2: '智能终端产品部',
@@ -93,6 +99,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000007',
+    sAMAccountName: 'w30000007',
     chName: '周扬',
     department_l1: '云核装备经营管理部',
     department_l2: '质量产品线',
@@ -100,6 +107,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000008',
+    sAMAccountName: 'w30000008',
     chName: '陈七',
     department_l1: '数据与智能平台部',
     department_l2: '数据产品线',
@@ -107,6 +115,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000009',
+    sAMAccountName: 'w30000009',
     chName: '刘岚',
     department_l1: '研发效能产品部',
     department_l2: '知识工程组',
