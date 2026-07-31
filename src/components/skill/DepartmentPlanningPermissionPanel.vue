@@ -341,12 +341,28 @@ function normalizeUserId(value: unknown): string {
   return readText(value).toLowerCase();
 }
 
+function optionPermissionUserId(option: SkillPlanningUserOption): string {
+  return readText(option.sAMAccountName);
+}
+
+function optionUserKeys(option: SkillPlanningUserOption): string[] {
+  return [...new Set([option.sAMAccountName, option.id].map(normalizeUserId).filter(Boolean))];
+}
+
 function readUserIds(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
       .map((item) => {
         const record = asRecord(item);
-        return readText(record.userId ?? record.employeeNo ?? record.id ?? item);
+        return readText(
+          record.sAMAccountName ??
+            record.samAccountName ??
+            record.userId ??
+            record.adminUserId ??
+            record.employeeNo ??
+            record.id ??
+            item,
+        );
       })
       .filter(Boolean);
   }
@@ -427,15 +443,22 @@ function normalizeHarnessPermissionRecord(
       return;
     }
     const userId = readText(
-      row.userId ?? row.adminUserId ?? row.employeeNo ?? row.sAMAccountName ?? row.id ?? item,
+      row.sAMAccountName ??
+        row.samAccountName ??
+        row.userId ??
+        row.adminUserId ??
+        row.employeeNo ??
+        row.id ??
+        item,
     );
     if (!userId) return;
     addMemberId(userId);
     memberDetails.set(normalizeUserId(userId), {
+      employeeNo: readText(row.employeeNo),
       userName: readText(row.userName ?? row.chName ?? row.employeeName ?? row.name),
       label: readText(row.label),
       departmentName: readText(row.departmentName ?? row.deptName ?? row.department),
-      grantedAt: readText(row.grantedAt ?? row.createTime ?? row.createdAt ?? updatedAt),
+      grantedAt: readText(row.grantedAt ?? row.createTime ?? row.createdAt),
     });
   });
   if (ownerUserId) memberIds.add(ownerUserId);
@@ -472,10 +495,11 @@ function normalizeHarnessPermissionRecord(
         userId;
       return {
         userId,
+        employeeNo: readText(detail.employeeNo),
         userName: readText(detail.userName),
         label: userId === ownerUserId ? `${label} (Owner)` : label,
         departmentName: readText(detail.departmentName),
-        grantedAt: readText(detail.grantedAt) || updatedAt,
+        grantedAt: readText(detail.grantedAt),
       };
     }),
   };
@@ -483,8 +507,7 @@ function normalizeHarnessPermissionRecord(
 
 function cacheUserOptions(options: SkillPlanningUserOption[]): void {
   options.forEach((option) => {
-    const key = normalizeUserId(option.id);
-    if (key) userProfileCache.set(key, option);
+    optionUserKeys(option).forEach((key) => userProfileCache.set(key, option));
   });
 }
 
@@ -496,7 +519,7 @@ async function resolveUserProfile(userId: string): Promise<SkillPlanningUserOpti
   try {
     const options = await querySkillPlanningUsers(userId);
     cacheUserOptions(options);
-    return options.find((option) => normalizeUserId(option.id) === key);
+    return userProfileCache.get(key);
   } catch {
     return undefined;
   }
@@ -527,6 +550,7 @@ async function enrichMemberProfiles(
       const ownerSuffix = member.userId === record.ownerUserId ? '（Owner）' : '';
       return {
         ...member,
+        employeeNo: profile.id || member.employeeNo,
         userName: profile.chName,
         label: `${profile.label}${ownerSuffix}`,
         departmentName: optionDepartment(profile),
@@ -749,8 +773,13 @@ async function searchUsers(keyword = personSearch.value): Promise<void> {
     const options = await querySkillPlanningUsers(text);
     if (requestSeq !== personSearchSeq) return;
     cacheUserOptions(options);
-    const grantedIds = new Set(selectedRecord.value.members.map((member) => member.userId));
-    personSearch.options = options.filter((option) => !grantedIds.has(option.id));
+    const grantedIds = new Set(
+      selectedRecord.value.members.map((member) => normalizeUserId(member.userId)),
+    );
+    personSearch.options = options.filter((option) => {
+      const permissionUserId = normalizeUserId(optionPermissionUserId(option));
+      return Boolean(permissionUserId) && !grantedIds.has(permissionUserId);
+    });
     personSearch.message = personSearch.options.length > 0 ? '' : '暂无可添加的匹配人员';
   } catch (error) {
     if (requestSeq !== personSearchSeq) return;
@@ -789,21 +818,26 @@ function optionDepartment(option: SkillPlanningUserOption): string {
   return hwDepartment || option.deptName || legacyDepartment || '';
 }
 
-async function addPermission(option: any): Promise<void> {
+async function addPermission(option: SkillPlanningUserOption): Promise<void> {
   try {
     if (!canEditSelectedDepartment.value) {
       throw new Error('当前用户无权配置该部门管理员');
+    }
+    const permissionUserId = optionPermissionUserId(option);
+    if (!permissionUserId) {
+      throw new Error('人员信息缺少 sAMAccountName，无法授予权限');
     }
     cacheUserOptions([option]);
     if (transportIsHttp) {
       const record = selectedRecord.value;
       await updateRemoteAdmins(record, [
         ...record.members.map((member) => member.userId),
-        option.sAMAccountName,
+        permissionUserId,
       ]);
     } else {
       grantDepartmentPlanningPermission(selectedDepartment.value, {
-        userId: option.sAMAccountName,
+        userId: permissionUserId,
+        employeeNo: option.id,
         userName: option.chName,
         label: option.label,
         departmentName: optionDepartment(option),
@@ -861,7 +895,7 @@ async function confirmRevoke(): Promise<void> {
 function formatGrantedAt(value: string): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-CN');
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
 watch(
@@ -1001,7 +1035,7 @@ onBeforeUnmount(() => {
                     <strong>{{ member.userName || member.label }}</strong>
                   </div>
                 </td>
-                <td>{{ member.userId }}</td>
+                <td>{{ member.employeeNo ? member.employeeNo : member.userId }}</td>
                 <td>{{ member.departmentName || '—' }}</td>
                 <td>{{ formatGrantedAt(member.grantedAt) }}</td>
                 <td>
