@@ -1,15 +1,29 @@
 import httpRequest from '@/services/skillMarket/request';
 import type {
   ApiEnvelope,
+  BatchDeleteSkillPlanningSupplementBody,
   CreateSkillMasterManagementBody,
+  CreateSkillMasterManagementParams,
+  CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
+  QueryHarnessPermissionUsersParams,
+  QuerySkillPlanningSupplementParams,
+  SkillPlanningSupplementMutationParams,
+  SkillTransferParams,
+  UpdateSkillMasterManagementBody,
+  UpdateSkillMasterManagementParams,
+  UpdateHarnessPermissionUsersRequest,
+  UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
 
 export interface SceneOptionGroupsParams {
-  userId?: string;
-  deptCode?: string;
+  userId: string;
+  /** 部门级 / 产品级 */
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 }
 
 export interface SceneOptionGroupRow {
@@ -21,6 +35,22 @@ export interface SceneOptionGroupRow {
 }
 
 export type SceneOptionGroupsResponse = ApiEnvelope<SceneOptionGroupRow[]> | SceneOptionGroupRow[];
+
+export interface RefreshTaxonomyItem {
+  firstScene?: string;
+  secondScene?: string;
+  activityNodeName?: string;
+  subActivityNodeName?: string;
+  sort: number;
+}
+
+export interface RefreshSceneOptionGroupsBody {
+  scenes: RefreshTaxonomyItem[];
+}
+
+export interface RefreshActivityOptionGroupsBody {
+  activities: RefreshTaxonomyItem[];
+}
 
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
@@ -244,10 +274,19 @@ export const skillBaseService = {
     });
   },
 
-  // 组织查询接口
+  // 组织查询接口（通用，/api/organizations）
   queryOrganizationList: (params?: any): any => {
     return httpRequest.api<any>({
       url: '/organizations',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 评审中心-组织查询接口（/api/skills/personal-batch/organizations）
+  queryReviewOrganizations: (params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/personal-batch/organizations',
       method: 'get',
       params,
     });
@@ -303,24 +342,6 @@ export const skillBaseService = {
    *
    * Skill 规划相关接口
    */
-  // skill查询接口
-  querySkillConfig: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/query',
-      method: 'post',
-      data: body,
-    });
-  },
-
-  // 查询枚举列表
-  getPlanningOption: (params: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/query_option_config',
-      method: 'get',
-      params,
-    });
-  },
-
   // 查询Skill规划部门列表
   querySkillPlanningDepartments: (params: { userId: string }): any => {
     return httpRequest.skill<any>({
@@ -339,35 +360,153 @@ export const skillBaseService = {
     });
   },
 
-  createSkillPlanning: (body: any): any => {
+  // skill 规划补充相关接口
+  createSkillPlanningSupplement: (
+    body: CreateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
     return httpRequest.skill<any>({
-      url: '/config/add',
+      url: '/config/supplement/add',
       method: 'post',
       data: body,
+      params,
     });
   },
 
-  createSkillMasterManagement: (body: CreateSkillMasterManagementBody): any => {
+  querySkillPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/query',
+      method: 'get',
+      params,
+    });
+  },
+
+  updateSkillPlanningSupplement: (
+    body: UpdateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/update',
+      method: 'put',
+      data: body,
+      params,
+    });
+  },
+
+  deleteSkillPlanningSupplement: (id: string | number, userId: string): any => {
+    return httpRequest.skill<any>({
+      url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  batchDeleteSkillPlanningSupplement: (
+    body: BatchDeleteSkillPlanningSupplementBody,
+    userId: string,
+  ): any => {
+    return httpRequest.skill<any>({
+      url: '/config/supplement/batch_delete',
+      method: 'delete',
+      data: body,
+      params: { userId },
+    });
+  },
+
+  importSkillPlanningSupplement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.skill<unknown>({
+      url: '/config/supplement/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportSkillPlanningSupplement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.skill<ApiEnvelope<string>>({
+      url: '/config/supplement/export',
+      method: 'get',
+      params,
+    });
+  },
+
+  // skill 原子能力相关接口
+
+  createSkillMasterManagement: (
+    body: CreateSkillMasterManagementBody,
+    params: CreateSkillMasterManagementParams,
+  ): any => {
     return httpRequest.skill<any>({
       url: '/management/add',
       method: 'post',
       data: body,
+      params,
     });
   },
 
   querySkillMasterManagement: (body: QuerySkillMasterManagementBody): any => {
     return httpRequest.skill<any>({
       url: '/management/query',
-      method: 'post',
-      data: body,
+      method: 'get',
+      params: body,
     });
   },
 
-  batchDeleteSkillMasterManagement: (skillNames: string[]): any => {
+  batchDeleteSkillMasterManagement: (ids: Array<string | number>, userId: string): any => {
     return httpRequest.skill<any>({
       url: '/management/batch_delete',
       method: 'delete',
-      data: skillNames,
+      data: ids,
+      params: { userId },
+    });
+  },
+
+  updateSkillMasterManagement: (
+    body: UpdateSkillMasterManagementBody,
+    params: UpdateSkillMasterManagementParams,
+  ): any => {
+    return httpRequest.skill<any>({
+      url: '/management/update',
+      method: 'put',
+      data: body,
+      params,
+    });
+  },
+
+  deleteSkillMasterManagement: (id: string | number, userId: string): any => {
+    return httpRequest.skill<any>({
+      url: `/management/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  importSkillMasterManagement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.skill<unknown>({
+      url: '/management/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportSkillMasterManagement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.skill<ApiEnvelope<string>>({
+      url: '/management/export',
+      method: 'get',
+      params,
     });
   },
 
@@ -451,6 +590,24 @@ export const skillBaseService = {
     });
   },
 
+  // harness 权限人员列表查询
+  queryHarnessPermissionUsers: (params: QueryHarnessPermissionUsersParams): any => {
+    return httpRequest.api<any>({
+      url: '/harness/permission/query',
+      method: 'get',
+      params,
+    });
+  },
+
+  // harness 权限人员更新
+  updateHarnessPermissionUsers: (body: UpdateHarnessPermissionUsersRequest): any => {
+    return httpRequest.api<any>({
+      url: '/harness/permission/update',
+      method: 'put',
+      data: body,
+    });
+  },
+
   // 查询某个部门的产品列表
   queryHarnessDeptProducts: (params: { deptCode: string }): any => {
     return httpRequest.api<any>({
@@ -460,41 +617,47 @@ export const skillBaseService = {
     });
   },
 
-  // 获取场景列表（超级管理员需要传deptCode）
+  // 获取场景列表
   getSceneOptionGroups: (params: SceneOptionGroupsParams): Promise<SceneOptionGroupsResponse> => {
-    return httpRequest.skill<SceneOptionGroupsResponse>({
-      url: '/config/scene',
+    return httpRequest.api<SceneOptionGroupsResponse>({
+      url: '/scene-activity/scene',
       method: 'get',
-      params, // { userId, deptCode }
+      params, // { userId, dimType, dimCode, dimName }
     });
   },
 
-  // 全量刷新指定部门的场景
-  refreshSceneOptionGroups: (body: any, userId: string): any => {
-    return httpRequest.skill<any>({
-      url: '/config/scene',
+  // 全量刷新场景配置
+  refreshSceneOptionGroups: (
+    body: RefreshSceneOptionGroupsBody,
+    params: SceneOptionGroupsParams,
+  ): Promise<unknown> => {
+    return httpRequest.api<unknown>({
+      url: '/scene-activity/scene',
       method: 'post',
-      params: { userId },
-      data: body, // { deptCode, scenes }
+      params,
+      data: body,
     });
   },
 
   // 获取活动列表
   getActivityOptionGroups: (params: SceneOptionGroupsParams): any => {
-    return httpRequest.skill<any>({
-      url: '/config/activity',
+    return httpRequest.api<any>({
+      url: '/scene-activity/activity',
       method: 'get',
-      params, // { userId, deptCode }
+      params, // { userId, dimType, dimCode, dimName }
     });
   },
 
-  // 全量刷新指定部门的活动
-  refreshActivityOptionGroups: (body: any, userId: string): any => {
-    return httpRequest.skill<any>({
-      url: '/config/activity',
+  // 全量刷新活动配置
+  refreshActivityOptionGroups: (
+    body: RefreshActivityOptionGroupsBody,
+    params: SceneOptionGroupsParams,
+  ): Promise<unknown> => {
+    return httpRequest.api<unknown>({
+      url: '/scene-activity/activity',
       method: 'post',
-      params: { userId },
-      data: body, // { deptCode, activities }
+      params,
+      data: body,
     });
   },
 
@@ -725,79 +888,138 @@ export const skillBaseService = {
   },
 
   /*
-   * 部门 Skill 评审相关接口，统一前缀 /api/dept-review
-   * 详见 docs/部门Skill评审模块_接口设计文档.md
+   * 部门 Skill 评审相关接口，统一前缀 /api/skills/personal-batch
+   * 对接后端 SkillBatchPublishController
    */
 
-  // 1. 看管部门列表（部门筛选用）
-  queryDeptReviewDepartments: (params: any): any => {
+  // 1. 部门树
+  queryDeptReviewDepartments: (): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/departments',
+      url: 'versioninfo/v1/hrms/departments/product/ai',
+      method: 'get',
+    });
+  },
+
+  // 1.1 可视部门树（用于部门评审可选性控制）
+  queryVisibleDepts: (params?: { userId?: string }): any => {
+    return httpRequest.api<any>({
+      url: '/api/skills/personal-batch/visible-depts',
       method: 'get',
       params,
     });
   },
 
-  // 2. 部门评审 Skill 列表（筛选/排序/分页）
+  // 2. 部门评审 Skill 列表 -> 后端 GET /publishable
   queryDeptReviewSkills: (params: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/skills',
+      url: '/api/skills/personal-batch/publishable',
       method: 'get',
       params,
     });
   },
 
-  // 3. 某 Skill 的意见列表（评审意见 + 一键发布申请）
+  // 3. 某 Skill 的意见列表 -> 后端 GET /opinions/{skillId}
   queryDeptSkillComments: (skillId: string, params: any): any => {
     return httpRequest.api<any>({
-      url: `/dept-review/skills/${skillId}/comments`,
+      url: `/api/skills/personal-batch/opinions/${skillId}`,
       method: 'get',
       params,
     });
   },
 
-  // 4. 提交评审意见
+  // 4. 提交评审意见 -> 后端 POST /opinions
   submitDeptSkillComment: (skillId: string, body: any): any => {
     return httpRequest.api<any>({
-      url: `/dept-review/skills/${skillId}/comments`,
+      url: '/api/skills/personal-batch/opinions',
       method: 'post',
-      data: body,
+      data: { skillId, ...body },
     });
   },
 
-  // 5. 创建发布任务（一键发布到组织）
+  // 4.1 关闭（闭环）意见 -> 后端 POST /opinions/{opinionId}/close
+  closeDeptSkillComment: (opinionId: string, userId: string): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}/close`,
+      method: 'post',
+      data: { userId },
+    });
+  },
+
+  // 4.2 添加回复（提出人或 Owner ) -> 后端 POST /opinions/{opinionId}/replies
+  addDeptSkillReply: (
+    opinionId: string,
+    userId: string,
+    userName: string,
+    content: string,
+  ): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}/replies`,
+      method: 'post',
+      data: { userId, userName, content },
+    });
+  },
+
+  // 4.3 删除检视意见（仅提出人） -> 后端 DELETE /opinions/{opinionId}?userId={userId}
+  deleteDeptSkillComment: (opinionId: string, userId: string): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  // 4.4 删除回复（仅回复人） -> 后端 DELETE /opinions/{opinionId}/replies/{replyId}?userId={userId}
+  deleteDeptSkillReply: (opinionId: string, replyId: string, userId: string): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}/replies/${replyId}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  // 5. 创建发布任务 -> 后端 POST /submit-preview
   createDeptPublishTask: (body: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/publish-tasks',
+      url: '/api/skills/personal-batch/submit-preview',
       method: 'post',
       data: body,
     });
   },
 
-  // 6. 处理发布任务（close/reject/approve，统一 action 参数）
-  processDeptPublishTask: (taskId: string, body: any): any => {
-    return httpRequest.api<any>({
-      url: `/dept-review/publish-tasks/${taskId}/process`,
-      method: 'post',
-      data: body,
-    });
-  },
-
-  // 7. 发布任务列表（状态筛选/时间排序/分页）
+  // 6. 发布任务列表 -> 后端 GET /tasks
   queryDeptPublishTasks: (params: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/publish-tasks',
+      url: '/api/skills/personal-batch/tasks',
       method: 'get',
       params,
     });
   },
 
-  // 8. 发布任务详情（含 Skill 清单）
+  // 7. 发布任务详情 -> 后端 GET /tasks/{taskId}
   queryDeptPublishTaskDetail: (taskId: string, params: any): any => {
     return httpRequest.api<any>({
-      url: `/dept-review/publish-tasks/${taskId}`,
+      url: `/api/skills/personal-batch/tasks/${taskId}`,
       method: 'get',
       params,
+    });
+  },
+
+  // 8. Owner一键发布 -> 后端 POST /tasks/{taskId}/publish
+  publishDeptTask: (taskId: string, body: any): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/tasks/${taskId}/publish`,
+      method: 'post',
+      data: body,
+      withCredentials: true,
+    });
+  },
+
+  // 9. 重试失败项 -> 后端 POST /tasks/{taskId}/retry
+  retryDeptTaskFailedItems: (taskId: string, body: any): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/tasks/${taskId}/retry`,
+      method: 'post',
+      data: body,
     });
   },
 };

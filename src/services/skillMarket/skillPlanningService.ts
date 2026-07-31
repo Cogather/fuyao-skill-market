@@ -1,14 +1,20 @@
 import { skillBaseService } from './skillBaseService';
+import type {
+  ApiEnvelope,
+  CreateSkillPlanningSupplementBody,
+  QuerySkillPlanningSupplementParams,
+  SkillPlanningSupplementItemDto,
+  SkillTransferParams,
+  UpdateSkillPlanningSupplementBody,
+} from './apiTypes';
+import { normalizeSkillImportResponse, normalizeSkillTransferParams } from './skillTransferService';
 import {
   exportSkillPlanningToExcel,
-  normalizeProgress,
   normalizeText,
-  normalizeTextArray,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
   type SkillPlanningBatchPatch,
   type SkillPlanningBatchUpdatePayload,
-  type SkillPlanningFilterOptions,
   type SkillPlanningImportResult,
   type SkillPlanningOptionGroup,
   type SkillPlanningItem,
@@ -29,7 +35,6 @@ export type {
   SkillPlanningItem,
   SkillPlanningListResult,
   SkillPlanningPayload,
-  SkillPlanningProgress,
   SkillPlanningQuery,
   SkillPlanningSortField,
   SkillPlanningSortOrder,
@@ -38,8 +43,11 @@ export type {
 type SkillPlanningMockModule = typeof import('./skillPlanningMockService');
 
 export interface SkillPlanningTaxonomyOptionParams {
-  userId?: string;
-  deptCode?: string;
+  userId: string;
+  /** 部门级 / 产品级 */
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 }
 
 function useHttpTransport(): boolean {
@@ -98,34 +106,6 @@ function readOptionText(value: unknown, keys: string[]): string {
     }
   }
   return '';
-}
-
-function normalizeOptionGroups(
-  items: unknown[],
-  parentKeys: string[],
-  childKeys: string[],
-): SkillPlanningOptionGroup[] {
-  const groupMap = new Map<string, string[]>();
-
-  items.forEach((item) => {
-    const parent = readOptionText(item, parentKeys);
-    if (!parent) {
-      return;
-    }
-
-    const children = uniqueTextValues(
-      pickArray(asRecord(item), ['childrenList', 'children', 'childList']).map((child) =>
-        readOptionText(child, childKeys),
-      ),
-    );
-    groupMap.set(parent, uniqueTextValues([...(groupMap.get(parent) ?? []), ...children]));
-  });
-
-  return Array.from(groupMap, ([value, children]) => ({ value, children }));
-}
-
-function flattenGroupChildren(groups: SkillPlanningOptionGroup[]): string[] {
-  return uniqueTextValues(groups.flatMap((group) => group.children));
 }
 
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
@@ -192,38 +172,131 @@ function normalizeTaxonomyOptionGroupsFromRows(
     .map(({ value, children }) => ({ value, children }));
 }
 
-function normalizeHttpFilterOptions(response: unknown): SkillPlanningFilterOptions {
-  const record = asRecord(unwrapResponseData<unknown>(response));
-  const sceneGroups = normalizeOptionGroups(
-    pickArray(record, ['skillSceneVoList']),
-    ['scene', 'firstScene', 'name', 'label', 'value'],
-    ['scene', 'secondScene', 'name', 'label', 'value'],
-  );
-  const activityGroups = normalizeOptionGroups(
-    pickArray(record, ['skillActivityVoList']),
-    ['activityNodeName', 'activity', 'name', 'label', 'value'],
-    ['subActivityNodeName', 'activityNodeName', 'activity', 'name', 'label', 'value'],
-  );
+function mapPersonDisplay(name: unknown, id: unknown, fallback: unknown = ''): string {
+  const joined = `${normalizeText(name)} ${normalizeText(id)}`.trim();
+  return joined || normalizeText(fallback);
+}
+
+function mapSupplementItemToPlanningItem(
+  item: SkillPlanningSupplementItemDto | Record<string, unknown>,
+  fallbackPlanningDepartment: { code: string; name: string },
+): SkillPlanningItem {
+  const outerRecord = asRecord(item);
+  const entityRecord = asRecord(outerRecord.skillConfigEntity);
+  const record = Object.keys(entityRecord).length
+    ? { ...outerRecord, ...entityRecord }
+    : outerRecord;
+  const level = normalizeText(record.level) || normalizeText(record.dimType);
+  const levelUpper = level.toUpperCase();
+  const isProd = levelUpper === 'PROD' || level === '产品级';
+  const dimCode = normalizeText(record.dimCode);
+  const dimName = normalizeText(record.dimName);
+  const skillName = normalizeText(record.name) || normalizeText(record.skillName);
+  const offeringId = normalizeText(record.offeringId) || (isProd ? dimCode : '');
+  const offeringName = normalizeText(record.offeringName) || (isProd ? dimName : '');
+  const planningDeptCode =
+    normalizeText(entityRecord.planDeptCode) ||
+    normalizeText(outerRecord.planDeptCode) ||
+    normalizeText(entityRecord.planningDeptCode) ||
+    normalizeText(outerRecord.planningDeptCode) ||
+    (!isProd ? dimCode : fallbackPlanningDepartment.code);
+  const planningDeptName =
+    normalizeText(entityRecord.planDeptName) ||
+    normalizeText(outerRecord.planDeptName) ||
+    normalizeText(entityRecord.planningDeptName) ||
+    normalizeText(outerRecord.planningDeptName) ||
+    (!isProd ? dimName : fallbackPlanningDepartment.name);
+  const status = normalizeText(outerRecord.status) || normalizeText(entityRecord.status);
 
   return {
-    firstScene: sceneGroups.map((group) => group.value),
-    secondScene: flattenGroupChildren(sceneGroups),
-    activityNodeName: activityGroups.map((group) => group.value),
-    subActivityNodeName: flattenGroupChildren(activityGroups),
-    level: normalizeTextArray(pickArray(record, ['levelList', 'level'])),
-    status: normalizeTextArray(pickArray(record, ['statusList', 'statuses'])).map(
-      normalizeProgress,
+    id: normalizeText(record.id),
+    skillId: normalizeText(record.skillId) || undefined,
+    sceneId: normalizeText(record.sceneId) || undefined,
+    activityId: normalizeText(record.activityId) || undefined,
+    firstScene: normalizeText(record.firstScene),
+    secondScene: normalizeText(record.secondScene),
+    activityNodeName: normalizeText(record.activityNodeName),
+    subActivityNodeName: normalizeText(record.subActivityNodeName),
+    name: skillName,
+    description: normalizeText(record.description) || normalizeText(record.skillDescription),
+    level: isProd ? '产品级' : '部门级',
+    offeringId,
+    offeringName,
+    owner: mapPersonDisplay(record.ownerName, record.ownerId, record.owner),
+    deptCode: normalizeText(record.deptCode) || (!isProd ? dimCode : ''),
+    deptName: normalizeText(record.deptName) || (!isProd ? dimName : ''),
+    planningDeptCode,
+    planningDeptName,
+    developOwner: mapPersonDisplay(
+      record.developOwnerName,
+      record.developOwnerId,
+      record.developOwner,
     ),
-    sceneGroups,
-    activityGroups,
+    planedCompleteDate:
+      normalizeText(record.planedCompleteDate) || normalizeText(record.planFinishDate),
+    // 查询结果顶层 status 来自关联的 Skill 清单，优先级高于规划实体中的历史状态。
+    // 状态由后端定义，前端仅去除首尾空白并原样展示。
+    status: normalizeText(status),
+    l5DeptCode: normalizeText(record.l5DeptCode),
+    l5DeptName: normalizeText(record.l5DeptName),
+    l4DeptCode: normalizeText(record.l4DeptCode),
+    l4DeptName: normalizeText(record.l4DeptName),
+    l3DeptCode: normalizeText(record.l3DeptCode),
+    l3DeptName: normalizeText(record.l3DeptName),
+    l2DeptCode: normalizeText(record.l2DeptCode),
+    l2DeptName: normalizeText(record.l2DeptName),
+    l1DeptCode: normalizeText(record.l1DeptCode),
+    l1DeptName: normalizeText(record.l1DeptName),
+  };
+}
+function normalizeSupplementListResult(
+  response: unknown,
+  fallbackPlanningDepartment: { code: string; name: string },
+): SkillPlanningListResult {
+  assertHttpSuccess(response, 'Skill 规划列表加载失败');
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  const rows = responseRows(response);
+  return {
+    list: rows.map((item) =>
+      mapSupplementItemToPlanningItem(
+        item as SkillPlanningSupplementItemDto,
+        fallbackPlanningDepartment,
+      ),
+    ),
+    total: readNumber(meta.number, rows.length),
   };
 }
 
-function normalizeHttpListResult(response: unknown): SkillPlanningListResult {
-  return {
-    list: response?.data ?? [],
-    total: response?.meta?.number ?? 0,
+function toHttpSkillPlanningSupplementParams(
+  query: SkillPlanningQuery,
+): QuerySkillPlanningSupplementParams {
+  const params: QuerySkillPlanningSupplementParams = {
+    userId: normalizeText(query.userId),
+    dimType: normalizeText(query.dimType),
+    dimCode: normalizeText(query.dimCode),
+    dimName: normalizeText(query.dimName),
   };
+  const keyword = normalizeText(query.keyword);
+  if (keyword) {
+    params.keyword = keyword;
+  }
+  if (typeof query.pageNum === 'number' && Number.isFinite(query.pageNum)) {
+    params.pageNum = query.pageNum;
+  }
+  if (typeof query.pageSize === 'number' && Number.isFinite(query.pageSize)) {
+    params.pageSize = query.pageSize;
+  }
+  return params;
+}
+
+function toSkillTransferParams(query: SkillPlanningQuery): SkillTransferParams {
+  return normalizeSkillTransferParams({
+    userId: normalizeText(query.userId),
+    dimType: normalizeText(query.dimType),
+    dimCode: normalizeText(query.dimCode),
+    dimName: normalizeText(query.dimName),
+  });
 }
 
 function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
@@ -270,6 +343,7 @@ function normalizeProductPlanningOptions(response: unknown): ProductPlanningOpti
 }
 
 const userIdKeys = ['id', 'userId', 'employeeNo', 'account', 'uid', 'empNo', 'Account'];
+const userSamAccountNameKeys = ['sAMAccountName', 'samAccountName'];
 const userNameKeys = [
   'chName',
   'cnName',
@@ -350,6 +424,7 @@ function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOpt
   source.forEach((item) => {
     const record = asRecord(item);
     const id = readFirstText(record, userIdKeys);
+    const sAMAccountName = readFirstText(record, userSamAccountNameKeys);
     const chName = readFirstText(record, userNameKeys);
     const label = [chName, id].filter(Boolean).join(' ');
     if (!label) {
@@ -358,6 +433,7 @@ function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOpt
 
     optionMap.set(label, {
       id,
+      sAMAccountName,
       chName,
       label,
       deptName: readDeepestDepartment(record),
@@ -389,78 +465,26 @@ function normalizeHttpDownloadUrl(response: unknown): string {
   return text;
 }
 
-const planningHeaderFilterHttpParamPairs = [
-  ['firstScene', 'firstScene'],
-  ['secondScene', 'secondScene'],
-  ['activityNodeName', 'activityNodeName'],
-  ['subActivityNodeName', 'subActivityNodeName'],
-  ['level', 'level'],
-  ['status', 'status'],
-] as const satisfies ReadonlyArray<readonly [keyof SkillPlanningQuery, keyof SkillPlanningQuery]>;
-
-const planningHeaderFilterHttpMultiKeys = new Set<string>(
-  planningHeaderFilterHttpParamPairs.map(([, multiKey]) => multiKey),
-);
-
-function assignHttpQueryValue(
-  body: Record<string, unknown>,
-  key: keyof SkillPlanningQuery,
-  value: unknown,
-): void {
-  if (Array.isArray(value)) {
-    const values = normalizeTextArray(value);
-    if (values.length > 0) {
-      body[key] = values.length === 1 ? values[0] : values;
-    }
-    return;
-  }
-
-  if (typeof value === 'number') {
-    body[key] = value;
-    return;
-  }
-
-  const text = normalizeText(value);
-  if (text) {
-    body[key] = text;
-  }
-}
-
-function toHttpSkillPlanningQuery(query: SkillPlanningQuery): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-
-  Object.entries(query).forEach(([key, value]) => {
-    if (planningHeaderFilterHttpMultiKeys.has(key)) {
-      return;
-    }
-    assignHttpQueryValue(body, key as keyof SkillPlanningQuery, value);
-  });
-
-  planningHeaderFilterHttpParamPairs.forEach(([valueKey, multiKey]) => {
-    const values = normalizeTextArray(query[multiKey]);
-    if (values.length > 0) {
-      body[valueKey] = values;
-      return;
-    }
-    assignHttpQueryValue(body, valueKey, query[valueKey]);
-  });
-
-  return body;
-}
-
 function normalizeTaxonomyRequestParams(
-  params: SkillPlanningTaxonomyOptionParams = {},
+  params: SkillPlanningTaxonomyOptionParams,
 ): SkillPlanningTaxonomyOptionParams {
-  const userId = normalizeText(params.userId);
-  const deptCode = normalizeText(params.deptCode);
-  return {
-    ...(userId ? { userId } : {}),
-    ...(deptCode ? { deptCode } : {}),
+  const normalized = {
+    userId: normalizeText(params.userId),
+    dimType: normalizeText(params.dimType),
+    dimCode: normalizeText(params.dimCode),
+    dimName: normalizeText(params.dimName),
   };
+  const missing = Object.entries(normalized)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    throw new Error('场景/活动列表查询缺少必填参数: ' + missing.join(', '));
+  }
+  return normalized;
 }
 
 export async function querySkillPlanningSceneOptionGroups(
-  params: SkillPlanningTaxonomyOptionParams = {},
+  params: SkillPlanningTaxonomyOptionParams,
 ): Promise<SkillPlanningOptionGroup[]> {
   if (!useHttpTransport()) {
     return [];
@@ -477,8 +501,49 @@ export async function querySkillPlanningSceneOptionGroups(
   );
 }
 
+export function httpDimContext(
+  departmentName: string,
+  userId: string,
+  scopeForm: any,
+  deptOptions: any,
+): {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+} {
+  if (!userId) {
+    throw new Error('请先获取当前用户工号');
+  }
+  if (scopeForm.level === '产品级') {
+    const dimCode = scopeForm.offeringId.trim();
+    const dimName = scopeForm.offeringName.trim();
+    if (!dimCode || !dimName) {
+      throw new Error('请先选择产品');
+    }
+    return {
+      userId,
+      dimType: '产品级',
+      dimCode,
+      dimName,
+    };
+  }
+  const department = deptOptions.find((item) => item.name === departmentName);
+  const dimCode = department?.deptCode.trim() || departmentName.trim();
+  const dimName = departmentName.trim();
+  if (!dimCode || !dimName) {
+    throw new Error('请先选择归属部门');
+  }
+  return {
+    userId,
+    dimType: '部门级',
+    dimCode,
+    dimName,
+  };
+}
+
 export async function querySkillPlanningActivityOptionGroups(
-  params: SkillPlanningTaxonomyOptionParams = {},
+  params: SkillPlanningTaxonomyOptionParams,
 ): Promise<SkillPlanningOptionGroup[]> {
   if (!useHttpTransport()) {
     return [];
@@ -496,9 +561,9 @@ export async function querySkillPlanningActivityOptionGroups(
 }
 
 export async function getProductPlanning(
-  offeringName = '',
-  planningDeptName = '',
-  deptCode = '',
+  offeringName: string,
+  planningDeptName: string,
+  deptCode: string,
 ): Promise<ProductPlanningOption[]> {
   const params = {
     offeringName: normalizeText(offeringName),
@@ -508,8 +573,12 @@ export async function getProductPlanning(
     return (await loadMockService()).getProductPlanning(params);
   }
 
-  const normalizedDeptCode = normalizeText(deptCode) || params.planningDeptName;
-  if (!normalizedDeptCode) return [];
+  const normalizedDeptCode = normalizeText(deptCode);
+  if (!normalizedDeptCode || /^(undefined|null)$/i.test(normalizedDeptCode)) {
+    throw new Error(
+      '\u4ea7\u54c1\u5217\u8868\u67e5\u8be2\u7f3a\u5c11\u5f53\u524d\u6240\u9009\u6700\u5c0f\u90e8\u95e8\u7f16\u7801',
+    );
+  }
 
   const response = await skillBaseService.queryHarnessDeptProducts({
     deptCode: normalizedDeptCode,
@@ -533,50 +602,24 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
   return normalizeUserDepartmentOptions(response);
 }
 
-export async function querySkillPlanningFilterOptions(
-  userId = '',
-  taxonomyParams: SkillPlanningTaxonomyOptionParams = {},
-): Promise<SkillPlanningFilterOptions> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).getPlanningOption();
-  }
-
-  const normalizedUserId = normalizeText(taxonomyParams.userId) || normalizeText(userId);
-  const normalizedTaxonomyParams = normalizeTaxonomyRequestParams({
-    ...taxonomyParams,
-    userId: normalizedUserId,
-  });
-  const [response, sceneGroups, activityGroups] = await Promise.all([
-    skillBaseService.getPlanningOption({ userId: normalizedUserId }),
-    querySkillPlanningSceneOptionGroups(normalizedTaxonomyParams),
-    querySkillPlanningActivityOptionGroups(normalizedTaxonomyParams),
-  ]);
-  const options = normalizeHttpFilterOptions(response);
-  return {
-    ...options,
-    firstScene: sceneGroups.map((group) => group.value),
-    secondScene: flattenGroupChildren(sceneGroups),
-    activityNodeName: activityGroups.map((group) => group.value),
-    subActivityNodeName: flattenGroupChildren(activityGroups),
-    sceneGroups,
-    activityGroups,
-  };
-}
-
-export async function querySkillConfig(
+export async function querySkillPlanningSupplement(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillConfig(query);
+    return (await loadMockService()).querySkillPlanningSupplement(query);
   }
 
-  const response = await skillBaseService.querySkillConfig(toHttpSkillPlanningQuery(query));
-  return normalizeHttpListResult(response);
+  const params = toHttpSkillPlanningSupplementParams(query);
+  const response = await skillBaseService.querySkillPlanningSupplement(params);
+  return normalizeSupplementListResult(response, {
+    code: normalizeText(query.deptCode),
+    name: normalizeText(query.planningDeptName),
+  });
 }
 
 export async function exportSkillConfig(body: any): Promise<any> {
   if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillConfig(body);
+    return (await loadMockService()).querySkillPlanningSupplement(body);
   }
 
   const response = await skillBaseService.exportSkillPlanning(body);
@@ -594,20 +637,49 @@ export async function exportAllSkillPlanningList(
   delete nextQuery.pageNum;
   delete nextQuery.pageSize;
 
-  const result = await exportSkillConfig({
+  const result = await querySkillPlanningSupplement({
     ...nextQuery,
+    pageNum: 1,
+    pageSize: 10000,
   });
-  return result;
+  return result.list;
 }
 
-export async function createSkillPlanning(
-  payload: SkillPlanningPayload,
-): Promise<SkillPlanningItem> {
+export async function exportSkillPlanningSupplementFile(
+  query: SkillPlanningQuery,
+): Promise<ApiEnvelope<string> | null> {
+  const params = toSkillTransferParams(query);
   if (!useHttpTransport()) {
-    return (await loadMockService()).createSkillPlanning(payload);
+    const rows = await (await loadMockService()).exportAllSkillPlanningList(query);
+    await exportSkillPlanningToExcel(rows);
+    return null;
   }
+  return skillBaseService.exportSkillPlanningSupplement(params);
+}
 
-  const response = await skillBaseService.createSkillPlanning(payload);
+export async function createSkillPlanningSupplement(
+  body: CreateSkillPlanningSupplementBody,
+  userId: string,
+): Promise<any> {
+  const response = await skillBaseService.createSkillPlanningSupplement(body, {
+    userId,
+    dimCode: body.dimCode,
+    dimType: body.dimType,
+    dimName: body.dimName,
+  });
+  return response;
+}
+
+export async function updateSkillPlanningSupplement(
+  body: UpdateSkillPlanningSupplementBody,
+  userId: string,
+): Promise<any> {
+  const response = await skillBaseService.updateSkillPlanningSupplement(body, {
+    userId,
+    dimCode: body.dimCode,
+    dimType: body.dimType,
+    dimName: body.dimName,
+  });
   return response;
 }
 
@@ -637,35 +709,38 @@ export async function batchUpdateSkillPlanning(
   return ids.length;
 }
 
-export async function deleteSkillPlanning(id: string): Promise<void> {
+export async function deleteSkillPlanning(id: string, userId: string): Promise<void> {
   if (!useHttpTransport()) {
     return (await loadMockService()).deleteSkillPlanning(id);
   }
 
-  await skillBaseService.deleteSkillPlanning({ id });
+  const response = await skillBaseService.deleteSkillPlanningSupplement(id, userId);
+  assertHttpSuccess(response, '删除 Skill 规划失败');
 }
 
-export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
+export async function batchDeleteSkillPlanning(ids: string[], userId: string): Promise<number> {
   if (!useHttpTransport()) {
     return (await loadMockService()).batchDeleteSkillPlanning(ids);
   }
 
-  await skillBaseService.batchDeleteSkillPlanning(ids);
+  const response = await skillBaseService.batchDeleteSkillPlanningSupplement({ ids }, userId);
+  assertHttpSuccess(response, '批量删除 Skill 规划失败');
   return ids.length;
 }
 
-export async function importSkillPlanningFromExcel(file: File): Promise<any> {
+export async function importSkillPlanningFromExcel(
+  file: File,
+  query: SkillPlanningQuery,
+): Promise<SkillPlanningImportResult> {
+  const params = toSkillTransferParams(query);
   if (!useHttpTransport()) {
     return (await loadMockService()).importSkillPlanningFromExcel(file);
   }
 
   const formData = new FormData();
   formData.append('file', file);
-  const response = await skillBaseService.importSkillPlanning(formData);
-  if (response?.meta?.success && response?.data) {
-    return response.data;
-  }
-  return {};
+  const response = await skillBaseService.importSkillPlanningSupplement(formData, params);
+  return normalizeSkillImportResponse(response);
 }
 
 export async function downloadSkillPlanningTemplate(): Promise<string | void> {

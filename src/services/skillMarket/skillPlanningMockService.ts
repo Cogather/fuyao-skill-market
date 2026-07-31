@@ -5,7 +5,6 @@ import { listSkillMasterRecords } from './skillMasterManagementService';
 import {
   cloneSkillPlanningItem,
   exportSkillPlanningTemplateToExcel,
-  normalizeProgress,
   normalizeSkillPlanningPayload,
   normalizeText,
   normalizeTextArray,
@@ -14,9 +13,7 @@ import {
   skillPlanningImportHeaders,
   type ProductPlanningOption,
   type SkillPlanningBatchPatch,
-  type SkillPlanningFilterOptions,
   type SkillPlanningImportResult,
-  type SkillPlanningOptionGroup,
   type SkillPlanningItem,
   type SkillPlanningListResult,
   type SkillPlanningPayload,
@@ -485,28 +482,6 @@ function sortItems(items: SkillPlanningItem[], query: SkillPlanningQuery): Skill
   return sorted;
 }
 
-function distinctValuesInOrder(values: string[]): string[] {
-  return [...new Set(values.map((value) => normalizeText(value)).filter(Boolean))];
-}
-
-function createOptionGroups(
-  parentKey: 'firstScene' | 'activityNodeName',
-  childKey: 'secondScene' | 'subActivityNodeName',
-): SkillPlanningOptionGroup[] {
-  const groupMap = new Map<string, string[]>();
-
-  skillPlanningItems.forEach((item) => {
-    const parent = normalizeText(item[parentKey]);
-    const child = normalizeText(item[childKey]);
-    if (!parent) {
-      return;
-    }
-    groupMap.set(parent, distinctValuesInOrder([...(groupMap.get(parent) ?? []), child]));
-  });
-
-  return Array.from(groupMap, ([value, children]) => ({ value, children }));
-}
-
 function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   const keyword = normalizeText(query.keyword).toLowerCase();
   const offeringName = normalizeText(query.offeringName);
@@ -564,24 +539,7 @@ function filterItems(query: SkillPlanningQuery): SkillPlanningItem[] {
   });
 }
 
-export async function getPlanningOption(): Promise<SkillPlanningFilterOptions> {
-  const sceneGroups = createOptionGroups('firstScene', 'secondScene');
-  const activityGroups = createOptionGroups('activityNodeName', 'subActivityNodeName');
-  const hydratedItems = getHydratedSkillPlanningItems();
-
-  return {
-    firstScene: sceneGroups.map((group) => group.value),
-    secondScene: distinctValuesInOrder(sceneGroups.flatMap((group) => group.children)),
-    activityNodeName: activityGroups.map((group) => group.value),
-    subActivityNodeName: distinctValuesInOrder(activityGroups.flatMap((group) => group.children)),
-    level: distinctValuesInOrder(hydratedItems.map((item) => item.level)),
-    status: distinctValuesInOrder(hydratedItems.map((item) => item.status)),
-    sceneGroups,
-    activityGroups,
-  };
-}
-
-export async function querySkillConfig(
+export async function querySkillPlanningSupplement(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
   const pageNum = Math.max(1, Number(query.pageNum ?? 1));
@@ -679,7 +637,6 @@ function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): Skill
   const planningDeptName = normalizeText(patch.planningDeptName);
   const developOwner = normalizeText(patch.developOwner);
   const planedCompleteDate = normalizeText(patch.planedCompleteDate);
-  const status = normalizeText(patch.status);
 
   if (description) next.description = description;
   if (offeringName) next.offeringName = offeringName;
@@ -688,8 +645,6 @@ function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): Skill
   if (planningDeptName) next.planningDeptName = planningDeptName;
   if (developOwner) next.developOwner = developOwner;
   if (planedCompleteDate) next.planedCompleteDate = planedCompleteDate;
-  if (status) next.status = normalizeProgress(status);
-
   return next;
 }
 

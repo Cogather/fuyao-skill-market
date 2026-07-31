@@ -499,6 +499,26 @@ export type SkillPlanningDepartmentAdminsBody = {
   l6DeptCode: string | null;
   l6DeptName: string | null;
 };
+export type QueryHarnessPermissionUsersParams = {
+  userId: string;
+  l3DeptCode: string;
+  l4DeptCode: string;
+  l5DeptCode: string;
+  l6DeptCode: string;
+};
+
+export type UpdateHarnessPermissionUsersRequest = {
+  adminUserIds: string;
+  l3DeptCode: string;
+  l3DeptName: string;
+  l4DeptCode: string;
+  l4DeptName: string;
+  l5DeptCode: string;
+  l5DeptName: string;
+  l6DeptCode: string;
+  l6DeptName: string;
+  userId: string;
+};
 
 /**
  * 市场总览等部门级联：全量部门树（设计文档未定稿）。
@@ -634,12 +654,16 @@ export type ExpertReviewSubmitBody = {
 };
 
 /** Skill 清单新增（POST /management/add） */
-export type CreateSkillMasterManagementBody = {
-  skillName: string;
-  skillDescription: string;
+export type CreateSkillMasterManagementParams = {
+  userId: string;
   dimType: string;
   dimCode: string;
   dimName: string;
+};
+
+export type CreateSkillMasterManagementBody = {
+  skillName: string;
+  skillDescription: string;
   ownerName: string;
   ownerId: string;
   developOwnerName: string;
@@ -649,9 +673,11 @@ export type CreateSkillMasterManagementBody = {
 
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
 export type QuerySkillMasterManagementBody = {
+  userId: string;
   keyword?: string;
   dimType?: string;
   dimCode?: string;
+  dimName?: string;
   statusList?: string[];
   ownerId?: string;
   developOwnerId?: string;
@@ -663,6 +689,7 @@ export type QuerySkillMasterManagementBody = {
 
 /** Skill 清单查询行 */
 export type SkillMasterManagementItemDto = {
+  id: string | number;
   skillName: string;
   skillDescription: string;
   dimType: string;
@@ -678,4 +705,175 @@ export type SkillMasterManagementItemDto = {
   updatedAt?: number[] | string | null;
   skillMatchId?: string | null;
   skillMatchLevel?: string | null;
+};
+
+/** Skill 清单更新（PUT /management/update） */
+export type UpdateSkillMasterManagementParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+};
+
+export type UpdateSkillMasterManagementBody = {
+  id: string | number;
+  skillName?: string;
+  skillDescription?: string;
+  ownerName?: string;
+  ownerId?: string;
+  developOwnerName?: string;
+  developOwnerId?: string;
+  planFinishDate?: string;
+};
+
+/** Shared query params for Skill planning/master import and export. */
+export type SkillTransferParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+};
+
+export type SkillPlanningSupplementEntity = {
+  activityNodeName: string;
+  firstScene: string;
+  level: string;
+  name: string;
+  offeringId: string;
+  offeringName: string;
+  secondScene: string;
+  subActivityNodeName: string;
+  description: string;
+  owner: string;
+  developOwner: string;
+  planedCompleteDate: string;
+  status: string;
+  deptCode: string;
+  deptName: string;
+  planDeptCode: string;
+  planDeptName: string;
+  l5DeptCode: string;
+  l5DeptName: string;
+  l4DeptCode: string;
+  l4DeptName: string;
+  l3DeptCode: string;
+  l3DeptName: string;
+  l2DeptCode: string;
+  l2DeptName: string;
+  l1DeptCode: string;
+  l1DeptName: string;
+  createTime: string;
+  updateTime: string;
+};
+
+/** Skill 规划补充新增（POST /config/add） */
+export type SkillPlanningSupplementMutationParams = {
+  userId: string;
+  dimCode: string;
+  dimType: string;
+  dimName: string;
+};
+
+export type CreateSkillPlanningSupplementBody = {
+  activityNodeName: string;
+  dimCode: string;
+  dimName: string;
+  dimType: string;
+  firstScene: string;
+  secondScene: string;
+  skillName: string;
+  subActivityNodeName: string;
+};
+
+/** Skill 规划补充查询（POST /config/query） */
+export type QuerySkillPlanningSupplementParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  keyword?: string;
+  pageNum?: number;
+  pageSize?: number;
+};
+
+export type QuerySkillPlanningSupplementQuery = {
+  activityNodeName?: string[];
+  departmentL3?: string;
+  departmentL4?: string;
+  departmentL5?: string;
+  departmentL6?: string;
+  departmentL7?: string;
+  departmentL8?: string;
+  deptCode?: string;
+  deptCodes?: string[];
+  firstScene?: string[];
+  keyword?: string;
+  level?: string[];
+  pageNum?: number;
+  pageSize?: number;
+  secondScene?: string[];
+  sortBy?: string;
+  sortOrder?: string;
+  status?: string[];
+  subActivityNodeName?: string[];
+};
+
+export type QuerySkillPlanningSupplementBody = {
+  query: QuerySkillPlanningSupplementQuery;
+};
+
+/** Skill 规划补充列表行（查询返回；展示字段可能随 Skill 清单关联带回） */
+export type SkillPlanningSupplementItemDto = {
+  id: string | number;
+  skillName?: string;
+  name?: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
+  level?: string;
+  offeringId?: string;
+  offeringName?: string;
+  skillDescription?: string;
+  description?: string;
+  ownerName?: string;
+  ownerId?: string;
+  owner?: string;
+  developOwnerName?: string;
+  developOwnerId?: string;
+  developOwner?: string;
+  status?: string;
+  planFinishDate?: string;
+  planedCompleteDate?: string;
+  deptCode?: string;
+  deptName?: string;
+  planDeptCode?: string;
+  planDeptName?: string;
+  planningDeptCode?: string;
+  planningDeptName?: string;
+  l5DeptCode?: string;
+  l5DeptName?: string;
+  l4DeptCode?: string;
+  l4DeptName?: string;
+  l3DeptCode?: string;
+  l3DeptName?: string;
+  l2DeptCode?: string;
+  l2DeptName?: string;
+  l1DeptCode?: string;
+  l1DeptName?: string;
+  createTime?: string;
+  updateTime?: string;
+};
+
+/** Skill 规划补充更新（PUT /config/update） */
+export type UpdateSkillPlanningSupplementBody = CreateSkillPlanningSupplementBody & {
+  id: string | number;
+};
+
+/** Skill 规划补充批量删除（DELETE /config/batch_delete） */
+export type BatchDeleteSkillPlanningSupplementBody = {
+  ids: Array<string | number>;
 };

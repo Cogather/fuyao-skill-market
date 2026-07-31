@@ -410,7 +410,7 @@ async function downloadCurrentSkill(): Promise<void> {
 
 function goBackToMarket(): void {
   void router.push({
-    name: 'skill-market',
+    name: 'skill-square',
     query: {
       tab: sourceTab.value,
     },

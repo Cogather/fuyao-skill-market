@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -20,6 +21,7 @@ import type {
 } from '../../services/skillMarket/apiTypes';
 import type { ExpertDepartmentPermission } from '../../services/skillMarket/expertDepartmentPermission';
 import { skillBaseService } from '@/services/skillMarket/skillBaseService';
+import DeptSkillReviewPanel from './DeptSkillReviewPanel.vue';
 
 type ReviewDepartmentTreeNode = {
   id?: string;
@@ -30,6 +32,7 @@ type ReviewDepartmentTreeNode = {
 const props = withDefaults(
   defineProps<{
     userId?: string;
+    userName?: string;
     departmentTree?: ReviewDepartmentTreeNode[];
     expertDepartmentPermission?: ExpertDepartmentPermission;
     expertCheckLoaded?: boolean;
@@ -37,6 +40,7 @@ const props = withDefaults(
   }>(),
   {
     userId: '',
+    userName: '',
     departmentTree: () => [],
     expertCheckLoaded: true,
   },
@@ -121,6 +125,37 @@ type ExpertDimensionFormState = ExpertReviewDimensionDto & {
   reasonError: string;
 };
 const activeReviewDetailTab = ref<ReviewDetailTab>('AI评审');
+
+const router = useRouter();
+const reviewCenterInnerTab = ref<'monthly' | 'dept'>(
+  (router.currentRoute.value.query.sub as 'monthly' | 'dept') ??
+    (props.isExpertReviewer ? 'monthly' : 'dept'),
+);
+
+function switchReviewTab(sub: 'monthly' | 'dept'): void {
+  reviewCenterInnerTab.value = sub;
+  const query = { ...router.currentRoute.value.query, sub };
+  void router.replace({ query });
+}
+
+// 监听路由 sub 参数变化（从详情页返回时恢复子 tab）
+watch(
+  () => router.currentRoute.value.query.sub,
+  (sub) => {
+    if (sub === 'monthly' || sub === 'dept') {
+      reviewCenterInnerTab.value = sub as 'monthly' | 'dept';
+    }
+  },
+);
+
+const reviewHeaderTitle = computed(() =>
+  reviewCenterInnerTab.value === 'monthly' ? '优秀 Skill 评审' : '部门 Skill 评审',
+);
+const reviewHeaderDesc = computed(() =>
+  reviewCenterInnerTab.value === 'monthly'
+    ? '建议专家从创新设计、场景价值、工程质量等方面对 Skill 进行评审'
+    : '浏览看管部门下的个人级 Skill，评审后一键发布到组织，并跟踪发布任务审批进度',
+);
 
 const AI_REVIEW_TONES = ['green', 'blue', 'amber', 'purple', 'red'] as const;
 type AiReviewTone = (typeof AI_REVIEW_TONES)[number];
@@ -271,7 +306,7 @@ function serviceMessage(value: unknown, fallback: string): string {
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
-function showToast(message: string, ms = 3000): void {
+function showToast(message: string, ms = 5000): void {
   toast.value = message;
   if (toastTimer) {
     window.clearTimeout(toastTimer);
@@ -1712,9 +1747,30 @@ watch(
 );
 
 onMounted(async () => {
+  // 将当前子 tab 同步到路由（包括默认值），确保详情页打开/回退时 sub 参数存在
+  const currentSub = reviewCenterInnerTab.value;
+  if (!router.currentRoute.value.query.sub) {
+    void router.replace({
+      path: router.currentRoute.value.path,
+      query: { ...router.currentRoute.value.query, sub: currentSub },
+    });
+  }
   await initializeReviewCenterTasks();
   document.addEventListener('mousedown', handleReviewMonthOutsideClick);
 });
+
+watch(
+  () => props.isExpertReviewer,
+  (isExpert) => {
+    if (
+      isExpert &&
+      !router.currentRoute.value.query.sub &&
+      reviewCenterInnerTab.value !== 'monthly'
+    ) {
+      switchReviewTab('monthly');
+    }
+  },
+);
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleReviewMonthOutsideClick);
@@ -1729,12 +1785,31 @@ onBeforeUnmount(() => {
 <template>
   <header class="admin-panel-head management-panel-head">
     <div>
-      <h2 class="panel-title" style="font-size: 42px">优秀 Skill 评审</h2>
-      <p class="all-desc">建议专家从创新设计、场景价值、工程质量等方面对 Skill 进行评审</p>
+      <h2 class="panel-title" style="font-size: 42px">{{ reviewHeaderTitle }}</h2>
+      <p class="all-desc">{{ reviewHeaderDesc }}</p>
     </div>
   </header>
   <div class="review-center-page">
-    <div class="review-shell">
+    <div class="review-center-tabs">
+      <button
+        v-if="props.isExpertReviewer"
+        type="button"
+        class="review-center-tab"
+        :class="{ on: reviewCenterInnerTab === 'monthly' }"
+        @click="switchReviewTab('monthly')"
+      >
+        月度评审
+      </button>
+      <button
+        type="button"
+        class="review-center-tab"
+        :class="{ on: reviewCenterInnerTab === 'dept' }"
+        @click="switchReviewTab('dept')"
+      >
+        部门评审
+      </button>
+    </div>
+    <div v-if="reviewCenterInnerTab === 'monthly'" class="review-shell">
       <section class="review-board" aria-label="评审任务">
         <div class="board-toolbar">
           <div class="board-toolbar__title">
@@ -2343,7 +2418,10 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
-    <div v-if="toast" class="review-toast" role="status" aria-live="polite">{{ toast }}</div>
+
+    <Teleport to="body">
+      <div v-if="toast" class="review-toast" role="status" aria-live="polite">{{ toast }}</div>
+    </Teleport>
 
     <Teleport to="body">
       <div
@@ -2695,6 +2773,15 @@ onBeforeUnmount(() => {
           </section>
         </div>
       </section>
+    </div>
+    <div v-else-if="reviewCenterInnerTab === 'dept'" class="dept-review-content">
+      <DeptSkillReviewPanel
+        :userId="props.userId"
+        :user-name="props.userName"
+        :departmentTree="props.departmentTree"
+        @open-skill-detail="(skillId: string) => emit('open-detail', skillId)"
+        @toast="showToast"
+      />
     </div>
   </div>
 </template>

@@ -167,8 +167,18 @@ export const mockDeptSkills: DeptSkillRow[] = [
     aiScore: 88,
     aiDimensions: [
       { dimensionId: 'ai-1', dimensionName: '代码规范', score: 90, reason: '结构清晰，命名规范。' },
-      { dimensionId: 'ai-2', dimensionName: '文档完整度', score: 86, reason: 'SKILL.md 覆盖完整，缺少部分示例。' },
-      { dimensionId: 'ai-3', dimensionName: '复用价值', score: 88, reason: '通用性强，适合多场景复用。' },
+      {
+        dimensionId: 'ai-2',
+        dimensionName: '文档完整度',
+        score: 86,
+        reason: 'SKILL.md 覆盖完整，缺少部分示例。',
+      },
+      {
+        dimensionId: 'ai-3',
+        dimensionName: '复用价值',
+        score: 88,
+        reason: '通用性强，适合多场景复用。',
+      },
     ],
     expertScore: 92,
     expertConclusion: '通过',
@@ -468,9 +478,7 @@ export const mockPublishTasks: PublishTask[] = [
     targetOrgName: '扶摇 IT 装备部组织',
     orgOwner: '张三（zhangsan）',
     status: 'pending_owner',
-    skills: [
-      { id: 'sk-1005', name: 'K8s 巡检 Skill', version: 'v3.0.1', author: '周婷' },
-    ],
+    skills: [{ id: 'sk-1005', name: 'K8s 巡检 Skill', version: 'v3.0.1', author: '周婷' }],
     createdAt: '2026-07-18 09:35',
     completedAt: null,
     creator: 'A10023',
@@ -483,9 +491,7 @@ export const mockPublishTasks: PublishTask[] = [
     targetOrgName: '平台开发部组织',
     orgOwner: '李四（lisi）',
     status: 'rejected',
-    skills: [
-      { id: 'sk-970', name: '代码评审助手', version: 'v1.1.0', author: '孙强' },
-    ],
+    skills: [{ id: 'sk-970', name: '代码评审助手', version: 'v1.1.0', author: '孙强' }],
     createdAt: '2026-07-05 14:10',
     completedAt: '2026-07-06 10:05',
     creator: 'A10087',

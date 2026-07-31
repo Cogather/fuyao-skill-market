@@ -7,6 +7,10 @@ import {
   type DepartmentPlanningPermissionMember,
   type DepartmentPlanningPermissionRecord,
 } from '../../services/skillMarket/departmentPlanningPermissionService';
+import type {
+  QueryHarnessPermissionUsersParams,
+  UpdateHarnessPermissionUsersRequest,
+} from '../../services/skillMarket/apiTypes';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
@@ -63,6 +67,7 @@ const props = withDefaults(
 );
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const DEPARTMENT_PERMISSION_MAX_DEPTH = 3;
 const records = ref<DepartmentPermissionRecord[]>([]);
 const selectedDepartmentPath = ref<string[]>([]);
 const toast = ref('');
@@ -148,6 +153,43 @@ function fallbackLevelPath(path: string[], codePath: string[] = []): DepartmentP
   }));
 }
 
+function normalizedDepartmentLevelPath(option: DepartmentOption): DepartmentPathSegment[] {
+  const firstLevel = option.levelPath[0]?.level ?? 0;
+  return firstLevel > 0 && firstLevel < 3
+    ? fallbackLevelPath(
+        option.path,
+        option.levelPath.map((segment) => segment.deptCode),
+      )
+    : option.levelPath;
+}
+
+function mergeAuthorizedDepartmentCodes(
+  option: DepartmentOption,
+  department: HarnessAuthorizedDepartment,
+): DepartmentPathSegment[] {
+  const apiCodes = department.codePath.map(readText);
+  if (!apiCodes.some(Boolean)) return option.levelPath;
+
+  const normalizedLevelPath = normalizedDepartmentLevelPath(option);
+  const explicitDeepestLevel = Number(department.levelNo);
+  const deepestLevel =
+    Number.isFinite(explicitDeepestLevel) && explicitDeepestLevel > 0
+      ? explicitDeepestLevel
+      : (normalizedLevelPath.at(-1)?.level ?? 0);
+  const firstCodeLevel = deepestLevel - apiCodes.length + 1;
+  const codeByLevel = new Map<number, string>();
+
+  apiCodes.forEach((code, index) => {
+    if (code) codeByLevel.set(firstCodeLevel + index, code);
+  });
+
+  return option.levelPath.map((segment, index) => ({
+    ...segment,
+    deptCode:
+      codeByLevel.get(normalizedLevelPath[index]?.level ?? segment.level) || segment.deptCode,
+  }));
+}
+
 const normalizedOwnerDepartmentPath = computed(() =>
   normalizeDepartmentPath(props.departmentPermissionPath),
 );
@@ -165,21 +207,21 @@ const ownerDepartmentOptions = computed<DepartmentOption[]>(() => {
         (item) => item.name === department.deptName && item.path.at(-1) === normalizedPath.at(-1),
       );
     if (option) {
-      const levelPath = option.levelPath.map((segment, index) => ({
-        ...segment,
-        deptCode: readText(department.codePath[index]) || segment.deptCode,
-      }));
+      const levelPath = mergeAuthorizedDepartmentCodes(option, department);
       return [{ ...option, deptCode: department.deptCode || option.deptCode, levelPath }];
     }
     if (!normalizedPath.length) return [];
-    const levelPath = fallbackLevelPath(normalizedPath, department.codePath);
+    const fallbackOption: DepartmentOption = {
+      name: department.deptName || normalizedPath.at(-1) || '',
+      deptCode: department.deptCode || department.deptName,
+      level: department.levelNo || normalizedPath.length + 2,
+      path: normalizedPath,
+      levelPath: fallbackLevelPath(normalizedPath),
+    };
     return [
       {
-        name: department.deptName || normalizedPath.at(-1) || '',
-        deptCode: department.deptCode || department.deptName,
-        level: levelPath.at(-1)?.level ?? normalizedPath.length,
-        path: normalizedPath,
-        levelPath,
+        ...fallbackOption,
+        levelPath: mergeAuthorizedDepartmentCodes(fallbackOption, department),
       },
     ];
   });
@@ -199,17 +241,26 @@ const ownerDepartmentOptions = computed<DepartmentOption[]>(() => {
     return true;
   });
 });
-const defaultOwnerDepartmentOption = computed(() => ownerDepartmentOptions.value[0] ?? null);
+const selectableOwnerDepartmentOptions = computed(() =>
+  ownerDepartmentOptions.value.filter(
+    (option) => option.path.length <= DEPARTMENT_PERMISSION_MAX_DEPTH,
+  ),
+);
+const defaultOwnerDepartmentOption = computed(
+  () => selectableOwnerDepartmentOptions.value[0] ?? null,
+);
 const configurableDepartmentPaths = computed(() =>
-  ownerDepartmentOptions.value.map((option) => [...option.path]),
+  selectableOwnerDepartmentOptions.value.map((option) => [...option.path]),
 );
 const ownerManageableDepartmentOptions = computed<DepartmentOption[]>(() => {
-  const options = allDepartmentOptions.value.filter((option) =>
-    ownerDepartmentOptions.value.some((ownerOption) =>
-      departmentPathStartsWith(option.path, ownerOption.path),
-    ),
+  const options = allDepartmentOptions.value.filter(
+    (option) =>
+      option.path.length <= DEPARTMENT_PERMISSION_MAX_DEPTH &&
+      selectableOwnerDepartmentOptions.value.some((ownerOption) =>
+        departmentPathStartsWith(option.path, ownerOption.path),
+      ),
   );
-  ownerDepartmentOptions.value.forEach((ownerOption) => {
+  selectableOwnerDepartmentOptions.value.forEach((ownerOption) => {
     if (!options.some((option) => sameDepartmentPath(option.path, ownerOption.path))) {
       options.push(ownerOption);
     }
@@ -229,7 +280,7 @@ const selectedDepartmentOption = computed(
 );
 const selectedOwnerDepartmentOption = computed(
   () =>
-    [...ownerDepartmentOptions.value]
+    [...selectableOwnerDepartmentOptions.value]
       .sort((left, right) => right.path.length - left.path.length)
       .find((option) => departmentPathStartsWith(selectedDepartmentPath.value, option.path)) ??
     null,
@@ -290,12 +341,28 @@ function normalizeUserId(value: unknown): string {
   return readText(value).toLowerCase();
 }
 
+function optionPermissionUserId(option: SkillPlanningUserOption): string {
+  return readText(option.sAMAccountName);
+}
+
+function optionUserKeys(option: SkillPlanningUserOption): string[] {
+  return [...new Set([option.sAMAccountName, option.id].map(normalizeUserId).filter(Boolean))];
+}
+
 function readUserIds(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
       .map((item) => {
         const record = asRecord(item);
-        return readText(record.userId ?? record.employeeNo ?? record.id ?? item);
+        return readText(
+          record.sAMAccountName ??
+            record.samAccountName ??
+            record.userId ??
+            record.adminUserId ??
+            record.employeeNo ??
+            record.id ??
+            item,
+        );
       })
       .filter(Boolean);
   }
@@ -331,41 +398,116 @@ function findDepartmentCode(nodes: DepartmentNode[], departmentName: string): st
   return '';
 }
 
-function normalizeDepartmentRecords(response: unknown): DepartmentPermissionRecord[] {
-  return responseRows(response).flatMap((item) => {
-    const record = asRecord(item);
-    const departmentName = readText(record.deptName ?? record.departmentName ?? record.name);
-    if (!departmentName) return [];
-    const deptCode =
-      readText(record.deptCode ?? record.departmentCode ?? record.id) ||
-      findDepartmentCode(props.departmentTree, departmentName) ||
-      departmentName;
-    const ownerUserId = readText(record.owner ?? record.ownerUserId);
-    const adminUserIds = readUserIds(record.adminUserIds ?? record.admin_user_ids ?? record.admins);
-    const memberIds = [...new Set([ownerUserId, ...adminUserIds].filter(Boolean))];
-    const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
-    return [
-      {
-        departmentName,
-        deptCode,
-        ownerUserId,
-        updatedAt,
-        members: memberIds.map((userId) => ({
-          userId,
-          userName: '',
-          label: userId === ownerUserId ? userId + '（Owner）' : userId,
-          departmentName: '',
-          grantedAt: updatedAt,
-        })),
-      },
-    ];
+function responsePayload(response: unknown): unknown {
+  const responseRecord = asRecord(response);
+  const meta = asRecord(responseRecord.meta);
+  if (meta.success === false) {
+    throw new Error(readText(responseRecord.message) || 'Permission users load failed');
+  }
+  return responseRecord.data ?? response;
+}
+
+function pickResponseArray(value: unknown): unknown[] {
+  const record = asRecord(value);
+  return Array.isArray(value)
+    ? value
+    : (['list', 'records', 'items', 'rows', 'users', 'adminUsers']
+        .map((key) => record[key])
+        .find((candidate): candidate is unknown[] => Array.isArray(candidate)) ?? []);
+}
+
+function normalizeHarnessPermissionRecord(
+  response: unknown,
+  option: DepartmentOption,
+): DepartmentPermissionRecord {
+  const payload = responsePayload(response);
+  const payloadRecord = asRecord(payload);
+  const requestRecord = asRecord(payloadRecord.request);
+  const record = Object.keys(requestRecord).length > 0 ? requestRecord : payloadRecord;
+  const rows = pickResponseArray(payload);
+  const ownerUserId = readText(record.owner ?? record.ownerUserId ?? record.ownerId);
+  const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
+  const memberDetails = new Map<string, Partial<DepartmentPlanningPermissionMember>>();
+  const memberIds = new Set<string>();
+  const addMemberId = (value: unknown): void => {
+    const userId = readText(value);
+    if (userId) memberIds.add(userId);
+  };
+
+  readUserIds(record.adminUserIds ?? record.admin_user_ids ?? record.admins).forEach(addMemberId);
+  rows.forEach((item) => {
+    const row = asRecord(item);
+    const rowIds = readUserIds(row.adminUserIds ?? row.admin_user_ids ?? row.admins);
+    if (rowIds.length > 0) {
+      rowIds.forEach(addMemberId);
+      return;
+    }
+    const userId = readText(
+      row.sAMAccountName ??
+        row.samAccountName ??
+        row.userId ??
+        row.adminUserId ??
+        row.employeeNo ??
+        row.id ??
+        item,
+    );
+    if (!userId) return;
+    addMemberId(userId);
+    memberDetails.set(normalizeUserId(userId), {
+      employeeNo: readText(row.employeeNo),
+      userName: readText(row.userName ?? row.chName ?? row.employeeName ?? row.name),
+      label: readText(row.label),
+      departmentName: readText(row.departmentName ?? row.deptName ?? row.department),
+      grantedAt: readText(row.grantedAt ?? row.createTime ?? row.createdAt),
+    });
   });
+  if (ownerUserId) memberIds.add(ownerUserId);
+
+  const departmentName =
+    readText(
+      record.l6DeptName ??
+        record.l5DeptName ??
+        record.l4DeptName ??
+        record.l3DeptName ??
+        record.deptName ??
+        record.departmentName,
+    ) || option.name;
+  const deptCode =
+    readText(
+      record.l6DeptCode ??
+        record.l5DeptCode ??
+        record.l4DeptCode ??
+        record.l3DeptCode ??
+        record.deptCode ??
+        record.departmentCode,
+    ) || option.deptCode;
+
+  return {
+    departmentName,
+    deptCode,
+    ownerUserId,
+    updatedAt,
+    members: [...memberIds].map((userId) => {
+      const detail = memberDetails.get(normalizeUserId(userId)) ?? {};
+      const label =
+        readText(detail.label) ||
+        [readText(detail.userName), userId].filter(Boolean).join(' ') ||
+        userId;
+      return {
+        userId,
+        employeeNo: readText(detail.employeeNo),
+        userName: readText(detail.userName),
+        label: userId === ownerUserId ? `${label} (Owner)` : label,
+        departmentName: readText(detail.departmentName),
+        grantedAt: readText(detail.grantedAt),
+      };
+    }),
+  };
 }
 
 function cacheUserOptions(options: SkillPlanningUserOption[]): void {
   options.forEach((option) => {
-    const key = normalizeUserId(option.id);
-    if (key) userProfileCache.set(key, option);
+    optionUserKeys(option).forEach((key) => userProfileCache.set(key, option));
   });
 }
 
@@ -377,7 +519,7 @@ async function resolveUserProfile(userId: string): Promise<SkillPlanningUserOpti
   try {
     const options = await querySkillPlanningUsers(userId);
     cacheUserOptions(options);
-    return options.find((option) => normalizeUserId(option.id) === key);
+    return userProfileCache.get(key);
   } catch {
     return undefined;
   }
@@ -408,6 +550,7 @@ async function enrichMemberProfiles(
       const ownerSuffix = member.userId === record.ownerUserId ? '（Owner）' : '';
       return {
         ...member,
+        employeeNo: profile.id || member.employeeNo,
         userName: profile.chName,
         label: `${profile.label}${ownerSuffix}`,
         departmentName: optionDepartment(profile),
@@ -417,12 +560,18 @@ async function enrichMemberProfiles(
 }
 
 async function reload(): Promise<void> {
-  const ownerOptions = ownerDepartmentOptions.value;
+  const ownerOptions = selectableOwnerDepartmentOptions.value;
   if (!ownerOptions.length) {
     records.value = [];
     selectedDepartmentPath.value = [];
     return;
   }
+
+  const currentOption =
+    ownerManageableDepartmentOptions.value.find((option) =>
+      sameDepartmentPath(option.path, selectedDepartmentPath.value),
+    ) ?? ownerOptions[0];
+  selectedDepartmentPath.value = [...currentOption.path];
 
   if (transportIsHttp) {
     const userId = props.userId.trim();
@@ -430,13 +579,12 @@ async function reload(): Promise<void> {
       records.value = [];
       return;
     }
-    const response = await skillBaseService.querySkillPlanningDepartments({ userId });
-    const departmentRecords = normalizeDepartmentRecords(response).filter((record) =>
-      ownerManageableDepartmentOptions.value.some((option) =>
-        departmentRecordMatchesOption(record, option),
-      ),
+    const response = await skillBaseService.queryHarnessPermissionUsers(
+      departmentPermissionQueryParams(currentOption),
     );
-    records.value = await enrichMemberProfiles(departmentRecords);
+    records.value = await enrichMemberProfiles([
+      normalizeHarnessPermissionRecord(response, currentOption),
+    ]);
   } else {
     records.value = listDepartmentPlanningPermissions()
       .filter((record) =>
@@ -453,32 +601,21 @@ async function reload(): Promise<void> {
         ownerUserId: '',
       }));
   }
-  const currentOption = ownerManageableDepartmentOptions.value.find((option) =>
-    sameDepartmentPath(option.path, selectedDepartmentPath.value),
-  );
-  selectedDepartmentPath.value = [...(currentOption ?? ownerOptions[0]).path];
 }
 
 type DepartmentAdminBodyLevels = {
-  l3DeptCode: string | null;
-  l3DeptName: string | null;
-  l4DeptCode: string | null;
-  l4DeptName: string | null;
-  l5DeptCode: string | null;
-  l5DeptName: string | null;
-  l6DeptCode: string | null;
-  l6DeptName: string | null;
+  l3DeptCode: string;
+  l3DeptName: string;
+  l4DeptCode: string;
+  l4DeptName: string;
+  l5DeptCode: string;
+  l5DeptName: string;
+  l6DeptCode: string;
+  l6DeptName: string;
 };
 
 function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBodyLevels {
-  const firstLevel = option.levelPath[0]?.level ?? 0;
-  const normalizedLevelPath =
-    firstLevel > 0 && firstLevel < 3
-      ? fallbackLevelPath(
-          option.path,
-          option.levelPath.map((segment) => segment.deptCode),
-        )
-      : option.levelPath;
+  const normalizedLevelPath = normalizedDepartmentLevelPath(option);
   const byLevel = new Map<number, DepartmentPathSegment>();
 
   normalizedLevelPath.forEach((segment) => {
@@ -487,11 +624,11 @@ function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBod
     }
   });
 
-  const pick = (level: number): { code: string | null; name: string | null } => {
+  const pick = (level: number): { code: string; name: string } => {
     const segment = byLevel.get(level);
     return {
-      code: segment?.deptCode || null,
-      name: segment?.name || null,
+      code: segment?.deptCode || '',
+      name: segment?.name || '',
     };
   };
 
@@ -508,6 +645,18 @@ function departmentAdminBodyLevels(option: DepartmentOption): DepartmentAdminBod
     l5DeptName: l5.name,
     l6DeptCode: l6.code,
     l6DeptName: l6.name,
+  };
+}
+function departmentPermissionQueryParams(
+  option: DepartmentOption,
+): QueryHarnessPermissionUsersParams {
+  const levels = departmentAdminBodyLevels(option);
+  return {
+    userId: props.userId.trim(),
+    l3DeptCode: levels.l3DeptCode,
+    l4DeptCode: levels.l4DeptCode,
+    l5DeptCode: levels.l5DeptCode,
+    l6DeptCode: levels.l6DeptCode,
   };
 }
 
@@ -527,13 +676,14 @@ async function updateRemoteAdmins(
   }
 
   const departmentLevels = departmentAdminBodyLevels(departmentOption);
-  const response = await skillBaseService.updateSkillPlanningDepartmentAdmins({
-    userId: props.userId.trim(),
+  const request: UpdateHarnessPermissionUsersRequest = {
     adminUserIds: [
       ...new Set(adminUserIds.filter((userId) => Boolean(userId) && userId !== record.ownerUserId)),
     ].join(','),
     ...departmentLevels,
-  });
+    userId: props.userId.trim(),
+  };
+  const response = await skillBaseService.updateHarnessPermissionUsers(request);
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
   if (meta.success === false) {
@@ -560,7 +710,13 @@ function reloadSafely(): void {
 }
 
 function guardDepartmentSelection(path: string[]): boolean {
-  const ownerOption = ownerDepartmentOptions.value.find((option) =>
+  if (path.length > DEPARTMENT_PERMISSION_MAX_DEPTH) {
+    showToast(
+      '\u90e8\u95e8\u6743\u9650\u914d\u7f6e\u6700\u591a\u9009\u62e9\u5230\u7b2c\u4e09\u7ea7\u90e8\u95e8',
+    );
+    return false;
+  }
+  const ownerOption = selectableOwnerDepartmentOptions.value.find((option) =>
     departmentPathStartsWith(path, option.path),
   );
   if (!ownerOption) {
@@ -583,6 +739,9 @@ function selectDepartment(path: string[]): void {
   }
   selectedDepartmentPath.value = [...path];
   closePersonSearch();
+  if (transportIsHttp) {
+    reloadSafely();
+  }
 }
 
 function clearPersonSearchTimer(): void {
@@ -614,8 +773,13 @@ async function searchUsers(keyword = personSearch.value): Promise<void> {
     const options = await querySkillPlanningUsers(text);
     if (requestSeq !== personSearchSeq) return;
     cacheUserOptions(options);
-    const grantedIds = new Set(selectedRecord.value.members.map((member) => member.userId));
-    personSearch.options = options.filter((option) => !grantedIds.has(option.id));
+    const grantedIds = new Set(
+      selectedRecord.value.members.map((member) => normalizeUserId(member.userId)),
+    );
+    personSearch.options = options.filter((option) => {
+      const permissionUserId = normalizeUserId(optionPermissionUserId(option));
+      return Boolean(permissionUserId) && !grantedIds.has(permissionUserId);
+    });
     personSearch.message = personSearch.options.length > 0 ? '' : '暂无可添加的匹配人员';
   } catch (error) {
     if (requestSeq !== personSearchSeq) return;
@@ -659,16 +823,21 @@ async function addPermission(option: SkillPlanningUserOption): Promise<void> {
     if (!canEditSelectedDepartment.value) {
       throw new Error('当前用户无权配置该部门管理员');
     }
+    const permissionUserId = optionPermissionUserId(option);
+    if (!permissionUserId) {
+      throw new Error('人员信息缺少 sAMAccountName，无法授予权限');
+    }
     cacheUserOptions([option]);
     if (transportIsHttp) {
       const record = selectedRecord.value;
       await updateRemoteAdmins(record, [
         ...record.members.map((member) => member.userId),
-        option.raw.sAMAccountName,
+        permissionUserId,
       ]);
     } else {
       grantDepartmentPlanningPermission(selectedDepartment.value, {
-        userId: option.id,
+        userId: permissionUserId,
+        employeeNo: option.id,
         userName: option.chName,
         label: option.label,
         departmentName: optionDepartment(option),
@@ -726,7 +895,7 @@ async function confirmRevoke(): Promise<void> {
 function formatGrantedAt(value: string): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-CN');
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
 }
 
 watch(
@@ -758,10 +927,10 @@ onBeforeUnmount(() => {
           v-model="selectedDepartmentPath"
           class="permission-dept-cascader"
           :tree="departmentTree"
-          :max-level="6"
+          :max-level="DEPARTMENT_PERMISSION_MAX_DEPTH"
           :allowed-paths="configurableDepartmentPaths"
           permission-mode="none"
-          :disabled="!ownerDepartmentOptions.length"
+          :disabled="!selectableOwnerDepartmentOptions.length"
           :all-label="ownerDepartmentOptions.length ? '请选择 Owner 部门' : '暂无可配置部门'"
           empty-text="暂无可配置的 Owner 部门"
           clear-text="恢复默认部门"
@@ -866,7 +1035,7 @@ onBeforeUnmount(() => {
                     <strong>{{ member.userName || member.label }}</strong>
                   </div>
                 </td>
-                <td>{{ member.userId }}</td>
+                <td>{{ member.employeeNo ? member.employeeNo : member.userId }}</td>
                 <td>{{ member.departmentName || '—' }}</td>
                 <td>{{ formatGrantedAt(member.grantedAt) }}</td>
                 <td>

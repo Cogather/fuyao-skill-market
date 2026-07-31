@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
+import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import DepartmentTaxonomyPanel from './DepartmentTaxonomyPanel.vue';
 
 interface DepartmentTreeNode {
@@ -18,6 +19,9 @@ withDefaults(
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    manageableDepartments?: HarnessAuthorizedDepartment[];
+    departmentPermissionsLoading?: boolean;
+    departmentPermissionsError?: string;
   }>(),
   {
     departmentTree: () => [],
@@ -27,6 +31,9 @@ withDefaults(
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    manageableDepartments: () => [],
+    departmentPermissionsLoading: false,
+    departmentPermissionsError: '',
   },
 );
 
@@ -45,6 +52,9 @@ defineEmits<{
     :allowed-department-names="allowedDepartmentNames"
     :allowed-department-paths="allowedDepartmentPaths"
     :restrict-to-allowed-departments="restrictToAllowedDepartments"
+    :manageable-departments="manageableDepartments"
+    :department-permissions-loading="departmentPermissionsLoading"
+    :department-permissions-error="departmentPermissionsError"
     @changed="(groups, departmentName) => $emit('changed', groups, departmentName)"
   />
 </template>

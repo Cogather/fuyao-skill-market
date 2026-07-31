@@ -5,16 +5,17 @@ import SkillMasterManagementPanel from '../../components/skill/SkillMasterManage
 import {
   batchDeleteSkillPlanning,
   batchUpdateSkillPlanning,
-  createSkillPlanning,
+  createSkillPlanningSupplement,
   deleteSkillPlanning,
   downloadSkillPlanningTemplate,
   importSkillPlanningFromExcel,
   getProductPlanning,
+  querySkillPlanningActivityOptionGroups,
+  querySkillPlanningSceneOptionGroups,
   querySkillPlanningUsers,
-  querySkillPlanningFilterOptions,
-  exportAllSkillPlanningList,
-  querySkillConfig,
-  updateSkillPlanning,
+  exportSkillPlanningSupplementFile,
+  querySkillPlanningSupplement,
+  updateSkillPlanningSupplement,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
   type SkillPlanningBatchPatch,
@@ -22,7 +23,6 @@ import {
   type SkillPlanningItem,
   type SkillPlanningOptionGroup,
   type SkillPlanningPayload,
-  type SkillPlanningProgress,
   type SkillPlanningQuery,
   type SkillPlanningSortOrder,
 } from '../../services/skillMarket/skillPlanningService';
@@ -35,12 +35,18 @@ import {
   getActivityOptionGroups,
 } from '../../services/skillMarket/activityManagementService';
 import {
-  listSkillMasterRecords,
-  querySkillMasterRecords,
   type SkillMasterRecord,
+  type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
+import type {
+  CreateSkillPlanningSupplementBody,
+  QuerySkillMasterManagementBody,
+  SkillMasterManagementItemDto,
+} from '../../services/skillMarket/apiTypes';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
-import { openLink } from '@/utils/common';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import { openSkillExportResponse } from '../../services/skillMarket/skillTransferService';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
@@ -48,6 +54,7 @@ type PlanningFormMode = 'create' | 'edit';
 type PlanningLevel = '产品级' | '部门级';
 type PlanningDepartmentTreeNode = {
   id?: string;
+  deptLevel?: number;
   deptCode?: string;
   name: string;
   children?: PlanningDepartmentTreeNode[];
@@ -57,8 +64,7 @@ type PlanningHeaderFilterKey =
   | 'secondScene'
   | 'activityNodeName'
   | 'subActivityNodeName'
-  | 'level'
-  | 'status';
+  | 'level';
 type PlanningHeaderFilterSelections = Record<PlanningHeaderFilterKey, string[]>;
 type PlanningBatchField = keyof SkillPlanningBatchPatch;
 type PlanningBatchForm = Record<PlanningBatchField, string>;
@@ -93,14 +99,12 @@ const props = withDefaults(
 
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 
-const progressOptions = ref<SkillPlanningProgress[]>(['未开始', '开发中', '已完成']);
 const planningHeaderFilterKeys = [
   'firstScene',
   'secondScene',
   'activityNodeName',
   'subActivityNodeName',
   'level',
-  'status',
 ] as const;
 const pageSizeOptions = [5, 10, 20, 50];
 const batchReadonlyHeaders = [
@@ -134,7 +138,6 @@ const emptyFilters = {
   subActivityNodeName: '',
   level: '部门级',
   offeringName: '',
-  status: '',
   owner: '',
   plannedStartDate: '',
   plannedEndDate: '',
@@ -197,13 +200,13 @@ const headerFilterSelections = reactive<PlanningHeaderFilterSelections>({
   activityNodeName: [],
   subActivityNodeName: [],
   level: [],
-  status: [],
 });
 const plannedFinishSortOrder = ref<SkillPlanningSortOrder | ''>('');
 const importInputRef = ref<HTMLInputElement | null>(null);
 const importDialogOpen = ref(false);
 const importDragging = ref(false);
 const importSubmitting = ref(false);
+const exportSubmitting = ref(false);
 const templateDownloadPending = ref(false);
 const selectedImportFile = ref<File | null>(null);
 const importError = ref('');
@@ -385,10 +388,27 @@ function findPlanningDepartmentNodeByPath(
   return findPlanningDepartmentNodeByPath(rest, node.children ?? []);
 }
 
+function currentSelectedPlanningDepartmentCode(selectedPath: string[]): string {
+  return getDepartmentNodeCode(findPlanningDepartmentNodeByPath(selectedPath));
+}
+
 function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptName): {
-  userId?: string;
-  deptCode?: string;
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
 } {
+  const userId = props.userId.trim();
+  const level = filterForm.level as PlanningLevel;
+  if (level === '产品级') {
+    return {
+      userId,
+      dimType: '产品级',
+      dimCode: String(selectedFilterProduct.value?.offeringId || '').trim(),
+      dimName: filterForm.offeringName.trim(),
+    };
+  }
+
   const department = departmentName.trim();
   const selectedPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
   const departmentPath =
@@ -396,11 +416,11 @@ function currentPlanningTaxonomyParams(departmentName = filterForm.planningDeptN
       ? selectedPath
       : findPlanningDepartmentPathByName(department);
   const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
-  const deptCode =
-    String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department;
   return {
-    ...(props.userId.trim() ? { userId: props.userId.trim() } : {}),
-    ...(deptCode ? { deptCode } : {}),
+    userId,
+    dimType: '部门级',
+    dimCode: String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim() || department,
+    dimName: department,
   };
 }
 
@@ -452,6 +472,27 @@ function collectAuthorizedPlanningDepartmentNames(
   return values;
 }
 
+function collectAuthorizedPlanningDepartmentCodes(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const name = node.name.trim();
+    const nodeAllowed = ancestorAllowed || allowedNames.has(name);
+    const code = getDepartmentNodeCode(node);
+    if (nodeAllowed && code) values.add(code);
+    collectAuthorizedPlanningDepartmentCodes(
+      node.children ?? [],
+      allowedNames,
+      nodeAllowed,
+      values,
+    );
+  });
+  return values;
+}
+
 function collectPathAuthorizedPlanningDepartmentNames(
   nodes: PlanningDepartmentTreeNode[],
   allowedPaths: string[][],
@@ -469,6 +510,24 @@ function collectPathAuthorizedPlanningDepartmentNames(
   return values;
 }
 
+function collectPathAuthorizedPlanningDepartmentCodes(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const path = [...parentPath, node.name];
+    const insideAuthorizedDepartment = allowedPaths.some((allowedPath) =>
+      planningDepartmentPathStartsWith(path, allowedPath),
+    );
+    const code = getDepartmentNodeCode(node);
+    if (insideAuthorizedDepartment && code) values.add(code);
+    collectPathAuthorizedPlanningDepartmentCodes(node.children ?? [], allowedPaths, path, values);
+  });
+  return values;
+}
+
 const manageablePlanningDepartmentNames = computed(() => {
   if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
     return collectPathAuthorizedPlanningDepartmentNames(
@@ -482,11 +541,26 @@ const manageablePlanningDepartmentNames = computed(() => {
   return collectAuthorizedPlanningDepartmentNames(planningDepartmentTree.value, allowedNames);
 });
 
-function canManagePlanningDepartment(departmentName: string): boolean {
-  return (
-    !props.restrictToAllowedDepartments ||
-    manageablePlanningDepartmentNames.value.has(departmentName.trim())
+const manageablePlanningDepartmentCodes = computed(() => {
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
+    return collectPathAuthorizedPlanningDepartmentCodes(
+      planningDepartmentTree.value,
+      normalizedAllowedPlanningDepartmentPaths.value,
+    );
+  }
+  const allowedNames = new Set(
+    props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean),
   );
+  return collectAuthorizedPlanningDepartmentCodes(planningDepartmentTree.value, allowedNames);
+});
+
+function canManagePlanningDepartment(departmentName: string, departmentCode = ''): boolean {
+  if (!props.restrictToAllowedDepartments) return true;
+  const normalizedCode = departmentCode.trim();
+  if (normalizedCode) {
+    return manageablePlanningDepartmentCodes.value.has(normalizedCode);
+  }
+  return manageablePlanningDepartmentNames.value.has(departmentName.trim());
 }
 
 const planningDepartmentOptions = computed(() => {
@@ -522,7 +596,9 @@ const pageStart = computed(() =>
 );
 const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
 const selectableRows = computed(() =>
-  rows.value.filter((row) => canManagePlanningDepartment(row.planningDeptName)),
+  rows.value.filter((row) =>
+    canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode),
+  ),
 );
 const allPageSelected = computed(
   () =>
@@ -543,7 +619,6 @@ const planningHeaderFilterOptions = computed<SkillPlanningFilterOptions>(() => (
   activityNodeName: activityOptions.value,
   subActivityNodeName: subActivityOptions.value,
   level: levelOptions.value,
-  status: progressOptions.value,
   sceneGroups: sceneOptionGroups.value,
   activityGroups: activityOptionGroups.value,
 }));
@@ -598,12 +673,119 @@ function createEmptyPlanningForm(): SkillPlanningPayload {
     planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
-    status: '未开始',
+    status: '',
   };
 }
 
 function refreshSkillMasterOptions(): void {
-  skillMasterOptions.value = listSkillMasterRecords();
+  // Skill 选项改为走 /management/query；保留已选记录供校验回显
+  const selected = findSkillMasterForPlanning();
+  skillMasterOptions.value = selected ? [selected] : [];
+}
+
+function mapManagementItemToSkillMasterRecord(
+  item: SkillMasterManagementItemDto,
+): SkillMasterRecord {
+  const skillName = String(item.skillName ?? '').trim();
+  const ownerName = String(item.ownerName ?? '').trim();
+  const ownerId = String(item.ownerId ?? '').trim();
+  const developOwnerName = String(item.developOwnerName ?? '').trim();
+  const developOwnerId = String(item.developOwnerId ?? '').trim();
+  const dimType = String(item.dimType ?? '').trim();
+  const dimName = String(item.dimName ?? '').trim();
+  const statusText = String(item.status ?? '').trim();
+  const now = new Date().toISOString();
+  return {
+    id: String(item.id ?? '').trim() || skillName,
+    name: skillName,
+    description: String(item.skillDescription ?? '').trim(),
+    level: dimType,
+    product: dimType === '产品级' ? dimName : '',
+    owner: `${ownerName} ${ownerId}`.trim(),
+    department: dimType === '部门级' ? dimName : '',
+    developOwner: `${developOwnerName} ${developOwnerId}`.trim(),
+    developOwnerDepartment: '',
+    plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
+    status: statusText as SkillMasterStatus,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function resolvePlanningDimFields(): {
+  level: PlanningLevel;
+  dimType: '部门级' | '产品级';
+  dimCode: string;
+  dimName: string;
+} | null {
+  const level = planningForm.level as PlanningLevel;
+  if (!planningLevelOptions.includes(level)) {
+    return null;
+  }
+  if (level === '产品级') {
+    const dimCode = String(
+      planningForm.offeringId || selectedFilterProduct.value?.offeringId || '',
+    ).trim();
+    const dimName = planningForm.offeringName.trim();
+    if (!dimCode || !dimName) {
+      return null;
+    }
+    return {
+      level,
+      dimType: '产品级',
+      dimCode,
+      dimName,
+    };
+  }
+  const departmentPath = selectedPlanningScopeDepartmentPath();
+  const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
+  const dimCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim();
+  const dimName = planningForm.planningDeptName.trim();
+  if (!dimCode || !dimName) {
+    return null;
+  }
+  return {
+    level,
+    dimType: '部门级',
+    dimCode,
+    dimName,
+  };
+}
+
+function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null {
+  const dim = resolvePlanningDimFields();
+  if (!dim) {
+    return null;
+  }
+  const name = planningForm.name.trim();
+  const firstScene = planningForm.firstScene.trim();
+  const secondScene = planningForm.secondScene.trim();
+  const activityNodeName = planningForm.activityNodeName.trim();
+  const subActivityNodeName = planningForm.subActivityNodeName.trim();
+  if (!name || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
+    return null;
+  }
+  return {
+    activityNodeName,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+    dimType: dim.dimType,
+    firstScene,
+    secondScene,
+    skillName: name,
+    subActivityNodeName,
+  };
+}
+
+function findSkillMasterForPlanning(
+  skillId = planningForm.skillId ?? '',
+  skillName = planningForm.name,
+): SkillMasterRecord | undefined {
+  const pools = [...planningSkillOptions.value, ...skillMasterOptions.value];
+  return (
+    pools.find((record) => record.id === skillId) ||
+    pools.find((record) => record.name === skillName)
+  );
 }
 
 function clearPlanningSkillSearchTimer(): void {
@@ -625,16 +807,6 @@ function resetPlanningSkillSearchState(): void {
   planningSkillSearching.value = false;
   planningSkillSearchMessage.value = '';
   planningSkillOptions.value = [];
-}
-
-function findSkillMasterForPlanning(
-  skillId = planningForm.skillId ?? '',
-  skillName = planningForm.name,
-): SkillMasterRecord | undefined {
-  return (
-    skillMasterOptions.value.find((record) => record.id === skillId) ||
-    skillMasterOptions.value.find((record) => record.name === skillName)
-  );
 }
 
 function applySkillMasterToPlanningForm(record: SkillMasterRecord): void {
@@ -676,13 +848,37 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
   planningSkillSearchMessage.value = '';
 
   try {
-    refreshSkillMasterOptions();
-    const records = await querySkillMasterRecords({
-      keyword: normalizedKeyword,
-      departmentName: normalizedKeyword ? '' : planningForm.planningDeptName,
-    });
-    if (requestSeq !== planningSkillSearchSeq) return;
+    const queryBody: QuerySkillMasterManagementBody = {
+      userId: props.userId.trim(),
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+      pageNum: 1,
+      pageSize: 100,
+    };
+    if (normalizedKeyword) {
+      queryBody.keyword = normalizedKeyword;
+    } else {
+      const dim = resolvePlanningDimFields();
+      if (dim) {
+        queryBody.dimType = dim.dimType;
+        queryBody.dimCode = dim.dimCode;
+        queryBody.dimName = dim.dimName;
+      }
+    }
 
+    const response = await skillBaseService.querySkillMasterManagement(queryBody);
+    if (requestSeq !== planningSkillSearchSeq) {
+      return;
+    }
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
+      );
+    }
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const records = rows.map((item: SkillMasterManagementItemDto) =>
+      mapManagementItemToSkillMasterRecord(item),
+    );
     const selectedRecord = findSkillMasterForPlanning();
     planningSkillOptions.value =
       !normalizedKeyword &&
@@ -690,13 +886,18 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
       !records.some((record) => record.id === selectedRecord.id)
         ? [selectedRecord, ...records]
         : records;
+    if (selectedRecord) {
+      skillMasterOptions.value = [selectedRecord];
+    }
     if (planningSkillOptions.value.length === 0) {
       planningSkillSearchMessage.value = normalizedKeyword
         ? '未找到匹配的 Skill，可调整名称、描述或人员关键词'
         : `${planningForm.planningDeptName || '当前部门'}暂无相关 Skill，可搜索其他部门 Skill`;
     }
   } catch (error) {
-    if (requestSeq !== planningSkillSearchSeq) return;
+    if (requestSeq !== planningSkillSearchSeq) {
+      return;
+    }
     planningSkillOptions.value = [];
     planningSkillSearchMessage.value =
       error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试';
@@ -743,6 +944,7 @@ function clearPlanningSkillSearch(): void {
 
 function choosePlanningSkill(record: SkillMasterRecord): void {
   applySkillMasterToPlanningForm(record);
+  skillMasterOptions.value = [record];
   planningSkillSearchKeyword.value = '';
   closePlanningSkillSelect();
 }
@@ -756,7 +958,6 @@ function createEmptyBatchForm(): PlanningBatchForm {
     planningDeptName: '',
     developOwner: '',
     planedCompleteDate: '',
-    status: '',
   };
 }
 
@@ -829,7 +1030,7 @@ async function loadFilterProducts(): Promise<void> {
     const options = await getProductPlanning(
       '',
       departmentName,
-      currentPlanningTaxonomyParams(departmentName).deptCode,
+      currentSelectedPlanningDepartmentCode(planningDepartmentSegments.value),
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
@@ -859,7 +1060,7 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
     const options = await getProductPlanning(
       keyword,
       planningForm.planningDeptName,
-      currentPlanningTaxonomyParams(planningForm.planningDeptName).deptCode,
+      currentSelectedPlanningDepartmentCode(planningFormDepartmentSegments.value),
     );
     if (requestSeq !== productSearchSeq) {
       return;
@@ -1369,22 +1570,30 @@ function syncManagedTaxonomiesForDepartment(departmentName = ''): void {
 async function loadPlanningFilterOptions(
   departmentName = filterForm.planningDeptName,
 ): Promise<void> {
-  const options = await querySkillPlanningFilterOptions(
-    props.userId,
-    currentPlanningTaxonomyParams(departmentName),
-  );
   if (transportIsHttp) {
-    primarySceneOptions.value = options.firstScene;
-    secondarySceneOptions.value = options.secondScene;
-    activityOptions.value = options.activityNodeName;
-    subActivityOptions.value = options.subActivityNodeName;
-    sceneOptionGroups.value = options.sceneGroups;
-    activityOptionGroups.value = options.activityGroups;
+    const taxonomyParams = currentPlanningTaxonomyParams(departmentName);
+    const hasRequiredParams = [
+      taxonomyParams.userId,
+      taxonomyParams.dimType,
+      taxonomyParams.dimCode,
+      taxonomyParams.dimName,
+    ].every(Boolean);
+    const [sceneGroups, activityGroups] = hasRequiredParams
+      ? await Promise.all([
+          querySkillPlanningSceneOptionGroups(taxonomyParams),
+          querySkillPlanningActivityOptionGroups(taxonomyParams),
+        ])
+      : [[], []];
+    primarySceneOptions.value = sceneGroups.map((group) => group.value);
+    secondarySceneOptions.value = sceneGroups.flatMap((group) => group.children);
+    activityOptions.value = activityGroups.map((group) => group.value);
+    subActivityOptions.value = activityGroups.flatMap((group) => group.children);
+    sceneOptionGroups.value = sceneGroups;
+    activityOptionGroups.value = activityGroups;
   } else {
     syncManagedTaxonomiesForDepartment(departmentName);
   }
   levelOptions.value = [...planningLevelOptions];
-  progressOptions.value = options.status as SkillPlanningProgress[];
   syncPlanningHeaderFilterSelections(planningHeaderFilterOptions.value);
 }
 
@@ -1522,13 +1731,14 @@ async function onPlanningScopeLevelChange(): Promise<void> {
   planningScopeDepartmentCommitted.value = defaultPath.length > 0;
   planningDepartmentSegments.value = [...defaultPath];
   syncPlanningDepartmentLevels(defaultPath);
-  await loadPlanningFilterOptions();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
 
 async function onFilterProductChange(): Promise<void> {
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
@@ -1542,8 +1752,8 @@ async function applyPlanningDepartmentQuery(segments: string[]): Promise<void> {
   planningDepartmentSegments.value = segments.slice(0, planningDepartmentLevelRefs.length);
   syncPlanningDepartmentLevels(planningDepartmentSegments.value);
   planningScopeDepartmentCommitted.value = planningDepartmentSegments.value.length > 0;
-  await loadPlanningFilterOptions();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
@@ -1605,26 +1815,30 @@ function assignHeaderFilterQueryValue(
 }
 
 function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
-  const nextQuery: SkillPlanningQuery = {};
+  const taxonomyParams = currentPlanningTaxonomyParams();
+  const nextQuery: SkillPlanningQuery = {
+    userId: taxonomyParams.userId ?? props.userId.trim(),
+    dimType: taxonomyParams.dimType ?? '',
+    dimCode: taxonomyParams.dimCode ?? '',
+    dimName: taxonomyParams.dimName ?? '',
+  };
   assignHeaderFilterQueryValue(nextQuery, 'firstScene', 'firstScene');
   assignHeaderFilterQueryValue(nextQuery, 'secondScene', 'secondScene');
   assignHeaderFilterQueryValue(nextQuery, 'activityNodeName', 'activityNodeName');
   assignHeaderFilterQueryValue(nextQuery, 'subActivityNodeName', 'subActivityNodeName');
   assignHeaderFilterQueryValue(nextQuery, 'level', 'level');
-  assignHeaderFilterQueryValue(nextQuery, 'status', 'status');
   assignQueryValue(nextQuery, 'level', filterForm.level);
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
   assignQueryValue(nextQuery, 'planningDeptName', filterForm.planningDeptName);
   if (filterForm.level === '产品级') {
     assignQueryValue(nextQuery, 'offeringName', filterForm.offeringName);
   }
-  if (filterForm.level === '部门级') {
-    planningDepartmentSegments.value
-      .slice(0, planningDepartmentLevelRefs.length)
-      .forEach((segment, index) => {
-        assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
-      });
-  }
+  const departmentPath = normalizePlanningDepartmentPath(planningDepartmentSegments.value);
+  departmentPath.slice(0, planningDepartmentLevelRefs.length).forEach((segment, index) => {
+    assignQueryValue(nextQuery, `departmentL${index + 3}` as keyof SkillPlanningQuery, segment);
+  });
+  const departmentNode = findPlanningDepartmentNodeByPath(departmentPath);
+  assignQueryValue(nextQuery, 'deptCode', departmentNode?.deptCode ?? departmentNode?.id);
 
   if (plannedFinishSortOrder.value) {
     nextQuery.sortBy = 'planedCompleteDate';
@@ -1651,12 +1865,12 @@ async function reloadList(options: { notifyOnMissingScope?: boolean } = {}) {
   }
   loading.value = true;
   try {
-    const result = await querySkillConfig(syncQueryFilterObj());
+    const result = await querySkillPlanningSupplement(syncQueryFilterObj());
     rows.value = result.list;
     total.value = result.total;
     if (pageNum.value > totalPages.value) {
       pageNum.value = totalPages.value;
-      const nextResult = await querySkillConfig(syncQueryFilterObj());
+      const nextResult = await querySkillPlanningSupplement(syncQueryFilterObj());
       rows.value = nextResult.list;
       total.value = nextResult.total;
     }
@@ -1730,11 +1944,22 @@ function fillPlanningFormFromRow(row: SkillPlanningItem) {
     offeringId: row.offeringId,
     offeringName: row.offeringName,
     owner: master?.owner || row.owner,
+    deptCode: row.deptCode,
     deptName: master?.department || row.deptName,
     planningDeptName: row.planningDeptName,
+    l5DeptCode: row.l5DeptCode,
+    l5DeptName: row.l5DeptName,
+    l4DeptCode: row.l4DeptCode,
+    l4DeptName: row.l4DeptName,
+    l3DeptCode: row.l3DeptCode,
+    l3DeptName: row.l3DeptName,
+    l2DeptCode: row.l2DeptCode,
+    l2DeptName: row.l2DeptName,
+    l1DeptCode: row.l1DeptCode,
+    l1DeptName: row.l1DeptName,
     developOwner: master?.developOwner || row.developOwner,
     planedCompleteDate: master?.plannedCompleteDate || row.planedCompleteDate,
-    status: master?.status || row.status,
+    status: row.status,
   });
   planningFormDepartmentSegments.value = findPlanningDepartmentPathByName(row.planningDeptName);
   if (!transportIsHttp) {
@@ -1782,11 +2007,20 @@ async function confirmInlineCreate() {
 
   try {
     inlineCreateSubmitting.value = true;
-    const createRes = await createSkillPlanning({ ...planningForm });
-    const toastStr = !createRes?.meta?.success
-      ? (createRes.meta?.message ?? 'SKill已存在')
-      : '已新增 Skill 规划';
+    const body = buildPlanningSupplementBody();
+    if (!body) {
+      showToast('请完善层级、部门/产品与场景活动信息');
+      return;
+    }
+    const createRes = await createSkillPlanningSupplement(body, props.userId.trim());
+    const toastStr =
+      createRes?.meta?.success !== true
+        ? (createRes?.meta?.message ?? 'Skill 规划新增失败')
+        : '已新增 Skill 规划';
     showToast(toastStr);
+    if (createRes?.meta?.success !== true) {
+      return;
+    }
     pageNum.value = 1;
     cancelInlineCreate(true);
     await loadPlanningFilterOptions();
@@ -1837,12 +2071,26 @@ async function confirmInlineEdit() {
 
   try {
     inlineEditSubmitting.value = true;
-
-    const updateRes = await updateSkillPlanning(editingId.value, { ...planningForm });
-    const toastStr = !updateRes?.meta?.success
-      ? (updateRes.meta?.message ?? '更新后的SKill已存在')
-      : '已保存修改';
+    const body = buildPlanningSupplementBody();
+    if (!body) {
+      showToast('请完善层级、部门/产品与场景活动信息');
+      return;
+    }
+    const updateRes = await updateSkillPlanningSupplement(
+      {
+        ...body,
+        id: editingId.value,
+      },
+      props.userId.trim(),
+    );
+    const toastStr =
+      updateRes?.meta?.success !== true
+        ? (updateRes?.meta?.message ?? 'Skill 规划更新失败')
+        : '已保存修改';
     showToast(toastStr);
+    if (updateRes?.meta?.success !== true) {
+      return;
+    }
     cancelInlineEdit(true);
     await loadPlanningFilterOptions();
     await reloadList();
@@ -1902,10 +2150,39 @@ async function submitPlanningForm() {
 
   try {
     if (formMode.value === 'create') {
-      await createSkillPlanning({ ...planningForm });
+      const body = buildPlanningSupplementBody();
+      if (!body) {
+        showToast('请完善层级、部门/产品与场景活动信息');
+        return;
+      }
+      const createRes = await createSkillPlanningSupplement(body, props.userId.trim());
+      if (createRes?.meta?.success !== true) {
+        throw new Error(
+          String(createRes?.meta?.message || createRes?.message || '新增 Skill 规划失败'),
+        );
+      }
       showToast('已新增 Skill 规划');
     } else {
-      await updateSkillPlanning(editingId.value, { ...planningForm });
+      if (!editingId.value) {
+        throw new Error('缺少 Skill 规划 id，无法更新');
+      }
+      const body = buildPlanningSupplementBody();
+      if (!body) {
+        showToast('请完善层级、部门/产品与场景活动信息');
+        return;
+      }
+      const updateRes = await updateSkillPlanningSupplement(
+        {
+          ...body,
+          id: editingId.value,
+        },
+        props.userId.trim(),
+      );
+      if (updateRes?.meta?.success !== true) {
+        throw new Error(
+          String(updateRes?.meta?.message || updateRes?.message || '更新 Skill 规划失败'),
+        );
+      }
       showToast('已保存修改');
     }
 
@@ -2005,6 +2282,9 @@ async function submitBatchEdit() {
 }
 
 function triggerImport() {
+  if (!ensurePlanningScopeSelection(true)) {
+    return;
+  }
   importDialogOpen.value = true;
   importDragging.value = false;
   importError.value = '';
@@ -2090,10 +2370,13 @@ async function submitImportFile() {
 
   try {
     importSubmitting.value = true;
-    const result = await importSkillPlanningFromExcel(selectedImportFile.value);
+    const result = await importSkillPlanningFromExcel(
+      selectedImportFile.value,
+      syncQueryFilterObj(false),
+    );
     if (result.errorList.length > 0) {
       importError.value = `Skill 规划已成功导入 ${result.successCount} 条，${result.failCount ? '失败导入 ' + result.failCount + ' 条' : ''}（共需要导入 ${result.totalCount} 条）`;
-      importError.value = `\n其中导入失败的有：${result.errorList.reduce((pre, curr) => pre + `\n    第${curr.rowNum}行：` + curr.errMsg, '')}`;
+      importError.value += `\n其中导入失败的有：${result.errorList.reduce((pre, curr) => pre + `\n    第${curr.rowNum}行：` + curr.errMsg, '')}`;
       return;
     } else {
       importSuccess.value = `Skill 规划已成功导入 ${result.successCount} 条（共需要导入 ${result.totalCount} 条）`;
@@ -2102,6 +2385,7 @@ async function submitImportFile() {
 
     importSubmitting.value = false;
     closeImportDialog();
+    showToast(importSuccess.value || 'Skill 规划导入完成');
     pageNum.value = 1;
     await loadPlanningFilterOptions();
     await reloadList();
@@ -2114,10 +2398,20 @@ async function submitImportFile() {
 }
 
 async function exportCurrentData() {
-  const result = await exportAllSkillPlanningList(syncQueryFilterObj(false));
-  if (result?.data) {
-    openLink(result.data);
-    showToast('导出文件完成');
+  if (exportSubmitting.value || !ensurePlanningScopeSelection(true)) {
+    return;
+  }
+  try {
+    exportSubmitting.value = true;
+    const response = await exportSkillPlanningSupplementFile(syncQueryFilterObj(false));
+    if (response !== null) {
+      openSkillExportResponse(response);
+    }
+    showToast('已开始导出 Skill 规划');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Skill 规划导出失败，请稍后重试');
+  } finally {
+    exportSubmitting.value = false;
   }
 }
 
@@ -2154,7 +2448,7 @@ function requestDeleteRow(row: SkillPlanningItem) {
     `确认删除「${row.name}」吗？删除后将无法恢复。`,
     '确认删除',
     async () => {
-      await deleteSkillPlanning(row.id);
+      await deleteSkillPlanning(row.id, props.userId.trim());
       selectedIds.value = selectedIds.value.filter((id) => id !== row.id);
       showToast('已删除');
       await loadPlanningFilterOptions();
@@ -2173,7 +2467,7 @@ function requestBatchDelete() {
     `确认删除已勾选的 ${selectedIds.value.length} 条数据吗？删除后将无法恢复。`,
     '批量删除',
     async () => {
-      const count = await batchDeleteSkillPlanning(selectedIds.value);
+      const count = await batchDeleteSkillPlanning(selectedIds.value, props.userId.trim());
       selectedIds.value = [];
       showToast(`已删除 ${count} 条数据`);
       await loadPlanningFilterOptions();
@@ -2184,7 +2478,9 @@ function requestBatchDelete() {
 
 function toggleRowSelection(id: string) {
   const row = rows.value.find((item) => item.id === id);
-  if (!row || !canManagePlanningDepartment(row.planningDeptName)) return;
+  if (!row || !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)) {
+    return;
+  }
   selectedIds.value = selectedIds.value.includes(id)
     ? selectedIds.value.filter((item) => item !== id)
     : [...selectedIds.value, id];
@@ -2207,15 +2503,6 @@ async function goPage(nextPage: number) {
 async function changePageSize() {
   pageNum.value = 1;
   await reloadList();
-}
-
-function progressClass(status: SkillPlanningProgress): string {
-  const classMap: Record<SkillPlanningProgress, string> = {
-    未开始: 'status-idle',
-    开发中: 'status-dev',
-    已完成: 'status-done',
-  };
-  return classMap[status];
 }
 
 let planningScopeInitialLoadStarted = false;
@@ -2422,7 +2709,13 @@ onBeforeUnmount(() => {
               </svg>
               新增
             </button>
-            <button type="button" class="planning-btn planning-btn--soft" @click="triggerImport">
+            <button
+              type="button"
+              class="planning-btn planning-btn--soft"
+              :disabled="!hasCompletePlanningScope || importSubmitting"
+              :title="planningScopeErrorMessage || '导入 Skill 规划'"
+              @click="triggerImport"
+            >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
               </svg>
@@ -2431,6 +2724,8 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="planning-btn planning-btn--soft"
+              :disabled="!hasCompletePlanningScope || exportSubmitting"
+              :title="planningScopeErrorMessage || '导出 Skill 规划'"
               @click="exportCurrentData"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2718,59 +3013,7 @@ onBeforeUnmount(() => {
                     </span>
                   </button>
                 </th>
-                <th>
-                  <div
-                    class="planning-th-filter"
-                    :class="{
-                      'is-open': isHeaderFilterOpen('status'),
-                      'is-active': headerFilterSelectedCount('status') > 0,
-                    }"
-                  >
-                    <button
-                      type="button"
-                      class="planning-th-filter__trigger"
-                      @click.stop="toggleHeaderFilterMenu('status')"
-                    >
-                      <span>当前进展</span>
-                      <span
-                        class="planning-th-filter__indicator"
-                        :class="{ 'is-filtered': hasHeaderFilterSelection('status') }"
-                        aria-hidden="true"
-                      ></span>
-                    </button>
-                    <div v-if="isHeaderFilterOpen('status')" class="planning-th-filter__menu">
-                      <div class="planning-th-filter__menu-head">
-                        <strong>当前进展</strong>
-                        <button
-                          type="button"
-                          class="planning-th-filter__clear"
-                          :disabled="headerFilterSelectedCount('status') === 0"
-                          @click.stop="clearHeaderFilter('status')"
-                        >
-                          清空
-                        </button>
-                      </div>
-                      <div
-                        v-if="headerFilterOptionList('status').length"
-                        class="planning-th-filter__options"
-                      >
-                        <label
-                          v-for="item in headerFilterOptionList('status')"
-                          :key="`status-${item}`"
-                          class="planning-th-filter__option"
-                        >
-                          <input
-                            type="checkbox"
-                            :checked="headerFilterSelections.status.includes(item)"
-                            @change="toggleHeaderFilterOption('status', item)"
-                          />
-                          <span>{{ item }}</span>
-                        </label>
-                      </div>
-                      <p v-else class="planning-th-filter__empty">暂无可选项</p>
-                    </div>
-                  </div>
-                </th>
+                <th>当前进展</th>
                 <th class="action-col">操作</th>
               </tr>
             </thead>
@@ -3143,11 +3386,7 @@ onBeforeUnmount(() => {
                 </td>
                 <td>
                   <div class="planning-inline-field">
-                    <select v-model="planningForm.status" class="planning-inline-control">
-                      <option v-for="item in progressOptions" :key="item" :value="item">
-                        {{ item }}
-                      </option>
-                    </select>
+                    <span class="status-pill">{{ planningForm.status || '—' }}</span>
                   </div>
                 </td>
                 <td class="action-col">
@@ -3561,11 +3800,7 @@ onBeforeUnmount(() => {
                     </td>
                     <td>
                       <div class="planning-inline-field">
-                        <select v-model="planningForm.status" class="planning-inline-control">
-                          <option v-for="item in progressOptions" :key="item" :value="item">
-                            {{ item }}
-                          </option>
-                        </select>
+                        <span class="status-pill">{{ planningForm.status || '—' }}</span>
                       </div>
                     </td>
                     <td class="action-col">
@@ -3598,7 +3833,9 @@ onBeforeUnmount(() => {
                       <input
                         type="checkbox"
                         :checked="selectedIds.includes(row.id)"
-                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
+                        :disabled="
+                          !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)
+                        "
                         @change="toggleRowSelection(row.id)"
                       />
                     </td>
@@ -3616,15 +3853,15 @@ onBeforeUnmount(() => {
                     <td>{{ row.developOwner }}</td>
                     <td>{{ row.planedCompleteDate }}</td>
                     <td>
-                      <span class="status-pill" :class="progressClass(row.status)">
-                        {{ row.status }}
-                      </span>
+                      <span class="status-pill">{{ row.status || '—' }}</span>
                     </td>
                     <td class="action-col">
                       <button
                         type="button"
                         class="icon-btn"
-                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
+                        :disabled="
+                          !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)
+                        "
                         title="编辑"
                         aria-label="编辑"
                         @click="startInlineEdit(row)"
@@ -3637,7 +3874,9 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn icon-btn--danger"
-                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
+                        :disabled="
+                          !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)
+                        "
                         title="删除"
                         aria-label="删除"
                         @click="requestDeleteRow(row)"
@@ -4156,11 +4395,7 @@ onBeforeUnmount(() => {
             </label>
             <label class="planning-field">
               <span>当前进展</span>
-              <select v-model="planningForm.status" disabled>
-                <option v-for="item in progressOptions" :key="item" :value="item">
-                  {{ item }}
-                </option>
-              </select>
+              <input :value="planningForm.status || '—'" type="text" readonly />
             </label>
             <label class="planning-field planning-field--textarea">
               <span>Skill 说明 <em>*</em></span>
@@ -5380,33 +5615,11 @@ onBeforeUnmount(() => {
   min-height: 26px;
   padding: 0 9px;
   border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
   font-size: 12px;
   font-weight: 900;
-}
-
-.status-idle {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.status-dev {
-  background: #eef6ff;
-  color: #2563eb;
-}
-
-.status-test {
-  background: #ecfeff;
-  color: #0891b2;
-}
-
-.status-done {
-  background: #ecfdf5;
-  color: #059669;
-}
-
-.status-delay {
-  background: #fff1f2;
-  color: #e11d48;
 }
 
 .icon-btn {
@@ -5423,16 +5636,21 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   border-color: #b9ccff;
   background: #eff6ff;
+}
+
+.icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .icon-btn--danger {
   color: #dc2626;
 }
 
-.icon-btn--danger:hover {
+.icon-btn--danger:hover:not(:disabled) {
   border-color: #fecaca;
   background: #fff1f2;
 }
@@ -5441,7 +5659,7 @@ onBeforeUnmount(() => {
   color: #059669;
 }
 
-.icon-btn--confirm:hover {
+.icon-btn--confirm:hover:not(:disabled) {
   border-color: #a7f3d0;
   background: #ecfdf5;
 }
@@ -5450,7 +5668,7 @@ onBeforeUnmount(() => {
   color: #64748b;
 }
 
-.icon-btn--muted:hover {
+.icon-btn--muted:hover:not(:disabled) {
   border-color: #cbd5e1;
   background: #f8fafc;
 }

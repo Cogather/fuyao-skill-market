@@ -46,7 +46,7 @@ function syncRouteFromParent(payload: Record<string, unknown>): void {
 
   if (payload.tab != null) {
     void router.push({
-      name: 'skill-market',
+      name: 'skill-square',
       query: { tab },
     });
   }
@@ -64,6 +64,10 @@ function handleEvent(event: MessageEvent): void {
   const incomingUserId = firstString(p.userId);
   if (incomingUserId) {
     skillMarketStore.updateUserId(incomingUserId);
+  }
+  const incomingUserName = firstString(p.userName);
+  if (incomingUserName) {
+    skillMarketStore.updateUserName(incomingUserName);
   }
   try {
     const departmentSource = p.departmentList ?? p.departmentListStr;

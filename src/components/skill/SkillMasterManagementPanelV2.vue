@@ -24,10 +24,20 @@ import {
 } from '../../services/skillMarket/skillPlanningService';
 import type {
   CreateSkillMasterManagementBody,
+  CreateSkillMasterManagementParams,
   QuerySkillMasterManagementBody,
   SkillMasterManagementItemDto,
+  SkillTransferParams,
+  UpdateSkillMasterManagementBody,
+  UpdateSkillMasterManagementParams,
 } from '../../services/skillMarket/apiTypes';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import {
+  normalizeSkillImportResponse,
+  normalizeSkillTransferParams,
+  openSkillExportResponse,
+} from '../../services/skillMarket/skillTransferService';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
@@ -98,6 +108,42 @@ let ownerSearchSequence = 0;
 let developOwnerSearchSequence = 0;
 let personLabelLoadSequence = 0;
 
+type PersonSubmitValue = {
+  label: string;
+  name: string;
+  id: string;
+};
+
+function createEmptyPersonSubmitValue(): PersonSubmitValue {
+  return {
+    label: '',
+    name: '',
+    id: '',
+  };
+}
+
+function parsePersonSubmitValue(value: string): PersonSubmitValue {
+  const label = value.trim();
+  if (!label) {
+    return createEmptyPersonSubmitValue();
+  }
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) {
+    return {
+      label,
+      name: label,
+      id: '',
+    };
+  }
+  const id = parts[parts.length - 1] ?? '';
+  const name = parts.slice(0, -1).join(' ');
+  return {
+    label,
+    name,
+    id,
+  };
+}
+
 const editor = reactive({
   open: false,
   mode: 'create' as 'create' | 'edit',
@@ -114,6 +160,8 @@ const editor = reactive({
   status: '未开始' as SkillMasterStatus,
   error: '',
 });
+const initialOwnerValue = reactive(createEmptyPersonSubmitValue());
+const initialDevelopOwnerValue = reactive(createEmptyPersonSubmitValue());
 const associationEditor = reactive({
   open: false,
   skillId: '',
@@ -139,6 +187,9 @@ const masterProductOptions = ref<ProductPlanningOption[]>([]);
 const masterProductsLoading = ref(false);
 const selectedMasterIds = ref<string[]>([]);
 const batchDeleteDialog = reactive({ open: false, ids: [] as string[] });
+const masterImportInputRef = ref<HTMLInputElement | null>(null);
+const masterImportSubmitting = ref(false);
+const masterExportSubmitting = ref(false);
 let masterProductLoadSequence = 0;
 
 function normalizeDepartmentPath(segments: string[] | undefined): string[] {
@@ -254,7 +305,8 @@ const requiredSkillNamePrefix = computed(() => {
   if (!productName) {
     return '';
   }
-  return productName.endsWith('-') ? productName : productName + '-';
+  const lowercaseProductName = productName.toLowerCase();
+  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -306,18 +358,25 @@ function clearMasterList(): void {
   associations.value = {};
 }
 
-function resolveCurrentDimCode(): string {
+function resolveCurrentDimFields(): { dimCode: string; dimName: string } {
   if (masterScopeForm.level === '产品级') {
-    return String(
-      selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
-    ).trim();
+    return {
+      dimCode: String(
+        selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
+      ).trim(),
+      dimName: masterScopeForm.offeringName.trim(),
+    };
   }
   const node = findMasterDepartmentNode(masterDepartmentSegments.value);
-  return String(node?.deptCode ?? node?.id ?? '').trim();
+  return {
+    dimCode: String(node?.deptCode ?? node?.id ?? '').trim(),
+    dimName: masterScopeForm.planningDeptName.trim(),
+  };
 }
 
 function buildManagementQueryBody(): QuerySkillMasterManagementBody {
   const body: QuerySkillMasterManagementBody = {
+    userId: props.userId.trim(),
     sortBy: 'updatedAt',
     sortOrder: 'desc',
     pageNum: 1,
@@ -330,11 +389,22 @@ function buildManagementQueryBody(): QuerySkillMasterManagementBody {
   if (masterScopeForm.level) {
     body.dimType = masterScopeForm.level;
   }
-  const dimCode = resolveCurrentDimCode();
-  if (dimCode) {
-    body.dimCode = dimCode;
+  const dim = resolveCurrentDimFields();
+  if (dim.dimCode && dim.dimName) {
+    body.dimCode = dim.dimCode;
+    body.dimName = dim.dimName;
   }
   return body;
+}
+
+function buildMasterTransferParams(): SkillTransferParams {
+  const dim = resolveCurrentDimFields();
+  return normalizeSkillTransferParams({
+    userId: props.userId,
+    dimType: masterScopeForm.level,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+  });
 }
 
 function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMasterRecord {
@@ -347,8 +417,9 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
   const dimName = String(item.dimName ?? '').trim();
   const statusText = String(item.status ?? '').trim() || '未开始';
   const now = new Date().toISOString();
+  const id = String(item.id ?? '').trim() || skillName;
   return {
-    id: skillName,
+    id,
     name: skillName,
     description: String(item.skillDescription ?? '').trim(),
     level: dimType,
@@ -392,7 +463,7 @@ async function loadMasterProducts(): Promise<void> {
   masterProductsLoading.value = true;
   try {
     const departmentNode = findMasterDepartmentNode(masterDepartmentSegments.value);
-    const deptCode = String(departmentNode?.deptCode ?? departmentNode?.id ?? '').trim();
+    const deptCode = getDepartmentNodeCode(departmentNode);
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;
@@ -424,23 +495,7 @@ const allFilteredMasterRowsSelected = computed(
     filteredRecords.value.length > 0 &&
     filteredRecords.value.every((record) => selectedMasterIds.value.includes(record.id)),
 );
-const metrics = computed(() => ({
-  total: records.value.length,
-  building: records.value.filter((record) => ['开发中', '联调中'].includes(record.status)).length,
-  complete: records.value.filter((record) => record.status === '已完成').length,
-}));
 
-function associationFor(skillId: string): SkillMasterAssociation {
-  return (
-    associations.value[skillId] ?? {
-      skillId,
-      sceneIds: [],
-      activityIds: [],
-      planningDepartments: [],
-      updatedAt: '',
-    }
-  );
-}
 function looksLikePersonLabel(value: string): boolean {
   return /\s+\S+$/.test(value.trim());
 }
@@ -552,6 +607,8 @@ function resetEditor(): void {
     status: '未开始',
     error: '',
   });
+  Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
+  Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -568,7 +625,7 @@ function ensureProductSkillNamePrefix(): boolean {
   }
   const name = editor.name.trim();
   if (!name.startsWith(prefix)) {
-    editor.error = '产品级 Skill 名称需以“' + prefix + '”开头';
+    editor.error = '产品级 Skill 名称需以产品名称的小写形式“' + prefix + '”开头';
     return false;
   }
   if (name.length === prefix.length) {
@@ -583,11 +640,8 @@ function resolveDimFields(): { dimType: string; dimCode: string; dimName: string
     return null;
   }
   const dimType = masterScopeForm.level;
+  const { dimCode, dimName } = resolveCurrentDimFields();
   if (dimType === '产品级') {
-    const dimCode = String(
-      selectedMasterProduct.value?.offeringId || masterScopeForm.offeringId || '',
-    ).trim();
-    const dimName = masterScopeForm.offeringName.trim();
     if (!dimCode || !dimName) {
       editor.error = '请选择有效产品（需包含产品编码）';
       return null;
@@ -598,9 +652,6 @@ function resolveDimFields(): { dimType: string; dimCode: string; dimName: string
       dimName,
     };
   }
-  const node = findMasterDepartmentNode(masterDepartmentSegments.value);
-  const dimCode = String(node?.deptCode ?? node?.id ?? '').trim();
-  const dimName = masterScopeForm.planningDeptName.trim();
   if (!dimCode || !dimName) {
     editor.error = '请选择有效归属部门（需包含部门编码）';
     return null;
@@ -815,29 +866,55 @@ function ensureDevelopOwnerSelection(): boolean {
   return Boolean(editor.developOwnerDepartment.trim());
 }
 
-function hydratePickerFromValue(
-  picker: PersonPickerState,
-  value: string,
-  department: string,
-): void {
+function hydratePickerFromValue(picker: PersonPickerState, value: string, department = ''): void {
   resetPersonPicker(picker);
   const label = value.trim();
   if (!label) {
     return;
   }
   picker.keyword = label;
-  if (looksLikePersonLabel(label) && department.trim()) {
-    const parts = label.split(/\s+/).filter(Boolean);
-    const id = parts[parts.length - 1] ?? '';
-    const chName = parts.slice(0, -1).join(' ');
+  const parsed = parsePersonSubmitValue(label);
+  if (looksLikePersonLabel(label) && parsed.id) {
     picker.selected = {
-      id,
-      chName,
+      id: parsed.id,
+      sAMAccountName: '',
+      chName: parsed.name,
       label,
       deptName: department.trim(),
       raw: {},
     };
   }
+}
+
+function resolvePersonForSubmit(
+  picker: PersonPickerState,
+  initialValue: PersonSubmitValue,
+  role: 'owner' | 'developOwner',
+): PersonSubmitValue | null {
+  if (picker.selected) {
+    return {
+      label: picker.selected.label,
+      name: picker.selected.chName || picker.selected.label,
+      id: picker.selected.id,
+    };
+  }
+  const currentLabel = picker.keyword.trim();
+  if (
+    editor.mode === 'edit' &&
+    currentLabel &&
+    currentLabel === initialValue.label &&
+    initialValue.id
+  ) {
+    return {
+      label: initialValue.label,
+      name: initialValue.name,
+      id: initialValue.id,
+    };
+  }
+  if (editor.mode === 'edit' && role === 'developOwner' && !currentLabel && !initialValue.label) {
+    return createEmptyPersonSubmitValue();
+  }
+  return null;
 }
 
 function openCreate(): void {
@@ -854,6 +931,8 @@ function openCreate(): void {
 function openEdit(record: SkillMasterRecord): void {
   const ownerLabel = personDisplayLabel(record.owner);
   const developOwnerLabel = personDisplayLabel(record.developOwner);
+  const nextOwnerLabel = ownerLabel === '待认领' ? '' : ownerLabel;
+  const nextDevelopOwnerLabel = developOwnerLabel === '待认领' ? '' : developOwnerLabel;
   Object.assign(editor, {
     open: true,
     mode: 'edit',
@@ -862,20 +941,18 @@ function openEdit(record: SkillMasterRecord): void {
     description: record.description,
     level: record.level,
     product: record.product,
-    owner: ownerLabel === '待认领' ? '' : ownerLabel,
+    owner: nextOwnerLabel,
     department: record.department,
-    developOwner: developOwnerLabel === '待认领' ? '' : developOwnerLabel,
+    developOwner: nextDevelopOwnerLabel,
     developOwnerDepartment: record.developOwnerDepartment || '',
     plannedCompleteDate: record.plannedCompleteDate,
     status: record.status,
     error: '',
   });
-  hydratePickerFromValue(ownerPicker, editor.owner, editor.department);
-  hydratePickerFromValue(
-    developOwnerPicker,
-    editor.developOwner,
-    editor.developOwnerDepartment,
-  );
+  Object.assign(initialOwnerValue, parsePersonSubmitValue(nextOwnerLabel));
+  Object.assign(initialDevelopOwnerValue, parsePersonSubmitValue(nextDevelopOwnerLabel));
+  hydratePickerFromValue(ownerPicker, nextOwnerLabel, editor.department);
+  hydratePickerFromValue(developOwnerPicker, nextDevelopOwnerLabel, editor.developOwnerDepartment);
   applyCurrentScopeToEditor();
 }
 
@@ -883,6 +960,8 @@ function closeEditor(): void {
   editor.open = false;
   editor.error = '';
   editorOverlayPointerStartedOnBackdrop.value = false;
+  Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
+  Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -930,32 +1009,47 @@ async function submitEditor(): Promise<void> {
       editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
       return;
     }
+    const ownerSamAccountName = ownerPicker.selected.sAMAccountName.trim();
+    if (!ownerSamAccountName) {
+      editor.error =
+        '\u8d23\u4efb Owner \u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+      return;
+    }
+    const developOwnerSamAccountName = developOwnerPicker.selected.sAMAccountName.trim();
+    if (!developOwnerSamAccountName) {
+      editor.error =
+        '\u5f00\u53d1\u8d23\u4efb\u4eba\u7684\u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+      return;
+    }
     if (!editor.plannedCompleteDate) {
       editor.error = '请选择计划完成时间';
       return;
     }
 
-    const body: CreateSkillMasterManagementBody = {
-      skillName: editor.name.trim(),
-      skillDescription: editor.description.trim(),
+    const params: CreateSkillMasterManagementParams = {
+      userId: props.userId.trim(),
       dimType: dim.dimType,
       dimCode: dim.dimCode,
       dimName: dim.dimName,
+    };
+    const body: CreateSkillMasterManagementBody = {
+      skillName: editor.name.trim(),
+      skillDescription: editor.description.trim(),
       ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-      ownerId: ownerPicker.selected.id,
-      developOwnerName:
-        developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-      developOwnerId: developOwnerPicker.selected.id,
+      ownerId: ownerSamAccountName,
+      developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+      developOwnerId: developOwnerSamAccountName,
       planFinishDate: editor.plannedCompleteDate,
     };
 
     submitting.value = true;
     try {
-      const response = await skillBaseService.createSkillMasterManagement(body);
+      const response = await skillBaseService.createSkillMasterManagement(body, params);
       if (response?.meta?.success !== true) {
-        throw new Error(
-          String(response?.meta?.message || response?.message || '新增失败，请稍后重试'),
+        editor.error = String(
+          response?.meta?.message || response?.message || '新增失败，请稍后重试',
         );
+        return;
       }
       closeEditor();
       await reload();
@@ -968,7 +1062,77 @@ async function submitEditor(): Promise<void> {
     return;
   }
 
-  editor.error = '编辑能力暂未对接，请稍后使用更新接口';
+  const dim = resolveDimFields();
+  if (!dim) {
+    return;
+  }
+  if (!editor.id.trim()) {
+    editor.error = '缺少 Skill id，请刷新列表后重试';
+    return;
+  }
+  if (!editor.name.trim()) {
+    editor.error = '请填写 Skill 名称';
+    return;
+  }
+  if (!ensureProductSkillNamePrefix()) {
+    return;
+  }
+  if (!editor.description.trim()) {
+    editor.error = '请填写 Skill 说明';
+    return;
+  }
+  const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
+  if (!ownerValue || !ownerValue.id) {
+    editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+    return;
+  }
+  const developOwnerValue = resolvePersonForSubmit(
+    developOwnerPicker,
+    initialDevelopOwnerValue,
+    'developOwner',
+  );
+  if (!developOwnerValue || !developOwnerValue.id) {
+    editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+    return;
+  }
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return;
+  }
+
+  const updateParams: UpdateSkillMasterManagementParams = {
+    userId: props.userId.trim(),
+    dimType: dim.dimType,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+  };
+  const updateBody: UpdateSkillMasterManagementBody = {
+    id: editor.id,
+    skillName: editor.name.trim(),
+    skillDescription: editor.description.trim(),
+    ownerName: ownerValue.name,
+    ownerId: ownerValue.id,
+    developOwnerName: developOwnerValue.name,
+    developOwnerId: developOwnerValue.id,
+    planFinishDate: editor.plannedCompleteDate,
+  };
+
+  submitting.value = true;
+  try {
+    const response = await skillBaseService.updateSkillMasterManagement(updateBody, updateParams);
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || '更新失败，请稍后重试'),
+      );
+    }
+    closeEditor();
+    await reload();
+    showToast('Skill 主体信息已更新');
+  } catch (error) {
+    editor.error = error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    submitting.value = false;
+  }
 }
 function openAssociation(record: SkillMasterRecord): void {
   const association = getSkillMasterAssociation(record.id);
@@ -1015,8 +1179,27 @@ function requestDelete(record: SkillMasterRecord): void {
   Object.assign(deleteDialog, { open: true, id: record.id, name: record.name });
 }
 async function confirmDelete(): Promise<void> {
-  showToast('单条删除暂未对接，请使用批量删除');
-  deleteDialog.open = false;
+  const id = String(deleteDialog.id ?? '').trim();
+  if (!id) {
+    showToast('缺少 Skill id，请刷新后重试');
+    deleteDialog.open = false;
+    return;
+  }
+  try {
+    const response = await skillBaseService.deleteSkillMasterManagement(id, props.userId.trim());
+    if (response?.meta?.success !== true) {
+      throw new Error(
+        String(response?.meta?.message || response?.message || '删除失败，请稍后重试'),
+      );
+    }
+    removeSkillMasterAssociation(id);
+    selectedMasterIds.value = selectedMasterIds.value.filter((item) => item !== id);
+    deleteDialog.open = false;
+    await reload();
+    showToast('Skill 已删除');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '删除失败，请稍后重试');
+  }
 }
 
 function toggleMasterSelection(id: string): void {
@@ -1036,43 +1219,66 @@ function toggleAllMasterSelection(event: Event): void {
 }
 
 function triggerMasterImport(): void {
-  showToast('Skill 清单导入能力待接入');
+  if (masterImportSubmitting.value || !ensureMasterScopeSelection(true)) return;
+  if (masterImportInputRef.value) {
+    masterImportInputRef.value.value = '';
+    masterImportInputRef.value.click();
+  }
 }
 
-function csvCell(value: unknown): string {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
-}
-
-function exportCurrentMasterData(): void {
-  const rows = filteredRecords.value;
-  if (rows.length === 0) {
-    showToast('暂无可导出的 Skill 清单');
+async function handleMasterImportFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!/\.(xlsx|xls)$/i.test(file.name)) {
+    showToast('仅支持 .xlsx 或 .xls 格式的 Excel 文件');
+    input.value = '';
     return;
   }
-  const headers = ['Skill', '描述', '责任 Owner', '归属部门', '开发责任人', '计划完成', '当前进展'];
-  const lines = rows.map((record) =>
-    [
-      record.name,
-      record.description,
-      personDisplayLabel(record.owner),
-      record.department,
-      personDisplayLabel(record.developOwner),
-      record.plannedCompleteDate,
-      record.status,
-    ]
-      .map(csvCell)
-      .join(','),
-  );
-  const blob = new Blob([`\ufeff${headers.map(csvCell).join(',')}\n${lines.join('\n')}`], {
-    type: 'text/csv;charset=utf-8;',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'Skill清单.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-  showToast('已导出 Skill 清单');
+  try {
+    masterImportSubmitting.value = true;
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await skillBaseService.importSkillMasterManagement(
+      formData,
+      buildMasterTransferParams(),
+    );
+    const result = normalizeSkillImportResponse(response);
+    await reload();
+    if (result.errorList.length > 0) {
+      const firstError = result.errorList[0];
+      showToast(
+        `Skill 清单导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条${firstError ? `;第 ${firstError.rowNum} 行：${firstError.errMsg}` : ''}`,
+      );
+    } else {
+      showToast(
+        result.totalCount > 0
+          ? `Skill 清单已成功导入 ${result.successCount} 条`
+          : 'Skill 清单导入完成',
+      );
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Skill 清单导入失败，请稍后重试');
+  } finally {
+    masterImportSubmitting.value = false;
+    input.value = '';
+  }
+}
+
+async function exportCurrentMasterData(): Promise<void> {
+  if (masterExportSubmitting.value || !ensureMasterScopeSelection(true)) return;
+  try {
+    masterExportSubmitting.value = true;
+    const response = await skillBaseService.exportSkillMasterManagement(
+      buildMasterTransferParams(),
+    );
+    openSkillExportResponse(response);
+    showToast('已开始导出 Skill 清单');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Skill 清单导出失败，请稍后重试');
+  } finally {
+    masterExportSubmitting.value = false;
+  }
 }
 
 function openBatchMasterEditDialog(): void {
@@ -1092,25 +1298,28 @@ function requestBatchMasterDelete(): void {
 }
 
 async function confirmBatchMasterDelete(): Promise<void> {
-  const skillNames = [...batchDeleteDialog.ids].map((id) => id.trim()).filter(Boolean);
-  if (skillNames.length === 0) {
+  const ids = [...batchDeleteDialog.ids].map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) {
     showToast('请先勾选需要批量删除的数据');
     return;
   }
   try {
-    const response = await skillBaseService.batchDeleteSkillMasterManagement(skillNames);
+    const response = await skillBaseService.batchDeleteSkillMasterManagement(
+      ids,
+      props.userId.trim(),
+    );
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || '批量删除失败，请稍后重试'),
       );
     }
-    skillNames.forEach((name) => {
-      removeSkillMasterAssociation(name);
+    ids.forEach((id) => {
+      removeSkillMasterAssociation(id);
     });
     batchDeleteDialog.open = false;
-    selectedMasterIds.value = selectedMasterIds.value.filter((id) => !skillNames.includes(id));
+    selectedMasterIds.value = selectedMasterIds.value.filter((id) => !ids.includes(id));
     await reload();
-    showToast(`已删除 ${skillNames.length} 条 Skill`);
+    showToast(`已删除 ${ids.length} 条 Skill`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '批量删除失败，请稍后重试');
   }
@@ -1275,6 +1484,13 @@ onBeforeUnmount(() => {
           >
         </div>
         <div class="toolbar-actions">
+          <input
+            ref="masterImportInputRef"
+            hidden
+            type="file"
+            accept=".xlsx,.xls"
+            @change="handleMasterImportFile"
+          />
           <button
             class="master-btn master-btn--primary"
             type="button"
@@ -1287,7 +1503,13 @@ onBeforeUnmount(() => {
             </svg>
             新增
           </button>
-          <button class="master-btn master-btn--soft" type="button" @click="triggerMasterImport">
+          <button
+            class="master-btn master-btn--soft"
+            type="button"
+            :disabled="!hasCompleteMasterScope || masterImportSubmitting"
+            :title="masterScopeErrorMessage || '导入 Skill 清单'"
+            @click="triggerMasterImport"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2" />
             </svg>
@@ -1296,6 +1518,8 @@ onBeforeUnmount(() => {
           <button
             class="master-btn master-btn--soft"
             type="button"
+            :disabled="!hasCompleteMasterScope || masterExportSubmitting"
+            :title="masterScopeErrorMessage || '导出 Skill 清单'"
             @click="exportCurrentMasterData"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1405,7 +1629,8 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <div class="row-actions">
-                  <span class="row-actions__muted">暂不支持</span>
+                  <button type="button" @click="openEdit(record)">编辑</button
+                  ><button class="danger" type="button" @click="requestDelete(record)">删除</button>
                 </div>
               </td>
             </tr>
@@ -1454,7 +1679,7 @@ onBeforeUnmount(() => {
                 maxlength="60"
                 :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
               /><small v-if="requiredSkillNamePrefix" class="field-hint"
-                >需以“{{ requiredSkillNamePrefix }}”开头</small
+                >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
               ></label
             >
             <label class="wide"
@@ -1533,8 +1758,7 @@ onBeforeUnmount(() => {
               </div>
             </label>
             <label
-              ><span>计划完成时间 *</span
-              ><input v-model="editor.plannedCompleteDate" type="date"
+              ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
             /></label>
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>

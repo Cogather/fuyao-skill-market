@@ -2,6 +2,7 @@ import { notifyHarnessConfigurationChanged } from './harnessConfigurationSyncSer
 
 export interface DepartmentPlanningPermissionMember {
   userId: string;
+  employeeNo?: string;
   userName: string;
   label: string;
   departmentName: string;

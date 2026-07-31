@@ -51,6 +51,7 @@ const MOCK_VALIDATE_USER = {
 const MOCK_USER_DEPARTMENT_OPTIONS = [
   {
     id: 'w30000001',
+    sAMAccountName: 'w30000001',
     chName: '张三',
     department_l1: '云核装备经营管理部',
     department_l2: '智能终端产品部',
@@ -59,6 +60,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000002',
+    sAMAccountName: 'w30000002',
     chName: '李四',
     department_l1: '云核装备经营管理部',
     department_l2: '质量产品线',
@@ -66,6 +68,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000003',
+    sAMAccountName: 'w30000003',
     chName: '王五',
     department_l1: '数据与智能平台部',
     department_l2: '数据产品线',
@@ -73,18 +76,21 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000004',
+    sAMAccountName: 'w30000004',
     chName: '赵六',
     department_l1: '研发效能产品部',
     department_l2: '知识工程组',
   },
   {
     id: 'w30000005',
+    sAMAccountName: 'w30000005',
     chName: '钱慧',
     department_l1: '云平台产品部',
     department_l2: '发布治理组',
   },
   {
     id: 'w30000006',
+    sAMAccountName: 'w30000006',
     chName: '李明',
     department_l1: '云核装备经营管理部',
     department_l2: '智能终端产品部',
@@ -93,6 +99,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000007',
+    sAMAccountName: 'w30000007',
     chName: '周扬',
     department_l1: '云核装备经营管理部',
     department_l2: '质量产品线',
@@ -100,6 +107,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000008',
+    sAMAccountName: 'w30000008',
     chName: '陈七',
     department_l1: '数据与智能平台部',
     department_l2: '数据产品线',
@@ -107,6 +115,7 @@ const MOCK_USER_DEPARTMENT_OPTIONS = [
   },
   {
     id: 'w30000009',
+    sAMAccountName: 'w30000009',
     chName: '刘岚',
     department_l1: '研发效能产品部',
     department_l2: '知识工程组',
@@ -125,6 +134,7 @@ type MockEnvelope<T> = {
 };
 
 type MockSkillMasterManagementRecord = {
+  id: string;
   skillName: string;
   skillDescription: string;
   dimType: string;
@@ -142,6 +152,49 @@ type MockSkillMasterManagementRecord = {
   skillMatchLevel: string | null;
 };
 
+type MockSkillPlanningSupplementRecord = {
+  id: string;
+  skillName: string;
+  name?: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  level?: string;
+  offeringId?: string;
+  offeringName?: string;
+  skillDescription: string;
+  description?: string;
+  ownerName: string;
+  ownerId: string;
+  owner?: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  developOwner?: string;
+  status: string;
+  planFinishDate: string;
+  planedCompleteDate?: string;
+  deptCode?: string;
+  deptName?: string;
+  planDeptCode?: string;
+  planDeptName?: string;
+  l5DeptCode?: string;
+  l5DeptName?: string;
+  l4DeptCode?: string;
+  l4DeptName?: string;
+  l3DeptCode?: string;
+  l3DeptName?: string;
+  l2DeptCode?: string;
+  l2DeptName?: string;
+  l1DeptCode?: string;
+  l1DeptName?: string;
+  createTime?: string;
+  updateTime?: string;
+};
+
 function nowLocalDateTimeArray(): number[] {
   const now = new Date();
   return [
@@ -155,8 +208,25 @@ function nowLocalDateTimeArray(): number[] {
   ];
 }
 
+let mockSkillMasterManagementIdSeq = 1000;
+
+function nextMockSkillMasterManagementId(): string {
+  mockSkillMasterManagementIdSeq += 1;
+  return String(mockSkillMasterManagementIdSeq);
+}
+
+let mockSkillPlanningSupplementIdSeq = 8000;
+
+function nextMockSkillPlanningSupplementId(): string {
+  mockSkillPlanningSupplementIdSeq += 1;
+  return String(mockSkillPlanningSupplementIdSeq);
+}
+
+const mockSkillPlanningSupplementRecords: MockSkillPlanningSupplementRecord[] = [];
+
 const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
   {
+    id: '501',
     skillName: '稳定性日报 Skill',
     skillDescription: '汇总稳定性指标并生成日报摘要',
     dimType: '部门级',
@@ -174,6 +244,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     skillMatchLevel: null,
   },
   {
+    id: '502',
     skillName: '接口巡检 Skill',
     skillDescription: '定期巡检关键接口可用性',
     dimType: '部门级',
@@ -191,6 +262,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     skillMatchLevel: null,
   },
   {
+    id: '503',
     skillName: '产品A-发布检查 Skill',
     skillDescription: '产品级发布前检查清单',
     dimType: '产品级',
@@ -235,6 +307,7 @@ function filterMockSkillMasterManagement(
     .toLowerCase();
   const dimType = String(body.dimType ?? '').trim();
   const dimCode = String(body.dimCode ?? '').trim();
+  const dimName = String(body.dimName ?? '').trim();
   const ownerId = String(body.ownerId ?? '').trim();
   const developOwnerId = String(body.developOwnerId ?? '').trim();
   const statusList = Array.isArray(body.statusList)
@@ -247,6 +320,9 @@ function filterMockSkillMasterManagement(
   }
   if (dimCode) {
     list = list.filter((item) => item.dimCode === dimCode);
+  }
+  if (dimName) {
+    list = list.filter((item) => item.dimName === dimName);
   }
   if (ownerId) {
     list = list.filter((item) => item.ownerId === ownerId);
@@ -266,7 +342,12 @@ function filterMockSkillMasterManagement(
   }
 
   const sortBy = String(body.sortBy ?? '').trim();
-  const sortOrder = String(body.sortOrder ?? 'desc').trim().toLowerCase() === 'asc' ? 1 : -1;
+  const sortOrder =
+    String(body.sortOrder ?? 'desc')
+      .trim()
+      .toLowerCase() === 'asc'
+      ? 1
+      : -1;
   if (sortBy === 'updatedAt' || sortBy === 'createdAt' || sortBy === 'planFinishDate') {
     list.sort((left, right) => {
       const leftValue = String(
@@ -286,6 +367,132 @@ function filterMockSkillMasterManagement(
   const pageSize = Math.max(1, Number(body.pageSize) || list.length || 10);
   const start = (pageNum - 1) * pageSize;
   return list.slice(start, start + pageSize);
+}
+
+function mockPlanningQueryValues(value: unknown): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
+  return [...new Set(source.map((item) => String(item ?? '').trim()).filter(Boolean))];
+}
+
+function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
+  list: MockSkillPlanningSupplementRecord[];
+  total: number;
+} {
+  const keyword = String(query.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  const dimType = String(query.dimType ?? '').trim();
+  const dimCode = String(query.dimCode ?? '').trim();
+  const dimName = String(query.dimName ?? '').trim();
+  const firstScenes = mockPlanningQueryValues(query.firstScene);
+  const secondScenes = mockPlanningQueryValues(query.secondScene);
+  const activities = mockPlanningQueryValues(query.activityNodeName);
+  const subActivities = mockPlanningQueryValues(query.subActivityNodeName);
+  const levels = mockPlanningQueryValues(query.level);
+  const statuses = mockPlanningQueryValues(query.status);
+  const deptCodes = mockPlanningQueryValues([
+    ...mockPlanningQueryValues(query.deptCodes),
+    ...mockPlanningQueryValues(query.deptCode),
+    ...mockPlanningQueryValues(query.dimCode),
+  ]);
+  const departmentFilters = [
+    [query.departmentL3, 'l3DeptName'],
+    [query.departmentL4, 'l4DeptName'],
+    [query.departmentL5, 'l5DeptName'],
+    [query.departmentL6, 'l6DeptName'],
+    [query.departmentL7, 'l7DeptName'],
+    [query.departmentL8, 'l8DeptName'],
+  ] as const;
+
+  let list = mockSkillPlanningSupplementRecords.filter((item) => {
+    const record = item as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+    if (firstScenes.length > 0 && !firstScenes.includes(item.firstScene)) return false;
+    if (secondScenes.length > 0 && !secondScenes.includes(item.secondScene)) return false;
+    if (activities.length > 0 && !activities.includes(item.activityNodeName)) return false;
+    if (subActivities.length > 0 && !subActivities.includes(item.subActivityNodeName)) return false;
+    if (levels.length > 0 && !levels.includes(item.level || item.dimType)) return false;
+    if (statuses.length > 0 && !statuses.includes(item.status)) return false;
+    if (dimType && String(item.dimType || item.level).trim() !== dimType) {
+      return false;
+    }
+    if (
+      dimCode &&
+      ![item.dimCode, item.deptCode, item.planDeptCode, item.offeringId].some(
+        (value) => String(value ?? '').trim() === dimCode,
+      )
+    ) {
+      return false;
+    }
+    if (
+      dimName &&
+      ![item.dimName, item.planDeptName, item.offeringName].some(
+        (value) => String(value ?? '').trim() === dimName,
+      )
+    ) {
+      return false;
+    }
+    if (
+      deptCodes.length > 0 &&
+      ![item.deptCode, item.planDeptCode, item.dimCode].some((value) =>
+        deptCodes.includes(String(value ?? '').trim()),
+      )
+    ) {
+      return false;
+    }
+    if (
+      departmentFilters.some(
+        ([value, key]) =>
+          String(value ?? '').trim() && String(record[key] ?? '').trim() !== String(value).trim(),
+      )
+    ) {
+      return false;
+    }
+    if (!keyword) return true;
+    return [
+      item.skillName,
+      item.firstScene,
+      item.secondScene,
+      item.activityNodeName,
+      item.subActivityNodeName,
+      item.skillDescription,
+      item.ownerName,
+      item.developOwnerName,
+    ].some((field) => field.toLowerCase().includes(keyword));
+  });
+
+  const sortBy = String(query.sortBy ?? '').trim();
+  const sortOrder =
+    String(query.sortOrder ?? '')
+      .trim()
+      .toLowerCase() === 'asc'
+      ? 1
+      : -1;
+  if (sortBy) {
+    list = [...list].sort((left, right) => {
+      const leftRecord = left as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+      const rightRecord = right as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+      const leftValue = String(
+        sortBy === 'planedCompleteDate' ? left.planFinishDate : (leftRecord[sortBy] ?? ''),
+      );
+      const rightValue = String(
+        sortBy === 'planedCompleteDate' ? right.planFinishDate : (rightRecord[sortBy] ?? ''),
+      );
+      return leftValue.localeCompare(rightValue) * sortOrder;
+    });
+  }
+
+  const total = list.length;
+  const pageNum = Math.max(1, Number(query.pageNum) || 1);
+  const pageSize = Math.max(1, Number(query.pageSize) || total || 10);
+  const start = (pageNum - 1) * pageSize;
+  return {
+    list: list.slice(start, start + pageSize),
+    total,
+  };
 }
 
 type PagedArray<T> = T[] & {
@@ -1642,9 +1849,261 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  const isSkillPlanningSupplementQuery =
+    path === '/config/query' || path === '/config/supplement/query';
+  const isSkillPlanningSupplementUpdate =
+    path === '/config/update' || path === '/config/supplement/update';
+  const isSkillPlanningSupplementBatchDelete =
+    path === '/config/batch_delete' || path === '/config/supplement/batch_delete';
+  const supplementDeleteMatch = /^\/config\/(?:supplement\/)?delete\/([^/]+)$/.exec(path);
+  const skillPlanningSupplementRequiresUserId =
+    path === '/config/add' ||
+    isSkillPlanningSupplementQuery ||
+    isSkillPlanningSupplementUpdate ||
+    isSkillPlanningSupplementBatchDelete ||
+    Boolean(supplementDeleteMatch);
+  if (skillPlanningSupplementRequiresUserId && !String(params.userId ?? '').trim()) {
+    return fail('缺少必填参数: userId', null);
+  }
+
+  if (path === '/config/add' || isSkillPlanningSupplementQuery || isSkillPlanningSupplementUpdate) {
+    const missingMutationParams = ['dimCode', 'dimType', 'dimName'].filter(
+      (key) => !String(params[key] ?? '').trim(),
+    );
+    if (missingMutationParams.length > 0) {
+      return fail(
+        `\u7f3a\u5c11\u5fc5\u586b\u53c2\u6570: ${missingMutationParams.join(', ')}`,
+        null,
+      );
+    }
+  }
+  const readPlanningSupplementPayload = (): Record<string, unknown> => {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const entity =
+      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
+        ? (body.skillConfigEntity as Record<string, unknown>)
+        : {};
+    return { ...body, ...entity };
+  };
+  if (method === 'post' && path === '/config/add') {
+    const entity = readPlanningSupplementPayload();
+    entity.name = entity.skillName ?? entity.name;
+    entity.level = entity.dimType ?? entity.level;
+    entity.offeringId = entity.dimCode ?? entity.offeringId;
+    entity.offeringName = entity.dimName ?? entity.offeringName;
+    entity.planDeptCode = entity.dimCode ?? entity.planDeptCode;
+    entity.planDeptName = entity.dimName ?? entity.planDeptName;
+    const requiredKeys = [
+      'name',
+      'firstScene',
+      'secondScene',
+      'activityNodeName',
+      'subActivityNodeName',
+      'level',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(entity[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const dimType = String(entity.level).trim();
+    if (dimType !== '部门级' && dimType !== '产品级') {
+      return fail('level 仅支持 部门级 或 产品级', null);
+    }
+    const dimCode = String(dimType === '产品级' ? entity.offeringId : entity.planDeptCode).trim();
+    const dimName = String(dimType === '产品级' ? entity.offeringName : entity.planDeptName).trim();
+    if (!dimCode || !dimName) {
+      return fail('缺少维度编码或名称', null);
+    }
+    const skillName = String(entity.name).trim();
+    const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
+    const record: MockSkillPlanningSupplementRecord = {
+      id: nextMockSkillPlanningSupplementId(),
+      skillName,
+      name: skillName,
+      firstScene: String(entity.firstScene).trim(),
+      secondScene: String(entity.secondScene).trim(),
+      activityNodeName: String(entity.activityNodeName).trim(),
+      subActivityNodeName: String(entity.subActivityNodeName).trim(),
+      dimType,
+      dimCode,
+      dimName,
+      level: dimType,
+      offeringId: String(entity.offeringId ?? '').trim(),
+      offeringName: String(entity.offeringName ?? '').trim(),
+      skillDescription: String(entity.description ?? '').trim() || master?.skillDescription || '',
+      description: String(entity.description ?? '').trim(),
+      ownerName: String(entity.owner ?? '').trim() || master?.ownerName || '',
+      ownerId: master?.ownerId ?? '',
+      owner: String(entity.owner ?? '').trim(),
+      developOwnerName: String(entity.developOwner ?? '').trim() || master?.developOwnerName || '',
+      developOwnerId: master?.developOwnerId ?? '',
+      developOwner: String(entity.developOwner ?? '').trim(),
+      status: String(entity.status ?? '').trim() || master?.status || '未开始',
+      planFinishDate:
+        String(entity.planedCompleteDate ?? '').trim() || master?.planFinishDate || '',
+      planedCompleteDate: String(entity.planedCompleteDate ?? '').trim(),
+      deptCode: String(entity.deptCode ?? '').trim(),
+      deptName: String(entity.deptName ?? '').trim(),
+      planDeptCode: String(entity.planDeptCode ?? '').trim(),
+      planDeptName: String(entity.planDeptName ?? '').trim(),
+      l5DeptCode: String(entity.l5DeptCode ?? '').trim(),
+      l5DeptName: String(entity.l5DeptName ?? '').trim(),
+      l4DeptCode: String(entity.l4DeptCode ?? '').trim(),
+      l4DeptName: String(entity.l4DeptName ?? '').trim(),
+      l3DeptCode: String(entity.l3DeptCode ?? '').trim(),
+      l3DeptName: String(entity.l3DeptName ?? '').trim(),
+      l2DeptCode: String(entity.l2DeptCode ?? '').trim(),
+      l2DeptName: String(entity.l2DeptName ?? '').trim(),
+      l1DeptCode: String(entity.l1DeptCode ?? '').trim(),
+      l1DeptName: String(entity.l1DeptName ?? '').trim(),
+      createTime: String(entity.createTime ?? '').trim(),
+      updateTime: String(entity.updateTime ?? '').trim(),
+    };
+    mockSkillPlanningSupplementRecords.unshift(record);
+    return ok({ ...record });
+  }
+
+  if ((method === 'get' || method === 'post') && isSkillPlanningSupplementQuery) {
+    const body =
+      method === 'post' ? (readSkillRequestBody(config.data) as Record<string, unknown>) : {};
+    const query =
+      method === 'post' && body.query && typeof body.query === 'object'
+        ? (body.query as Record<string, unknown>)
+        : params;
+    const result = filterMockSkillPlanningSupplement(query);
+    return ok(result.list, result.total);
+  }
+
+  if (method === 'put' && isSkillPlanningSupplementUpdate) {
+    const entity = readPlanningSupplementPayload();
+    entity.name = entity.skillName ?? entity.name;
+    entity.level = entity.dimType ?? entity.level;
+    entity.offeringId = entity.dimCode ?? entity.offeringId;
+    entity.offeringName = entity.dimName ?? entity.offeringName;
+    entity.planDeptCode = entity.dimCode ?? entity.planDeptCode;
+    entity.planDeptName = entity.dimName ?? entity.planDeptName;
+    const id = String(entity.id ?? '').trim();
+    if (!id) {
+      return fail('缺少 id', null);
+    }
+    const requiredKeys = [
+      'name',
+      'firstScene',
+      'secondScene',
+      'activityNodeName',
+      'subActivityNodeName',
+      'level',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(entity[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const dimType = String(entity.level).trim();
+    if (dimType !== '部门级' && dimType !== '产品级') {
+      return fail('level 仅支持 部门级 或 产品级', null);
+    }
+    const dimCode = String(dimType === '产品级' ? entity.offeringId : entity.planDeptCode).trim();
+    const dimName = String(dimType === '产品级' ? entity.offeringName : entity.planDeptName).trim();
+    if (!dimCode || !dimName) {
+      return fail('缺少维度编码或名称', null);
+    }
+    const target = mockSkillPlanningSupplementRecords.find((item) => item.id === id);
+    if (!target) {
+      return fail('Skill 规划不存在', null);
+    }
+    const skillName = String(entity.name).trim();
+    const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
+    Object.assign(target, {
+      skillName,
+      name: skillName,
+      firstScene: String(entity.firstScene).trim(),
+      secondScene: String(entity.secondScene).trim(),
+      activityNodeName: String(entity.activityNodeName).trim(),
+      subActivityNodeName: String(entity.subActivityNodeName).trim(),
+      dimType,
+      dimCode,
+      dimName,
+      level: dimType,
+      offeringId: String(entity.offeringId ?? '').trim(),
+      offeringName: String(entity.offeringName ?? '').trim(),
+      skillDescription:
+        String(entity.description ?? '').trim() ||
+        master?.skillDescription ||
+        target.skillDescription,
+      description: String(entity.description ?? '').trim(),
+      ownerName: String(entity.owner ?? '').trim() || master?.ownerName || target.ownerName,
+      ownerId: master?.ownerId ?? target.ownerId,
+      owner: String(entity.owner ?? '').trim(),
+      developOwnerName:
+        String(entity.developOwner ?? '').trim() ||
+        master?.developOwnerName ||
+        target.developOwnerName,
+      developOwnerId: master?.developOwnerId ?? target.developOwnerId,
+      developOwner: String(entity.developOwner ?? '').trim(),
+      status: String(entity.status ?? '').trim() || master?.status || target.status,
+      planFinishDate:
+        String(entity.planedCompleteDate ?? '').trim() ||
+        master?.planFinishDate ||
+        target.planFinishDate,
+      planedCompleteDate: String(entity.planedCompleteDate ?? '').trim(),
+      deptCode: String(entity.deptCode ?? '').trim(),
+      deptName: String(entity.deptName ?? '').trim(),
+      planDeptCode: String(entity.planDeptCode ?? '').trim(),
+      planDeptName: String(entity.planDeptName ?? '').trim(),
+      l5DeptCode: String(entity.l5DeptCode ?? '').trim(),
+      l5DeptName: String(entity.l5DeptName ?? '').trim(),
+      l4DeptCode: String(entity.l4DeptCode ?? '').trim(),
+      l4DeptName: String(entity.l4DeptName ?? '').trim(),
+      l3DeptCode: String(entity.l3DeptCode ?? '').trim(),
+      l3DeptName: String(entity.l3DeptName ?? '').trim(),
+      l2DeptCode: String(entity.l2DeptCode ?? '').trim(),
+      l2DeptName: String(entity.l2DeptName ?? '').trim(),
+      l1DeptCode: String(entity.l1DeptCode ?? '').trim(),
+      l1DeptName: String(entity.l1DeptName ?? '').trim(),
+      createTime: String(entity.createTime ?? '').trim(),
+      updateTime: String(entity.updateTime ?? '').trim(),
+    });
+    return ok({ ...target });
+  }
+
+  if (method === 'delete' && supplementDeleteMatch) {
+    const id = decodeURIComponent(supplementDeleteMatch[1] ?? '').trim();
+    if (!id) {
+      return fail('缺少删除 id', null);
+    }
+    const index = mockSkillPlanningSupplementRecords.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return fail('Skill 规划不存在', null);
+    }
+    const [removed] = mockSkillPlanningSupplementRecords.splice(index, 1);
+    return ok(removed);
+  }
+
+  if (method === 'delete' && isSkillPlanningSupplementBatchDelete) {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map((item) => String(item ?? '').trim()).filter(Boolean)
+      : [];
+    if (ids.length === 0) {
+      return fail('ids 不能为空', null);
+    }
+    const idSet = new Set(ids);
+    const before = mockSkillPlanningSupplementRecords.length;
+    for (let index = mockSkillPlanningSupplementRecords.length - 1; index >= 0; index -= 1) {
+      const current = mockSkillPlanningSupplementRecords[index];
+      if (idSet.has(current.id)) {
+        mockSkillPlanningSupplementRecords.splice(index, 1);
+      }
+    }
+    const removed = before - mockSkillPlanningSupplementRecords.length;
+    return ok({ removed }, removed);
+  }
+
   if (method === 'post' && path === '/management/add') {
     const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const payload = { ...params, ...body };
     const requiredKeys = [
+      'userId',
       'skillName',
       'skillDescription',
       'dimType',
@@ -1656,26 +2115,27 @@ function handleSkillRequest(
       'developOwnerId',
       'planFinishDate',
     ] as const;
-    const missing = requiredKeys.filter((key) => !String(body[key] ?? '').trim());
+    const missing = requiredKeys.filter((key) => !String(payload[key] ?? '').trim());
     if (missing.length > 0) {
       return fail(`缺少必填字段: ${missing.join(', ')}`, null);
     }
-    if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+    if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
       return fail('status 不应传入', null);
     }
     const stamp = nowLocalDateTimeArray();
     const record: MockSkillMasterManagementRecord = {
-      skillName: String(body.skillName).trim(),
-      skillDescription: String(body.skillDescription).trim(),
-      dimType: String(body.dimType).trim(),
-      dimCode: String(body.dimCode).trim(),
-      dimName: String(body.dimName).trim(),
-      ownerName: String(body.ownerName).trim(),
-      ownerId: String(body.ownerId).trim(),
-      developOwnerName: String(body.developOwnerName).trim(),
-      developOwnerId: String(body.developOwnerId).trim(),
+      id: nextMockSkillMasterManagementId(),
+      skillName: String(payload.skillName).trim(),
+      skillDescription: String(payload.skillDescription).trim(),
+      dimType: String(payload.dimType).trim(),
+      dimCode: String(payload.dimCode).trim(),
+      dimName: String(payload.dimName).trim(),
+      ownerName: String(payload.ownerName).trim(),
+      ownerId: String(payload.ownerId).trim(),
+      developOwnerName: String(payload.developOwnerName).trim(),
+      developOwnerId: String(payload.developOwnerId).trim(),
       status: '未开始',
-      planFinishDate: String(body.planFinishDate).trim(),
+      planFinishDate: String(payload.planFinishDate).trim(),
       createdAt: stamp,
       updatedAt: stamp,
       skillMatchId: null,
@@ -1690,14 +2150,12 @@ function handleSkillRequest(
     }
     mockSkillMasterManagementRecords.unshift(record);
     return ok({
-      id: `skill-mgmt-${Date.now()}`,
       ...record,
     });
   }
 
-  if (method === 'post' && path === '/management/query') {
-    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
-    const matched = filterMockSkillMasterManagement(body);
+  if (method === 'get' && path === '/management/query') {
+    const matched = filterMockSkillMasterManagement(params);
     return ok(
       matched.map((item) => ({
         ...item,
@@ -1706,27 +2164,93 @@ function handleSkillRequest(
     );
   }
 
+  if (method === 'put' && path === '/management/update') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const payload = { ...params, ...body };
+    const id = String(payload.id ?? '').trim();
+    if (!id) {
+      return fail('缺少必填字段: id', null);
+    }
+    const requiredKeys = [
+      'skillName',
+      'userId',
+      'skillDescription',
+      'dimType',
+      'dimCode',
+      'dimName',
+      'ownerName',
+      'ownerId',
+      'developOwnerName',
+      'developOwnerId',
+      'planFinishDate',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(payload[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const target = mockSkillMasterManagementRecords.find((item) => item.id === id);
+    if (!target) {
+      return fail(`未找到 Skill: ${id}`, null);
+    }
+    Object.assign(target, {
+      skillName: String(payload.skillName).trim(),
+      skillDescription: String(payload.skillDescription).trim(),
+      dimType: String(payload.dimType).trim(),
+      dimCode: String(payload.dimCode).trim(),
+      dimName: String(payload.dimName).trim(),
+      ownerName: String(payload.ownerName).trim(),
+      ownerId: String(payload.ownerId).trim(),
+      developOwnerName: String(payload.developOwnerName).trim(),
+      developOwnerId: String(payload.developOwnerId).trim(),
+      planFinishDate: String(payload.planFinishDate).trim(),
+      updatedAt: nowLocalDateTimeArray(),
+    });
+    return ok({
+      ...target,
+    });
+  }
+
+  const deleteMatch = /^\/management\/delete\/([^/]+)$/.exec(path);
+  if (method === 'delete' && deleteMatch) {
+    const id = decodeURIComponent(deleteMatch[1] ?? '').trim();
+    if (!id) {
+      return fail('缺少删除 id', null);
+    }
+    const index = mockSkillMasterManagementRecords.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return fail(`未找到 Skill: ${id}`, null);
+    }
+    const [removed] = mockSkillMasterManagementRecords.splice(index, 1);
+    return ok({
+      id,
+      skillName: removed?.skillName ?? '',
+    });
+  }
+
   if (method === 'delete' && path === '/management/batch_delete') {
     const body = readSkillRequestBody(config.data);
-    const skillNames = Array.isArray(body)
+    const ids = Array.isArray(body)
       ? body.map((item) => String(item ?? '').trim()).filter(Boolean)
       : [];
-    if (skillNames.length === 0) {
+    if (ids.length === 0) {
       return fail('批量删除列表不能为空', null);
     }
-    const nameSet = new Set(skillNames);
+    const idSet = new Set(ids);
     const before = mockSkillMasterManagementRecords.length;
     for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {
       const current = mockSkillMasterManagementRecords[index];
-      if (current && nameSet.has(current.skillName)) {
+      if (current && idSet.has(current.id)) {
         mockSkillMasterManagementRecords.splice(index, 1);
       }
     }
     const removed = before - mockSkillMasterManagementRecords.length;
-    return ok({
+    return ok(
+      {
+        removed,
+        ids,
+      },
       removed,
-      skillNames,
-    }, removed);
+    );
   }
 
   if (method === 'get' && path === '/review/expert/check') {
@@ -2263,7 +2787,10 @@ function handleDeptReviewRequest(
     // 从 Skill 的 deptPath 聚合出管理员看管的部门树（扁平路径列表）
     const seen = new Map<string, { id: string; path: string; name: string }>();
     for (const row of deptReviewSkills) {
-      const segs = row.deptPath.split(' / ').map((s) => s.trim()).filter(Boolean);
+      const segs = row.deptPath
+        .split(' / ')
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (segs.length === 0) {
         continue;
       }
@@ -2284,7 +2811,10 @@ function handleDeptReviewRequest(
     }));
     const deptSegsRaw = readString(params.deptSegments, '');
     if (deptSegsRaw) {
-      const segs = deptSegsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      const segs = deptSegsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       list = list.filter((row) => {
         const parts = row.deptPath.split(' / ');
         if (parts.length < segs.length) return false;
@@ -2351,9 +2881,7 @@ function handleDeptReviewRequest(
     const body = (config.data ?? {}) as Record<string, unknown>;
     const targetOrgId = readString(body.targetOrgId, '');
     const skillIdsRaw = body.skillIds;
-    const skillIds: string[] = Array.isArray(skillIdsRaw)
-      ? skillIdsRaw.map((s) => String(s))
-      : [];
+    const skillIds: string[] = Array.isArray(skillIdsRaw) ? skillIdsRaw.map((s) => String(s)) : [];
     const org = mockPublishTargetOrgs.find((o) => o.id === targetOrgId);
     const orgName = org?.orgName ?? '未知组织';
     const owner = org?.owner ?? '';
@@ -2445,9 +2973,7 @@ function handleDeptReviewRequest(
     for (const row of deptReviewSkills) {
       if (row.publishTaskId === taskId) {
         row.comments = row.comments.map((c) =>
-          c.publishTaskId === taskId && c.type === 'publish'
-            ? { ...c, status: commentStatus }
-            : c,
+          c.publishTaskId === taskId && c.type === 'publish' ? { ...c, status: commentStatus } : c,
         );
         if (action === 'close' || action === 'reject') {
           row.publishTaskId = null;

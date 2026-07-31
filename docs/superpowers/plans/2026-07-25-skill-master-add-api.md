@@ -22,11 +22,11 @@
 
 ## File Structure
 
-| 文件 | 职责 |
-|------|------|
-| `src/services/skillMarket/apiTypes.ts` | 新增 `CreateSkillMasterManagementBody` 类型 |
-| `src/services/skillMarket/skillBaseService.ts` | 新增 `createSkillMasterManagement` HTTP 方法 |
-| `src/services/skillMarket/skillBaseServiceMock.ts` | Mock `POST /management/add` |
+| 文件                                                    | 职责                                               |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| `src/services/skillMarket/apiTypes.ts`                  | 新增 `CreateSkillMasterManagementBody` 类型        |
+| `src/services/skillMarket/skillBaseService.ts`          | 新增 `createSkillMasterManagement` HTTP 方法       |
+| `src/services/skillMarket/skillBaseServiceMock.ts`      | Mock `POST /management/add`                        |
 | `src/components/skill/SkillMasterManagementPanelV2.vue` | 人员搜索 UI、必填校验、组装 body、调接口、本地同步 |
 
 ---
@@ -34,11 +34,13 @@
 ### Task 1: 类型 + `skillBaseService` 方法 + Mock
 
 **Files:**
+
 - Modify: `src/services/skillMarket/apiTypes.ts`
 - Modify: `src/services/skillMarket/skillBaseService.ts`
 - Modify: `src/services/skillMarket/skillBaseServiceMock.ts`（`handleSkillRequest`）
 
 **Interfaces:**
+
 - Produces: `CreateSkillMasterManagementBody`；`skillBaseService.createSkillMasterManagement(body)`；mock `POST /management/add`
 
 - [ ] **Step 1: 在 `apiTypes.ts` 末尾（或合适位置）追加类型**
@@ -136,9 +138,11 @@ git commit -m "feat: add Skill master management create API and mock"
 ### Task 2: 面板人员搜索改为配置管理同款点选
 
 **Files:**
+
 - Modify: `src/components/skill/SkillMasterManagementPanelV2.vue`
 
 **Interfaces:**
+
 - Consumes: `querySkillPlanningUsers`、`SkillPlanningUserOption`（已有）
 - Produces: `selectedOwner` / `selectedDevelopOwner`（或等价 state），提交时可读 `id` + `chName`
 
@@ -203,14 +207,11 @@ const developOwnerPicker = reactive(createPersonPickerState());
         @click="selectOwner(option)"
       >
         <span
-          ><strong>{{ option.chName || option.label }}</strong
-          ><small>{{ option.id }}</small></span
+          ><strong>{{ option.chName || option.label }}</strong><small>{{ option.id }}</small></span
         >
         <em>{{ option.deptName || '部门信息待补充' }}</em>
       </button>
-      <span v-if="ownerPicker.message" class="person-search__empty">{{
-        ownerPicker.message
-      }}</span>
+      <span v-if="ownerPicker.message" class="person-search__empty">{{ ownerPicker.message }}</span>
     </template>
   </div>
 </label>
@@ -240,9 +241,11 @@ git commit -m "feat: use search-select for Skill master owner fields"
 ### Task 3: 必填校验 + 组装 body + 调接口并本地同步
 
 **Files:**
+
 - Modify: `src/components/skill/SkillMasterManagementPanelV2.vue`
 
 **Interfaces:**
+
 - Consumes: `skillBaseService.createSkillMasterManagement`、`CreateSkillMasterManagementBody`、`createSkillMasterRecord`
 - Produces: 新增成功后列表可见的本地记录
 
@@ -304,8 +307,7 @@ const body: CreateSkillMasterManagementBody = {
   dimName: dim.dimName,
   ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
   ownerId: ownerPicker.selected.id,
-  developOwnerName:
-    developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
+  developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
   developOwnerId: developOwnerPicker.selected.id,
   planFinishDate: editor.plannedCompleteDate,
 };
@@ -316,9 +318,7 @@ const body: CreateSkillMasterManagementBody = {
 ```ts
 const response = await skillBaseService.createSkillMasterManagement(body);
 if (response?.meta?.success !== true) {
-  throw new Error(
-    String(response?.meta?.message || response?.message || '新增失败，请稍后重试'),
-  );
+  throw new Error(String(response?.meta?.message || response?.message || '新增失败，请稍后重试'));
 }
 createSkillMasterRecord({
   name: body.skillName,
@@ -336,14 +336,14 @@ createSkillMasterRecord({
 
 编辑分支（`editor.mode !== 'create'`）保持现有 `updateSkillMasterRecord` 逻辑；编辑时若仍用旧 owner 字符串字段，可暂不强制走新 picker（或编辑也要求 selected——以实现时能跑通为准，新增必须走 API）。
 
-模板：计划完成时间 label 改为「计划完成时间 *」；开发责任人已在 Task 2 加 `*`。
+模板：计划完成时间 label 改为「计划完成时间 _」；开发责任人已在 Task 2 加 `_`。
 
 从 `@/services/skillMarket/skillBaseService` 与 `apiTypes` 导入所需符号。
 
 - [ ] **Step 3: 手动端到端验证**
 
-1. 顶部选部门级 + 归属部门 → 新增 → 填全字段并点选两人 → 保存  
-   - Network/mock log：`POST /management/add`，body **无** `status`，含正确 `dimType/dimCode/dimName`  
+1. 顶部选部门级 + 归属部门 → 新增 → 填全字段并点选两人 → 保存
+   - Network/mock log：`POST /management/add`，body **无** `status`，含正确 `dimType/dimCode/dimName`
    - 列表出现记录，进展为「未开始」
 2. 缺开发责任人或计划完成时间 → 拦截，不关弹窗
 3. 只输入 Owner 不点选 → 拦截
@@ -368,15 +368,15 @@ git commit -m "feat: submit Skill master create via /management/add"
 
 ## Spec Coverage Checklist
 
-| Spec 要求 | Task |
-|-----------|------|
-| Body 字段齐全且不含 status | Task 1 mock + Task 3 组装 |
-| `skillBaseService` + mock | Task 1 |
-| 弹窗必填 | Task 3 |
-| 人员搜索点选对齐配置管理 | Task 2 |
-| dimType/dimCode/dimName 映射 | Task 3 |
-| success 校验 + 本地同步列表 | Task 3 |
-| 不改编辑接口 / 不抽公共组件 | 全局约束 |
+| Spec 要求                    | Task                      |
+| ---------------------------- | ------------------------- |
+| Body 字段齐全且不含 status   | Task 1 mock + Task 3 组装 |
+| `skillBaseService` + mock    | Task 1                    |
+| 弹窗必填                     | Task 3                    |
+| 人员搜索点选对齐配置管理     | Task 2                    |
+| dimType/dimCode/dimName 映射 | Task 3                    |
+| success 校验 + 本地同步列表  | Task 3                    |
+| 不改编辑接口 / 不抽公共组件  | 全局约束                  |
 
 ## Self-Review Notes
 
