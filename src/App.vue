@@ -65,6 +65,10 @@ function handleEvent(event: MessageEvent): void {
   if (incomingUserId) {
     skillMarketStore.updateUserId(incomingUserId);
   }
+  const incomingUserName = firstString(p.userName);
+  if (incomingUserName) {
+    skillMarketStore.updateUserName(incomingUserName);
+  }
   try {
     const departmentSource = p.departmentList ?? p.departmentListStr;
     const list =

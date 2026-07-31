@@ -2784,7 +2784,10 @@ function handleDeptReviewRequest(
     // 从 Skill 的 deptPath 聚合出管理员看管的部门树（扁平路径列表）
     const seen = new Map<string, { id: string; path: string; name: string }>();
     for (const row of deptReviewSkills) {
-      const segs = row.deptPath.split(' / ').map((s) => s.trim()).filter(Boolean);
+      const segs = row.deptPath
+        .split(' / ')
+        .map((s) => s.trim())
+        .filter(Boolean);
       if (segs.length === 0) {
         continue;
       }
@@ -2805,7 +2808,10 @@ function handleDeptReviewRequest(
     }));
     const deptSegsRaw = readString(params.deptSegments, '');
     if (deptSegsRaw) {
-      const segs = deptSegsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      const segs = deptSegsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       list = list.filter((row) => {
         const parts = row.deptPath.split(' / ');
         if (parts.length < segs.length) return false;
@@ -2872,9 +2878,7 @@ function handleDeptReviewRequest(
     const body = (config.data ?? {}) as Record<string, unknown>;
     const targetOrgId = readString(body.targetOrgId, '');
     const skillIdsRaw = body.skillIds;
-    const skillIds: string[] = Array.isArray(skillIdsRaw)
-      ? skillIdsRaw.map((s) => String(s))
-      : [];
+    const skillIds: string[] = Array.isArray(skillIdsRaw) ? skillIdsRaw.map((s) => String(s)) : [];
     const org = mockPublishTargetOrgs.find((o) => o.id === targetOrgId);
     const orgName = org?.orgName ?? '未知组织';
     const owner = org?.owner ?? '';
@@ -2966,9 +2970,7 @@ function handleDeptReviewRequest(
     for (const row of deptReviewSkills) {
       if (row.publishTaskId === taskId) {
         row.comments = row.comments.map((c) =>
-          c.publishTaskId === taskId && c.type === 'publish'
-            ? { ...c, status: commentStatus }
-            : c,
+          c.publishTaskId === taskId && c.type === 'publish' ? { ...c, status: commentStatus } : c,
         );
         if (action === 'close' || action === 'reject') {
           row.publishTaskId = null;

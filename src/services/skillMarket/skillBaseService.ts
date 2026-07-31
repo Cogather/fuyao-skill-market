@@ -274,10 +274,19 @@ export const skillBaseService = {
     });
   },
 
-  // 组织查询接口
+  // 组织查询接口（通用，/api/organizations）
   queryOrganizationList: (params?: any): any => {
     return httpRequest.api<any>({
       url: '/organizations',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 评审中心-组织查询接口（/api/skills/personal-batch/organizations）
+  queryReviewOrganizations: (params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/personal-batch/organizations',
       method: 'get',
       params,
     });
@@ -879,79 +888,139 @@ export const skillBaseService = {
   },
 
   /*
-   * 部门 Skill 评审相关接口，统一前缀 /api/dept-review
-   * 详见 docs/部门Skill评审模块_接口设计文档.md
+   * 部门 Skill 评审相关接口，统一前缀 /api/skills/personal-batch
+   * 对接后端 SkillBatchPublishController
    */
 
-  // 1. 看管部门列表（部门筛选用）
+  // 1. 部门树
   queryDeptReviewDepartments: (params: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/departments',
+      url: 'versioninfo/v1/hrms/departments/product/ai',
       method: 'get',
       params,
     });
   },
 
-  // 2. 部门评审 Skill 列表（筛选/排序/分页）
+  // 1.1 可视部门树（用于部门评审可选性控制）
+  queryVisibleDepts: (params?: { userId: string }): any => {
+    return httpRequest.api<any>({
+      url: 'api/skills/personal-batch/visible-depts',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 2. 部门评审 Skill 列表 -> 后端 GET /publishable
   queryDeptReviewSkills: (params: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/skills',
+      url: '/api/skills/personal-batch/publishable',
       method: 'get',
       params,
     });
   },
 
-  // 3. 某 Skill 的意见列表（评审意见 + 一键发布申请）
+  // 3. 某 Skill 的意见列表 -> 后端 GET /opinions/{skillId}
   queryDeptSkillComments: (skillId: string, params: any): any => {
     return httpRequest.api<any>({
-      url: `/dept-review/skills/${skillId}/comments`,
+      url: `/api/skills/personal-batch/opinions/${skillId}`,
       method: 'get',
       params,
     });
   },
 
-  // 4. 提交评审意见
+  // 4. 提交评审意见 -> 后端 POST /opinions
   submitDeptSkillComment: (skillId: string, body: any): any => {
     return httpRequest.api<any>({
-      url: `/dept-review/skills/${skillId}/comments`,
+      url: `/api/skills/personal-batch/opinions`,
       method: 'post',
-      data: body,
+      data: { skillId, ...body },
     });
   },
 
-  // 5. 创建发布任务（一键发布到组织）
+  // 4.1 关闭（闭环）意见 -> 后端 POST /opinions/{opinionId}/close
+  closeDeptSkillComment: (opinionId: string, userId: string): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}/close`,
+      method: 'post',
+      data: { userId },
+    });
+  },
+
+  // 4.2 添加回复（提出人或 Owner ) -> 后端 POST /opinions/{opinionId}/replies
+  addDeptSkillReply: (
+    opinionId: string,
+    userId: string,
+    userName: string,
+    content: string,
+  ): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}/replies`,
+      method: 'post',
+      data: { userId, userName, content },
+    });
+  },
+
+  // 4.3 删除检视意见（仅提出人） -> 后端 DELETE /opinions/{opinionId}?userId={userId}
+  deleteDeptSkillComment: (opinionId: string, userId: string): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  // 4.4 删除回复（仅回复人） -> 后端 DELETE /opinions/{opinionId}/replies/{replyId}?userId={userId}
+  deleteDeptSkillReply: (opinionId: string, replyId: string, userId: string): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/opinions/${opinionId}/replies/${replyId}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  // 5. 创建发布任务 -> 后端 POST /submit-preview
   createDeptPublishTask: (body: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/publish-tasks',
+      url: '/api/skills/personal-batch/submit-preview',
       method: 'post',
       data: body,
     });
   },
 
-  // 6. 处理发布任务（close/reject/approve，统一 action 参数）
-  processDeptPublishTask: (taskId: string, body: any): any => {
-    return httpRequest.api<any>({
-      url: `/dept-review/publish-tasks/${taskId}/process`,
-      method: 'post',
-      data: body,
-    });
-  },
-
-  // 7. 发布任务列表（状态筛选/时间排序/分页）
+  // 6. 发布任务列表 -> 后端 GET /tasks/{taskId}
   queryDeptPublishTasks: (params: any): any => {
     return httpRequest.api<any>({
-      url: '/dept-review/publish-tasks',
+      url: '/api/skills/personal-batch/tasks',
       method: 'get',
       params,
     });
   },
 
-  // 8. 发布任务详情（含 Skill 清单）
+  // 7. 发布任务详情 -> 后端 GET /tasks/{taskId}
   queryDeptPublishTaskDetail: (taskId: string, params: any): any => {
     return httpRequest.api<any>({
-      url: `/dept-review/publish-tasks/${taskId}`,
+      url: `/api/skills/personal-batch/tasks/${taskId}`,
       method: 'get',
       params,
+    });
+  },
+
+  // 8. Owner一键发布 -> 后端 POST /tasks/{taskId}/publish
+  publishDeptTask: (taskId: string, body: any): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/tasks/${taskId}/publish`,
+      method: 'post',
+      data: body,
+      withCredentials: true,
+    });
+  },
+
+  // 9. 重试失败项 -> 后端 POST /tasks/{taskId}/retry
+  retryDeptTask: (taskId: string, body: any): any => {
+    return httpRequest.api<any>({
+      url: `/api/skills/personal-batch/tasks/${taskId}/retry`,
+      method: 'post',
+      data: body,
     });
   },
 };

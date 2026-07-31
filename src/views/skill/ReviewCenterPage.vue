@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import BusinessDimensionCascader from '../../components/skill/BusinessDimensionCascader.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import {
@@ -20,6 +21,7 @@ import type {
 } from '../../services/skillMarket/apiTypes';
 import type { ExpertDepartmentPermission } from '../../services/skillMarket/expertDepartmentPermission';
 import { skillBaseService } from '@/services/skillMarket/skillBaseService';
+import DeptSkillReviewPanel from './DeptSkillReviewPanel.vue';
 
 type ReviewDepartmentTreeNode = {
   id?: string;
@@ -30,6 +32,7 @@ type ReviewDepartmentTreeNode = {
 const props = withDefaults(
   defineProps<{
     userId?: string;
+    userName?: string;
     departmentTree?: ReviewDepartmentTreeNode[];
     expertDepartmentPermission?: ExpertDepartmentPermission;
     expertCheckLoaded?: boolean;
@@ -37,6 +40,7 @@ const props = withDefaults(
   }>(),
   {
     userId: '',
+    userName: '',
     departmentTree: () => [],
     expertCheckLoaded: true,
   },
@@ -121,6 +125,38 @@ type ExpertDimensionFormState = ExpertReviewDimensionDto & {
   reasonError: string;
 };
 const activeReviewDetailTab = ref<ReviewDetailTab>('AI评审');
+
+const router = useRouter();
+const reviewCenterInnerTab = ref<'monthly' | 'dept'>(
+  ((router.currentRoute.value.query.sub as 'monthly' | 'dept') ?? props.isExpertReviewer)
+    ? 'monthly'
+    : 'dept',
+);
+
+function switchReviewTab(sub: 'monthly' | 'dept'): void {
+  reviewCenterInnerTab.value = sub;
+  const query = { ...router.currentRoute.value.query };
+  void router.replace({ query });
+}
+
+// 监听路由 sub 参数变化（从详情页返回时恢复子 tab）
+watch(
+  () => router.currentRoute.value.query.sub,
+  (sub) => {
+    if (sub === 'monthly' || sub === 'dept') {
+      reviewCenterInnerTab.value = sub as 'monthly' | 'dept';
+    }
+  },
+);
+
+const reviewHeaderTitle = computed(() => {
+  reviewCenterInnerTab.value === 'monthly' ? '优秀 Skill 评审' : '部门 Skill 评审';
+});
+const reviewHeaderDesc = computed(() => {
+  reviewCenterInnerTab.value === 'monthly'
+    ? '建议专家从创新设计、场景价值、工程质量等方面对 Skill 进行评审'
+    : '浏览看管部门下的个人级 Skill，评审后一键发布到组织，并跟踪发布任务审批进度';
+});
 
 const AI_REVIEW_TONES = ['green', 'blue', 'amber', 'purple', 'red'] as const;
 type AiReviewTone = (typeof AI_REVIEW_TONES)[number];
@@ -271,7 +307,7 @@ function serviceMessage(value: unknown, fallback: string): string {
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
-function showToast(message: string, ms = 3000): void {
+function showToast(message: string, ms = 5000): void {
   toast.value = message;
   if (toastTimer) {
     window.clearTimeout(toastTimer);

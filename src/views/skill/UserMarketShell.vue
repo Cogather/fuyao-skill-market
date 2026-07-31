@@ -2792,10 +2792,7 @@ const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
 
 const visibleReleaseFilters = computed(() => {
   if (showAdminModules.value) {
-    return [
-      ...releaseFilters,
-      { key: 'deptReview' as ReleaseFilterKey, label: '部门评审' },
-    ];
+    return [...releaseFilters, { key: 'deptReview' as ReleaseFilterKey, label: '部门评审' }];
   }
   return releaseFilters;
 });
@@ -4413,7 +4410,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               :key="f.key"
               type="button"
               class="seg"
-              :class="{ on: releaseFilter === f.key, 'seg-ai-evolution': f.key === 'aiEvolution', 'seg-dept-review': f.key === 'deptReview' }"
+              :class="{
+                on: releaseFilter === f.key,
+                'seg-ai-evolution': f.key === 'aiEvolution',
+                'seg-dept-review': f.key === 'deptReview',
+              }"
               @click="onClickFilterRelease(f.key)"
             >
               {{ f.label }}
@@ -4435,202 +4436,202 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           />
         </div>
         <template v-else>
-        <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
-          <div class="ai-evolution-intro-title">
-            <span class="ai-evolution-tag">AI 自进化</span>
-            <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
+          <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
+            <div class="ai-evolution-intro-title">
+              <span class="ai-evolution-tag">AI 自进化</span>
+              <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
+            </div>
+            <p class="ai-evolution-intro-desc">
+              系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将发布为个人级
+              Skill，可在个人级页面查看；拒绝后将丢弃该候选版本。
+            </p>
           </div>
-          <p class="ai-evolution-intro-desc">
-            系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将发布为个人级
-            Skill，可在个人级页面查看；拒绝后将丢弃该候选版本。
-          </p>
-        </div>
 
-        <div
-          v-if="releaseFilter === 'aiEvolution'"
-          class="table-wrap my-table-wrap ai-evolution-table-wrap"
-        >
-          <table class="table my-table ai-evolution-table">
-            <thead>
-              <tr>
-                <th class="col-skill">Skill 名称</th>
-                <th class="col-source">来源</th>
-                <th class="col-type">类型</th>
-                <th class="col-desc">Skill 描述</th>
-                <th class="col-first-msg">第一条消息内容</th>
-                <th class="col-repo">代码仓信息</th>
-                <th class="col-ide">IDE</th>
-                <th class="col-time">Session 时间</th>
-                <th class="col-time">Skill 生成时间</th>
-                <th class="col-ops ai-evo-col-ops">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in aiEvolutionSkills"
-                :key="row.id"
-                class="ai-evolution-row clickable-row"
-                role="button"
-                tabindex="0"
-                @click="openAiEvolutionDetail(row)"
-                @keydown.enter.prevent="openAiEvolutionDetail(row)"
-              >
-                <td>
-                  <div class="skill-main">
-                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-source">
-                    {{ row.source || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-type">
-                    {{ row.type || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="ai-evolution-reason" :title="row.description">
-                    {{ row.description || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="ai-evolution-first-msg" :title="row.firstMessage">
-                    {{ row.firstMessage || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-repo">
-                    {{ row.codeRepo || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-ide">
-                    {{ row.ide || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-time">
-                    {{ row.sessionTime || '—' }}
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain ai-evolution-time">
-                    {{ row.generatedAt || '—' }}
-                  </div>
-                </td>
-                <td class="col-ops-td" @click.stop>
-                  <div class="ops ai-evolution-ops">
-                    <button
-                      type="button"
-                      class="ai-evo-btn ai-evo-approve-btn"
-                      :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
-                      @click="approveAiEvolutionSkill(row)"
-                    >
-                      {{
-                        row.status === 'approved'
-                          ? '已通过'
-                          : processingAiEvolutionId === row.id
-                            ? '处理中…'
-                            : '通过'
-                      }}
-                    </button>
-                    <button
-                      type="button"
-                      class="ai-evo-btn ai-evo-reject-btn"
-                      :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
-                      @click="rejectAiEvolutionSkill(row)"
-                    >
-                      {{ row.status === 'rejected' ? '已拒绝' : '拒绝' }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="aiEvolutionSkills.length === 0">
-                <td colspan="10" class="empty-row">暂无待审批的自进化 Skill</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
-          <table class="table my-table">
-            <thead>
-              <tr>
-                <th class="col-skill">Skill</th>
-                <th class="col-level">当前层级</th>
-                <th class="col-ver">当前版本</th>
-                <th class="col-status">状态</th>
-                <th class="col-dl">下载量</th>
-                <th class="col-ops">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(row, index) in myPublishedSkills"
-                :key="`${row.id}-${index}`"
-                class="clickable-row my-release-data-row"
-                role="button"
-                tabindex="0"
-                @click="openDetailFromMyRelease(row)"
-                @keydown.enter.prevent="openDetailFromMyRelease(row)"
-              >
-                <td>
-                  <div class="skill-main">
-                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain">{{ row.level }}</div>
-                </td>
-                <td>
-                  <div class="cell-main cell-main-plain">{{ row.currentVersion }}</div>
-                </td>
-                <td>
-                  <span class="st" :class="myPublishStatusPill(row).cls">{{
-                    myPublishStatusPill(row).label
-                  }}</span>
-                </td>
-                <td class="num">
-                  {{ (row.totalDownloads ?? 0).toLocaleString('zh-CN') }}
-                </td>
-                <td class="col-ops-td" @click.stop>
-                  <div class="ops my-release-ops">
-                    <div class="my-rel-primary-wrap">
-                      <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded"
-                        >已升级</span
-                      >
+          <div
+            v-if="releaseFilter === 'aiEvolution'"
+            class="table-wrap my-table-wrap ai-evolution-table-wrap"
+          >
+            <table class="table my-table ai-evolution-table">
+              <thead>
+                <tr>
+                  <th class="col-skill">Skill 名称</th>
+                  <th class="col-source">来源</th>
+                  <th class="col-type">类型</th>
+                  <th class="col-desc">Skill 描述</th>
+                  <th class="col-first-msg">第一条消息内容</th>
+                  <th class="col-repo">代码仓信息</th>
+                  <th class="col-ide">IDE</th>
+                  <th class="col-time">Session 时间</th>
+                  <th class="col-time">Skill 生成时间</th>
+                  <th class="col-ops ai-evo-col-ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in aiEvolutionSkills"
+                  :key="row.id"
+                  class="ai-evolution-row clickable-row"
+                  role="button"
+                  tabindex="0"
+                  @click="openAiEvolutionDetail(row)"
+                  @keydown.enter.prevent="openAiEvolutionDetail(row)"
+                >
+                  <td>
+                    <div class="skill-main">
+                      <strong class="skill-name skill-name-link">{{ row.name }}</strong>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain ai-evolution-source">
+                      {{ row.source || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain ai-evolution-type">
+                      {{ row.type || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="ai-evolution-reason" :title="row.description">
+                      {{ row.description || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="ai-evolution-first-msg" :title="row.firstMessage">
+                      {{ row.firstMessage || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain ai-evolution-repo">
+                      {{ row.codeRepo || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain ai-evolution-ide">
+                      {{ row.ide || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain ai-evolution-time">
+                      {{ row.sessionTime || '—' }}
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain ai-evolution-time">
+                      {{ row.generatedAt || '—' }}
+                    </div>
+                  </td>
+                  <td class="col-ops-td" @click.stop>
+                    <div class="ops ai-evolution-ops">
                       <button
-                        v-else-if="myPublishReleaseOp(row) === 'upgrade'"
                         type="button"
-                        class="btn primary sm my-rel-upgrade-btn"
-                        disabled
-                        title="建设中"
+                        class="ai-evo-btn ai-evo-approve-btn"
+                        :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
+                        @click="approveAiEvolutionSkill(row)"
                       >
-                        升级为组织级
+                        {{
+                          row.status === 'approved'
+                            ? '已通过'
+                            : processingAiEvolutionId === row.id
+                              ? '处理中…'
+                              : '通过'
+                        }}
                       </button>
-                      <button v-else type="button" class="mini my-rel-pending-btn" disabled>
-                        升级中
+                      <button
+                        type="button"
+                        class="ai-evo-btn ai-evo-reject-btn"
+                        :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
+                        @click="rejectAiEvolutionSkill(row)"
+                      >
+                        {{ row.status === 'rejected' ? '已拒绝' : '拒绝' }}
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      class="mini my-rel-delete-btn my-rel-delete-trigger"
-                      :disabled="deletingMySkillId === String(row.id)"
-                      @click.stop="openDeleteConfirm(row, $event)"
-                    >
-                      {{ deletingMySkillId === String(row.id) ? '删除中…' : '删除' }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="myPublishedSkills.length === 0">
-                <td colspan="6" class="empty-row">暂无符合条件的数据</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                  </td>
+                </tr>
+                <tr v-if="aiEvolutionSkills.length === 0">
+                  <td colspan="10" class="empty-row">暂无待审批的自进化 Skill</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
+            <table class="table my-table">
+              <thead>
+                <tr>
+                  <th class="col-skill">Skill</th>
+                  <th class="col-level">当前层级</th>
+                  <th class="col-ver">当前版本</th>
+                  <th class="col-status">状态</th>
+                  <th class="col-dl">下载量</th>
+                  <th class="col-ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(row, index) in myPublishedSkills"
+                  :key="`${row.id}-${index}`"
+                  class="clickable-row my-release-data-row"
+                  role="button"
+                  tabindex="0"
+                  @click="openDetailFromMyRelease(row)"
+                  @keydown.enter.prevent="openDetailFromMyRelease(row)"
+                >
+                  <td>
+                    <div class="skill-main">
+                      <strong class="skill-name skill-name-link">{{ row.name }}</strong>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain">{{ row.level }}</div>
+                  </td>
+                  <td>
+                    <div class="cell-main cell-main-plain">{{ row.currentVersion }}</div>
+                  </td>
+                  <td>
+                    <span class="st" :class="myPublishStatusPill(row).cls">{{
+                      myPublishStatusPill(row).label
+                    }}</span>
+                  </td>
+                  <td class="num">
+                    {{ (row.totalDownloads ?? 0).toLocaleString('zh-CN') }}
+                  </td>
+                  <td class="col-ops-td" @click.stop>
+                    <div class="ops my-release-ops">
+                      <div class="my-rel-primary-wrap">
+                        <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded"
+                          >已升级</span
+                        >
+                        <button
+                          v-else-if="myPublishReleaseOp(row) === 'upgrade'"
+                          type="button"
+                          class="btn primary sm my-rel-upgrade-btn"
+                          disabled
+                          title="建设中"
+                        >
+                          升级为组织级
+                        </button>
+                        <button v-else type="button" class="mini my-rel-pending-btn" disabled>
+                          升级中
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        class="mini my-rel-delete-btn my-rel-delete-trigger"
+                        :disabled="deletingMySkillId === String(row.id)"
+                        @click.stop="openDeleteConfirm(row, $event)"
+                      >
+                        {{ deletingMySkillId === String(row.id) ? '删除中…' : '删除' }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="myPublishedSkills.length === 0">
+                  <td colspan="6" class="empty-row">暂无符合条件的数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </template>
       </div>
     </div>

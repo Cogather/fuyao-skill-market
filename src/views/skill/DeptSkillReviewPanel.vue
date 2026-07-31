@@ -409,9 +409,7 @@ function refreshCommentStatus(taskId: string, status: DeptSkillCommentItem['stat
     const row = skillRows.value[i];
     if (row.comments.some((c) => c.publishTaskId === taskId)) {
       const nextComments = row.comments.map((c) =>
-        c.publishTaskId === taskId && c.type === 'publish'
-          ? { ...c, status }
-          : c,
+        c.publishTaskId === taskId && c.type === 'publish' ? { ...c, status } : c,
       );
       skillRows.value[i] = { ...row, comments: nextComments };
     }
@@ -421,7 +419,10 @@ function refreshCommentStatus(taskId: string, status: DeptSkillCommentItem['stat
   }
 }
 
-function commentStatusLabel(status: DeptSkillCommentItem['status']): { label: string; cls: string } {
+function commentStatusLabel(status: DeptSkillCommentItem['status']): {
+  label: string;
+  cls: string;
+} {
   if (status === 'processing') {
     return { label: '处理中', cls: 'st-reviewing-dev' };
   }
@@ -482,8 +483,8 @@ function closePublishDialog(): void {
   publishTargetOrgId.value = '';
 }
 
-const selectedPublishOrg = computed(() =>
-  publishTargetOrgs.value.find((o) => o.id === publishTargetOrgId.value) ?? null,
+const selectedPublishOrg = computed(
+  () => publishTargetOrgs.value.find((o) => o.id === publishTargetOrgId.value) ?? null,
 );
 
 async function confirmPublish(): Promise<void> {
@@ -597,7 +598,10 @@ function closeTaskDetail(): void {
   taskApprovalInput.value = '';
 }
 
-async function processTask(task: PublishTask, action: 'close' | 'reject' | 'approve'): Promise<void> {
+async function processTask(
+  task: PublishTask,
+  action: 'close' | 'reject' | 'approve',
+): Promise<void> {
   if (taskProcessing.value) {
     return;
   }
@@ -754,7 +758,9 @@ function onTasksPageSizeChange(event: Event): void {
 
 <template>
   <section class="dept-review">
-    <p class="dept-review-desc">浏览看管部门下的个人级 Skill，填写评审意见后一键发布到组织，并跟踪发布任务审批进度。</p>
+    <p class="dept-review-desc">
+      浏览看管部门下的个人级 Skill，填写评审意见后一键发布到组织，并跟踪发布任务审批进度。
+    </p>
 
     <div class="dept-review-subtabs" role="tablist" aria-label="部门评审分区">
       <button
@@ -818,10 +824,18 @@ function onTasksPageSizeChange(event: Event): void {
               <th class="col-dept">部门</th>
               <th class="col-author">发布人</th>
               <th class="col-ver">最新版本</th>
-              <th class="col-dl th-sortable" @click="toggleSort('downloads')">下载量<span class="th-sort-arrow">{{ sortArrow('downloads') }}</span></th>
-              <th class="col-access th-sortable" @click="toggleSort('access')">调用量<span class="th-sort-arrow">{{ sortArrow('access') }}</span></th>
-              <th class="col-ai th-sortable" @click="toggleSort('aiScore')">AI评分<span class="th-sort-arrow">{{ sortArrow('aiScore') }}</span></th>
-              <th class="col-expert th-sortable" @click="toggleSort('expertScore')">专家评分<span class="th-sort-arrow">{{ sortArrow('expertScore') }}</span></th>
+              <th class="col-dl th-sortable" @click="toggleSort('downloads')">
+                下载量<span class="th-sort-arrow">{{ sortArrow('downloads') }}</span>
+              </th>
+              <th class="col-access th-sortable" @click="toggleSort('access')">
+                调用量<span class="th-sort-arrow">{{ sortArrow('access') }}</span>
+              </th>
+              <th class="col-ai th-sortable" @click="toggleSort('aiScore')">
+                AI评分<span class="th-sort-arrow">{{ sortArrow('aiScore') }}</span>
+              </th>
+              <th class="col-expert th-sortable" @click="toggleSort('expertScore')">
+                专家评分<span class="th-sort-arrow">{{ sortArrow('expertScore') }}</span>
+              </th>
               <th class="col-badge">勋章</th>
               <th class="col-comment">评审意见</th>
               <th class="col-ops">操作</th>
@@ -848,17 +862,18 @@ function onTasksPageSizeChange(event: Event): void {
               </td>
               <td class="num">{{ row.downloads.toLocaleString('zh-CN') }}</td>
               <td class="num">{{ row.totalAccess.toLocaleString('zh-CN') }}</td>
-              <td class="num" :class="{ muted: row.aiScore == null }">{{ scoreText(row.aiScore) }}</td>
-              <td class="num" :class="{ muted: row.expertScore == null }">{{ scoreText(row.expertScore) }}</td>
+              <td class="num" :class="{ muted: row.aiScore == null }">
+                {{ scoreText(row.aiScore) }}
+              </td>
+              <td class="num" :class="{ muted: row.expertScore == null }">
+                {{ scoreText(row.expertScore) }}
+              </td>
               <td>
                 <div class="badge-cell">
                   <span v-if="row.badges.length === 0" class="muted">—</span>
-                  <span
-                    v-for="b in row.badges"
-                    :key="b"
-                    class="dept-badge-icon"
-                    :title="b"
-                  >{{ badgeIcon(b) }}</span>
+                  <span v-for="b in row.badges" :key="b" class="dept-badge-icon" :title="b">{{
+                    badgeIcon(b)
+                  }}</span>
                 </div>
               </td>
               <td class="col-comment-td" @click.stop>
@@ -866,7 +881,11 @@ function onTasksPageSizeChange(event: Event): void {
                   type="button"
                   class="dept-comment-count"
                   :class="{ 'has-comments': skillCommentCount(row) > 0 }"
-                  :title="skillCommentCount(row) > 0 ? `共 ${skillCommentCount(row)} 条意见，点击查看` : '点击添加评审意见'"
+                  :title="
+                    skillCommentCount(row) > 0
+                      ? `共 ${skillCommentCount(row)} 条意见，点击查看`
+                      : '点击添加评审意见'
+                  "
                   @click="openCommentsDialog(row)"
                 >
                   <span class="dept-comment-icon" aria-hidden="true">💬</span>
@@ -874,10 +893,19 @@ function onTasksPageSizeChange(event: Event): void {
                 </button>
               </td>
               <td class="col-ops-td" @click.stop>
-                <button type="button" class="dept-view-btn" title="查看详情" @click="openSkillDetail(row)">
+                <button
+                  type="button"
+                  class="dept-view-btn"
+                  title="查看详情"
+                  @click="openSkillDetail(row)"
+                >
                   <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
-                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.8"/>
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+                    <path
+                      d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    />
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" />
                   </svg>
                 </button>
               </td>
@@ -890,7 +918,8 @@ function onTasksPageSizeChange(event: Event): void {
       </div>
       <div class="dept-pagination">
         <span class="dept-pagination-info">
-          共 {{ filteredSkills.length }} 条 · 第 {{ skillsPage.pageNum }} / {{ skillsTotalPages }} 页
+          共 {{ filteredSkills.length }} 条 · 第 {{ skillsPage.pageNum }} /
+          {{ skillsTotalPages }} 页
         </span>
         <label class="dept-pagination-size">
           每页
@@ -902,8 +931,22 @@ function onTasksPageSizeChange(event: Event): void {
           条
         </label>
         <div class="dept-pagination-ops">
-          <button type="button" class="mini" :disabled="skillsPage.pageNum <= 1" @click="goPrevSkillsPage">上一页</button>
-          <button type="button" class="mini" :disabled="skillsPage.pageNum >= skillsTotalPages" @click="goNextSkillsPage">下一页</button>
+          <button
+            type="button"
+            class="mini"
+            :disabled="skillsPage.pageNum <= 1"
+            @click="goPrevSkillsPage"
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            class="mini"
+            :disabled="skillsPage.pageNum >= skillsTotalPages"
+            @click="goNextSkillsPage"
+          >
+            下一页
+          </button>
         </div>
       </div>
     </div>
@@ -911,7 +954,9 @@ function onTasksPageSizeChange(event: Event): void {
     <section v-show="activeSubTab === 'tasks'" class="dept-task-section">
       <div class="dept-task-head">
         <h3>发布任务清单</h3>
-        <p class="muted dept-task-tip">一键发布到组织后会生成任务，等待组织 owner 确认；确认后即上架组织。</p>
+        <p class="muted dept-task-tip">
+          一键发布到组织后会生成任务，等待组织 owner 确认；确认后即上架组织。
+        </p>
       </div>
 
       <div class="table-wrap dept-task-table-wrap">
@@ -923,11 +968,7 @@ function onTasksPageSizeChange(event: Event): void {
               <th>Skill 数</th>
               <th class="th-filter">
                 状态
-                <select
-                  v-model="taskStatusFilter"
-                  class="th-filter-select"
-                  @click.stop
-                >
+                <select v-model="taskStatusFilter" class="th-filter-select" @click.stop>
                   <option value="all">全部</option>
                   <option value="pending_owner">等待 owner 确认</option>
                   <option value="approved">已发布到组织</option>
@@ -957,10 +998,19 @@ function onTasksPageSizeChange(event: Event): void {
               <td>{{ task.createdAt }}</td>
               <td>{{ task.completedAt ?? '—' }}</td>
               <td class="col-ops-td">
-                <button type="button" class="dept-view-btn" title="查看详情" @click="openTaskDetail(task)">
+                <button
+                  type="button"
+                  class="dept-view-btn"
+                  title="查看详情"
+                  @click="openTaskDetail(task)"
+                >
                   <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
-                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.8"/>
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+                    <path
+                      d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    />
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" />
                   </svg>
                 </button>
               </td>
@@ -985,8 +1035,22 @@ function onTasksPageSizeChange(event: Event): void {
           条
         </label>
         <div class="dept-pagination-ops">
-          <button type="button" class="mini" :disabled="tasksPage.pageNum <= 1" @click="goPrevTasksPage">上一页</button>
-          <button type="button" class="mini" :disabled="tasksPage.pageNum >= tasksTotalPages" @click="goNextTasksPage">下一页</button>
+          <button
+            type="button"
+            class="mini"
+            :disabled="tasksPage.pageNum <= 1"
+            @click="goPrevTasksPage"
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            class="mini"
+            :disabled="tasksPage.pageNum >= tasksTotalPages"
+            @click="goNextTasksPage"
+          >
+            下一页
+          </button>
         </div>
       </div>
     </section>
@@ -1006,13 +1070,26 @@ function onTasksPageSizeChange(event: Event): void {
         >
           <div class="v-head">
             <strong id="dept-publish-title">发布到组织</strong>
-            <button type="button" class="close-x" aria-label="关闭" :disabled="publishing" @click="closePublishDialog">×</button>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              :disabled="publishing"
+              @click="closePublishDialog"
+            >
+              ×
+            </button>
           </div>
           <p class="v-sub">
             已勾选 <b>{{ selectedCount }}</b> 个 Skill，将创建发布任务并通知组织 owner 确认。
           </p>
           <div class="admin-form">
-            <div v-if="publishTargetOrgs.length > 1" class="dept-org-list" role="radiogroup" aria-label="目标组织">
+            <div
+              v-if="publishTargetOrgs.length > 1"
+              class="dept-org-list"
+              role="radiogroup"
+              aria-label="目标组织"
+            >
               <label
                 v-for="org in publishTargetOrgs"
                 :key="org.id"
@@ -1049,8 +1126,20 @@ function onTasksPageSizeChange(event: Event): void {
             </div>
           </div>
           <div class="v-actions">
-            <button type="button" class="btn outline sm" :disabled="publishing" @click="closePublishDialog">取消</button>
-            <button type="button" class="btn primary sm" :disabled="publishing || !selectedPublishOrg" @click="confirmPublish">
+            <button
+              type="button"
+              class="btn outline sm"
+              :disabled="publishing"
+              @click="closePublishDialog"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="btn primary sm"
+              :disabled="publishing || !selectedPublishOrg"
+              @click="confirmPublish"
+            >
               {{ publishing ? '提交中…' : '创建任务并通知 owner' }}
             </button>
           </div>
@@ -1073,10 +1162,19 @@ function onTasksPageSizeChange(event: Event): void {
         >
           <div class="v-head">
             <strong id="dept-comments-title">评审意见 · {{ commentsTargetRow.name }}</strong>
-            <button type="button" class="close-x" aria-label="关闭" :disabled="savingComment || !!processingCommentId" @click="closeCommentsDialog">×</button>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              :disabled="savingComment || !!processingCommentId"
+              @click="closeCommentsDialog"
+            >
+              ×
+            </button>
           </div>
           <p class="v-sub">
-            {{ commentsTargetRow.version }} · {{ commentsTargetRow.author }} · {{ commentsTargetRow.deptPath }}
+            {{ commentsTargetRow.version }} · {{ commentsTargetRow.author }} ·
+            {{ commentsTargetRow.deptPath }}
           </p>
 
           <div class="dept-comments-list">
@@ -1087,7 +1185,9 @@ function onTasksPageSizeChange(event: Event): void {
               :class="{ mine: item.isMine }"
             >
               <div class="dept-comment-head">
-                <span class="dept-comment-type" :class="item.type">{{ commentTypeLabel(item.type) }}</span>
+                <span class="dept-comment-type" :class="item.type">{{
+                  commentTypeLabel(item.type)
+                }}</span>
                 <strong class="dept-comment-submitter">{{ item.submitter }}</strong>
                 <span class="st" :class="commentStatusLabel(item.status).cls">
                   {{ commentStatusLabel(item.status).label }}
@@ -1117,7 +1217,10 @@ function onTasksPageSizeChange(event: Event): void {
                 </button>
               </div>
             </div>
-            <div v-if="commentsTargetRow.comments.length === 0" class="empty-row dept-comments-empty">
+            <div
+              v-if="commentsTargetRow.comments.length === 0"
+              class="empty-row dept-comments-empty"
+            >
               暂无意见
             </div>
           </div>
@@ -1135,8 +1238,20 @@ function onTasksPageSizeChange(event: Event): void {
               placeholder="对该 Skill 的评审意见"
             />
             <div class="v-actions">
-              <button type="button" class="btn outline sm" :disabled="savingComment" @click="closeCommentsDialog">关闭</button>
-              <button type="button" class="btn primary sm" :disabled="savingComment || !draftComment.trim()" @click="submitReviewComment">
+              <button
+                type="button"
+                class="btn outline sm"
+                :disabled="savingComment"
+                @click="closeCommentsDialog"
+              >
+                关闭
+              </button>
+              <button
+                type="button"
+                class="btn primary sm"
+                :disabled="savingComment || !draftComment.trim()"
+                @click="submitReviewComment"
+              >
                 {{ savingComment ? '提交中…' : '提交意见' }}
               </button>
             </div>
@@ -1160,12 +1275,25 @@ function onTasksPageSizeChange(event: Event): void {
         >
           <div class="v-head">
             <strong id="dept-task-detail-title">发布任务详情</strong>
-            <button type="button" class="close-x" aria-label="关闭" :disabled="taskProcessing" @click="closeTaskDetail">×</button>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              :disabled="taskProcessing"
+              @click="closeTaskDetail"
+            >
+              ×
+            </button>
           </div>
           <p class="v-sub">{{ taskDetailTarget.taskName }}</p>
           <div class="dept-task-detail-grid">
-            <div><span class="muted">目标组织</span><strong>{{ taskDetailTarget.targetOrgName }}</strong></div>
-            <div><span class="muted">发起人</span><strong>{{ taskDetailTarget.creator }}</strong></div>
+            <div>
+              <span class="muted">目标组织</span
+              ><strong>{{ taskDetailTarget.targetOrgName }}</strong>
+            </div>
+            <div>
+              <span class="muted">发起人</span><strong>{{ taskDetailTarget.creator }}</strong>
+            </div>
             <div>
               <span class="muted">状态</span>
               <strong>
@@ -1174,13 +1302,25 @@ function onTasksPageSizeChange(event: Event): void {
                 </span>
               </strong>
             </div>
-            <div><span class="muted">创建时间</span><strong>{{ taskDetailTarget.createdAt }}</strong></div>
-            <div><span class="muted">完成时间</span><strong>{{ taskDetailTarget.completedAt ?? '—' }}</strong></div>
-            <div><span class="muted">发布 Skill 数</span><strong>{{ taskDetailTarget.skills.length }}</strong></div>
+            <div>
+              <span class="muted">创建时间</span><strong>{{ taskDetailTarget.createdAt }}</strong>
+            </div>
+            <div>
+              <span class="muted">完成时间</span
+              ><strong>{{ taskDetailTarget.completedAt ?? '—' }}</strong>
+            </div>
+            <div>
+              <span class="muted">发布 Skill 数</span
+              ><strong>{{ taskDetailTarget.skills.length }}</strong>
+            </div>
           </div>
           <div class="dept-task-detail-skills">
             <h4>本次发布的 Skill 清单（共 {{ taskSkillsTotal }} 个）</h4>
-            <div ref="taskSkillsScrollRef" class="dept-task-skills-scroll" @scroll="onTaskSkillsScroll">
+            <div
+              ref="taskSkillsScrollRef"
+              class="dept-task-skills-scroll"
+              @scroll="onTaskSkillsScroll"
+            >
               <table class="table dept-task-detail-table">
                 <thead>
                   <tr>
@@ -1191,14 +1331,20 @@ function onTasksPageSizeChange(event: Event): void {
                 </thead>
                 <tbody>
                   <tr v-for="s in visibleTaskSkills" :key="s.id">
-                    <td><strong>{{ s.name }}</strong></td>
+                    <td>
+                      <strong>{{ s.name }}</strong>
+                    </td>
                     <td>{{ s.version }}</td>
                     <td>{{ s.author }}</td>
                   </tr>
                 </tbody>
               </table>
-              <p v-if="taskSkillsHasMore" class="dept-task-skills-hint muted">已加载 {{ visibleTaskSkills.length }} / {{ taskSkillsTotal }}，继续下拉加载更多</p>
-              <p v-else class="dept-task-skills-hint muted">已全部加载（{{ taskSkillsTotal }} 个）</p>
+              <p v-if="taskSkillsHasMore" class="dept-task-skills-hint muted">
+                已加载 {{ visibleTaskSkills.length }} / {{ taskSkillsTotal }}，继续下拉加载更多
+              </p>
+              <p v-else class="dept-task-skills-hint muted">
+                已全部加载（{{ taskSkillsTotal }} 个）
+              </p>
             </div>
           </div>
           <div v-if="taskDetailTarget.approvalComment" class="dept-task-approval">
@@ -1217,10 +1363,20 @@ function onTasksPageSizeChange(event: Event): void {
               />
             </label>
             <div class="v-actions">
-              <button type="button" class="btn danger sm" :disabled="taskProcessing" @click="processTask(taskDetailTarget, 'reject')">
+              <button
+                type="button"
+                class="btn danger sm"
+                :disabled="taskProcessing"
+                @click="processTask(taskDetailTarget, 'reject')"
+              >
                 {{ taskProcessing ? '处理中…' : '驳回' }}
               </button>
-              <button type="button" class="btn primary sm" :disabled="taskProcessing" @click="processTask(taskDetailTarget, 'approve')">
+              <button
+                type="button"
+                class="btn primary sm"
+                :disabled="taskProcessing"
+                @click="processTask(taskDetailTarget, 'approve')"
+              >
                 确认发布到组织
               </button>
             </div>
