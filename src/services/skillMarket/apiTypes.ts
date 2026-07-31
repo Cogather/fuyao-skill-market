@@ -852,6 +852,7 @@ export type SkillPlanningSupplementItemDto = {
   deptName?: string;
   planDeptCode?: string;
   planDeptName?: string;
+  planningDeptCode?: string;
   planningDeptName?: string;
   l5DeptCode?: string;
   l5DeptName?: string;

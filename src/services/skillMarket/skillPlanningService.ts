@@ -179,6 +179,7 @@ function mapPersonDisplay(name: unknown, id: unknown, fallback: unknown = ''): s
 
 function mapSupplementItemToPlanningItem(
   item: SkillPlanningSupplementItemDto | Record<string, unknown>,
+  fallbackPlanningDepartment: { code: string; name: string },
 ): SkillPlanningItem {
   const outerRecord = asRecord(item);
   const entityRecord = asRecord(outerRecord.skillConfigEntity);
@@ -193,10 +194,18 @@ function mapSupplementItemToPlanningItem(
   const skillName = normalizeText(record.name) || normalizeText(record.skillName);
   const offeringId = normalizeText(record.offeringId) || (isProd ? dimCode : '');
   const offeringName = normalizeText(record.offeringName) || (isProd ? dimName : '');
+  const planningDeptCode =
+    normalizeText(entityRecord.planDeptCode) ||
+    normalizeText(outerRecord.planDeptCode) ||
+    normalizeText(entityRecord.planningDeptCode) ||
+    normalizeText(outerRecord.planningDeptCode) ||
+    (!isProd ? dimCode : fallbackPlanningDepartment.code);
   const planningDeptName =
-    normalizeText(record.planDeptName) ||
-    normalizeText(record.planningDeptName) ||
-    (!isProd ? dimName : '');
+    normalizeText(entityRecord.planDeptName) ||
+    normalizeText(outerRecord.planDeptName) ||
+    normalizeText(entityRecord.planningDeptName) ||
+    normalizeText(outerRecord.planningDeptName) ||
+    (!isProd ? dimName : fallbackPlanningDepartment.name);
   const status = normalizeText(outerRecord.status) || normalizeText(entityRecord.status);
 
   return {
@@ -216,6 +225,7 @@ function mapSupplementItemToPlanningItem(
     owner: mapPersonDisplay(record.ownerName, record.ownerId, record.owner),
     deptCode: normalizeText(record.deptCode) || (!isProd ? dimCode : ''),
     deptName: normalizeText(record.deptName) || (!isProd ? dimName : ''),
+    planningDeptCode,
     planningDeptName,
     developOwner: mapPersonDisplay(
       record.developOwnerName,
@@ -239,14 +249,20 @@ function mapSupplementItemToPlanningItem(
     l1DeptName: normalizeText(record.l1DeptName),
   };
 }
-function normalizeSupplementListResult(response: unknown): SkillPlanningListResult {
+function normalizeSupplementListResult(
+  response: unknown,
+  fallbackPlanningDepartment: { code: string; name: string },
+): SkillPlanningListResult {
   assertHttpSuccess(response, 'Skill 规划列表加载失败');
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
   const rows = responseRows(response);
   return {
     list: rows.map((item) =>
-      mapSupplementItemToPlanningItem(item as SkillPlanningSupplementItemDto),
+      mapSupplementItemToPlanningItem(
+        item as SkillPlanningSupplementItemDto,
+        fallbackPlanningDepartment,
+      ),
     ),
     total: readNumber(meta.number, rows.length),
   };
@@ -595,7 +611,10 @@ export async function querySkillPlanningSupplement(
 
   const params = toHttpSkillPlanningSupplementParams(query);
   const response = await skillBaseService.querySkillPlanningSupplement(params);
-  return normalizeSupplementListResult(response);
+  return normalizeSupplementListResult(response, {
+    code: normalizeText(query.deptCode),
+    name: normalizeText(query.planningDeptName),
+  });
 }
 
 export async function exportSkillConfig(body: any): Promise<any> {

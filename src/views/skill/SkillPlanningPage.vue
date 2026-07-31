@@ -472,6 +472,27 @@ function collectAuthorizedPlanningDepartmentNames(
   return values;
 }
 
+function collectAuthorizedPlanningDepartmentCodes(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedNames: Set<string>,
+  ancestorAllowed = false,
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const name = node.name.trim();
+    const nodeAllowed = ancestorAllowed || allowedNames.has(name);
+    const code = getDepartmentNodeCode(node);
+    if (nodeAllowed && code) values.add(code);
+    collectAuthorizedPlanningDepartmentCodes(
+      node.children ?? [],
+      allowedNames,
+      nodeAllowed,
+      values,
+    );
+  });
+  return values;
+}
+
 function collectPathAuthorizedPlanningDepartmentNames(
   nodes: PlanningDepartmentTreeNode[],
   allowedPaths: string[][],
@@ -489,6 +510,24 @@ function collectPathAuthorizedPlanningDepartmentNames(
   return values;
 }
 
+function collectPathAuthorizedPlanningDepartmentCodes(
+  nodes: PlanningDepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+  values = new Set<string>(),
+): Set<string> {
+  nodes.forEach((node) => {
+    const path = [...parentPath, node.name];
+    const insideAuthorizedDepartment = allowedPaths.some((allowedPath) =>
+      planningDepartmentPathStartsWith(path, allowedPath),
+    );
+    const code = getDepartmentNodeCode(node);
+    if (insideAuthorizedDepartment && code) values.add(code);
+    collectPathAuthorizedPlanningDepartmentCodes(node.children ?? [], allowedPaths, path, values);
+  });
+  return values;
+}
+
 const manageablePlanningDepartmentNames = computed(() => {
   if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
     return collectPathAuthorizedPlanningDepartmentNames(
@@ -502,11 +541,26 @@ const manageablePlanningDepartmentNames = computed(() => {
   return collectAuthorizedPlanningDepartmentNames(planningDepartmentTree.value, allowedNames);
 });
 
-function canManagePlanningDepartment(departmentName: string): boolean {
-  return (
-    !props.restrictToAllowedDepartments ||
-    manageablePlanningDepartmentNames.value.has(departmentName.trim())
+const manageablePlanningDepartmentCodes = computed(() => {
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
+    return collectPathAuthorizedPlanningDepartmentCodes(
+      planningDepartmentTree.value,
+      normalizedAllowedPlanningDepartmentPaths.value,
+    );
+  }
+  const allowedNames = new Set(
+    props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean),
   );
+  return collectAuthorizedPlanningDepartmentCodes(planningDepartmentTree.value, allowedNames);
+});
+
+function canManagePlanningDepartment(departmentName: string, departmentCode = ''): boolean {
+  if (!props.restrictToAllowedDepartments) return true;
+  const normalizedCode = departmentCode.trim();
+  if (normalizedCode) {
+    return manageablePlanningDepartmentCodes.value.has(normalizedCode);
+  }
+  return manageablePlanningDepartmentNames.value.has(departmentName.trim());
 }
 
 const planningDepartmentOptions = computed(() => {
@@ -542,7 +596,9 @@ const pageStart = computed(() =>
 );
 const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
 const selectableRows = computed(() =>
-  rows.value.filter((row) => canManagePlanningDepartment(row.planningDeptName)),
+  rows.value.filter((row) =>
+    canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode),
+  ),
 );
 const allPageSelected = computed(
   () =>
@@ -2423,7 +2479,9 @@ function requestBatchDelete() {
 
 function toggleRowSelection(id: string) {
   const row = rows.value.find((item) => item.id === id);
-  if (!row || !canManagePlanningDepartment(row.planningDeptName)) return;
+  if (!row || !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)) {
+    return;
+  }
   selectedIds.value = selectedIds.value.includes(id)
     ? selectedIds.value.filter((item) => item !== id)
     : [...selectedIds.value, id];
@@ -3776,7 +3834,9 @@ onBeforeUnmount(() => {
                       <input
                         type="checkbox"
                         :checked="selectedIds.includes(row.id)"
-                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
+                        :disabled="
+                          !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)
+                        "
                         @change="toggleRowSelection(row.id)"
                       />
                     </td>
@@ -3800,7 +3860,9 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn"
-                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
+                        :disabled="
+                          !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)
+                        "
                         title="编辑"
                         aria-label="编辑"
                         @click="startInlineEdit(row)"
@@ -3813,7 +3875,9 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="icon-btn icon-btn--danger"
-                        :disabled="!canManagePlanningDepartment(row.planningDeptName)"
+                        :disabled="
+                          !canManagePlanningDepartment(row.planningDeptName, row.planningDeptCode)
+                        "
                         title="删除"
                         aria-label="删除"
                         @click="requestDeleteRow(row)"
@@ -5573,16 +5637,21 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   border-color: #b9ccff;
   background: #eff6ff;
+}
+
+.icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .icon-btn--danger {
   color: #dc2626;
 }
 
-.icon-btn--danger:hover {
+.icon-btn--danger:hover:not(:disabled) {
   border-color: #fecaca;
   background: #fff1f2;
 }
@@ -5591,7 +5660,7 @@ onBeforeUnmount(() => {
   color: #059669;
 }
 
-.icon-btn--confirm:hover {
+.icon-btn--confirm:hover:not(:disabled) {
   border-color: #a7f3d0;
   background: #ecfdf5;
 }
@@ -5600,7 +5669,7 @@ onBeforeUnmount(() => {
   color: #64748b;
 }
 
-.icon-btn--muted:hover {
+.icon-btn--muted:hover:not(:disabled) {
   border-color: #cbd5e1;
   background: #f8fafc;
 }

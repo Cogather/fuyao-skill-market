@@ -20,6 +20,7 @@ export interface SkillPlanningItem {
   owner: string;
   deptCode: string;
   deptName: string;
+  planningDeptCode?: string;
   planningDeptName: string;
   developOwner: string;
   planedCompleteDate: string;
