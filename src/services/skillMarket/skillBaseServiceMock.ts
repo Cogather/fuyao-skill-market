@@ -385,9 +385,6 @@ function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
   const keyword = String(query.keyword ?? '')
     .trim()
     .toLowerCase();
-  const skillName = String(query.skillName ?? '')
-    .trim()
-    .toLowerCase();
   const dimType = String(query.dimType ?? '').trim();
   const dimCode = String(query.dimCode ?? '').trim();
   const dimName = String(query.dimName ?? '').trim();
@@ -452,9 +449,6 @@ function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
           String(value ?? '').trim() && String(record[key] ?? '').trim() !== String(value).trim(),
       )
     ) {
-      return false;
-    }
-    if (skillName && !item.skillName.toLowerCase().includes(skillName)) {
       return false;
     }
     if (!keyword) return true;

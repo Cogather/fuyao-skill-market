@@ -1829,7 +1829,6 @@ function syncQueryFilterObj(includePagination = true): SkillPlanningQuery {
   assignHeaderFilterQueryValue(nextQuery, 'level', 'level');
   assignQueryValue(nextQuery, 'level', filterForm.level);
   assignQueryValue(nextQuery, 'keyword', filterForm.keyword);
-  assignQueryValue(nextQuery, 'skillName', filterForm.keyword);
   assignQueryValue(nextQuery, 'planningDeptName', filterForm.planningDeptName);
   if (filterForm.level === '产品级') {
     assignQueryValue(nextQuery, 'offeringName', filterForm.offeringName);

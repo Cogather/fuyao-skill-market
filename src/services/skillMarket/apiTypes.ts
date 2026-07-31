@@ -791,7 +791,7 @@ export type QuerySkillPlanningSupplementParams = {
   dimType: string;
   dimCode: string;
   dimName: string;
-  skillName?: string;
+  keyword?: string;
   pageNum?: number;
   pageSize?: number;
 };

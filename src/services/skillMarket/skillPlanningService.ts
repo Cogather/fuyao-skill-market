@@ -277,9 +277,9 @@ function toHttpSkillPlanningSupplementParams(
     dimCode: normalizeText(query.dimCode),
     dimName: normalizeText(query.dimName),
   };
-  const skillName = normalizeText(query.skillName ?? query.keyword);
-  if (skillName) {
-    params.skillName = skillName;
+  const keyword = normalizeText(query.keyword);
+  if (keyword) {
+    params.keyword = keyword;
   }
   if (typeof query.pageNum === 'number' && Number.isFinite(query.pageNum)) {
     params.pageNum = query.pageNum;
