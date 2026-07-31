@@ -893,18 +893,17 @@ export const skillBaseService = {
    */
 
   // 1. 部门树
-  queryDeptReviewDepartments: (params: any): any => {
+  queryDeptReviewDepartments: (): any => {
     return httpRequest.api<any>({
       url: 'versioninfo/v1/hrms/departments/product/ai',
       method: 'get',
-      params,
     });
   },
 
   // 1.1 可视部门树（用于部门评审可选性控制）
   queryVisibleDepts: (params?: { userId: string }): any => {
     return httpRequest.api<any>({
-      url: 'api/skills/personal-batch/visible-depts',
+      url: '/api/skills/personal-batch/visible-depts',
       method: 'get',
       params,
     });
@@ -931,7 +930,7 @@ export const skillBaseService = {
   // 4. 提交评审意见 -> 后端 POST /opinions
   submitDeptSkillComment: (skillId: string, body: any): any => {
     return httpRequest.api<any>({
-      url: `/api/skills/personal-batch/opinions`,
+      url: '/api/skills/personal-batch/opinions',
       method: 'post',
       data: { skillId, ...body },
     });
@@ -1016,7 +1015,7 @@ export const skillBaseService = {
   },
 
   // 9. 重试失败项 -> 后端 POST /tasks/{taskId}/retry
-  retryDeptTask: (taskId: string, body: any): any => {
+  retryDeptTaskFailedItems: (taskId: string, body: any): any => {
     return httpRequest.api<any>({
       url: `/api/skills/personal-batch/tasks/${taskId}/retry`,
       method: 'post',

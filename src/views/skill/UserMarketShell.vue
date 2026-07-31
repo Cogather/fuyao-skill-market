@@ -7,7 +7,7 @@ import SkillCard from '../../components/skill/SkillCard.vue';
 import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
-import DeptSkillReviewPanel from './DeptSkillReviewPanel.vue';
+
 import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
@@ -74,6 +74,9 @@ const userId = computed(() => {
   }
   return String(userStore.userInfo?.w3Id ?? '').trim();
 });
+const userName = computed(
+  () => skillMarketStore.userName || userStore.userInfo?.nameCn || userStore.userInfo?.name || '',
+);
 const departmentList = computed(() => skillMarketStore.departmentList);
 
 const skills = ref<any[]>([]);
@@ -938,7 +941,7 @@ const handleParentMessage = async (event: MessageEvent) => {
   if (data?.type === 'Skill_Square_Init' && !data?.view) {
     goTab(thisTab);
   }
-  if (data?.type === 'Skill_Square_Init' && data?.view === 'detail' && data?.skillId) {
+  if (data?.type === 'Skill_Square_Init' && data?.view === 'skill-detail' && data?.skillId) {
     await openSkillDetailRoute(data.skillId, false, thisTab);
   }
 };
@@ -1436,7 +1439,9 @@ const loadHotSkillNums = async () => {
   await skillBaseService.getHotSkillNums().then((res: any) => {
     if (res.meta.success && res.data) {
       Object.keys(res.data).map((key) => {
-        hotMarketStatsByKey.value[key].value = res.data[key].toString();
+        if (hotMarketStatsByKey.value[key]) {
+          hotMarketStatsByKey.value[key].value = res.data[key].toString();
+        }
       });
     }
   });
@@ -1890,9 +1895,12 @@ async function executeDeleteMyReleaseSkill(): Promise<void> {
 }
 
 watch(
-  () => route.query.tab,
-  () => {
-    goTab(route.query.tab);
+  () => [route.query, route.path],
+  ([query, path]) => {
+    if (query.tab && query.tab !== innerTab.value) {
+      innerTab.value = query.tab as UserInnerTab;
+      closeDetailPanel();
+    }
   },
 );
 
@@ -2474,7 +2482,17 @@ async function openHotSkillDetail(skill: any): Promise<void> {
 }
 
 async function openReviewSkillDetail(skillId: string): Promise<void> {
-  await openSkillDetailRoute(skillId, false, 'review');
+  await router.push({
+    name: 'skill-detail',
+    params: { skillId },
+    query: { tab: 'review', sub: route.query.sub },
+  });
+  notifyParentRouteChange({
+    type: 'CHILD_DETAIL',
+    view: 'detail',
+    tab: 'review',
+    skillId,
+  });
 }
 
 async function fetchSkillDetailFileTree(skillId: string): Promise<SkillFileTreeField> {
@@ -2769,31 +2787,17 @@ function onApplyCoreHarness(): void {
   }, 2500);
 }
 
-type ReleaseFilterKey =
-  | 'all'
-  | 'personal'
-  | 'published'
-  | 'reviewing'
-  | 'rejected'
-  | 'aiEvolution'
-  | 'coreApply'
-  | 'deptReview';
+type ReleaseFilterKey = 'all' | 'personal' | 'aiEvolution' | 'coreApply';
 
 const releaseFilter = ref<ReleaseFilterKey>('all');
 
 const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'personal', label: '个人级' },
-  { key: 'published', label: '组织级' },
-  { key: 'reviewing', label: '组织审核中' },
-  { key: 'rejected', label: '组织已驳回' },
   { key: 'aiEvolution', label: '自进化审批' },
 ];
 
 const visibleReleaseFilters = computed(() => {
-  if (showAdminModules.value) {
-    return [...releaseFilters, { key: 'deptReview' as ReleaseFilterKey, label: '部门评审' }];
-  }
   return releaseFilters;
 });
 
@@ -3033,20 +3037,10 @@ const onClickFilterRelease = async (key: any) => {
     await loadAiEvolutionSkills();
     return;
   }
-  if (key === 'deptReview') {
-    // 部门评审模块自带 Mock 数据，无需拉取我的发布列表
-    return;
-  }
   if (key === 'all' && 'status' in myReleaseFilterObj.value) {
     delete myReleaseFilterObj.value.status;
   } else if (key === 'personal') {
     myReleaseFilterObj.value.status = '个人级';
-  } else if (key === 'published') {
-    myReleaseFilterObj.value.status = '组织级';
-  } else if (key === 'reviewing') {
-    myReleaseFilterObj.value.status = '组织审核中';
-  } else if (key === 'rejected') {
-    myReleaseFilterObj.value.status = '组织已驳回';
   }
   myReleasePage.pageIndex = 1;
   myReleaseFilterObj.value.pageNo = myReleasePage.pageIndex;
@@ -3697,7 +3691,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           审核中心
         </button>
         <button
-          v-if="isExpertReviewer"
           type="button"
           class="sub-tab"
           :class="{ on: innerTab === 'review' }"

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HarnessManagementPage from '../views/HarnessManagementPage.vue';
 import SkillMarketPage from '../views/SkillMarketPage.vue';
+import SkillDebugPage from '../views/SkillDebugPage.vue';
 import SkillDetailPage from '../views/skill/SkillDetailPage.vue';
 
 const legacyPlanningTabs = new Set([
@@ -29,6 +30,11 @@ const router = createRouter({
       component: SkillMarketPage,
       beforeEnter: (to) =>
         isLegacyPlanningTab(to.query.tab) ? { name: 'harness-management' } : true,
+    },
+    {
+      path: '/skill-debug',
+      name: 'skill-debug',
+      component: SkillDebugPage,
     },
     {
       path: '/harness-management',
