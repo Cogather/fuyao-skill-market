@@ -2774,7 +2774,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
-    <div v-else-if="reviewCenterInnerTab === 'dept'" class="review-center-content">
+    <div v-else-if="reviewCenterInnerTab === 'dept'" class="dept-review-content">
       <DeptSkillReviewPanel
         :userId="props.userId"
         :user-name="props.userName"

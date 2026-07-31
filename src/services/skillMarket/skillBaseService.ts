@@ -901,7 +901,7 @@ export const skillBaseService = {
   },
 
   // 1.1 可视部门树（用于部门评审可选性控制）
-  queryVisibleDepts: (params?: { userId: string }): any => {
+  queryVisibleDepts: (params?: { userId?: string }): any => {
     return httpRequest.api<any>({
       url: '/api/skills/personal-batch/visible-depts',
       method: 'get',
@@ -986,7 +986,7 @@ export const skillBaseService = {
     });
   },
 
-  // 6. 发布任务列表 -> 后端 GET /tasks/{taskId}
+  // 6. 发布任务列表 -> 后端 GET /tasks
   queryDeptPublishTasks: (params: any): any => {
     return httpRequest.api<any>({
       url: '/api/skills/personal-batch/tasks',
