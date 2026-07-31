@@ -300,7 +300,7 @@ const selectedMasterProduct = computed(() =>
 const currentProductName = computed(() =>
   masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
 );
-const defaultSkillNamePrefix = computed(() => {
+const requiredSkillNamePrefix = computed(() => {
   const productName = currentProductName.value;
   if (!productName) {
     return '';
@@ -618,6 +618,23 @@ function applyCurrentScopeToEditor(): void {
   editor.product = masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '';
 }
 
+function ensureProductSkillNamePrefix(): boolean {
+  const prefix = requiredSkillNamePrefix.value;
+  if (!prefix) {
+    return true;
+  }
+  const name = editor.name.trim();
+  if (!name.startsWith(prefix)) {
+    editor.error = '产品级 Skill 名称需以产品名称的小写形式“' + prefix + '”开头';
+    return false;
+  }
+  if (name.length === prefix.length) {
+    editor.error = '请在“' + prefix + '”后补充 Skill 名称';
+    return false;
+  }
+  return true;
+}
+
 function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
   if (!ensureMasterScopeSelection(true)) {
     return null;
@@ -907,7 +924,7 @@ function openCreate(): void {
   resetEditor();
   editor.mode = 'create';
   applyCurrentScopeToEditor();
-  editor.name = defaultSkillNamePrefix.value;
+  editor.name = requiredSkillNamePrefix.value;
   editor.open = true;
 }
 
@@ -975,6 +992,9 @@ async function submitEditor(): Promise<void> {
     }
     if (!editor.name.trim()) {
       editor.error = '请填写 Skill 名称';
+      return;
+    }
+    if (!ensureProductSkillNamePrefix()) {
       return;
     }
     if (!editor.description.trim()) {
@@ -1052,6 +1072,9 @@ async function submitEditor(): Promise<void> {
   }
   if (!editor.name.trim()) {
     editor.error = '请填写 Skill 名称';
+    return;
+  }
+  if (!ensureProductSkillNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
@@ -1654,8 +1677,11 @@ onBeforeUnmount(() => {
               ><input
                 v-model.trim="editor.name"
                 maxlength="60"
-                :placeholder="defaultSkillNamePrefix || '请输入 Skill 名称'"
-            /></label>
+                :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
+              /><small v-if="requiredSkillNamePrefix" class="field-hint"
+                >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
+              ></label
+            >
             <label class="wide"
               ><span>Skill 说明 *</span
               ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
@@ -2406,6 +2432,11 @@ onBeforeUnmount(() => {
 .form-grid label > span {
   font-size: 11px;
   font-weight: 800;
+}
+.field-hint {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
 }
 .form-grid input,
 .form-grid select,
