@@ -290,6 +290,88 @@ function toHttpSkillPlanningSupplementParams(
   return params;
 }
 
+const httpPlanningHeaderFilterKeys = [
+  'firstScene',
+  'secondScene',
+  'activityNodeName',
+  'subActivityNodeName',
+] as const;
+
+type HttpPlanningHeaderFilterKey = (typeof httpPlanningHeaderFilterKeys)[number];
+
+function planningQuerySelections(
+  query: SkillPlanningQuery,
+  key: HttpPlanningHeaderFilterKey,
+): string[] {
+  const value = query[key];
+  return uniqueTextValues(Array.isArray(value) ? value : [normalizeText(value)]);
+}
+
+function hasHttpPlanningHeaderFilters(query: SkillPlanningQuery): boolean {
+  return httpPlanningHeaderFilterKeys.some((key) => planningQuerySelections(query, key).length > 0);
+}
+
+function filterHttpPlanningItems(
+  items: SkillPlanningItem[],
+  query: SkillPlanningQuery,
+): SkillPlanningItem[] {
+  const selections = new Map(
+    httpPlanningHeaderFilterKeys.map((key) => [key, planningQuerySelections(query, key)]),
+  );
+
+  return items.filter((item) =>
+    httpPlanningHeaderFilterKeys.every((key) => {
+      const values = selections.get(key) ?? [];
+      return values.length === 0 || values.includes(item[key]);
+    }),
+  );
+}
+
+async function queryAllHttpPlanningItems(query: SkillPlanningQuery): Promise<SkillPlanningItem[]> {
+  const requestedPageSize = Math.max(1, Number(query.pageSize ?? 10));
+  const fetchPageSize = Math.max(200, requestedPageSize);
+  const fallbackPlanningDepartment = {
+    code: normalizeText(query.deptCode),
+    name: normalizeText(query.planningDeptName),
+  };
+  const fetchPage = async (pageNum: number): Promise<SkillPlanningListResult> => {
+    const response = await skillBaseService.querySkillPlanningSupplement(
+      toHttpSkillPlanningSupplementParams({
+        ...query,
+        pageNum,
+        pageSize: fetchPageSize,
+      }),
+    );
+    return normalizeSupplementListResult(response, fallbackPlanningDepartment);
+  };
+
+  const firstPage = await fetchPage(1);
+  const effectivePageSize = Math.max(1, firstPage.list.length || fetchPageSize);
+  const pageCount = Math.ceil(firstPage.total / effectivePageSize);
+  const items = [...firstPage.list];
+
+  for (let pageNum = 2; pageNum <= pageCount; pageNum += 1) {
+    const page = await fetchPage(pageNum);
+    items.push(...page.list);
+  }
+
+  return items;
+}
+
+async function queryHttpPlanningWithHeaderFilters(
+  query: SkillPlanningQuery,
+): Promise<SkillPlanningListResult> {
+  const pageNum = Math.max(1, Number(query.pageNum ?? 1));
+  const pageSize = Math.max(1, Number(query.pageSize ?? 10));
+  const filtered = filterHttpPlanningItems(await queryAllHttpPlanningItems(query), query);
+  const start = (pageNum - 1) * pageSize;
+
+  return {
+    list: filtered.slice(start, start + pageSize),
+    total: filtered.length,
+  };
+}
+
 function toSkillTransferParams(query: SkillPlanningQuery): SkillTransferParams {
   return normalizeSkillTransferParams({
     userId: normalizeText(query.userId),
@@ -609,6 +691,10 @@ export async function querySkillPlanningSupplement(
     return (await loadMockService()).querySkillPlanningSupplement(query);
   }
 
+  // 新版 GET 接口只接收维度、关键词和分页；表头多选条件需要在当前维度全集上细化。
+  if (hasHttpPlanningHeaderFilters(query)) {
+    return queryHttpPlanningWithHeaderFilters(query);
+  }
   const params = toHttpSkillPlanningSupplementParams(query);
   const response = await skillBaseService.querySkillPlanningSupplement(params);
   return normalizeSupplementListResult(response, {

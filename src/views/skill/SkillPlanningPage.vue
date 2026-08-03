@@ -1609,7 +1609,36 @@ watch(activePlanningTab, (tab) => {
 });
 
 function headerFilterOptionList(key: PlanningHeaderFilterKey): string[] {
+  if (key === 'secondScene') {
+    const selectedParents = headerFilterSelections.firstScene;
+    const groups = selectedParents.length
+      ? sceneOptionGroups.value.filter((group) => selectedParents.includes(group.value))
+      : sceneOptionGroups.value;
+    return [...new Set(groups.flatMap((group) => group.children))];
+  }
+  if (key === 'subActivityNodeName') {
+    const selectedParents = headerFilterSelections.activityNodeName;
+    const groups = selectedParents.length
+      ? activityOptionGroups.value.filter((group) => selectedParents.includes(group.value))
+      : activityOptionGroups.value;
+    return [...new Set(groups.flatMap((group) => group.children))];
+  }
   return planningHeaderFilterOptions.value[key];
+}
+
+function syncDependentHeaderFilterSelection(key: PlanningHeaderFilterKey): void {
+  const childKey =
+    key === 'firstScene'
+      ? 'secondScene'
+      : key === 'activityNodeName'
+        ? 'subActivityNodeName'
+        : null;
+  if (!childKey) return;
+
+  const allowed = new Set(headerFilterOptionList(childKey));
+  headerFilterSelections[childKey] = headerFilterSelections[childKey].filter((item) =>
+    allowed.has(item),
+  );
 }
 
 function headerFilterSelectedCount(key: PlanningHeaderFilterKey): number {
@@ -1659,6 +1688,7 @@ async function toggleHeaderFilterOption(
   headerFilterSelections[key] = selected.includes(option)
     ? selected.filter((item) => item !== option)
     : [...selected, option];
+  syncDependentHeaderFilterSelection(key);
   await applyPlanningTableFilters();
 }
 
