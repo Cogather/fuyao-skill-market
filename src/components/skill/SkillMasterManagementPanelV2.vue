@@ -129,10 +129,11 @@ function parsePersonSubmitValue(value: string): PersonSubmitValue {
   }
   const parts = label.split(/\s+/).filter(Boolean);
   if (parts.length < 2) {
+    const id = /^(?=.*\d)[a-z0-9._-]+$/i.test(label) ? label : '';
     return {
       label,
       name: label,
-      id: '',
+      id,
     };
   }
   const id = parts[parts.length - 1] ?? '';
@@ -634,6 +635,11 @@ function ensureProductSkillNamePrefix(): boolean {
   }
   return true;
 }
+function editorSkillNameChanged(): boolean {
+  if (editor.mode !== 'edit') return true;
+  const originalName = records.value.find((record) => record.id === editor.id)?.name.trim() ?? '';
+  return !originalName || editor.name.trim() !== originalName;
+}
 
 function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
   if (!ensureMasterScopeSelection(true)) {
@@ -697,6 +703,7 @@ function applyOwnerSelection(option: SkillPlanningUserOption): void {
   closeOwnerPersonSearch();
   editor.owner = option.label;
   editor.department = option.deptName;
+  editor.error = '';
 }
 
 function applyDevelopOwnerSelection(option: SkillPlanningUserOption): void {
@@ -705,6 +712,7 @@ function applyDevelopOwnerSelection(option: SkillPlanningUserOption): void {
   closeDevelopOwnerPersonSearch();
   editor.developOwner = option.label;
   editor.developOwnerDepartment = option.deptName;
+  editor.error = '';
 }
 
 function selectOwner(option: SkillPlanningUserOption): void {
@@ -713,6 +721,20 @@ function selectOwner(option: SkillPlanningUserOption): void {
 
 function selectDevelopOwner(option: SkillPlanningUserOption): void {
   applyDevelopOwnerSelection(option);
+}
+
+function clearOwnerSelection(): void {
+  resetPersonPicker(ownerPicker);
+  editor.owner = '';
+  editor.department = '';
+  editor.error = '';
+}
+
+function clearDevelopOwnerSelection(): void {
+  resetPersonPicker(developOwnerPicker);
+  editor.developOwner = '';
+  editor.developOwnerDepartment = '';
+  editor.error = '';
 }
 
 async function searchOwnerUsers(keyword = ownerPicker.keyword): Promise<void> {
@@ -785,6 +807,7 @@ async function searchDevelopOwnerUsers(keyword = developOwnerPicker.keyword): Pr
 }
 
 function onOwnerPickerFocus(): void {
+  if (editor.owner.trim()) return;
   ownerPicker.open = true;
   if (ownerPicker.keyword.trim()) {
     void searchOwnerUsers();
@@ -797,6 +820,7 @@ function onOwnerPickerFocus(): void {
 }
 
 function onDevelopOwnerPickerFocus(): void {
+  if (editor.developOwner.trim()) return;
   developOwnerPicker.open = true;
   if (developOwnerPicker.keyword.trim()) {
     void searchDevelopOwnerUsers();
@@ -813,11 +837,7 @@ function onOwnerPickerInput(event: Event): void {
   const nextKeyword = target?.value ?? '';
   ownerPicker.keyword = nextKeyword;
   ownerPicker.open = true;
-  if (!ownerPicker.selected || ownerPicker.selected.label !== nextKeyword) {
-    ownerPicker.selected = null;
-    editor.owner = nextKeyword;
-    editor.department = '';
-  }
+  ownerPicker.selected = null;
   clearOwnerSearchTimer();
   ownerSearchTimer = window.setTimeout(() => {
     void searchOwnerUsers();
@@ -829,11 +849,7 @@ function onDevelopOwnerPickerInput(event: Event): void {
   const nextKeyword = target?.value ?? '';
   developOwnerPicker.keyword = nextKeyword;
   developOwnerPicker.open = true;
-  if (!developOwnerPicker.selected || developOwnerPicker.selected.label !== nextKeyword) {
-    developOwnerPicker.selected = null;
-    editor.developOwner = nextKeyword;
-    editor.developOwnerDepartment = '';
-  }
+  developOwnerPicker.selected = null;
   clearDevelopOwnerSearchTimer();
   developOwnerSearchTimer = window.setTimeout(() => {
     void searchDevelopOwnerUsers();
@@ -892,10 +908,11 @@ function resolvePersonForSubmit(
   role: 'owner' | 'developOwner',
 ): PersonSubmitValue | null {
   if (picker.selected) {
+    const parsed = parsePersonSubmitValue(picker.selected.label);
     return {
       label: picker.selected.label,
-      name: picker.selected.chName || picker.selected.label,
-      id: picker.selected.id,
+      name: picker.selected.chName || parsed.name,
+      id: picker.selected.sAMAccountName.trim() || picker.selected.id.trim(),
     };
   }
   const currentLabel = picker.keyword.trim();
@@ -1001,24 +1018,26 @@ async function submitEditor(): Promise<void> {
       editor.error = '请填写 Skill 说明';
       return;
     }
-    if (!ownerPicker.selected) {
-      editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+    if (!editor.owner.trim()) {
+      editor.error = '请选择责任 Owner';
       return;
     }
-    if (!developOwnerPicker.selected) {
-      editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+    if (!editor.developOwner.trim()) {
+      editor.error = '请选择开发责任人';
       return;
     }
-    const ownerSamAccountName = ownerPicker.selected.sAMAccountName.trim();
-    if (!ownerSamAccountName) {
-      editor.error =
-        '\u8d23\u4efb Owner \u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+    const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
+    if (!ownerValue?.id) {
+      editor.error = '责任 Owner 人员信息不完整，请清除后重新选择';
       return;
     }
-    const developOwnerSamAccountName = developOwnerPicker.selected.sAMAccountName.trim();
-    if (!developOwnerSamAccountName) {
-      editor.error =
-        '\u5f00\u53d1\u8d23\u4efb\u4eba\u7684\u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+    const developOwnerValue = resolvePersonForSubmit(
+      developOwnerPicker,
+      initialDevelopOwnerValue,
+      'developOwner',
+    );
+    if (!developOwnerValue?.id) {
+      editor.error = '开发责任人信息不完整，请清除后重新选择';
       return;
     }
     if (!editor.plannedCompleteDate) {
@@ -1035,10 +1054,10 @@ async function submitEditor(): Promise<void> {
     const body: CreateSkillMasterManagementBody = {
       skillName: editor.name.trim(),
       skillDescription: editor.description.trim(),
-      ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-      ownerId: ownerSamAccountName,
-      developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-      developOwnerId: developOwnerSamAccountName,
+      ownerName: ownerValue.name,
+      ownerId: ownerValue.id,
+      developOwnerName: developOwnerValue.name,
+      developOwnerId: developOwnerValue.id,
       planFinishDate: editor.plannedCompleteDate,
     };
 
@@ -1074,16 +1093,24 @@ async function submitEditor(): Promise<void> {
     editor.error = '请填写 Skill 名称';
     return;
   }
-  if (!ensureProductSkillNamePrefix()) {
+  if (editorSkillNameChanged() && !ensureProductSkillNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
     editor.error = '请填写 Skill 说明';
     return;
   }
+  if (!editor.owner.trim()) {
+    editor.error = '请选择责任 Owner';
+    return;
+  }
   const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
-  if (!ownerValue || !ownerValue.id) {
-    editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+  if (!ownerValue?.id) {
+    editor.error = '责任 Owner 人员信息不完整，请清除后重新选择';
+    return;
+  }
+  if (!editor.developOwner.trim()) {
+    editor.error = '请选择开发责任人';
     return;
   }
   const developOwnerValue = resolvePersonForSubmit(
@@ -1091,8 +1118,8 @@ async function submitEditor(): Promise<void> {
     initialDevelopOwnerValue,
     'developOwner',
   );
-  if (!developOwnerValue || !developOwnerValue.id) {
-    editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+  if (!developOwnerValue?.id) {
+    editor.error = '开发责任人信息不完整，请清除后重新选择';
     return;
   }
   if (!editor.plannedCompleteDate) {
@@ -1688,14 +1715,28 @@ onBeforeUnmount(() => {
             </label>
             <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
-              <input
-                :value="ownerPicker.keyword"
-                type="text"
-                autocomplete="off"
-                placeholder="输入姓名或工号后选择"
-                @focus="onOwnerPickerFocus"
-                @input="onOwnerPickerInput"
-              />
+              <div class="person-search__control">
+                <input
+                  :value="ownerPicker.keyword"
+                  type="text"
+                  autocomplete="off"
+                  :readonly="Boolean(editor.owner.trim())"
+                  placeholder="输入姓名或工号后选择"
+                  @focus="onOwnerPickerFocus"
+                  @input="onOwnerPickerInput"
+                />
+                <button
+                  v-if="editor.owner.trim()"
+                  type="button"
+                  class="person-search__clear"
+                  title="清除责任 Owner"
+                  aria-label="清除责任 Owner"
+                  @mousedown.prevent
+                  @click.stop="clearOwnerSelection"
+                >
+                  ×
+                </button>
+              </div>
               <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
                 <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
                 <template v-else>
@@ -1726,14 +1767,28 @@ onBeforeUnmount(() => {
               @keydown.esc="closeDevelopOwnerPersonSearch"
             >
               <span>开发责任人 *</span>
-              <input
-                :value="developOwnerPicker.keyword"
-                type="text"
-                autocomplete="off"
-                placeholder="输入姓名或工号后选择"
-                @focus="onDevelopOwnerPickerFocus"
-                @input="onDevelopOwnerPickerInput"
-              />
+              <div class="person-search__control">
+                <input
+                  :value="developOwnerPicker.keyword"
+                  type="text"
+                  autocomplete="off"
+                  :readonly="Boolean(editor.developOwner.trim())"
+                  placeholder="输入姓名或工号后选择"
+                  @focus="onDevelopOwnerPickerFocus"
+                  @input="onDevelopOwnerPickerInput"
+                />
+                <button
+                  v-if="editor.developOwner.trim()"
+                  type="button"
+                  class="person-search__clear"
+                  title="清除开发责任人"
+                  aria-label="清除开发责任人"
+                  @mousedown.prevent
+                  @click.stop="clearDevelopOwnerSelection"
+                >
+                  ×
+                </button>
+              </div>
               <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
                 <span v-if="developOwnerPicker.loading" class="person-search__empty"
                   >查询中...</span
@@ -2459,7 +2514,10 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
 }
-.person-search > input {
+.person-search__control {
+  position: relative;
+}
+.person-search__control > input {
   width: 100%;
   height: 40px;
   box-sizing: border-box;
@@ -2470,9 +2528,36 @@ onBeforeUnmount(() => {
   color: #344159;
   background: #fff;
 }
-.person-search > input:focus {
+.person-search__control > input[readonly] {
+  padding-right: 38px;
+  background: #f8fbff;
+  cursor: default;
+}
+.person-search__control > input:focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.person-search__clear {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #64748b;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.person-search__clear:hover {
+  background: #e2e8f0;
+  color: #334155;
 }
 .person-search__panel {
   position: absolute;

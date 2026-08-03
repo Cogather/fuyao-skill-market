@@ -2142,11 +2142,13 @@ function validateForm(): boolean {
     delete formErrors[key as keyof SkillPlanningPayload];
   });
   const requiredFields: Array<keyof SkillPlanningPayload> = [
-    'skillId',
     'firstScene',
     'secondScene',
     'activityNodeName',
     'subActivityNodeName',
+    'description',
+    'owner',
+    'developOwner',
     'level',
     'planningDeptName',
   ];
@@ -2160,7 +2162,7 @@ function validateForm(): boolean {
   if (!planningLevelOptions.includes(planningForm.level as PlanningLevel)) {
     formErrors.level = '请选择产品级或部门级';
   }
-  if (!findSkillMasterForPlanning()) {
+  if (!planningForm.name.trim()) {
     formErrors.skillId = '请选择 Skill 清单中的 Skill';
   }
   if (planningForm.level === '产品级' && !planningForm.offeringName.trim()) {
@@ -4370,7 +4372,14 @@ onBeforeUnmount(() => {
             </label>
             <label class="planning-field">
               <span>责任 Owner <em>*</em></span>
-              <input :value="planningForm.owner" type="text" readonly placeholder="随 Skill 带出" />
+              <input
+                :value="planningForm.owner"
+                type="text"
+                readonly
+                :class="{ 'has-error': formErrors.owner }"
+                placeholder="随 Skill 带出"
+              />
+              <small v-if="formErrors.owner">{{ formErrors.owner }}</small>
             </label>
             <!-- <label class="planning-field">
               <span>Owner 所在部门 <em>*</em></span>
@@ -4416,8 +4425,10 @@ onBeforeUnmount(() => {
                 :value="planningForm.developOwner"
                 type="text"
                 readonly
+                :class="{ 'has-error': formErrors.developOwner }"
                 placeholder="随 Skill 带出"
               />
+              <small v-if="formErrors.developOwner">{{ formErrors.developOwner }}</small>
             </label>
             <label class="planning-field">
               <span>计划完成时间</span>
