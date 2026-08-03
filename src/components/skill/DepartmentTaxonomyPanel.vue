@@ -858,22 +858,10 @@ function dropRecord(targetId: string): void {
 
 const deleteOpen = ref(false);
 const deleteTargetId = ref('');
-const migrationTargetId = ref('');
-const deleteError = ref('');
 
 const deleteTarget = computed(
   () => draftRecords.value.find((item) => item.id === deleteTargetId.value) ?? null,
 );
-
-const migrationCandidates = computed(() => {
-  if (!deleteTarget.value) return [];
-  return draftRecords.value
-    .filter(
-      (item) =>
-        item.id !== deleteTarget.value?.id && item.parentId === deleteTarget.value?.parentId,
-    )
-    .sort((left, right) => left.sort - right.sort);
-});
 
 function openDelete(record: TaxonomyRecord): void {
   const referenceCount = usageCount(record);
@@ -885,15 +873,12 @@ function openDelete(record: TaxonomyRecord): void {
     return;
   }
   deleteTargetId.value = record.id;
-  migrationTargetId.value = '';
-  deleteError.value = '';
   deleteOpen.value = true;
 }
 
-function removeDraftRecord(mode: 'force' | 'migrate'): void {
+function removeDraftRecord(): void {
   const target = deleteTarget.value;
   if (!target) return;
-  const migrationTarget = draftRecords.value.find((item) => item.id === migrationTargetId.value);
   const referenceCount = usageCount(target);
   if (referenceCount > 0) {
     deleteOpen.value = false;
@@ -903,40 +888,15 @@ function removeDraftRecord(mode: 'force' | 'migrate'): void {
     );
     return;
   }
-  if (mode === 'migrate' && !migrationTarget) {
-    deleteError.value = '请选择迁移到的' + labels.value.item;
-    return;
-  }
 
   if (target.parentId === null) {
-    const children = childRecords(target.id);
-    const mergedChildIds = new Set<string>();
-    if (mode === 'migrate' && migrationTarget) {
-      migrationTarget.skillCount += target.skillCount;
-      children.forEach((child) => {
-        const duplicate = draftRecords.value.find(
-          (item) => item.parentId === migrationTarget.id && item.name === child.name,
-        );
-        if (duplicate) {
-          duplicate.skillCount += child.skillCount;
-          mergedChildIds.add(child.id);
-        } else {
-          child.parentId = migrationTarget.id;
-        }
-      });
-      normalizeSort(migrationTarget.id);
-    }
-    const childIds = new Set(children.map((item) => item.id));
+    const childIds = new Set(childRecords(target.id).map((item) => item.id));
     draftRecords.value = draftRecords.value.filter(
-      (item) =>
-        item.id !== target.id &&
-        !mergedChildIds.has(item.id) &&
-        !(mode === 'force' && childIds.has(item.id)),
+      (item) => item.id !== target.id && !childIds.has(item.id),
     );
     normalizeSort(null);
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
   } else {
-    if (mode === 'migrate' && migrationTarget) migrationTarget.skillCount += target.skillCount;
     draftRecords.value = draftRecords.value.filter((item) => item.id !== target.id);
     normalizeSort(target.parentId);
   }
@@ -1364,32 +1324,9 @@ function exportRecords(): void {
       <div class="modal-card delete-card">
         <h3>删除{{ labels.item }}“{{ deleteTarget.name }}”</h3>
         <p>该项暂无关联规划，删除将在确认更新后生效。</p>
-        <label v-if="migrationCandidates.length">
-          <span>批量迁移到</span>
-          <select v-model="migrationTargetId">
-            <option value="">请选择</option>
-            <option
-              v-for="candidate in migrationCandidates"
-              :key="candidate.id"
-              :value="candidate.id"
-            >
-              {{ candidate.name }}
-            </option>
-          </select>
-        </label>
-        <p v-if="deleteError" class="form-error">{{ deleteError }}</p>
         <div class="modal-actions">
           <button type="button" @click="deleteOpen = false">取消</button>
-          <button
-            v-if="migrationCandidates.length"
-            type="button"
-            @click="removeDraftRecord('migrate')"
-          >
-            迁移并删除
-          </button>
-          <button class="danger-button" type="button" @click="removeDraftRecord('force')">
-            确认删除
-          </button>
+          <button class="danger-button" type="button" @click="removeDraftRecord">确认删除</button>
         </div>
       </div>
     </div>

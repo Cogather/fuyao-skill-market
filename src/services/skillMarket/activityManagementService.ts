@@ -126,6 +126,23 @@ const defaultActivities: ActivityRecord[] = [
   },
 
   {
+    id: 'activity-unreferenced',
+    parentId: null,
+    name: '待删除活动（无关联）',
+    sort: 14,
+    status: 'enabled',
+    skillCount: 0,
+  },
+  {
+    id: 'sub-activity-unreferenced',
+    parentId: 'activity-unreferenced',
+    name: '待删除子活动（无关联）',
+    sort: 1,
+    status: 'enabled',
+    skillCount: 0,
+  },
+
+  {
     id: 'sub-activity-api',
     parentId: 'activity-demand-dev',
     name: '接口开发',
