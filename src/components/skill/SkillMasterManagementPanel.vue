@@ -369,7 +369,11 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
-    <div v-if="toast" class="master-toast" role="status">{{ toast }}</div>
+    <Teleport to="body">
+      <div v-if="toast" class="master-toast" data-app-toast role="status" aria-live="polite">
+        {{ toast }}
+      </div>
+    </Teleport>
   </section>
 </template>
 
