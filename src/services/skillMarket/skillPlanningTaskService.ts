@@ -1,7 +1,6 @@
 import { skillBaseService } from './skillBaseService';
 
-export type SkillTaskStatus = 'todo' | 'inProgress' | 'done';
-type LegacySkillTaskStatus = SkillTaskStatus | 'published';
+export type SkillTaskStatus = string;
 export type SkillTaskPriority = 'high' | 'medium' | 'low';
 
 export interface SkillPlanningTask {
@@ -130,11 +129,9 @@ function normalizeProgress(value: unknown, status: SkillTaskStatus): number {
   return 0;
 }
 
-function normalizeTask(
-  task: Omit<SkillPlanningTask, 'status'> & { status: LegacySkillTaskStatus },
-): SkillPlanningTask {
+function normalizeTask(task: SkillPlanningTask): SkillPlanningTask {
   const defaultTask = defaultTasks.find((item) => item.id === task.id);
-  const status: SkillTaskStatus = task.status === 'published' ? 'inProgress' : task.status;
+  const status = readText(task.status) || '未设置';
   return {
     ...task,
     status,
@@ -162,9 +159,7 @@ function readTasks(): SkillPlanningTask[] {
   if (typeof window !== 'undefined') {
     try {
       const raw = window.localStorage.getItem(TASK_STORAGE_KEY);
-      const parsed = raw
-        ? (JSON.parse(raw) as Array<SkillPlanningTask & { status: LegacySkillTaskStatus }>)
-        : [];
+      const parsed = raw ? (JSON.parse(raw) as SkillPlanningTask[]) : [];
       if (Array.isArray(parsed) && parsed.length > 0) {
         memoryTasks = parsed.map(normalizeTask);
         return memoryTasks;
@@ -213,12 +208,7 @@ function readText(value: unknown): string {
 }
 
 function normalizeHttpTaskStatus(value: unknown): SkillTaskStatus {
-  const status = readText(value).toLowerCase();
-  if (['已完成', 'done', 'completed', 'complete'].includes(status)) return 'done';
-  if (['待启动', '待办', '未开始', 'todo', 'pending', 'not_started'].includes(status)) {
-    return 'todo';
-  }
-  return 'inProgress';
+  return readText(value) || '未设置';
 }
 
 function normalizeHttpTaskPriority(value: unknown): SkillTaskPriority {

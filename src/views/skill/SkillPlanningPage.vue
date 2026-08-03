@@ -1546,7 +1546,7 @@ function showToast(message: string) {
   }
   toastTimer = window.setTimeout(() => {
     toast.value = '';
-  }, 2400);
+  }, 5000);
 }
 
 function syncPlanningHeaderFilterSelections(options: SkillPlanningFilterOptions): void {
@@ -2690,7 +2690,7 @@ onBeforeUnmount(() => {
             <input
               v-model.trim="filterForm.keyword"
               type="search"
-              placeholder="按 产品、Skill 名称、说明、责任Owner、开发责任人查询"
+              placeholder="按 Skill 名称、描述、责任Owner、开发责任人查询"
               @keydown.enter.prevent="onSearchKeyword"
               @input="onSearchKeywordInput"
             />

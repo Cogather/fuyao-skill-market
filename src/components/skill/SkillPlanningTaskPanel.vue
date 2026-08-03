@@ -3,12 +3,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   getSkillTaskAssociation,
   querySkillPlanningTasks,
-  updateSkillTaskProgress,
-  updateSkillTaskStatus,
   usesRemoteSkillPlanningTasks,
   type SkillPlanningTask,
   type SkillTaskAssociation,
-  type SkillTaskStatus,
 } from '../../services/skillMarket/skillPlanningTaskService';
 
 type TaskNotice = {
@@ -27,7 +24,6 @@ const loadError = ref('');
 const remoteTasks = usesRemoteSkillPlanningTasks();
 let reloadSequence = 0;
 const keyword = ref('');
-const statusFilter = ref<'all' | SkillTaskStatus>('all');
 const page = ref(1);
 const pageSize = 10;
 const toast = ref('');
@@ -71,23 +67,20 @@ const notices = ref<TaskNotice[]>(
       ],
 );
 
-const statusOptions: Array<{ value: SkillTaskStatus; label: string }> = [
-  { value: 'todo', label: '未开始' },
-  { value: 'inProgress', label: '开发中' },
-  { value: 'done', label: '已完成' },
-];
+const statusCards = computed(() => {
+  const statusCounts = new Map<string, number>();
 
-const statusCards = computed(() =>
-  statusOptions.map((item) => ({
-    ...item,
-    count: tasks.value.filter((task) => task.status === item.value).length,
-  })),
-);
+  tasks.value.forEach((task) => {
+    const status = String(task.status ?? '').trim() || '未设置';
+    statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
+  });
+
+  return Array.from(statusCounts, ([status, count]) => ({ status, count }));
+});
 
 const filteredTasks = computed(() => {
   const text = keyword.value.trim().toLowerCase();
   return tasks.value.filter((task) => {
-    if (statusFilter.value !== 'all' && task.status !== statusFilter.value) return false;
     if (!text) return true;
     return [task.name, task.department, task.planningDepartment, task.owner, task.description]
       .join(' ')
@@ -129,10 +122,6 @@ async function reload(): Promise<void> {
   }
 }
 
-function statusLabel(status: SkillTaskStatus): string {
-  return statusOptions.find((item) => item.value === status)?.label ?? status;
-}
-
 function formatUpdatedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value || '—';
@@ -154,10 +143,6 @@ function showToast(message: string): void {
   }, 2400);
 }
 
-function selectStatus(status: SkillTaskStatus): void {
-  statusFilter.value = statusFilter.value === status ? 'all' : status;
-}
-
 function openSkill(task: SkillPlanningTask): void {
   Object.assign(detailDialog, {
     open: true,
@@ -174,7 +159,7 @@ function goPage(next: number): void {
   page.value = Math.min(totalPages.value, Math.max(1, next));
 }
 
-watch([keyword, statusFilter], () => {
+watch(keyword, () => {
   page.value = 1;
 });
 watch(
@@ -195,27 +180,14 @@ onBeforeUnmount(() => {
         <h3>我的 Skill 待办中心</h3>
         <p>聚焦当前登录用户负责的 Skill 任务，完成启动、开发和进度跟踪。</p>
       </div>
-      <div class="status-flow" aria-label="任务状态流转">
-        <span v-for="(item, index) in statusOptions" :key="item.value">
-          <b>{{ item.label }}</b
-          ><i v-if="index < statusOptions.length - 1">→</i>
-        </span>
-      </div>
     </header>
 
     <div class="metric-grid">
-      <button
-        v-for="item in statusCards"
-        :key="item.value"
-        type="button"
-        class="metric-card"
-        :class="['is-' + item.value, { 'is-active': statusFilter === item.value }]"
-        @click="selectStatus(item.value)"
-      >
-        <span>{{ item.label }}</span>
+      <article v-for="item in statusCards" :key="item.status" class="metric-card">
+        <span>{{ item.status }}</span>
         <strong>{{ item.count }}</strong>
-        <small>{{ statusFilter === item.value ? '点击查看全部' : '点击筛选任务' }}</small>
-      </button>
+        <small>后端状态统计</small>
+      </article>
     </div>
 
     <div class="dashboard-body">
@@ -231,12 +203,6 @@ onBeforeUnmount(() => {
               type="search"
               placeholder="搜索 Skill 名称、部门或负责人"
             />
-            <select v-model="statusFilter">
-              <option value="all">全部状态</option>
-              <option v-for="item in statusOptions" :key="item.value" :value="item.value">
-                {{ item.label }}
-              </option>
-            </select>
           </div>
         </header>
 
@@ -281,8 +247,8 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
                 <td>
-                  <span class="status-badge" :class="'is-' + task.status">
-                    {{ statusLabel(task.status) }}
+                  <span class="status-badge">
+                    {{ task.status || '—' }}
                   </span>
                 </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
@@ -321,37 +287,6 @@ onBeforeUnmount(() => {
           </div>
         </footer>
       </div>
-
-      <aside class="notification-panel" aria-label="最近通知">
-        <header>
-          <div><span></span><strong>最近通知</strong></div>
-          <small>{{ notices.length }} 条</small>
-        </header>
-
-        <section>
-          <h4>今天</h4>
-          <article v-for="notice in todayNotices" :key="notice.id" :class="'is-' + notice.tone">
-            <i></i>
-            <div>
-              <strong>{{ notice.title }}</strong>
-              <p>{{ notice.detail }}</p>
-            </div>
-            <time>{{ notice.time }}</time>
-          </article>
-        </section>
-
-        <section>
-          <h4>昨天</h4>
-          <article v-for="notice in yesterdayNotices" :key="notice.id" :class="'is-' + notice.tone">
-            <i></i>
-            <div>
-              <strong>{{ notice.title }}</strong>
-              <p>{{ notice.detail }}</p>
-            </div>
-            <time>{{ notice.time }}</time>
-          </article>
-        </section>
-      </aside>
     </div>
 
     <Teleport to="body">
@@ -371,8 +306,8 @@ onBeforeUnmount(() => {
           </header>
 
           <div class="detail-status">
-            <span class="status-badge" :class="'is-' + detailDialog.task.status">
-              {{ statusLabel(detailDialog.task.status) }}
+            <span class="status-badge">
+              {{ detailDialog.task.status || '—' }}
             </span>
             <div><i :style="{ width: detailDialog.task.progress + '%' }"></i></div>
             <strong>{{ detailDialog.task.progress }}%</strong>
@@ -428,6 +363,8 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .task-dashboard {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 18px;
   color: #17233d;
 }
@@ -488,11 +425,12 @@ onBeforeUnmount(() => {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
 .metric-card {
+  --metric-color: #6079df;
   position: relative;
   display: grid;
   min-height: 118px;
@@ -503,7 +441,7 @@ onBeforeUnmount(() => {
   background: #fff;
   color: #26344c;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   box-shadow: 0 10px 28px rgba(34, 50, 81, 0.055);
   transition:
     transform 160ms ease,
@@ -522,24 +460,9 @@ onBeforeUnmount(() => {
   opacity: 0.09;
 }
 
-.metric-card:hover,
-.metric-card.is-active {
+.metric-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 34px rgba(34, 50, 81, 0.1);
-}
-
-.metric-card.is-active {
-  border-color: var(--metric-color);
-}
-
-.metric-card.is-todo {
-  --metric-color: #75839a;
-}
-.metric-card.is-inProgress {
-  --metric-color: #e69a2f;
-}
-.metric-card.is-done {
-  --metric-color: #2f9d72;
 }
 
 .metric-card > span {
@@ -564,13 +487,17 @@ onBeforeUnmount(() => {
 
 .dashboard-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 16px;
+  width: 100%;
 }
 
 .task-board,
 .notification-panel {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 1px solid #dfe6f1;
   border-radius: 12px;
   background: #fff;
@@ -612,8 +539,7 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.task-toolbar input,
-.task-toolbar select {
+.task-toolbar input {
   height: 36px;
   padding: 0 10px;
   border: 1px solid #d9e1ed;
@@ -624,7 +550,7 @@ onBeforeUnmount(() => {
 }
 
 .task-toolbar input {
-  width: 260px;
+  width: clamp(260px, 30vw, 420px);
 }
 
 .task-table-wrap {
@@ -1185,7 +1111,7 @@ onBeforeUnmount(() => {
 
   .task-toolbar__actions {
     display: grid;
-    grid-template-columns: 1fr 130px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .task-toolbar input {
