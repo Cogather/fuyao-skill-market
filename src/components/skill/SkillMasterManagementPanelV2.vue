@@ -82,6 +82,10 @@ const props = withDefaults(
 );
 const records = ref<SkillMasterRecord[]>([]);
 const masterLoading = ref(false);
+const masterPageSizeOptions = [5, 10, 20, 50];
+const masterPageNum = ref(1);
+const masterPageSize = ref(10);
+const masterTotal = ref(0);
 const associations = ref<Record<string, SkillMasterAssociation>>({});
 const keyword = ref('');
 const toast = ref('');
@@ -192,6 +196,7 @@ const masterImportInputRef = ref<HTMLInputElement | null>(null);
 const masterImportSubmitting = ref(false);
 const masterExportSubmitting = ref(false);
 let masterProductLoadSequence = 0;
+let masterQuerySequence = 0;
 
 function normalizeDepartmentPath(segments: string[] | undefined): string[] {
   return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
@@ -356,6 +361,7 @@ function ensureMasterScopeSelection(notify = false): boolean {
 
 function clearMasterList(): void {
   records.value = [];
+  masterTotal.value = 0;
   associations.value = {};
 }
 
@@ -375,25 +381,44 @@ function resolveCurrentDimFields(): { dimCode: string; dimName: string } {
   };
 }
 
+function resolveCompleteMasterQueryDimension(): {
+  dimType: PlanningLevel;
+  dimCode: string;
+  dimName: string;
+} | null {
+  const dimType = masterScopeForm.level;
+  if (!planningLevelOptions.includes(dimType)) return null;
+  const { dimCode, dimName } = resolveCurrentDimFields();
+  if (!dimCode || !dimName) return null;
+  return { dimType, dimCode, dimName };
+}
+
+function masterQueryValidationMessage(): string {
+  if (keyword.value.trim()) return '';
+  if (masterScopeErrorMessage.value) return masterScopeErrorMessage.value;
+  if (resolveCompleteMasterQueryDimension()) return '';
+  return masterScopeForm.level === '产品级'
+    ? '\u4ea7\u54c1\u4fe1\u606f\u5c1a\u672a\u52a0\u8f7d\u5b8c\u6210\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'
+    : '\u90e8\u95e8\u4fe1\u606f\u5c1a\u672a\u52a0\u8f7d\u5b8c\u6210\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
+}
+
 function buildManagementQueryBody(): QuerySkillMasterManagementBody {
   const body: QuerySkillMasterManagementBody = {
     userId: props.userId.trim(),
     sortBy: 'updatedAt',
     sortOrder: 'desc',
-    pageNum: 1,
-    pageSize: 100,
+    pageNum: masterPageNum.value,
+    pageSize: masterPageSize.value,
   };
   const nextKeyword = keyword.value.trim();
   if (nextKeyword) {
     body.keyword = nextKeyword;
   }
-  if (masterScopeForm.level) {
-    body.dimType = masterScopeForm.level;
-  }
-  const dim = resolveCurrentDimFields();
-  if (dim.dimCode && dim.dimName) {
-    body.dimCode = dim.dimCode;
-    body.dimName = dim.dimName;
+  const dimension = resolveCompleteMasterQueryDimension();
+  if (dimension) {
+    body.dimType = dimension.dimType;
+    body.dimCode = dimension.dimCode;
+    body.dimName = dimension.dimName;
   }
   return body;
 }
@@ -487,6 +512,15 @@ const filteredRecords = computed(() => {
       .includes(text);
   });
 });
+const masterTotalPages = computed(() =>
+  Math.max(1, Math.ceil(masterTotal.value / masterPageSize.value)),
+);
+const masterPageStart = computed(() =>
+  masterTotal.value === 0 ? 0 : (masterPageNum.value - 1) * masterPageSize.value + 1,
+);
+const masterPageEnd = computed(() =>
+  Math.min(masterTotal.value, masterPageNum.value * masterPageSize.value),
+);
 const selectedMasterRecords = computed(() =>
   records.value.filter((record) => selectedMasterIds.value.includes(record.id)),
 );
@@ -543,20 +577,43 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
 }
 
 async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
-  if (!ensureMasterScopeSelection(Boolean(options.notifyOnMissingScope))) {
+  const requestSequence = ++masterQuerySequence;
+  const validationMessage = masterQueryValidationMessage();
+  if (validationMessage) {
     clearMasterList();
     masterLoading.value = false;
+    if (options.notifyOnMissingScope) showToast(validationMessage);
     return;
   }
   masterLoading.value = true;
   try {
-    const response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+    let response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+    if (requestSequence !== masterQuerySequence) return;
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
       );
     }
-    const rows = Array.isArray(response?.data) ? response.data : [];
+    let rows = Array.isArray(response?.data) ? response.data : [];
+    const responseTotal = Number(response?.meta?.number ?? response?.meta?.total);
+    masterTotal.value =
+      Number.isFinite(responseTotal) && responseTotal >= 0 ? responseTotal : rows.length;
+    if (masterPageNum.value > masterTotalPages.value) {
+      masterPageNum.value = masterTotalPages.value;
+      response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+      if (requestSequence !== masterQuerySequence) return;
+      if (response?.meta?.success !== true) {
+        throw new Error(
+          String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
+        );
+      }
+      rows = Array.isArray(response?.data) ? response.data : [];
+      const nextResponseTotal = Number(response?.meta?.number ?? response?.meta?.total);
+      masterTotal.value =
+        Number.isFinite(nextResponseTotal) && nextResponseTotal >= 0
+          ? nextResponseTotal
+          : rows.length;
+    }
     const nextRecords = rows.map((item: SkillMasterManagementItemDto) =>
       mapManagementItemToRecord(item),
     );
@@ -568,10 +625,13 @@ async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise
     );
     void hydratePersonDisplayLabels(records.value);
   } catch (error) {
+    if (requestSequence !== masterQuerySequence) return;
     clearMasterList();
     showToast(error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试');
   } finally {
-    masterLoading.value = false;
+    if (requestSequence === masterQuerySequence) {
+      masterLoading.value = false;
+    }
   }
 }
 function showToast(message: string): void {
@@ -1071,6 +1131,7 @@ async function submitEditor(): Promise<void> {
         return;
       }
       closeEditor();
+      masterPageNum.value = 1;
       await reload();
       showToast('Skill 已添加，可前往 Skill 规划复用');
     } catch (error) {
@@ -1271,6 +1332,7 @@ async function handleMasterImportFile(event: Event): Promise<void> {
       buildMasterTransferParams(),
     );
     const result = normalizeSkillImportResponse(response);
+    masterPageNum.value = 1;
     await reload();
     if (result.errorList.length > 0) {
       const firstError = result.errorList[0];
@@ -1352,6 +1414,7 @@ async function confirmBatchMasterDelete(): Promise<void> {
   }
 }
 async function onMasterScopeLevelChange(): Promise<void> {
+  masterPageNum.value = 1;
   const defaultPath = defaultMasterDepartmentPath.value;
   masterScopeDepartmentCommitted.value = defaultPath.length > 0;
   masterDepartmentSegments.value = [...defaultPath];
@@ -1366,6 +1429,7 @@ function onMasterDepartmentChange(segments: string[]): void {
 }
 
 async function applyMasterDepartmentQuery(segments: string[]): Promise<void> {
+  masterPageNum.value = 1;
   masterDepartmentSegments.value = normalizeDepartmentPath(segments).slice(0, 6);
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = masterDepartmentSegments.value.length > 0;
@@ -1382,26 +1446,41 @@ async function onMasterDepartmentClear(segments: string[] = []): Promise<void> {
 }
 
 async function onMasterProductChange(): Promise<void> {
+  masterPageNum.value = 1;
   masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
   await reload();
 }
 
 async function applyMasterQuery(): Promise<void> {
+  masterPageNum.value = 1;
   await reload({ notifyOnMissingScope: true });
 }
 
 async function resetMasterQuery(): Promise<void> {
   keyword.value = '';
+  masterPageNum.value = 1;
   applyDefaultMasterScopeSelection();
   await loadMasterProducts();
   await reload();
 }
 
+async function goMasterPage(nextPage: number): Promise<void> {
+  masterPageNum.value = Math.min(masterTotalPages.value, Math.max(1, nextPage));
+  await reload();
+}
+
+async function changeMasterPageSize(): Promise<void> {
+  masterPageNum.value = 1;
+  await reload();
+}
+
 watch(
-  () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths],
-  () => {
+  () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths, props.departmentTree],
+  async () => {
+    masterPageNum.value = 1;
     applyDefaultMasterScopeSelection();
-    void loadMasterProducts().then(() => reload());
+    await loadMasterProducts();
+    await reload();
   },
   { immediate: true, deep: true },
 );
@@ -1506,7 +1585,7 @@ onBeforeUnmount(() => {
         <div class="master-toolbar__title">
           <strong>Skill 原子清单</strong>
           <small
-            >已选 {{ selectedMasterIds.length }} 条 / 共 {{ filteredRecords.length }} 条 ·
+            >已选 {{ selectedMasterIds.length }} 条 / 共 {{ masterTotal }} 条 ·
             可被不同部门的规划复用</small
           >
         </div>
@@ -1668,6 +1747,35 @@ onBeforeUnmount(() => {
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="master-pagination">
+        <span>第 {{ masterPageStart }}-{{ masterPageEnd }} 条，共 {{ masterTotal }} 条</span>
+        <div class="master-pagination__controls">
+          <select
+            v-model.number="masterPageSize"
+            :disabled="masterLoading"
+            @change="changeMasterPageSize"
+          >
+            <option v-for="size in masterPageSizeOptions" :key="size" :value="size">
+              {{ size }} 条/页
+            </option>
+          </select>
+          <button
+            type="button"
+            :disabled="masterLoading || masterPageNum <= 1"
+            @click="goMasterPage(masterPageNum - 1)"
+          >
+            上一页
+          </button>
+          <strong>{{ masterPageNum }} / {{ masterTotalPages }}</strong>
+          <button
+            type="button"
+            :disabled="masterLoading || masterPageNum >= masterTotalPages"
+            @click="goMasterPage(masterPageNum + 1)"
+          >
+            下一页
+          </button>
+        </div>
       </div>
     </div>
 
@@ -2301,6 +2409,43 @@ onBeforeUnmount(() => {
 .table-wrap tbody tr:hover td {
   background: #f8fbff;
 }
+.master-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid #edf2f7;
+  color: #64748b;
+  font-size: 13px;
+}
+.master-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.master-pagination__controls select,
+.master-pagination__controls button {
+  height: 32px;
+  border: 1px solid #dbe5f2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #253857;
+  font: inherit;
+  font-size: 13px;
+}
+.master-pagination__controls select {
+  padding: 0 8px;
+}
+.master-pagination__controls button {
+  padding: 0 10px;
+  cursor: pointer;
+}
+.master-pagination__controls button:disabled,
+.master-pagination__controls select:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .table-wrap .selection-cell {
   text-align: center;
 }
@@ -2768,6 +2913,15 @@ onBeforeUnmount(() => {
     align-items: stretch;
     flex-direction: column;
   }
+  .master-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .master-pagination__controls {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .master-scope-controls,
   .master-scope-controls.is-department-level {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
