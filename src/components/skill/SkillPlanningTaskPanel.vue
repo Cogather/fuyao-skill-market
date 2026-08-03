@@ -131,6 +131,15 @@ function formatUpdatedAt(value: string): string {
   });
 }
 
+function formatDetailUpdatedAt(value: string): string {
+  const matched = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (matched) {
+    const [, year, month, day, hour, minute, second = '00'] = matched;
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  }
+  return value || '—';
+}
+
 function showToast(message: string): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
@@ -299,10 +308,7 @@ onBeforeUnmount(() => {
               <p>{{ detailDialog.task.description }}</p>
             </div>
             <div class="skill-detail-dialog__actions">
-              <div class="skill-detail-dialog__status">
-                <span>状态</span>
-                <strong>{{ detailDialog.task.status || '—' }}</strong>
-              </div>
+              <span class="status-badge">{{ detailDialog.task.status || '—' }}</span>
               <button type="button" aria-label="关闭" @click="closeSkill">×</button>
             </div>
           </header>
@@ -322,7 +328,7 @@ onBeforeUnmount(() => {
             </div>
             <div>
               <dt>更新时间</dt>
-              <dd>{{ formatUpdatedAt(detailDialog.task.updatedAt) }}</dd>
+              <dd>{{ formatDetailUpdatedAt(detailDialog.task.updatedAt) }}</dd>
             </div>
           </dl>
 
@@ -964,36 +970,8 @@ onBeforeUnmount(() => {
 .skill-detail-dialog__actions {
   display: flex;
   flex: 0 0 auto;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-}
-
-.skill-detail-dialog__status {
-  display: grid;
-  box-sizing: border-box;
-  min-width: 118px;
-  padding: 7px 12px;
-  border: 1px solid #e1e6ef;
-  border-radius: 8px;
-  background: #f8f9fc;
-  text-align: center;
-}
-
-.skill-detail-dialog__status > span {
-  color: #8c97a8;
-  font-size: 9px;
-  font-weight: 700;
-}
-
-.skill-detail-dialog__status > strong {
-  max-width: 180px;
-  overflow: hidden;
-  color: #53627a;
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .skill-detail-dialog__actions > button {

@@ -62,7 +62,9 @@ const taskTabs: Array<{
   display: grid;
   gap: 16px;
   width: 100%;
+  max-width: none;
   min-width: 0;
+  justify-self: stretch;
   box-sizing: border-box;
   color: #17233d;
 }
@@ -162,7 +164,11 @@ const taskTabs: Array<{
 }
 
 .task-management-content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
   min-width: 0;
+  justify-self: stretch;
   padding-top: 6px;
 }
 

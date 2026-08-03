@@ -412,7 +412,7 @@ onBeforeUnmount(() => {
     <section
       v-else-if="activeHarnessTab === 'tasks'"
       id="harness-panel-tasks"
-      class="harness-tab-panel"
+      class="harness-tab-panel harness-tab-panel--tasks"
       role="tabpanel"
       aria-labelledby="harness-tab-tasks"
     >
@@ -647,6 +647,10 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: calc(100vh - var(--harness-topbar-height));
   padding: 14px 50px 34px;
+}
+
+.harness-tab-panel--tasks {
+  padding-inline: clamp(12px, 1.25vw, 24px);
 }
 
 .harness-placeholder-panel {
