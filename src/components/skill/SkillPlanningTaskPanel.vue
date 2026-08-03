@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
-  getSkillTaskAssociation,
   querySkillPlanningTasks,
   usesRemoteSkillPlanningTasks,
   type SkillPlanningTask,
-  type SkillTaskAssociation,
 } from '../../services/skillMarket/skillPlanningTaskService';
 
 type TaskNotice = {
@@ -33,7 +31,6 @@ let toastTimer: number | null = null;
 const detailDialog = reactive({
   open: false,
   task: null as SkillPlanningTask | null,
-  association: null as SkillTaskAssociation | null,
 });
 
 const notices = ref<TaskNotice[]>(
@@ -147,7 +144,6 @@ function openSkill(task: SkillPlanningTask): void {
   Object.assign(detailDialog, {
     open: true,
     task: { ...task },
-    association: getSkillTaskAssociation(task.id),
   });
 }
 
@@ -297,53 +293,36 @@ onBeforeUnmount(() => {
       >
         <div class="skill-detail-dialog">
           <header>
-            <div>
+            <div class="skill-detail-dialog__heading">
               <small>SKILL TASK DETAIL</small>
               <strong>{{ detailDialog.task.name }}</strong>
               <p>{{ detailDialog.task.description }}</p>
             </div>
-            <button type="button" aria-label="关闭" @click="closeSkill">×</button>
+            <div class="skill-detail-dialog__actions">
+              <div class="skill-detail-dialog__status">
+                <span>状态</span>
+                <strong>{{ detailDialog.task.status || '—' }}</strong>
+              </div>
+              <button type="button" aria-label="关闭" @click="closeSkill">×</button>
+            </div>
           </header>
 
-          <div class="detail-status">
-            <span class="status-badge">
-              {{ detailDialog.task.status || '—' }}
-            </span>
-            <div><i :style="{ width: detailDialog.task.progress + '%' }"></i></div>
-            <strong>{{ detailDialog.task.progress }}%</strong>
-          </div>
-
           <dl>
-            <!-- <div>
-              <dt>Owner 所在部门</dt>
-              <dd>{{ detailDialog.task.department || '待分配' }}</dd>
-            </div> -->
             <div>
-              <dt>规划部门</dt>
-              <dd>{{ detailDialog.task.planningDepartment || '待明确' }}</dd>
+              <dt>规划部门或产品</dt>
+              <dd>{{ detailDialog.task.dimName || '—' }}</dd>
             </div>
             <div>
               <dt>负责人</dt>
-              <dd>{{ detailDialog.task.owner }}（{{ detailDialog.task.ownerId }}）</dd>
+              <dd>{{ detailDialog.task.ownerName || '—' }}</dd>
             </div>
             <div>
-              <dt>计划完成</dt>
-              <dd>{{ detailDialog.task.dueDate || '待排期' }}</dd>
+              <dt>计划完成时间</dt>
+              <dd>{{ detailDialog.task.planFinishDate || '—' }}</dd>
             </div>
             <div>
               <dt>更新时间</dt>
               <dd>{{ formatUpdatedAt(detailDialog.task.updatedAt) }}</dd>
-            </div>
-            <div>
-              <dt>已关联范围</dt>
-              <dd>
-                场景 {{ detailDialog.association?.sceneIds.length || 0 }} · 活动
-                {{ detailDialog.association?.activityIds.length || 0 }} · 部门/服务
-                {{
-                  (detailDialog.association?.departments.length || 0) +
-                  (detailDialog.association?.services.length || 0)
-                }}
-              </dd>
             </div>
           </dl>
 
@@ -690,8 +669,7 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.progress-cell > div,
-.detail-status > div {
+.progress-cell > div {
   height: 6px;
   overflow: hidden;
   flex: 1;
@@ -699,8 +677,7 @@ onBeforeUnmount(() => {
   background: #e9edf3;
 }
 
-.progress-cell i,
-.detail-status i {
+.progress-cell i {
   display: block;
   height: 100%;
   border-radius: inherit;
@@ -943,10 +920,10 @@ onBeforeUnmount(() => {
 }
 
 .skill-detail-dialog {
-  width: min(650px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   overflow: auto;
-  padding: 22px;
+  padding: 24px;
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
@@ -954,35 +931,72 @@ onBeforeUnmount(() => {
 
 .skill-detail-dialog > header {
   display: flex;
-  align-items: start;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
 }
 
-.skill-detail-dialog > header > div {
+.skill-detail-dialog__heading {
   display: grid;
+  flex: 1;
+  min-width: 0;
   gap: 4px;
 }
 
-.skill-detail-dialog > header small {
+.skill-detail-dialog__heading > small {
   color: #4c70d9;
   font-size: 9px;
   font-weight: 900;
 }
 
-.skill-detail-dialog > header strong {
+.skill-detail-dialog__heading > strong {
   color: #1c2940;
   font-size: 20px;
 }
 
-.skill-detail-dialog > header p {
+.skill-detail-dialog__heading > p {
   margin: 2px 0 0;
   color: #7e8a9c;
   font-size: 11px;
   line-height: 1.7;
 }
 
-.skill-detail-dialog > header > button {
+.skill-detail-dialog__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.skill-detail-dialog__status {
+  display: grid;
+  box-sizing: border-box;
+  min-width: 118px;
+  padding: 7px 12px;
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  background: #f8f9fc;
+  text-align: center;
+}
+
+.skill-detail-dialog__status > span {
+  color: #8c97a8;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.skill-detail-dialog__status > strong {
+  max-width: 180px;
+  overflow: hidden;
+  color: #53627a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-detail-dialog__actions > button {
   width: 30px;
   height: 30px;
   border: 0;
@@ -993,51 +1007,35 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.detail-status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0;
-  padding: 13px;
-  border-radius: 9px;
-  background: #f8f9fc;
-}
-
-.detail-status > div {
-  max-width: 320px;
-}
-
-.detail-status > strong {
-  color: #53627a;
-  font-size: 11px;
-}
-
 .skill-detail-dialog dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
+  margin: 20px 0 0;
 }
 
 .skill-detail-dialog dl > div {
-  padding: 12px;
+  box-sizing: border-box;
+  min-height: 80px;
+  padding: 15px;
   border: 1px solid #e4e9f1;
   border-radius: 8px;
-}
-
-.skill-detail-dialog dl > div:last-child {
-  grid-column: 1 / -1;
+  background: #fff;
 }
 
 .skill-detail-dialog dt {
   color: #8c97a8;
-  font-size: 9px;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .skill-detail-dialog dd {
-  margin: 5px 0 0;
+  margin: 8px 0 0;
   color: #3e4c63;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .skill-detail-dialog footer {
@@ -1137,10 +1135,6 @@ onBeforeUnmount(() => {
   .metric-grid,
   .skill-detail-dialog dl {
     grid-template-columns: 1fr;
-  }
-
-  .skill-detail-dialog dl > div:last-child {
-    grid-column: auto;
   }
 
   .task-pagination {

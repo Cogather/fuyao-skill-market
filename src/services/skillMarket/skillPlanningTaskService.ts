@@ -12,9 +12,12 @@ export interface SkillPlanningTask {
   progress: number;
   department: string;
   planningDepartment: string;
+  dimName: string;
   ownerId: string;
   owner: string;
+  ownerName: string;
   dueDate: string;
+  planFinishDate: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,9 +95,12 @@ function createDefaultTasks(): SkillPlanningTask[] {
         progress: status === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
         department: departments[number % departments.length] ?? '',
         planningDepartment: planningDepartments[number % planningDepartments.length] ?? '',
+        dimName: planningDepartments[number % planningDepartments.length] ?? '',
         ownerId: 'mock001',
         owner: '演示用户',
+        ownerName: '演示用户',
         dueDate: '2026-08-' + String(10 + (number % 18)).padStart(2, '0'),
+        planFinishDate: '2026-08-' + String(10 + (number % 18)).padStart(2, '0'),
         createdAt: '2026-07-01T09:00:00.000Z',
         updatedAt: '2026-07-' + day + 'T' + hour + ':20:00.000Z',
       };
@@ -140,7 +146,14 @@ function normalizeTask(task: SkillPlanningTask): SkillPlanningTask {
     planningDepartment: String(
       task.planningDepartment || defaultTask?.planningDepartment || task.department || '',
     ).trim(),
+    dimName:
+      readText(task.dimName) || readText(task.planningDepartment) || readText(defaultTask?.dimName),
     ownerId: String(task.ownerId || defaultTask?.ownerId || task.owner).trim(),
+    ownerName: readText(task.ownerName) || readText(task.owner) || readText(defaultTask?.ownerName),
+    planFinishDate:
+      readText(task.planFinishDate) ||
+      readText(task.dueDate) ||
+      readText(defaultTask?.planFinishDate),
   };
 }
 
@@ -207,6 +220,32 @@ function readText(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 }
 
+function readDateTime(value: unknown): string {
+  if (Array.isArray(value)) {
+    const [year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0] = value.map(Number);
+    const parts = [year, month, day, hour, minute, second];
+
+    if (year > 0 && month > 0 && day > 0 && parts.every(Number.isFinite)) {
+      const pad = (part: number) => String(part).padStart(2, '0');
+      return (
+        String(year).padStart(4, '0') +
+        '-' +
+        pad(month) +
+        '-' +
+        pad(day) +
+        'T' +
+        pad(hour) +
+        ':' +
+        pad(minute) +
+        ':' +
+        pad(second)
+      );
+    }
+  }
+
+  return readText(value);
+}
+
 function normalizeHttpTaskStatus(value: unknown): SkillTaskStatus {
   return readText(value) || '未设置';
 }
@@ -240,15 +279,20 @@ function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
     status,
   );
   const name = readText(record.skillName ?? record.skill_name ?? record.name) || '未命名 Skill';
+  const dimName = readText(record.dimName);
+  const ownerName = readText(record.ownerName);
+  const planFinishDate = readText(record.planFinishDate);
   const department = readText(
     record.deptName ?? record.departmentName ?? record.department ?? record.deptCode,
   );
-  const planningDepartment = readText(
-    record.planningDeptName ?? record.planningDepartment ?? record.deptName ?? record.deptCode,
-  );
-  const ownerId = readText(record.userId ?? record.ownerId ?? record.owner);
+  const planningDepartment =
+    dimName ||
+    readText(
+      record.planningDeptName ?? record.planningDepartment ?? record.deptName ?? record.deptCode,
+    );
+  const ownerId = readText(record.ownerId ?? record.userId ?? record.owner);
   const description =
-    readText(record.description) ||
+    readText(record.skillDescription ?? record.description) ||
     [
       readText(record.level),
       [readText(record.firstScene), readText(record.secondScene)].filter(Boolean).join(' / '),
@@ -258,7 +302,7 @@ function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
     ]
       .filter(Boolean)
       .join(' · ');
-  const updatedAt = readText(record.updatedAt ?? record.updateTime ?? record.createdAt);
+  const updatedAt = readDateTime(record.updatedAt);
   const id =
     readText(record.taskId ?? record.id) ||
     [name, readText(record.deptCode), ownerId || index].filter(Boolean).join('::');
@@ -272,10 +316,13 @@ function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
     progress,
     department,
     planningDepartment,
+    dimName,
     ownerId,
-    owner: readText(record.userName ?? record.ownerName ?? record.owner) || ownerId,
-    dueDate: readText(record.dueDate ?? record.planedCompleteDate ?? record.plannedCompleteDate),
-    createdAt: readText(record.createdAt ?? record.createTime),
+    owner: ownerName || readText(record.userName ?? record.owner) || ownerId,
+    ownerName,
+    dueDate: planFinishDate || readText(record.dueDate ?? record.planedCompleteDate),
+    planFinishDate,
+    createdAt: readDateTime(record.createdAt),
     updatedAt,
   };
 }
