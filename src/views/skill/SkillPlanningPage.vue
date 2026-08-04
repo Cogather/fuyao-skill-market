@@ -1,21 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import {
-  batchDeleteSkillPlanning,
-  batchUpdateSkillPlanning,
-  createSkillPlanningSupplement,
-  deleteSkillPlanning,
-  downloadSkillPlanningTemplate,
-  importSkillPlanningFromExcel,
-  getProductPlanning,
   querySkillPlanningActivityOptionGroups,
   querySkillPlanningSceneOptionGroups,
   querySkillPlanningUsers,
-  exportSkillPlanningSupplementFile,
-  querySkillPlanningSupplement,
-  updateSkillPlanningSupplement,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
   type SkillPlanningBatchPatch,
@@ -34,16 +25,12 @@ import {
   findActivityIdByNames,
   getActivityOptionGroups,
 } from '../../services/skillMarket/activityManagementService';
+import { type SkillMasterRecord } from '../../services/skillMarket/skillMasterManagementService';
+import type { CreateSkillPlanningSupplementBody } from '../../services/skillMarket/apiTypes';
 import {
-  type SkillMasterRecord,
-  type SkillMasterStatus,
-} from '../../services/skillMarket/skillMasterManagementService';
-import type {
-  CreateSkillPlanningSupplementBody,
-  QuerySkillMasterManagementBody,
-  SkillMasterManagementItemDto,
-} from '../../services/skillMarket/apiTypes';
-import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+  getHarnessCapabilityPlanningApi,
+  type HarnessCapabilityType,
+} from '../../services/skillMarket/harnessCapabilityPlanningService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import { openSkillExportResponse } from '../../services/skillMarket/skillTransferService';
@@ -80,6 +67,7 @@ type PlanningPersonSearchState = {
 
 const props = withDefaults(
   defineProps<{
+    capabilityType?: HarnessCapabilityType;
     departmentTree?: PlanningDepartmentTreeNode[];
     userId?: string;
     currentUserDepartmentPath?: string[];
@@ -88,6 +76,7 @@ const props = withDefaults(
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
+    capabilityType: 'skill',
     departmentTree: () => [],
     userId: '',
     currentUserDepartmentPath: () => [],
@@ -96,6 +85,11 @@ const props = withDefaults(
     restrictToAllowedDepartments: false,
   },
 );
+
+const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
+const capabilityLabel = computed(() => capabilityPlanningApi.value.label);
+const capabilityPlanningLabel = computed(() => `${capabilityLabel.value} 规划`);
+const capabilityCatalogLabel = computed(() => `${capabilityLabel.value} 清单`);
 
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 
@@ -107,12 +101,12 @@ const planningHeaderFilterKeys = [
   'level',
 ] as const;
 const pageSizeOptions = [5, 10, 20, 50];
-const batchReadonlyHeaders = [
+const batchReadonlyHeaders = computed(() => [
   '一级场景',
   '二级场景',
   '归属活动',
   '归属子活动',
-  'Skill',
+  capabilityLabel.value,
   '描述',
   '责任 Owner',
   '开发责任人',
@@ -120,7 +114,7 @@ const batchReadonlyHeaders = [
   '当前进展',
   '层级',
   '产品',
-] as const;
+]);
 
 const activePlanningTab = ref<'skills' | 'management'>('skills');
 
@@ -683,35 +677,6 @@ function refreshSkillMasterOptions(): void {
   skillMasterOptions.value = selected ? [selected] : [];
 }
 
-function mapManagementItemToSkillMasterRecord(
-  item: SkillMasterManagementItemDto,
-): SkillMasterRecord {
-  const skillName = String(item.skillName ?? '').trim();
-  const ownerName = String(item.ownerName ?? '').trim();
-  const ownerId = String(item.ownerId ?? '').trim();
-  const developOwnerName = String(item.developOwnerName ?? '').trim();
-  const developOwnerId = String(item.developOwnerId ?? '').trim();
-  const dimType = String(item.dimType ?? '').trim();
-  const dimName = String(item.dimName ?? '').trim();
-  const statusText = String(item.status ?? '').trim();
-  const now = new Date().toISOString();
-  return {
-    id: String(item.id ?? '').trim() || skillName,
-    name: skillName,
-    description: String(item.skillDescription ?? '').trim(),
-    level: dimType,
-    product: dimType === '产品级' ? dimName : '',
-    owner: `${ownerName} ${ownerId}`.trim(),
-    department: dimType === '部门级' ? dimName : '',
-    developOwner: `${developOwnerName} ${developOwnerId}`.trim(),
-    developOwnerDepartment: '',
-    plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
-    status: statusText as SkillMasterStatus,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
 function resolvePlanningDimFields(): {
   level: PlanningLevel;
   dimType: '部门级' | '产品级';
@@ -848,37 +813,28 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
   planningSkillSearchMessage.value = '';
 
   try {
-    const queryBody: QuerySkillMasterManagementBody = {
+    const queryBody = {
       userId: props.userId.trim(),
-      sortBy: 'updatedAt',
-      sortOrder: 'desc',
-      pageNum: 1,
-      pageSize: 100,
+      keyword: normalizedKeyword,
+      departmentName: '',
+      dimType: '',
+      dimCode: '',
+      dimName: '',
     };
-    if (normalizedKeyword) {
-      queryBody.keyword = normalizedKeyword;
-    } else {
+    if (!normalizedKeyword) {
       const dim = resolvePlanningDimFields();
       if (dim) {
         queryBody.dimType = dim.dimType;
         queryBody.dimCode = dim.dimCode;
         queryBody.dimName = dim.dimName;
+        queryBody.departmentName = dim.dimType === '部门级' ? dim.dimName : '';
       }
     }
 
-    const response = await skillBaseService.querySkillMasterManagement(queryBody);
+    const records = await capabilityPlanningApi.value.queryCatalog(queryBody);
     if (requestSeq !== planningSkillSearchSeq) {
       return;
     }
-    if (response?.meta?.success !== true) {
-      throw new Error(
-        String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
-      );
-    }
-    const rows = Array.isArray(response?.data) ? response.data : [];
-    const records = rows.map((item: SkillMasterManagementItemDto) =>
-      mapManagementItemToSkillMasterRecord(item),
-    );
     const selectedRecord = findSkillMasterForPlanning();
     planningSkillOptions.value =
       !normalizedKeyword &&
@@ -891,8 +847,8 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
     }
     if (planningSkillOptions.value.length === 0) {
       planningSkillSearchMessage.value = normalizedKeyword
-        ? '未找到匹配的 Skill，可调整名称、描述或人员关键词'
-        : `${planningForm.planningDeptName || '当前部门'}暂无相关 Skill，可搜索其他部门 Skill`;
+        ? `未找到匹配的 ${capabilityLabel.value}，可调整名称、描述或人员关键词`
+        : `${planningForm.planningDeptName || '当前部门'}暂无相关 ${capabilityLabel.value}，可搜索其他部门 ${capabilityLabel.value}`;
     }
   } catch (error) {
     if (requestSeq !== planningSkillSearchSeq) {
@@ -900,7 +856,7 @@ async function searchPlanningSkills(keyword = planningSkillSearchKeyword.value):
     }
     planningSkillOptions.value = [];
     planningSkillSearchMessage.value =
-      error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试';
+      error instanceof Error ? error.message : `${capabilityLabel.value} 查询失败，请稍后重试`;
   } finally {
     if (requestSeq === planningSkillSearchSeq) {
       planningSkillSearching.value = false;
@@ -1027,7 +983,7 @@ async function loadFilterProducts(): Promise<void> {
 
   filterProductsLoading.value = true;
   try {
-    const options = await getProductPlanning(
+    const options = await capabilityPlanningApi.value.getProducts(
       '',
       departmentName,
       currentSelectedPlanningDepartmentCode(planningDepartmentSegments.value),
@@ -1057,7 +1013,7 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
   }
 
   try {
-    const options = await getProductPlanning(
+    const options = await capabilityPlanningApi.value.getProducts(
       keyword,
       planningForm.planningDeptName,
       currentSelectedPlanningDepartmentCode(planningFormDepartmentSegments.value),
@@ -1083,7 +1039,7 @@ async function searchPlanningProducts(keyword = productSearchKeyword.value): Pro
 
 function openPlanningProductSelect(): void {
   if (planningForm.level !== '产品级') {
-    showToast('仅产品级 Skill 需要选择产品');
+    showToast(`仅产品级 ${capabilityLabel.value} 需要选择产品`);
     return;
   }
   if (!planningForm.planningDeptName.trim()) {
@@ -1895,12 +1851,12 @@ async function reloadList(options: { notifyOnMissingScope?: boolean } = {}) {
   }
   loading.value = true;
   try {
-    const result = await querySkillPlanningSupplement(syncQueryFilterObj());
+    const result = await capabilityPlanningApi.value.queryPlanning(syncQueryFilterObj());
     rows.value = result.list;
     total.value = result.total;
     if (pageNum.value > totalPages.value) {
       pageNum.value = totalPages.value;
-      const nextResult = await querySkillPlanningSupplement(syncQueryFilterObj());
+      const nextResult = await capabilityPlanningApi.value.queryPlanning(syncQueryFilterObj());
       rows.value = nextResult.list;
       total.value = nextResult.total;
     }
@@ -2042,11 +1998,11 @@ async function confirmInlineCreate() {
       showToast('请完善层级、部门/产品与场景活动信息');
       return;
     }
-    const createRes = await createSkillPlanningSupplement(body, props.userId.trim());
+    const createRes = await capabilityPlanningApi.value.createPlanning(body, props.userId.trim());
     const toastStr =
       createRes?.meta?.success !== true
-        ? (createRes?.meta?.message ?? 'Skill 规划新增失败')
-        : '已新增 Skill 规划';
+        ? (createRes?.meta?.message ?? `${capabilityPlanningLabel.value}新增失败`)
+        : `已新增 ${capabilityPlanningLabel.value}`;
     showToast(toastStr);
     if (createRes?.meta?.success !== true) {
       return;
@@ -2056,7 +2012,11 @@ async function confirmInlineCreate() {
     await loadPlanningFilterOptions();
     await reloadList();
   } catch (error) {
-    showToast(error instanceof Error ? error.message : '新增 Skill 规划失败，请稍后重试');
+    showToast(
+      error instanceof Error
+        ? error.message
+        : `新增 ${capabilityPlanningLabel.value}失败，请稍后重试`,
+    );
   } finally {
     inlineCreateSubmitting.value = false;
   }
@@ -2106,7 +2066,7 @@ async function confirmInlineEdit() {
       showToast('请完善层级、部门/产品与场景活动信息');
       return;
     }
-    const updateRes = await updateSkillPlanningSupplement(
+    const updateRes = await capabilityPlanningApi.value.updatePlanning(
       {
         ...body,
         id: editingId.value,
@@ -2115,7 +2075,7 @@ async function confirmInlineEdit() {
     );
     const toastStr =
       updateRes?.meta?.success !== true
-        ? (updateRes?.meta?.message ?? 'Skill 规划更新失败')
+        ? (updateRes?.meta?.message ?? `${capabilityPlanningLabel.value}更新失败`)
         : '已保存修改';
     showToast(toastStr);
     if (updateRes?.meta?.success !== true) {
@@ -2125,7 +2085,11 @@ async function confirmInlineEdit() {
     await loadPlanningFilterOptions();
     await reloadList();
   } catch (error) {
-    showToast(error instanceof Error ? error.message : '保存 Skill 规划失败，请稍后重试');
+    showToast(
+      error instanceof Error
+        ? error.message
+        : `保存 ${capabilityPlanningLabel.value}失败，请稍后重试`,
+    );
   } finally {
     inlineEditSubmitting.value = false;
   }
@@ -2163,7 +2127,7 @@ function validateForm(): boolean {
     formErrors.level = '请选择产品级或部门级';
   }
   if (!planningForm.name.trim()) {
-    formErrors.skillId = '请选择 Skill 清单中的 Skill';
+    formErrors.skillId = `请选择 ${capabilityCatalogLabel.value}中的 ${capabilityLabel.value}`;
   }
   if (planningForm.level === '产品级' && !planningForm.offeringName.trim()) {
     formErrors.offeringName = '请选择产品';
@@ -2187,23 +2151,27 @@ async function submitPlanningForm() {
         showToast('请完善层级、部门/产品与场景活动信息');
         return;
       }
-      const createRes = await createSkillPlanningSupplement(body, props.userId.trim());
+      const createRes = await capabilityPlanningApi.value.createPlanning(body, props.userId.trim());
       if (createRes?.meta?.success !== true) {
         throw new Error(
-          String(createRes?.meta?.message || createRes?.message || '新增 Skill 规划失败'),
+          String(
+            createRes?.meta?.message ||
+              createRes?.message ||
+              `新增 ${capabilityPlanningLabel.value}失败`,
+          ),
         );
       }
-      showToast('已新增 Skill 规划');
+      showToast(`已新增 ${capabilityPlanningLabel.value}`);
     } else {
       if (!editingId.value) {
-        throw new Error('缺少 Skill 规划 id，无法更新');
+        throw new Error(`缺少 ${capabilityPlanningLabel.value} id，无法更新`);
       }
       const body = buildPlanningSupplementBody();
       if (!body) {
         showToast('请完善层级、部门/产品与场景活动信息');
         return;
       }
-      const updateRes = await updateSkillPlanningSupplement(
+      const updateRes = await capabilityPlanningApi.value.updatePlanning(
         {
           ...body,
           id: editingId.value,
@@ -2212,7 +2180,11 @@ async function submitPlanningForm() {
       );
       if (updateRes?.meta?.success !== true) {
         throw new Error(
-          String(updateRes?.meta?.message || updateRes?.message || '更新 Skill 规划失败'),
+          String(
+            updateRes?.meta?.message ||
+              updateRes?.message ||
+              `更新 ${capabilityPlanningLabel.value}失败`,
+          ),
         );
       }
       showToast('已保存修改');
@@ -2222,7 +2194,11 @@ async function submitPlanningForm() {
     await loadPlanningFilterOptions();
     await reloadList();
   } catch (error) {
-    showToast(error instanceof Error ? error.message : '保存 Skill 规划失败，请稍后重试');
+    showToast(
+      error instanceof Error
+        ? error.message
+        : `保存 ${capabilityPlanningLabel.value}失败，请稍后重试`,
+    );
   }
 }
 
@@ -2299,7 +2275,7 @@ async function submitBatchEdit() {
 
   try {
     batchSubmitting.value = true;
-    const count = await batchUpdateSkillPlanning(ids, patch);
+    const count = await capabilityPlanningApi.value.batchUpdatePlanning(ids, patch);
     selectedIds.value = [];
     batchDialogOpen.value = false;
     resetBatchForm();
@@ -2378,7 +2354,7 @@ async function handleDownloadImportTemplate() {
 
   try {
     templateDownloadPending.value = true;
-    const downloadUrl = await downloadSkillPlanningTemplate();
+    const downloadUrl = await capabilityPlanningApi.value.downloadPlanningTemplate();
     if (typeof downloadUrl === 'string' && downloadUrl.trim()) {
       const openedWindow = window.open(downloadUrl, '_blank', 'noopener');
       if (!openedWindow) {
@@ -2402,22 +2378,22 @@ async function submitImportFile() {
 
   try {
     importSubmitting.value = true;
-    const result = await importSkillPlanningFromExcel(
+    const result = await capabilityPlanningApi.value.importPlanning(
       selectedImportFile.value,
       syncQueryFilterObj(false),
     );
     if (result.errorList.length > 0) {
-      importError.value = `Skill 规划已成功导入 ${result.successCount} 条，${result.failCount ? '失败导入 ' + result.failCount + ' 条' : ''}（共需要导入 ${result.totalCount} 条）`;
+      importError.value = `${capabilityPlanningLabel.value}已成功导入 ${result.successCount} 条，${result.failCount ? '失败导入 ' + result.failCount + ' 条' : ''}（共需要导入 ${result.totalCount} 条）`;
       importError.value += `\n其中导入失败的有：${result.errorList.reduce((pre, curr) => pre + `\n    第${curr.rowNum}行：` + curr.errMsg, '')}`;
       return;
     } else {
-      importSuccess.value = `Skill 规划已成功导入 ${result.successCount} 条（共需要导入 ${result.totalCount} 条）`;
+      importSuccess.value = `${capabilityPlanningLabel.value}已成功导入 ${result.successCount} 条（共需要导入 ${result.totalCount} 条）`;
       importError.value = '';
     }
 
     importSubmitting.value = false;
     closeImportDialog();
-    showToast(importSuccess.value || 'Skill 规划导入完成');
+    showToast(importSuccess.value || `${capabilityPlanningLabel.value}导入完成`);
     pageNum.value = 1;
     await loadPlanningFilterOptions();
     await reloadList();
@@ -2435,13 +2411,17 @@ async function exportCurrentData() {
   }
   try {
     exportSubmitting.value = true;
-    const response = await exportSkillPlanningSupplementFile(syncQueryFilterObj(false));
+    const response = await capabilityPlanningApi.value.exportPlanning(syncQueryFilterObj(false));
     if (response !== null) {
       openSkillExportResponse(response);
     }
-    showToast('已开始导出 Skill 规划');
+    showToast(`已开始导出 ${capabilityPlanningLabel.value}`);
   } catch (error) {
-    showToast(error instanceof Error ? error.message : 'Skill 规划导出失败，请稍后重试');
+    showToast(
+      error instanceof Error
+        ? error.message
+        : `${capabilityPlanningLabel.value}导出失败，请稍后重试`,
+    );
   } finally {
     exportSubmitting.value = false;
   }
@@ -2476,11 +2456,11 @@ async function confirmDialogAction() {
 
 function requestDeleteRow(row: SkillPlanningItem) {
   openConfirmDialog(
-    '删除 Skill 规划',
+    `删除 ${capabilityPlanningLabel.value}`,
     `确认删除「${row.name}」吗？删除后将无法恢复。`,
     '确认删除',
     async () => {
-      await deleteSkillPlanning(row.id, props.userId.trim());
+      await capabilityPlanningApi.value.deletePlanning(row.id, props.userId.trim());
       selectedIds.value = selectedIds.value.filter((id) => id !== row.id);
       showToast('已删除');
       await loadPlanningFilterOptions();
@@ -2495,11 +2475,14 @@ function requestBatchDelete() {
     return;
   }
   openConfirmDialog(
-    '批量删除 Skill 规划',
+    `批量删除 ${capabilityPlanningLabel.value}`,
     `确认删除已勾选的 ${selectedIds.value.length} 条数据吗？删除后将无法恢复。`,
     '批量删除',
     async () => {
-      const count = await batchDeleteSkillPlanning(selectedIds.value, props.userId.trim());
+      const count = await capabilityPlanningApi.value.batchDeletePlanning(
+        selectedIds.value,
+        props.userId.trim(),
+      );
       selectedIds.value = [];
       showToast(`已删除 ${count} 条数据`);
       await loadPlanningFilterOptions();
@@ -2590,14 +2573,15 @@ onBeforeUnmount(() => {
   <div class="planning-pageNum">
     <header class="planning-hero">
       <div>
-        <h2 class="panel-title">Skill 规划</h2>
+        <h2 class="panel-title">{{ capabilityPlanningLabel }}</h2>
         <p class="all-desc">
-          用于统一管理各部门规划建设中的 Skill 清单，支持查询、新增、导入、导出和批量维护。
+          用于统一管理各部门规划建设中的
+          {{ capabilityLabel }} 清单，支持查询、新增、导入、导出和批量维护。
         </p>
       </div>
     </header>
 
-    <nav class="planning-tabs" aria-label="Skill planning tabs">
+    <nav class="planning-tabs" :aria-label="`${capabilityLabel} planning tabs`">
       <button
         type="button"
         class="planning-tab"
@@ -2605,7 +2589,9 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'skills'"
       >
         <span class="planning-tab__icon" aria-hidden="true">01</span>
-        <span><strong>Skill 规划</strong></span>
+        <span
+          ><strong>{{ capabilityPlanningLabel }}</strong></span
+        >
       </button>
       <button
         type="button"
@@ -2614,12 +2600,14 @@ onBeforeUnmount(() => {
         @click="activePlanningTab = 'management'"
       >
         <span class="planning-tab__icon" aria-hidden="true">02</span>
-        <span><strong>Skill 清单</strong></span>
+        <span
+          ><strong>{{ capabilityCatalogLabel }}</strong></span
+        >
       </button>
     </nav>
 
     <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
-      <section class="planning-filter-card" aria-label="Skill 规划查询">
+      <section class="planning-filter-card" :aria-label="`${capabilityPlanningLabel}查询`">
         <div class="filter-grid" :class="{ 'is-department-level': filterForm.level === '部门级' }">
           <label class="planning-field planning-field--level">
             <span>层级 <em>*</em></span>
@@ -2646,7 +2634,7 @@ onBeforeUnmount(() => {
               :permission-path="legacyPlanningPermissionPath"
               :before-done="guardPlanningDepartmentSelection"
               searchable
-              aria-label="按规划部门筛选 Skill"
+              :aria-label="`按规划部门筛选 ${capabilityLabel}`"
               @change="onPlanningDepartmentChange"
               @clear="onPlanningDepartmentClear"
               @done="onPlanningDepartmentDone"
@@ -2690,7 +2678,7 @@ onBeforeUnmount(() => {
             <input
               v-model.trim="filterForm.keyword"
               type="search"
-              placeholder="按 Skill 名称、描述、责任Owner、开发责任人查询"
+              :placeholder="`按 ${capabilityLabel} 名称、描述、责任Owner、开发责任人查询`"
               @keydown.enter.prevent="onSearchKeyword"
               @input="onSearchKeywordInput"
             />
@@ -2710,10 +2698,10 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="planning-board" aria-label="Skill 规划清单">
+      <section class="planning-board" :aria-label="`${capabilityPlanningLabel}清单`">
         <div class="planning-toolbar">
           <div class="planning-toolbar__summary">
-            <strong>Skill 规划清单</strong>
+            <strong>{{ capabilityPlanningLabel }}清单</strong>
             <span>
               已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条
               <template v-if="hasActivePlanningHeaderFilters || plannedFinishSortOrder">
@@ -2733,7 +2721,7 @@ onBeforeUnmount(() => {
               type="button"
               class="planning-btn planning-btn--primary"
               :disabled="inlineCreateActive || inlineEditId !== ''"
-              :title="planningScopeErrorMessage || '新增 Skill 规划'"
+              :title="planningScopeErrorMessage || `新增 ${capabilityPlanningLabel}`"
               @click="startInlineCreate"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2745,7 +2733,7 @@ onBeforeUnmount(() => {
               type="button"
               class="planning-btn planning-btn--soft"
               :disabled="!hasCompletePlanningScope || importSubmitting"
-              :title="planningScopeErrorMessage || '导入 Skill 规划'"
+              :title="planningScopeErrorMessage || `导入 ${capabilityPlanningLabel}`"
               @click="triggerImport"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2757,7 +2745,7 @@ onBeforeUnmount(() => {
               type="button"
               class="planning-btn planning-btn--soft"
               :disabled="!hasCompletePlanningScope || exportSubmitting"
-              :title="planningScopeErrorMessage || '导出 Skill 规划'"
+              :title="planningScopeErrorMessage || `导出 ${capabilityPlanningLabel}`"
               @click="exportCurrentData"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -3027,7 +3015,7 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </th>
-                <th>Skill</th>
+                <th>{{ capabilityLabel }}</th>
                 <th class="desc-col">描述</th>
                 <th>责任 Owner</th>
                 <th>开发责任人</th>
@@ -3145,7 +3133,7 @@ onBeforeUnmount(() => {
                       type="text"
                       class="planning-inline-control"
                       :class="{ 'has-error': formErrors.name }"
-                      placeholder="Skill 名称"
+                      :placeholder="`${capabilityLabel} 名称`"
                     />
                     <small v-if="formErrors.name" class="planning-inline-error">
                       {{ formErrors.name }}
@@ -3160,7 +3148,7 @@ onBeforeUnmount(() => {
                       :class="{ 'has-error': formErrors.description }"
                       maxlength="300"
                       rows="1"
-                      placeholder="Skill 说明"
+                      :placeholder="`${capabilityLabel} 说明`"
                     />
                     <small v-if="formErrors.description" class="planning-inline-error">
                       {{ formErrors.description }}
@@ -3447,13 +3435,15 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="loading">
-                <td colspan="12" class="planning-empty">正在加载 Skill 规划数据...</td>
+                <td colspan="12" class="planning-empty">
+                  正在加载 {{ capabilityPlanningLabel }}数据...
+                </td>
               </tr>
               <tr v-else-if="rows.length === 0 && !inlineCreateActive">
                 <td colspan="12" class="planning-empty">
                   {{
                     hasCompletePlanningScope
-                      ? '暂无符合条件的 Skill 规划'
+                      ? `暂无符合条件的 ${capabilityPlanningLabel}`
                       : planningScopeErrorMessage
                   }}
                 </td>
@@ -3555,7 +3545,7 @@ onBeforeUnmount(() => {
                           type="text"
                           class="planning-inline-control"
                           :class="{ 'has-error': formErrors.name }"
-                          placeholder="Skill 名称"
+                          :placeholder="`${capabilityLabel} 名称`"
                         />
                         <small v-if="formErrors.name" class="planning-inline-error">
                           {{ formErrors.name }}
@@ -3570,7 +3560,7 @@ onBeforeUnmount(() => {
                           :class="{ 'has-error': formErrors.description }"
                           maxlength="300"
                           rows="1"
-                          placeholder="Skill 说明"
+                          :placeholder="`${capabilityLabel} 说明`"
                         />
                         <small v-if="formErrors.description" class="planning-inline-error">
                           {{ formErrors.description }}
@@ -3946,13 +3936,19 @@ onBeforeUnmount(() => {
     </div>
 
     <SkillMasterManagementPanel
-      v-if="activePlanningTab === 'management'"
+      v-if="activePlanningTab === 'management' && props.capabilityType === 'skill'"
       :department-tree="planningDepartmentTree"
       :user-id="props.userId"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :allowed-department-names="props.allowedDepartmentNames"
       :allowed-department-paths="props.allowedDepartmentPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
+    />
+    <HarnessCapabilityCatalogPanel
+      v-else-if="activePlanningTab === 'management'"
+      :capability-type="props.capabilityType === 'command' ? 'command' : 'agent'"
+      :department-tree="planningDepartmentTree"
+      :current-user-department-path="currentUserMinimumDepartmentPath"
     />
 
     <Teleport to="body">
@@ -3965,8 +3961,8 @@ onBeforeUnmount(() => {
         <div class="planning-dialog planning-dialog--import" role="dialog" aria-modal="true">
           <div class="planning-dialog__head import-dialog__head">
             <div>
-              <strong>导入 Skill 规划</strong>
-              <p>上传 Excel 文件后，将按表头字段批量写入 Skill 规划清单。</p>
+              <strong>导入 {{ capabilityPlanningLabel }}</strong>
+              <p>上传 Excel 文件后，将按表头字段批量写入 {{ capabilityPlanningLabel }}清单。</p>
             </div>
             <button
               type="button"
@@ -4079,10 +4075,10 @@ onBeforeUnmount(() => {
         >
           <div class="planning-dialog__head">
             <div>
-              <strong>批量修改 Skill 规划</strong>
+              <strong>批量修改 {{ capabilityPlanningLabel }}</strong>
               <p>
-                已选 {{ selectedIds.length }} 条，本入口仅修改规划关系；原子 Skill 信息请在 Skill
-                清单维护。
+                已选 {{ selectedIds.length }} 条，本入口仅修改规划关系；原子
+                {{ capabilityLabel }} 信息请在 {{ capabilityCatalogLabel }}维护。
               </p>
             </div>
             <button
@@ -4145,8 +4141,14 @@ onBeforeUnmount(() => {
         <div class="planning-dialog planning-dialog--wide" role="dialog" aria-modal="true">
           <div class="planning-dialog__head">
             <div>
-              <strong>{{ formMode === 'create' ? '新增 Skill 规划' : '编辑 Skill 规划' }}</strong>
-              <p>层级及归属部门/产品继承顶部当前选择；请选择原子 Skill 和场景、活动。</p>
+              <strong>{{
+                formMode === 'create'
+                  ? `新增 ${capabilityPlanningLabel}`
+                  : `编辑 ${capabilityPlanningLabel}`
+              }}</strong>
+              <p>
+                层级及归属部门/产品继承顶部当前选择；请选择原子 {{ capabilityLabel }} 和场景、活动。
+              </p>
             </div>
             <button type="button" class="dialog-close" aria-label="关闭" @click="closeFormDialog">
               ×
@@ -4224,7 +4226,7 @@ onBeforeUnmount(() => {
               }}</small>
             </label>
             <div class="planning-field planning-field--wide">
-              <span>选择 Skill <em>*</em></span>
+              <span>选择 {{ capabilityLabel }} <em>*</em></span>
               <div class="planning-skill-select">
                 <button
                   type="button"
@@ -4236,7 +4238,7 @@ onBeforeUnmount(() => {
                 >
                   <span>{{
                     planningForm.name ||
-                    `请选择 ${planningForm.planningDeptName || '当前部门'}相关的原子 Skill`
+                    `请选择 ${planningForm.planningDeptName || '当前部门'}相关的原子 ${capabilityLabel}`
                   }}</span>
                   <span class="planning-skill-caret">⌄</span>
                 </button>
@@ -4246,7 +4248,7 @@ onBeforeUnmount(() => {
                       :value="planningSkillSearchKeyword"
                       type="search"
                       class="planning-skill-search"
-                      placeholder="跨部门搜索：Skill 名称、描述、Owner、开发责任人"
+                      :placeholder="`跨部门搜索：${capabilityLabel} 名称、描述、Owner、开发责任人`"
                       @input="onPlanningSkillSearchInput"
                       @keydown.enter.prevent="searchPlanningSkillsImmediately"
                     />
@@ -4254,8 +4256,8 @@ onBeforeUnmount(() => {
                       v-if="planningSkillSearchKeyword"
                       type="button"
                       class="planning-skill-clear"
-                      aria-label="清空 Skill 搜索"
-                      title="清空搜索并恢复当前部门 Skill"
+                      :aria-label="`清空 ${capabilityLabel} 搜索`"
+                      :title="`清空搜索并恢复当前部门 ${capabilityLabel}`"
                       @click="clearPlanningSkillSearch"
                     >
                       ×
@@ -4264,13 +4266,13 @@ onBeforeUnmount(() => {
                   <p class="planning-skill-scope">
                     {{
                       planningSkillSearchKeyword.trim()
-                        ? '正在全部部门的 Skill 清单中搜索'
-                        : `默认展示 Owner 或开发责任人在「${planningForm.planningDeptName}」的 Skill`
+                        ? `正在全部部门的 ${capabilityCatalogLabel}中搜索`
+                        : `默认展示 Owner 或开发责任人在「${planningForm.planningDeptName}」的 ${capabilityLabel}`
                     }}
                   </p>
                   <div class="planning-skill-list" role="listbox">
                     <span v-if="planningSkillSearching" class="planning-skill-empty">
-                      正在查询 Skill...
+                      正在查询 {{ capabilityLabel }}...
                     </span>
                     <template v-else>
                       <button
@@ -4377,7 +4379,7 @@ onBeforeUnmount(() => {
                 type="text"
                 readonly
                 :class="{ 'has-error': formErrors.owner }"
-                placeholder="随 Skill 带出"
+                :placeholder="`随 ${capabilityLabel} 带出`"
               />
               <small v-if="formErrors.owner">{{ formErrors.owner }}</small>
             </label>
@@ -4426,7 +4428,7 @@ onBeforeUnmount(() => {
                 type="text"
                 readonly
                 :class="{ 'has-error': formErrors.developOwner }"
-                placeholder="随 Skill 带出"
+                :placeholder="`随 ${capabilityLabel} 带出`"
               />
               <small v-if="formErrors.developOwner">{{ formErrors.developOwner }}</small>
             </label>
@@ -4439,11 +4441,11 @@ onBeforeUnmount(() => {
               <input :value="planningForm.status || '—'" type="text" readonly />
             </label>
             <label class="planning-field planning-field--textarea">
-              <span>Skill 说明 <em>*</em></span>
+              <span>{{ capabilityLabel }} 说明 <em>*</em></span>
               <textarea
                 :value="planningForm.description"
                 maxlength="300"
-                placeholder="随 Skill 带出"
+                :placeholder="`随 ${capabilityLabel} 带出`"
                 readonly
               />
             </label>
@@ -4496,13 +4498,7 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div
-        v-if="toast"
-        class="planning-toast"
-        data-app-toast
-        role="status"
-        aria-live="polite"
-      >
+      <div v-if="toast" class="planning-toast" data-app-toast role="status" aria-live="polite">
         {{ toast }}
       </div>
     </Teleport>

@@ -393,13 +393,20 @@ onBeforeUnmount(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'planning'"
-      id="harness-panel-planning"
+      v-else-if="['command', 'planning', 'agent'].includes(activeHarnessTab)"
+      :id="`harness-panel-${activeHarnessTab}`"
       class="harness-tab-panel"
       role="tabpanel"
-      aria-labelledby="harness-tab-planning"
+      :aria-labelledby="`harness-tab-${activeHarnessTab}`"
     >
       <SkillPlanningPage
+        :capability-type="
+          activeHarnessTab === 'command'
+            ? 'command'
+            : activeHarnessTab === 'agent'
+              ? 'agent'
+              : 'skill'
+        "
         :department-tree="departmentTree"
         :user-id="userId"
         :current-user-department-path="currentUserDepartmentPermission.path"
