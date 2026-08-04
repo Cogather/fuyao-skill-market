@@ -32,9 +32,23 @@ export interface SceneOptionGroupRow {
   firstScene: string;
   secondScene: string;
   sort: number;
+  referenceCount: number;
 }
 
 export type SceneOptionGroupsResponse = ApiEnvelope<SceneOptionGroupRow[]> | SceneOptionGroupRow[];
+
+export interface ActivityOptionGroupRow {
+  deptCode: string;
+  deptName: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  sort: number;
+  referenceCount: number;
+}
+
+export type ActivityOptionGroupsResponse =
+  | ApiEnvelope<ActivityOptionGroupRow[]>
+  | ActivityOptionGroupRow[];
 
 export interface RefreshTaxonomyItem {
   firstScene?: string;
@@ -640,8 +654,10 @@ export const skillBaseService = {
   },
 
   // 获取活动列表
-  getActivityOptionGroups: (params: SceneOptionGroupsParams): any => {
-    return httpRequest.api<any>({
+  getActivityOptionGroups: (
+    params: SceneOptionGroupsParams,
+  ): Promise<ActivityOptionGroupsResponse> => {
+    return httpRequest.api<ActivityOptionGroupsResponse>({
       url: '/scene-activity/activity',
       method: 'get',
       params, // { userId, dimType, dimCode, dimName }

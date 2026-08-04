@@ -349,6 +349,7 @@ interface HttpTaxonomyRow {
   primary: string;
   secondary: string;
   sort: number;
+  referenceCount: number;
 }
 
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
@@ -378,6 +379,7 @@ function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
     const primary = readText(record[primaryKey]);
     if (!primary) return [];
     const parsedSort = Number(record.sort);
+    const parsedReferenceCount = Number(record.referenceCount);
     return [
       {
         deptCode: readText(record.deptCode),
@@ -385,6 +387,10 @@ function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
         primary,
         secondary: readText(record[secondaryKey]),
         sort: Number.isFinite(parsedSort) ? parsedSort : index + 1,
+        referenceCount:
+          Number.isFinite(parsedReferenceCount) && parsedReferenceCount > 0
+            ? parsedReferenceCount
+            : 0,
       },
     ];
   });
@@ -403,13 +409,17 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
   const records: TaxonomyRecord[] = [];
   Array.from(groupedRows).forEach(([primary, children], primaryIndex) => {
     const parentId = prefix + '-primary-' + (primaryIndex + 1);
+    const directReferenceCount = children.reduce(
+      (sum, { row }) => sum + (row.secondary ? 0 : row.referenceCount),
+      0,
+    );
     records.push({
       id: parentId,
       parentId: null,
       name: primary,
       sort: primaryIndex + 1,
       status: 'enabled',
-      skillCount: 0,
+      skillCount: directReferenceCount,
     });
 
     const seenChildren = new Set<string>();
@@ -424,7 +434,7 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
           name: row.secondary,
           sort: row.sort,
           status: 'enabled',
-          skillCount: 0,
+          skillCount: row.referenceCount,
         });
       });
   });
@@ -848,68 +858,45 @@ function dropRecord(targetId: string): void {
 
 const deleteOpen = ref(false);
 const deleteTargetId = ref('');
-const migrationTargetId = ref('');
-const deleteError = ref('');
 
 const deleteTarget = computed(
   () => draftRecords.value.find((item) => item.id === deleteTargetId.value) ?? null,
 );
 
-const migrationCandidates = computed(() => {
-  if (!deleteTarget.value) return [];
-  return draftRecords.value
-    .filter(
-      (item) =>
-        item.id !== deleteTarget.value?.id && item.parentId === deleteTarget.value?.parentId,
-    )
-    .sort((left, right) => left.sort - right.sort);
-});
-
 function openDelete(record: TaxonomyRecord): void {
+  const referenceCount = usageCount(record);
+  if (referenceCount > 0) {
+    const levelLabel = record.parentId === null ? labels.value.primary : labels.value.secondary;
+    showToast(
+      `${levelLabel}“${record.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再删除。`,
+    );
+    return;
+  }
   deleteTargetId.value = record.id;
-  migrationTargetId.value = '';
-  deleteError.value = '';
   deleteOpen.value = true;
 }
 
-function removeDraftRecord(mode: 'force' | 'migrate'): void {
+function removeDraftRecord(): void {
   const target = deleteTarget.value;
   if (!target) return;
-  const migrationTarget = draftRecords.value.find((item) => item.id === migrationTargetId.value);
-  if (mode === 'migrate' && !migrationTarget) {
-    deleteError.value = '请选择迁移到的' + labels.value.item;
+  const referenceCount = usageCount(target);
+  if (referenceCount > 0) {
+    deleteOpen.value = false;
+    const levelLabel = target.parentId === null ? labels.value.primary : labels.value.secondary;
+    showToast(
+      `${levelLabel}“${target.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再删除。`,
+    );
     return;
   }
 
   if (target.parentId === null) {
-    const children = childRecords(target.id);
-    const mergedChildIds = new Set<string>();
-    if (mode === 'migrate' && migrationTarget) {
-      migrationTarget.skillCount += target.skillCount;
-      children.forEach((child) => {
-        const duplicate = draftRecords.value.find(
-          (item) => item.parentId === migrationTarget.id && item.name === child.name,
-        );
-        if (duplicate) {
-          duplicate.skillCount += child.skillCount;
-          mergedChildIds.add(child.id);
-        } else {
-          child.parentId = migrationTarget.id;
-        }
-      });
-      normalizeSort(migrationTarget.id);
-    }
-    const childIds = new Set(children.map((item) => item.id));
+    const childIds = new Set(childRecords(target.id).map((item) => item.id));
     draftRecords.value = draftRecords.value.filter(
-      (item) =>
-        item.id !== target.id &&
-        !mergedChildIds.has(item.id) &&
-        !(mode === 'force' && childIds.has(item.id)),
+      (item) => item.id !== target.id && !childIds.has(item.id),
     );
     normalizeSort(null);
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
   } else {
-    if (mode === 'migrate' && migrationTarget) migrationTarget.skillCount += target.skillCount;
     draftRecords.value = draftRecords.value.filter((item) => item.id !== target.id);
     normalizeSort(target.parentId);
   }
@@ -1336,42 +1323,15 @@ function exportRecords(): void {
     <div v-if="deleteOpen && deleteTarget" class="modal-backdrop" @click.self="deleteOpen = false">
       <div class="modal-card delete-card">
         <h3>删除{{ labels.item }}“{{ deleteTarget.name }}”</h3>
-        <p v-if="usageCount(deleteTarget) > 0" class="warning-copy">
-          当前{{ labels.item }}已被 {{ usageCount(deleteTarget) }} 个规划项使用，删除后这些规划项
-          将失去归属。可先批量迁移，或强制删除。
-        </p>
-        <p v-else>该项暂无关联规划，删除将在确认更新后生效。</p>
-        <label v-if="migrationCandidates.length">
-          <span>批量迁移到</span>
-          <select v-model="migrationTargetId">
-            <option value="">请选择</option>
-            <option
-              v-for="candidate in migrationCandidates"
-              :key="candidate.id"
-              :value="candidate.id"
-            >
-              {{ candidate.name }}
-            </option>
-          </select>
-        </label>
-        <p v-if="deleteError" class="form-error">{{ deleteError }}</p>
+        <p>该项暂无关联规划，删除将在确认更新后生效。</p>
         <div class="modal-actions">
           <button type="button" @click="deleteOpen = false">取消</button>
-          <button
-            v-if="migrationCandidates.length"
-            type="button"
-            @click="removeDraftRecord('migrate')"
-          >
-            迁移并删除
-          </button>
-          <button class="danger-button" type="button" @click="removeDraftRecord('force')">
-            强制删除
-          </button>
+          <button class="danger-button" type="button" @click="removeDraftRecord">确认删除</button>
         </div>
       </div>
     </div>
     <Teleport to="body">
-      <div v-if="toast" class="configuration-toast" role="status" aria-live="polite">
+      <div v-if="toast" class="configuration-toast" data-app-toast role="status" aria-live="polite">
         {{ toast }}
       </div>
     </Teleport>

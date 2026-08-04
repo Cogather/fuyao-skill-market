@@ -299,9 +299,10 @@ function readSkillRequestBody(data: unknown): unknown {
   return data;
 }
 
-function filterMockSkillMasterManagement(
-  body: Record<string, unknown>,
-): MockSkillMasterManagementRecord[] {
+function filterMockSkillMasterManagement(body: Record<string, unknown>): {
+  list: MockSkillMasterManagementRecord[];
+  total: number;
+} {
   const keyword = String(body.keyword ?? '')
     .trim()
     .toLowerCase();
@@ -366,7 +367,10 @@ function filterMockSkillMasterManagement(
   const pageNum = Math.max(1, Number(body.pageNum) || 1);
   const pageSize = Math.max(1, Number(body.pageSize) || list.length || 10);
   const start = (pageNum - 1) * pageSize;
-  return list.slice(start, start + pageSize);
+  return {
+    list: list.slice(start, start + pageSize),
+    total: list.length,
+  };
 }
 
 function mockPlanningQueryValues(value: unknown): string[] {
@@ -2155,12 +2159,12 @@ function handleSkillRequest(
   }
 
   if (method === 'get' && path === '/management/query') {
-    const matched = filterMockSkillMasterManagement(params);
+    const { list, total } = filterMockSkillMasterManagement(params);
     return ok(
-      matched.map((item) => ({
+      list.map((item) => ({
         ...item,
       })),
-      matched.length,
+      total,
     );
   }
 

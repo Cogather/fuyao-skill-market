@@ -105,6 +105,23 @@ const defaultScenes: SceneRecord[] = [
   },
 
   {
+    id: 'scene-unreferenced',
+    parentId: null,
+    name: '待删除场景（无关联）',
+    sort: 14,
+    status: 'enabled',
+    skillCount: 0,
+  },
+  {
+    id: 'scene-unreferenced-child',
+    parentId: 'scene-unreferenced',
+    name: '待删除二级场景（无关联）',
+    sort: 1,
+    status: 'enabled',
+    skillCount: 0,
+  },
+
+  {
     id: 'scene-code-gen',
     parentId: 'scene-rd',
     name: '代码生成',

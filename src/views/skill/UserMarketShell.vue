@@ -3609,7 +3609,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </Teleport>
 
-    <div v-if="toast" class="toast" role="status">{{ toast }}</div>
+    <Teleport to="body">
+      <div v-if="toast" class="toast" data-app-toast role="status" aria-live="polite">
+        {{ toast }}
+      </div>
+    </Teleport>
   </div>
   <div
     class="user-shell skill-market-shell"
@@ -5481,7 +5485,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </div>
     </Teleport>
 
-    <div v-if="toast" class="toast" role="status">{{ toast }}</div>
+    <Teleport to="body">
+      <div v-if="toast" class="toast" data-app-toast role="status" aria-live="polite">
+        {{ toast }}
+      </div>
+    </Teleport>
   </div>
 </template>
 

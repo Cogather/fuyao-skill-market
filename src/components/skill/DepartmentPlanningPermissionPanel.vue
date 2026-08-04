@@ -892,12 +892,6 @@ async function confirmRevoke(): Promise<void> {
   }
 }
 
-function formatGrantedAt(value: string): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false });
-}
-
 watch(
   () => [
     props.userId,
@@ -1018,12 +1012,17 @@ onBeforeUnmount(() => {
         </div>
         <div class="member-table-wrap">
           <table class="member-table">
+            <colgroup>
+              <col class="member-table__person-column" />
+              <col class="member-table__employee-column" />
+              <col class="member-table__department-column" />
+              <col class="member-table__action-column" />
+            </colgroup>
             <thead>
               <tr>
                 <th>人员</th>
                 <th>工号</th>
                 <th>人员归属部门</th>
-                <th>授权时间</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -1037,7 +1036,6 @@ onBeforeUnmount(() => {
                 </td>
                 <td>{{ member.employeeNo ? member.employeeNo : member.userId }}</td>
                 <td>{{ member.departmentName || '—' }}</td>
-                <td>{{ formatGrantedAt(member.grantedAt) }}</td>
                 <td>
                   <button type="button" class="revoke-btn" @click="requestRevoke(member)">
                     移除
@@ -1045,7 +1043,7 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="selectedAdministrators.length === 0">
-                <td colspan="5" class="member-empty">该部门暂未配置 Harness 管理人员</td>
+                <td colspan="4" class="member-empty">该部门暂未配置 Harness 管理人员</td>
               </tr>
             </tbody>
           </table>
@@ -1071,7 +1069,17 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
-    <div v-if="toast" class="permission-toast" role="status">{{ toast }}</div>
+    <Teleport to="body">
+      <div
+        v-if="toast"
+        class="permission-toast"
+        data-app-toast
+        role="status"
+        aria-live="polite"
+      >
+        {{ toast }}
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -1303,9 +1311,21 @@ onBeforeUnmount(() => {
 }
 .member-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 640px;
   border-collapse: collapse;
   table-layout: fixed;
+}
+.member-table__person-column {
+  width: 30%;
+}
+.member-table__employee-column {
+  width: 22%;
+}
+.member-table__department-column {
+  width: auto;
+}
+.member-table__action-column {
+  width: 96px;
 }
 .member-table th {
   height: 40px;
@@ -1326,7 +1346,6 @@ onBeforeUnmount(() => {
 }
 .member-table th:last-child,
 .member-table td:last-child {
-  width: 70px;
   text-align: right;
 }
 .member-cell {

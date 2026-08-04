@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
-  getSkillTaskAssociation,
   querySkillPlanningTasks,
-  updateSkillTaskProgress,
-  updateSkillTaskStatus,
   usesRemoteSkillPlanningTasks,
   type SkillPlanningTask,
-  type SkillTaskAssociation,
-  type SkillTaskStatus,
 } from '../../services/skillMarket/skillPlanningTaskService';
 
 type TaskNotice = {
@@ -27,7 +22,6 @@ const loadError = ref('');
 const remoteTasks = usesRemoteSkillPlanningTasks();
 let reloadSequence = 0;
 const keyword = ref('');
-const statusFilter = ref<'all' | SkillTaskStatus>('all');
 const page = ref(1);
 const pageSize = 10;
 const toast = ref('');
@@ -37,7 +31,6 @@ let toastTimer: number | null = null;
 const detailDialog = reactive({
   open: false,
   task: null as SkillPlanningTask | null,
-  association: null as SkillTaskAssociation | null,
 });
 
 const notices = ref<TaskNotice[]>(
@@ -71,23 +64,20 @@ const notices = ref<TaskNotice[]>(
       ],
 );
 
-const statusOptions: Array<{ value: SkillTaskStatus; label: string }> = [
-  { value: 'todo', label: '未开始' },
-  { value: 'inProgress', label: '开发中' },
-  { value: 'done', label: '已完成' },
-];
+const statusCards = computed(() => {
+  const statusCounts = new Map<string, number>();
 
-const statusCards = computed(() =>
-  statusOptions.map((item) => ({
-    ...item,
-    count: tasks.value.filter((task) => task.status === item.value).length,
-  })),
-);
+  tasks.value.forEach((task) => {
+    const status = String(task.status ?? '').trim() || '未设置';
+    statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1);
+  });
+
+  return Array.from(statusCounts, ([status, count]) => ({ status, count }));
+});
 
 const filteredTasks = computed(() => {
   const text = keyword.value.trim().toLowerCase();
   return tasks.value.filter((task) => {
-    if (statusFilter.value !== 'all' && task.status !== statusFilter.value) return false;
     if (!text) return true;
     return [task.name, task.department, task.planningDepartment, task.owner, task.description]
       .join(' ')
@@ -129,10 +119,6 @@ async function reload(): Promise<void> {
   }
 }
 
-function statusLabel(status: SkillTaskStatus): string {
-  return statusOptions.find((item) => item.value === status)?.label ?? status;
-}
-
 function formatUpdatedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value || '—';
@@ -145,6 +131,15 @@ function formatUpdatedAt(value: string): string {
   });
 }
 
+function formatDetailUpdatedAt(value: string): string {
+  const matched = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (matched) {
+    const [, year, month, day, hour, minute, second = '00'] = matched;
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  }
+  return value || '—';
+}
+
 function showToast(message: string): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
@@ -154,15 +149,10 @@ function showToast(message: string): void {
   }, 2400);
 }
 
-function selectStatus(status: SkillTaskStatus): void {
-  statusFilter.value = statusFilter.value === status ? 'all' : status;
-}
-
 function openSkill(task: SkillPlanningTask): void {
   Object.assign(detailDialog, {
     open: true,
     task: { ...task },
-    association: getSkillTaskAssociation(task.id),
   });
 }
 
@@ -174,7 +164,7 @@ function goPage(next: number): void {
   page.value = Math.min(totalPages.value, Math.max(1, next));
 }
 
-watch([keyword, statusFilter], () => {
+watch(keyword, () => {
   page.value = 1;
 });
 watch(
@@ -195,27 +185,14 @@ onBeforeUnmount(() => {
         <h3>我的 Skill 待办中心</h3>
         <p>聚焦当前登录用户负责的 Skill 任务，完成启动、开发和进度跟踪。</p>
       </div>
-      <div class="status-flow" aria-label="任务状态流转">
-        <span v-for="(item, index) in statusOptions" :key="item.value">
-          <b>{{ item.label }}</b
-          ><i v-if="index < statusOptions.length - 1">→</i>
-        </span>
-      </div>
     </header>
 
     <div class="metric-grid">
-      <button
-        v-for="item in statusCards"
-        :key="item.value"
-        type="button"
-        class="metric-card"
-        :class="['is-' + item.value, { 'is-active': statusFilter === item.value }]"
-        @click="selectStatus(item.value)"
-      >
-        <span>{{ item.label }}</span>
+      <article v-for="item in statusCards" :key="item.status" class="metric-card">
+        <span>{{ item.status }}</span>
         <strong>{{ item.count }}</strong>
-        <small>{{ statusFilter === item.value ? '点击查看全部' : '点击筛选任务' }}</small>
-      </button>
+        <small>后端状态统计</small>
+      </article>
     </div>
 
     <div class="dashboard-body">
@@ -231,12 +208,6 @@ onBeforeUnmount(() => {
               type="search"
               placeholder="搜索 Skill 名称、部门或负责人"
             />
-            <select v-model="statusFilter">
-              <option value="all">全部状态</option>
-              <option v-for="item in statusOptions" :key="item.value" :value="item.value">
-                {{ item.label }}
-              </option>
-            </select>
           </div>
         </header>
 
@@ -281,8 +252,8 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
                 <td>
-                  <span class="status-badge" :class="'is-' + task.status">
-                    {{ statusLabel(task.status) }}
+                  <span class="status-badge">
+                    {{ task.status || '—' }}
                   </span>
                 </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
@@ -321,37 +292,6 @@ onBeforeUnmount(() => {
           </div>
         </footer>
       </div>
-
-      <aside class="notification-panel" aria-label="最近通知">
-        <header>
-          <div><span></span><strong>最近通知</strong></div>
-          <small>{{ notices.length }} 条</small>
-        </header>
-
-        <section>
-          <h4>今天</h4>
-          <article v-for="notice in todayNotices" :key="notice.id" :class="'is-' + notice.tone">
-            <i></i>
-            <div>
-              <strong>{{ notice.title }}</strong>
-              <p>{{ notice.detail }}</p>
-            </div>
-            <time>{{ notice.time }}</time>
-          </article>
-        </section>
-
-        <section>
-          <h4>昨天</h4>
-          <article v-for="notice in yesterdayNotices" :key="notice.id" :class="'is-' + notice.tone">
-            <i></i>
-            <div>
-              <strong>{{ notice.title }}</strong>
-              <p>{{ notice.detail }}</p>
-            </div>
-            <time>{{ notice.time }}</time>
-          </article>
-        </section>
-      </aside>
     </div>
 
     <Teleport to="body">
@@ -362,53 +302,33 @@ onBeforeUnmount(() => {
       >
         <div class="skill-detail-dialog">
           <header>
-            <div>
+            <div class="skill-detail-dialog__heading">
               <small>SKILL TASK DETAIL</small>
               <strong>{{ detailDialog.task.name }}</strong>
               <p>{{ detailDialog.task.description }}</p>
             </div>
-            <button type="button" aria-label="关闭" @click="closeSkill">×</button>
+            <div class="skill-detail-dialog__actions">
+              <span class="status-badge">{{ detailDialog.task.status || '—' }}</span>
+              <button type="button" aria-label="关闭" @click="closeSkill">×</button>
+            </div>
           </header>
 
-          <div class="detail-status">
-            <span class="status-badge" :class="'is-' + detailDialog.task.status">
-              {{ statusLabel(detailDialog.task.status) }}
-            </span>
-            <div><i :style="{ width: detailDialog.task.progress + '%' }"></i></div>
-            <strong>{{ detailDialog.task.progress }}%</strong>
-          </div>
-
           <dl>
-            <!-- <div>
-              <dt>Owner 所在部门</dt>
-              <dd>{{ detailDialog.task.department || '待分配' }}</dd>
-            </div> -->
             <div>
-              <dt>规划部门</dt>
-              <dd>{{ detailDialog.task.planningDepartment || '待明确' }}</dd>
+              <dt>规划部门或产品</dt>
+              <dd>{{ detailDialog.task.dimName || '—' }}</dd>
             </div>
             <div>
               <dt>负责人</dt>
-              <dd>{{ detailDialog.task.owner }}（{{ detailDialog.task.ownerId }}）</dd>
+              <dd>{{ detailDialog.task.ownerName || '—' }}</dd>
             </div>
             <div>
-              <dt>计划完成</dt>
-              <dd>{{ detailDialog.task.dueDate || '待排期' }}</dd>
+              <dt>计划完成时间</dt>
+              <dd>{{ detailDialog.task.planFinishDate || '—' }}</dd>
             </div>
             <div>
               <dt>更新时间</dt>
-              <dd>{{ formatUpdatedAt(detailDialog.task.updatedAt) }}</dd>
-            </div>
-            <div>
-              <dt>已关联范围</dt>
-              <dd>
-                场景 {{ detailDialog.association?.sceneIds.length || 0 }} · 活动
-                {{ detailDialog.association?.activityIds.length || 0 }} · 部门/服务
-                {{
-                  (detailDialog.association?.departments.length || 0) +
-                  (detailDialog.association?.services.length || 0)
-                }}
-              </dd>
+              <dd>{{ formatDetailUpdatedAt(detailDialog.task.updatedAt) }}</dd>
             </div>
           </dl>
 
@@ -417,13 +337,19 @@ onBeforeUnmount(() => {
       </div>
     </Teleport>
 
-    <div v-if="toast" class="task-toast" role="status">{{ toast }}</div>
+    <Teleport to="body">
+      <div v-if="toast" class="task-toast" data-app-toast role="status" aria-live="polite">
+        {{ toast }}
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <style scoped lang="scss">
 .task-dashboard {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 18px;
   color: #17233d;
 }
@@ -484,11 +410,12 @@ onBeforeUnmount(() => {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 
 .metric-card {
+  --metric-color: #6079df;
   position: relative;
   display: grid;
   min-height: 118px;
@@ -499,7 +426,7 @@ onBeforeUnmount(() => {
   background: #fff;
   color: #26344c;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   box-shadow: 0 10px 28px rgba(34, 50, 81, 0.055);
   transition:
     transform 160ms ease,
@@ -518,24 +445,9 @@ onBeforeUnmount(() => {
   opacity: 0.09;
 }
 
-.metric-card:hover,
-.metric-card.is-active {
+.metric-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 34px rgba(34, 50, 81, 0.1);
-}
-
-.metric-card.is-active {
-  border-color: var(--metric-color);
-}
-
-.metric-card.is-todo {
-  --metric-color: #75839a;
-}
-.metric-card.is-inProgress {
-  --metric-color: #e69a2f;
-}
-.metric-card.is-done {
-  --metric-color: #2f9d72;
 }
 
 .metric-card > span {
@@ -560,13 +472,17 @@ onBeforeUnmount(() => {
 
 .dashboard-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 16px;
+  width: 100%;
 }
 
 .task-board,
 .notification-panel {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 1px solid #dfe6f1;
   border-radius: 12px;
   background: #fff;
@@ -608,8 +524,7 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.task-toolbar input,
-.task-toolbar select {
+.task-toolbar input {
   height: 36px;
   padding: 0 10px;
   border: 1px solid #d9e1ed;
@@ -620,7 +535,7 @@ onBeforeUnmount(() => {
 }
 
 .task-toolbar input {
-  width: 260px;
+  width: clamp(260px, 30vw, 420px);
 }
 
 .task-table-wrap {
@@ -760,8 +675,7 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.progress-cell > div,
-.detail-status > div {
+.progress-cell > div {
   height: 6px;
   overflow: hidden;
   flex: 1;
@@ -769,8 +683,7 @@ onBeforeUnmount(() => {
   background: #e9edf3;
 }
 
-.progress-cell i,
-.detail-status i {
+.progress-cell i {
   display: block;
   height: 100%;
   border-radius: inherit;
@@ -1013,10 +926,10 @@ onBeforeUnmount(() => {
 }
 
 .skill-detail-dialog {
-  width: min(650px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   overflow: auto;
-  padding: 22px;
+  padding: 24px;
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
@@ -1024,35 +937,44 @@ onBeforeUnmount(() => {
 
 .skill-detail-dialog > header {
   display: flex;
-  align-items: start;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
 }
 
-.skill-detail-dialog > header > div {
+.skill-detail-dialog__heading {
   display: grid;
+  flex: 1;
+  min-width: 0;
   gap: 4px;
 }
 
-.skill-detail-dialog > header small {
+.skill-detail-dialog__heading > small {
   color: #4c70d9;
   font-size: 9px;
   font-weight: 900;
 }
 
-.skill-detail-dialog > header strong {
+.skill-detail-dialog__heading > strong {
   color: #1c2940;
   font-size: 20px;
 }
 
-.skill-detail-dialog > header p {
+.skill-detail-dialog__heading > p {
   margin: 2px 0 0;
   color: #7e8a9c;
   font-size: 11px;
   line-height: 1.7;
 }
 
-.skill-detail-dialog > header > button {
+.skill-detail-dialog__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.skill-detail-dialog__actions > button {
   width: 30px;
   height: 30px;
   border: 0;
@@ -1063,51 +985,35 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.detail-status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0;
-  padding: 13px;
-  border-radius: 9px;
-  background: #f8f9fc;
-}
-
-.detail-status > div {
-  max-width: 320px;
-}
-
-.detail-status > strong {
-  color: #53627a;
-  font-size: 11px;
-}
-
 .skill-detail-dialog dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
+  margin: 20px 0 0;
 }
 
 .skill-detail-dialog dl > div {
-  padding: 12px;
+  box-sizing: border-box;
+  min-height: 80px;
+  padding: 15px;
   border: 1px solid #e4e9f1;
   border-radius: 8px;
-}
-
-.skill-detail-dialog dl > div:last-child {
-  grid-column: 1 / -1;
+  background: #fff;
 }
 
 .skill-detail-dialog dt {
   color: #8c97a8;
-  font-size: 9px;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .skill-detail-dialog dd {
-  margin: 5px 0 0;
+  margin: 8px 0 0;
   color: #3e4c63;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 .skill-detail-dialog footer {
@@ -1181,7 +1087,7 @@ onBeforeUnmount(() => {
 
   .task-toolbar__actions {
     display: grid;
-    grid-template-columns: 1fr 130px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .task-toolbar input {
@@ -1207,10 +1113,6 @@ onBeforeUnmount(() => {
   .metric-grid,
   .skill-detail-dialog dl {
     grid-template-columns: 1fr;
-  }
-
-  .skill-detail-dialog dl > div:last-child {
-    grid-column: auto;
   }
 
   .task-pagination {

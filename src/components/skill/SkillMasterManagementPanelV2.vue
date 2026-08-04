@@ -82,6 +82,10 @@ const props = withDefaults(
 );
 const records = ref<SkillMasterRecord[]>([]);
 const masterLoading = ref(false);
+const masterPageSizeOptions = [5, 10, 20, 50];
+const masterPageNum = ref(1);
+const masterPageSize = ref(10);
+const masterTotal = ref(0);
 const associations = ref<Record<string, SkillMasterAssociation>>({});
 const keyword = ref('');
 const toast = ref('');
@@ -129,10 +133,11 @@ function parsePersonSubmitValue(value: string): PersonSubmitValue {
   }
   const parts = label.split(/\s+/).filter(Boolean);
   if (parts.length < 2) {
+    const id = /^(?=.*\d)[a-z0-9._-]+$/i.test(label) ? label : '';
     return {
       label,
       name: label,
-      id: '',
+      id,
     };
   }
   const id = parts[parts.length - 1] ?? '';
@@ -191,6 +196,7 @@ const masterImportInputRef = ref<HTMLInputElement | null>(null);
 const masterImportSubmitting = ref(false);
 const masterExportSubmitting = ref(false);
 let masterProductLoadSequence = 0;
+let masterQuerySequence = 0;
 
 function normalizeDepartmentPath(segments: string[] | undefined): string[] {
   return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
@@ -355,6 +361,7 @@ function ensureMasterScopeSelection(notify = false): boolean {
 
 function clearMasterList(): void {
   records.value = [];
+  masterTotal.value = 0;
   associations.value = {};
 }
 
@@ -374,25 +381,44 @@ function resolveCurrentDimFields(): { dimCode: string; dimName: string } {
   };
 }
 
+function resolveCompleteMasterQueryDimension(): {
+  dimType: PlanningLevel;
+  dimCode: string;
+  dimName: string;
+} | null {
+  const dimType = masterScopeForm.level;
+  if (!planningLevelOptions.includes(dimType)) return null;
+  const { dimCode, dimName } = resolveCurrentDimFields();
+  if (!dimCode || !dimName) return null;
+  return { dimType, dimCode, dimName };
+}
+
+function masterQueryValidationMessage(): string {
+  if (keyword.value.trim()) return '';
+  if (masterScopeErrorMessage.value) return masterScopeErrorMessage.value;
+  if (resolveCompleteMasterQueryDimension()) return '';
+  return masterScopeForm.level === '产品级'
+    ? '\u4ea7\u54c1\u4fe1\u606f\u5c1a\u672a\u52a0\u8f7d\u5b8c\u6210\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'
+    : '\u90e8\u95e8\u4fe1\u606f\u5c1a\u672a\u52a0\u8f7d\u5b8c\u6210\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
+}
+
 function buildManagementQueryBody(): QuerySkillMasterManagementBody {
   const body: QuerySkillMasterManagementBody = {
     userId: props.userId.trim(),
     sortBy: 'updatedAt',
     sortOrder: 'desc',
-    pageNum: 1,
-    pageSize: 100,
+    pageNum: masterPageNum.value,
+    pageSize: masterPageSize.value,
   };
   const nextKeyword = keyword.value.trim();
   if (nextKeyword) {
     body.keyword = nextKeyword;
   }
-  if (masterScopeForm.level) {
-    body.dimType = masterScopeForm.level;
-  }
-  const dim = resolveCurrentDimFields();
-  if (dim.dimCode && dim.dimName) {
-    body.dimCode = dim.dimCode;
-    body.dimName = dim.dimName;
+  const dimension = resolveCompleteMasterQueryDimension();
+  if (dimension) {
+    body.dimType = dimension.dimType;
+    body.dimCode = dimension.dimCode;
+    body.dimName = dimension.dimName;
   }
   return body;
 }
@@ -486,6 +512,15 @@ const filteredRecords = computed(() => {
       .includes(text);
   });
 });
+const masterTotalPages = computed(() =>
+  Math.max(1, Math.ceil(masterTotal.value / masterPageSize.value)),
+);
+const masterPageStart = computed(() =>
+  masterTotal.value === 0 ? 0 : (masterPageNum.value - 1) * masterPageSize.value + 1,
+);
+const masterPageEnd = computed(() =>
+  Math.min(masterTotal.value, masterPageNum.value * masterPageSize.value),
+);
 const selectedMasterRecords = computed(() =>
   records.value.filter((record) => selectedMasterIds.value.includes(record.id)),
 );
@@ -542,20 +577,43 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
 }
 
 async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
-  if (!ensureMasterScopeSelection(Boolean(options.notifyOnMissingScope))) {
+  const requestSequence = ++masterQuerySequence;
+  const validationMessage = masterQueryValidationMessage();
+  if (validationMessage) {
     clearMasterList();
     masterLoading.value = false;
+    if (options.notifyOnMissingScope) showToast(validationMessage);
     return;
   }
   masterLoading.value = true;
   try {
-    const response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+    let response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+    if (requestSequence !== masterQuerySequence) return;
     if (response?.meta?.success !== true) {
       throw new Error(
         String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
       );
     }
-    const rows = Array.isArray(response?.data) ? response.data : [];
+    let rows = Array.isArray(response?.data) ? response.data : [];
+    const responseTotal = Number(response?.meta?.number ?? response?.meta?.total);
+    masterTotal.value =
+      Number.isFinite(responseTotal) && responseTotal >= 0 ? responseTotal : rows.length;
+    if (masterPageNum.value > masterTotalPages.value) {
+      masterPageNum.value = masterTotalPages.value;
+      response = await skillBaseService.querySkillMasterManagement(buildManagementQueryBody());
+      if (requestSequence !== masterQuerySequence) return;
+      if (response?.meta?.success !== true) {
+        throw new Error(
+          String(response?.meta?.message || response?.message || 'Skill 查询失败，请稍后重试'),
+        );
+      }
+      rows = Array.isArray(response?.data) ? response.data : [];
+      const nextResponseTotal = Number(response?.meta?.number ?? response?.meta?.total);
+      masterTotal.value =
+        Number.isFinite(nextResponseTotal) && nextResponseTotal >= 0
+          ? nextResponseTotal
+          : rows.length;
+    }
     const nextRecords = rows.map((item: SkillMasterManagementItemDto) =>
       mapManagementItemToRecord(item),
     );
@@ -567,10 +625,13 @@ async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise
     );
     void hydratePersonDisplayLabels(records.value);
   } catch (error) {
+    if (requestSequence !== masterQuerySequence) return;
     clearMasterList();
     showToast(error instanceof Error ? error.message : 'Skill 查询失败，请稍后重试');
   } finally {
-    masterLoading.value = false;
+    if (requestSequence === masterQuerySequence) {
+      masterLoading.value = false;
+    }
   }
 }
 function showToast(message: string): void {
@@ -633,6 +694,11 @@ function ensureProductSkillNamePrefix(): boolean {
     return false;
   }
   return true;
+}
+function editorSkillNameChanged(): boolean {
+  if (editor.mode !== 'edit') return true;
+  const originalName = records.value.find((record) => record.id === editor.id)?.name.trim() ?? '';
+  return !originalName || editor.name.trim() !== originalName;
 }
 
 function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
@@ -697,6 +763,7 @@ function applyOwnerSelection(option: SkillPlanningUserOption): void {
   closeOwnerPersonSearch();
   editor.owner = option.label;
   editor.department = option.deptName;
+  editor.error = '';
 }
 
 function applyDevelopOwnerSelection(option: SkillPlanningUserOption): void {
@@ -705,6 +772,7 @@ function applyDevelopOwnerSelection(option: SkillPlanningUserOption): void {
   closeDevelopOwnerPersonSearch();
   editor.developOwner = option.label;
   editor.developOwnerDepartment = option.deptName;
+  editor.error = '';
 }
 
 function selectOwner(option: SkillPlanningUserOption): void {
@@ -713,6 +781,20 @@ function selectOwner(option: SkillPlanningUserOption): void {
 
 function selectDevelopOwner(option: SkillPlanningUserOption): void {
   applyDevelopOwnerSelection(option);
+}
+
+function clearOwnerSelection(): void {
+  resetPersonPicker(ownerPicker);
+  editor.owner = '';
+  editor.department = '';
+  editor.error = '';
+}
+
+function clearDevelopOwnerSelection(): void {
+  resetPersonPicker(developOwnerPicker);
+  editor.developOwner = '';
+  editor.developOwnerDepartment = '';
+  editor.error = '';
 }
 
 async function searchOwnerUsers(keyword = ownerPicker.keyword): Promise<void> {
@@ -785,6 +867,7 @@ async function searchDevelopOwnerUsers(keyword = developOwnerPicker.keyword): Pr
 }
 
 function onOwnerPickerFocus(): void {
+  if (editor.owner.trim()) return;
   ownerPicker.open = true;
   if (ownerPicker.keyword.trim()) {
     void searchOwnerUsers();
@@ -797,6 +880,7 @@ function onOwnerPickerFocus(): void {
 }
 
 function onDevelopOwnerPickerFocus(): void {
+  if (editor.developOwner.trim()) return;
   developOwnerPicker.open = true;
   if (developOwnerPicker.keyword.trim()) {
     void searchDevelopOwnerUsers();
@@ -813,11 +897,7 @@ function onOwnerPickerInput(event: Event): void {
   const nextKeyword = target?.value ?? '';
   ownerPicker.keyword = nextKeyword;
   ownerPicker.open = true;
-  if (!ownerPicker.selected || ownerPicker.selected.label !== nextKeyword) {
-    ownerPicker.selected = null;
-    editor.owner = nextKeyword;
-    editor.department = '';
-  }
+  ownerPicker.selected = null;
   clearOwnerSearchTimer();
   ownerSearchTimer = window.setTimeout(() => {
     void searchOwnerUsers();
@@ -829,11 +909,7 @@ function onDevelopOwnerPickerInput(event: Event): void {
   const nextKeyword = target?.value ?? '';
   developOwnerPicker.keyword = nextKeyword;
   developOwnerPicker.open = true;
-  if (!developOwnerPicker.selected || developOwnerPicker.selected.label !== nextKeyword) {
-    developOwnerPicker.selected = null;
-    editor.developOwner = nextKeyword;
-    editor.developOwnerDepartment = '';
-  }
+  developOwnerPicker.selected = null;
   clearDevelopOwnerSearchTimer();
   developOwnerSearchTimer = window.setTimeout(() => {
     void searchDevelopOwnerUsers();
@@ -892,10 +968,11 @@ function resolvePersonForSubmit(
   role: 'owner' | 'developOwner',
 ): PersonSubmitValue | null {
   if (picker.selected) {
+    const parsed = parsePersonSubmitValue(picker.selected.label);
     return {
       label: picker.selected.label,
-      name: picker.selected.chName || picker.selected.label,
-      id: picker.selected.id,
+      name: picker.selected.chName || parsed.name,
+      id: picker.selected.sAMAccountName.trim() || picker.selected.id.trim(),
     };
   }
   const currentLabel = picker.keyword.trim();
@@ -1001,24 +1078,26 @@ async function submitEditor(): Promise<void> {
       editor.error = '请填写 Skill 说明';
       return;
     }
-    if (!ownerPicker.selected) {
-      editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+    if (!editor.owner.trim()) {
+      editor.error = '请选择责任 Owner';
       return;
     }
-    if (!developOwnerPicker.selected) {
-      editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+    if (!editor.developOwner.trim()) {
+      editor.error = '请选择开发责任人';
       return;
     }
-    const ownerSamAccountName = ownerPicker.selected.sAMAccountName.trim();
-    if (!ownerSamAccountName) {
-      editor.error =
-        '\u8d23\u4efb Owner \u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+    const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
+    if (!ownerValue?.id) {
+      editor.error = '责任 Owner 人员信息不完整，请清除后重新选择';
       return;
     }
-    const developOwnerSamAccountName = developOwnerPicker.selected.sAMAccountName.trim();
-    if (!developOwnerSamAccountName) {
-      editor.error =
-        '\u5f00\u53d1\u8d23\u4efb\u4eba\u7684\u4eba\u5458\u4fe1\u606f\u7f3a\u5c11 sAMAccountName\uff0c\u65e0\u6cd5\u63d0\u4ea4';
+    const developOwnerValue = resolvePersonForSubmit(
+      developOwnerPicker,
+      initialDevelopOwnerValue,
+      'developOwner',
+    );
+    if (!developOwnerValue?.id) {
+      editor.error = '开发责任人信息不完整，请清除后重新选择';
       return;
     }
     if (!editor.plannedCompleteDate) {
@@ -1035,10 +1114,10 @@ async function submitEditor(): Promise<void> {
     const body: CreateSkillMasterManagementBody = {
       skillName: editor.name.trim(),
       skillDescription: editor.description.trim(),
-      ownerName: ownerPicker.selected.chName || ownerPicker.selected.label,
-      ownerId: ownerSamAccountName,
-      developOwnerName: developOwnerPicker.selected.chName || developOwnerPicker.selected.label,
-      developOwnerId: developOwnerSamAccountName,
+      ownerName: ownerValue.name,
+      ownerId: ownerValue.id,
+      developOwnerName: developOwnerValue.name,
+      developOwnerId: developOwnerValue.id,
       planFinishDate: editor.plannedCompleteDate,
     };
 
@@ -1052,6 +1131,7 @@ async function submitEditor(): Promise<void> {
         return;
       }
       closeEditor();
+      masterPageNum.value = 1;
       await reload();
       showToast('Skill 已添加，可前往 Skill 规划复用');
     } catch (error) {
@@ -1074,16 +1154,24 @@ async function submitEditor(): Promise<void> {
     editor.error = '请填写 Skill 名称';
     return;
   }
-  if (!ensureProductSkillNamePrefix()) {
+  if (editorSkillNameChanged() && !ensureProductSkillNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
     editor.error = '请填写 Skill 说明';
     return;
   }
+  if (!editor.owner.trim()) {
+    editor.error = '请选择责任 Owner';
+    return;
+  }
   const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
-  if (!ownerValue || !ownerValue.id) {
-    editor.error = '请从搜索结果中点选责任 Owner，禁止自由文本直接提交';
+  if (!ownerValue?.id) {
+    editor.error = '责任 Owner 人员信息不完整，请清除后重新选择';
+    return;
+  }
+  if (!editor.developOwner.trim()) {
+    editor.error = '请选择开发责任人';
     return;
   }
   const developOwnerValue = resolvePersonForSubmit(
@@ -1091,8 +1179,8 @@ async function submitEditor(): Promise<void> {
     initialDevelopOwnerValue,
     'developOwner',
   );
-  if (!developOwnerValue || !developOwnerValue.id) {
-    editor.error = '请从搜索结果中点选开发责任人，禁止自由文本直接提交';
+  if (!developOwnerValue?.id) {
+    editor.error = '开发责任人信息不完整，请清除后重新选择';
     return;
   }
   if (!editor.plannedCompleteDate) {
@@ -1244,6 +1332,7 @@ async function handleMasterImportFile(event: Event): Promise<void> {
       buildMasterTransferParams(),
     );
     const result = normalizeSkillImportResponse(response);
+    masterPageNum.value = 1;
     await reload();
     if (result.errorList.length > 0) {
       const firstError = result.errorList[0];
@@ -1325,6 +1414,7 @@ async function confirmBatchMasterDelete(): Promise<void> {
   }
 }
 async function onMasterScopeLevelChange(): Promise<void> {
+  masterPageNum.value = 1;
   const defaultPath = defaultMasterDepartmentPath.value;
   masterScopeDepartmentCommitted.value = defaultPath.length > 0;
   masterDepartmentSegments.value = [...defaultPath];
@@ -1339,6 +1429,7 @@ function onMasterDepartmentChange(segments: string[]): void {
 }
 
 async function applyMasterDepartmentQuery(segments: string[]): Promise<void> {
+  masterPageNum.value = 1;
   masterDepartmentSegments.value = normalizeDepartmentPath(segments).slice(0, 6);
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = masterDepartmentSegments.value.length > 0;
@@ -1355,26 +1446,41 @@ async function onMasterDepartmentClear(segments: string[] = []): Promise<void> {
 }
 
 async function onMasterProductChange(): Promise<void> {
+  masterPageNum.value = 1;
   masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
   await reload();
 }
 
 async function applyMasterQuery(): Promise<void> {
+  masterPageNum.value = 1;
   await reload({ notifyOnMissingScope: true });
 }
 
 async function resetMasterQuery(): Promise<void> {
   keyword.value = '';
+  masterPageNum.value = 1;
   applyDefaultMasterScopeSelection();
   await loadMasterProducts();
   await reload();
 }
 
+async function goMasterPage(nextPage: number): Promise<void> {
+  masterPageNum.value = Math.min(masterTotalPages.value, Math.max(1, nextPage));
+  await reload();
+}
+
+async function changeMasterPageSize(): Promise<void> {
+  masterPageNum.value = 1;
+  await reload();
+}
+
 watch(
-  () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths],
-  () => {
+  () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths, props.departmentTree],
+  async () => {
+    masterPageNum.value = 1;
     applyDefaultMasterScopeSelection();
-    void loadMasterProducts().then(() => reload());
+    await loadMasterProducts();
+    await reload();
   },
   { immediate: true, deep: true },
 );
@@ -1479,7 +1585,7 @@ onBeforeUnmount(() => {
         <div class="master-toolbar__title">
           <strong>Skill 原子清单</strong>
           <small
-            >已选 {{ selectedMasterIds.length }} 条 / 共 {{ filteredRecords.length }} 条 ·
+            >已选 {{ selectedMasterIds.length }} 条 / 共 {{ masterTotal }} 条 ·
             可被不同部门的规划复用</small
           >
         </div>
@@ -1642,6 +1748,35 @@ onBeforeUnmount(() => {
           </tbody>
         </table>
       </div>
+      <div class="master-pagination">
+        <span>第 {{ masterPageStart }}-{{ masterPageEnd }} 条，共 {{ masterTotal }} 条</span>
+        <div class="master-pagination__controls">
+          <select
+            v-model.number="masterPageSize"
+            :disabled="masterLoading"
+            @change="changeMasterPageSize"
+          >
+            <option v-for="size in masterPageSizeOptions" :key="size" :value="size">
+              {{ size }} 条/页
+            </option>
+          </select>
+          <button
+            type="button"
+            :disabled="masterLoading || masterPageNum <= 1"
+            @click="goMasterPage(masterPageNum - 1)"
+          >
+            上一页
+          </button>
+          <strong>{{ masterPageNum }} / {{ masterTotalPages }}</strong>
+          <button
+            type="button"
+            :disabled="masterLoading || masterPageNum >= masterTotalPages"
+            @click="goMasterPage(masterPageNum + 1)"
+          >
+            下一页
+          </button>
+        </div>
+      </div>
     </div>
 
     <Teleport to="body">
@@ -1688,14 +1823,28 @@ onBeforeUnmount(() => {
             </label>
             <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
-              <input
-                :value="ownerPicker.keyword"
-                type="text"
-                autocomplete="off"
-                placeholder="输入姓名或工号后选择"
-                @focus="onOwnerPickerFocus"
-                @input="onOwnerPickerInput"
-              />
+              <div class="person-search__control">
+                <input
+                  :value="ownerPicker.keyword"
+                  type="text"
+                  autocomplete="off"
+                  :readonly="Boolean(editor.owner.trim())"
+                  placeholder="输入姓名或工号后选择"
+                  @focus="onOwnerPickerFocus"
+                  @input="onOwnerPickerInput"
+                />
+                <button
+                  v-if="editor.owner.trim()"
+                  type="button"
+                  class="person-search__clear"
+                  title="清除责任 Owner"
+                  aria-label="清除责任 Owner"
+                  @mousedown.prevent
+                  @click.stop="clearOwnerSelection"
+                >
+                  ×
+                </button>
+              </div>
               <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
                 <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
                 <template v-else>
@@ -1726,14 +1875,28 @@ onBeforeUnmount(() => {
               @keydown.esc="closeDevelopOwnerPersonSearch"
             >
               <span>开发责任人 *</span>
-              <input
-                :value="developOwnerPicker.keyword"
-                type="text"
-                autocomplete="off"
-                placeholder="输入姓名或工号后选择"
-                @focus="onDevelopOwnerPickerFocus"
-                @input="onDevelopOwnerPickerInput"
-              />
+              <div class="person-search__control">
+                <input
+                  :value="developOwnerPicker.keyword"
+                  type="text"
+                  autocomplete="off"
+                  :readonly="Boolean(editor.developOwner.trim())"
+                  placeholder="输入姓名或工号后选择"
+                  @focus="onDevelopOwnerPickerFocus"
+                  @input="onDevelopOwnerPickerInput"
+                />
+                <button
+                  v-if="editor.developOwner.trim()"
+                  type="button"
+                  class="person-search__clear"
+                  title="清除开发责任人"
+                  aria-label="清除开发责任人"
+                  @mousedown.prevent
+                  @click.stop="clearDevelopOwnerSelection"
+                >
+                  ×
+                </button>
+              </div>
               <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
                 <span v-if="developOwnerPicker.loading" class="person-search__empty"
                   >查询中...</span
@@ -1882,7 +2045,11 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </Teleport>
-    <div v-if="toast" class="toast" role="status">{{ toast }}</div>
+    <Teleport to="body">
+      <div v-if="toast" class="toast" data-app-toast role="status" aria-live="polite">
+        {{ toast }}
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -2242,6 +2409,43 @@ onBeforeUnmount(() => {
 .table-wrap tbody tr:hover td {
   background: #f8fbff;
 }
+.master-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-top: 1px solid #edf2f7;
+  color: #64748b;
+  font-size: 13px;
+}
+.master-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.master-pagination__controls select,
+.master-pagination__controls button {
+  height: 32px;
+  border: 1px solid #dbe5f2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #253857;
+  font: inherit;
+  font-size: 13px;
+}
+.master-pagination__controls select {
+  padding: 0 8px;
+}
+.master-pagination__controls button {
+  padding: 0 10px;
+  cursor: pointer;
+}
+.master-pagination__controls button:disabled,
+.master-pagination__controls select:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .table-wrap .selection-cell {
   text-align: center;
 }
@@ -2459,7 +2663,10 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
 }
-.person-search > input {
+.person-search__control {
+  position: relative;
+}
+.person-search__control > input {
   width: 100%;
   height: 40px;
   box-sizing: border-box;
@@ -2470,9 +2677,36 @@ onBeforeUnmount(() => {
   color: #344159;
   background: #fff;
 }
-.person-search > input:focus {
+.person-search__control > input[readonly] {
+  padding-right: 38px;
+  background: #f8fbff;
+  cursor: default;
+}
+.person-search__control > input:focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.person-search__clear {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #64748b;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.person-search__clear:hover {
+  background: #e2e8f0;
+  color: #334155;
 }
 .person-search__panel {
   position: absolute;
@@ -2679,6 +2913,15 @@ onBeforeUnmount(() => {
     align-items: stretch;
     flex-direction: column;
   }
+  .master-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .master-pagination__controls {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .master-scope-controls,
   .master-scope-controls.is-department-level {
     grid-template-columns: repeat(2, minmax(180px, 1fr));

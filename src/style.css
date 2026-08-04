@@ -47,6 +47,11 @@
   --shadow: 0 16px 48px rgba(22, 34, 51, 0.08);
 }
 
+/* Global feedback must stay above dialogs teleported directly to <body>. */
+[data-app-toast] {
+  z-index: 20000 !important;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #9ca3af;
