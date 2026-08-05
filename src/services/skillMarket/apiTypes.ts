@@ -671,6 +671,22 @@ export type CreateSkillMasterManagementBody = {
   planFinishDate: string;
 };
 
+export type CreateCommandMasterManagementBody = Omit<
+  CreateSkillMasterManagementBody,
+  'skillName' | 'skillDescription'
+> & {
+  commandName: string;
+  commandDescription: string;
+};
+
+export type CreateAgentMasterManagementBody = Omit<
+  CreateSkillMasterManagementBody,
+  'skillName' | 'skillDescription'
+> & {
+  agentName: string;
+  agentDescription: string;
+};
+
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
 export type QuerySkillMasterManagementBody = {
   userId: string;
@@ -724,6 +740,22 @@ export type UpdateSkillMasterManagementBody = {
   developOwnerName?: string;
   developOwnerId?: string;
   planFinishDate?: string;
+};
+
+export type UpdateCommandMasterManagementBody = Omit<
+  UpdateSkillMasterManagementBody,
+  'skillName' | 'skillDescription'
+> & {
+  commandName?: string;
+  commandDescription?: string;
+};
+
+export type UpdateAgentMasterManagementBody = Omit<
+  UpdateSkillMasterManagementBody,
+  'skillName' | 'skillDescription'
+> & {
+  agentName?: string;
+  agentDescription?: string;
 };
 
 /** Shared query params for Skill planning/master import and export. */
@@ -783,6 +815,20 @@ export type CreateSkillPlanningSupplementBody = {
   secondScene: string;
   skillName: string;
   subActivityNodeName: string;
+};
+
+export type CreateCommandPlanningSupplementBody = Omit<
+  CreateSkillPlanningSupplementBody,
+  'skillName'
+> & {
+  commandName: string;
+};
+
+export type CreateAgentPlanningSupplementBody = Omit<
+  CreateSkillPlanningSupplementBody,
+  'skillName'
+> & {
+  agentName: string;
 };
 
 /** Skill 规划补充查询（POST /config/query） */
@@ -870,6 +916,14 @@ export type SkillPlanningSupplementItemDto = {
 
 /** Skill 规划补充更新（PUT /config/update） */
 export type UpdateSkillPlanningSupplementBody = CreateSkillPlanningSupplementBody & {
+  id: string | number;
+};
+
+export type UpdateCommandPlanningSupplementBody = CreateCommandPlanningSupplementBody & {
+  id: string | number;
+};
+
+export type UpdateAgentPlanningSupplementBody = CreateAgentPlanningSupplementBody & {
   id: string | number;
 };
 

@@ -3,16 +3,21 @@ import * as XLSX from 'xlsx';
 import type {
   ApiEnvelope,
   BatchDeleteSkillPlanningSupplementBody,
-  CreateSkillMasterManagementBody,
+  CreateAgentMasterManagementBody,
+  CreateAgentPlanningSupplementBody,
+  CreateCommandMasterManagementBody,
+  CreateCommandPlanningSupplementBody,
   CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
   QuerySkillMasterManagementBody,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
   SkillTransferParams,
-  UpdateSkillMasterManagementBody,
+  UpdateAgentMasterManagementBody,
+  UpdateAgentPlanningSupplementBody,
+  UpdateCommandMasterManagementBody,
+  UpdateCommandPlanningSupplementBody,
   UpdateSkillMasterManagementParams,
-  UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
 import type {
   HarnessCapabilityCatalogQuery,
@@ -100,14 +105,27 @@ export const harnessCapabilityPlanningHttpEndpoints: Record<
   },
 };
 
+type CapabilityPlanningCreateBody =
+  | CreateCommandPlanningSupplementBody
+  | CreateAgentPlanningSupplementBody;
+type CapabilityPlanningUpdateBody =
+  | UpdateCommandPlanningSupplementBody
+  | UpdateAgentPlanningSupplementBody;
+type CapabilityCatalogCreateBody =
+  | CreateCommandMasterManagementBody
+  | CreateAgentMasterManagementBody;
+type CapabilityCatalogUpdateBody =
+  | UpdateCommandMasterManagementBody
+  | UpdateAgentMasterManagementBody;
+
 type CapabilityHttpClient = {
   queryPlanning(params: QuerySkillPlanningSupplementParams): Promise<unknown>;
   createPlanning(
-    body: CreateSkillPlanningSupplementBody,
+    body: CapabilityPlanningCreateBody,
     params: SkillPlanningSupplementMutationParams,
   ): Promise<unknown>;
   updatePlanning(
-    body: UpdateSkillPlanningSupplementBody,
+    body: CapabilityPlanningUpdateBody,
     params: SkillPlanningSupplementMutationParams,
   ): Promise<unknown>;
   deletePlanning(id: string | number, userId: string): Promise<unknown>;
@@ -119,11 +137,11 @@ type CapabilityHttpClient = {
   exportPlanning(params: SkillTransferParams): Promise<ApiEnvelope<string>>;
   queryCatalog(params: QuerySkillMasterManagementBody): Promise<unknown>;
   createCatalog(
-    body: CreateSkillMasterManagementBody,
+    body: CapabilityCatalogCreateBody,
     params: CreateSkillMasterManagementParams,
   ): Promise<unknown>;
   updateCatalog(
-    body: UpdateSkillMasterManagementBody,
+    body: CapabilityCatalogUpdateBody,
     params: UpdateSkillMasterManagementParams,
   ): Promise<unknown>;
   deleteCatalog(id: string | number, userId: string): Promise<unknown>;
@@ -135,15 +153,31 @@ type CapabilityHttpClient = {
 const capabilityHttpClients: Record<MockHarnessCapabilityType, CapabilityHttpClient> = {
   command: {
     queryPlanning: skillBaseService.queryCommandPlanningSupplement,
-    createPlanning: skillBaseService.createCommandPlanningSupplement,
-    updatePlanning: skillBaseService.updateCommandPlanningSupplement,
+    createPlanning: (body, params) =>
+      skillBaseService.createCommandPlanningSupplement(
+        body as CreateCommandPlanningSupplementBody,
+        params,
+      ),
+    updatePlanning: (body, params) =>
+      skillBaseService.updateCommandPlanningSupplement(
+        body as UpdateCommandPlanningSupplementBody,
+        params,
+      ),
     deletePlanning: skillBaseService.deleteCommandPlanningSupplement,
     batchDeletePlanning: skillBaseService.batchDeleteCommandPlanningSupplement,
     importPlanning: skillBaseService.importCommandPlanningSupplement,
     exportPlanning: skillBaseService.exportCommandPlanningSupplement,
     queryCatalog: skillBaseService.queryCommandMasterManagement,
-    createCatalog: skillBaseService.createCommandMasterManagement,
-    updateCatalog: skillBaseService.updateCommandMasterManagement,
+    createCatalog: (body, params) =>
+      skillBaseService.createCommandMasterManagement(
+        body as CreateCommandMasterManagementBody,
+        params,
+      ),
+    updateCatalog: (body, params) =>
+      skillBaseService.updateCommandMasterManagement(
+        body as UpdateCommandMasterManagementBody,
+        params,
+      ),
     deleteCatalog: skillBaseService.deleteCommandMasterManagement,
     batchDeleteCatalog: skillBaseService.batchDeleteCommandMasterManagement,
     importCatalog: skillBaseService.importCommandMasterManagement,
@@ -151,15 +185,25 @@ const capabilityHttpClients: Record<MockHarnessCapabilityType, CapabilityHttpCli
   },
   agent: {
     queryPlanning: skillBaseService.queryAgentPlanningSupplement,
-    createPlanning: skillBaseService.createAgentPlanningSupplement,
-    updatePlanning: skillBaseService.updateAgentPlanningSupplement,
+    createPlanning: (body, params) =>
+      skillBaseService.createAgentPlanningSupplement(
+        body as CreateAgentPlanningSupplementBody,
+        params,
+      ),
+    updatePlanning: (body, params) =>
+      skillBaseService.updateAgentPlanningSupplement(
+        body as UpdateAgentPlanningSupplementBody,
+        params,
+      ),
     deletePlanning: skillBaseService.deleteAgentPlanningSupplement,
     batchDeletePlanning: skillBaseService.batchDeleteAgentPlanningSupplement,
     importPlanning: skillBaseService.importAgentPlanningSupplement,
     exportPlanning: skillBaseService.exportAgentPlanningSupplement,
     queryCatalog: skillBaseService.queryAgentMasterManagement,
-    createCatalog: skillBaseService.createAgentMasterManagement,
-    updateCatalog: skillBaseService.updateAgentMasterManagement,
+    createCatalog: (body, params) =>
+      skillBaseService.createAgentMasterManagement(body as CreateAgentMasterManagementBody, params),
+    updateCatalog: (body, params) =>
+      skillBaseService.updateAgentMasterManagement(body as UpdateAgentMasterManagementBody, params),
     deleteCatalog: skillBaseService.deleteAgentMasterManagement,
     batchDeleteCatalog: skillBaseService.batchDeleteAgentMasterManagement,
     importCatalog: skillBaseService.importAgentMasterManagement,
@@ -264,6 +308,16 @@ function toPlanningMutationParams(
     dimCode: requiredText(body.dimCode, '规划保存缺少部门或产品编码'),
     dimName: requiredText(body.dimName, '规划保存缺少部门或产品名称'),
   };
+}
+
+function capabilityPlanningBody(
+  type: MockHarnessCapabilityType,
+  body: CreateSkillPlanningSupplementBody & { id?: string },
+): CapabilityPlanningCreateBody | CapabilityPlanningUpdateBody {
+  const { skillName, ...sharedBody } = body;
+  return type === 'command'
+    ? { ...sharedBody, commandName: requiredText(skillName, '请输入 Command 名称') }
+    : { ...sharedBody, agentName: requiredText(skillName, '请输入 Agent 名称') };
 }
 
 function entityRecord(
@@ -416,7 +470,7 @@ export async function createHttpCapabilityPlanning(
   userId: string,
 ): Promise<unknown> {
   const response = await capabilityHttpClients[type].createPlanning(
-    body,
+    capabilityPlanningBody(type, body) as CapabilityPlanningCreateBody,
     toPlanningMutationParams(body, userId),
   );
   assertHttpSuccess(response, `${label(type)} 规划新增失败`);
@@ -429,7 +483,7 @@ export async function updateHttpCapabilityPlanning(
   userId: string,
 ): Promise<unknown> {
   const response = await capabilityHttpClients[type].updatePlanning(
-    body,
+    capabilityPlanningBody(type, body) as CapabilityPlanningUpdateBody,
     toPlanningMutationParams(body, userId),
   );
   assertHttpSuccess(response, `${label(type)} 规划更新失败`);
@@ -643,21 +697,25 @@ function normalizeCatalogScope(scope: HarnessCapabilityCatalogHttpScope): SkillT
   return normalizeSkillTransferParams(scope);
 }
 
-function catalogBody(payload: SkillMasterPayload): CreateSkillMasterManagementBody {
+function catalogBody(
+  type: MockHarnessCapabilityType,
+  payload: SkillMasterPayload,
+): CapabilityCatalogCreateBody {
   const name = requiredText(payload.name, '请输入能力名称');
   const description = requiredText(payload.description, '请输入能力说明');
   const owner = parsePerson(payload.owner, '责任 Owner');
   const developOwner = parsePerson(payload.developOwner, '开发责任人');
   const planFinishDate = requiredText(payload.plannedCompleteDate, '请选择计划完成时间');
-  return {
-    skillName: name,
-    skillDescription: description,
+  const sharedBody = {
     ownerName: owner.name,
     ownerId: owner.id,
     developOwnerName: developOwner.name,
     developOwnerId: developOwner.id,
     planFinishDate,
   };
+  return type === 'command'
+    ? { ...sharedBody, commandName: name, commandDescription: description }
+    : { ...sharedBody, agentName: name, agentDescription: description };
 }
 
 function payloadFallbackRecord(
@@ -704,7 +762,7 @@ export async function createHttpCapabilityCatalogRecord(
 ): Promise<SkillMasterRecord> {
   const normalizedScope = normalizeCatalogScope(scope);
   const response = await capabilityHttpClients[type].createCatalog(
-    catalogBody(payload),
+    catalogBody(type, payload),
     normalizedScope,
   );
   assertHttpSuccess(response, `${label(type)} 清单新增失败`);
@@ -719,7 +777,10 @@ export async function updateHttpCapabilityCatalogRecord(
 ): Promise<SkillMasterRecord> {
   const normalizedScope = normalizeCatalogScope(scope);
   const response = await capabilityHttpClients[type].updateCatalog(
-    { id: requiredText(id, `缺少 ${label(type)} id`), ...catalogBody(payload) },
+    {
+      id: requiredText(id, `缺少 ${label(type)} id`),
+      ...catalogBody(type, payload),
+    } as CapabilityCatalogUpdateBody,
     normalizedScope,
   );
   assertHttpSuccess(response, `${label(type)} 清单更新失败`);

@@ -2,6 +2,10 @@ import httpRequest from '@/services/skillMarket/request';
 import type {
   ApiEnvelope,
   BatchDeleteSkillPlanningSupplementBody,
+  CreateAgentMasterManagementBody,
+  CreateAgentPlanningSupplementBody,
+  CreateCommandMasterManagementBody,
+  CreateCommandPlanningSupplementBody,
   CreateSkillMasterManagementBody,
   CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
@@ -12,6 +16,10 @@ import type {
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
   SkillTransferParams,
+  UpdateAgentMasterManagementBody,
+  UpdateAgentPlanningSupplementBody,
+  UpdateCommandMasterManagementBody,
+  UpdateCommandPlanningSupplementBody,
   UpdateSkillMasterManagementBody,
   UpdateSkillMasterManagementParams,
   UpdateHarnessPermissionUsersRequest,
@@ -509,7 +517,7 @@ export const skillBaseService = {
 
   // Agent 规划相关接口
   createAgentPlanningSupplement: (
-    body: CreateSkillPlanningSupplementBody,
+    body: CreateAgentPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
     return httpRequest.harnessAgent<any>({
@@ -529,7 +537,7 @@ export const skillBaseService = {
   },
 
   updateAgentPlanningSupplement: (
-    body: UpdateSkillPlanningSupplementBody,
+    body: UpdateAgentPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
     return httpRequest.harnessAgent<any>({
@@ -585,7 +593,7 @@ export const skillBaseService = {
 
   // Agent 原子能力相关接口
   createAgentMasterManagement: (
-    body: CreateSkillMasterManagementBody,
+    body: CreateAgentMasterManagementBody,
     params: CreateSkillMasterManagementParams,
   ): any => {
     return httpRequest.harnessAgent<any>({
@@ -614,7 +622,7 @@ export const skillBaseService = {
   },
 
   updateAgentMasterManagement: (
-    body: UpdateSkillMasterManagementBody,
+    body: UpdateAgentMasterManagementBody,
     params: UpdateSkillMasterManagementParams,
   ): any => {
     return httpRequest.harnessAgent<any>({
@@ -658,7 +666,7 @@ export const skillBaseService = {
 
   // Command 规划相关接口
   createCommandPlanningSupplement: (
-    body: CreateSkillPlanningSupplementBody,
+    body: CreateCommandPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
     return httpRequest.harnessCommand<any>({
@@ -678,7 +686,7 @@ export const skillBaseService = {
   },
 
   updateCommandPlanningSupplement: (
-    body: UpdateSkillPlanningSupplementBody,
+    body: UpdateCommandPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
     return httpRequest.harnessCommand<any>({
@@ -734,7 +742,7 @@ export const skillBaseService = {
 
   // Command 原子能力相关接口
   createCommandMasterManagement: (
-    body: CreateSkillMasterManagementBody,
+    body: CreateCommandMasterManagementBody,
     params: CreateSkillMasterManagementParams,
   ): any => {
     return httpRequest.harnessCommand<any>({
@@ -763,7 +771,7 @@ export const skillBaseService = {
   },
 
   updateCommandMasterManagement: (
-    body: UpdateSkillMasterManagementBody,
+    body: UpdateCommandMasterManagementBody,
     params: UpdateSkillMasterManagementParams,
   ): any => {
     return httpRequest.harnessCommand<any>({
