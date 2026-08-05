@@ -559,38 +559,6 @@ export async function exportAllSkillPlanningList(
   return sortItems(filterItems(query), query).map(cloneSkillPlanningItem);
 }
 
-export async function getProductPlanning(
-  params: { offeringName?: string; planningDeptName?: string } = {},
-): Promise<ProductPlanningOption[]> {
-  const keyword = normalizeText(params.offeringName).toLowerCase();
-  const planningDeptName = normalizeText(params.planningDeptName);
-  const optionMap = new Map<string, ProductPlanningOption>();
-
-  [
-    ...mockProductPlanningOptions,
-    ...skillPlanningItems.filter((item) => item.level === '产品级'),
-  ].forEach((item) => {
-    const option = {
-      offeringId: normalizeText(item.offeringId),
-      offeringName: normalizeText(item.offeringName),
-      planningDeptName: normalizeText(item.planningDeptName),
-    };
-    if (!option.offeringName) {
-      return;
-    }
-    optionMap.set(
-      `${option.planningDeptName}::${option.offeringId || option.offeringName}`,
-      option,
-    );
-  });
-
-  return Array.from(optionMap.values()).filter(
-    (option) =>
-      (!planningDeptName || option.planningDeptName === planningDeptName) &&
-      (!keyword || option.offeringName.toLowerCase().includes(keyword)),
-  );
-}
-
 function normalizePayloadWithTaxonomyIds(payload: SkillPlanningPayload): SkillPlanningPayload {
   const normalized = normalizeSkillPlanningPayload(payload);
   return {
@@ -612,77 +580,6 @@ export async function createSkillPlanning(
   };
   skillPlanningItems = [item, ...skillPlanningItems];
   return cloneSkillPlanningItem(item);
-}
-
-export async function updateSkillPlanning(
-  id: string,
-  payload: SkillPlanningPayload,
-): Promise<SkillPlanningItem> {
-  const index = skillPlanningItems.findIndex((item) => item.id === id);
-  if (index < 0) {
-    throw new Error('未找到要编辑的 Skill 规划');
-  }
-
-  const next = { id, ...normalizePayloadWithTaxonomyIds(payload) };
-  skillPlanningItems.splice(index, 1, next);
-  return cloneSkillPlanningItem(next);
-}
-
-function normalizeSkillPlanningBatchPatch(patch: SkillPlanningBatchPatch): SkillPlanningBatchPatch {
-  const next: SkillPlanningBatchPatch = {};
-  const description = normalizeText(patch.description);
-  const offeringName = normalizeText(patch.offeringName);
-  const owner = normalizeText(patch.owner);
-  const deptName = normalizeText(patch.deptName);
-  const planningDeptName = normalizeText(patch.planningDeptName);
-  const developOwner = normalizeText(patch.developOwner);
-  const planedCompleteDate = normalizeText(patch.planedCompleteDate);
-
-  if (description) next.description = description;
-  if (offeringName) next.offeringName = offeringName;
-  if (owner) next.owner = owner;
-  if (deptName) next.deptName = deptName;
-  if (planningDeptName) next.planningDeptName = planningDeptName;
-  if (developOwner) next.developOwner = developOwner;
-  if (planedCompleteDate) next.planedCompleteDate = planedCompleteDate;
-  return next;
-}
-
-export async function batchUpdateSkillPlanning(
-  ids: string[],
-  patch: SkillPlanningBatchPatch,
-): Promise<number> {
-  const idSet = new Set(normalizeTextArray(ids));
-  const nextPatch = normalizeSkillPlanningBatchPatch(patch);
-  if (idSet.size === 0 || Object.keys(nextPatch).length === 0) {
-    return 0;
-  }
-
-  let updatedCount = 0;
-  skillPlanningItems = skillPlanningItems.map((item) => {
-    if (!idSet.has(item.id)) {
-      return item;
-    }
-    updatedCount += 1;
-    return { ...item, ...nextPatch };
-  });
-
-  return updatedCount;
-}
-
-export async function deleteSkillPlanning(id: string): Promise<void> {
-  skillPlanningItems = skillPlanningItems.filter((item) => item.id !== id);
-}
-
-export async function batchDeleteSkillPlanning(ids: string[]): Promise<number> {
-  const idSet = new Set(ids);
-  const before = skillPlanningItems.length;
-  skillPlanningItems = skillPlanningItems.filter((item) => !idSet.has(item.id));
-  return before - skillPlanningItems.length;
-}
-
-export async function downloadSkillPlanningTemplate(): Promise<void> {
-  await exportSkillPlanningTemplateToExcel();
 }
 
 export async function importSkillPlanningFromExcel(file: File): Promise<SkillPlanningImportResult> {

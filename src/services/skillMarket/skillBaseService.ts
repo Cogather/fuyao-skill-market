@@ -356,25 +356,8 @@ export const skillBaseService = {
    *
    * Skill 规划相关接口
    */
-  // 查询Skill规划部门列表
-  querySkillPlanningDepartments: (params: { userId: string }): any => {
-    return httpRequest.skill<any>({
-      url: '/config/department',
-      method: 'get',
-      params,
-    });
-  },
 
-  // 更新部门管理员；body包含当前用户工号及管理员列表
-  updateSkillPlanningDepartmentAdmins: (body: SkillPlanningDepartmentAdminsBody): any => {
-    return httpRequest.skill<any>({
-      url: '/config/department/admins',
-      method: 'put',
-      data: body,
-    });
-  },
-
-  // skill 规划补充相关接口
+  // skill 规划列表相关接口
   createSkillPlanningSupplement: (
     body: CreateSkillPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
@@ -524,70 +507,299 @@ export const skillBaseService = {
     });
   },
 
-  updateSkillPlanning: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: `/config/update`,
-      method: 'put',
+  // Agent 规划相关接口
+  createAgentPlanningSupplement: (
+    body: CreateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/config/supplement/add',
+      method: 'post',
       data: body,
-    });
-  },
-
-  // 批量更改skill规划
-  batchUpdateSkillPlanning: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: `/config/batch_update`,
-      method: 'put',
-      data: body,
-    });
-  },
-
-  deleteSkillPlanning: (params: any): any => {
-    return httpRequest.skill<any>({
-      url: `/config/singel_delete`,
-      method: 'delete',
       params,
     });
   },
 
-  batchDeleteSkillPlanning: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/batch_delete',
-      method: 'delete',
-      data: body,
+  queryAgentPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/config/supplement/query',
+      method: 'get',
+      params,
     });
   },
 
-  importSkillPlanning: (formData: FormData): any => {
-    return httpRequest.skill<any>({
-      url: '/config/import',
+  updateAgentPlanningSupplement: (
+    body: UpdateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/config/supplement/update',
+      method: 'put',
+      data: body,
+      params,
+    });
+  },
+
+  deleteAgentPlanningSupplement: (id: string | number, userId: string): any => {
+    return httpRequest.harnessAgent<any>({
+      url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  batchDeleteAgentPlanningSupplement: (
+    body: BatchDeleteSkillPlanningSupplementBody,
+    userId: string,
+  ): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/config/supplement/batch_delete',
+      method: 'delete',
+      data: body,
+      params: { userId },
+    });
+  },
+
+  importAgentPlanningSupplement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.harnessAgent<unknown>({
+      url: '/config/supplement/import',
       method: 'post',
       data: formData,
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      params,
     });
   },
 
-  exportSkillPlanning: (body: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/export',
+  exportAgentPlanningSupplement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.harnessAgent<ApiEnvelope<string>>({
+      url: '/config/supplement/export',
+      method: 'get',
+      params,
+    });
+  },
+
+  // Agent 原子能力相关接口
+  createAgentMasterManagement: (
+    body: CreateSkillMasterManagementBody,
+    params: CreateSkillMasterManagementParams,
+  ): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/management/add',
       method: 'post',
       data: body,
+      params,
     });
   },
 
-  // 下载skill规划导入excel的模板
-  downloadSkillPlanning: (): any => {
-    return httpRequest.skill<any>({
-      url: '/config/download_template',
+  queryAgentMasterManagement: (body: QuerySkillMasterManagementBody): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/management/query',
       method: 'get',
+      params: body,
     });
   },
 
-  // 模糊查询产品
-  getProductPlanning: (params: any): any => {
-    return httpRequest.skill<any>({
-      url: '/config/search_offering',
+  batchDeleteAgentMasterManagement: (ids: Array<string | number>, userId: string): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/management/batch_delete',
+      method: 'delete',
+      data: ids,
+      params: { userId },
+    });
+  },
+
+  updateAgentMasterManagement: (
+    body: UpdateSkillMasterManagementBody,
+    params: UpdateSkillMasterManagementParams,
+  ): any => {
+    return httpRequest.harnessAgent<any>({
+      url: '/management/update',
+      method: 'put',
+      data: body,
+      params,
+    });
+  },
+
+  deleteAgentMasterManagement: (id: string | number, userId: string): any => {
+    return httpRequest.harnessAgent<any>({
+      url: `/management/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  importAgentMasterManagement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.harnessAgent<unknown>({
+      url: '/management/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportAgentMasterManagement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.harnessAgent<ApiEnvelope<string>>({
+      url: '/management/export',
+      method: 'get',
+      params,
+    });
+  },
+
+  // Command 规划相关接口
+  createCommandPlanningSupplement: (
+    body: CreateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/config/supplement/add',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+
+  queryCommandPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/config/supplement/query',
+      method: 'get',
+      params,
+    });
+  },
+
+  updateCommandPlanningSupplement: (
+    body: UpdateSkillPlanningSupplementBody,
+    params: SkillPlanningSupplementMutationParams,
+  ): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/config/supplement/update',
+      method: 'put',
+      data: body,
+      params,
+    });
+  },
+
+  deleteCommandPlanningSupplement: (id: string | number, userId: string): any => {
+    return httpRequest.harnessCommand<any>({
+      url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  batchDeleteCommandPlanningSupplement: (
+    body: BatchDeleteSkillPlanningSupplementBody,
+    userId: string,
+  ): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/config/supplement/batch_delete',
+      method: 'delete',
+      data: body,
+      params: { userId },
+    });
+  },
+
+  importCommandPlanningSupplement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.harnessCommand<unknown>({
+      url: '/config/supplement/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportCommandPlanningSupplement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.harnessCommand<ApiEnvelope<string>>({
+      url: '/config/supplement/export',
+      method: 'get',
+      params,
+    });
+  },
+
+  // Command 原子能力相关接口
+  createCommandMasterManagement: (
+    body: CreateSkillMasterManagementBody,
+    params: CreateSkillMasterManagementParams,
+  ): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/management/add',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+
+  queryCommandMasterManagement: (body: QuerySkillMasterManagementBody): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/management/query',
+      method: 'get',
+      params: body,
+    });
+  },
+
+  batchDeleteCommandMasterManagement: (ids: Array<string | number>, userId: string): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/management/batch_delete',
+      method: 'delete',
+      data: ids,
+      params: { userId },
+    });
+  },
+
+  updateCommandMasterManagement: (
+    body: UpdateSkillMasterManagementBody,
+    params: UpdateSkillMasterManagementParams,
+  ): any => {
+    return httpRequest.harnessCommand<any>({
+      url: '/management/update',
+      method: 'put',
+      data: body,
+      params,
+    });
+  },
+
+  deleteCommandMasterManagement: (id: string | number, userId: string): any => {
+    return httpRequest.harnessCommand<any>({
+      url: `/management/delete/${encodeURIComponent(String(id))}`,
+      method: 'delete',
+      params: { userId },
+    });
+  },
+
+  importCommandMasterManagement: (
+    formData: FormData,
+    params: SkillTransferParams,
+  ): Promise<unknown> => {
+    return httpRequest.harnessCommand<unknown>({
+      url: '/management/import',
+      method: 'post',
+      data: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      params,
+    });
+  },
+
+  exportCommandMasterManagement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
+    return httpRequest.harnessCommand<ApiEnvelope<string>>({
+      url: '/management/export',
       method: 'get',
       params,
     });

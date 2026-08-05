@@ -114,6 +114,22 @@ const httpRequest = {
     };
     return tryMockThenAxios<T>('skill', requestConfig);
   },
+  harnessAgent: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    const requestConfig = {
+      ...config,
+      baseURL: buildBaseUrl('/api/harness/agents'),
+      url: stripPrefix(config.url, '/api/harness/agents'),
+    };
+    return tryMockThenAxios<T>('harnessAgent', requestConfig);
+  },
+  harnessCommand: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    const requestConfig = {
+      ...config,
+      baseURL: buildBaseUrl('/api/harness/commands'),
+      url: stripPrefix(config.url, '/api/harness/commands'),
+    };
+    return tryMockThenAxios<T>('harnessCommand', requestConfig);
+  },
   harnessSkill: <T = null>(config: AxiosRequestConfig): Promise<T> => {
     const requestConfig = {
       ...config,

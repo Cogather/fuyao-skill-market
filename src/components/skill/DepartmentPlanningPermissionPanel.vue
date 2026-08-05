@@ -1070,13 +1070,7 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <Teleport to="body">
-      <div
-        v-if="toast"
-        class="permission-toast"
-        data-app-toast
-        role="status"
-        aria-live="polite"
-      >
+      <div v-if="toast" class="permission-toast" data-app-toast role="status" aria-live="polite">
         {{ toast }}
       </div>
     </Teleport>

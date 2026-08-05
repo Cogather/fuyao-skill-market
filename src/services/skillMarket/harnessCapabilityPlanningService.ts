@@ -51,13 +51,9 @@ import type {
   SkillMasterStatus,
 } from './skillMasterManagementService';
 import {
-  batchDeleteSkillPlanning,
   batchUpdateSkillPlanning,
   createSkillPlanningSupplement,
-  deleteSkillPlanning,
-  downloadSkillPlanningTemplate,
   exportSkillPlanningSupplementFile,
-  getProductPlanning,
   importSkillPlanningFromExcel,
   querySkillPlanningSupplement,
   updateSkillPlanningSupplement,
@@ -88,7 +84,7 @@ export interface HarnessCapabilityPlanningApi {
     body: CreateSkillPlanningSupplementBody & { id: string },
     userId: string,
   ): Promise<any>;
-  batchUpdatePlanning(ids: string[], patch: SkillPlanningBatchPatch): Promise<number>;
+  // batchUpdatePlanning(ids: string[], patch: SkillPlanningBatchPatch): Promise<number>;
   deletePlanning(id: string, userId: string): Promise<void>;
   batchDeletePlanning(ids: string[], userId: string): Promise<number>;
   importPlanning(file: File, query: SkillPlanningQuery): Promise<SkillPlanningImportResult>;
@@ -181,10 +177,10 @@ function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanning
       isHttp
         ? updateHttpCapabilityPlanning(type, body, userId)
         : updateMockCapabilityPlanning(type, body),
-    batchUpdatePlanning: (ids, patch) =>
-      isHttp
-        ? batchUpdateHttpCapabilityPlanning(type, ids, patch)
-        : batchUpdateMockCapabilityPlanning(type, ids, patch),
+    // batchUpdatePlanning: (ids, patch) =>
+    //   isHttp
+    //     ? batchUpdateHttpCapabilityPlanning(type, ids, patch)
+    //     : batchUpdateMockCapabilityPlanning(type, ids, patch),
     deletePlanning: (id, userId) =>
       isHttp
         ? deleteHttpCapabilityPlanning(type, id, userId)
@@ -242,13 +238,9 @@ const skillApi: HarnessCapabilityPlanningApi = {
   queryPlanning: querySkillPlanningSupplement,
   createPlanning: createSkillPlanningSupplement,
   updatePlanning: updateSkillPlanningSupplement,
-  batchUpdatePlanning: batchUpdateSkillPlanning,
-  deletePlanning: deleteSkillPlanning,
-  batchDeletePlanning: batchDeleteSkillPlanning,
+  // batchUpdatePlanning: batchUpdateSkillPlanning,
   importPlanning: importSkillPlanningFromExcel,
   exportPlanning: exportSkillPlanningSupplementFile,
-  downloadPlanningTemplate: downloadSkillPlanningTemplate,
-  getProducts: getProductPlanning,
   queryCatalog: querySkillCatalog,
   createCatalog: async () => {
     throw new Error('Skill 清单继续使用现有管理组件');

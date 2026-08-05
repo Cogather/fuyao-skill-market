@@ -26,7 +26,7 @@ export const harnessCapabilityPlanningHttpEndpoints: Record<
     updatePlanning: string;
     deletePlanning: string;
     batchDeletePlanning: string;
-    batchUpdatePlanning: string;
+    // batchUpdatePlanning: string;
     importPlanning: string;
     exportPlanning: string;
     downloadPlanningTemplate: string;
@@ -45,7 +45,7 @@ export const harnessCapabilityPlanningHttpEndpoints: Record<
     updatePlanning: '',
     deletePlanning: '',
     batchDeletePlanning: '',
-    batchUpdatePlanning: '',
+    // batchUpdatePlanning: '',
     importPlanning: '',
     exportPlanning: '',
     downloadPlanningTemplate: '',
@@ -63,7 +63,7 @@ export const harnessCapabilityPlanningHttpEndpoints: Record<
     updatePlanning: '',
     deletePlanning: '',
     batchDeletePlanning: '',
-    batchUpdatePlanning: '',
+    // batchUpdatePlanning: '',
     importPlanning: '',
     exportPlanning: '',
     downloadPlanningTemplate: '',

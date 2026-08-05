@@ -2275,7 +2275,8 @@ async function submitBatchEdit() {
 
   try {
     batchSubmitting.value = true;
-    const count = await capabilityPlanningApi.value.batchUpdatePlanning(ids, patch);
+    const count = 0;
+    // const count = await capabilityPlanningApi.value.batchUpdatePlanning(ids, patch);
     selectedIds.value = [];
     batchDialogOpen.value = false;
     resetBatchForm();

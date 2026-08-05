@@ -651,9 +651,6 @@ export async function getProductPlanning(
     offeringName: normalizeText(offeringName),
     planningDeptName: normalizeText(planningDeptName),
   };
-  if (!useHttpTransport()) {
-    return (await loadMockService()).getProductPlanning(params);
-  }
 
   const normalizedDeptCode = normalizeText(deptCode);
   if (!normalizedDeptCode || /^(undefined|null)$/i.test(normalizedDeptCode)) {
@@ -701,15 +698,6 @@ export async function querySkillPlanningSupplement(
     code: normalizeText(query.deptCode),
     name: normalizeText(query.planningDeptName),
   });
-}
-
-export async function exportSkillConfig(body: any): Promise<any> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillPlanningSupplement(body);
-  }
-
-  const response = await skillBaseService.exportSkillPlanning(body);
-  return response;
 }
 
 export async function exportAllSkillPlanningList(
@@ -769,51 +757,6 @@ export async function updateSkillPlanningSupplement(
   return response;
 }
 
-export async function updateSkillPlanning(
-  id: string,
-  payload: SkillPlanningPayload,
-): Promise<SkillPlanningItem> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).updateSkillPlanning(id, payload);
-  }
-
-  payload.id = id;
-  const response = await skillBaseService.updateSkillPlanning(payload);
-  return response;
-}
-
-export async function batchUpdateSkillPlanning(
-  ids: string[],
-  patch: SkillPlanningBatchPatch,
-): Promise<number> {
-  const body: SkillPlanningBatchUpdatePayload = { ids, ...patch };
-  if (!useHttpTransport()) {
-    return (await loadMockService()).batchUpdateSkillPlanning(ids, patch);
-  }
-
-  await skillBaseService.batchUpdateSkillPlanning(body);
-  return ids.length;
-}
-
-export async function deleteSkillPlanning(id: string, userId: string): Promise<void> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).deleteSkillPlanning(id);
-  }
-
-  const response = await skillBaseService.deleteSkillPlanningSupplement(id, userId);
-  assertHttpSuccess(response, '删除 Skill 规划失败');
-}
-
-export async function batchDeleteSkillPlanning(ids: string[], userId: string): Promise<number> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).batchDeleteSkillPlanning(ids);
-  }
-
-  const response = await skillBaseService.batchDeleteSkillPlanningSupplement({ ids }, userId);
-  assertHttpSuccess(response, '批量删除 Skill 规划失败');
-  return ids.length;
-}
-
 export async function importSkillPlanningFromExcel(
   file: File,
   query: SkillPlanningQuery,
@@ -827,13 +770,4 @@ export async function importSkillPlanningFromExcel(
   formData.append('file', file);
   const response = await skillBaseService.importSkillPlanningSupplement(formData, params);
   return normalizeSkillImportResponse(response);
-}
-
-export async function downloadSkillPlanningTemplate(): Promise<string | void> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).downloadSkillPlanningTemplate();
-  }
-
-  const response = await skillBaseService.downloadSkillPlanning();
-  return normalizeHttpDownloadUrl(response);
 }
