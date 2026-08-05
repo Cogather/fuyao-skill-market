@@ -43,7 +43,7 @@ function normalizePath(path: unknown): string {
   return raw.startsWith('/') ? raw : `/${raw}`;
 }
 
-function buildBaseUrl(prefix: '/api' | '/api/skills' | '/api/skill-drafts'): string {
+function buildBaseUrl(prefix: string): string {
   const base = normalizeEnvBase();
   if (!base) {
     return prefix;
@@ -98,6 +98,14 @@ const httpRequest = {
     };
     return tryMockThenAxios<T>('api', requestConfig);
   },
+  harnessApi: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    const requestConfig = {
+      ...config,
+      baseURL: buildBaseUrl('/api/harness'),
+      url: stripPrefix(config.url, '/api/harness'),
+    };
+    return tryMockThenAxios<T>('harnessApi', requestConfig);
+  },
   skill: <T = null>(config: AxiosRequestConfig): Promise<T> => {
     const requestConfig = {
       ...config,
@@ -105,6 +113,14 @@ const httpRequest = {
       url: stripPrefix(config.url, '/api/skills'),
     };
     return tryMockThenAxios<T>('skill', requestConfig);
+  },
+  harnessSkill: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    const requestConfig = {
+      ...config,
+      baseURL: buildBaseUrl('/api/harness/skills'),
+      url: stripPrefix(config.url, '/api/harness/skills'),
+    };
+    return tryMockThenAxios<T>('harnessSkill', requestConfig);
   },
   skillDraft: <T = null>(config: AxiosRequestConfig): Promise<T> => {
     const requestConfig = {
