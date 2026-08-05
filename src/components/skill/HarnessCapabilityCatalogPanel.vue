@@ -6,6 +6,9 @@ import {
   getHarnessCapabilityPlanningApi,
   type HarnessCapabilityType,
 } from '../../services/skillMarket/harnessCapabilityPlanningService';
+import type { SkillTransferParams } from '../../services/skillMarket/apiTypes';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
 import type {
   SkillMasterPayload,
   SkillMasterRecord,
@@ -23,10 +26,12 @@ const props = withDefaults(
   defineProps<{
     capabilityType: Exclude<HarnessCapabilityType, 'skill'>;
     departmentTree?: DepartmentNode[];
+    userId?: string;
     currentUserDepartmentPath?: string[];
   }>(),
   {
     departmentTree: () => [],
+    userId: '',
     currentUserDepartmentPath: () => [],
   },
 );
@@ -34,7 +39,14 @@ const props = withDefaults(
 const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => api.value.label);
 const departmentSegments = ref<string[]>([]);
-const filterForm = reactive({ level: '部门级', departmentName: '', keyword: '' });
+const filterForm = reactive({
+  level: '部门级',
+  departmentName: '',
+  product: '',
+  keyword: '',
+});
+const productOptions = ref<ProductPlanningOption[]>([]);
+const productsLoading = ref(false);
 const records = ref<SkillMasterRecord[]>([]);
 const loading = ref(false);
 const selectedIds = ref<string[]>([]);
@@ -46,6 +58,7 @@ let toastTimer: number | null = null;
 const importInputRef = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const exporting = ref(false);
+let productLoadSequence = 0;
 
 const editor = reactive({
   open: false,
@@ -106,6 +119,87 @@ function firstLeafPath(nodes: DepartmentNode[], parent: string[] = []): string[]
   return [];
 }
 
+function findDepartmentNode(path = departmentSegments.value): DepartmentNode | null {
+  let nodes = props.departmentTree;
+  let matched: DepartmentNode | null = null;
+  for (const segment of normalizePath(path)) {
+    matched = nodes.find((item) => item.name === segment) ?? null;
+    if (!matched) return null;
+    nodes = matched.children ?? [];
+  }
+  return matched;
+}
+
+const selectedProduct = computed(() =>
+  productOptions.value.find((item) => item.offeringName === filterForm.product),
+);
+
+const catalogScopeErrorMessage = computed(() => {
+  if (!props.userId.trim()) return '尚未获取当前用户工号';
+  if (!filterForm.departmentName.trim()) {
+    return filterForm.level === '产品级' ? '请选择产品所属部门' : '请选择归属部门';
+  }
+  const departmentCode = getDepartmentNodeCode(findDepartmentNode());
+  if (!departmentCode) return '所选部门缺少部门编码，请刷新部门数据后重试';
+  if (filterForm.level === '产品级') {
+    if (!filterForm.product.trim()) return '请选择产品';
+    if (!selectedProduct.value?.offeringId) return '所选产品缺少产品编码，请重新选择';
+  }
+  return '';
+});
+
+const currentCatalogScope = computed<SkillTransferParams | null>(() => {
+  if (catalogScopeErrorMessage.value) return null;
+  if (filterForm.level === '产品级') {
+    return {
+      userId: props.userId.trim(),
+      dimType: '产品级',
+      dimCode: selectedProduct.value?.offeringId ?? '',
+      dimName: filterForm.product.trim(),
+    };
+  }
+  return {
+    userId: props.userId.trim(),
+    dimType: '部门级',
+    dimCode: getDepartmentNodeCode(findDepartmentNode()),
+    dimName: filterForm.departmentName.trim(),
+  };
+});
+
+function requireCatalogScope(): SkillTransferParams {
+  const scope = currentCatalogScope.value;
+  if (!scope) throw new Error(catalogScopeErrorMessage.value || '请选择清单范围');
+  return scope;
+}
+
+async function loadProductOptions(): Promise<void> {
+  const requestSequence = ++productLoadSequence;
+  productOptions.value = [];
+  productsLoading.value = false;
+  if (filterForm.level !== '产品级' || !filterForm.departmentName.trim()) return;
+  const departmentCode = getDepartmentNodeCode(findDepartmentNode());
+  if (!departmentCode) return;
+  productsLoading.value = true;
+  try {
+    const options = await api.value.getProducts(
+      '',
+      filterForm.departmentName.trim(),
+      departmentCode,
+    );
+    if (requestSequence !== productLoadSequence) return;
+    productOptions.value = options;
+    if (!options.some((item) => item.offeringName === filterForm.product)) {
+      filterForm.product = '';
+    }
+  } catch (error) {
+    if (requestSequence === productLoadSequence) {
+      showToast(error instanceof Error ? error.message : '产品列表加载失败');
+    }
+  } finally {
+    if (requestSequence === productLoadSequence) productsLoading.value = false;
+  }
+}
+
 function applyDefaultDepartment(): void {
   const preferred = normalizePath(props.currentUserDepartmentPath);
   const path = pathExists(props.departmentTree, preferred)
@@ -130,12 +224,20 @@ const allPageSelected = computed(
 );
 
 async function reload(): Promise<void> {
+  const scope = currentCatalogScope.value;
+  if (!scope) {
+    records.value = [];
+    selectedIds.value = [];
+    return;
+  }
   loading.value = true;
   try {
     records.value = await api.value.queryCatalog({
+      ...scope,
       keyword: filterForm.keyword,
       departmentName: filterForm.departmentName,
       level: filterForm.level,
+      product: filterForm.product,
     });
     if (pageNum.value > totalPages.value) pageNum.value = totalPages.value;
     selectedIds.value = selectedIds.value.filter((id) =>
@@ -152,6 +254,8 @@ async function reload(): Promise<void> {
 async function onDepartmentDone(path: string[] = []): Promise<void> {
   departmentSegments.value = normalizePath(path);
   filterForm.departmentName = departmentSegments.value.at(-1) ?? '';
+  filterForm.product = '';
+  await loadProductOptions();
   pageNum.value = 1;
   await reload();
 }
@@ -163,8 +267,22 @@ async function applyQuery(): Promise<void> {
 
 async function resetQuery(): Promise<void> {
   filterForm.level = '部门级';
+  filterForm.product = '';
   filterForm.keyword = '';
   applyDefaultDepartment();
+  await loadProductOptions();
+  pageNum.value = 1;
+  await reload();
+}
+
+async function onLevelChange(): Promise<void> {
+  filterForm.product = '';
+  pageNum.value = 1;
+  await loadProductOptions();
+  await reload();
+}
+
+async function onProductChange(): Promise<void> {
   pageNum.value = 1;
   await reload();
 }
@@ -231,7 +349,7 @@ function editorPayload(): SkillMasterPayload {
     name: editor.name,
     description: editor.description,
     level: filterForm.level,
-    product: '',
+    product: filterForm.level === '产品级' ? filterForm.product : '',
     owner: editor.owner,
     department: editor.department || filterForm.departmentName,
     developOwner: editor.developOwner,
@@ -245,11 +363,12 @@ async function submitEditor(): Promise<void> {
   editor.error = '';
   try {
     editor.submitting = true;
+    const scope = requireCatalogScope();
     if (editor.mode === 'create') {
-      await api.value.createCatalog(editorPayload());
+      await api.value.createCatalog(editorPayload(), scope);
       showToast(`已新增 ${capabilityLabel.value}`);
     } else {
-      await api.value.updateCatalog(editor.id, editorPayload());
+      await api.value.updateCatalog(editor.id, editorPayload(), scope);
       showToast('已保存修改');
     }
     editor.open = false;
@@ -287,10 +406,10 @@ async function confirmDelete(): Promise<void> {
   try {
     deleteDialog.submitting = true;
     if (deleteDialog.ids.length === 1) {
-      await api.value.deleteCatalog(deleteDialog.ids[0]!);
+      await api.value.deleteCatalog(deleteDialog.ids[0]!, props.userId.trim());
       showToast('已删除');
     } else {
-      const count = await api.value.batchDeleteCatalog(deleteDialog.ids);
+      const count = await api.value.batchDeleteCatalog(deleteDialog.ids, props.userId.trim());
       showToast(`已删除 ${count} 条数据`);
     }
     selectedIds.value = selectedIds.value.filter((id) => !deleteDialog.ids.includes(id));
@@ -314,7 +433,8 @@ async function handleImport(event: Event): Promise<void> {
   if (!file) return;
   try {
     importing.value = true;
-    const result = await api.value.importCatalog(file);
+    const scope = requireCatalogScope();
+    const result = await api.value.importCatalog(file, scope);
     const suffix = result.failCount ? `，失败 ${result.failCount} 条` : '';
     showToast(`成功导入 ${result.successCount} 条${suffix}`);
     await reload();
@@ -328,7 +448,8 @@ async function handleImport(event: Event): Promise<void> {
 async function exportCurrent(): Promise<void> {
   try {
     exporting.value = true;
-    await api.value.exportCatalog(records.value);
+    const scope = requireCatalogScope();
+    await api.value.exportCatalog(records.value, scope);
     showToast(`已开始导出 ${capabilityLabel.value} 清单`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '导出失败');
@@ -346,22 +467,47 @@ watch(
   async () => {
     selectedIds.value = [];
     pageNum.value = 1;
+    await loadProductOptions();
     await reload();
   },
 );
 
+watch(
+  () => props.userId,
+  async () => {
+    await reload();
+  },
+);
+
+watch(
+  [() => props.departmentTree, () => props.currentUserDepartmentPath],
+  async () => {
+    if (!pathExists(props.departmentTree, departmentSegments.value)) {
+      applyDefaultDepartment();
+    }
+    await loadProductOptions();
+    await reload();
+  },
+  { deep: true },
+);
+
 onMounted(async () => {
   applyDefaultDepartment();
+  await loadProductOptions();
   await reload();
 });
 </script>
 
 <template>
   <section class="capability-master-panel" :aria-label="`${capabilityLabel} 清单管理`">
-    <section class="capability-master-filter" :aria-label="`${capabilityLabel} 清单查询`">
+    <section
+      class="capability-master-filter"
+      :class="{ 'is-product-level': filterForm.level === '产品级' }"
+      :aria-label="`${capabilityLabel} 清单查询`"
+    >
       <label class="capability-master-field capability-master-field--level">
         <span>层级 <em>*</em></span>
-        <select v-model="filterForm.level" @change="applyQuery">
+        <select v-model="filterForm.level" @change="onLevelChange">
           <option value="部门级">部门级</option>
           <option value="产品级">产品级</option>
         </select>
@@ -380,6 +526,34 @@ onMounted(async () => {
           @done="onDepartmentDone"
         />
       </div>
+      <label
+        v-if="filterForm.level === '产品级'"
+        class="capability-master-field capability-master-field--product"
+      >
+        <span>产品 <em>*</em></span>
+        <select
+          v-model="filterForm.product"
+          :disabled="!filterForm.departmentName || productsLoading"
+          @change="onProductChange"
+        >
+          <option value="">
+            {{
+              productsLoading
+                ? '产品加载中...'
+                : filterForm.departmentName
+                  ? '请选择产品'
+                  : '请先选择部门'
+            }}
+          </option>
+          <option
+            v-for="product in productOptions"
+            :key="product.offeringId"
+            :value="product.offeringName"
+          >
+            {{ product.offeringName }}
+          </option>
+        </select>
+      </label>
       <label class="capability-master-field capability-master-field--keyword">
         <span>关键词</span>
         <input
@@ -390,7 +564,13 @@ onMounted(async () => {
         />
       </label>
       <div class="capability-master-filter__actions">
-        <button type="button" class="capability-master-btn is-primary" @click="applyQuery">
+        <button
+          type="button"
+          class="capability-master-btn is-primary"
+          :disabled="!currentCatalogScope"
+          :title="catalogScopeErrorMessage"
+          @click="applyQuery"
+        >
           查询
         </button>
         <button type="button" class="capability-master-btn" @click="resetQuery">重置</button>
@@ -413,7 +593,13 @@ onMounted(async () => {
             accept=".xlsx,.xls"
             @change="handleImport"
           />
-          <button type="button" class="capability-master-btn is-primary" @click="openCreate">
+          <button
+            type="button"
+            class="capability-master-btn is-primary"
+            :disabled="!currentCatalogScope"
+            :title="catalogScopeErrorMessage"
+            @click="openCreate"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 5v14M5 12h14" />
             </svg>
@@ -422,7 +608,8 @@ onMounted(async () => {
           <button
             type="button"
             class="capability-master-btn"
-            :disabled="importing"
+            :disabled="importing || !currentCatalogScope"
+            :title="catalogScopeErrorMessage"
             @click="triggerImport"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -433,7 +620,8 @@ onMounted(async () => {
           <button
             type="button"
             class="capability-master-btn"
-            :disabled="exporting"
+            :disabled="exporting || !currentCatalogScope"
+            :title="catalogScopeErrorMessage"
             @click="exportCurrent"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -658,6 +846,12 @@ onMounted(async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 12px 34px rgba(45, 58, 92, 0.06);
+}
+.capability-master-filter.is-product-level {
+  grid-template-columns: minmax(110px, 0.55fr) minmax(280px, 1.4fr) minmax(180px, 0.9fr) minmax(
+      260px,
+      1.5fr
+    ) auto;
 }
 .capability-master-field {
   display: grid;

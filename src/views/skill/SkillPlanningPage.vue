@@ -3948,6 +3948,7 @@ onBeforeUnmount(() => {
     <HarnessCapabilityCatalogPanel
       v-else-if="activePlanningTab === 'management'"
       :capability-type="props.capabilityType === 'command' ? 'command' : 'agent'"
+      :user-id="props.userId"
       :department-tree="planningDepartmentTree"
       :current-user-department-path="currentUserMinimumDepartmentPath"
     />

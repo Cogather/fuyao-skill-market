@@ -10,6 +10,7 @@ import type {
 import { normalizeSkillImportResponse, normalizeSkillTransferParams } from './skillTransferService';
 import {
   exportSkillPlanningToExcel,
+  exportSkillPlanningTemplateToExcel,
   normalizeText,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
@@ -755,6 +756,39 @@ export async function updateSkillPlanningSupplement(
     dimName: body.dimName,
   });
   return response;
+}
+
+export async function deleteSkillPlanningSupplement(id: string, userId: string): Promise<void> {
+  const normalizedId = normalizeText(id);
+  const normalizedUserId = normalizeText(userId);
+  if (!normalizedId) throw new Error('缺少 Skill 规划 id');
+  if (!normalizedUserId) throw new Error('Skill 规划删除缺少当前用户工号');
+  const response = await skillBaseService.deleteSkillPlanningSupplement(
+    normalizedId,
+    normalizedUserId,
+  );
+  assertHttpSuccess(response, 'Skill 规划删除失败');
+}
+
+export async function batchDeleteSkillPlanningSupplement(
+  ids: string[],
+  userId: string,
+): Promise<number> {
+  const normalizedIds = [...new Set(ids.map(normalizeText).filter(Boolean))];
+  if (!normalizedIds.length) return 0;
+  const normalizedUserId = normalizeText(userId);
+  if (!normalizedUserId) throw new Error('Skill 规划批量删除缺少当前用户工号');
+  const response = await skillBaseService.batchDeleteSkillPlanningSupplement(
+    { ids: normalizedIds },
+    normalizedUserId,
+  );
+  assertHttpSuccess(response, 'Skill 规划批量删除失败');
+  const meta = asRecord(asRecord(response).meta);
+  return readNumber(meta.number ?? meta.total, normalizedIds.length);
+}
+
+export async function downloadSkillPlanningTemplate(): Promise<void> {
+  await exportSkillPlanningTemplateToExcel();
 }
 
 export async function importSkillPlanningFromExcel(
