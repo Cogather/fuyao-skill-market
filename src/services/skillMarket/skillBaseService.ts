@@ -379,7 +379,7 @@ export const skillBaseService = {
     body: CreateSkillPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/config/supplement/add',
       method: 'post',
       data: body,
@@ -388,7 +388,7 @@ export const skillBaseService = {
   },
 
   querySkillPlanningSupplement: (params: QuerySkillPlanningSupplementParams): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/config/supplement/query',
       method: 'get',
       params,
@@ -399,7 +399,7 @@ export const skillBaseService = {
     body: UpdateSkillPlanningSupplementBody,
     params: SkillPlanningSupplementMutationParams,
   ): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/config/supplement/update',
       method: 'put',
       data: body,
@@ -408,7 +408,7 @@ export const skillBaseService = {
   },
 
   deleteSkillPlanningSupplement: (id: string | number, userId: string): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: `/config/supplement/delete/${encodeURIComponent(String(id))}`,
       method: 'delete',
       params: { userId },
@@ -419,7 +419,7 @@ export const skillBaseService = {
     body: BatchDeleteSkillPlanningSupplementBody,
     userId: string,
   ): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/config/supplement/batch_delete',
       method: 'delete',
       data: body,
@@ -431,7 +431,7 @@ export const skillBaseService = {
     formData: FormData,
     params: SkillTransferParams,
   ): Promise<unknown> => {
-    return httpRequest.skill<unknown>({
+    return httpRequest.harnessSkill<unknown>({
       url: '/config/supplement/import',
       method: 'post',
       data: formData,
@@ -443,7 +443,7 @@ export const skillBaseService = {
   },
 
   exportSkillPlanningSupplement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
-    return httpRequest.skill<ApiEnvelope<string>>({
+    return httpRequest.harnessSkill<ApiEnvelope<string>>({
       url: '/config/supplement/export',
       method: 'get',
       params,
@@ -456,7 +456,7 @@ export const skillBaseService = {
     body: CreateSkillMasterManagementBody,
     params: CreateSkillMasterManagementParams,
   ): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/management/add',
       method: 'post',
       data: body,
@@ -465,7 +465,7 @@ export const skillBaseService = {
   },
 
   querySkillMasterManagement: (body: QuerySkillMasterManagementBody): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/management/query',
       method: 'get',
       params: body,
@@ -473,7 +473,7 @@ export const skillBaseService = {
   },
 
   batchDeleteSkillMasterManagement: (ids: Array<string | number>, userId: string): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/management/batch_delete',
       method: 'delete',
       data: ids,
@@ -485,7 +485,7 @@ export const skillBaseService = {
     body: UpdateSkillMasterManagementBody,
     params: UpdateSkillMasterManagementParams,
   ): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: '/management/update',
       method: 'put',
       data: body,
@@ -494,7 +494,7 @@ export const skillBaseService = {
   },
 
   deleteSkillMasterManagement: (id: string | number, userId: string): any => {
-    return httpRequest.skill<any>({
+    return httpRequest.harnessSkill<any>({
       url: `/management/delete/${encodeURIComponent(String(id))}`,
       method: 'delete',
       params: { userId },
@@ -505,7 +505,7 @@ export const skillBaseService = {
     formData: FormData,
     params: SkillTransferParams,
   ): Promise<unknown> => {
-    return httpRequest.skill<unknown>({
+    return httpRequest.harnessSkill<unknown>({
       url: '/management/import',
       method: 'post',
       data: formData,
@@ -517,7 +517,7 @@ export const skillBaseService = {
   },
 
   exportSkillMasterManagement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
-    return httpRequest.skill<ApiEnvelope<string>>({
+    return httpRequest.harnessSkill<ApiEnvelope<string>>({
       url: '/management/export',
       method: 'get',
       params,
@@ -597,8 +597,8 @@ export const skillBaseService = {
 
   // 查询当前用户的部门管理权限（有哪些部门可以管理）
   queryHarnessDeptPermissions: (params: { userId: string }): any => {
-    return httpRequest.api<any>({
-      url: '/harness/permission/user-depts',
+    return httpRequest.harnessApi<any>({
+      url: '/permission/user-depts',
       method: 'get',
       params, // { userId }
     });
@@ -606,8 +606,8 @@ export const skillBaseService = {
 
   // harness 权限人员列表查询
   queryHarnessPermissionUsers: (params: QueryHarnessPermissionUsersParams): any => {
-    return httpRequest.api<any>({
-      url: '/harness/permission/query',
+    return httpRequest.harnessApi<any>({
+      url: '/permission/query',
       method: 'get',
       params,
     });
@@ -615,17 +615,18 @@ export const skillBaseService = {
 
   // harness 权限人员更新
   updateHarnessPermissionUsers: (body: UpdateHarnessPermissionUsersRequest): any => {
-    return httpRequest.api<any>({
-      url: '/harness/permission/update',
+    return httpRequest.harnessApi<any>({
+      url: '/permission/update',
       method: 'put',
       data: body,
     });
   },
 
+  // 产品
   // 查询某个部门的产品列表
   queryHarnessDeptProducts: (params: { deptCode: string }): any => {
-    return httpRequest.api<any>({
-      url: '/harness/smapi-product-by-dept',
+    return httpRequest.harnessApi<any>({
+      url: '/smapi-product-by-dept',
       method: 'get',
       params, // { deptCode }
     });
@@ -633,7 +634,7 @@ export const skillBaseService = {
 
   // 获取场景列表
   getSceneOptionGroups: (params: SceneOptionGroupsParams): Promise<SceneOptionGroupsResponse> => {
-    return httpRequest.api<SceneOptionGroupsResponse>({
+    return httpRequest.harnessApi<SceneOptionGroupsResponse>({
       url: '/scene-activity/scene',
       method: 'get',
       params, // { userId, dimType, dimCode, dimName }
@@ -645,7 +646,7 @@ export const skillBaseService = {
     body: RefreshSceneOptionGroupsBody,
     params: SceneOptionGroupsParams,
   ): Promise<unknown> => {
-    return httpRequest.api<unknown>({
+    return httpRequest.harnessApi<unknown>({
       url: '/scene-activity/scene',
       method: 'post',
       params,
@@ -657,7 +658,7 @@ export const skillBaseService = {
   getActivityOptionGroups: (
     params: SceneOptionGroupsParams,
   ): Promise<ActivityOptionGroupsResponse> => {
-    return httpRequest.api<ActivityOptionGroupsResponse>({
+    return httpRequest.harnessApi<ActivityOptionGroupsResponse>({
       url: '/scene-activity/activity',
       method: 'get',
       params, // { userId, dimType, dimCode, dimName }
@@ -669,7 +670,7 @@ export const skillBaseService = {
     body: RefreshActivityOptionGroupsBody,
     params: SceneOptionGroupsParams,
   ): Promise<unknown> => {
-    return httpRequest.api<unknown>({
+    return httpRequest.harnessApi<unknown>({
       url: '/scene-activity/activity',
       method: 'post',
       params,
