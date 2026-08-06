@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
-  querySkillPlanningTasks,
-  usesRemoteSkillPlanningTasks,
+  planningTaskCapabilityLabel,
+  queryPlanningTasks,
+  usesRemotePlanningTasks,
+  type PlanningTaskCapabilityType,
   type SkillPlanningTask,
 } from '../../services/skillMarket/skillPlanningTaskService';
 
@@ -15,11 +17,16 @@ type TaskNotice = {
   tone: 'new' | 'change' | 'delete' | 'publish';
 };
 
-const props = withDefaults(defineProps<{ userId?: string }>(), { userId: '' });
+const props = withDefaults(
+  defineProps<{ userId?: string; capabilityType?: PlanningTaskCapabilityType }>(),
+  { userId: '', capabilityType: 'skill' },
+);
+const capabilityLabel = computed(() => planningTaskCapabilityLabel(props.capabilityType));
+const capabilityLabelUpper = computed(() => capabilityLabel.value.toUpperCase());
 const tasks = ref<SkillPlanningTask[]>([]);
 const loading = ref(false);
 const loadError = ref('');
-const remoteTasks = usesRemoteSkillPlanningTasks();
+const remoteTasks = usesRemotePlanningTasks();
 let reloadSequence = 0;
 const keyword = ref('');
 const page = ref(1);
@@ -40,8 +47,8 @@ const notices = ref<TaskNotice[]>(
         {
           id: 'notice-1',
           day: '今天',
-          title: '新增 Skill 任务',
-          detail: '接口契约检查 Skill',
+          title: `新增 ${capabilityLabel.value} 任务`,
+          detail: `接口契约检查 ${capabilityLabel.value}`,
           time: '09:30',
           tone: 'new',
         },
@@ -49,15 +56,15 @@ const notices = ref<TaskNotice[]>(
           id: 'notice-2',
           day: '昨天',
           title: '负责人发生变化',
-          detail: '知识库质量巡检 Skill',
+          detail: `知识库质量巡检 ${capabilityLabel.value}`,
           time: '16:45',
           tone: 'change',
         },
         {
           id: 'notice-3',
           day: '昨天',
-          title: 'Skill 被删除',
-          detail: '旧版日志聚合 Skill',
+          title: `${capabilityLabel.value} 被删除`,
+          detail: `旧版日志聚合 ${capabilityLabel.value}`,
           time: '11:20',
           tone: 'delete',
         },
@@ -103,7 +110,7 @@ async function reload(): Promise<void> {
   loading.value = true;
   loadError.value = '';
   try {
-    const nextTasks = await querySkillPlanningTasks(props.userId);
+    const nextTasks = await queryPlanningTasks(props.capabilityType, props.userId);
     if (requestSequence !== reloadSequence) return;
     tasks.value = nextTasks;
     tasks.value.forEach((task) => {
@@ -149,14 +156,14 @@ function showToast(message: string): void {
   }, 2400);
 }
 
-function openSkill(task: SkillPlanningTask): void {
+function openTask(task: SkillPlanningTask): void {
   Object.assign(detailDialog, {
     open: true,
     task: { ...task },
   });
 }
 
-function closeSkill(): void {
+function closeTask(): void {
   detailDialog.open = false;
 }
 
@@ -167,10 +174,7 @@ function goPage(next: number): void {
 watch(keyword, () => {
   page.value = 1;
 });
-watch(
-  () => props.userId,
-  () => void reload(),
-);
+watch([() => props.userId, () => props.capabilityType], () => void reload());
 onMounted(() => void reload());
 onBeforeUnmount(() => {
   if (toastTimer !== null) window.clearTimeout(toastTimer);
@@ -178,12 +182,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="task-dashboard" aria-label="我的待办任务 Dashboard">
+  <section class="task-dashboard" :aria-label="`我的 ${capabilityLabel} 待办任务 Dashboard`">
     <header class="dashboard-heading">
       <div>
-        <span>MY SKILL TODO CENTER</span>
-        <h3>我的 Skill 待办中心</h3>
-        <p>聚焦当前登录用户负责的 Skill 任务，完成启动、开发和进度跟踪。</p>
+        <span>MY {{ capabilityLabelUpper }} TODO CENTER</span>
+        <h3>我的 {{ capabilityLabel }} 待办中心</h3>
+        <p>聚焦当前登录用户负责的 {{ capabilityLabel }} 任务，完成启动、开发和进度跟踪。</p>
       </div>
     </header>
 
@@ -206,7 +210,7 @@ onBeforeUnmount(() => {
             <input
               v-model.trim="keyword"
               type="search"
-              placeholder="搜索 Skill 名称、部门或负责人"
+              :placeholder="`搜索 ${capabilityLabel} 名称、部门或负责人`"
             />
           </div>
         </header>
@@ -223,7 +227,7 @@ onBeforeUnmount(() => {
             </colgroup>
             <thead>
               <tr>
-                <th>Skill 名称</th>
+                <th>{{ capabilityLabel }} 名称</th>
                 <!-- <th title="随责任 Owner 自动变化">Owner 所在部门</th> -->
                 <th>规划部门</th>
                 <th>负责人</th>
@@ -259,8 +263,8 @@ onBeforeUnmount(() => {
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
                 <td>
                   <div class="task-actions">
-                    <button type="button" class="is-link" @click="openSkill(task)">
-                      查看 Skill
+                    <button type="button" class="is-link" @click="openTask(task)">
+                      查看 {{ capabilityLabel }}
                     </button>
                   </div>
                 </td>
@@ -298,18 +302,18 @@ onBeforeUnmount(() => {
       <div
         v-if="detailDialog.open && detailDialog.task"
         class="task-overlay"
-        @click.self="closeSkill"
+        @click.self="closeTask"
       >
         <div class="skill-detail-dialog">
           <header>
             <div class="skill-detail-dialog__heading">
-              <small>SKILL TASK DETAIL</small>
+              <small>{{ capabilityLabelUpper }} TASK DETAIL</small>
               <strong>{{ detailDialog.task.name }}</strong>
               <p>{{ detailDialog.task.description }}</p>
             </div>
             <div class="skill-detail-dialog__actions">
               <span class="status-badge">{{ detailDialog.task.status || '—' }}</span>
-              <button type="button" aria-label="关闭" @click="closeSkill">×</button>
+              <button type="button" aria-label="关闭" @click="closeTask">×</button>
             </div>
           </header>
 
@@ -332,7 +336,7 @@ onBeforeUnmount(() => {
             </div>
           </dl>
 
-          <footer><button type="button" @click="closeSkill">关闭</button></footer>
+          <footer><button type="button" @click="closeTask">关闭</button></footer>
         </div>
       </div>
     </Teleport>
