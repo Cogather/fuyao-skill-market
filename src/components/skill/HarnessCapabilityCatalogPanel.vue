@@ -776,7 +776,7 @@ onMounted(async () => {
         </select>
       </label>
       <div class="capability-master-field capability-master-field--dept">
-        <span>{{ filterForm.level === '产品级' ? '产品所属部门 *' : '归属部门 *' }}</span>
+        <span>{{ filterForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
         <MarketDeptCascader
           v-model="departmentSegments"
           class="capability-master-dept-cascader"

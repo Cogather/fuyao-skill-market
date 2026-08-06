@@ -1511,7 +1511,9 @@ onBeforeUnmount(() => {
           </select>
         </label>
         <div class="master-scope-field master-scope-field--dept">
-          <span>{{ masterScopeForm.level === '产品级' ? '产品所属部门 *' : '归属部门 *' }}</span>
+          <span
+            >{{ masterScopeForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span
+          >
           <MarketDeptCascader
             v-model="masterDepartmentSegments"
             class="master-dept-cascader"
