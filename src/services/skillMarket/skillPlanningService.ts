@@ -10,6 +10,7 @@ import type {
 import { normalizeSkillImportResponse, normalizeSkillTransferParams } from './skillTransferService';
 import {
   exportSkillPlanningToExcel,
+  exportSkillPlanningTemplateToExcel,
   normalizeText,
   type ProductPlanningOption,
   type SkillPlanningUserOption,
@@ -651,9 +652,6 @@ export async function getProductPlanning(
     offeringName: normalizeText(offeringName),
     planningDeptName: normalizeText(planningDeptName),
   };
-  if (!useHttpTransport()) {
-    return (await loadMockService()).getProductPlanning(params);
-  }
 
   const normalizedDeptCode = normalizeText(deptCode);
   if (!normalizedDeptCode || /^(undefined|null)$/i.test(normalizedDeptCode)) {
@@ -701,15 +699,6 @@ export async function querySkillPlanningSupplement(
     code: normalizeText(query.deptCode),
     name: normalizeText(query.planningDeptName),
   });
-}
-
-export async function exportSkillConfig(body: any): Promise<any> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillPlanningSupplement(body);
-  }
-
-  const response = await skillBaseService.exportSkillPlanning(body);
-  return response;
 }
 
 export async function exportAllSkillPlanningList(
@@ -769,49 +758,37 @@ export async function updateSkillPlanningSupplement(
   return response;
 }
 
-export async function updateSkillPlanning(
-  id: string,
-  payload: SkillPlanningPayload,
-): Promise<SkillPlanningItem> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).updateSkillPlanning(id, payload);
-  }
-
-  payload.id = id;
-  const response = await skillBaseService.updateSkillPlanning(payload);
-  return response;
+export async function deleteSkillPlanningSupplement(id: string, userId: string): Promise<void> {
+  const normalizedId = normalizeText(id);
+  const normalizedUserId = normalizeText(userId);
+  if (!normalizedId) throw new Error('缺少 Skill 规划 id');
+  if (!normalizedUserId) throw new Error('Skill 规划删除缺少当前用户工号');
+  const response = await skillBaseService.deleteSkillPlanningSupplement(
+    normalizedId,
+    normalizedUserId,
+  );
+  assertHttpSuccess(response, 'Skill 规划删除失败');
 }
 
-export async function batchUpdateSkillPlanning(
+export async function batchDeleteSkillPlanningSupplement(
   ids: string[],
-  patch: SkillPlanningBatchPatch,
+  userId: string,
 ): Promise<number> {
-  const body: SkillPlanningBatchUpdatePayload = { ids, ...patch };
-  if (!useHttpTransport()) {
-    return (await loadMockService()).batchUpdateSkillPlanning(ids, patch);
-  }
-
-  await skillBaseService.batchUpdateSkillPlanning(body);
-  return ids.length;
+  const normalizedIds = [...new Set(ids.map(normalizeText).filter(Boolean))];
+  if (!normalizedIds.length) return 0;
+  const normalizedUserId = normalizeText(userId);
+  if (!normalizedUserId) throw new Error('Skill 规划批量删除缺少当前用户工号');
+  const response = await skillBaseService.batchDeleteSkillPlanningSupplement(
+    { ids: normalizedIds },
+    normalizedUserId,
+  );
+  assertHttpSuccess(response, 'Skill 规划批量删除失败');
+  const meta = asRecord(asRecord(response).meta);
+  return readNumber(meta.number ?? meta.total, normalizedIds.length);
 }
 
-export async function deleteSkillPlanning(id: string, userId: string): Promise<void> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).deleteSkillPlanning(id);
-  }
-
-  const response = await skillBaseService.deleteSkillPlanningSupplement(id, userId);
-  assertHttpSuccess(response, '删除 Skill 规划失败');
-}
-
-export async function batchDeleteSkillPlanning(ids: string[], userId: string): Promise<number> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).batchDeleteSkillPlanning(ids);
-  }
-
-  const response = await skillBaseService.batchDeleteSkillPlanningSupplement({ ids }, userId);
-  assertHttpSuccess(response, '批量删除 Skill 规划失败');
-  return ids.length;
+export async function downloadSkillPlanningTemplate(): Promise<void> {
+  await exportSkillPlanningTemplateToExcel();
 }
 
 export async function importSkillPlanningFromExcel(
@@ -827,13 +804,4 @@ export async function importSkillPlanningFromExcel(
   formData.append('file', file);
   const response = await skillBaseService.importSkillPlanningSupplement(formData, params);
   return normalizeSkillImportResponse(response);
-}
-
-export async function downloadSkillPlanningTemplate(): Promise<string | void> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).downloadSkillPlanningTemplate();
-  }
-
-  const response = await skillBaseService.downloadSkillPlanning();
-  return normalizeHttpDownloadUrl(response);
 }

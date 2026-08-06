@@ -2275,7 +2275,8 @@ async function submitBatchEdit() {
 
   try {
     batchSubmitting.value = true;
-    const count = await capabilityPlanningApi.value.batchUpdatePlanning(ids, patch);
+    const count = 0;
+    // const count = await capabilityPlanningApi.value.batchUpdatePlanning(ids, patch);
     selectedIds.value = [];
     batchDialogOpen.value = false;
     resetBatchForm();
@@ -2618,7 +2619,9 @@ onBeforeUnmount(() => {
             </select>
           </label>
           <div class="planning-field planning-field--dept">
-            <span>{{ filterForm.level === '产品级' ? '产品所属部门 *' : '归属部门 *' }}</span>
+            <span
+              >{{ filterForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span
+            >
             <MarketDeptCascader
               v-model="planningDepartmentSegments"
               class="planning-dept-cascader"
@@ -3947,8 +3950,10 @@ onBeforeUnmount(() => {
     <HarnessCapabilityCatalogPanel
       v-else-if="activePlanningTab === 'management'"
       :capability-type="props.capabilityType === 'command' ? 'command' : 'agent'"
+      :user-id="props.userId"
       :department-tree="planningDepartmentTree"
       :current-user-department-path="currentUserMinimumDepartmentPath"
+      :default-department-path="defaultPlanningDepartmentPath"
     />
 
     <Teleport to="body">
@@ -4395,11 +4400,14 @@ onBeforeUnmount(() => {
               <small v-if="formErrors.deptName">{{ formErrors.deptName }}</small>
             </label> -->
             <label class="planning-field planning-field--dept">
-              <span>{{
-                planningForm.level === '产品级'
-                  ? '产品所属部门（顶部已选）*'
-                  : '归属部门（顶部已选）*'
-              }}</span>
+              <span>
+                {{
+                  planningForm.level === '产品级'
+                    ? '产品所属部门（顶部已选）'
+                    : '归属部门（顶部已选）'
+                }}
+                <em>*</em>
+              </span>
               <MarketDeptCascader
                 v-model="planningFormDepartmentSegments"
                 class="planning-dept-cascader"

@@ -315,9 +315,6 @@ const selectedPrimary = computed(
 );
 
 const dirty = computed(() => JSON.stringify(draftRecords.value) !== savedSnapshot.value);
-const enabledPrimaryCount = computed(
-  () => primaryRecords.value.filter((item) => item.status === 'enabled').length,
-);
 const totalSkillCount = computed(() =>
   draftRecords.value.reduce((sum, item) => sum + item.skillCount, 0),
 );
@@ -484,15 +481,12 @@ function toHttpTaxonomyItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
 
 function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGroup[] {
   return records
-    .filter((record) => record.parentId === null && record.status === 'enabled')
+    .filter((record) => record.parentId === null)
     .sort((left, right) => left.sort - right.sort)
     .map((parent) => ({
       value: parent.name,
       children: records
-        .filter(
-          (record) =>
-            record.parentId === parent.id && record.status === 'enabled' && Boolean(record.name),
-        )
+        .filter((record) => record.parentId === parent.id && Boolean(record.name))
         .sort((left, right) => left.sort - right.sort)
         .map((record) => record.name),
     }));
@@ -767,24 +761,16 @@ function toggleCollapse(id: string): void {
   collapsedPrimaryIds.value = next;
 }
 
-function toggleStatus(id: string): void {
-  const record = draftRecords.value.find((item) => item.id === id);
-  if (!record) return;
-  record.status = record.status === 'enabled' ? 'disabled' : 'enabled';
-}
-
 const editorOpen = ref(false);
 const editorId = ref('');
 const editorParentId = ref<string | null>(null);
 const editorName = ref('');
-const editorStatus = ref<'enabled' | 'disabled'>('enabled');
 const editorError = ref('');
 
 function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
   editorId.value = record?.id ?? '';
   editorParentId.value = parentId;
   editorName.value = record?.name ?? '';
-  editorStatus.value = record?.status ?? 'enabled';
   editorError.value = '';
   editorOpen.value = true;
 }
@@ -808,7 +794,6 @@ function saveEditor(): void {
     const record = draftRecords.value.find((item) => item.id === editorId.value);
     if (record) {
       record.name = name;
-      record.status = editorStatus.value;
     }
   } else {
     const prefix = props.kind === 'scene' ? 'scene' : 'activity';
@@ -818,7 +803,7 @@ function saveEditor(): void {
       parentId: editorParentId.value,
       name,
       sort: draftRecords.value.filter((item) => item.parentId === editorParentId.value).length + 1,
-      status: editorStatus.value,
+      status: 'enabled',
       skillCount: 0,
     });
     if (editorParentId.value === null) selectedPrimaryId.value = id;
@@ -971,7 +956,7 @@ async function importRecords(event: Event): Promise<void> {
         parentId: record.parentId === null ? null : String(record.parentId || ''),
         name: String(record.name || '').trim(),
         sort: Number(record.sort) || index + 1,
-        status: record.status === 'disabled' ? 'disabled' : 'enabled',
+        status: 'enabled',
         skillCount: Math.max(0, Number(record.skillCount) || 0),
       } satisfies TaxonomyRecord;
     });
@@ -1105,10 +1090,6 @@ function exportRecords(): void {
           <span>{{ labels.secondary }}</span>
         </div>
         <div>
-          <strong>{{ enabledPrimaryCount }}</strong
-          ><span>启用一级项</span>
-        </div>
-        <div>
           <strong>{{ totalSkillCount }}</strong
           ><span>关联规划项</span>
         </div>
@@ -1162,14 +1143,6 @@ function exportRecords(): void {
                 </small>
               </button>
               <button
-                class="status-dot"
-                :class="primary.status"
-                type="button"
-                @click="toggleStatus(primary.id)"
-              >
-                {{ primary.status === 'enabled' ? '启用' : '停用' }}
-              </button>
-              <button
                 class="icon-action"
                 type="button"
                 title="编辑"
@@ -1193,7 +1166,7 @@ function exportRecords(): void {
                 type="button"
                 @click="selectedPrimaryId = primary.id"
               >
-                <span :class="['child-dot', child.status]"></span>{{ child.name }}
+                {{ child.name }}
               </button>
               <span v-if="!childRecords(primary.id).length" class="empty-child">
                 暂无{{ labels.secondary }}
@@ -1232,7 +1205,6 @@ function exportRecords(): void {
                 <th>排序</th>
                 <th>{{ labels.secondary }}</th>
                 <th>关联规划项</th>
-                <th>状态</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -1254,16 +1226,6 @@ function exportRecords(): void {
                 </td>
                 <td>
                   <span class="count-pill">{{ secondary.skillCount }}</span>
-                </td>
-                <td>
-                  <button
-                    class="status-switch"
-                    :class="secondary.status"
-                    type="button"
-                    @click="toggleStatus(secondary.id)"
-                  >
-                    <span></span>{{ secondary.status === 'enabled' ? '启用' : '停用' }}
-                  </button>
                 </td>
                 <td class="row-actions">
                   <button
@@ -1287,7 +1249,7 @@ function exportRecords(): void {
                 </td>
               </tr>
               <tr v-if="!secondaryRecords.length">
-                <td colspan="5" class="empty-table">暂无{{ labels.secondary }}，可从右上角新增</td>
+                <td colspan="4" class="empty-table">暂无{{ labels.secondary }}，可从右上角新增</td>
               </tr>
             </tbody>
           </table>
@@ -1305,13 +1267,6 @@ function exportRecords(): void {
           }}{{ editorParentId === null ? labels.primary : labels.secondary }}
         </h3>
         <label><span>名称</span><input v-model="editorName" maxlength="40" autofocus /></label>
-        <label>
-          <span>状态</span>
-          <select v-model="editorStatus">
-            <option value="enabled">启用</option>
-            <option value="disabled">停用</option>
-          </select>
-        </label>
         <p v-if="editorError" class="form-error">{{ editorError }}</p>
         <div class="modal-actions">
           <button type="button" @click="editorOpen = false">取消</button>
@@ -1569,7 +1524,7 @@ input:focus {
 
 .summary-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
   border-radius: 16px;
   overflow: hidden;
@@ -1728,24 +1683,6 @@ input:focus {
   color: #8290a6;
 }
 
-.status-dot {
-  border: 0;
-  border-radius: 99px;
-  padding: 5px 8px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.status-dot.enabled {
-  background: #e7faf3;
-  color: #15956d;
-}
-
-.status-dot.disabled {
-  background: #edf0f5;
-  color: #78879c;
-}
-
 .danger,
 .icon-action.danger {
   color: #dc4051 !important;
@@ -1766,19 +1703,6 @@ input:focus {
   text-align: left;
   color: #5d6c83;
   cursor: pointer;
-}
-
-.child-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 8px;
-  border-radius: 50%;
-  background: #aeb8c7;
-}
-
-.child-dot.enabled {
-  background: #20b783;
 }
 
 .empty-child {
@@ -1827,48 +1751,6 @@ td {
 .count-pill {
   margin: 0;
   border-radius: 99px;
-}
-
-.status-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 0;
-  background: transparent;
-  color: #687990;
-  cursor: pointer;
-}
-
-.status-switch span {
-  width: 34px;
-  height: 19px;
-  border-radius: 99px;
-  background: #cbd4e1;
-  position: relative;
-}
-
-.status-switch span::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: #fff;
-  transition: 0.2s;
-}
-
-.status-switch.enabled {
-  color: #15956d;
-}
-
-.status-switch.enabled span {
-  background: #23bb87;
-}
-
-.status-switch.enabled span::after {
-  transform: translateX(15px);
 }
 
 .row-actions {
@@ -2106,11 +1988,6 @@ td {
   font-size: 10px;
 }
 
-.status-dot {
-  padding: 3px 6px;
-  font-size: 10px;
-}
-
 .tree-children {
   margin: 0 9px 7px 56px;
 }
@@ -2155,11 +2032,6 @@ td strong {
 
 .count-pill {
   margin-left: 0;
-}
-
-.status-switch {
-  gap: 6px;
-  font-size: 10px;
 }
 
 .row-actions button {
@@ -2229,8 +2101,6 @@ td strong {
   .empty-child,
   th,
   td,
-  .status-dot,
-  .status-switch,
   .row-actions button {
     font-size: clamp(10px, 0.625vw, 13px);
   }

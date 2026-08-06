@@ -2,11 +2,11 @@ import type {
   CreateSkillPlanningSupplementBody,
   QuerySkillMasterManagementBody,
   SkillMasterManagementItemDto,
+  SkillTransferParams,
 } from './apiTypes';
 import {
   batchDeleteHttpCapabilityCatalogRecords,
   batchDeleteHttpCapabilityPlanning,
-  batchUpdateHttpCapabilityPlanning,
   createHttpCapabilityCatalogRecord,
   createHttpCapabilityPlanning,
   deleteHttpCapabilityCatalogRecord,
@@ -25,7 +25,6 @@ import {
 import {
   batchDeleteMockCapabilityCatalogRecords,
   batchDeleteMockCapabilityPlanning,
-  batchUpdateMockCapabilityPlanning,
   createMockCapabilityCatalogRecord,
   createMockCapabilityPlanning,
   deleteMockCapabilityCatalogRecord,
@@ -51,10 +50,9 @@ import type {
   SkillMasterStatus,
 } from './skillMasterManagementService';
 import {
-  batchDeleteSkillPlanning,
-  batchUpdateSkillPlanning,
+  batchDeleteSkillPlanningSupplement,
   createSkillPlanningSupplement,
-  deleteSkillPlanning,
+  deleteSkillPlanningSupplement,
   downloadSkillPlanningTemplate,
   exportSkillPlanningSupplementFile,
   getProductPlanning,
@@ -64,7 +62,6 @@ import {
 } from './skillPlanningService';
 import type {
   ProductPlanningOption,
-  SkillPlanningBatchPatch,
   SkillPlanningImportResult,
   SkillPlanningListResult,
   SkillPlanningQuery,
@@ -88,7 +85,6 @@ export interface HarnessCapabilityPlanningApi {
     body: CreateSkillPlanningSupplementBody & { id: string },
     userId: string,
   ): Promise<any>;
-  batchUpdatePlanning(ids: string[], patch: SkillPlanningBatchPatch): Promise<number>;
   deletePlanning(id: string, userId: string): Promise<void>;
   batchDeletePlanning(ids: string[], userId: string): Promise<number>;
   importPlanning(file: File, query: SkillPlanningQuery): Promise<SkillPlanningImportResult>;
@@ -100,12 +96,22 @@ export interface HarnessCapabilityPlanningApi {
     deptCode: string,
   ): Promise<ProductPlanningOption[]>;
   queryCatalog(query?: HarnessCapabilityPlanningCatalogQuery): Promise<SkillMasterRecord[]>;
-  createCatalog(payload: SkillMasterPayload): Promise<SkillMasterRecord>;
-  updateCatalog(id: string, payload: SkillMasterPayload): Promise<SkillMasterRecord>;
-  deleteCatalog(id: string): Promise<void>;
-  batchDeleteCatalog(ids: string[]): Promise<number>;
-  importCatalog(file: File): Promise<{ successCount: number; failCount: number; errors: string[] }>;
-  exportCatalog(records: SkillMasterRecord[]): Promise<void>;
+  createCatalog(
+    payload: SkillMasterPayload,
+    scope: SkillTransferParams,
+  ): Promise<SkillMasterRecord>;
+  updateCatalog(
+    id: string,
+    payload: SkillMasterPayload,
+    scope: SkillTransferParams,
+  ): Promise<SkillMasterRecord>;
+  deleteCatalog(id: string, userId: string): Promise<void>;
+  batchDeleteCatalog(ids: string[], userId: string): Promise<number>;
+  importCatalog(
+    file: File,
+    scope: SkillTransferParams,
+  ): Promise<{ successCount: number; failCount: number; errors: string[] }>;
+  exportCatalog(records: SkillMasterRecord[], scope: SkillTransferParams): Promise<void>;
 }
 
 function useHttpTransport(): boolean {
@@ -181,10 +187,6 @@ function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanning
       isHttp
         ? updateHttpCapabilityPlanning(type, body, userId)
         : updateMockCapabilityPlanning(type, body),
-    batchUpdatePlanning: (ids, patch) =>
-      isHttp
-        ? batchUpdateHttpCapabilityPlanning(type, ids, patch)
-        : batchUpdateMockCapabilityPlanning(type, ids, patch),
     deletePlanning: (id, userId) =>
       isHttp
         ? deleteHttpCapabilityPlanning(type, id, userId)
@@ -205,33 +207,35 @@ function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanning
       isHttp
         ? downloadHttpCapabilityPlanningTemplate(type)
         : downloadMockCapabilityPlanningTemplate(type),
-    getProducts: (_offeringName, planningDeptName) =>
+    getProducts: (offeringName, planningDeptName, deptCode) =>
       isHttp
-        ? getHttpCapabilityProducts(type, planningDeptName)
+        ? getHttpCapabilityProducts(type, offeringName, planningDeptName, deptCode)
         : getMockCapabilityProducts(type, planningDeptName),
     queryCatalog: (query = {}) =>
       isHttp ? queryHttpCapabilityCatalog(type, query) : queryMockCapabilityCatalog(type, query),
-    createCatalog: (payload) =>
+    createCatalog: (payload, scope) =>
       isHttp
-        ? createHttpCapabilityCatalogRecord(type, payload)
+        ? createHttpCapabilityCatalogRecord(type, payload, scope)
         : createMockCapabilityCatalogRecord(type, payload),
-    updateCatalog: (id, payload) =>
+    updateCatalog: (id, payload, scope) =>
       isHttp
-        ? updateHttpCapabilityCatalogRecord(type, id, payload)
+        ? updateHttpCapabilityCatalogRecord(type, id, payload, scope)
         : updateMockCapabilityCatalogRecord(type, id, payload),
-    deleteCatalog: (id) =>
+    deleteCatalog: (id, userId) =>
       isHttp
-        ? deleteHttpCapabilityCatalogRecord(type, id)
+        ? deleteHttpCapabilityCatalogRecord(type, id, userId)
         : deleteMockCapabilityCatalogRecord(type, id),
-    batchDeleteCatalog: (ids) =>
+    batchDeleteCatalog: (ids, userId) =>
       isHttp
-        ? batchDeleteHttpCapabilityCatalogRecords(type, ids)
+        ? batchDeleteHttpCapabilityCatalogRecords(type, ids, userId)
         : batchDeleteMockCapabilityCatalogRecords(type, ids),
-    importCatalog: (file) =>
-      isHttp ? importHttpCapabilityCatalog(type, file) : importMockCapabilityCatalog(type, file),
-    exportCatalog: (records) =>
+    importCatalog: (file, scope) =>
       isHttp
-        ? exportHttpCapabilityCatalog(type, records)
+        ? importHttpCapabilityCatalog(type, file, scope)
+        : importMockCapabilityCatalog(type, file),
+    exportCatalog: (records, scope) =>
+      isHttp
+        ? exportHttpCapabilityCatalog(type, records, scope)
         : exportMockCapabilityCatalog(type, records),
   };
 }
@@ -242,30 +246,29 @@ const skillApi: HarnessCapabilityPlanningApi = {
   queryPlanning: querySkillPlanningSupplement,
   createPlanning: createSkillPlanningSupplement,
   updatePlanning: updateSkillPlanningSupplement,
-  batchUpdatePlanning: batchUpdateSkillPlanning,
-  deletePlanning: deleteSkillPlanning,
-  batchDeletePlanning: batchDeleteSkillPlanning,
+  deletePlanning: deleteSkillPlanningSupplement,
+  batchDeletePlanning: batchDeleteSkillPlanningSupplement,
   importPlanning: importSkillPlanningFromExcel,
   exportPlanning: exportSkillPlanningSupplementFile,
   downloadPlanningTemplate: downloadSkillPlanningTemplate,
   getProducts: getProductPlanning,
   queryCatalog: querySkillCatalog,
-  createCatalog: async () => {
+  createCatalog: async (_payload, _scope) => {
     throw new Error('Skill 清单继续使用现有管理组件');
   },
-  updateCatalog: async () => {
+  updateCatalog: async (_id, _payload, _scope) => {
     throw new Error('Skill 清单继续使用现有管理组件');
   },
-  deleteCatalog: async () => {
+  deleteCatalog: async (_id, _userId) => {
     throw new Error('Skill 清单继续使用现有管理组件');
   },
-  batchDeleteCatalog: async () => {
+  batchDeleteCatalog: async (_ids, _userId) => {
     throw new Error('Skill 清单继续使用现有管理组件');
   },
-  importCatalog: async () => {
+  importCatalog: async (_file, _scope) => {
     throw new Error('Skill 清单继续使用现有管理组件');
   },
-  exportCatalog: async () => {
+  exportCatalog: async (_records, _scope) => {
     throw new Error('Skill 清单继续使用现有管理组件');
   },
 };

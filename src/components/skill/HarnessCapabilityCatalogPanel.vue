@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
 import {
   getHarnessCapabilityPlanningApi,
   type HarnessCapabilityType,
 } from '../../services/skillMarket/harnessCapabilityPlanningService';
+import type { SkillTransferParams } from '../../services/skillMarket/apiTypes';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import {
+  querySkillPlanningUsers,
+  type SkillPlanningUserOption,
+} from '../../services/skillMarket/skillPlanningService';
+import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
 import type {
   SkillMasterPayload,
   SkillMasterRecord,
@@ -19,22 +26,53 @@ type DepartmentNode = {
   children?: DepartmentNode[];
 };
 
+type PersonPickerState = {
+  keyword: string;
+  open: boolean;
+  loading: boolean;
+  options: SkillPlanningUserOption[];
+  message: string;
+  selected: SkillPlanningUserOption | null;
+};
+
+function createPersonPickerState(): PersonPickerState {
+  return {
+    keyword: '',
+    open: false,
+    loading: false,
+    options: [],
+    message: '请输入人员信息',
+    selected: null,
+  };
+}
+
 const props = withDefaults(
   defineProps<{
     capabilityType: Exclude<HarnessCapabilityType, 'skill'>;
     departmentTree?: DepartmentNode[];
+    userId?: string;
     currentUserDepartmentPath?: string[];
+    defaultDepartmentPath?: string[];
   }>(),
   {
     departmentTree: () => [],
+    userId: '',
     currentUserDepartmentPath: () => [],
+    defaultDepartmentPath: () => [],
   },
 );
 
 const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => api.value.label);
 const departmentSegments = ref<string[]>([]);
-const filterForm = reactive({ level: '部门级', departmentName: '', keyword: '' });
+const filterForm = reactive({
+  level: '部门级',
+  departmentName: '',
+  product: '',
+  keyword: '',
+});
+const productOptions = ref<ProductPlanningOption[]>([]);
+const productsLoading = ref(false);
 const records = ref<SkillMasterRecord[]>([]);
 const loading = ref(false);
 const selectedIds = ref<string[]>([]);
@@ -46,6 +84,13 @@ let toastTimer: number | null = null;
 const importInputRef = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const exporting = ref(false);
+let productLoadSequence = 0;
+const ownerPicker = reactive(createPersonPickerState());
+const developOwnerPicker = reactive(createPersonPickerState());
+let ownerSearchTimer: number | null = null;
+let developOwnerSearchTimer: number | null = null;
+let ownerSearchSequence = 0;
+let developOwnerSearchSequence = 0;
 
 const editor = reactive({
   open: false,
@@ -56,6 +101,7 @@ const editor = reactive({
   owner: '',
   department: '',
   developOwner: '',
+  developOwnerDepartment: '',
   plannedCompleteDate: '',
   status: '未开始' as SkillMasterStatus,
   error: '',
@@ -106,8 +152,92 @@ function firstLeafPath(nodes: DepartmentNode[], parent: string[] = []): string[]
   return [];
 }
 
+function findDepartmentNode(path = departmentSegments.value): DepartmentNode | null {
+  let nodes = props.departmentTree;
+  let matched: DepartmentNode | null = null;
+  for (const segment of normalizePath(path)) {
+    matched = nodes.find((item) => item.name === segment) ?? null;
+    if (!matched) return null;
+    nodes = matched.children ?? [];
+  }
+  return matched;
+}
+
+const selectedProduct = computed(() =>
+  productOptions.value.find((item) => item.offeringName === filterForm.product),
+);
+
+const catalogScopeErrorMessage = computed(() => {
+  if (!props.userId.trim()) return '尚未获取当前用户工号';
+  if (!filterForm.departmentName.trim()) {
+    return filterForm.level === '产品级' ? '请选择产品所属部门' : '请选择归属部门';
+  }
+  const departmentCode = getDepartmentNodeCode(findDepartmentNode());
+  if (!departmentCode) return '所选部门缺少部门编码，请刷新部门数据后重试';
+  if (filterForm.level === '产品级') {
+    if (!filterForm.product.trim()) return '请选择产品';
+    if (!selectedProduct.value?.offeringId) return '所选产品缺少产品编码，请重新选择';
+  }
+  return '';
+});
+
+const currentCatalogScope = computed<SkillTransferParams | null>(() => {
+  if (catalogScopeErrorMessage.value) return null;
+  if (filterForm.level === '产品级') {
+    return {
+      userId: props.userId.trim(),
+      dimType: '产品级',
+      dimCode: selectedProduct.value?.offeringId ?? '',
+      dimName: filterForm.product.trim(),
+    };
+  }
+  return {
+    userId: props.userId.trim(),
+    dimType: '部门级',
+    dimCode: getDepartmentNodeCode(findDepartmentNode()),
+    dimName: filterForm.departmentName.trim(),
+  };
+});
+
+function requireCatalogScope(): SkillTransferParams {
+  const scope = currentCatalogScope.value;
+  if (!scope) throw new Error(catalogScopeErrorMessage.value || '请选择清单范围');
+  return scope;
+}
+
+async function loadProductOptions(): Promise<void> {
+  const requestSequence = ++productLoadSequence;
+  productOptions.value = [];
+  productsLoading.value = false;
+  if (filterForm.level !== '产品级' || !filterForm.departmentName.trim()) return;
+  const departmentCode = getDepartmentNodeCode(findDepartmentNode());
+  if (!departmentCode) return;
+  productsLoading.value = true;
+  try {
+    const options = await api.value.getProducts(
+      '',
+      filterForm.departmentName.trim(),
+      departmentCode,
+    );
+    if (requestSequence !== productLoadSequence) return;
+    productOptions.value = options;
+    if (!options.some((item) => item.offeringName === filterForm.product)) {
+      filterForm.product = '';
+    }
+  } catch (error) {
+    if (requestSequence === productLoadSequence) {
+      showToast(error instanceof Error ? error.message : '产品列表加载失败');
+    }
+  } finally {
+    if (requestSequence === productLoadSequence) productsLoading.value = false;
+  }
+}
+
 function applyDefaultDepartment(): void {
-  const preferred = normalizePath(props.currentUserDepartmentPath);
+  const permissionDefault = normalizePath(props.defaultDepartmentPath);
+  const preferred = permissionDefault.length
+    ? permissionDefault
+    : normalizePath(props.currentUserDepartmentPath);
   const path = pathExists(props.departmentTree, preferred)
     ? preferred
     : firstLeafPath(props.departmentTree);
@@ -130,12 +260,20 @@ const allPageSelected = computed(
 );
 
 async function reload(): Promise<void> {
+  const scope = currentCatalogScope.value;
+  if (!scope) {
+    records.value = [];
+    selectedIds.value = [];
+    return;
+  }
   loading.value = true;
   try {
     records.value = await api.value.queryCatalog({
+      ...scope,
       keyword: filterForm.keyword,
       departmentName: filterForm.departmentName,
       level: filterForm.level,
+      product: filterForm.product,
     });
     if (pageNum.value > totalPages.value) pageNum.value = totalPages.value;
     selectedIds.value = selectedIds.value.filter((id) =>
@@ -152,6 +290,8 @@ async function reload(): Promise<void> {
 async function onDepartmentDone(path: string[] = []): Promise<void> {
   departmentSegments.value = normalizePath(path);
   filterForm.departmentName = departmentSegments.value.at(-1) ?? '';
+  filterForm.product = '';
+  await loadProductOptions();
   pageNum.value = 1;
   await reload();
 }
@@ -163,8 +303,22 @@ async function applyQuery(): Promise<void> {
 
 async function resetQuery(): Promise<void> {
   filterForm.level = '部门级';
+  filterForm.product = '';
   filterForm.keyword = '';
   applyDefaultDepartment();
+  await loadProductOptions();
+  pageNum.value = 1;
+  await reload();
+}
+
+async function onLevelChange(): Promise<void> {
+  filterForm.product = '';
+  pageNum.value = 1;
+  await loadProductOptions();
+  await reload();
+}
+
+async function onProductChange(): Promise<void> {
   pageNum.value = 1;
   await reload();
 }
@@ -182,6 +336,186 @@ function togglePageSelection(): void {
     : [...new Set([...selectedIds.value, ...ids])];
 }
 
+function clearOwnerSearchTimer(): void {
+  if (ownerSearchTimer !== null) {
+    window.clearTimeout(ownerSearchTimer);
+    ownerSearchTimer = null;
+  }
+}
+
+function clearDevelopOwnerSearchTimer(): void {
+  if (developOwnerSearchTimer !== null) {
+    window.clearTimeout(developOwnerSearchTimer);
+    developOwnerSearchTimer = null;
+  }
+}
+
+function closeOwnerPersonSearch(): void {
+  ownerPicker.open = false;
+  clearOwnerSearchTimer();
+  ownerSearchSequence += 1;
+  ownerPicker.loading = false;
+}
+
+function closeDevelopOwnerPersonSearch(): void {
+  developOwnerPicker.open = false;
+  clearDevelopOwnerSearchTimer();
+  developOwnerSearchSequence += 1;
+  developOwnerPicker.loading = false;
+}
+
+function resetPersonPicker(picker: PersonPickerState): void {
+  if (picker === ownerPicker) closeOwnerPersonSearch();
+  if (picker === developOwnerPicker) closeDevelopOwnerPersonSearch();
+  Object.assign(picker, createPersonPickerState());
+}
+
+function selectOwner(option: SkillPlanningUserOption): void {
+  ownerPicker.selected = option;
+  ownerPicker.keyword = option.label;
+  editor.owner = option.label;
+  editor.department = option.deptName;
+  editor.error = '';
+  closeOwnerPersonSearch();
+}
+
+function selectDevelopOwner(option: SkillPlanningUserOption): void {
+  developOwnerPicker.selected = option;
+  developOwnerPicker.keyword = option.label;
+  editor.developOwner = option.label;
+  editor.developOwnerDepartment = option.deptName;
+  editor.error = '';
+  closeDevelopOwnerPersonSearch();
+}
+
+function clearOwnerSelection(): void {
+  resetPersonPicker(ownerPicker);
+  editor.owner = '';
+  editor.department = '';
+  editor.error = '';
+}
+
+function clearDevelopOwnerSelection(): void {
+  resetPersonPicker(developOwnerPicker);
+  editor.developOwner = '';
+  editor.developOwnerDepartment = '';
+  editor.error = '';
+}
+
+async function searchOwnerUsers(): Promise<void> {
+  const keyword = ownerPicker.keyword.trim();
+  ownerPicker.open = true;
+  ownerPicker.message = '';
+  if (!keyword) {
+    ownerSearchSequence += 1;
+    ownerPicker.loading = false;
+    ownerPicker.options = [];
+    ownerPicker.message = '请输入人员信息';
+    return;
+  }
+  const requestSequence = ++ownerSearchSequence;
+  ownerPicker.loading = true;
+  try {
+    const options = await querySkillPlanningUsers(keyword);
+    if (requestSequence !== ownerSearchSequence) return;
+    ownerPicker.options = options;
+    ownerPicker.message = options.length ? '' : '暂无匹配人员';
+  } catch (error) {
+    if (requestSequence !== ownerSearchSequence) return;
+    ownerPicker.options = [];
+    ownerPicker.message = error instanceof Error ? error.message : '人员查询失败，请稍后重试';
+  } finally {
+    if (requestSequence === ownerSearchSequence) ownerPicker.loading = false;
+  }
+}
+
+async function searchDevelopOwnerUsers(): Promise<void> {
+  const keyword = developOwnerPicker.keyword.trim();
+  developOwnerPicker.open = true;
+  developOwnerPicker.message = '';
+  if (!keyword) {
+    developOwnerSearchSequence += 1;
+    developOwnerPicker.loading = false;
+    developOwnerPicker.options = [];
+    developOwnerPicker.message = '请输入人员信息';
+    return;
+  }
+  const requestSequence = ++developOwnerSearchSequence;
+  developOwnerPicker.loading = true;
+  try {
+    const options = await querySkillPlanningUsers(keyword);
+    if (requestSequence !== developOwnerSearchSequence) return;
+    developOwnerPicker.options = options;
+    developOwnerPicker.message = options.length ? '' : '暂无匹配人员';
+  } catch (error) {
+    if (requestSequence !== developOwnerSearchSequence) return;
+    developOwnerPicker.options = [];
+    developOwnerPicker.message =
+      error instanceof Error ? error.message : '人员查询失败，请稍后重试';
+  } finally {
+    if (requestSequence === developOwnerSearchSequence) developOwnerPicker.loading = false;
+  }
+}
+
+function onOwnerPickerFocus(): void {
+  if (editor.owner.trim()) return;
+  ownerPicker.open = true;
+  if (ownerPicker.keyword.trim()) {
+    void searchOwnerUsers();
+  } else {
+    ownerSearchSequence += 1;
+    ownerPicker.loading = false;
+    ownerPicker.options = [];
+    ownerPicker.message = '请输入人员信息';
+  }
+}
+
+function onDevelopOwnerPickerFocus(): void {
+  if (editor.developOwner.trim()) return;
+  developOwnerPicker.open = true;
+  if (developOwnerPicker.keyword.trim()) {
+    void searchDevelopOwnerUsers();
+  } else {
+    developOwnerSearchSequence += 1;
+    developOwnerPicker.loading = false;
+    developOwnerPicker.options = [];
+    developOwnerPicker.message = '请输入人员信息';
+  }
+}
+
+function onOwnerPickerInput(event: Event): void {
+  ownerPicker.keyword = event.target instanceof HTMLInputElement ? event.target.value : '';
+  ownerPicker.selected = null;
+  ownerPicker.open = true;
+  clearOwnerSearchTimer();
+  ownerSearchTimer = window.setTimeout(() => void searchOwnerUsers(), 250);
+}
+
+function onDevelopOwnerPickerInput(event: Event): void {
+  developOwnerPicker.keyword = event.target instanceof HTMLInputElement ? event.target.value : '';
+  developOwnerPicker.selected = null;
+  developOwnerPicker.open = true;
+  clearDevelopOwnerSearchTimer();
+  developOwnerSearchTimer = window.setTimeout(() => void searchDevelopOwnerUsers(), 250);
+}
+
+function hydratePersonPicker(picker: PersonPickerState, label: string, department: string): void {
+  resetPersonPicker(picker);
+  const normalized = label.trim();
+  picker.keyword = normalized;
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return;
+  const id = parts.at(-1) ?? '';
+  picker.selected = {
+    id,
+    sAMAccountName: id,
+    chName: parts.slice(0, -1).join(' '),
+    label: normalized,
+    deptName: department.trim(),
+    raw: {},
+  };
+}
+
 function resetEditor(): void {
   Object.assign(editor, {
     id: '',
@@ -190,11 +524,14 @@ function resetEditor(): void {
     owner: '',
     department: filterForm.departmentName,
     developOwner: '',
+    developOwnerDepartment: '',
     plannedCompleteDate: '',
     status: '未开始' as SkillMasterStatus,
     error: '',
     submitting: false,
   });
+  resetPersonPicker(ownerPicker);
+  resetPersonPicker(developOwnerPicker);
 }
 
 function openCreate(): void {
@@ -213,17 +550,22 @@ function openEdit(record: SkillMasterRecord): void {
     owner: record.owner,
     department: record.department,
     developOwner: record.developOwner,
+    developOwnerDepartment: record.developOwnerDepartment,
     plannedCompleteDate: record.plannedCompleteDate,
     status: record.status,
     error: '',
     submitting: false,
   });
+  hydratePersonPicker(ownerPicker, record.owner, record.department);
+  hydratePersonPicker(developOwnerPicker, record.developOwner, record.developOwnerDepartment);
 }
 
 function closeEditor(): void {
   if (editor.submitting) return;
   editor.open = false;
   editor.error = '';
+  resetPersonPicker(ownerPicker);
+  resetPersonPicker(developOwnerPicker);
 }
 
 function editorPayload(): SkillMasterPayload {
@@ -231,11 +573,11 @@ function editorPayload(): SkillMasterPayload {
     name: editor.name,
     description: editor.description,
     level: filterForm.level,
-    product: '',
+    product: filterForm.level === '产品级' ? filterForm.product : '',
     owner: editor.owner,
-    department: editor.department || filterForm.departmentName,
+    department: filterForm.departmentName,
     developOwner: editor.developOwner,
-    developOwnerDepartment: editor.department || filterForm.departmentName,
+    developOwnerDepartment: editor.developOwnerDepartment,
     plannedCompleteDate: editor.plannedCompleteDate,
     status: editor.status,
   };
@@ -243,13 +585,34 @@ function editorPayload(): SkillMasterPayload {
 
 async function submitEditor(): Promise<void> {
   editor.error = '';
+  if (!editor.name.trim()) {
+    editor.error = `请输入 ${capabilityLabel.value} 名称`;
+    return;
+  }
+  if (!editor.description.trim()) {
+    editor.error = `请输入 ${capabilityLabel.value} 说明`;
+    return;
+  }
+  if (!ownerPicker.selected || !editor.owner.trim()) {
+    editor.error = '请选择责任 Owner，不能只输入文本';
+    return;
+  }
+  if (!developOwnerPicker.selected || !editor.developOwner.trim()) {
+    editor.error = '请选择开发责任人，不能只输入文本';
+    return;
+  }
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return;
+  }
   try {
     editor.submitting = true;
+    const scope = requireCatalogScope();
     if (editor.mode === 'create') {
-      await api.value.createCatalog(editorPayload());
+      await api.value.createCatalog(editorPayload(), scope);
       showToast(`已新增 ${capabilityLabel.value}`);
     } else {
-      await api.value.updateCatalog(editor.id, editorPayload());
+      await api.value.updateCatalog(editor.id, editorPayload(), scope);
       showToast('已保存修改');
     }
     editor.open = false;
@@ -287,10 +650,10 @@ async function confirmDelete(): Promise<void> {
   try {
     deleteDialog.submitting = true;
     if (deleteDialog.ids.length === 1) {
-      await api.value.deleteCatalog(deleteDialog.ids[0]!);
+      await api.value.deleteCatalog(deleteDialog.ids[0]!, props.userId.trim());
       showToast('已删除');
     } else {
-      const count = await api.value.batchDeleteCatalog(deleteDialog.ids);
+      const count = await api.value.batchDeleteCatalog(deleteDialog.ids, props.userId.trim());
       showToast(`已删除 ${count} 条数据`);
     }
     selectedIds.value = selectedIds.value.filter((id) => !deleteDialog.ids.includes(id));
@@ -314,7 +677,8 @@ async function handleImport(event: Event): Promise<void> {
   if (!file) return;
   try {
     importing.value = true;
-    const result = await api.value.importCatalog(file);
+    const scope = requireCatalogScope();
+    const result = await api.value.importCatalog(file, scope);
     const suffix = result.failCount ? `，失败 ${result.failCount} 条` : '';
     showToast(`成功导入 ${result.successCount} 条${suffix}`);
     await reload();
@@ -328,7 +692,8 @@ async function handleImport(event: Event): Promise<void> {
 async function exportCurrent(): Promise<void> {
   try {
     exporting.value = true;
-    await api.value.exportCatalog(records.value);
+    const scope = requireCatalogScope();
+    await api.value.exportCatalog(records.value, scope);
     showToast(`已开始导出 ${capabilityLabel.value} 清单`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '导出失败');
@@ -346,28 +711,72 @@ watch(
   async () => {
     selectedIds.value = [];
     pageNum.value = 1;
+    await loadProductOptions();
     await reload();
   },
 );
 
+watch(
+  () => props.userId,
+  async () => {
+    await reload();
+  },
+);
+
+watch(
+  [
+    () => props.departmentTree,
+    () => props.currentUserDepartmentPath,
+    () => props.defaultDepartmentPath,
+  ],
+  async () => {
+    const defaultPath = normalizePath(props.defaultDepartmentPath);
+    const shouldApplyPermissionDefault =
+      defaultPath.length > 0 &&
+      normalizePath(departmentSegments.value).join('\u0001') !== defaultPath.join('\u0001');
+    if (
+      shouldApplyPermissionDefault ||
+      !pathExists(props.departmentTree, departmentSegments.value)
+    ) {
+      applyDefaultDepartment();
+    }
+    await loadProductOptions();
+    await reload();
+  },
+  { deep: true },
+);
+
+onBeforeUnmount(() => {
+  if (toastTimer !== null) window.clearTimeout(toastTimer);
+  clearOwnerSearchTimer();
+  clearDevelopOwnerSearchTimer();
+  ownerSearchSequence += 1;
+  developOwnerSearchSequence += 1;
+});
+
 onMounted(async () => {
   applyDefaultDepartment();
+  await loadProductOptions();
   await reload();
 });
 </script>
 
 <template>
   <section class="capability-master-panel" :aria-label="`${capabilityLabel} 清单管理`">
-    <section class="capability-master-filter" :aria-label="`${capabilityLabel} 清单查询`">
+    <section
+      class="capability-master-filter"
+      :class="{ 'is-product-level': filterForm.level === '产品级' }"
+      :aria-label="`${capabilityLabel} 清单查询`"
+    >
       <label class="capability-master-field capability-master-field--level">
         <span>层级 <em>*</em></span>
-        <select v-model="filterForm.level" @change="applyQuery">
+        <select v-model="filterForm.level" @change="onLevelChange">
           <option value="部门级">部门级</option>
           <option value="产品级">产品级</option>
         </select>
       </label>
       <div class="capability-master-field capability-master-field--dept">
-        <span>{{ filterForm.level === '产品级' ? '产品所属部门 *' : '归属部门 *' }}</span>
+        <span>{{ filterForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
         <MarketDeptCascader
           v-model="departmentSegments"
           class="capability-master-dept-cascader"
@@ -380,6 +789,34 @@ onMounted(async () => {
           @done="onDepartmentDone"
         />
       </div>
+      <label
+        v-if="filterForm.level === '产品级'"
+        class="capability-master-field capability-master-field--product"
+      >
+        <span>产品 <em>*</em></span>
+        <select
+          v-model="filterForm.product"
+          :disabled="!filterForm.departmentName || productsLoading"
+          @change="onProductChange"
+        >
+          <option value="">
+            {{
+              productsLoading
+                ? '产品加载中...'
+                : filterForm.departmentName
+                  ? '请选择产品'
+                  : '请先选择部门'
+            }}
+          </option>
+          <option
+            v-for="product in productOptions"
+            :key="product.offeringId"
+            :value="product.offeringName"
+          >
+            {{ product.offeringName }}
+          </option>
+        </select>
+      </label>
       <label class="capability-master-field capability-master-field--keyword">
         <span>关键词</span>
         <input
@@ -390,7 +827,13 @@ onMounted(async () => {
         />
       </label>
       <div class="capability-master-filter__actions">
-        <button type="button" class="capability-master-btn is-primary" @click="applyQuery">
+        <button
+          type="button"
+          class="capability-master-btn is-primary"
+          :disabled="!currentCatalogScope"
+          :title="catalogScopeErrorMessage"
+          @click="applyQuery"
+        >
           查询
         </button>
         <button type="button" class="capability-master-btn" @click="resetQuery">重置</button>
@@ -413,7 +856,13 @@ onMounted(async () => {
             accept=".xlsx,.xls"
             @change="handleImport"
           />
-          <button type="button" class="capability-master-btn is-primary" @click="openCreate">
+          <button
+            type="button"
+            class="capability-master-btn is-primary"
+            :disabled="!currentCatalogScope"
+            :title="catalogScopeErrorMessage"
+            @click="openCreate"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 5v14M5 12h14" />
             </svg>
@@ -422,7 +871,8 @@ onMounted(async () => {
           <button
             type="button"
             class="capability-master-btn"
-            :disabled="importing"
+            :disabled="importing || !currentCatalogScope"
+            :title="catalogScopeErrorMessage"
             @click="triggerImport"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -433,7 +883,8 @@ onMounted(async () => {
           <button
             type="button"
             class="capability-master-btn"
-            :disabled="exporting"
+            :disabled="exporting || !currentCatalogScope"
+            :title="catalogScopeErrorMessage"
             @click="exportCurrent"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -557,6 +1008,10 @@ onMounted(async () => {
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
+          <div class="capability-master-note">
+            <b>部门语义</b>
+            <span>Owner 所在部门是人员属性，不作为 {{ capabilityLabel }} 的规划归属。</span>
+          </div>
           <div class="capability-master-form">
             <label class="is-wide">
               <span>{{ capabilityLabel }} 名称 *</span>
@@ -570,31 +1025,101 @@ onMounted(async () => {
               <span>{{ capabilityLabel }} 说明 *</span>
               <textarea v-model.trim="editor.description" rows="4" maxlength="300" />
             </label>
-            <label>
+            <label class="person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
-              <input v-model.trim="editor.owner" placeholder="姓名 工号" />
+              <div class="person-search__control">
+                <input
+                  :value="ownerPicker.keyword"
+                  type="text"
+                  autocomplete="off"
+                  :readonly="Boolean(editor.owner.trim())"
+                  placeholder="输入姓名或工号后选择"
+                  @focus="onOwnerPickerFocus"
+                  @input="onOwnerPickerInput"
+                />
+                <button
+                  v-if="editor.owner.trim()"
+                  type="button"
+                  class="person-search__clear"
+                  title="清除责任 Owner"
+                  aria-label="清除责任 Owner"
+                  @mousedown.prevent
+                  @click.stop="clearOwnerSelection"
+                >
+                  ×
+                </button>
+              </div>
+              <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                <template v-else>
+                  <button
+                    v-for="option in ownerPicker.options"
+                    :key="option.id || option.label"
+                    type="button"
+                    @click="selectOwner(option)"
+                  >
+                    <span>
+                      <strong>{{ option.chName || option.label }}</strong>
+                      <small>{{ option.id }}</small>
+                    </span>
+                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                  </button>
+                  <span v-if="ownerPicker.message" class="person-search__empty">
+                    {{ ownerPicker.message }}
+                  </span>
+                </template>
+              </div>
             </label>
-            <label>
+            <label class="person-search" @keydown.esc="closeDevelopOwnerPersonSearch">
               <span>开发责任人 *</span>
-              <input v-model.trim="editor.developOwner" placeholder="姓名 工号" />
+              <div class="person-search__control">
+                <input
+                  :value="developOwnerPicker.keyword"
+                  type="text"
+                  autocomplete="off"
+                  :readonly="Boolean(editor.developOwner.trim())"
+                  placeholder="输入姓名或工号后选择"
+                  @focus="onDevelopOwnerPickerFocus"
+                  @input="onDevelopOwnerPickerInput"
+                />
+                <button
+                  v-if="editor.developOwner.trim()"
+                  type="button"
+                  class="person-search__clear"
+                  title="清除开发责任人"
+                  aria-label="清除开发责任人"
+                  @mousedown.prevent
+                  @click.stop="clearDevelopOwnerSelection"
+                >
+                  ×
+                </button>
+              </div>
+              <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                <span v-if="developOwnerPicker.loading" class="person-search__empty">
+                  查询中...
+                </span>
+                <template v-else>
+                  <button
+                    v-for="option in developOwnerPicker.options"
+                    :key="option.id || option.label"
+                    type="button"
+                    @click="selectDevelopOwner(option)"
+                  >
+                    <span>
+                      <strong>{{ option.chName || option.label }}</strong>
+                      <small>{{ option.id }}</small>
+                    </span>
+                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                  </button>
+                  <span v-if="developOwnerPicker.message" class="person-search__empty">
+                    {{ developOwnerPicker.message }}
+                  </span>
+                </template>
+              </div>
             </label>
             <label>
-              <span>归属部门</span>
-              <input v-model.trim="editor.department" readonly />
-            </label>
-            <label>
-              <span>计划完成时间</span>
+              <span>计划完成时间 *</span>
               <input v-model="editor.plannedCompleteDate" type="date" />
-            </label>
-            <label>
-              <span>当前进展</span>
-              <select v-model="editor.status">
-                <option value="未开始">未开始</option>
-                <option value="开发中">开发中</option>
-                <option value="进行中">进行中</option>
-                <option value="联调中">联调中</option>
-                <option value="已完成">已完成</option>
-              </select>
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>
@@ -658,6 +1183,11 @@ onMounted(async () => {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 12px 34px rgba(45, 58, 92, 0.06);
+}
+.capability-master-filter.is-product-level {
+  grid-template-columns:
+    minmax(110px, 0.55fr) minmax(280px, 1.4fr) minmax(180px, 0.9fr) minmax(260px, 1.5fr)
+    auto;
 }
 .capability-master-field {
   display: grid;
@@ -740,7 +1270,7 @@ onMounted(async () => {
   stroke-linejoin: round;
   stroke-width: 2;
 }
-.capability-master-btn:hover:not(:disabled) {
+.capability-master-btn:not(.is-primary):hover:not(:disabled) {
   border-color: #91a9ea;
   background: #f7f9ff;
   transform: translateY(-1px);
@@ -750,6 +1280,11 @@ onMounted(async () => {
   background: linear-gradient(135deg, #2f7df6, #7552ff);
   color: #ffffff;
   box-shadow: 0 12px 24px rgba(47, 125, 246, 0.18);
+}
+.capability-master-btn.is-primary:hover:not(:disabled) {
+  border-color: #245fe1;
+  background: linear-gradient(135deg, #256fe9, #5f42df);
+  color: #ffffff;
 }
 .capability-master-btn.is-danger {
   border-color: #ffd7d7;
@@ -974,23 +1509,25 @@ td.is-description {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(15, 23, 42, 0.46);
-  backdrop-filter: blur(3px);
+  background: rgba(18, 27, 45, 0.42);
+  backdrop-filter: blur(4px);
 }
 .capability-master-dialog {
-  width: min(760px, calc(100vw - 40px));
-  overflow: hidden;
-  border: 1px solid #dbe4f1;
-  border-radius: 16px;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 22px;
+  border: 0;
+  border-radius: 14px;
   background: #fff;
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
 }
 .capability-master-dialog > header {
   display: flex;
+  align-items: start;
   justify-content: space-between;
-  gap: 20px;
-  padding: 24px 28px 18px;
-  border-bottom: 1px solid #e9eef5;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 .capability-master-dialog > header div {
   display: grid;
@@ -1008,26 +1545,39 @@ td.is-description {
 .capability-master-dialog > header p {
   margin: 0;
   color: #718096;
-  font-size: 13px;
+  font-size: 11px;
 }
 .capability-master-dialog > header button {
+  width: 30px;
+  height: 30px;
   border: 0;
-  background: transparent;
+  border-radius: 8px;
+  background: #f2f4f8;
   color: #7a879b;
-  font-size: 26px;
+  font-size: 20px;
   cursor: pointer;
+}
+.capability-master-note {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce7fb;
+  border-radius: 8px;
+  background: #f5f8ff;
+  color: #58709e;
+  font-size: 11px;
 }
 .capability-master-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  padding: 24px 28px;
+  gap: 13px;
 }
 .capability-master-form label {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   color: #40516b;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
 }
 .capability-master-form label.is-wide {
@@ -1082,6 +1632,127 @@ td.is-description {
   background: #fff1f2;
   color: #d92d3e;
   font-size: 13px;
+}
+.capability-master-form input,
+.capability-master-form textarea,
+.capability-master-form select {
+  padding: 0 11px;
+  border-color: #d7dfeb;
+  font-size: 11px;
+}
+.capability-master-form input,
+.capability-master-form select {
+  height: 40px;
+}
+.capability-master-form textarea {
+  padding-top: 10px;
+}
+.person-search {
+  position: relative;
+  width: 100%;
+}
+.person-search__control {
+  position: relative;
+}
+.person-search__control > input[readonly] {
+  padding-right: 38px;
+  background: #f8fbff;
+  cursor: default;
+}
+.person-search__control > input:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.person-search__clear {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #64748b;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.person-search__clear:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+.person-search__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #dce3ee;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(39, 51, 80, 0.16);
+}
+.person-search__panel > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.person-search__panel > button:hover {
+  background: #f5f8ff;
+}
+.person-search__panel > button > span {
+  display: grid;
+  gap: 2px;
+}
+.person-search__panel strong {
+  color: #2c3950;
+  font-size: 11px;
+}
+.person-search__panel small,
+.person-search__panel em {
+  color: #78869a;
+  font-size: 9px;
+}
+.person-search__panel em {
+  font-style: normal;
+}
+.person-search__empty {
+  display: block;
+  padding: 16px 10px;
+  color: #98a2b1;
+  font-size: 10px;
+  text-align: center;
+}
+.capability-master-dialog > footer {
+  gap: 9px;
+  margin-top: 20px;
+  padding: 0;
+}
+.capability-master-dialog > footer button {
+  height: 36px;
+  padding: 0 16px;
+}
+.capability-master-dialog > footer button.is-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #256fe9, #5f42df);
+  color: #fff;
+}
+.capability-master-error {
+  margin: 14px 0 0;
 }
 .capability-master-dialog.is-confirm {
   width: min(440px, calc(100vw - 40px));

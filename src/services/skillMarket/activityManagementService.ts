@@ -403,7 +403,7 @@ export function getActivityUsageCount(id: string, departmentName = ''): number {
 }
 
 export function createActivity(
-  input: { parentId: string | null; name: string; status: ActivityStatus },
+  input: { parentId: string | null; name: string },
   departmentName = '',
 ): ActivityRecord {
   const activities = readActivities(departmentName);
@@ -417,7 +417,7 @@ export function createActivity(
     id: nextActivityId(),
     parentId: input.parentId,
     name,
-    status: input.status,
+    status: 'enabled',
     sort: activities.filter((item) => item.parentId === input.parentId).length + 1,
     skillCount: 0,
   };
@@ -428,7 +428,7 @@ export function createActivity(
 
 export function updateActivity(
   id: string,
-  patch: Partial<Pick<ActivityRecord, 'name' | 'status'>>,
+  patch: Partial<Pick<ActivityRecord, 'name'>>,
   departmentName = '',
 ): ActivityRecord {
   const activities = readActivities(departmentName);
@@ -447,7 +447,6 @@ export function updateActivity(
     }
     activity.name = name;
   }
-  if (patch.status) activity.status = patch.status;
   persistActivities(activities, departmentName);
   return { ...activity };
 }
@@ -543,12 +542,12 @@ export function deleteActivity(
 export function getActivityOptionGroups(departmentName = ''): SkillPlanningOptionGroup[] {
   const activities = readActivities(departmentName);
   return activities
-    .filter((activity) => activity.parentId === null && activity.status === 'enabled')
+    .filter((activity) => activity.parentId === null)
     .sort((left, right) => left.sort - right.sort)
     .map((parent) => ({
       value: parent.name,
       children: activities
-        .filter((activity) => activity.parentId === parent.id && activity.status === 'enabled')
+        .filter((activity) => activity.parentId === parent.id)
         .sort((left, right) => left.sort - right.sort)
         .map((activity) => activity.name),
     }));
