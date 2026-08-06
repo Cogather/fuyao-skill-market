@@ -3951,6 +3951,7 @@ onBeforeUnmount(() => {
       :user-id="props.userId"
       :department-tree="planningDepartmentTree"
       :current-user-department-path="currentUserMinimumDepartmentPath"
+      :default-department-path="defaultPlanningDepartmentPath"
     />
 
     <Teleport to="body">

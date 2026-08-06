@@ -52,11 +52,13 @@ const props = withDefaults(
     departmentTree?: DepartmentNode[];
     userId?: string;
     currentUserDepartmentPath?: string[];
+    defaultDepartmentPath?: string[];
   }>(),
   {
     departmentTree: () => [],
     userId: '',
     currentUserDepartmentPath: () => [],
+    defaultDepartmentPath: () => [],
   },
 );
 
@@ -232,7 +234,10 @@ async function loadProductOptions(): Promise<void> {
 }
 
 function applyDefaultDepartment(): void {
-  const preferred = normalizePath(props.currentUserDepartmentPath);
+  const permissionDefault = normalizePath(props.defaultDepartmentPath);
+  const preferred = permissionDefault.length
+    ? permissionDefault
+    : normalizePath(props.currentUserDepartmentPath);
   const path = pathExists(props.departmentTree, preferred)
     ? preferred
     : firstLeafPath(props.departmentTree);
@@ -719,9 +724,20 @@ watch(
 );
 
 watch(
-  [() => props.departmentTree, () => props.currentUserDepartmentPath],
+  [
+    () => props.departmentTree,
+    () => props.currentUserDepartmentPath,
+    () => props.defaultDepartmentPath,
+  ],
   async () => {
-    if (!pathExists(props.departmentTree, departmentSegments.value)) {
+    const defaultPath = normalizePath(props.defaultDepartmentPath);
+    const shouldApplyPermissionDefault =
+      defaultPath.length > 0 &&
+      normalizePath(departmentSegments.value).join('\u0001') !== defaultPath.join('\u0001');
+    if (
+      shouldApplyPermissionDefault ||
+      !pathExists(props.departmentTree, departmentSegments.value)
+    ) {
       applyDefaultDepartment();
     }
     await loadProductOptions();
