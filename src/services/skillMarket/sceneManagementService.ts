@@ -440,7 +440,7 @@ export function getSceneUsageCount(id: string, departmentName = ''): number {
 }
 
 export function createScene(
-  input: { parentId: string | null; name: string; status: SceneStatus },
+  input: { parentId: string | null; name: string },
   departmentName = '',
 ): SceneRecord {
   const scenes = readScenes(departmentName);
@@ -454,7 +454,7 @@ export function createScene(
     id: nextSceneId(),
     parentId: input.parentId,
     name,
-    status: input.status,
+    status: 'enabled',
     sort: scenes.filter((item) => item.parentId === input.parentId).length + 1,
     skillCount: 0,
   };
@@ -465,7 +465,7 @@ export function createScene(
 
 export function updateScene(
   id: string,
-  patch: Partial<Pick<SceneRecord, 'name' | 'status'>>,
+  patch: Partial<Pick<SceneRecord, 'name'>>,
   departmentName = '',
 ): SceneRecord {
   const scenes = readScenes(departmentName);
@@ -484,7 +484,6 @@ export function updateScene(
     }
     scene.name = name;
   }
-  if (patch.status) scene.status = patch.status;
   persistScenes(scenes, departmentName);
   return { ...scene };
 }
@@ -580,12 +579,12 @@ export function deleteScene(
 export function getSceneOptionGroups(departmentName = ''): SkillPlanningOptionGroup[] {
   const scenes = readScenes(departmentName);
   return scenes
-    .filter((scene) => scene.parentId === null && scene.status === 'enabled')
+    .filter((scene) => scene.parentId === null)
     .sort((left, right) => left.sort - right.sort)
     .map((parent) => ({
       value: parent.name,
       children: scenes
-        .filter((scene) => scene.parentId === parent.id && scene.status === 'enabled')
+        .filter((scene) => scene.parentId === parent.id)
         .sort((left, right) => left.sort - right.sort)
         .map((scene) => scene.name),
     }));

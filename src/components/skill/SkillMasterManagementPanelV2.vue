@@ -92,14 +92,12 @@ const toast = ref('');
 let toastTimer: number | null = null;
 function makeTaxonomyOptions(records: Array<SceneRecord | ActivityRecord>): TaxonomyOption[] {
   const parentNames = new Map(records.map((item) => [item.id, item.name]));
-  return records
-    .filter((item) => item.status === 'enabled')
-    .map((item) => ({
-      id: item.id,
-      label: item.parentId
-        ? `${parentNames.get(item.parentId) || '未分类'} / ${item.name}`
-        : item.name,
-    }));
+  return records.map((item) => ({
+    id: item.id,
+    label: item.parentId
+      ? `${parentNames.get(item.parentId) || '未分类'} / ${item.name}`
+      : item.name,
+  }));
 }
 const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
