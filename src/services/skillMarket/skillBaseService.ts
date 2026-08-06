@@ -900,8 +900,8 @@ export const skillBaseService = {
 
   // 查询当前用户的 Command 规划待办
   queryMyCommandPlanningTasks: (params: { userId: string }): any => {
-    return httpRequest.harnessCommand<any>({
-      url: '/config/task/my',
+    return httpRequest.harnessApi<any>({
+      url: '/task/command/my',
       method: 'get',
       params,
     });
@@ -909,8 +909,8 @@ export const skillBaseService = {
 
   // 查询当前用户的 Agent 规划待办
   queryMyAgentPlanningTasks: (params: { userId: string }): any => {
-    return httpRequest.harnessAgent<any>({
-      url: '/config/task/my',
+    return httpRequest.harnessApi<any>({
+      url: '/task/agent/my',
       method: 'get',
       params,
     });
@@ -918,8 +918,8 @@ export const skillBaseService = {
 
   // 查询当前用户的Skill规划待办
   queryMySkillPlanningTasks: (params: { userId: string }): any => {
-    return httpRequest.harnessSkill<any>({
-      url: '/config/task/my',
+    return httpRequest.harnessApi<any>({
+      url: '/task/skill/my',
       method: 'get',
       params,
     });
