@@ -428,10 +428,8 @@ function resetPlanningTaxonomySelections(): void {
 }
 
 function isPlanningDepartmentSelectionAllowed(segments: string[]): boolean {
-  if (
-    props.restrictToAllowedDepartments &&
-    normalizedAllowedPlanningDepartmentPaths.value.length > 0
-  ) {
+  if (!props.restrictToAllowedDepartments) return true;
+  if (normalizedAllowedPlanningDepartmentPaths.value.length > 0) {
     return normalizedAllowedPlanningDepartmentPaths.value.some((allowedPath) =>
       planningDepartmentPathStartsWith(segments, allowedPath),
     );

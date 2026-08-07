@@ -98,7 +98,9 @@ const permissionDepartmentNames = computed(() =>
     : [...MOCK_HARNESS_DEPARTMENT_NAMES],
 );
 
-const restrictToPermissionDepartments = computed(() => true);
+// Keep the complete department tree visible in mock mode across all planning tabs.
+// HTTP mode remains restricted to the departments returned by the permission API.
+const restrictToPermissionDepartments = computed(() => transportIsHttp);
 
 const canManageHarness = computed(
   () => !restrictToPermissionDepartments.value || permissionDepartmentNames.value.length > 0,
