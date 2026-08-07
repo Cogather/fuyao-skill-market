@@ -701,6 +701,10 @@ function catalogBody(
   type: MockHarnessCapabilityType,
   payload: SkillMasterPayload,
 ): CapabilityCatalogCreateBody {
+  const personPayload = payload as SkillMasterPayload & {
+    ownerId?: string;
+    developOwnerId?: string;
+  };
   const name = requiredText(payload.name, '请输入能力名称');
   const description = requiredText(payload.description, '请输入能力说明');
   const owner = parsePerson(payload.owner, '责任 Owner');
@@ -708,9 +712,15 @@ function catalogBody(
   const planFinishDate = requiredText(payload.plannedCompleteDate, '请选择计划完成时间');
   const sharedBody = {
     ownerName: owner.name,
-    ownerId: owner.id,
+    ownerId: requiredText(
+      personPayload.ownerId,
+      '\u8d23\u4efb Owner \u7528\u6237\u4fe1\u606f\u7f3a\u5c11 sAMAccountName',
+    ),
     developOwnerName: developOwner.name,
-    developOwnerId: developOwner.id,
+    developOwnerId: requiredText(
+      personPayload.developOwnerId,
+      '\u5f00\u53d1\u8d23\u4efb\u4eba\u7528\u6237\u4fe1\u606f\u7f3a\u5c11 sAMAccountName',
+    ),
     planFinishDate,
   };
   return type === 'command'

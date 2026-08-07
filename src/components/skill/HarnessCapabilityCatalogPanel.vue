@@ -35,6 +35,11 @@ type PersonPickerState = {
   selected: SkillPlanningUserOption | null;
 };
 
+type CapabilityCatalogEditorPayload = SkillMasterPayload & {
+  ownerId: string;
+  developOwnerId: string;
+};
+
 function createPersonPickerState(): PersonPickerState {
   return {
     keyword: '',
@@ -568,15 +573,17 @@ function closeEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
-function editorPayload(): SkillMasterPayload {
+function editorPayload(): CapabilityCatalogEditorPayload {
   return {
     name: editor.name,
     description: editor.description,
     level: filterForm.level,
     product: filterForm.level === '产品级' ? filterForm.product : '',
     owner: editor.owner,
+    ownerId: ownerPicker.selected?.sAMAccountName.trim() ?? '',
     department: filterForm.departmentName,
     developOwner: editor.developOwner,
+    developOwnerId: developOwnerPicker.selected?.sAMAccountName.trim() ?? '',
     developOwnerDepartment: editor.developOwnerDepartment,
     plannedCompleteDate: editor.plannedCompleteDate,
     status: editor.status,
