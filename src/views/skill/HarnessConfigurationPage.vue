@@ -19,7 +19,6 @@ const props = withDefaults(
   defineProps<{
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
-    isSuperAdmin?: boolean;
     canConfigureDepartmentPermissions?: boolean;
     ownerDepartments?: HarnessAuthorizedDepartment[];
     departmentPermissionPath?: string[];
@@ -33,7 +32,6 @@ const props = withDefaults(
   {
     departmentTree: () => [],
     userId: '',
-    isSuperAdmin: false,
     canConfigureDepartmentPermissions: false,
     ownerDepartments: () => [],
     departmentPermissionPath: () => [],
@@ -124,7 +122,6 @@ watch(
       <SceneSettingsPanel
         :department-tree="props.departmentTree"
         :user-id="props.userId"
-        :is-super-admin="props.isSuperAdmin"
         :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
         :allowed-department-paths="props.permissionDepartmentPaths"
@@ -144,7 +141,6 @@ watch(
       <ActivityManagementPanel
         :department-tree="props.departmentTree"
         :user-id="props.userId"
-        :is-super-admin="props.isSuperAdmin"
         :department-permission-path="props.departmentPermissionPath"
         :allowed-department-names="props.permissionDepartmentNames"
         :allowed-department-paths="props.permissionDepartmentPaths"

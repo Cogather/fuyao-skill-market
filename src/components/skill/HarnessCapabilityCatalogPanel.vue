@@ -121,13 +121,13 @@ const deleteDialog = reactive({
   submitting: false,
 });
 
-function showToast(message: string): void {
+function showToast(message: string, duration = 2600): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toast.value = '';
     toastTimer = null;
-  }, 2600);
+  }, duration);
 }
 
 function normalizePath(path: string[]): string[] {
@@ -177,9 +177,7 @@ const requiredCapabilityNamePrefix = computed(() => {
   const productName = filterForm.product.trim();
   if (!productName) return '';
   const lowercaseProductName = productName.toLowerCase();
-  return lowercaseProductName.endsWith('-')
-    ? lowercaseProductName
-    : lowercaseProductName + '-';
+  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -554,8 +552,7 @@ function ensureProductCapabilityNamePrefix(): boolean {
   if (!prefix) return true;
   const name = editor.name.trim();
   if (!name.startsWith(prefix)) {
-    editor.error =
-      `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`;
+    editor.error = `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`;
     return false;
   }
   if (name.length === prefix.length) {
@@ -623,7 +620,7 @@ async function submitEditor(): Promise<void> {
     editor.error = `请输入 ${capabilityLabel.value} 名称`;
     return;
   }
-  if (editor.mode === 'create' && !ensureProductCapabilityNamePrefix()) {
+  if (!ensureProductCapabilityNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
@@ -718,6 +715,10 @@ async function handleImport(event: Event): Promise<void> {
     const result = await api.value.importCatalog(file, scope);
     const suffix = result.failCount ? `，失败 ${result.failCount} 条` : '';
     showToast(`成功导入 ${result.successCount} 条${suffix}`);
+    const errorDetails = result.errors.filter(Boolean).join('\uff1b');
+    if (errorDetails) {
+      showToast(errorDetails, 8000);
+    }
     await reload();
   } catch (error) {
     showToast(error instanceof Error ? error.message : '导入失败');
@@ -1058,7 +1059,11 @@ onMounted(async () => {
                 :placeholder="`请输入 ${capabilityLabel} 名称`"
               />
               <small v-if="requiredCapabilityNamePrefix" class="capability-name-prefix-hint">
-                {{ '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c' + requiredCapabilityNamePrefix + '\u201d\u5f00\u5934' }}
+                {{
+                  '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c' +
+                  requiredCapabilityNamePrefix +
+                  '\u201d\u5f00\u5934'
+                }}
               </small>
             </label>
             <label class="is-wide">

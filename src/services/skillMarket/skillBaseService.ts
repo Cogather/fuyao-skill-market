@@ -287,15 +287,6 @@ export const skillBaseService = {
     });
   },
 
-  // 当前用户角色查询接口
-  queryCurrentUserRole: (params: any): any => {
-    return httpRequest.api<any>({
-      url: '/users/current/role',
-      method: 'get',
-      params,
-    });
-  },
-
   // 组织查询接口（通用，/api/organizations）
   queryOrganizationList: (params?: any): any => {
     return httpRequest.api<any>({

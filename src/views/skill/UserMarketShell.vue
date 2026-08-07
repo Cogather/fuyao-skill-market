@@ -12,7 +12,6 @@ import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
 import type {
   BusinessDimensionDto,
-  CurrentUserRoleDto,
   OrganizationDto,
   SkillFileTreeField,
   SkillListRecordDto,
@@ -28,12 +27,6 @@ import {
   extractExpertDepartmentPermission,
   type ExpertDepartmentPermission,
 } from '../../services/skillMarket/expertDepartmentPermission';
-import {
-  marketRoleIsOrgAdmin,
-  marketRoleIsSuperAdmin,
-  marketRoleCanCreateOrganization,
-  marketRoleShowsOrgManagement,
-} from '../../services/skillMarket/roleUi';
 import type {
   OverviewQuickFilter,
   Skill,
@@ -57,23 +50,8 @@ import { useProfileStore } from '../../stores/userStore';
 const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
 
-const currentUserRole = ref<CurrentUserRoleDto | null>(null);
-
-/**
- * 与接口约定一致的操作者工号：父应用注入 > 角色接口 employeeNo > Profile w3Id。
- * skillBaseService 走 axios，不会自动带 userId，此处必须能尽早给出非空值（否则 query 里全是空字符串）。
- */
-const userId = computed(() => {
-  const fromStore = String(skillMarketStore.userId ?? '').trim();
-  if (fromStore) {
-    return fromStore;
-  }
-  const fromRole = String(currentUserRole.value?.employeeNo ?? '').trim();
-  if (fromRole) {
-    return fromRole;
-  }
-  return String(userStore.userInfo?.w3Id ?? '').trim();
-});
+/** 操作者工号只接受父应用注入，不再通过角色接口或 Profile 回填。 */
+const userId = computed(() => String(skillMarketStore.userId ?? '').trim());
 const userName = computed(
   () => skillMarketStore.userName || userStore.userInfo?.nameCn || userStore.userInfo?.name || '',
 );
@@ -191,8 +169,6 @@ const overviewRemoteExhausted = ref(false);
 const overviewRemoteLoading = ref(false);
 let overviewScrollRaf = 0;
 const toast = ref('');
-const showAdminModules = computed(() => marketRoleShowsOrgManagement(currentUserRole.value));
-const canCreateOrg = computed(() => marketRoleCanCreateOrganization(currentUserRole.value));
 
 const adminOrganizations = ref<OrganizationDto[]>([]);
 const orgListLoading = ref(false);
@@ -874,29 +850,7 @@ async function loadBusinessDimensions(params: any = { format: 'tree' }): Promise
   }
 }
 
-async function loadCurrentUserRole(): Promise<void> {
-  // 始终调用 queryCurrentUserRole：HTTP 走 axios 真实后端；Mock 走 skillBaseServiceMock（与 VITE_SKILL_MARKET_TRANSPORT / VITE_SKILL_BASE_SERVICE_MOCK 一致）
-  try {
-    const r = await skillBaseService.queryCurrentUserRole({ userId: userId.value });
-    if (r.meta.success && r.data) {
-      currentUserRole.value = r.data;
-      const sid = String(skillMarketStore.userId ?? '').trim();
-      if (!sid) {
-        const emp = String(r.data.employeeNo ?? '').trim();
-        // 父级未透传时，用工号/角色接口返回的 employeeNo 回填（HTTP 与 Mock 均为接口数据）
-        if (emp) {
-          skillMarketStore.updateUserId(emp);
-        }
-      }
-    }
-  } catch (e) {
-    if (transportIsHttp) {
-      showToast(e instanceof Error ? e.message : '当前用户角色加载失败');
-    }
-  }
-}
-
-/** 工号：与 `userId` 计算属性同源（保留函数便于与旧调用对齐） */
+/** 工号与父应用注入的 userId 同源。 */
 function effectiveSkillUserId(): string {
   return userId.value?.trim() || '';
 }
@@ -961,8 +915,6 @@ onMounted(async () => {
   console.log('userId', userId.value);
   console.log('departmentList', departmentList.value);
   await loadBusinessDimensions();
-  // HTTP 与 Mock 均保留一次角色拉取；抢先调用仅见 loadMyPublishedSkills / executeDelete 内对 Mock 的分支
-  await loadCurrentUserRole();
   // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
   await loadAiEvolutionSkills();
   // 判断是否为专家
@@ -1386,20 +1338,6 @@ function normalizeSyncRecord(raw: unknown): SyncApplicationListItemDto {
   };
 }
 
-function canEditOrganization(org: OrganizationDto): boolean {
-  const role = currentUserRole.value;
-  if (!role) {
-    return false;
-  }
-  if (marketRoleIsSuperAdmin(role)) {
-    return true;
-  }
-  if (marketRoleIsOrgAdmin(role)) {
-    return role.managedOrgIds.includes(org.id);
-  }
-  return false;
-}
-
 async function loadAdminOrganizations(): Promise<void> {
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
@@ -1522,10 +1460,6 @@ const myReleaseHandleScroll = async () => {
 const debounceMyReleaseScroll = debounce(myReleaseHandleScroll, 200);
 
 async function loadMyPublishedSkills(isPageOver?: boolean): Promise<void> {
-  // 抢先拉角色仅用于本地 Mock：避免在真实 HTTP 下多打 /users/current/role 或干扰父级透传时序
-  if (!transportIsHttp && !effectiveSkillUserId()) {
-    await loadCurrentUserRole();
-  }
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
   }
@@ -1777,9 +1711,6 @@ async function executeDetailDeleteSkill(): Promise<void> {
   if (!id) {
     return;
   }
-  if (!transportIsHttp && !effectiveSkillUserId()) {
-    await loadCurrentUserRole();
-  }
   const uid = effectiveSkillUserId();
   if (!uid) {
     showToast('请先配置用户工号');
@@ -1864,9 +1795,6 @@ async function executeDeleteMyReleaseSkill(): Promise<void> {
   if (!row) {
     return;
   }
-  if (!transportIsHttp && !effectiveSkillUserId()) {
-    await loadCurrentUserRole();
-  }
   const uid = effectiveSkillUserId();
   if (!uid) {
     showToast('请先配置用户工号');
@@ -1900,18 +1828,6 @@ watch(
     if (query.tab && query.tab !== innerTab.value) {
       innerTab.value = query.tab as UserInnerTab;
       closeDetailPanel();
-    }
-  },
-);
-
-watch(
-  () => [currentUserRole.value, innerTab.value] as const,
-  ([role, tab]) => {
-    if (!role) {
-      return;
-    }
-    if (!marketRoleShowsOrgManagement(role) && (tab === 'org' || tab === 'approval')) {
-      goTab('overview', true);
     }
   },
 );
@@ -2713,9 +2629,6 @@ async function onVersionRowUnpublish(version: string): Promise<void> {
   if (!id) {
     return;
   }
-  if (!transportIsHttp && !effectiveSkillUserId()) {
-    await loadCurrentUserRole();
-  }
   const uid = effectiveSkillUserId();
   if (!uid) {
     showToast('请先配置用户工号');
@@ -2865,9 +2778,6 @@ function mapSkillDraftToRow(dto: any): AiEvolutionSkillRow {
 }
 
 async function loadAiEvolutionSkills(): Promise<void> {
-  if (!transportIsHttp && !effectiveSkillUserId()) {
-    await loadCurrentUserRole();
-  }
   if (transportIsHttp) {
     await waitUserIdAndDepartmentList();
   }
@@ -2934,9 +2844,6 @@ async function confirmAiEvolutionDecision(): Promise<void> {
     return;
   }
   const { row, decision } = pending;
-  if (!transportIsHttp && !effectiveSkillUserId()) {
-    await loadCurrentUserRole();
-  }
   const uid = effectiveSkillUserId();
   if (!uid) {
     showToast('请先配置用户工号');
@@ -3059,10 +2966,8 @@ const changeSystem = async (value: 'fuyao' | 'company') => {
   await nextTick();
   await refreshOpsDeptDimensionDerivedData(0);
 };
-/** 公司运营管理「Excel 导入」仅管理员可用；扶摇看板不提供导入 */
-const showOpsExcelImport = computed(() => {
-  return opsBoardSystem.value === 'company' && currentUserRole.value?.role === 'SUPER_ADMIN';
-});
+/** 公司运营管理支持 Excel 导入；扶摇看板不提供导入。 */
+const showOpsExcelImport = computed(() => opsBoardSystem.value === 'company');
 const selectedOpsDeptPath = ref('');
 const selectedOpsOrgName = ref('');
 const selectedOpsBusinessDimension = ref<{
@@ -3677,7 +3582,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           运营管理
         </button>
         <button
-          v-if="showAdminModules"
           type="button"
           class="sub-tab"
           :class="{ on: innerTab === 'org' }"
@@ -3686,7 +3590,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           组织管理
         </button>
         <button
-          v-if="false && showAdminModules"
+          v-if="false"
           type="button"
           class="sub-tab"
           :class="{ on: innerTab === 'approval' }"
@@ -4643,14 +4547,9 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       <header class="admin-panel-head management-panel-head">
         <div>
           <h2 class="panel-title" style="font-size: 42px">组织管理</h2>
-          <p class="all-desc">
-            配置组织名称、组织 ID 与组织管理员。配置在组织管理员名单内的用户，即拥有本 Skill
-            市场的管理员角色。
-          </p>
+          <p class="all-desc">配置组织名称、组织 ID 与维护人员。</p>
         </div>
-        <button v-if="canCreateOrg" type="button" class="btn primary" @click="openOrgCreateModal">
-          新建组织
-        </button>
+        <button type="button" class="btn primary" @click="openOrgCreateModal">新建组织</button>
       </header>
       <div class="admin-panel-body">
         <div class="summary-strip admin-summary" role="group" aria-label="组织摘要">
@@ -4686,12 +4585,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   }}</span>
                 </td>
                 <td>
-                  <button
-                    type="button"
-                    class="btn outline sm"
-                    :disabled="!canEditOrganization(org)"
-                    @click="openOrgEditModal(org)"
-                  >
+                  <button type="button" class="btn outline sm" @click="openOrgEditModal(org)">
                     配置
                   </button>
                 </td>

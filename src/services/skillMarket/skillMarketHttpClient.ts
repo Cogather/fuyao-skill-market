@@ -12,7 +12,6 @@ import type {
   BusinessDimensionDto,
   CreateSkillBody,
   CreateSkillResultDto,
-  CurrentUserRoleDto,
   DashboardOverviewDto,
   DashboardOverviewParams,
   OrganizationDto,
@@ -379,11 +378,6 @@ export function createSkillMarketHttpClient(
       return get<UserDepartmentDto>(SKILL_MARKET_ENDPOINTS.userCurrentDepartment);
     },
 
-    /** 角色完全由后端返回；不读取 `VITE_SKILL_MARKET_MOCK_*`（该类变量仅在 mock 客户端内使用）。 */
-    fetchCurrentUserRole() {
-      return get<CurrentUserRoleDto>(SKILL_MARKET_ENDPOINTS.userCurrentRole);
-    },
-
     fetchSuperAdmins() {
       return get<SuperAdminDto[]>(SKILL_MARKET_ENDPOINTS.superAdmins);
     },
@@ -475,10 +469,6 @@ export function createSkillMarketHttpClient(
       );
     },
 
-    /**
-     * 组织列表须由后端按当前登录角色裁剪（与 Mock 行为对齐）：
-     * `USER` 宜返回 `[]`；`ORG_ADMIN` 仅返回其 `managedOrgIds` 内组织；`SUPER_ADMIN` 返回可治理全量。
-     */
     fetchDepartmentsTree() {
       return get<DepartmentTreeNodeDto[]>(SKILL_MARKET_ENDPOINTS.departmentsTree);
     },
@@ -491,12 +481,10 @@ export function createSkillMarketHttpClient(
       return get<OrganizationDto[]>(SKILL_MARKET_ENDPOINTS.organizations);
     },
 
-    /** POST 仅 `SUPER_ADMIN`；其它角色应由后端返回 403。 */
     postOrganization(body: OrganizationUpsertBody) {
       return postJson<OrganizationDto>(SKILL_MARKET_ENDPOINTS.organizations, body);
     },
 
-    /** `ORG_ADMIN` 仅允许更新管辖范围内组织；越权应由后端返回 403。 */
     putOrganization(id: string | number, body: OrganizationUpsertBody) {
       return putJson<OrganizationDto>(SKILL_MARKET_ENDPOINTS.organizationById(id), body);
     },

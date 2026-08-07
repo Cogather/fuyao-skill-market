@@ -17,7 +17,6 @@ import type {
   BusinessDimensionDto,
   CreateSkillBody,
   CreateSkillResultDto,
-  CurrentUserRoleDto,
   DashboardOverviewDto,
   DashboardOverviewParams,
   MySkillsParams,
@@ -40,7 +39,6 @@ import type {
   SyncApplicationsParams,
   SyncReviewBody,
   UserDepartmentDto,
-  UserMarketRole,
   DepartmentTreeNodeDto,
   SkillDownloadStatsDto,
   SkillDownloadStatsParams,
@@ -233,62 +231,6 @@ function cloneBundle(b: OpsDashboardBundle): OpsDashboardBundle {
   return structuredClone(b);
 }
 
-/** 仅在本文件（Mock 客户端）内使用；HTTP 正式客户端不会调用。 */
-function readMockUserMarketRole(): UserMarketRole {
-  const raw = import.meta.env.VITE_SKILL_MARKET_MOCK_ROLE;
-  if (typeof raw !== 'string' || !raw.trim()) {
-    return 'ORG_ADMIN';
-  }
-  const u = raw.trim().toUpperCase();
-  if (u === 'USER') {
-    return 'USER';
-  }
-  if (u === 'ORG_ADMIN') {
-    return 'ORG_ADMIN';
-  }
-  if (u === 'SUPER_ADMIN') {
-    return 'SUPER_ADMIN';
-  }
-  return 'ORG_ADMIN';
-}
-
-/** 仅在本文件（Mock 客户端）内使用；HTTP 正式客户端不会调用。 */
-function readMockManagedOrgIds(validIds: number[]): number[] {
-  const raw = import.meta.env.VITE_SKILL_MARKET_MOCK_MANAGED_ORG_IDS;
-  if (typeof raw !== 'string' || !raw.trim()) {
-    return [...validIds];
-  }
-  const allowed = new Set(validIds);
-  const parsed = raw
-    .split(/[,，]/)
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && allowed.has(n));
-  if (parsed.length === 0) {
-    return [...validIds];
-  }
-  return parsed;
-}
-
-/**
- * 与真实后端约定一致：`GET /organizations` 按当前 Mock 角色裁剪。
- * - USER：空列表
- * - ORG_ADMIN：仅 `readMockManagedOrgIds` 范围内的组织（与 `fetchCurrentUserRole.managedOrgIds` 一致）
- * - SUPER_ADMIN：全量 `orgStore`
- */
-function organizationsVisibleInMock(orgStore: OrganizationDto[]): OrganizationDto[] {
-  const mockRole = readMockUserMarketRole();
-  const allIds = orgStore.map((o) => o.id);
-  if (mockRole === 'USER') {
-    return [];
-  }
-  if (mockRole === 'SUPER_ADMIN') {
-    return orgStore.map((o) => ({ ...o }));
-  }
-  const managedIds = readMockManagedOrgIds(allIds);
-  const allow = new Set(managedIds);
-  return orgStore.filter((o) => allow.has(o.id)).map((o) => ({ ...o }));
-}
-
 export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarketClient {
   const seed = initialSkills && initialSkills.length > 0 ? [...initialSkills] : getBuiltInSkills();
   const skills = ref<Skill[]>(seed);
@@ -416,52 +358,6 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
         departmentL4: 'SRE团队',
         departmentL5: '',
         departmentL6: '',
-      };
-      return ok(data);
-    },
-
-    async fetchCurrentUserRole() {
-      const mockRole = readMockUserMarketRole();
-      const allIds = orgStore.map((o) => o.id);
-
-      if (mockRole === 'USER') {
-        const data: CurrentUserRoleDto = {
-          employeeNo: 'mock001',
-          userName: '演示普通用户',
-          role: 'USER',
-          superAdmin: false,
-          orgAdmin: false,
-          managedOrgIds: [],
-          managedOrgNames: [],
-          organizationScope: 'NONE',
-        };
-        return ok(data);
-      }
-
-      if (mockRole === 'SUPER_ADMIN') {
-        const data: CurrentUserRoleDto = {
-          employeeNo: 'mock001',
-          userName: '演示超级管理员',
-          role: 'SUPER_ADMIN',
-          superAdmin: true,
-          orgAdmin: false,
-          managedOrgIds: [...allIds],
-          managedOrgNames: orgStore.map((o) => o.orgName),
-          organizationScope: 'ALL',
-        };
-        return ok(data);
-      }
-
-      const managedIds = readMockManagedOrgIds(allIds);
-      const data: CurrentUserRoleDto = {
-        employeeNo: 'mock001',
-        userName: '演示组织管理员',
-        role: 'ORG_ADMIN',
-        superAdmin: false,
-        orgAdmin: true,
-        managedOrgIds: managedIds,
-        managedOrgNames: orgStore.filter((o) => managedIds.includes(o.id)).map((o) => o.orgName),
-        organizationScope: 'MANAGED_ORG',
       };
       return ok(data);
     },
@@ -784,23 +680,10 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
     },
 
     async fetchOrganizations() {
-      return ok(organizationsVisibleInMock(orgStore));
+      return ok(orgStore.map((organization) => ({ ...organization })));
     },
 
     async postOrganization(body: OrganizationUpsertBody) {
-      if (readMockUserMarketRole() !== 'SUPER_ADMIN') {
-        return {
-          code: 40301,
-          message: '无权限：仅超级管理员可新建组织',
-          data: {
-            id: 0,
-            orgName: '',
-            orgCode: '',
-            admins: '',
-            enabled: false,
-          },
-        };
-      }
       const nextId = Math.max(0, ...orgStore.map((o) => o.id)) + 1;
       const dto: OrganizationDto = {
         id: nextId,
@@ -815,32 +698,6 @@ export function createSkillMarketMockClient(initialSkills?: Skill[]): SkillMarke
 
     async putOrganization(id: string | number, body: OrganizationUpsertBody) {
       const n = Number(id);
-      const mockRole = readMockUserMarketRole();
-      const allIds = orgStore.map((o) => o.id);
-      const emptyDto = (oid: number): OrganizationDto => ({
-        id: oid,
-        orgName: '',
-        orgCode: '',
-        admins: '',
-        enabled: false,
-      });
-      if (mockRole === 'USER') {
-        return {
-          code: 40301,
-          message: '无权限',
-          data: emptyDto(n),
-        };
-      }
-      if (mockRole === 'ORG_ADMIN') {
-        const allow = new Set(readMockManagedOrgIds(allIds));
-        if (!allow.has(n)) {
-          return {
-            code: 40301,
-            message: '无权限：该组织不在您的管辖范围内',
-            data: emptyDto(n),
-          };
-        }
-      }
       const idx = orgStore.findIndex((o) => o.id === n);
       const dto: OrganizationDto = {
         id: n,

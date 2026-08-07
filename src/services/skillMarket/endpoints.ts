@@ -4,8 +4,6 @@
  */
 export const SKILL_MARKET_ENDPOINTS = {
   userCurrentDepartment: '/api/users/current/department',
-  /** §3.3.10 前端菜单 / 按钮权限 */
-  userCurrentRole: '/api/users/current/role',
   resourceFileUpload: '/resource/resource-management/v1/storage/file',
   skillsUpload: '/api/skills/upload',
   /** 设计文档流程：仅解压解析 SKILL.md，校验元数据与重名，不入库 */

@@ -52,7 +52,6 @@ const props = withDefaults(
     kind: TaxonomyKind;
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
-    isSuperAdmin?: boolean;
     departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
@@ -64,7 +63,6 @@ const props = withDefaults(
   {
     departmentTree: () => [],
     userId: '',
-    isSuperAdmin: false,
     departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
@@ -658,11 +656,14 @@ watch(
   { immediate: true },
 );
 
-watch([() => props.userId, () => props.isSuperAdmin], () => {
-  if (useHttpTaxonomySource && hasCompleteScope.value && selectedDepartment.value) {
-    void loadDepartment(selectedDepartment.value);
-  }
-});
+watch(
+  () => props.userId,
+  () => {
+    if (useHttpTaxonomySource && hasCompleteScope.value && selectedDepartment.value) {
+      void loadDepartment(selectedDepartment.value);
+    }
+  },
+);
 
 function guardDepartmentChange(path: string[]): boolean {
   if (props.departmentPermissionsLoading) {

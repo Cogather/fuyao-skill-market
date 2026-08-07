@@ -29,6 +29,7 @@ import {
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
   openSkillExportResponse,
+  skillImportErrorMessage,
 } from './skillTransferService';
 import type {
   SkillMasterPayload,
@@ -526,6 +527,17 @@ function planningTransferParams(query: SkillPlanningQuery): SkillTransferParams 
   });
 }
 
+async function capabilityImportResponse<T>(
+  type: MockHarnessCapabilityType,
+  request: Promise<T>,
+): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    throw new Error(skillImportErrorMessage(error, `${label(type)} \u5bfc\u5165\u5931\u8d25`));
+  }
+}
+
 export async function importHttpCapabilityPlanning(
   type: MockHarnessCapabilityType,
   file: File,
@@ -533,9 +545,9 @@ export async function importHttpCapabilityPlanning(
 ): Promise<SkillPlanningImportResult> {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await capabilityHttpClients[type].importPlanning(
-    formData,
-    planningTransferParams(query),
+  const response = await capabilityImportResponse(
+    type,
+    capabilityHttpClients[type].importPlanning(formData, planningTransferParams(query)),
   );
   return normalizeSkillImportResponse(response);
 }
@@ -831,9 +843,9 @@ export async function importHttpCapabilityCatalog(
 ): Promise<{ successCount: number; failCount: number; errors: string[] }> {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await capabilityHttpClients[type].importCatalog(
-    formData,
-    normalizeCatalogScope(scope),
+  const response = await capabilityImportResponse(
+    type,
+    capabilityHttpClients[type].importCatalog(formData, normalizeCatalogScope(scope)),
   );
   const result = normalizeSkillImportResponse(response);
   return {

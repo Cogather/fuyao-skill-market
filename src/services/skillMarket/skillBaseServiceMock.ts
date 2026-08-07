@@ -1518,52 +1518,6 @@ function findSkill(id: string | number | undefined): MockSkillRecord | undefined
   );
 }
 
-function readMockRole(): 'SUPER_ADMIN' | 'ORG_ADMIN' | 'USER' {
-  const raw = String(import.meta.env.VITE_SKILL_MARKET_MOCK_ROLE ?? '')
-    .trim()
-    .toUpperCase();
-  if (raw === 'USER' || raw === 'ORG_ADMIN' || raw === 'SUPER_ADMIN') {
-    return raw;
-  }
-  return 'ORG_ADMIN';
-}
-
-function readManagedOrgIds(): number[] {
-  const valid = new Set(orgStore.map((o) => o.id));
-  const raw = String(import.meta.env.VITE_SKILL_MARKET_MOCK_MANAGED_ORG_IDS ?? '').trim();
-  if (!raw) {
-    return [...valid];
-  }
-  const parsed = raw
-    .split(/[,，]/)
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && valid.has(n));
-  return parsed.length > 0 ? parsed : [...valid];
-}
-
-function visibleOrganizations(): MockOrganization[] {
-  const role = readMockRole();
-  if (role === 'USER') {
-    return [];
-  }
-  if (role === 'SUPER_ADMIN') {
-    return orgStore.map((o) => ({ ...o }));
-  }
-  const allow = new Set(readManagedOrgIds());
-  return orgStore.filter((o) => allow.has(o.id)).map((o) => ({ ...o }));
-}
-
-function canUpdateOrganization(id: number): boolean {
-  const role = readMockRole();
-  if (role === 'SUPER_ADMIN') {
-    return true;
-  }
-  if (role === 'ORG_ADMIN') {
-    return readManagedOrgIds().includes(id);
-  }
-  return false;
-}
-
 function matchesDepartmentFields(skill: MockSkillRecord, params: Record<string, unknown>): boolean {
   const expected = [
     params.departmentL1,
@@ -2599,49 +2553,12 @@ function handleApiRequest(
     return ok(data, total);
   }
 
-  if (method === 'get' && path === '/users/current/role') {
-    const role = readMockRole();
-    const managedIds =
-      role === 'USER'
-        ? []
-        : role === 'SUPER_ADMIN'
-          ? orgStore.map((o) => o.id)
-          : readManagedOrgIds();
-    return ok({
-      employeeNo: 'mock001',
-      userName:
-        role === 'SUPER_ADMIN'
-          ? '演示超级管理员'
-          : role === 'ORG_ADMIN'
-            ? '演示组织管理员'
-            : '演示普通用户',
-      role,
-      superAdmin: role === 'SUPER_ADMIN',
-      orgAdmin: role === 'ORG_ADMIN',
-      managedOrgIds: managedIds,
-      managedOrgNames: orgStore.filter((o) => managedIds.includes(o.id)).map((o) => o.orgName),
-      organizationScope:
-        role === 'SUPER_ADMIN' ? 'ALL' : role === 'ORG_ADMIN' ? 'MANAGED_ORG' : 'NONE',
-      departmentOwner: true,
-      departmentDirector: true,
-      ownedDepartmentNames: ['持续交付组'],
-      managedDepartmentNames: ['持续交付组'],
-    });
-  }
-
   if (method === 'get' && path === '/organizations') {
-    const data = visibleOrganizations();
+    const data = orgStore.map((organization) => ({ ...organization }));
     return ok(data, data.length);
   }
 
   if (method === 'post' && path === '/organizations') {
-    if (readMockRole() !== 'SUPER_ADMIN') {
-      return fail(
-        '无权限：仅超级管理员可新建组织',
-        { id: 0, orgName: '', orgCode: '', admins: '', enabled: false },
-        40301,
-      );
-    }
     const body = (config.data ?? {}) as Record<string, unknown>;
     const dto: MockOrganization = {
       id: Math.max(0, ...orgStore.map((o) => o.id)) + 1,
@@ -2657,13 +2574,6 @@ function handleApiRequest(
   const orgMatch = /^\/organizations\/([^/]+)$/.exec(path);
   if (method === 'put' && orgMatch) {
     const id = readNumber(orgMatch[1], 0);
-    if (!canUpdateOrganization(id)) {
-      return fail(
-        '无权限：该组织不在您的管辖范围内',
-        { id, orgName: '', orgCode: '', admins: '', enabled: false },
-        40301,
-      );
-    }
     const body = (config.data ?? {}) as Record<string, unknown>;
     const dto: MockOrganization = {
       id,

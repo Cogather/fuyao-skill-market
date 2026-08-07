@@ -11,7 +11,6 @@ import type {
   BusinessDimensionDto,
   CreateSkillBody,
   CreateSkillResultDto,
-  CurrentUserRoleDto,
   DepartmentTreeNodeDto,
   DashboardOverviewDto,
   DashboardOverviewParams,
@@ -87,8 +86,6 @@ export type SkillMarketClient = {
   ): Promise<ApiEnvelope<unknown>>;
 
   fetchUserDepartment(): Promise<ApiEnvelope<UserDepartmentDto>>;
-  /** §3.3.10 初始化菜单与按钮权限 */
-  fetchCurrentUserRole(): Promise<ApiEnvelope<CurrentUserRoleDto>>;
   /** §3.3.12 仅 SUPER_ADMIN */
   fetchSuperAdmins(): Promise<ApiEnvelope<SuperAdminDto[]>>;
   postSuperAdmin(body: SuperAdminCreateBody): Promise<ApiEnvelope<SuperAdminDto>>;
