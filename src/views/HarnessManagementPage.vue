@@ -17,11 +17,14 @@ import {
 import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marketDepartmentsTreeDefault';
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
+import { useProfileStore } from '../stores/userStore';
 
 const skillMarketStore = useSkillMarketStore();
+const profileStore = useProfileStore();
 const permissionContextReady = ref(false);
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const harnessPermissions = ref(createEmptyHarnessDepartmentPermissions());
+const MOCK_HARNESS_USER_ID = 'w30000001';
 const MOCK_HARNESS_DEPARTMENT_PATH = [
   '部门1',
   '平台产品线',
@@ -59,7 +62,13 @@ const activeHarnessTabMeta = computed(
 );
 const topbarElevated = ref(false);
 
-const userId = computed(() => String(skillMarketStore.userId ?? '').trim());
+const userId = computed(() => {
+  const injectedUserId = String(skillMarketStore.userId ?? '').trim();
+  if (injectedUserId) return injectedUserId;
+
+  if (transportIsHttp) return '';
+  return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
+});
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
