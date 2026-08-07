@@ -754,6 +754,17 @@ function usageCount(record: TaxonomyRecord): number {
   );
 }
 
+function blockReferencedAction(record: TaxonomyRecord, action: '编辑' | '删除'): boolean {
+  const referenceCount = usageCount(record);
+  if (referenceCount <= 0) return false;
+
+  const levelLabel = record.parentId === null ? labels.value.primary : labels.value.secondary;
+  showToast(
+    `${levelLabel}“${record.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再${action}。`,
+  );
+  return true;
+}
+
 function toggleCollapse(id: string): void {
   const next = new Set(collapsedPrimaryIds.value);
   if (next.has(id)) next.delete(id);
@@ -768,6 +779,8 @@ const editorName = ref('');
 const editorError = ref('');
 
 function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
+  if (record && blockReferencedAction(record, '编辑')) return;
+
   editorId.value = record?.id ?? '';
   editorParentId.value = parentId;
   editorName.value = record?.name ?? '';
@@ -849,14 +862,8 @@ const deleteTarget = computed(
 );
 
 function openDelete(record: TaxonomyRecord): void {
-  const referenceCount = usageCount(record);
-  if (referenceCount > 0) {
-    const levelLabel = record.parentId === null ? labels.value.primary : labels.value.secondary;
-    showToast(
-      `${levelLabel}“${record.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再删除。`,
-    );
-    return;
-  }
+  if (blockReferencedAction(record, '删除')) return;
+
   deleteTargetId.value = record.id;
   deleteOpen.value = true;
 }
@@ -864,13 +871,8 @@ function openDelete(record: TaxonomyRecord): void {
 function removeDraftRecord(): void {
   const target = deleteTarget.value;
   if (!target) return;
-  const referenceCount = usageCount(target);
-  if (referenceCount > 0) {
+  if (blockReferencedAction(target, '删除')) {
     deleteOpen.value = false;
-    const levelLabel = target.parentId === null ? labels.value.primary : labels.value.secondary;
-    showToast(
-      `${levelLabel}“${target.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再删除。`,
-    );
     return;
   }
 

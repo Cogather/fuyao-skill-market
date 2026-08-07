@@ -653,6 +653,11 @@ export async function getProductPlanning(
     planningDeptName: normalizeText(planningDeptName),
   };
 
+  if (String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() !== 'http') {
+    const { queryMockProductPlanningOptions } = await import('./skillPlanningMockService');
+    return queryMockProductPlanningOptions(params.offeringName, params.planningDeptName);
+  }
+
   const normalizedDeptCode = normalizeText(deptCode);
   if (!normalizedDeptCode || /^(undefined|null)$/i.test(normalizedDeptCode)) {
     throw new Error(
