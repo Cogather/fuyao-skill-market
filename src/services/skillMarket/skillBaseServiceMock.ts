@@ -3365,7 +3365,7 @@ export function maybeHandleSkillBaseMockRequest<T>(
     return null;
   }
 
-  if (channel === 'skill') {
+  if (channel === 'skill' || channel === 'harnessSkill') {
     const envelope = handleSkillRequest(method, path, config);
     return envelope ? Promise.resolve(envelope as T) : null;
   }

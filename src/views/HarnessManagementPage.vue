@@ -400,6 +400,7 @@ onBeforeUnmount(() => {
       :aria-labelledby="`harness-tab-${activeHarnessTab}`"
     >
       <SkillPlanningPage
+        :key="transportIsHttp ? activeHarnessTab : 'shared-planning-page'"
         :capability-type="
           activeHarnessTab === 'command'
             ? 'command'
