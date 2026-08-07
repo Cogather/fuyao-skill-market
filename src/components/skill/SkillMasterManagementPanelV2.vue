@@ -37,6 +37,7 @@ import {
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
   openSkillExportResponse,
+  skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
 
 type PlanningLevel = '产品级' | '部门级';
@@ -632,13 +633,13 @@ async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise
     }
   }
 }
-function showToast(message: string): void {
+function showToast(message: string, duration = 2400): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toast.value = '';
     toastTimer = null;
-  }, 2400);
+  }, duration);
 }
 function resetPersonPicker(picker: PersonPickerState): void {
   if (picker === ownerPicker) {
@@ -1312,6 +1313,14 @@ function triggerMasterImport(): void {
   }
 }
 
+async function masterImportResponse(request: Promise<unknown>): Promise<unknown> {
+  try {
+    return await request;
+  } catch (error) {
+    throw new Error(skillImportErrorMessage(error, 'Skill \u6e05\u5355\u5bfc\u5165\u5931\u8d25'));
+  }
+}
+
 async function handleMasterImportFile(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -1325,18 +1334,21 @@ async function handleMasterImportFile(event: Event): Promise<void> {
     masterImportSubmitting.value = true;
     const formData = new FormData();
     formData.append('file', file);
-    const response = await skillBaseService.importSkillMasterManagement(
-      formData,
-      buildMasterTransferParams(),
+    const response = await masterImportResponse(
+      skillBaseService.importSkillMasterManagement(formData, buildMasterTransferParams()),
     );
     const result = normalizeSkillImportResponse(response);
     masterPageNum.value = 1;
     await reload();
     if (result.errorList.length > 0) {
       const firstError = result.errorList[0];
+      const errorDetails = result.errorList
+        .map((item) => `\u7b2c ${item.rowNum} \u884c\uff1a${item.errMsg}`)
+        .join('\uff1b');
       showToast(
         `Skill 清单导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条${firstError ? `;第 ${firstError.rowNum} 行：${firstError.errMsg}` : ''}`,
       );
+      showToast(errorDetails, 8000);
     } else {
       showToast(
         result.totalCount > 0
