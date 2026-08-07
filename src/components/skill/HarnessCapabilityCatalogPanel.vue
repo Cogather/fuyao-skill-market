@@ -172,6 +172,16 @@ const selectedProduct = computed(() =>
   productOptions.value.find((item) => item.offeringName === filterForm.product),
 );
 
+const requiredCapabilityNamePrefix = computed(() => {
+  if (filterForm.level !== '\u4ea7\u54c1\u7ea7') return '';
+  const productName = filterForm.product.trim();
+  if (!productName) return '';
+  const lowercaseProductName = productName.toLowerCase();
+  return lowercaseProductName.endsWith('-')
+    ? lowercaseProductName
+    : lowercaseProductName + '-';
+});
+
 const catalogScopeErrorMessage = computed(() => {
   if (!props.userId.trim()) return '尚未获取当前用户工号';
   if (!filterForm.departmentName.trim()) {
@@ -539,9 +549,26 @@ function resetEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
+function ensureProductCapabilityNamePrefix(): boolean {
+  const prefix = requiredCapabilityNamePrefix.value;
+  if (!prefix) return true;
+  const name = editor.name.trim();
+  if (!name.startsWith(prefix)) {
+    editor.error =
+      `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`;
+    return false;
+  }
+  if (name.length === prefix.length) {
+    editor.error = `\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${capabilityLabel.value} \u540d\u79f0`;
+    return false;
+  }
+  return true;
+}
+
 function openCreate(): void {
   resetEditor();
   editor.mode = 'create';
+  editor.name = requiredCapabilityNamePrefix.value;
   editor.open = true;
 }
 
@@ -594,6 +621,9 @@ async function submitEditor(): Promise<void> {
   editor.error = '';
   if (!editor.name.trim()) {
     editor.error = `请输入 ${capabilityLabel.value} 名称`;
+    return;
+  }
+  if (editor.mode === 'create' && !ensureProductCapabilityNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
@@ -1027,6 +1057,9 @@ onMounted(async () => {
                 maxlength="80"
                 :placeholder="`请输入 ${capabilityLabel} 名称`"
               />
+              <small v-if="requiredCapabilityNamePrefix" class="capability-name-prefix-hint">
+                {{ '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c' + requiredCapabilityNamePrefix + '\u201d\u5f00\u5934' }}
+              </small>
             </label>
             <label class="is-wide">
               <span>{{ capabilityLabel }} 说明 *</span>
@@ -1589,6 +1622,11 @@ td.is-description {
 }
 .capability-master-form label.is-wide {
   grid-column: 1 / -1;
+}
+.capability-name-prefix-hint {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
 }
 .capability-master-form input,
 .capability-master-form textarea,

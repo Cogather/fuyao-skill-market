@@ -124,6 +124,25 @@ function capabilityLabel(type: HarnessCapabilityType): 'Skill' | 'Command' | 'Ag
   return 'Skill';
 }
 
+function validateProductCapabilityName(
+  type: MockHarnessCapabilityType,
+  payload: SkillMasterPayload,
+): void {
+  if (payload.level !== '\u4ea7\u54c1\u7ea7' || !payload.product.trim()) return;
+  const lowercaseProductName = payload.product.trim().toLowerCase();
+  const prefix = lowercaseProductName.endsWith('-')
+    ? lowercaseProductName
+    : lowercaseProductName + '-';
+  const name = payload.name.trim();
+  const label = capabilityLabel(type);
+  if (!name.startsWith(prefix)) {
+    throw new Error(`\u4ea7\u54c1\u7ea7 ${label} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`);
+  }
+  if (name.length === prefix.length) {
+    throw new Error(`\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${label} \u540d\u79f0`);
+  }
+}
+
 function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRecord {
   const skillName = String(item.skillName ?? '').trim();
   const ownerName = String(item.ownerName ?? '').trim();
@@ -210,13 +229,15 @@ function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanning
     getProducts: (offeringName, planningDeptName, deptCode) =>
       isHttp
         ? getHttpCapabilityProducts(type, offeringName, planningDeptName, deptCode)
-        : getMockCapabilityProducts(type, planningDeptName),
+        : getMockCapabilityProducts(type, planningDeptName, offeringName),
     queryCatalog: (query = {}) =>
       isHttp ? queryHttpCapabilityCatalog(type, query) : queryMockCapabilityCatalog(type, query),
-    createCatalog: (payload, scope) =>
-      isHttp
+    createCatalog: (payload, scope) => {
+      validateProductCapabilityName(type, payload);
+      return isHttp
         ? createHttpCapabilityCatalogRecord(type, payload, scope)
-        : createMockCapabilityCatalogRecord(type, payload),
+        : createMockCapabilityCatalogRecord(type, payload);
+    },
     updateCatalog: (id, payload, scope) =>
       isHttp
         ? updateHttpCapabilityCatalogRecord(type, id, payload, scope)

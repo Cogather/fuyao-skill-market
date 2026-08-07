@@ -35,6 +35,46 @@ interface CapabilityState {
 const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v1';
 const now = '2026-08-01T08:00:00.000Z';
 
+const mockCapabilityProductOptions: Record<
+  MockHarnessCapabilityType,
+  ProductPlanningOption[]
+> = {
+  command: [
+    {
+      offeringId: 'command-product-delivery-center',
+      offeringName: '\u6301\u7eed\u4ea4\u4ed8\u547d\u4ee4\u4e2d\u5fc3',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'command-product-release-pipeline',
+      offeringName: '\u53d1\u5e03\u6d41\u6c34\u7ebf\u63a7\u5236\u53f0',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'command-product-devops-toolbox',
+      offeringName: 'DevOps \u81ea\u52a8\u5316\u5de5\u5177\u7bb1',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+  ],
+  agent: [
+    {
+      offeringId: 'agent-product-intelligent-delivery',
+      offeringName: '\u667a\u80fd\u4ea4\u4ed8 Agent \u5e73\u53f0',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'agent-product-release-risk',
+      offeringName: '\u53d1\u5e03\u98ce\u9669\u5206\u6790\u4e2d\u5fc3',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'agent-product-ops-collaboration',
+      offeringName: '\u8fd0\u7ef4\u534f\u540c\u667a\u80fd\u4f53\u5e73\u53f0',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+  ],
+};
+
 function master(
   id: string,
   name: string,
@@ -762,6 +802,7 @@ export async function importMockCapabilityCatalog(
 export async function getMockCapabilityProducts(
   type: MockHarnessCapabilityType,
   planningDeptName: string,
+  offeringName = '',
 ): Promise<ProductPlanningOption[]> {
   const products = readState(type)
     .catalog.filter((record) => record.level === '产品级' && record.product)
@@ -770,5 +811,11 @@ export async function getMockCapabilityProducts(
       offeringName: record.product,
       planningDeptName,
     }));
-  return [...new Map(products.map((item) => [item.offeringName, item])).values()];
+  const keyword = text(offeringName).toLocaleLowerCase();
+  const mergedProducts = [...mockCapabilityProductOptions[type], ...products].filter(
+    (item) =>
+      (!planningDeptName || item.planningDeptName === planningDeptName) &&
+      (!keyword || item.offeringName.toLocaleLowerCase().includes(keyword)),
+  );
+  return [...new Map(mergedProducts.map((item) => [item.offeringName, item])).values()];
 }
