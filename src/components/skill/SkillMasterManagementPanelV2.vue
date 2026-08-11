@@ -34,9 +34,14 @@ import type {
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
+import {
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
   openSkillExportResponse,
+  skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
 
 type PlanningLevel = '产品级' | '部门级';
@@ -301,16 +306,9 @@ const selectedMasterProduct = computed(() =>
       (!item.planningDeptName || item.planningDeptName === masterScopeForm.planningDeptName),
   ),
 );
-const currentProductName = computed(() =>
-  masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
-);
+
 const requiredSkillNamePrefix = computed(() => {
-  const productName = currentProductName.value;
-  if (!productName) {
-    return '';
-  }
-  const lowercaseProductName = productName.toLowerCase();
-  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
+  return getProductCatalogItemNamePrefix(masterScopeForm.level, masterScopeForm.offeringName);
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -632,13 +630,13 @@ async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise
     }
   }
 }
-function showToast(message: string): void {
+function showToast(message: string, duration = 2400): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toast.value = '';
     toastTimer = null;
-  }, 2400);
+  }, duration);
 }
 function resetPersonPicker(picker: PersonPickerState): void {
   if (picker === ownerPicker) {
@@ -693,10 +691,11 @@ function ensureProductSkillNamePrefix(): boolean {
   }
   return true;
 }
-function editorSkillNameChanged(): boolean {
-  if (editor.mode !== 'edit') return true;
-  const originalName = records.value.find((record) => record.id === editor.id)?.name.trim() ?? '';
-  return !originalName || editor.name.trim() !== originalName;
+function ensureSkillNameFormat(): boolean {
+  if (isCatalogItemNameValid(editor.name.trim())) return true;
+  editor.error =
+    'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
+  return false;
 }
 
 function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
@@ -1069,6 +1068,9 @@ async function submitEditor(): Promise<void> {
       editor.error = '请填写 Skill 名称';
       return;
     }
+    if (!ensureSkillNameFormat()) {
+      return;
+    }
     if (!ensureProductSkillNamePrefix()) {
       return;
     }
@@ -1152,7 +1154,10 @@ async function submitEditor(): Promise<void> {
     editor.error = '请填写 Skill 名称';
     return;
   }
-  if (editorSkillNameChanged() && !ensureProductSkillNamePrefix()) {
+  if (!ensureSkillNameFormat()) {
+    return;
+  }
+  if (!ensureProductSkillNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
@@ -1312,6 +1317,14 @@ function triggerMasterImport(): void {
   }
 }
 
+async function masterImportResponse(request: Promise<unknown>): Promise<unknown> {
+  try {
+    return await request;
+  } catch (error) {
+    throw new Error(skillImportErrorMessage(error, 'Skill \u6e05\u5355\u5bfc\u5165\u5931\u8d25'));
+  }
+}
+
 async function handleMasterImportFile(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -1325,18 +1338,21 @@ async function handleMasterImportFile(event: Event): Promise<void> {
     masterImportSubmitting.value = true;
     const formData = new FormData();
     formData.append('file', file);
-    const response = await skillBaseService.importSkillMasterManagement(
-      formData,
-      buildMasterTransferParams(),
+    const response = await masterImportResponse(
+      skillBaseService.importSkillMasterManagement(formData, buildMasterTransferParams()),
     );
     const result = normalizeSkillImportResponse(response);
     masterPageNum.value = 1;
     await reload();
     if (result.errorList.length > 0) {
       const firstError = result.errorList[0];
+      const errorDetails = result.errorList
+        .map((item) => `\u7b2c ${item.rowNum} \u884c\uff1a${item.errMsg}`)
+        .join('\uff1b');
       showToast(
         `Skill 清单导入完成：成功 ${result.successCount} 条，失败 ${result.failCount} 条${firstError ? `;第 ${firstError.rowNum} 行：${firstError.errMsg}` : ''}`,
       );
+      showToast(errorDetails, 8000);
     } else {
       showToast(
         result.totalCount > 0
@@ -1811,7 +1827,7 @@ onBeforeUnmount(() => {
               ><span>Skill 名称 *</span
               ><input
                 v-model.trim="editor.name"
-                maxlength="60"
+                maxlength="64"
                 :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
               /><small v-if="requiredSkillNamePrefix" class="field-hint"
                 >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small

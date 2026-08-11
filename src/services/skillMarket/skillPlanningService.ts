@@ -7,7 +7,11 @@ import type {
   SkillTransferParams,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
-import { normalizeSkillImportResponse, normalizeSkillTransferParams } from './skillTransferService';
+import {
+  normalizeSkillImportResponse,
+  normalizeSkillTransferParams,
+  skillImportErrorMessage,
+} from './skillTransferService';
 import {
   exportSkillPlanningToExcel,
   exportSkillPlanningTemplateToExcel,
@@ -653,6 +657,11 @@ export async function getProductPlanning(
     planningDeptName: normalizeText(planningDeptName),
   };
 
+  if (String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() !== 'http') {
+    const { queryMockProductPlanningOptions } = await import('./skillPlanningMockService');
+    return queryMockProductPlanningOptions(params.offeringName, params.planningDeptName);
+  }
+
   const normalizedDeptCode = normalizeText(deptCode);
   if (!normalizedDeptCode || /^(undefined|null)$/i.test(normalizedDeptCode)) {
     throw new Error(
@@ -802,6 +811,10 @@ export async function importSkillPlanningFromExcel(
 
   const formData = new FormData();
   formData.append('file', file);
-  const response = await skillBaseService.importSkillPlanningSupplement(formData, params);
-  return normalizeSkillImportResponse(response);
+  try {
+    const response = await skillBaseService.importSkillPlanningSupplement(formData, params);
+    return normalizeSkillImportResponse(response);
+  } catch (error) {
+    throw new Error(skillImportErrorMessage(error, 'Skill \u89c4\u5212\u5bfc\u5165\u5931\u8d25'));
+  }
 }

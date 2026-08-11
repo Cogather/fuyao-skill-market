@@ -1,25 +1,51 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import SkillPlanningTaskPanel from '../../components/skill/SkillPlanningTaskPanel.vue';
 
-type TaskManagementTab = 'skill-tasks';
+import type { PlanningTaskCapabilityType } from '../../services/skillMarket/skillPlanningTaskService';
+type TaskManagementTab = `${PlanningTaskCapabilityType}-tasks`;
 
 withDefaults(defineProps<{ userId?: string }>(), { userId: '' });
 
-const activeTaskTab = ref<TaskManagementTab>('skill-tasks');
+const activeTaskTab = ref<TaskManagementTab>('command-tasks');
 const taskTabs: Array<{
   key: TaskManagementTab;
   label: string;
   description: string;
-}> = [{ key: 'skill-tasks', label: 'Skill待办', description: '跟踪 Skill 规划任务' }];
+  capabilityType: PlanningTaskCapabilityType;
+}> = [
+  {
+    key: 'command-tasks',
+    label: 'Command待办',
+    description: '跟踪 Command 规划任务',
+    capabilityType: 'command',
+  },
+  {
+    key: 'skill-tasks',
+    label: 'Skill待办',
+    description: '跟踪 Skill 规划任务',
+    capabilityType: 'skill',
+  },
+  {
+    key: 'agent-tasks',
+    label: 'Agent待办',
+    description: '跟踪 Agent 规划任务',
+    capabilityType: 'agent',
+  },
+];
+const activeTaskTabMeta = computed(
+  () => taskTabs.find((tab) => tab.key === activeTaskTab.value) ?? taskTabs[0],
+);
 </script>
 
 <template>
   <div class="task-management-page">
     <header class="task-management-hero">
       <h2>任务管理</h2>
-      <p>集中查看当前用户负责的 Harness 任务，持续跟踪 Skill 建设状态与完成进度。</p>
+      <p>
+        集中查看当前用户负责的 Harness 任务，持续跟踪 Command、Skill 与 Agent 建设状态及完成进度。
+      </p>
     </header>
 
     <nav class="task-management-tabs" role="tablist" aria-label="任务管理分区">
@@ -46,13 +72,16 @@ const taskTabs: Array<{
     </nav>
 
     <section
-      v-if="activeTaskTab === 'skill-tasks'"
-      id="task-management-panel-skill-tasks"
+      :id="'task-management-panel-' + activeTaskTabMeta.key"
+      :key="activeTaskTabMeta.key"
       class="task-management-content"
       role="tabpanel"
-      aria-labelledby="task-management-tab-skill-tasks"
+      :aria-labelledby="'task-management-tab-' + activeTaskTabMeta.key"
     >
-      <SkillPlanningTaskPanel :user-id="userId" />
+      <SkillPlanningTaskPanel
+        :capability-type="activeTaskTabMeta.capabilityType"
+        :user-id="userId"
+      />
     </section>
   </div>
 </template>

@@ -313,9 +313,39 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
 
 const mockProductPlanningOptions: ProductPlanningOption[] = [
   {
+    offeringId: 'offering-harness-pipeline-valid',
+    offeringName: 'harness-pipeline',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
+    offeringId: 'offering-devops-center-v2-valid',
+    offeringName: 'devops-center-v2',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
+    offeringId: 'offering-release-tools-2026-valid',
+    offeringName: 'release-tools-2026',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
     offeringId: 'offering-harness-pipeline',
     offeringName: 'Harness 流水线平台',
     planningDeptName: '持续交付组',
+  },
+  {
+    offeringId: 'offering-devops-delivery-console',
+    offeringName: 'DevOps \u4ea4\u4ed8\u63a7\u5236\u53f0',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
+    offeringId: 'offering-artifact-release-center',
+    offeringName: '\u5236\u54c1\u4e0e\u53d1\u5e03\u4e2d\u5fc3',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
+    offeringId: 'offering-rd-efficiency-insight',
+    offeringName: '\u7814\u53d1\u6548\u80fd\u6d1e\u5bdf\u5e73\u53f0',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
   },
   {
     offeringId: 'offering-devops-console',
@@ -383,6 +413,21 @@ const mockProductPlanningOptions: ProductPlanningOption[] = [
     planningDeptName: '平台工具部',
   },
 ];
+
+export function queryMockProductPlanningOptions(
+  offeringName = '',
+  planningDeptName = '',
+): ProductPlanningOption[] {
+  const keyword = normalizeText(offeringName).toLowerCase();
+  const departmentName = normalizeText(planningDeptName);
+  return mockProductPlanningOptions
+    .filter(
+      (option) =>
+        (!departmentName || option.planningDeptName === departmentName) &&
+        (!keyword || option.offeringName.toLowerCase().includes(keyword)),
+    )
+    .map((option) => ({ ...option }));
+}
 
 const mockPlanningDepartmentByItemId: Record<string, string> = {
   'plan-1001': '持续交付组',

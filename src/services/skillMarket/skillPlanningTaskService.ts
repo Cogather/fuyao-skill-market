@@ -1,6 +1,7 @@
 import { skillBaseService } from './skillBaseService';
 
 export type SkillTaskStatus = string;
+export type PlanningTaskCapabilityType = 'command' | 'skill' | 'agent';
 export type SkillTaskPriority = 'high' | 'medium' | 'low';
 
 export interface SkillPlanningTask {
@@ -109,6 +110,31 @@ function createDefaultTasks(): SkillPlanningTask[] {
 }
 
 const defaultTasks = createDefaultTasks();
+
+const capabilityLabels: Record<PlanningTaskCapabilityType, 'Command' | 'Skill' | 'Agent'> = {
+  command: 'Command',
+  skill: 'Skill',
+  agent: 'Agent',
+};
+
+export function planningTaskCapabilityLabel(
+  capabilityType: PlanningTaskCapabilityType,
+): 'Command' | 'Skill' | 'Agent' {
+  return capabilityLabels[capabilityType];
+}
+
+function adaptMockPlanningTask(
+  task: SkillPlanningTask,
+  capabilityType: PlanningTaskCapabilityType,
+): SkillPlanningTask {
+  if (capabilityType === 'skill') return cloneTask(task);
+  const label = planningTaskCapabilityLabel(capabilityType);
+  return {
+    ...task,
+    id: task.id.replace(/^skill-task-/, `${capabilityType}-task-`),
+    name: `${task.name.replace(/\s+Skill$/i, '')} ${label}`,
+  };
+}
 
 const defaultAssociations: SkillTaskAssociation[] = [
   {
@@ -270,7 +296,11 @@ function responseTaskRows(response: unknown): unknown[] {
         .find((value): value is unknown[] => Array.isArray(value)) ?? []);
 }
 
-function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
+function normalizeHttpTask(
+  value: unknown,
+  index: number,
+  capabilityType: PlanningTaskCapabilityType,
+): SkillPlanningTask {
   const record = asRecord(value);
   const status = normalizeHttpTaskStatus(record.status);
   const numericProgress = Number(record.progress);
@@ -278,7 +308,15 @@ function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
     Number.isFinite(numericProgress) ? numericProgress : undefined,
     status,
   );
-  const name = readText(record.skillName ?? record.skill_name ?? record.name) || '未命名 Skill';
+  const capabilityLabel = planningTaskCapabilityLabel(capabilityType);
+  const capabilityName =
+    capabilityType === 'command'
+      ? (record.commandName ?? record.command_name)
+      : capabilityType === 'agent'
+        ? (record.agentName ?? record.agent_name)
+        : (record.skillName ?? record.skill_name);
+  const name =
+    readText(capabilityName ?? record.capabilityName ?? record.name) || `未命名 ${capabilityLabel}`;
   const dimName = readText(record.dimName);
   const ownerName = readText(record.ownerName);
   const planFinishDate = readText(record.planFinishDate);
@@ -292,7 +330,12 @@ function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
     );
   const ownerId = readText(record.ownerId ?? record.userId ?? record.owner);
   const description =
-    readText(record.skillDescription ?? record.description) ||
+    readText(
+      record.commandDescription ??
+        record.agentDescription ??
+        record.skillDescription ??
+        record.description,
+    ) ||
     [
       readText(record.level),
       [readText(record.firstScene), readText(record.secondScene)].filter(Boolean).join(' / '),
@@ -327,21 +370,51 @@ function normalizeHttpTask(value: unknown, index: number): SkillPlanningTask {
   };
 }
 
-export function usesRemoteSkillPlanningTasks(): boolean {
+export function usesRemotePlanningTasks(): boolean {
   return import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 }
 
-export async function querySkillPlanningTasks(ownerId: string): Promise<SkillPlanningTask[]> {
+export function usesRemoteSkillPlanningTasks(): boolean {
+  return usesRemotePlanningTasks();
+}
+
+export async function queryPlanningTasks(
+  capabilityType: PlanningTaskCapabilityType,
+  ownerId: string,
+): Promise<SkillPlanningTask[]> {
   const normalizedOwnerId = ownerId.trim();
   if (!normalizedOwnerId) return [];
-  if (!usesRemoteSkillPlanningTasks()) return listSkillPlanningTasks(normalizedOwnerId);
+  if (!usesRemotePlanningTasks()) return listPlanningTasks(capabilityType, normalizedOwnerId);
 
-  const response = await skillBaseService.queryMySkillPlanningTasks({
-    userId: normalizedOwnerId,
-  });
+  let response: unknown;
+  if (capabilityType === 'command') {
+    response = await skillBaseService.queryMyCommandPlanningTasks({
+      userId: normalizedOwnerId,
+    });
+  } else if (capabilityType === 'agent') {
+    response = await skillBaseService.queryMyAgentPlanningTasks({
+      userId: normalizedOwnerId,
+    });
+  } else {
+    response = await skillBaseService.queryMySkillPlanningTasks({
+      userId: normalizedOwnerId,
+    });
+  }
+
   return responseTaskRows(response)
-    .map(normalizeHttpTask)
+    .map((value, index) => normalizeHttpTask(value, index, capabilityType))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export async function querySkillPlanningTasks(ownerId: string): Promise<SkillPlanningTask[]> {
+  return queryPlanningTasks('skill', ownerId);
+}
+
+export function listPlanningTasks(
+  capabilityType: PlanningTaskCapabilityType,
+  ownerId: string,
+): SkillPlanningTask[] {
+  return listSkillPlanningTasks(ownerId).map((task) => adaptMockPlanningTask(task, capabilityType));
 }
 
 export function listSkillPlanningTasks(ownerId: string): SkillPlanningTask[] {

@@ -4,17 +4,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
 import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
-import type { CurrentUserRoleDto } from '../services/skillMarket/apiTypes';
 import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
 } from '../services/skillMarket/marketDeptTreeFromApi';
-import { listAuthorizedHarnessDepartmentNames } from '../services/skillMarket/departmentPlanningPermissionService';
-import {
-  extractExpertDepartmentPermission,
-  type ExpertDepartmentPermission,
-} from '../services/skillMarket/expertDepartmentPermission';
-import { harnessConfigurationRevision } from '../services/skillMarket/harnessConfigurationSyncService';
 import {
   createEmptyHarnessDepartmentPermissions,
   normalizeHarnessDepartmentPermissions,
@@ -22,26 +15,28 @@ import {
   type HarnessAuthorizedDepartment,
 } from '../services/skillMarket/harnessDepartmentPermission';
 import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marketDepartmentsTreeDefault';
-import {
-  marketRoleCanConfigurePlanningPermissions,
-  marketRoleIsOrgAdmin,
-  marketRoleIsSuperAdmin,
-} from '../services/skillMarket/roleUi';
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
-import { querySkillPlanningUsers } from '../services/skillMarket/skillPlanningService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
-const currentUserRole = ref<CurrentUserRoleDto | null>(null);
-const roleContextReady = ref(false);
-const harnessPermissions = ref(createEmptyHarnessDepartmentPermissions());
-const currentUserDepartmentPermission = ref<ExpertDepartmentPermission>({
-  minimumDepartmentId: '',
-  path: [],
-});
+const permissionContextReady = ref(false);
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const harnessPermissions = ref(createEmptyHarnessDepartmentPermissions());
+const MOCK_HARNESS_USER_ID = 'w30000001';
+const MOCK_HARNESS_DEPARTMENT_PATH = [
+  '部门1',
+  '平台产品线',
+  '平台工具组',
+  'DevOps部',
+  '持续交付组',
+];
+const MOCK_HARNESS_DEPARTMENT_NAMES = ['持续交付组'];
+const currentUserDepartmentPermission = ref({
+  minimumDepartmentId: transportIsHttp ? '' : (MOCK_HARNESS_DEPARTMENT_PATH.at(-1) ?? ''),
+  path: transportIsHttp ? [] : [...MOCK_HARNESS_DEPARTMENT_PATH],
+});
 type HarnessPermissionLoadState = 'loading' | 'ready' | 'error';
 const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
   transportIsHttp ? 'loading' : 'ready',
@@ -71,10 +66,8 @@ const userId = computed(() => {
   const injectedUserId = String(skillMarketStore.userId ?? '').trim();
   if (injectedUserId) return injectedUserId;
 
-  const roleUserId = String(currentUserRole.value?.employeeNo ?? '').trim();
-  if (roleUserId) return roleUserId;
-
-  return String(profileStore.userInfo?.w3Id ?? '').trim();
+  if (transportIsHttp) return '';
+  return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
 const departmentTree = computed(() => {
@@ -101,33 +94,22 @@ function departmentLevelByPath(path: string[]): number {
 const canConfigureDepartmentPermissions = computed(() =>
   transportIsHttp
     ? harnessPermissions.value.ownedOrgs.length > 0
-    : marketRoleCanConfigurePlanningPermissions(currentUserRole.value) &&
-      departmentLevelByPath(currentUserDepartmentPermission.value.path) === 5,
+    : departmentLevelByPath(currentUserDepartmentPermission.value.path) === 5,
 );
 
-const permissionDepartmentNames = computed(() => {
-  void harnessConfigurationRevision.value;
-  if (transportIsHttp) {
-    return [
-      ...new Set(
-        manageableDepartments.value.map((department) => department.deptName).filter(Boolean),
-      ),
-    ];
-  }
-  const assignedDepartments = transportIsHttp
-    ? []
-    : listAuthorizedHarnessDepartmentNames(userId.value);
-  const role = currentUserRole.value;
-  if (!role) return assignedDepartments;
-  if (marketRoleIsSuperAdmin(role) || marketRoleIsOrgAdmin(role)) return [];
-  return [...new Set([...(role.managedDepartmentNames ?? []), ...assignedDepartments])];
-});
+const permissionDepartmentNames = computed(() =>
+  transportIsHttp
+    ? [
+        ...new Set(
+          manageableDepartments.value.map((department) => department.deptName).filter(Boolean),
+        ),
+      ]
+    : [...MOCK_HARNESS_DEPARTMENT_NAMES],
+);
 
-const restrictToPermissionDepartments = computed(() => {
-  if (transportIsHttp) return true;
-  const role = currentUserRole.value;
-  return !role || (!marketRoleIsSuperAdmin(role) && !marketRoleIsOrgAdmin(role));
-});
+// Keep the complete department tree visible in mock mode across all planning tabs.
+// HTTP mode remains restricted to the departments returned by the permission API.
+const restrictToPermissionDepartments = computed(() => transportIsHttp);
 
 const canManageHarness = computed(
   () => !restrictToPermissionDepartments.value || permissionDepartmentNames.value.length > 0,
@@ -168,7 +150,9 @@ const ownerDepartments = computed<HarnessAuthorizedDepartment[]>(() =>
 );
 
 const permissionDepartmentPaths = computed(() =>
-  transportIsHttp ? manageableDepartments.value.map((department) => [...department.path]) : [],
+  transportIsHttp
+    ? manageableDepartments.value.map((department) => [...department.path])
+    : [[...MOCK_HARNESS_DEPARTMENT_PATH]],
 );
 
 function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment): string[] {
@@ -268,57 +252,6 @@ function waitForInjectedContext(timeout = 5000): Promise<void> {
   });
 }
 
-async function loadCurrentUserRole(): Promise<void> {
-  try {
-    const response = await skillBaseService.queryCurrentUserRole({ userId: userId.value });
-    if (!response?.meta?.success || !response.data) return;
-
-    currentUserRole.value = response.data;
-    if (!String(skillMarketStore.userId ?? '').trim()) {
-      const employeeNo = String(response.data.employeeNo ?? '').trim();
-      if (employeeNo) skillMarketStore.updateUserId(employeeNo);
-    }
-  } catch (error) {
-    if (transportIsHttp) {
-      console.error('Failed to load harness management role context:', error);
-    }
-  }
-}
-
-async function loadCurrentUserDepartmentPermission(): Promise<void> {
-  const currentUserId = userId.value;
-  if (!currentUserId) return;
-
-  try {
-    const response = await skillBaseService.isReviewer({ userId: currentUserId });
-    if (response?.meta?.success && response.data) {
-      const permission = extractExpertDepartmentPermission(response.data);
-      if (permission.path.length > 0) {
-        currentUserDepartmentPermission.value = permission;
-        return;
-      }
-    }
-  } catch (error) {
-    if (transportIsHttp) {
-      console.error('Failed to load current user department from reviewer context:', error);
-    }
-  }
-
-  try {
-    const options = await querySkillPlanningUsers(currentUserId);
-    const normalizedUserId = currentUserId.toLowerCase();
-    const exactUser = options.find((option) => option.id.trim().toLowerCase() === normalizedUserId);
-    const currentUser = exactUser ?? (options.length === 1 ? options[0] : undefined);
-    if (currentUser) {
-      currentUserDepartmentPermission.value = extractExpertDepartmentPermission(currentUser.raw);
-    }
-  } catch (error) {
-    if (transportIsHttp) {
-      console.error('Failed to load current user department from user context:', error);
-    }
-  }
-}
-
 function updateTopbarElevation(): void {
   topbarElevated.value = window.scrollY > 8;
 }
@@ -328,15 +261,10 @@ onMounted(async () => {
   updateTopbarElevation();
   try {
     if (transportIsHttp) await waitForInjectedContext();
-    await loadCurrentUserRole();
-    if (transportIsHttp) {
-      await loadHarnessDepartmentScope();
-    } else {
-      await loadCurrentUserDepartmentPermission();
-    }
+    if (transportIsHttp) await loadHarnessDepartmentScope();
     activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'planning';
   } finally {
-    roleContextReady.value = true;
+    permissionContextReady.value = true;
   }
 });
 
@@ -380,7 +308,7 @@ onBeforeUnmount(() => {
     </div>
 
     <section
-      v-if="!roleContextReady"
+      v-if="!permissionContextReady"
       id="harness-panel-access"
       class="harness-tab-panel harness-placeholder-panel"
       role="tabpanel"
@@ -400,6 +328,7 @@ onBeforeUnmount(() => {
       :aria-labelledby="`harness-tab-${activeHarnessTab}`"
     >
       <SkillPlanningPage
+        :key="transportIsHttp ? activeHarnessTab : 'shared-planning-page'"
         :capability-type="
           activeHarnessTab === 'command'
             ? 'command'
@@ -437,7 +366,6 @@ onBeforeUnmount(() => {
         :department-permission-path="currentUserDepartmentPermission.path"
         :department-tree="departmentTree"
         :user-id="userId"
-        :is-super-admin="marketRoleIsSuperAdmin(currentUserRole)"
         :can-configure-department-permissions="canConfigureDepartmentPermissions"
         :owner-departments="ownerDepartments"
         :manageable-departments="manageableDepartments"

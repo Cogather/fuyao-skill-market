@@ -14,7 +14,6 @@ withDefaults(
   defineProps<{
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
-    isSuperAdmin?: boolean;
     departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
@@ -26,7 +25,6 @@ withDefaults(
   {
     departmentTree: () => [],
     userId: '',
-    isSuperAdmin: false,
     departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
@@ -47,7 +45,6 @@ defineEmits<{
     kind="activity"
     :department-tree="departmentTree"
     :user-id="userId"
-    :is-super-admin="isSuperAdmin"
     :department-permission-path="departmentPermissionPath"
     :allowed-department-names="allowedDepartmentNames"
     :allowed-department-paths="allowedDepartmentPaths"

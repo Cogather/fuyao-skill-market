@@ -67,6 +67,10 @@ import type {
   SkillPlanningQuery,
 } from './skillPlanningShared';
 
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 export type { HarnessCapabilityType } from './harnessCapabilityPlanningMock';
 
 export interface HarnessCapabilityPlanningCatalogQuery extends HarnessCapabilityCatalogQuery {
@@ -122,6 +126,29 @@ function capabilityLabel(type: HarnessCapabilityType): 'Skill' | 'Command' | 'Ag
   if (type === 'command') return 'Command';
   if (type === 'agent') return 'Agent';
   return 'Skill';
+}
+
+function validateProductCapabilityName(
+  type: MockHarnessCapabilityType,
+  payload: SkillMasterPayload,
+): void {
+  const name = payload.name.trim();
+  const label = capabilityLabel(type);
+  if (!isCatalogItemNameValid(name)) {
+    throw new Error(
+      `${label} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`,
+    );
+  }
+  const prefix = getProductCatalogItemNamePrefix(payload.level, payload.product);
+  if (!prefix) return;
+  if (!name.startsWith(prefix)) {
+    throw new Error(
+      `\u4ea7\u54c1\u7ea7 ${label} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`,
+    );
+  }
+  if (name.length === prefix.length) {
+    throw new Error(`\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${label} \u540d\u79f0`);
+  }
 }
 
 function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRecord {
@@ -210,17 +237,21 @@ function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanning
     getProducts: (offeringName, planningDeptName, deptCode) =>
       isHttp
         ? getHttpCapabilityProducts(type, offeringName, planningDeptName, deptCode)
-        : getMockCapabilityProducts(type, planningDeptName),
+        : getMockCapabilityProducts(type, planningDeptName, offeringName),
     queryCatalog: (query = {}) =>
       isHttp ? queryHttpCapabilityCatalog(type, query) : queryMockCapabilityCatalog(type, query),
-    createCatalog: (payload, scope) =>
-      isHttp
+    createCatalog: (payload, scope) => {
+      validateProductCapabilityName(type, payload);
+      return isHttp
         ? createHttpCapabilityCatalogRecord(type, payload, scope)
-        : createMockCapabilityCatalogRecord(type, payload),
-    updateCatalog: (id, payload, scope) =>
-      isHttp
+        : createMockCapabilityCatalogRecord(type, payload);
+    },
+    updateCatalog: (id, payload, scope) => {
+      validateProductCapabilityName(type, payload);
+      return isHttp
         ? updateHttpCapabilityCatalogRecord(type, id, payload, scope)
-        : updateMockCapabilityCatalogRecord(type, id, payload),
+        : updateMockCapabilityCatalogRecord(type, id, payload);
+    },
     deleteCatalog: (id, userId) =>
       isHttp
         ? deleteHttpCapabilityCatalogRecord(type, id, userId)

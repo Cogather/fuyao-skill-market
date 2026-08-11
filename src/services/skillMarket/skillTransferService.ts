@@ -45,6 +45,10 @@ function assertTransferSuccess(response: unknown, fallbackMessage: string): void
     record.success === false ||
     (typeof record.code === 'number' && record.code >= 400)
   ) {
+    const details = importFailureDetails(response);
+    if (details) {
+      throw new Error(details);
+    }
     throw new Error(
       textValue(meta.message) ||
         textValue(record.message) ||
@@ -63,6 +67,44 @@ function unwrapImportData(response: unknown): unknown {
     value = next;
   }
   return value;
+}
+
+function importResponsePayload(response: unknown): unknown {
+  const responseRecord = asRecord(response);
+  const axiosResponse = asRecord(responseRecord.response);
+  return axiosResponse.data ?? response;
+}
+
+function importFailureDetails(response: unknown): string {
+  const data = asRecord(unwrapImportData(importResponsePayload(response)));
+  const rawErrors = firstValue(data, ['errorList', 'errors', 'failedList', 'failList']);
+  if (!Array.isArray(rawErrors)) return '';
+  return rawErrors
+    .map((item, index) => {
+      const record = asRecord(item);
+      const rowNum = numberValue(
+        firstValue(record, ['rowNum', 'rowNumber', 'row', 'line', 'lineNumber']),
+        index + 1,
+      );
+      const errMsg = textValue(firstValue(record, ['errMsg', 'message', 'error', 'reason', 'msg']));
+      return errMsg ? `\u7b2c${rowNum}\u884c\uff1a${errMsg}` : '';
+    })
+    .filter(Boolean)
+    .join('\uff1b');
+}
+
+export function skillImportErrorMessage(error: unknown, fallbackMessage: string): string {
+  const details = importFailureDetails(error);
+  if (details) return details;
+  const payload = asRecord(importResponsePayload(error));
+  const meta = asRecord(payload.meta);
+  return (
+    textValue(meta.message) ||
+    textValue(payload.message) ||
+    textValue(payload.msg) ||
+    (error instanceof Error ? error.message : '') ||
+    fallbackMessage
+  );
 }
 
 export function normalizeSkillImportResponse(response: unknown): SkillPlanningImportResult {

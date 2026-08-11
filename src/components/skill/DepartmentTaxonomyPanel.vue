@@ -52,7 +52,6 @@ const props = withDefaults(
     kind: TaxonomyKind;
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
-    isSuperAdmin?: boolean;
     departmentPermissionPath?: string[];
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
@@ -64,7 +63,6 @@ const props = withDefaults(
   {
     departmentTree: () => [],
     userId: '',
-    isSuperAdmin: false,
     departmentPermissionPath: () => [],
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
@@ -658,11 +656,14 @@ watch(
   { immediate: true },
 );
 
-watch([() => props.userId, () => props.isSuperAdmin], () => {
-  if (useHttpTaxonomySource && hasCompleteScope.value && selectedDepartment.value) {
-    void loadDepartment(selectedDepartment.value);
-  }
-});
+watch(
+  () => props.userId,
+  () => {
+    if (useHttpTaxonomySource && hasCompleteScope.value && selectedDepartment.value) {
+      void loadDepartment(selectedDepartment.value);
+    }
+  },
+);
 
 function guardDepartmentChange(path: string[]): boolean {
   if (props.departmentPermissionsLoading) {
@@ -754,6 +755,17 @@ function usageCount(record: TaxonomyRecord): number {
   );
 }
 
+function blockReferencedAction(record: TaxonomyRecord, action: '编辑' | '删除'): boolean {
+  const referenceCount = usageCount(record);
+  if (referenceCount <= 0) return false;
+
+  const levelLabel = record.parentId === null ? labels.value.primary : labels.value.secondary;
+  showToast(
+    `${levelLabel}“${record.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再${action}。`,
+  );
+  return true;
+}
+
 function toggleCollapse(id: string): void {
   const next = new Set(collapsedPrimaryIds.value);
   if (next.has(id)) next.delete(id);
@@ -768,6 +780,8 @@ const editorName = ref('');
 const editorError = ref('');
 
 function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
+  if (record && blockReferencedAction(record, '编辑')) return;
+
   editorId.value = record?.id ?? '';
   editorParentId.value = parentId;
   editorName.value = record?.name ?? '';
@@ -849,14 +863,8 @@ const deleteTarget = computed(
 );
 
 function openDelete(record: TaxonomyRecord): void {
-  const referenceCount = usageCount(record);
-  if (referenceCount > 0) {
-    const levelLabel = record.parentId === null ? labels.value.primary : labels.value.secondary;
-    showToast(
-      `${levelLabel}“${record.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再删除。`,
-    );
-    return;
-  }
+  if (blockReferencedAction(record, '删除')) return;
+
   deleteTargetId.value = record.id;
   deleteOpen.value = true;
 }
@@ -864,13 +872,8 @@ function openDelete(record: TaxonomyRecord): void {
 function removeDraftRecord(): void {
   const target = deleteTarget.value;
   if (!target) return;
-  const referenceCount = usageCount(target);
-  if (referenceCount > 0) {
+  if (blockReferencedAction(target, '删除')) {
     deleteOpen.value = false;
-    const levelLabel = target.parentId === null ? labels.value.primary : labels.value.secondary;
-    showToast(
-      `${levelLabel}“${target.name}”已关联 ${referenceCount} 个规划项，请先解除关联后再删除。`,
-    );
     return;
   }
 
@@ -1073,10 +1076,6 @@ function exportRecords(): void {
           @change="importRecords"
         />
       </div>
-      <div v-if="dirty || notice" class="save-state" :class="{ dirty }">
-        <span>{{ dirty ? '有未保存修改' : '已保存' }}</span>
-        <span v-if="notice">{{ notice }}</span>
-      </div>
     </header>
 
     <div class="summary-strip">
@@ -1093,6 +1092,19 @@ function exportRecords(): void {
           <strong>{{ totalSkillCount }}</strong
           ><span>关联规划项</span>
         </div>
+      </div>
+      <div
+        v-if="dirty || notice"
+        class="save-state"
+        :class="{ dirty }"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="save-state__icon" aria-hidden="true">{{ dirty ? '!' : '✓' }}</span>
+        <span class="save-state__copy">
+          <span class="save-state__label">{{ dirty ? '有未保存修改' : '已保存' }}</span>
+          <span v-if="notice" class="save-state__detail" :title="notice">{{ notice }}</span>
+        </span>
       </div>
       <div class="summary-update">
         <button
@@ -1501,25 +1513,78 @@ input:focus {
 }
 
 .save-state {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: 14px;
-  padding-top: 12px;
-  border-top: 1px solid #edf1f7;
-  color: #6d7d96;
-  font-size: 13px;
+  grid-column: 2;
+  align-self: center;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.12);
+  box-sizing: border-box;
+  color: #15803d;
 }
 
-.save-state.dirty span:first-child {
-  color: #d77b16;
-  font-weight: 800;
+.save-state.dirty {
+  border-color: #fdba74;
+  background: linear-gradient(135deg, #fff7ed, #fffbeb);
+  box-shadow: 0 10px 26px rgba(217, 119, 6, 0.18);
+  color: #b45309;
+}
+
+.summary-strip .save-state__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: #22c55e;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.save-state.dirty .save-state__icon {
+  background: #f59e0b;
+  box-shadow: 0 5px 12px rgba(245, 158, 11, 0.28);
+}
+
+.summary-strip .save-state__copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  color: inherit;
+}
+
+.summary-strip .save-state__label {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.summary-strip .save-state__detail {
+  overflow: hidden;
+  color: inherit;
+  opacity: 0.78;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .summary-strip {
   display: grid;
-  grid-template-columns: minmax(0, 0.76fr) minmax(180px, 0.24fr);
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 180px) minmax(180px, 240px);
   align-items: stretch;
-  gap: 18px;
+  gap: 12px;
 }
 
 .summary-metrics {
@@ -1539,6 +1604,7 @@ input:focus {
 }
 
 .summary-update {
+  grid-column: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1914,8 +1980,23 @@ td {
 }
 
 .save-state {
-  padding-top: 10px;
-  font-size: 10px;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.summary-strip .save-state__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.summary-strip .save-state__label {
+  font-size: 11px;
+}
+
+.summary-strip .save-state__detail {
+  font-size: 9px;
 }
 
 .summary-metrics > div {
@@ -2057,6 +2138,25 @@ td strong {
   }
 }
 
+@media (max-width: 900px) {
+  .summary-strip {
+    grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
+  }
+
+  .summary-metrics {
+    grid-column: 1 / -1;
+  }
+
+  .save-state {
+    grid-column: 1;
+  }
+
+  .summary-update {
+    grid-column: 2;
+    padding: 0;
+  }
+}
+
 @media (max-width: 720px) {
   .toolbar-card {
     padding: 22px;
@@ -2083,9 +2183,19 @@ td strong {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .save-state,
   .summary-update {
-    justify-content: flex-start;
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .summary-update {
+    justify-content: stretch;
     padding: 0;
+  }
+
+  .summary-confirm-button {
+    width: 100%;
   }
 }
 

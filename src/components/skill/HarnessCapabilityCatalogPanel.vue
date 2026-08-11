@@ -18,6 +18,10 @@ import type {
   SkillMasterRecord,
   SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 type DepartmentNode = {
   id?: string;
@@ -33,6 +37,11 @@ type PersonPickerState = {
   options: SkillPlanningUserOption[];
   message: string;
   selected: SkillPlanningUserOption | null;
+};
+
+type CapabilityCatalogEditorPayload = SkillMasterPayload & {
+  ownerId: string;
+  developOwnerId: string;
 };
 
 function createPersonPickerState(): PersonPickerState {
@@ -116,13 +125,13 @@ const deleteDialog = reactive({
   submitting: false,
 });
 
-function showToast(message: string): void {
+function showToast(message: string, duration = 2600): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toast.value = '';
     toastTimer = null;
-  }, 2600);
+  }, duration);
 }
 
 function normalizePath(path: string[]): string[] {
@@ -166,6 +175,10 @@ function findDepartmentNode(path = departmentSegments.value): DepartmentNode | n
 const selectedProduct = computed(() =>
   productOptions.value.find((item) => item.offeringName === filterForm.product),
 );
+
+const requiredCapabilityNamePrefix = computed(() => {
+  return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
+});
 
 const catalogScopeErrorMessage = computed(() => {
   if (!props.userId.trim()) return '尚未获取当前用户工号';
@@ -534,9 +547,31 @@ function resetEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
+function ensureProductCapabilityNamePrefix(): boolean {
+  const prefix = requiredCapabilityNamePrefix.value;
+  if (!prefix) return true;
+  const name = editor.name.trim();
+  if (!name.startsWith(prefix)) {
+    editor.error = `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c${prefix}\u201d\u5f00\u5934`;
+    return false;
+  }
+  if (name.length === prefix.length) {
+    editor.error = `\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${capabilityLabel.value} \u540d\u79f0`;
+    return false;
+  }
+  return true;
+}
+
+function ensureCapabilityNameFormat(): boolean {
+  if (isCatalogItemNameValid(editor.name.trim())) return true;
+  editor.error = `${capabilityLabel.value} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`;
+  return false;
+}
+
 function openCreate(): void {
   resetEditor();
   editor.mode = 'create';
+  editor.name = requiredCapabilityNamePrefix.value;
   editor.open = true;
 }
 
@@ -568,15 +603,17 @@ function closeEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
-function editorPayload(): SkillMasterPayload {
+function editorPayload(): CapabilityCatalogEditorPayload {
   return {
     name: editor.name,
     description: editor.description,
     level: filterForm.level,
     product: filterForm.level === '产品级' ? filterForm.product : '',
     owner: editor.owner,
+    ownerId: ownerPicker.selected?.sAMAccountName.trim() ?? '',
     department: filterForm.departmentName,
     developOwner: editor.developOwner,
+    developOwnerId: developOwnerPicker.selected?.sAMAccountName.trim() ?? '',
     developOwnerDepartment: editor.developOwnerDepartment,
     plannedCompleteDate: editor.plannedCompleteDate,
     status: editor.status,
@@ -587,6 +624,12 @@ async function submitEditor(): Promise<void> {
   editor.error = '';
   if (!editor.name.trim()) {
     editor.error = `请输入 ${capabilityLabel.value} 名称`;
+    return;
+  }
+  if (!ensureCapabilityNameFormat()) {
+    return;
+  }
+  if (!ensureProductCapabilityNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {
@@ -681,6 +724,10 @@ async function handleImport(event: Event): Promise<void> {
     const result = await api.value.importCatalog(file, scope);
     const suffix = result.failCount ? `，失败 ${result.failCount} 条` : '';
     showToast(`成功导入 ${result.successCount} 条${suffix}`);
+    const errorDetails = result.errors.filter(Boolean).join('\uff1b');
+    if (errorDetails) {
+      showToast(errorDetails, 8000);
+    }
     await reload();
   } catch (error) {
     showToast(error instanceof Error ? error.message : '导入失败');
@@ -1017,9 +1064,16 @@ onMounted(async () => {
               <span>{{ capabilityLabel }} 名称 *</span>
               <input
                 v-model.trim="editor.name"
-                maxlength="80"
+                maxlength="64"
                 :placeholder="`请输入 ${capabilityLabel} 名称`"
               />
+              <small v-if="requiredCapabilityNamePrefix" class="capability-name-prefix-hint">
+                {{
+                  '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c' +
+                  requiredCapabilityNamePrefix +
+                  '\u201d\u5f00\u5934'
+                }}
+              </small>
             </label>
             <label class="is-wide">
               <span>{{ capabilityLabel }} 说明 *</span>
@@ -1582,6 +1636,11 @@ td.is-description {
 }
 .capability-master-form label.is-wide {
   grid-column: 1 / -1;
+}
+.capability-name-prefix-hint {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
 }
 .capability-master-form input,
 .capability-master-form textarea,

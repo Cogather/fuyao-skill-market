@@ -50,28 +50,6 @@ export type ExpertCheckDto = {
   [key: string]: unknown;
 };
 
-/** §3.3.10 / §4.4 */
-export type UserMarketRole = 'SUPER_ADMIN' | 'ORG_ADMIN' | 'USER';
-
-export type OrganizationScope = 'ALL' | 'MANAGED_ORG' | 'NONE';
-
-export type CurrentUserRoleDto = {
-  employeeNo: string;
-  userName: string;
-  role: UserMarketRole;
-  superAdmin: boolean;
-  orgAdmin: boolean;
-  managedOrgIds: number[];
-  managedOrgNames?: string[];
-  organizationScope: OrganizationScope;
-  /** 当前用户是否为自身 dept5 部门 Owner。 */
-  departmentOwner?: boolean;
-  /** 兼容存量接口中的部门主任标识，与 departmentOwner 含义一致。 */
-  departmentDirector?: boolean;
-  ownedDepartmentNames?: string[];
-  managedDepartmentNames?: string[];
-};
-
 export type BusinessDimensionDto = {
   categoryId: number | string;
   dimensionCode?: string;

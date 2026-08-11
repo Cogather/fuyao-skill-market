@@ -29,6 +29,7 @@ import {
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
   openSkillExportResponse,
+  skillImportErrorMessage,
 } from './skillTransferService';
 import type {
   SkillMasterPayload,
@@ -526,6 +527,17 @@ function planningTransferParams(query: SkillPlanningQuery): SkillTransferParams 
   });
 }
 
+async function capabilityImportResponse<T>(
+  type: MockHarnessCapabilityType,
+  request: Promise<T>,
+): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    throw new Error(skillImportErrorMessage(error, `${label(type)} \u5bfc\u5165\u5931\u8d25`));
+  }
+}
+
 export async function importHttpCapabilityPlanning(
   type: MockHarnessCapabilityType,
   file: File,
@@ -533,9 +545,9 @@ export async function importHttpCapabilityPlanning(
 ): Promise<SkillPlanningImportResult> {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await capabilityHttpClients[type].importPlanning(
-    formData,
-    planningTransferParams(query),
+  const response = await capabilityImportResponse(
+    type,
+    capabilityHttpClients[type].importPlanning(formData, planningTransferParams(query)),
   );
   return normalizeSkillImportResponse(response);
 }
@@ -701,6 +713,10 @@ function catalogBody(
   type: MockHarnessCapabilityType,
   payload: SkillMasterPayload,
 ): CapabilityCatalogCreateBody {
+  const personPayload = payload as SkillMasterPayload & {
+    ownerId?: string;
+    developOwnerId?: string;
+  };
   const name = requiredText(payload.name, '请输入能力名称');
   const description = requiredText(payload.description, '请输入能力说明');
   const owner = parsePerson(payload.owner, '责任 Owner');
@@ -708,9 +724,15 @@ function catalogBody(
   const planFinishDate = requiredText(payload.plannedCompleteDate, '请选择计划完成时间');
   const sharedBody = {
     ownerName: owner.name,
-    ownerId: owner.id,
+    ownerId: requiredText(
+      personPayload.ownerId,
+      '\u8d23\u4efb Owner \u7528\u6237\u4fe1\u606f\u7f3a\u5c11 sAMAccountName',
+    ),
     developOwnerName: developOwner.name,
-    developOwnerId: developOwner.id,
+    developOwnerId: requiredText(
+      personPayload.developOwnerId,
+      '\u5f00\u53d1\u8d23\u4efb\u4eba\u7528\u6237\u4fe1\u606f\u7f3a\u5c11 sAMAccountName',
+    ),
     planFinishDate,
   };
   return type === 'command'
@@ -821,9 +843,9 @@ export async function importHttpCapabilityCatalog(
 ): Promise<{ successCount: number; failCount: number; errors: string[] }> {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await capabilityHttpClients[type].importCatalog(
-    formData,
-    normalizeCatalogScope(scope),
+  const response = await capabilityImportResponse(
+    type,
+    capabilityHttpClients[type].importCatalog(formData, normalizeCatalogScope(scope)),
   );
   const result = normalizeSkillImportResponse(response);
   return {

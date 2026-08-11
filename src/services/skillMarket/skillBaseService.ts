@@ -287,15 +287,6 @@ export const skillBaseService = {
     });
   },
 
-  // 当前用户角色查询接口
-  queryCurrentUserRole: (params: any): any => {
-    return httpRequest.api<any>({
-      url: '/users/current/role',
-      method: 'get',
-      params,
-    });
-  },
-
   // 组织查询接口（通用，/api/organizations）
   queryOrganizationList: (params?: any): any => {
     return httpRequest.api<any>({
@@ -898,10 +889,28 @@ export const skillBaseService = {
     });
   },
 
+  // 查询当前用户的 Command 规划待办
+  queryMyCommandPlanningTasks: (params: { userId: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/task/command/my',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 查询当前用户的 Agent 规划待办
+  queryMyAgentPlanningTasks: (params: { userId: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/task/agent/my',
+      method: 'get',
+      params,
+    });
+  },
+
   // 查询当前用户的Skill规划待办
   queryMySkillPlanningTasks: (params: { userId: string }): any => {
-    return httpRequest.skill<any>({
-      url: '/config/task/my',
+    return httpRequest.harnessApi<any>({
+      url: '/task/skill/my',
       method: 'get',
       params,
     });
