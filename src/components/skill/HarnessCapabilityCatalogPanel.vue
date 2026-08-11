@@ -18,6 +18,10 @@ import type {
   SkillMasterRecord,
   SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 type DepartmentNode = {
   id?: string;
@@ -172,13 +176,8 @@ const selectedProduct = computed(() =>
   productOptions.value.find((item) => item.offeringName === filterForm.product),
 );
 
-const capabilityNamePattern = /^[a-z0-9-]{1,64}$/;
-
 const requiredCapabilityNamePrefix = computed(() => {
-  if (filterForm.level !== '\u4ea7\u54c1\u7ea7') return '';
-  const productName = filterForm.product.trim();
-  if (!capabilityNamePattern.test(productName)) return '';
-  return productName.endsWith('-') ? productName : productName + '-';
+  return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -564,7 +563,7 @@ function ensureProductCapabilityNamePrefix(): boolean {
 }
 
 function ensureCapabilityNameFormat(): boolean {
-  if (capabilityNamePattern.test(editor.name.trim())) return true;
+  if (isCatalogItemNameValid(editor.name.trim())) return true;
   editor.error = `${capabilityLabel.value} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`;
   return false;
 }

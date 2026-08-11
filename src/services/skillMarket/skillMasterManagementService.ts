@@ -1,5 +1,9 @@
 import { skillMasterSeedRecords } from './mock/skillMasterSeed';
 
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 export type SkillMasterStatus = '未开始' | '开发中' | '已完成' | '进行中' | '联调中';
 
 export interface SkillMasterRecord {
@@ -146,27 +150,21 @@ function normalizePayload(payload: SkillMasterPayload): SkillMasterPayload {
   };
 }
 
-function productSkillNamePrefix(product: string): string {
-  const productName = product.trim();
-  if (!/^[a-z0-9-]{1,64}$/.test(productName)) return '';
-  return productName.endsWith('-') ? productName : productName + '-';
-}
-
-function validatePayload(payload: SkillMasterPayload): void {
+function validatePayload(payload: SkillMasterPayload, requiredProductPrefix: string): void {
   if (!payload.name) throw new Error('请输入 Skill 名称');
-  if (!/^[a-z0-9-]{1,64}$/.test(payload.name.trim())) {
-    throw new Error('Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26');
+  if (!isCatalogItemNameValid(payload.name)) {
+    throw new Error(
+      'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26',
+    );
   }
   if (!payload.description) throw new Error('请输入 Skill 说明');
   if (!payload.owner) throw new Error('请输入责任 Owner');
-  if (payload.level === '产品级' && payload.product) {
-    const prefix = productSkillNamePrefix(payload.product);
-    if (!prefix) return;
-    if (!payload.name.startsWith(prefix)) {
-      throw new Error('产品级 Skill 名称需以产品名称的小写形式“' + prefix + '”开头');
+  if (payload.level === '产品级' && requiredProductPrefix) {
+    if (!payload.name.startsWith(requiredProductPrefix)) {
+      throw new Error('产品级 Skill 名称需以产品名称的小写形式“' + requiredProductPrefix + '”开头');
     }
-    if (payload.name.length === prefix.length) {
-      throw new Error('请在“' + prefix + '”后补充 Skill 名称');
+    if (payload.name.length === requiredProductPrefix.length) {
+      throw new Error('请在“' + requiredProductPrefix + '”后补充 Skill 名称');
     }
   }
 }
@@ -211,8 +209,12 @@ export async function querySkillMasterRecords(
 }
 
 export function createSkillMasterRecord(payload: SkillMasterPayload): SkillMasterRecord {
+  const requiredProductPrefix = getProductCatalogItemNamePrefix(
+    normalize(payload.level),
+    payload.product,
+  );
   const normalized = normalizePayload(payload);
-  validatePayload(normalized);
+  validatePayload(normalized, requiredProductPrefix);
   const now = new Date().toISOString();
   const record: SkillMasterRecord = {
     id: `skill-master-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -231,8 +233,12 @@ export function updateSkillMasterRecord(
   const records = readRecords();
   const record = records.find((item) => item.id === id);
   if (!record) throw new Error('未找到该 Skill');
+  const requiredProductPrefix = getProductCatalogItemNamePrefix(
+    normalize(payload.level),
+    payload.product,
+  );
   const normalized = normalizePayload(payload);
-  validatePayload(normalized);
+  validatePayload(normalized, requiredProductPrefix);
   Object.assign(record, normalized, { updatedAt: new Date().toISOString() });
   persist(records);
   return cloneRecord(record);

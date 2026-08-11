@@ -34,6 +34,10 @@ import type {
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
+import {
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
   openSkillExportResponse,
@@ -302,17 +306,9 @@ const selectedMasterProduct = computed(() =>
       (!item.planningDeptName || item.planningDeptName === masterScopeForm.planningDeptName),
   ),
 );
-const currentProductName = computed(() =>
-  masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
-);
-const skillNamePattern = /^[a-z0-9-]{1,64}$/;
 
 const requiredSkillNamePrefix = computed(() => {
-  const productName = currentProductName.value;
-  if (!skillNamePattern.test(productName)) {
-    return '';
-  }
-  return productName.endsWith('-') ? productName : productName + '-';
+  return getProductCatalogItemNamePrefix(masterScopeForm.level, masterScopeForm.offeringName);
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -696,15 +692,10 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 function ensureSkillNameFormat(): boolean {
-  if (skillNamePattern.test(editor.name.trim())) return true;
-  editor.error = 'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
+  if (isCatalogItemNameValid(editor.name.trim())) return true;
+  editor.error =
+    'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
   return false;
-}
-
-function editorSkillNameChanged(): boolean {
-  if (editor.mode !== 'edit') return true;
-  const originalName = records.value.find((record) => record.id === editor.id)?.name.trim() ?? '';
-  return !originalName || editor.name.trim() !== originalName;
 }
 
 function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
@@ -1166,7 +1157,7 @@ async function submitEditor(): Promise<void> {
   if (!ensureSkillNameFormat()) {
     return;
   }
-  if (editorSkillNameChanged() && !ensureProductSkillNamePrefix()) {
+  if (!ensureProductSkillNamePrefix()) {
     return;
   }
   if (!editor.description.trim()) {

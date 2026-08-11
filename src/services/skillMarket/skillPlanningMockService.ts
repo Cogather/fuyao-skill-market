@@ -313,6 +313,21 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
 
 const mockProductPlanningOptions: ProductPlanningOption[] = [
   {
+    offeringId: 'offering-harness-pipeline-valid',
+    offeringName: 'harness-pipeline',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
+    offeringId: 'offering-devops-center-v2-valid',
+    offeringName: 'devops-center-v2',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
+    offeringId: 'offering-release-tools-2026-valid',
+    offeringName: 'release-tools-2026',
+    planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+  },
+  {
     offeringId: 'offering-harness-pipeline',
     offeringName: 'Harness 流水线平台',
     planningDeptName: '持续交付组',

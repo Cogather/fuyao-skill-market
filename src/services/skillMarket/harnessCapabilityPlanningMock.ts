@@ -35,11 +35,23 @@ interface CapabilityState {
 const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v1';
 const now = '2026-08-01T08:00:00.000Z';
 
-const mockCapabilityProductOptions: Record<
-  MockHarnessCapabilityType,
-  ProductPlanningOption[]
-> = {
+const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPlanningOption[]> = {
   command: [
+    {
+      offeringId: 'command-product-harness-pipeline',
+      offeringName: 'harness-pipeline',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'command-product-devops-center-v2',
+      offeringName: 'devops-center-v2',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'command-product-release-tools-2026',
+      offeringName: 'release-tools-2026',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
     {
       offeringId: 'command-product-delivery-center',
       offeringName: '\u6301\u7eed\u4ea4\u4ed8\u547d\u4ee4\u4e2d\u5fc3',
@@ -57,6 +69,21 @@ const mockCapabilityProductOptions: Record<
     },
   ],
   agent: [
+    {
+      offeringId: 'agent-product-harness-pipeline',
+      offeringName: 'harness-pipeline',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'agent-product-devops-center-v2',
+      offeringName: 'devops-center-v2',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
+    {
+      offeringId: 'agent-product-release-tools-2026',
+      offeringName: 'release-tools-2026',
+      planningDeptName: '\u6301\u7eed\u4ea4\u4ed8\u7ec4',
+    },
     {
       offeringId: 'agent-product-intelligent-delivery',
       offeringName: '\u667a\u80fd\u4ea4\u4ed8 Agent \u5e73\u53f0',
