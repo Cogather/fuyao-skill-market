@@ -128,13 +128,15 @@ function validateProductCapabilityName(
   type: MockHarnessCapabilityType,
   payload: SkillMasterPayload,
 ): void {
-  if (payload.level !== '\u4ea7\u54c1\u7ea7' || !payload.product.trim()) return;
-  const lowercaseProductName = payload.product.trim().toLowerCase();
-  const prefix = lowercaseProductName.endsWith('-')
-    ? lowercaseProductName
-    : lowercaseProductName + '-';
   const name = payload.name.trim();
   const label = capabilityLabel(type);
+  if (!/^[a-z0-9-]{1,64}$/.test(name)) {
+    throw new Error(`${label} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`);
+  }
+  if (payload.level !== '\u4ea7\u54c1\u7ea7') return;
+  const productName = payload.product.trim();
+  if (!/^[a-z0-9-]{1,64}$/.test(productName)) return;
+  const prefix = productName.endsWith('-') ? productName : productName + '-';
   if (!name.startsWith(prefix)) {
     throw new Error(`\u4ea7\u54c1\u7ea7 ${label} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`);
   }

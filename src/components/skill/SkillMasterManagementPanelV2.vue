@@ -305,13 +305,14 @@ const selectedMasterProduct = computed(() =>
 const currentProductName = computed(() =>
   masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
 );
+const skillNamePattern = /^[a-z0-9-]{1,64}$/;
+
 const requiredSkillNamePrefix = computed(() => {
   const productName = currentProductName.value;
-  if (!productName) {
+  if (!skillNamePattern.test(productName)) {
     return '';
   }
-  const lowercaseProductName = productName.toLowerCase();
-  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
+  return productName.endsWith('-') ? productName : productName + '-';
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -694,6 +695,12 @@ function ensureProductSkillNamePrefix(): boolean {
   }
   return true;
 }
+function ensureSkillNameFormat(): boolean {
+  if (skillNamePattern.test(editor.name.trim())) return true;
+  editor.error = 'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
+  return false;
+}
+
 function editorSkillNameChanged(): boolean {
   if (editor.mode !== 'edit') return true;
   const originalName = records.value.find((record) => record.id === editor.id)?.name.trim() ?? '';
@@ -1070,6 +1077,9 @@ async function submitEditor(): Promise<void> {
       editor.error = '请填写 Skill 名称';
       return;
     }
+    if (!ensureSkillNameFormat()) {
+      return;
+    }
     if (!ensureProductSkillNamePrefix()) {
       return;
     }
@@ -1151,6 +1161,9 @@ async function submitEditor(): Promise<void> {
   }
   if (!editor.name.trim()) {
     editor.error = '请填写 Skill 名称';
+    return;
+  }
+  if (!ensureSkillNameFormat()) {
     return;
   }
   if (editorSkillNameChanged() && !ensureProductSkillNamePrefix()) {
@@ -1823,7 +1836,7 @@ onBeforeUnmount(() => {
               ><span>Skill 名称 *</span
               ><input
                 v-model.trim="editor.name"
-                maxlength="60"
+                maxlength="64"
                 :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
               /><small v-if="requiredSkillNamePrefix" class="field-hint"
                 >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small

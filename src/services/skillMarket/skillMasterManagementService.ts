@@ -147,16 +147,21 @@ function normalizePayload(payload: SkillMasterPayload): SkillMasterPayload {
 }
 
 function productSkillNamePrefix(product: string): string {
-  const lowercaseProductName = product.toLowerCase();
-  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
+  const productName = product.trim();
+  if (!/^[a-z0-9-]{1,64}$/.test(productName)) return '';
+  return productName.endsWith('-') ? productName : productName + '-';
 }
 
 function validatePayload(payload: SkillMasterPayload): void {
   if (!payload.name) throw new Error('请输入 Skill 名称');
+  if (!/^[a-z0-9-]{1,64}$/.test(payload.name.trim())) {
+    throw new Error('Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26');
+  }
   if (!payload.description) throw new Error('请输入 Skill 说明');
   if (!payload.owner) throw new Error('请输入责任 Owner');
   if (payload.level === '产品级' && payload.product) {
     const prefix = productSkillNamePrefix(payload.product);
+    if (!prefix) return;
     if (!payload.name.startsWith(prefix)) {
       throw new Error('产品级 Skill 名称需以产品名称的小写形式“' + prefix + '”开头');
     }

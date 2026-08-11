@@ -172,12 +172,13 @@ const selectedProduct = computed(() =>
   productOptions.value.find((item) => item.offeringName === filterForm.product),
 );
 
+const capabilityNamePattern = /^[a-z0-9-]{1,64}$/;
+
 const requiredCapabilityNamePrefix = computed(() => {
   if (filterForm.level !== '\u4ea7\u54c1\u7ea7') return '';
   const productName = filterForm.product.trim();
-  if (!productName) return '';
-  const lowercaseProductName = productName.toLowerCase();
-  return lowercaseProductName.endsWith('-') ? lowercaseProductName : lowercaseProductName + '-';
+  if (!capabilityNamePattern.test(productName)) return '';
+  return productName.endsWith('-') ? productName : productName + '-';
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -552,7 +553,7 @@ function ensureProductCapabilityNamePrefix(): boolean {
   if (!prefix) return true;
   const name = editor.name.trim();
   if (!name.startsWith(prefix)) {
-    editor.error = `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`;
+    editor.error = `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c${prefix}\u201d\u5f00\u5934`;
     return false;
   }
   if (name.length === prefix.length) {
@@ -560,6 +561,12 @@ function ensureProductCapabilityNamePrefix(): boolean {
     return false;
   }
   return true;
+}
+
+function ensureCapabilityNameFormat(): boolean {
+  if (capabilityNamePattern.test(editor.name.trim())) return true;
+  editor.error = `${capabilityLabel.value} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`;
+  return false;
 }
 
 function openCreate(): void {
@@ -618,6 +625,9 @@ async function submitEditor(): Promise<void> {
   editor.error = '';
   if (!editor.name.trim()) {
     editor.error = `请输入 ${capabilityLabel.value} 名称`;
+    return;
+  }
+  if (!ensureCapabilityNameFormat()) {
     return;
   }
   if (!ensureProductCapabilityNamePrefix()) {
@@ -1055,12 +1065,12 @@ onMounted(async () => {
               <span>{{ capabilityLabel }} 名称 *</span>
               <input
                 v-model.trim="editor.name"
-                maxlength="80"
+                maxlength="64"
                 :placeholder="`请输入 ${capabilityLabel} 名称`"
               />
               <small v-if="requiredCapabilityNamePrefix" class="capability-name-prefix-hint">
                 {{
-                  '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c' +
+                  '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c' +
                   requiredCapabilityNamePrefix +
                   '\u201d\u5f00\u5934'
                 }}
