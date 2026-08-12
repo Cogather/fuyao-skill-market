@@ -607,6 +607,20 @@ function closeEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
+function onEditorFormEnter(event: KeyboardEvent): void {
+  const target = event.target;
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) {
+    return;
+  }
+  event.preventDefault();
+}
+
+function onEditorFormSubmit(event: SubmitEvent): void {
+  if (event.submitter instanceof HTMLButtonElement) {
+    void submitEditor();
+  }
+}
+
 function editorPayload(): CapabilityCatalogEditorPayload {
   return {
     name: editor.name,
@@ -1061,8 +1075,21 @@ onMounted(async () => {
     </section>
 
     <Teleport to="body">
-      <div v-if="editor.open" class="capability-master-overlay" @click.self="closeEditor">
-        <form class="capability-master-dialog" @submit.prevent="submitEditor">
+      <div
+        v-if="editor.open"
+        class="capability-master-overlay"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
+      >
+        <form
+          class="capability-master-dialog"
+          @click.stop
+          @pointerdown.stop
+          @pointerup.stop
+          @submit.prevent="onEditorFormSubmit"
+          @keydown.enter="onEditorFormEnter"
+        >
           <header>
             <div>
               <small>{{ capabilityLabel.toUpperCase() }} MASTER</small>
