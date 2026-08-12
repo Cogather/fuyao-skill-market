@@ -241,16 +241,14 @@ function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanning
     queryCatalog: (query = {}) =>
       isHttp ? queryHttpCapabilityCatalog(type, query) : queryMockCapabilityCatalog(type, query),
     createCatalog: (payload, scope) => {
+      if (isHttp) return createHttpCapabilityCatalogRecord(type, payload, scope);
       validateProductCapabilityName(type, payload);
-      return isHttp
-        ? createHttpCapabilityCatalogRecord(type, payload, scope)
-        : createMockCapabilityCatalogRecord(type, payload);
+      return createMockCapabilityCatalogRecord(type, payload);
     },
     updateCatalog: (id, payload, scope) => {
+      if (isHttp) return updateHttpCapabilityCatalogRecord(type, id, payload, scope);
       validateProductCapabilityName(type, payload);
-      return isHttp
-        ? updateHttpCapabilityCatalogRecord(type, id, payload, scope)
-        : updateMockCapabilityCatalogRecord(type, id, payload);
+      return updateMockCapabilityCatalogRecord(type, id, payload);
     },
     deleteCatalog: (id, userId) =>
       isHttp

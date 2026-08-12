@@ -45,6 +45,10 @@ import {
   type SkillPlanningListResult,
   type SkillPlanningQuery,
 } from './skillPlanningShared';
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 export type HarnessCapabilityCatalogHttpScope = SkillTransferParams;
 export type HarnessCapabilityCatalogHttpQuery = HarnessCapabilityCatalogQuery &
@@ -740,6 +744,29 @@ function catalogBody(
     : { ...sharedBody, agentName: name, agentDescription: description };
 }
 
+function validateHttpCatalogItemName(
+  type: MockHarnessCapabilityType,
+  payload: SkillMasterPayload,
+): void {
+  const capabilityLabel = label(type);
+  const name = normalizeText(payload.name);
+  if (!isCatalogItemNameValid(name)) {
+    throw new Error(
+      `${capabilityLabel} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`,
+    );
+  }
+  const prefix = getProductCatalogItemNamePrefix(payload.level, payload.product);
+  if (!prefix) return;
+  if (!name.startsWith(prefix)) {
+    throw new Error(
+      `\u4ea7\u54c1\u7ea7 ${capabilityLabel} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`,
+    );
+  }
+  if (name.length === prefix.length) {
+    throw new Error(`\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${capabilityLabel} \u540d\u79f0`);
+  }
+}
+
 function payloadFallbackRecord(
   id: string,
   payload: SkillMasterPayload,
@@ -782,6 +809,7 @@ export async function createHttpCapabilityCatalogRecord(
   payload: SkillMasterPayload,
   scope: HarnessCapabilityCatalogHttpScope,
 ): Promise<SkillMasterRecord> {
+  validateHttpCatalogItemName(type, payload);
   const normalizedScope = normalizeCatalogScope(scope);
   const response = await capabilityHttpClients[type].createCatalog(
     catalogBody(type, payload),
@@ -797,6 +825,7 @@ export async function updateHttpCapabilityCatalogRecord(
   payload: SkillMasterPayload,
   scope: HarnessCapabilityCatalogHttpScope,
 ): Promise<SkillMasterRecord> {
+  validateHttpCatalogItemName(type, payload);
   const normalizedScope = normalizeCatalogScope(scope);
   const response = await capabilityHttpClients[type].updateCatalog(
     {

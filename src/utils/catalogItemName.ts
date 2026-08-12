@@ -1,7 +1,12 @@
 export const CATALOG_ITEM_NAME_PATTERN = /^[a-z0-9-]{1,64}$/;
+export const CATALOG_PRODUCT_NAME_PATTERN = /^[a-zA-Z0-9-]{1,64}$/;
 
 export function isCatalogItemNameValid(name: string): boolean {
   return CATALOG_ITEM_NAME_PATTERN.test(name);
+}
+
+export function isCatalogProductNameValid(name: string): boolean {
+  return CATALOG_PRODUCT_NAME_PATTERN.test(name);
 }
 
 /**
@@ -11,6 +16,6 @@ export function getProductCatalogItemNamePrefix(
   level: string,
   originalProductName: string,
 ): string {
-  if (level !== '产品级' || !isCatalogItemNameValid(originalProductName)) return '';
+  if (level !== '产品级' || !isCatalogProductNameValid(originalProductName)) return '';
   return originalProductName.toLowerCase() + '-';
 }
