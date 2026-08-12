@@ -83,6 +83,8 @@ export interface SkillPlanningOptionGroup {
 export interface ProductPlanningOption {
   offeringId: string;
   offeringName: string;
+  /** HTTP 接口返回的未经 trim、大小写转换的产品原名。 */
+  originalOfferingName?: string;
   planningDeptName: string;
 }
 

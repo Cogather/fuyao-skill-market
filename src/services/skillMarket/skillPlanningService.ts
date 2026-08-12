@@ -113,6 +113,21 @@ function readOptionText(value: unknown, keys: string[]): string {
   return '';
 }
 
+function readOriginalOptionText(value: unknown, keys: string[]): string {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value);
+  }
+
+  const record = asRecord(value);
+  for (const key of keys) {
+    const candidate = record[key];
+    if (candidate !== undefined && candidate !== null && String(candidate) !== '') {
+      return String(candidate);
+    }
+  }
+  return '';
+}
+
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
@@ -404,14 +419,16 @@ function normalizeProductPlanningOptions(response: unknown): ProductPlanningOpti
       'code',
       'id',
     ]);
-    const offeringName = readOptionText(item, [
+    const offeringNameKeys = [
       'offeringName',
       'productName',
       'productNameCn',
       'offeringNameCn',
       'name',
       'label',
-    ]);
+    ];
+    const originalOfferingName = readOriginalOptionText(item, offeringNameKeys);
+    const offeringName = normalizeText(originalOfferingName);
     const planningDeptName =
       normalizeText(record.planningDeptName) ||
       normalizeText(record.departmentName) ||
@@ -422,6 +439,7 @@ function normalizeProductPlanningOptions(response: unknown): ProductPlanningOpti
     optionMap.set(`${planningDeptName}::${offeringId || offeringName}`, {
       offeringId,
       offeringName,
+      originalOfferingName,
       planningDeptName,
     });
   });

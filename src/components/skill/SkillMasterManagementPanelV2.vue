@@ -299,16 +299,28 @@ function findMasterDepartmentNode(
   if (!node || rest.length === 0) return node;
   return findMasterDepartmentNode(rest, node.children ?? []);
 }
+function masterProductOptionValue(item: ProductPlanningOption): string {
+  return item.offeringId || item.offeringName;
+}
+
 const selectedMasterProduct = computed(() =>
   masterProductOptions.value.find(
-    (item) =>
-      item.offeringName === masterScopeForm.offeringName &&
-      (!item.planningDeptName || item.planningDeptName === masterScopeForm.planningDeptName),
+    (item) => masterProductOptionValue(item) === masterScopeForm.offeringId,
   ),
 );
 
+const selectedMasterProductOriginalName = computed(
+  () =>
+    selectedMasterProduct.value?.originalOfferingName ??
+    selectedMasterProduct.value?.offeringName ??
+    masterScopeForm.offeringName,
+);
+
 const requiredSkillNamePrefix = computed(() => {
-  return getProductCatalogItemNamePrefix(masterScopeForm.level, masterScopeForm.offeringName);
+  return getProductCatalogItemNamePrefix(
+    masterScopeForm.level,
+    selectedMasterProductOriginalName.value,
+  );
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -672,7 +684,8 @@ function resetEditor(): void {
 
 function applyCurrentScopeToEditor(): void {
   editor.level = masterScopeForm.level;
-  editor.product = masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '';
+  editor.product =
+    masterScopeForm.level === '产品级' ? selectedMasterProductOriginalName.value : '';
 }
 
 function ensureProductSkillNamePrefix(): boolean {
@@ -1461,7 +1474,7 @@ async function onMasterDepartmentClear(segments: string[] = []): Promise<void> {
 
 async function onMasterProductChange(): Promise<void> {
   masterPageNum.value = 1;
-  masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
+  masterScopeForm.offeringName = selectedMasterProduct.value?.offeringName ?? '';
   await reload();
 }
 
@@ -1554,7 +1567,7 @@ onBeforeUnmount(() => {
         <label v-if="masterScopeForm.level === '产品级'" class="master-scope-field">
           <span>产品 <em>*</em></span>
           <select
-            v-model="masterScopeForm.offeringName"
+            v-model="masterScopeForm.offeringId"
             :disabled="!masterScopeForm.planningDeptName || masterProductsLoading"
             @change="onMasterProductChange"
           >
@@ -1570,7 +1583,7 @@ onBeforeUnmount(() => {
             <option
               v-for="item in masterProductOptions"
               :key="item.offeringId || item.offeringName"
-              :value="item.offeringName"
+              :value="masterProductOptionValue(item)"
             >
               {{ item.offeringName }}
             </option>

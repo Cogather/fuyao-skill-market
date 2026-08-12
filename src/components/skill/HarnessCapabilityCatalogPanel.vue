@@ -78,6 +78,7 @@ const filterForm = reactive({
   level: '部门级',
   departmentName: '',
   product: '',
+  productId: '',
   keyword: '',
 });
 const productOptions = ref<ProductPlanningOption[]>([]);
@@ -172,12 +173,23 @@ function findDepartmentNode(path = departmentSegments.value): DepartmentNode | n
   return matched;
 }
 
+function productOptionValue(item: ProductPlanningOption): string {
+  return item.offeringId || item.offeringName;
+}
+
 const selectedProduct = computed(() =>
-  productOptions.value.find((item) => item.offeringName === filterForm.product),
+  productOptions.value.find((item) => productOptionValue(item) === filterForm.productId),
+);
+
+const selectedProductOriginalName = computed(
+  () =>
+    selectedProduct.value?.originalOfferingName ??
+    selectedProduct.value?.offeringName ??
+    filterForm.product,
 );
 
 const requiredCapabilityNamePrefix = computed(() => {
-  return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
+  return getProductCatalogItemNamePrefix(filterForm.level, selectedProductOriginalName.value);
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -234,8 +246,9 @@ async function loadProductOptions(): Promise<void> {
     );
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
-    if (!options.some((item) => item.offeringName === filterForm.product)) {
+    if (!options.some((item) => productOptionValue(item) === filterForm.productId)) {
       filterForm.product = '';
+      filterForm.productId = '';
     }
   } catch (error) {
     if (requestSequence === productLoadSequence) {
@@ -303,6 +316,7 @@ async function reload(): Promise<void> {
 async function onDepartmentDone(path: string[] = []): Promise<void> {
   departmentSegments.value = normalizePath(path);
   filterForm.departmentName = departmentSegments.value.at(-1) ?? '';
+  filterForm.productId = '';
   filterForm.product = '';
   await loadProductOptions();
   pageNum.value = 1;
@@ -318,6 +332,7 @@ async function resetQuery(): Promise<void> {
   filterForm.level = '部门级';
   filterForm.product = '';
   filterForm.keyword = '';
+  filterForm.productId = '';
   applyDefaultDepartment();
   await loadProductOptions();
   pageNum.value = 1;
@@ -327,12 +342,14 @@ async function resetQuery(): Promise<void> {
 async function onLevelChange(): Promise<void> {
   filterForm.product = '';
   pageNum.value = 1;
+  filterForm.productId = '';
   await loadProductOptions();
   await reload();
 }
 
 async function onProductChange(): Promise<void> {
   pageNum.value = 1;
+  filterForm.product = selectedProduct.value?.offeringName ?? '';
   await reload();
 }
 
@@ -608,7 +625,7 @@ function editorPayload(): CapabilityCatalogEditorPayload {
     name: editor.name,
     description: editor.description,
     level: filterForm.level,
-    product: filterForm.level === '产品级' ? filterForm.product : '',
+    product: filterForm.level === '产品级' ? selectedProductOriginalName.value : '',
     owner: editor.owner,
     ownerId: ownerPicker.selected?.sAMAccountName.trim() ?? '',
     department: filterForm.departmentName,
@@ -842,7 +859,7 @@ onMounted(async () => {
       >
         <span>产品 <em>*</em></span>
         <select
-          v-model="filterForm.product"
+          v-model="filterForm.productId"
           :disabled="!filterForm.departmentName || productsLoading"
           @change="onProductChange"
         >
@@ -857,8 +874,8 @@ onMounted(async () => {
           </option>
           <option
             v-for="product in productOptions"
-            :key="product.offeringId"
-            :value="product.offeringName"
+            :key="productOptionValue(product)"
+            :value="productOptionValue(product)"
           >
             {{ product.offeringName }}
           </option>
