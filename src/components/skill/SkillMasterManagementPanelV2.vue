@@ -1813,6 +1813,9 @@ onBeforeUnmount(() => {
       <div
         v-if="editor.open"
         class="overlay"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
       >
         <form
           class="dialog"

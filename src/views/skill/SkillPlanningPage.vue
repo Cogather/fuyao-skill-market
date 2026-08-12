@@ -4139,6 +4139,9 @@ onBeforeUnmount(() => {
         v-if="formDialogOpen"
         class="planning-overlay"
         role="presentation"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
       >
         <div class="planning-dialog planning-dialog--wide" role="dialog" aria-modal="true">
           <div class="planning-dialog__head">
