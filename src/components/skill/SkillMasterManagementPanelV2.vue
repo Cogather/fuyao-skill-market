@@ -183,7 +183,7 @@ const deleteDialog = reactive({ open: false, id: '', name: '' });
 const submitting = ref(false);
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 const masterScopeForm = reactive({
-  level: '部门级' as PlanningLevel,
+  level: '产品级' as PlanningLevel,
   planningDeptName: '',
   offeringId: '',
   offeringName: '',
@@ -459,11 +459,11 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
 function applyDefaultMasterScopeSelection(): boolean {
   const defaultPath = defaultMasterDepartmentPath.value;
   const changed =
-    masterScopeForm.level !== '部门级' ||
+    masterScopeForm.level !== '产品级' ||
     !sameDepartmentPath(masterDepartmentSegments.value, defaultPath) ||
     masterScopeDepartmentCommitted.value !== defaultPath.length > 0;
 
-  masterScopeForm.level = '部门级';
+  masterScopeForm.level = '产品级';
   masterScopeForm.offeringId = '';
   masterScopeForm.offeringName = '';
   masterDepartmentSegments.value = [...defaultPath];
@@ -488,6 +488,11 @@ async function loadMasterProducts(): Promise<void> {
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;
+    const firstOption = options[0];
+    if (firstOption && !masterScopeForm.offeringName.trim()) {
+      masterScopeForm.offeringName = firstOption.offeringName;
+      masterScopeForm.offeringId = firstOption.offeringId;
+    }
   } catch (error) {
     if (requestSeq !== masterProductLoadSequence) return;
     showToast(error instanceof Error ? error.message : '产品加载失败，请稍后重试');

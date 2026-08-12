@@ -130,7 +130,7 @@ const emptyFilters = {
   secondScene: '',
   activityNodeName: '',
   subActivityNodeName: '',
-  level: '部门级',
+  level: '产品级',
   offeringName: '',
   owner: '',
   plannedStartDate: '',
@@ -988,6 +988,10 @@ async function loadFilterProducts(): Promise<void> {
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
+    const firstOption = options[0];
+    if (firstOption && !filterForm.offeringName.trim()) {
+      filterForm.offeringName = firstOption.offeringName;
+    }
   } catch (error) {
     if (requestSeq !== filterProductSearchSeq) return;
     showToast(error instanceof Error ? error.message : '产品加载失败，请稍后重试');
@@ -1630,6 +1634,7 @@ async function resetQuery() {
   Object.assign(filterForm, { ...emptyFilters });
   applyDefaultPlanningScopeSelection();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
 }
@@ -1698,11 +1703,11 @@ function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.valu
 function applyDefaultPlanningScopeSelection(): boolean {
   const defaultPath = defaultPlanningDepartmentPath.value;
   const changed =
-    filterForm.level !== '部门级' ||
+    filterForm.level !== '产品级' ||
     !samePlanningDepartmentPath(planningDepartmentSegments.value, defaultPath) ||
     planningScopeDepartmentCommitted.value !== defaultPath.length > 0;
 
-  filterForm.level = '部门级';
+  filterForm.level = '产品级';
   filterForm.offeringName = '';
   planningDepartmentSegments.value = [...defaultPath];
   syncPlanningDepartmentLevels(defaultPath);
@@ -2526,6 +2531,7 @@ async function initializePlanningScopeAndList(): Promise<void> {
   planningScopeInitialLoadStarted = true;
   applyDefaultPlanningScopeSelection();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   await reloadList();
 }
 
@@ -2534,8 +2540,8 @@ watch(
   () => {
     if (!planningScopeInitialLoadStarted || !applyDefaultPlanningScopeSelection()) return;
     void (async () => {
-      await loadPlanningFilterOptions();
       await loadFilterProducts();
+      await loadPlanningFilterOptions();
       pageNum.value = 1;
       await reloadList();
     })();
@@ -2547,7 +2553,6 @@ onMounted(() => {
   refreshSkillMasterOptions();
   applyDefaultPlanningScopeSelection();
   void (async () => {
-    await loadPlanningFilterOptions();
     await initializePlanningScopeAndList();
   })();
 });

@@ -75,7 +75,7 @@ const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType)
 const capabilityLabel = computed(() => api.value.label);
 const departmentSegments = ref<string[]>([]);
 const filterForm = reactive({
-  level: '部门级',
+  level: '产品级',
   departmentName: '',
   product: '',
   keyword: '',
@@ -234,6 +234,10 @@ async function loadProductOptions(): Promise<void> {
     );
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
+    const firstOption = options[0];
+    if (firstOption && !filterForm.product.trim()) {
+      filterForm.product = firstOption.offeringName;
+    }
     if (!options.some((item) => item.offeringName === filterForm.product)) {
       filterForm.product = '';
     }
@@ -315,7 +319,7 @@ async function applyQuery(): Promise<void> {
 }
 
 async function resetQuery(): Promise<void> {
-  filterForm.level = '部门级';
+  filterForm.level = '产品级';
   filterForm.product = '';
   filterForm.keyword = '';
   applyDefaultDepartment();
