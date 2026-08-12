@@ -637,6 +637,8 @@ export type CreateSkillMasterManagementParams = {
   dimType: string;
   dimCode: string;
   dimName: string;
+  /** UI-only raw product name used for client-side naming validation. */
+  catalogOriginalProductName?: string;
 };
 
 export type CreateSkillMasterManagementBody = {
@@ -707,6 +709,8 @@ export type UpdateSkillMasterManagementParams = {
   dimType: string;
   dimCode: string;
   dimName: string;
+  /** UI-only raw product name used for client-side naming validation. */
+  catalogOriginalProductName?: string;
 };
 
 export type UpdateSkillMasterManagementBody = {

@@ -67,10 +67,7 @@ import type {
   SkillPlanningQuery,
 } from './skillPlanningShared';
 
-import {
-  getProductCatalogItemNamePrefix,
-  isCatalogItemNameValid,
-} from '../../utils/catalogItemName';
+import { assertCatalogItemName } from '../../utils/catalogItemName';
 export type { HarnessCapabilityType } from './harnessCapabilityPlanningMock';
 
 export interface HarnessCapabilityPlanningCatalogQuery extends HarnessCapabilityCatalogQuery {
@@ -132,23 +129,8 @@ function validateProductCapabilityName(
   type: MockHarnessCapabilityType,
   payload: SkillMasterPayload,
 ): void {
-  const name = payload.name.trim();
   const label = capabilityLabel(type);
-  if (!isCatalogItemNameValid(name)) {
-    throw new Error(
-      `${label} \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26`,
-    );
-  }
-  const prefix = getProductCatalogItemNamePrefix(payload.level, payload.product);
-  if (!prefix) return;
-  if (!name.startsWith(prefix)) {
-    throw new Error(
-      `\u4ea7\u54c1\u7ea7 ${label} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`,
-    );
-  }
-  if (name.length === prefix.length) {
-    throw new Error(`\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${label} \u540d\u79f0`);
-  }
+  assertCatalogItemName(payload.name, payload.level, payload.product, label);
 }
 
 function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRecord {

@@ -36,6 +36,7 @@ import type {
   SkillMasterRecord,
   SkillMasterStatus,
 } from './skillMasterManagementService';
+import { assertCatalogItemName } from '../../utils/catalogItemName';
 import {
   normalizeSkillPlanningItem,
   normalizeText,
@@ -713,6 +714,7 @@ function catalogBody(
   type: MockHarnessCapabilityType,
   payload: SkillMasterPayload,
 ): CapabilityCatalogCreateBody {
+  assertCatalogItemName(payload.name, payload.level, payload.product, label(type));
   const personPayload = payload as SkillMasterPayload & {
     ownerId?: string;
     developOwnerId?: string;

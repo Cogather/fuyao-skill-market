@@ -36,6 +36,7 @@ import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTree
 import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
+  replaceCatalogItemNamePrefix,
 } from '../../utils/catalogItemName';
 import {
   normalizeSkillImportResponse,
@@ -199,6 +200,7 @@ const masterImportInputRef = ref<HTMLInputElement | null>(null);
 const masterImportSubmitting = ref(false);
 const masterExportSubmitting = ref(false);
 let masterProductLoadSequence = 0;
+let createEditorProductPrefix = '';
 let masterQuerySequence = 0;
 
 function normalizeDepartmentPath(segments: string[] | undefined): string[] {
@@ -698,6 +700,16 @@ function ensureSkillNameFormat(): boolean {
   return false;
 }
 
+function syncCreateEditorProductPrefix(): void {
+  const nextPrefix = requiredSkillNamePrefix.value;
+  if (editor.mode === 'create' && editor.open) {
+    editor.name = editor.name
+      ? replaceCatalogItemNamePrefix(editor.name, createEditorProductPrefix, nextPrefix)
+      : nextPrefix;
+  }
+  createEditorProductPrefix = nextPrefix;
+}
+
 function resolveDimFields(): { dimType: string; dimCode: string; dimName: string } | null {
   if (!ensureMasterScopeSelection(true)) {
     return null;
@@ -998,11 +1010,13 @@ function openCreate(): void {
   resetEditor();
   editor.mode = 'create';
   applyCurrentScopeToEditor();
-  editor.name = requiredSkillNamePrefix.value;
+  createEditorProductPrefix = requiredSkillNamePrefix.value;
+  editor.name = createEditorProductPrefix;
   editor.open = true;
 }
 
 function openEdit(record: SkillMasterRecord): void {
+  createEditorProductPrefix = '';
   const ownerLabel = personDisplayLabel(record.owner);
   const developOwnerLabel = personDisplayLabel(record.developOwner);
   const nextOwnerLabel = ownerLabel === '待认领' ? '' : ownerLabel;
@@ -1110,6 +1124,7 @@ async function submitEditor(): Promise<void> {
       dimType: dim.dimType,
       dimCode: dim.dimCode,
       dimName: dim.dimName,
+      catalogOriginalProductName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName : '',
     };
     const body: CreateSkillMasterManagementBody = {
       skillName: editor.name.trim(),
@@ -1196,6 +1211,7 @@ async function submitEditor(): Promise<void> {
     dimType: dim.dimType,
     dimCode: dim.dimCode,
     dimName: dim.dimName,
+    catalogOriginalProductName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName : '',
   };
   const updateBody: UpdateSkillMasterManagementBody = {
     id: editor.id,
@@ -1428,6 +1444,7 @@ async function confirmBatchMasterDelete(): Promise<void> {
   }
 }
 async function onMasterScopeLevelChange(): Promise<void> {
+  syncCreateEditorProductPrefix();
   masterPageNum.value = 1;
   const defaultPath = defaultMasterDepartmentPath.value;
   masterScopeDepartmentCommitted.value = defaultPath.length > 0;
@@ -1460,6 +1477,7 @@ async function onMasterDepartmentClear(segments: string[] = []): Promise<void> {
 }
 
 async function onMasterProductChange(): Promise<void> {
+  syncCreateEditorProductPrefix();
   masterPageNum.value = 1;
   masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
   await reload();

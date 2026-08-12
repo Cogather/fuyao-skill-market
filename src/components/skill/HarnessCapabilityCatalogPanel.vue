@@ -21,6 +21,7 @@ import type {
 import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
+  replaceCatalogItemNamePrefix,
 } from '../../utils/catalogItemName';
 
 type DepartmentNode = {
@@ -94,6 +95,7 @@ const importInputRef = ref<HTMLInputElement | null>(null);
 const importing = ref(false);
 const exporting = ref(false);
 let productLoadSequence = 0;
+let createEditorProductPrefix = '';
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
 let ownerSearchTimer: number | null = null;
@@ -325,6 +327,7 @@ async function resetQuery(): Promise<void> {
 }
 
 async function onLevelChange(): Promise<void> {
+  syncCreateEditorProductPrefix();
   filterForm.product = '';
   pageNum.value = 1;
   await loadProductOptions();
@@ -332,6 +335,7 @@ async function onLevelChange(): Promise<void> {
 }
 
 async function onProductChange(): Promise<void> {
+  syncCreateEditorProductPrefix();
   pageNum.value = 1;
   await reload();
 }
@@ -568,14 +572,26 @@ function ensureCapabilityNameFormat(): boolean {
   return false;
 }
 
+function syncCreateEditorProductPrefix(): void {
+  const nextPrefix = requiredCapabilityNamePrefix.value;
+  if (editor.mode === 'create' && editor.open) {
+    editor.name = editor.name
+      ? replaceCatalogItemNamePrefix(editor.name, createEditorProductPrefix, nextPrefix)
+      : nextPrefix;
+  }
+  createEditorProductPrefix = nextPrefix;
+}
+
 function openCreate(): void {
   resetEditor();
   editor.mode = 'create';
-  editor.name = requiredCapabilityNamePrefix.value;
+  createEditorProductPrefix = requiredCapabilityNamePrefix.value;
+  editor.name = createEditorProductPrefix;
   editor.open = true;
 }
 
 function openEdit(record: SkillMasterRecord): void {
+  createEditorProductPrefix = '';
   Object.assign(editor, {
     open: true,
     mode: 'edit',

@@ -25,6 +25,7 @@ import type {
   UpdateHarnessPermissionUsersRequest,
   UpdateSkillPlanningSupplementBody,
 } from './apiTypes';
+import { assertCatalogItemName } from '../../utils/catalogItemName';
 
 export interface SceneOptionGroupsParams {
   userId: string;
@@ -438,11 +439,18 @@ export const skillBaseService = {
     body: CreateSkillMasterManagementBody,
     params: CreateSkillMasterManagementParams,
   ): any => {
+    const { catalogOriginalProductName, ...requestParams } = params;
+    assertCatalogItemName(
+      body.skillName,
+      params.dimType,
+      catalogOriginalProductName ?? params.dimName,
+      'Skill',
+    );
     return httpRequest.harnessSkill<any>({
       url: '/management/add',
       method: 'post',
       data: body,
-      params,
+      params: requestParams,
     });
   },
 
@@ -467,11 +475,20 @@ export const skillBaseService = {
     body: UpdateSkillMasterManagementBody,
     params: UpdateSkillMasterManagementParams,
   ): any => {
+    const { catalogOriginalProductName, ...requestParams } = params;
+    if (body.skillName !== undefined) {
+      assertCatalogItemName(
+        body.skillName,
+        params.dimType,
+        catalogOriginalProductName ?? params.dimName,
+        'Skill',
+      );
+    }
     return httpRequest.harnessSkill<any>({
       url: '/management/update',
       method: 'put',
       data: body,
-      params,
+      params: requestParams,
     });
   },
 
