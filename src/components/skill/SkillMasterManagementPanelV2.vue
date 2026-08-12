@@ -180,7 +180,6 @@ const associationEditor = reactive({
 });
 const departmentPath = ref<string[]>([]);
 const deleteDialog = reactive({ open: false, id: '', name: '' });
-const editorOverlayPointerStartedOnBackdrop = ref(false);
 const submitting = ref(false);
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 const masterScopeForm = reactive({
@@ -1033,23 +1032,24 @@ function openEdit(record: SkillMasterRecord): void {
 function closeEditor(): void {
   editor.open = false;
   editor.error = '';
-  editorOverlayPointerStartedOnBackdrop.value = false;
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
 
-function onEditorOverlayPointerDown(event: PointerEvent): void {
-  editorOverlayPointerStartedOnBackdrop.value = event.target === event.currentTarget;
+function onEditorFormSubmit(event: SubmitEvent): void {
+  if (event.submitter instanceof HTMLButtonElement) {
+    void submitEditor();
+  }
 }
 
-function onEditorOverlayPointerUp(event: PointerEvent): void {
-  const endedOnBackdrop = event.target === event.currentTarget;
-  if (editorOverlayPointerStartedOnBackdrop.value && endedOnBackdrop) {
-    closeEditor();
+function onEditorFormEnter(event: KeyboardEvent): void {
+  const target = event.target;
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) {
+    return;
   }
-  editorOverlayPointerStartedOnBackdrop.value = false;
+  event.preventDefault();
 }
 
 async function submitEditor(): Promise<void> {
@@ -1489,6 +1489,20 @@ async function changeMasterPageSize(): Promise<void> {
 }
 
 watch(
+  requiredSkillNamePrefix,
+  (nextPrefix, previousPrefix) => {
+    if (!editor.open || editor.mode !== 'create') return;
+    if (!editor.name || editor.name === previousPrefix) {
+      editor.name = nextPrefix;
+      return;
+    }
+    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+    }
+  },
+);
+
+watch(
   () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths, props.departmentTree],
   async () => {
     masterPageNum.value = 1;
@@ -1799,15 +1813,14 @@ onBeforeUnmount(() => {
       <div
         v-if="editor.open"
         class="overlay"
-        @pointerdown="onEditorOverlayPointerDown"
-        @pointerup="onEditorOverlayPointerUp"
       >
         <form
           class="dialog"
           @click.stop
           @pointerdown.stop
           @pointerup.stop
-          @submit.prevent="submitEditor"
+          @submit.prevent="onEditorFormSubmit"
+          @keydown.enter="onEditorFormEnter"
         >
           <header>
             <div>

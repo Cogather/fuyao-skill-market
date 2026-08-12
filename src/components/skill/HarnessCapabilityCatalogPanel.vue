@@ -552,7 +552,7 @@ function ensureProductCapabilityNamePrefix(): boolean {
   if (!prefix) return true;
   const name = editor.name.trim();
   if (!name.startsWith(prefix)) {
-    editor.error = `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c${prefix}\u201d\u5f00\u5934`;
+    editor.error = `\u4ea7\u54c1\u7ea7 ${capabilityLabel.value} \u540d\u79f0\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u7684\u5c0f\u5199\u5f62\u5f0f\u201c${prefix}\u201d\u5f00\u5934`;
     return false;
   }
   if (name.length === prefix.length) {
@@ -752,6 +752,20 @@ async function exportCurrent(): Promise<void> {
 function goPage(next: number): void {
   pageNum.value = Math.max(1, Math.min(totalPages.value, next));
 }
+
+watch(
+  requiredCapabilityNamePrefix,
+  (nextPrefix, previousPrefix) => {
+    if (!editor.open || editor.mode !== 'create') return;
+    if (!editor.name || editor.name === previousPrefix) {
+      editor.name = nextPrefix;
+      return;
+    }
+    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+    }
+  },
+);
 
 watch(
   () => props.capabilityType,
