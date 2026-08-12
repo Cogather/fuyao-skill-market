@@ -195,7 +195,7 @@ const departmentCascadeMaxLevel = computed(() =>
 );
 const configurationLevelOptions: ConfigurationLevel[] = ['产品级', '部门级'];
 const scopeForm = reactive({
-  level: '部门级' as ConfigurationLevel,
+  level: '产品级' as ConfigurationLevel,
   offeringId: '',
   offeringName: '',
 });
@@ -557,7 +557,7 @@ function setSelectedDepartment(path: string[], committed: boolean): DepartmentOp
 }
 
 function applyDefaultScopeSelection(): void {
-  scopeForm.level = '部门级';
+  scopeForm.level = '产品级';
   resetProductScope();
   setSelectedDepartment(defaultDepartmentPath.value, true);
 }
@@ -575,6 +575,14 @@ async function loadProducts(): Promise<void> {
     const options = await getProductPlanning('', departmentName, department?.deptCode ?? '');
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
+    const firstOption = options[0];
+    if (firstOption && !scopeForm.offeringName.trim()) {
+      scopeForm.offeringName = firstOption.offeringName;
+      scopeForm.offeringId = firstOption.offeringId;
+      if (hasCompleteScope.value && selectedDepartment.value) {
+        await loadDepartment(selectedDepartment.value);
+      }
+    }
   } catch (error) {
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = [];
