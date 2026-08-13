@@ -1261,7 +1261,7 @@ function exportRecords(): void {
               <tr>
                 <th>排序</th>
                 <th>{{ labels.secondary }}</th>
-                <!-- <th>关联规划项</th> -->
+                <th>关联规划项</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -1281,9 +1281,9 @@ function exportRecords(): void {
                 <td>
                   <strong>{{ secondary.name }}</strong>
                 </td>
-                <!-- <td>
+                <td>
                   <span class="count-pill">{{ secondary.skillCount }}</span>
-                </td> -->
+                </td>
                 <td class="row-actions">
                   <button
                     type="button"

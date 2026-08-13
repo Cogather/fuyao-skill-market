@@ -1047,7 +1047,6 @@ onMounted(async () => {
             <col class="is-person-column" />
             <col class="is-date-column" />
             <col class="is-status-column" />
-            <col class="is-reference-column" />
             <col class="is-action-column" />
           </colgroup>
           <thead>
@@ -1066,13 +1065,13 @@ onMounted(async () => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
-              <th class="is-reference">关联规划项</th>
+              <!-- <th class="is-reference">关联规划项</th> -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="9" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
+              <td colspan="8" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
             </tr>
             <tr v-for="record in loading ? [] : pageRecords" :key="record.id">
               <td class="is-check">
@@ -1096,12 +1095,12 @@ onMounted(async () => {
                   record.status
                 }}</span>
               </td>
-              <td class="is-reference">
+              <!-- <td class="is-reference">
                 <span
                   class="capability-reference-count"
                   :class="{ 'is-linked': (record.referenceCount ?? 0) > 0 }"
                 >{{ record.referenceCount ?? 0 }}</span>
-              </td>
+              </td> -->
               <td class="is-action">
                 <div class="capability-row-actions">
                   <button type="button" title="编辑" aria-label="编辑" @click="openEdit(record)">
@@ -1125,7 +1124,7 @@ onMounted(async () => {
               </td>
             </tr>
             <tr v-if="!loading && !pageRecords.length">
-              <td colspan="9" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
+              <td colspan="8" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
             </tr>
           </tbody>
         </table>
@@ -1546,13 +1545,12 @@ onMounted(async () => {
   white-space: nowrap;
 }
 .capability-master-table col.is-check-column { width: 4%; }
-.capability-master-table col.is-name-column { width: 15%; }
-.capability-master-table col.is-description-column { width: 22%; }
-.capability-master-table col.is-person-column { width: 13%; }
+.capability-master-table col.is-name-column { width: 16%; }
+.capability-master-table col.is-description-column { width: 24%; }
+.capability-master-table col.is-person-column { width: 14%; }
 .capability-master-table col.is-date-column { width: 10%; }
-.capability-master-table col.is-status-column { width: 8%; }
-.capability-master-table col.is-reference-column { width: 7%; }
-.capability-master-table col.is-action-column { width: 8%; }
+.capability-master-table col.is-status-column { width: 9%; }
+.capability-master-table col.is-action-column { width: 9%; }
 .capability-master-table .is-reference { text-align: center; }
 .capability-reference-count {
   display: inline-flex;
