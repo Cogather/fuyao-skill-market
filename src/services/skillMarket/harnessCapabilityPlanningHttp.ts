@@ -662,6 +662,15 @@ function mapCapabilityCatalogItem(
     developOwnerDepartment: readText(record, ['developOwnerDepartment', 'deptName']),
     plannedCompleteDate: readText(record, ['planFinishDate', 'plannedCompleteDate']),
     status: normalizeStatus(record.status),
+    referenceCount: readNumber(
+      record.referenceCount ??
+        record.planningCount ??
+        record.planningReferenceCount ??
+        record.supplementCount ??
+        record.configCount ??
+        record.relatedPlanningCount,
+      0,
+    ),
     createdAt: normalizeTimestamp(record.createdAt),
     updatedAt: normalizeTimestamp(record.updatedAt),
   };

@@ -18,6 +18,8 @@ export interface SkillMasterRecord {
   developOwnerDepartment?: string;
   plannedCompleteDate: string;
   status: SkillMasterStatus;
+  /** Number of planning records that currently reference this catalog item. */
+  referenceCount?: number;
   createdAt: string;
   updatedAt: string;
 }

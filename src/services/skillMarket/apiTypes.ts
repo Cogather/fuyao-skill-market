@@ -699,6 +699,12 @@ export type SkillMasterManagementItemDto = {
   updatedAt?: number[] | string | null;
   skillMatchId?: string | null;
   skillMatchLevel?: string | null;
+  referenceCount?: number;
+  planningCount?: number;
+  planningReferenceCount?: number;
+  supplementCount?: number;
+  configCount?: number;
+  relatedPlanningCount?: number;
 };
 
 /** Skill 清单更新（PUT /management/update） */

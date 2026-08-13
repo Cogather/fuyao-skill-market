@@ -424,7 +424,12 @@ function planningItemFromBody(
   id: string,
   previous?: SkillPlanningItem,
 ): SkillPlanningItem {
-  const record = state.catalog.find((item) => item.name === text(body.skillName));
+  const capabilityBody = body as unknown as {
+    commandName?: string;
+    agentName?: string;
+  };
+  const capabilityName = text(body.skillName ?? capabilityBody.commandName ?? capabilityBody.agentName);
+  const record = state.catalog.find((item) => item.name === capabilityName);
   if (!record) {
     throw new Error(`请先在 ${type === 'command' ? 'Command' : 'Agent'} 清单中维护该能力`);
   }
@@ -670,8 +675,14 @@ export async function queryMockCapabilityCatalog(
   const departmentName = text(query.departmentName);
   const level = text(query.level);
   const product = text(query.product);
-  return readState(type)
-    .catalog.filter((record) => {
+  const state = readState(type);
+  const referenceCounts = state.planning.reduce((counts, item) => {
+    const catalogId = text(item.skillId);
+    if (catalogId) counts.set(catalogId, (counts.get(catalogId) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  return state.catalog
+    .filter((record) => {
       if (departmentName && record.department !== departmentName) return false;
       if (level && record.level && record.level !== level) return false;
       if (product && record.product && record.product !== product) return false;
@@ -682,7 +693,10 @@ export async function queryMockCapabilityCatalog(
         .includes(keyword);
     })
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .map(cloneRecord);
+    .map((record) => ({
+      ...cloneRecord(record),
+      referenceCount: referenceCounts.get(record.id) ?? 0,
+    }));
 }
 
 function normalizeCatalogPayload(payload: SkillMasterPayload): SkillMasterPayload {
@@ -755,6 +769,9 @@ export async function deleteMockCapabilityCatalogRecord(
   id: string,
 ): Promise<void> {
   const state = readState(type);
+  if (state.planning.some((item) => item.skillId === id)) {
+    throw new Error(`${capabilityLabel(type)} 已被规划引用，不能删除`);
+  }
   state.catalog = state.catalog.filter((record) => record.id !== id);
   persistState(type, state);
 }
@@ -765,6 +782,9 @@ export async function batchDeleteMockCapabilityCatalogRecords(
 ): Promise<number> {
   const state = readState(type);
   const idSet = new Set(ids);
+  if (state.planning.some((item) => idSet.has(item.skillId ?? ''))) {
+    throw new Error(`${capabilityLabel(type)} 存在被规划引用的数据，不能删除`);
+  }
   const before = state.catalog.length;
   state.catalog = state.catalog.filter((record) => !idSet.has(record.id));
   persistState(type, state);

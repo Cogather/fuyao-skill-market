@@ -155,6 +155,7 @@ type MockSkillMasterManagementRecord = {
 
 type MockSkillPlanningSupplementRecord = {
   id: string;
+  skillId?: string;
   skillName: string;
   name?: string;
   firstScene: string;
@@ -1815,8 +1816,10 @@ function handleSkillRequest(
   const isSkillPlanningSupplementBatchDelete =
     path === '/config/batch_delete' || path === '/config/supplement/batch_delete';
   const supplementDeleteMatch = /^\/config\/(?:supplement\/)?delete\/([^/]+)$/.exec(path);
+  const isSkillPlanningSupplementCreate =
+    path === '/config/add' || path === '/config/supplement/add';
   const skillPlanningSupplementRequiresUserId =
-    path === '/config/add' ||
+    isSkillPlanningSupplementCreate ||
     isSkillPlanningSupplementQuery ||
     isSkillPlanningSupplementUpdate ||
     isSkillPlanningSupplementBatchDelete ||
@@ -1825,7 +1828,11 @@ function handleSkillRequest(
     return fail('缺少必填参数: userId', null);
   }
 
-  if (path === '/config/add' || isSkillPlanningSupplementQuery || isSkillPlanningSupplementUpdate) {
+  if (
+    isSkillPlanningSupplementCreate ||
+    isSkillPlanningSupplementQuery ||
+    isSkillPlanningSupplementUpdate
+  ) {
     const missingMutationParams = ['dimCode', 'dimType', 'dimName'].filter(
       (key) => !String(params[key] ?? '').trim(),
     );
@@ -1844,7 +1851,7 @@ function handleSkillRequest(
         : {};
     return { ...body, ...entity };
   };
-  if (method === 'post' && path === '/config/add') {
+  if (method === 'post' && isSkillPlanningSupplementCreate) {
     const entity = readPlanningSupplementPayload();
     entity.name = entity.skillName ?? entity.name;
     entity.level = entity.dimType ?? entity.level;
@@ -1877,6 +1884,7 @@ function handleSkillRequest(
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
     const record: MockSkillPlanningSupplementRecord = {
       id: nextMockSkillPlanningSupplementId(),
+      skillId: master?.id,
       skillName,
       name: skillName,
       firstScene: String(entity.firstScene).trim(),
@@ -1973,6 +1981,7 @@ function handleSkillRequest(
     const skillName = String(entity.name).trim();
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
     Object.assign(target, {
+      skillId: master?.id,
       skillName,
       name: skillName,
       firstScene: String(entity.firstScene).trim(),
@@ -2118,6 +2127,11 @@ function handleSkillRequest(
     return ok(
       list.map((item) => ({
         ...item,
+        referenceCount: mockSkillPlanningSupplementRecords.filter(
+          (planning) =>
+            planning.skillId === item.id ||
+            (!planning.skillId && planning.skillName === item.skillName),
+        ).length,
       })),
       total,
     );
@@ -2179,6 +2193,15 @@ function handleSkillRequest(
     if (index < 0) {
       return fail(`未找到 Skill: ${id}`, null);
     }
+    const target = mockSkillMasterManagementRecords[index];
+    const referenceCount = mockSkillPlanningSupplementRecords.filter(
+      (planning) =>
+        planning.skillId === id ||
+        (!planning.skillId && planning.skillName === target?.skillName),
+    ).length;
+    if (referenceCount > 0) {
+      return fail(`Skill 已关联 ${referenceCount} 个规划项，不能删除`, null);
+    }
     const [removed] = mockSkillMasterManagementRecords.splice(index, 1);
     return ok({
       id,
@@ -2195,6 +2218,18 @@ function handleSkillRequest(
       return fail('批量删除列表不能为空', null);
     }
     const idSet = new Set(ids);
+    const referenced = mockSkillMasterManagementRecords.filter(
+      (master) =>
+        idSet.has(master.id) &&
+        mockSkillPlanningSupplementRecords.some(
+          (planning) =>
+            planning.skillId === master.id ||
+            (!planning.skillId && planning.skillName === master.skillName),
+        ),
+    );
+    if (referenced.length > 0) {
+      return fail(`${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`, null);
+    }
     const before = mockSkillMasterManagementRecords.length;
     for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {
       const current = mockSkillMasterManagementRecords[index];
