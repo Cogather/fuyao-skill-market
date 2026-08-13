@@ -5,6 +5,7 @@ import ActivityManagementPanel from '../../components/skill/ActivityManagementPa
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
+import type { HarnessDepartmentSnapshot, HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type ConfigurationTab = 'scenes' | 'activities' | 'permissions';
 type DepartmentTreeNode = {
@@ -28,6 +29,9 @@ const props = withDefaults(
     manageableDepartments?: HarnessAuthorizedDepartment[];
     departmentPermissionsLoading?: boolean;
     departmentPermissionsError?: string;
+    sceneInitialScope?: HarnessScopeSnapshot;
+    activityInitialScope?: HarnessScopeSnapshot;
+    permissionInitialScope?: HarnessDepartmentSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -41,8 +45,17 @@ const props = withDefaults(
     manageableDepartments: () => [],
     departmentPermissionsLoading: false,
     departmentPermissionsError: '',
+    sceneInitialScope: undefined,
+    activityInitialScope: undefined,
+    permissionInitialScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scene-scope-change': [snapshot: HarnessScopeSnapshot];
+  'activity-scope-change': [snapshot: HarnessScopeSnapshot];
+  'permission-scope-change': [snapshot: HarnessDepartmentSnapshot];
+}>();
 
 const activeConfigurationTab = ref<ConfigurationTab>('scenes');
 const configurationTabs = computed(() => {
@@ -129,6 +142,8 @@ watch(
         :manageable-departments="props.manageableDepartments"
         :department-permissions-loading="props.departmentPermissionsLoading"
         :department-permissions-error="props.departmentPermissionsError"
+        :initial-scope="props.sceneInitialScope"
+        @scope-change="emit('scene-scope-change', $event)"
       />
     </section>
 
@@ -148,6 +163,8 @@ watch(
         :manageable-departments="props.manageableDepartments"
         :department-permissions-loading="props.departmentPermissionsLoading"
         :department-permissions-error="props.departmentPermissionsError"
+        :initial-scope="props.activityInitialScope"
+        @scope-change="emit('activity-scope-change', $event)"
       />
     </section>
 
@@ -164,6 +181,8 @@ watch(
         :owner-departments="props.ownerDepartments"
         :allowed-department-names="props.permissionDepartmentNames"
         :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
+        :initial-scope="props.permissionInitialScope"
+        @scope-change="emit('permission-scope-change', $event)"
       />
     </section>
   </div>

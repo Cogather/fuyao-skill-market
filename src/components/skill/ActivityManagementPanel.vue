@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import DepartmentTaxonomyPanel from './DepartmentTaxonomyPanel.vue';
 
 interface DepartmentTreeNode {
@@ -21,6 +22,7 @@ withDefaults(
     manageableDepartments?: HarnessAuthorizedDepartment[];
     departmentPermissionsLoading?: boolean;
     departmentPermissionsError?: string;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -32,11 +34,13 @@ withDefaults(
     manageableDepartments: () => [],
     departmentPermissionsLoading: false,
     departmentPermissionsError: '',
+    initialScope: undefined,
   },
 );
 
 defineEmits<{
   changed: [groups: SkillPlanningOptionGroup[], departmentName: string];
+  'scope-change': [snapshot: HarnessScopeSnapshot];
 }>();
 </script>
 
@@ -53,5 +57,7 @@ defineEmits<{
     :department-permissions-loading="departmentPermissionsLoading"
     :department-permissions-error="departmentPermissionsError"
     @changed="(groups, departmentName) => $emit('changed', groups, departmentName)"
+    :initial-scope="initialScope"
+    @scope-change="$emit('scope-change', $event)"
   />
 </template>

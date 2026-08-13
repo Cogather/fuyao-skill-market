@@ -22,6 +22,7 @@ import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type DepartmentNode = {
   id?: string;
@@ -62,14 +63,20 @@ const props = withDefaults(
     userId?: string;
     currentUserDepartmentPath?: string[];
     defaultDepartmentPath?: string[];
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     departmentTree: () => [],
     userId: '',
     currentUserDepartmentPath: () => [],
     defaultDepartmentPath: () => [],
+    initialScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+}>();
 
 const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => api.value.label);
@@ -218,7 +225,7 @@ function requireCatalogScope(): SkillTransferParams {
   return scope;
 }
 
-async function loadProductOptions(): Promise<void> {
+async function loadProductOptions(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSequence = ++productLoadSequence;
   productOptions.value = [];
   productsLoading.value = false;
@@ -234,8 +241,15 @@ async function loadProductOptions(): Promise<void> {
     );
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
-    const firstOption = options[0];
-    if (firstOption && !filterForm.product.trim()) {
+    const restoredOption = preferredScope
+      ? options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ??
+        options.find((item) => item.offeringName === preferredScope.offeringName)
+      : undefined;
+    const firstOption = restoredOption ?? options[0];
+    if (firstOption) {
       filterForm.product = firstOption.offeringName;
     }
     if (!options.some((item) => item.offeringName === filterForm.product)) {
@@ -260,6 +274,32 @@ function applyDefaultDepartment(): void {
     : firstLeafPath(props.departmentTree);
   departmentSegments.value = path;
   filterForm.departmentName = path.at(-1) ?? '';
+}
+
+function emitScopeSnapshot(): void {
+  if (!filterForm.departmentName.trim()) return;
+  emit('scope-change', {
+    level: filterForm.level as HarnessScopeSnapshot['level'],
+    departmentPath: [...departmentSegments.value],
+    offeringId: filterForm.level === '产品级' ? selectedProduct.value?.offeringId ?? '' : '',
+    offeringName: filterForm.level === '产品级' ? filterForm.product.trim() : '',
+  });
+}
+
+function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  const path = normalizePath(snapshot?.departmentPath ?? []);
+  if (
+    !snapshot ||
+    !['产品级', '部门级'].includes(snapshot.level) ||
+    !pathExists(props.departmentTree, path)
+  ) {
+    return undefined;
+  }
+  filterForm.level = snapshot.level;
+  departmentSegments.value = path;
+  filterForm.departmentName = path.at(-1) ?? '';
+  return { ...snapshot, departmentPath: [...path] };
 }
 
 const total = computed(() => records.value.length);
@@ -311,6 +351,7 @@ async function onDepartmentDone(path: string[] = []): Promise<void> {
   await loadProductOptions();
   pageNum.value = 1;
   await reload();
+  emitScopeSnapshot();
 }
 
 async function applyQuery(): Promise<void> {
@@ -326,6 +367,7 @@ async function resetQuery(): Promise<void> {
   await loadProductOptions();
   pageNum.value = 1;
   await reload();
+  emitScopeSnapshot();
 }
 
 async function onLevelChange(): Promise<void> {
@@ -333,11 +375,13 @@ async function onLevelChange(): Promise<void> {
   pageNum.value = 1;
   await loadProductOptions();
   await reload();
+  emitScopeSnapshot();
 }
 
 async function onProductChange(): Promise<void> {
   pageNum.value = 1;
   await reload();
+  emitScopeSnapshot();
 }
 
 function toggleSelection(id: string): void {
@@ -809,18 +853,12 @@ watch(
     () => props.defaultDepartmentPath,
   ],
   async () => {
-    const defaultPath = normalizePath(props.defaultDepartmentPath);
-    const shouldApplyPermissionDefault =
-      defaultPath.length > 0 &&
-      normalizePath(departmentSegments.value).join('\u0001') !== defaultPath.join('\u0001');
-    if (
-      shouldApplyPermissionDefault ||
-      !pathExists(props.departmentTree, departmentSegments.value)
-    ) {
+    if (!pathExists(props.departmentTree, departmentSegments.value)) {
       applyDefaultDepartment();
     }
     await loadProductOptions();
     await reload();
+    emitScopeSnapshot();
   },
   { deep: true },
 );
@@ -834,9 +872,11 @@ onBeforeUnmount(() => {
 });
 
 onMounted(async () => {
-  applyDefaultDepartment();
-  await loadProductOptions();
+  const restoredScope = restoreScopeSnapshot();
+  if (!restoredScope) applyDefaultDepartment();
+  await loadProductOptions(restoredScope);
   await reload();
+  emitScopeSnapshot();
 });
 </script>
 

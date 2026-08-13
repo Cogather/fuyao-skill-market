@@ -19,6 +19,7 @@ import {
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import type { HarnessDepartmentSnapshot } from '../../types/harnessFilterMemory';
 
 type DepartmentNode = {
   id?: string;
@@ -55,6 +56,7 @@ const props = withDefaults(
     ownerDepartments?: HarnessAuthorizedDepartment[];
     allowedDepartmentNames?: string[];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessDepartmentSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -63,8 +65,13 @@ const props = withDefaults(
     ownerDepartments: () => [],
     allowedDepartmentNames: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessDepartmentSnapshot];
+}>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const DEPARTMENT_PERMISSION_MAX_DEPTH = 3;
@@ -567,11 +574,17 @@ async function reload(): Promise<void> {
     return;
   }
 
+  const restoredOption = props.initialScope
+    ? ownerManageableDepartmentOptions.value.find((option) =>
+        sameDepartmentPath(option.path, props.initialScope?.departmentPath ?? []),
+      )
+    : undefined;
   const currentOption =
     ownerManageableDepartmentOptions.value.find((option) =>
       sameDepartmentPath(option.path, selectedDepartmentPath.value),
-    ) ?? ownerOptions[0];
+    ) ?? restoredOption ?? ownerOptions[0];
   selectedDepartmentPath.value = [...currentOption.path];
+  emit('scope-change', { departmentPath: [...currentOption.path] });
 
   if (transportIsHttp) {
     const userId = props.userId.trim();
@@ -738,6 +751,7 @@ function selectDepartment(path: string[]): void {
     return;
   }
   selectedDepartmentPath.value = [...path];
+  emit('scope-change', { departmentPath: [...path] });
   closePersonSearch();
   if (transportIsHttp) {
     reloadSafely();
