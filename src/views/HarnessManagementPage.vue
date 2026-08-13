@@ -18,6 +18,7 @@ import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marke
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
+import type { HarnessDepartmentSnapshot, HarnessScopeSnapshot } from '../types/harnessFilterMemory';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
@@ -47,6 +48,12 @@ const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
 
 type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
+type PlanningMemoryKey = 'command' | 'planning' | 'agent';
+type PlanningScopeChange = {
+  capabilityType: 'command' | 'skill' | 'agent';
+  snapshot: HarnessScopeSnapshot;
+};
+
 const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }> = [
   { key: 'command', label: 'Command 规划', description: '统一规划和管理 Command 能力。' },
   { key: 'planning', label: 'Skill 规划', description: '统一管理各部门规划建设中的 Skill。' },
@@ -57,6 +64,14 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
 ];
 
 const activeHarnessTab = ref<HarnessTab>('planning');
+const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const configurationScopeSnapshots = ref<
+  Partial<Record<'scene' | 'activity', HarnessScopeSnapshot>>
+>({});
+const configurationDepartmentSnapshots = ref<
+  Partial<Record<'permission', HarnessDepartmentSnapshot>>
+>({});
 const activeHarnessTabMeta = computed(
   () => harnessTabs.find((tab) => tab.key === activeHarnessTab.value) ?? harnessTabs[1],
 );
@@ -256,6 +271,46 @@ function updateTopbarElevation(): void {
   topbarElevated.value = window.scrollY > 8;
 }
 
+function planningMemoryKey(capabilityType: PlanningScopeChange['capabilityType']): PlanningMemoryKey {
+  return capabilityType === 'skill' ? 'planning' : capabilityType;
+}
+
+function activePlanningMemoryKey(): PlanningMemoryKey {
+  return activeHarnessTab.value === 'command' || activeHarnessTab.value === 'agent'
+    ? activeHarnessTab.value
+    : 'planning';
+}
+
+function updatePlanningScopeSnapshot(change: PlanningScopeChange): void {
+  planningScopeSnapshots.value[planningMemoryKey(change.capabilityType)] = {
+    ...change.snapshot,
+    departmentPath: [...change.snapshot.departmentPath],
+  };
+}
+
+function updateCatalogScopeSnapshot(change: PlanningScopeChange): void {
+  catalogScopeSnapshots.value[planningMemoryKey(change.capabilityType)] = {
+    ...change.snapshot,
+    departmentPath: [...change.snapshot.departmentPath],
+  };
+}
+
+function updateConfigurationScopeSnapshot(
+  key: 'scene' | 'activity',
+  snapshot: HarnessScopeSnapshot,
+): void {
+  configurationScopeSnapshots.value[key] = {
+    ...snapshot,
+    departmentPath: [...snapshot.departmentPath],
+  };
+}
+
+function updateConfigurationDepartmentSnapshot(snapshot: HarnessDepartmentSnapshot): void {
+  configurationDepartmentSnapshots.value.permission = {
+    departmentPath: [...snapshot.departmentPath],
+  };
+}
+
 onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
@@ -328,7 +383,7 @@ onBeforeUnmount(() => {
       :aria-labelledby="`harness-tab-${activeHarnessTab}`"
     >
       <SkillPlanningPage
-        :key="transportIsHttp ? activeHarnessTab : 'shared-planning-page'"
+        :key="activeHarnessTab"
         :capability-type="
           activeHarnessTab === 'command'
             ? 'command'
@@ -342,6 +397,10 @@ onBeforeUnmount(() => {
         :allowed-department-names="permissionDepartmentNames"
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :initial-scope="planningScopeSnapshots[activePlanningMemoryKey()]"
+        :initial-catalog-scope="catalogScopeSnapshots[activePlanningMemoryKey()]"
+        @scope-change="updatePlanningScopeSnapshot"
+        @catalog-scope-change="updateCatalogScopeSnapshot"
       />
     </section>
 
@@ -374,6 +433,12 @@ onBeforeUnmount(() => {
         :restrict-to-permission-departments="restrictToPermissionDepartments"
         :department-permissions-loading="harnessPermissionLoadState === 'loading'"
         :department-permissions-error="harnessPermissionError"
+        :scene-initial-scope="configurationScopeSnapshots.scene"
+        :activity-initial-scope="configurationScopeSnapshots.activity"
+        :permission-initial-scope="configurationDepartmentSnapshots.permission"
+        @scene-scope-change="updateConfigurationScopeSnapshot('scene', $event)"
+        @activity-scope-change="updateConfigurationScopeSnapshot('activity', $event)"
+        @permission-scope-change="updateConfigurationDepartmentSnapshot($event)"
       />
     </section>
 

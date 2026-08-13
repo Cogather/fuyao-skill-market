@@ -60,6 +60,17 @@ function toNumber(value: string | number | null | undefined): number {
 function filterMockTaskCards(taskCards: ReviewTaskCard[], listParams: any): ReviewTaskCard[] {
   let filtered = taskCards.map((task) => ({ ...task }));
 
+  const keyword = String(listParams?.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  if (keyword) {
+    filtered = filtered.filter((task) =>
+      [task.name, task.skillId, task.ownerName, task.ownerUser]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
+    );
+  }
+
   const categoryId = String(listParams?.categoryId ?? '').trim();
   if (categoryId) {
     filtered = filtered.filter(

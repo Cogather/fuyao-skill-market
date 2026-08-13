@@ -33,6 +33,7 @@ import {
 } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import { openSkillExportResponse } from '../../services/skillMarket/skillTransferService';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
@@ -74,6 +75,8 @@ const props = withDefaults(
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessScopeSnapshot;
+    initialCatalogScope?: HarnessScopeSnapshot;
   }>(),
   {
     capabilityType: 'skill',
@@ -83,8 +86,15 @@ const props = withDefaults(
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
+    initialCatalogScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot }];
+  'catalog-scope-change': [change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot }];
+}>();
 
 const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => capabilityPlanningApi.value.label);
@@ -971,7 +981,7 @@ function resetProductSearchState(): void {
   productSearchMessage.value = '';
 }
 
-async function loadFilterProducts(): Promise<void> {
+async function loadFilterProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSeq = ++filterProductSearchSeq;
   const departmentName = filterForm.planningDeptName.trim();
   filterForm.offeringName = '';
@@ -988,8 +998,15 @@ async function loadFilterProducts(): Promise<void> {
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
-    const firstOption = options[0];
-    if (firstOption && !filterForm.offeringName.trim()) {
+    const restoredOption = preferredScope
+      ? options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ??
+        options.find((item) => item.offeringName === preferredScope.offeringName)
+      : undefined;
+    const firstOption = restoredOption ?? options[0];
+    if (firstOption) {
       filterForm.offeringName = firstOption.offeringName;
     }
   } catch (error) {
@@ -1637,6 +1654,7 @@ async function resetQuery() {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 async function toggleHeaderFilterOption(
@@ -1715,6 +1733,43 @@ function applyDefaultPlanningScopeSelection(): boolean {
   return changed;
 }
 
+function emitPlanningScopeSnapshot(): void {
+  if (!planningScopeDepartmentCommitted.value || !filterForm.planningDeptName.trim()) return;
+  const selectedProduct = selectedFilterProduct.value;
+  emit('scope-change', {
+    capabilityType: props.capabilityType,
+    snapshot: {
+      level: filterForm.level as PlanningLevel,
+      departmentPath: [...planningDepartmentSegments.value],
+      offeringId: filterForm.level === '产品级' ? selectedProduct?.offeringId ?? '' : '',
+      offeringName: filterForm.level === '产品级' ? filterForm.offeringName.trim() : '',
+    },
+  });
+}
+
+function emitCatalogScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
+  emit('catalog-scope-change', {
+    capabilityType: props.capabilityType,
+    snapshot: { ...snapshot, departmentPath: [...snapshot.departmentPath] },
+  });
+}
+
+function restorePlanningScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  if (
+    !snapshot ||
+    !planningLevelOptions.includes(snapshot.level) ||
+    !findPlanningDepartmentNodeByPath(snapshot.departmentPath)
+  ) {
+    return undefined;
+  }
+  filterForm.level = snapshot.level;
+  planningDepartmentSegments.value = normalizePlanningDepartmentPath(snapshot.departmentPath);
+  syncPlanningDepartmentLevels(planningDepartmentSegments.value);
+  planningScopeDepartmentCommitted.value = true;
+  return { ...snapshot, departmentPath: [...planningDepartmentSegments.value] };
+}
+
 async function onPlanningScopeLevelChange(): Promise<void> {
   const defaultPath = defaultPlanningDepartmentPath.value;
   planningScopeDepartmentCommitted.value = defaultPath.length > 0;
@@ -1724,12 +1779,14 @@ async function onPlanningScopeLevelChange(): Promise<void> {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 async function onFilterProductChange(): Promise<void> {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 function onPlanningDepartmentChange(segments: string[]): void {
@@ -1745,6 +1802,7 @@ async function applyPlanningDepartmentQuery(segments: string[]): Promise<void> {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 async function onPlanningDepartmentDone(segments: string[]): Promise<void> {
@@ -2529,21 +2587,28 @@ let planningScopeInitialLoadStarted = false;
 async function initializePlanningScopeAndList(): Promise<void> {
   if (planningScopeInitialLoadStarted) return;
   planningScopeInitialLoadStarted = true;
-  applyDefaultPlanningScopeSelection();
-  await loadFilterProducts();
+  const restoredScope = restorePlanningScopeSnapshot();
+  if (!restoredScope) applyDefaultPlanningScopeSelection();
+  await loadFilterProducts(restoredScope);
   await loadPlanningFilterOptions();
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 watch(
   () => defaultPlanningDepartmentPath.value.join('\u0001'),
   () => {
-    if (!planningScopeInitialLoadStarted || !applyDefaultPlanningScopeSelection()) return;
+    if (!planningScopeInitialLoadStarted) return;
+    const currentPathIsValid = Boolean(
+      findPlanningDepartmentNodeByPath(planningDepartmentSegments.value),
+    );
+    if (currentPathIsValid || !applyDefaultPlanningScopeSelection()) return;
     void (async () => {
       await loadFilterProducts();
       await loadPlanningFilterOptions();
       pageNum.value = 1;
       await reloadList();
+      emitPlanningScopeSnapshot();
     })();
   },
 );
@@ -3949,6 +4014,8 @@ onBeforeUnmount(() => {
       :allowed-department-names="props.allowedDepartmentNames"
       :allowed-department-paths="props.allowedDepartmentPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
+      :initial-scope="props.initialCatalogScope"
+      @scope-change="emitCatalogScopeSnapshot"
     />
     <HarnessCapabilityCatalogPanel
       v-else-if="activePlanningTab === 'management'"
@@ -3957,6 +4024,8 @@ onBeforeUnmount(() => {
       :department-tree="planningDepartmentTree"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :default-department-path="defaultPlanningDepartmentPath"
+      :initial-scope="props.initialCatalogScope"
+      @scope-change="emitCatalogScopeSnapshot"
     />
 
     <Teleport to="body">

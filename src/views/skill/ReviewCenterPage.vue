@@ -63,12 +63,16 @@ const reviewTaskLoading = ref(false);
 let reviewTaskScrollRaf = 0;
 let reviewTaskPostRenderTimer: ReturnType<typeof window.setTimeout> | null = null;
 let reviewTaskRequestToken = 0;
+const reviewKeywordInput = ref('');
+const reviewKeyword = ref('');
+let reviewKeywordSearchTimer: ReturnType<typeof window.setTimeout> | null = null;
 
 const REVIEW_TASK_PAGE_SIZE = 10;
 const REVIEW_TASK_PREFETCH_MIN_DISTANCE = 180;
 const REVIEW_TASK_PREFETCH_VIEWPORT_RATIO = 0.6;
 const REVIEW_TASK_POST_RENDER_CHECK_DELAY = 80;
 const REVIEW_TASK_VISIBLE_TAG_LIMIT = 2;
+const REVIEW_KEYWORD_SEARCH_DELAY = 300;
 
 const selectedTaskId = ref(taskCards[0]?.skillId ?? '');
 
@@ -1669,6 +1673,7 @@ function reviewDepartmentLevelParams() {
 
 const reviewListFilterObj = reactive<any>({
   userId: '',
+  keyword: '',
   reviewStatus: '',
   yearMonth: '',
   sortBy: '',
@@ -1684,6 +1689,7 @@ const reviewListFilterObj = reactive<any>({
 function syncReviewListFilterObj() {
   const nextParams = {
     userId: props.userId ?? '',
+    keyword: reviewKeyword.value,
     reviewStatus: reviewStatusValue.value,
     yearMonth: selectedReviewMonthLabel.value,
     sortBy: sortTypeValue.value,
@@ -1697,6 +1703,31 @@ function syncReviewListFilterObj() {
 
 async function reloadReviewCenterTasks(): Promise<void> {
   await loadReviewTaskPage(false, { resetScroll: true });
+}
+
+function clearReviewKeywordSearchTimer(): void {
+  if (reviewKeywordSearchTimer) {
+    window.clearTimeout(reviewKeywordSearchTimer);
+    reviewKeywordSearchTimer = null;
+  }
+}
+
+function submitReviewKeywordSearch(): void {
+  clearReviewKeywordSearchTimer();
+  const keyword = reviewKeywordInput.value.trim();
+  if (keyword === reviewKeyword.value) {
+    return;
+  }
+  reviewKeyword.value = keyword;
+  void reloadReviewCenterTasks();
+}
+
+function scheduleReviewKeywordSearch(): void {
+  clearReviewKeywordSearchTimer();
+  reviewKeywordSearchTimer = window.setTimeout(() => {
+    reviewKeywordSearchTimer = null;
+    submitReviewKeywordSearch();
+  }, REVIEW_KEYWORD_SEARCH_DELAY);
 }
 
 function onReviewDepartmentChange(segments: string[]): void {
@@ -1774,6 +1805,7 @@ watch(
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleReviewMonthOutsideClick);
+  clearReviewKeywordSearchTimer();
   resetReviewTaskScrollState();
   if (toastTimer) {
     window.clearTimeout(toastTimer);
@@ -1815,6 +1847,32 @@ onBeforeUnmount(() => {
           <div class="board-toolbar__title">
             <h2>评审任务</h2>
             <p>按状态、月份和评分维度筛选专家待办。</p>
+            <form
+              class="review-keyword-search"
+              role="search"
+              aria-label="通过名称或发布者工号检索"
+              @submit.prevent="submitReviewKeywordSearch"
+            >
+              <input
+                v-model="reviewKeywordInput"
+                type="search"
+                placeholder="通过名称或发布者工号检索"
+                autocomplete="off"
+                aria-label="输入 Skill 关键字"
+                @input="scheduleReviewKeywordSearch"
+              />
+              <button type="submit" aria-label="通过名称或发布者工号检索" title="搜索">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="2" />
+                  <path
+                    d="m16 16 4 4"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </button>
+            </form>
           </div>
 
           <div class="task-filter-panel" aria-label="任务筛选">

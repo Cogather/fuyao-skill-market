@@ -28,6 +28,7 @@ import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillP
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type TaxonomyKind = 'scene' | 'activity';
 type TaxonomyRecord = SceneRecord | ActivityRecord;
@@ -59,6 +60,7 @@ const props = withDefaults(
     manageableDepartments?: HarnessAuthorizedDepartment[];
     departmentPermissionsLoading?: boolean;
     departmentPermissionsError?: string;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -70,6 +72,7 @@ const props = withDefaults(
     manageableDepartments: () => [],
     departmentPermissionsLoading: false,
     departmentPermissionsError: '',
+    initialScope: undefined,
   },
 );
 
@@ -78,6 +81,7 @@ const useHttpTaxonomySource = transportIsHttp;
 
 const emit = defineEmits<{
   changed: [groups: SkillPlanningOptionGroup[], departmentName: string];
+  'scope-change': [snapshot: HarnessScopeSnapshot];
 }>();
 
 const labels = computed(() =>
@@ -562,7 +566,7 @@ function applyDefaultScopeSelection(): void {
   setSelectedDepartment(defaultDepartmentPath.value, true);
 }
 
-async function loadProducts(): Promise<void> {
+async function loadProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSequence = ++productLoadSequence;
   resetProductScope();
   productsLoading.value = false;
@@ -575,8 +579,15 @@ async function loadProducts(): Promise<void> {
     const options = await getProductPlanning('', departmentName, department?.deptCode ?? '');
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
-    const firstOption = options[0];
-    if (firstOption && !scopeForm.offeringName.trim()) {
+    const restoredOption = preferredScope
+      ? options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ??
+        options.find((item) => item.offeringName === preferredScope.offeringName)
+      : undefined;
+    const firstOption = restoredOption ?? options[0];
+    if (firstOption) {
       scopeForm.offeringName = firstOption.offeringName;
       scopeForm.offeringId = firstOption.offeringId;
       if (hasCompleteScope.value && selectedDepartment.value) {
@@ -594,6 +605,28 @@ async function loadProducts(): Promise<void> {
       productsLoading.value = false;
     }
   }
+}
+
+function emitScopeSnapshot(): void {
+  if (!scopeDepartmentCommitted.value || !selectedDepartment.value) return;
+  const product = selectedProduct.value;
+  emit('scope-change', {
+    level: scopeForm.level,
+    departmentPath: [...selectedDepartmentPath.value],
+    offeringId: scopeForm.level === '产品级' ? product?.offeringId ?? '' : '',
+    offeringName: scopeForm.level === '产品级' ? scopeForm.offeringName : '',
+  });
+}
+
+function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  const department = snapshot ? departmentByPath(snapshot.departmentPath) : undefined;
+  if (!snapshot || !department || !configurationLevelOptions.includes(snapshot.level)) {
+    return undefined;
+  }
+  scopeForm.level = snapshot.level;
+  setSelectedDepartment(department.path, true);
+  return { ...snapshot, departmentPath: [...department.path] };
 }
 
 async function onScopeLevelChange(): Promise<void> {
@@ -616,6 +649,7 @@ async function onScopeLevelChange(): Promise<void> {
   if (nextDepartment && hasCompleteScope.value) {
     await loadDepartment(nextDepartment.name);
   }
+  emitScopeSnapshot();
 }
 
 async function onProductChange(): Promise<void> {
@@ -625,6 +659,7 @@ async function onProductChange(): Promise<void> {
   if (product && hasCompleteScope.value && selectedDepartment.value) {
     await loadDepartment(selectedDepartment.value);
   }
+  emitScopeSnapshot();
 }
 
 watch(
@@ -645,9 +680,10 @@ watch(
     }
     const currentDepartment = departmentByPath(selectedDepartmentPath.value);
     if (!currentDepartment) {
-      applyDefaultScopeSelection();
+      const restoredScope = restoreScopeSnapshot();
+      if (!restoredScope) applyDefaultScopeSelection();
       if (selectedDepartment.value) {
-        void loadProducts();
+        void loadProducts(restoredScope).then(emitScopeSnapshot);
         void loadDepartment(selectedDepartment.value);
       }
     } else if (
@@ -657,7 +693,7 @@ watch(
       selectedDepartmentPath.value = [...currentDepartment.path];
       selectedDepartment.value = currentDepartment.name;
       scopeDepartmentCommitted.value = true;
-      void loadProducts();
+      void loadProducts().then(emitScopeSnapshot);
       void loadDepartment(currentDepartment.name);
     }
   },
@@ -742,6 +778,7 @@ async function changeDepartment(path: string[]): Promise<void> {
   if (shouldLoadDepartment && hasCompleteScope.value) {
     await loadDepartment(nextDepartment.name);
   }
+  emitScopeSnapshot();
 }
 
 function clearDepartment(path: string[]): void {

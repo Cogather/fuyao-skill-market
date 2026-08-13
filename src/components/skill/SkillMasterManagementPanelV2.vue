@@ -43,6 +43,7 @@ import {
   openSkillExportResponse,
   skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
@@ -75,6 +76,7 @@ const props = withDefaults(
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -83,8 +85,12 @@ const props = withDefaults(
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
   },
 );
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+}>();
 const records = ref<SkillMasterRecord[]>([]);
 const masterLoading = ref(false);
 const masterPageSizeOptions = [5, 10, 20, 50];
@@ -481,7 +487,7 @@ function applyDefaultMasterScopeSelection(): boolean {
   return changed;
 }
 
-async function loadMasterProducts(): Promise<void> {
+async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSeq = ++masterProductLoadSequence;
   masterScopeForm.offeringId = '';
   masterScopeForm.offeringName = '';
@@ -497,8 +503,15 @@ async function loadMasterProducts(): Promise<void> {
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;
-    const firstOption = options[0];
-    if (firstOption && !masterScopeForm.offeringName.trim()) {
+    const restoredOption = preferredScope
+      ? options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ??
+        options.find((item) => item.offeringName === preferredScope.offeringName)
+      : undefined;
+    const firstOption = restoredOption ?? options[0];
+    if (firstOption) {
       masterScopeForm.offeringName = firstOption.offeringName;
       masterScopeForm.offeringId = firstOption.offeringId;
     }
@@ -510,6 +523,36 @@ async function loadMasterProducts(): Promise<void> {
       masterProductsLoading.value = false;
     }
   }
+}
+
+function emitMasterScopeSnapshot(): void {
+  if (!masterScopeDepartmentCommitted.value || !masterScopeForm.planningDeptName.trim()) return;
+  emit('scope-change', {
+    level: masterScopeForm.level,
+    departmentPath: [...masterDepartmentSegments.value],
+    offeringId:
+      masterScopeForm.level === '产品级'
+        ? selectedMasterProduct.value?.offeringId ?? masterScopeForm.offeringId
+        : '',
+    offeringName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
+  });
+}
+
+function restoreMasterScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  if (
+    !snapshot ||
+    !planningLevelOptions.includes(snapshot.level) ||
+    !findMasterDepartmentNode(snapshot.departmentPath) ||
+    !isMasterDepartmentSelectionAllowed(snapshot.departmentPath)
+  ) {
+    return undefined;
+  }
+  masterScopeForm.level = snapshot.level;
+  masterDepartmentSegments.value = normalizeDepartmentPath(snapshot.departmentPath).slice(0, 6);
+  syncMasterDepartment(masterDepartmentSegments.value);
+  masterScopeDepartmentCommitted.value = true;
+  return { ...snapshot, departmentPath: [...masterDepartmentSegments.value] };
 }
 const filteredRecords = computed(() => {
   const text = keyword.value.trim().toLowerCase();
@@ -1467,6 +1510,7 @@ async function onMasterScopeLevelChange(): Promise<void> {
   syncMasterDepartment(defaultPath);
   await loadMasterProducts();
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 function onMasterDepartmentChange(segments: string[]): void {
@@ -1481,6 +1525,7 @@ async function applyMasterDepartmentQuery(segments: string[]): Promise<void> {
   masterScopeDepartmentCommitted.value = masterDepartmentSegments.value.length > 0;
   await loadMasterProducts();
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 async function onMasterDepartmentDone(segments: string[]): Promise<void> {
@@ -1495,6 +1540,7 @@ async function onMasterProductChange(): Promise<void> {
   masterPageNum.value = 1;
   masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 async function applyMasterQuery(): Promise<void> {
@@ -1508,6 +1554,7 @@ async function resetMasterQuery(): Promise<void> {
   applyDefaultMasterScopeSelection();
   await loadMasterProducts();
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 async function goMasterPage(nextPage: number): Promise<void> {
@@ -1538,9 +1585,11 @@ watch(
   () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths, props.departmentTree],
   async () => {
     masterPageNum.value = 1;
-    applyDefaultMasterScopeSelection();
-    await loadMasterProducts();
+    const restoredScope = restoreMasterScopeSnapshot();
+    if (!restoredScope) applyDefaultMasterScopeSelection();
+    await loadMasterProducts(restoredScope);
     await reload();
+    emitMasterScopeSnapshot();
   },
   { immediate: true, deep: true },
 );
