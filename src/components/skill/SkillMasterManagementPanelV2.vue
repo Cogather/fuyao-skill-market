@@ -1778,7 +1778,6 @@ onBeforeUnmount(() => {
             <col class="develop-owner-column" />
             <col class="date-column" />
             <col class="status-column" />
-            <col class="reference-column" />
             <col class="action-column" />
           </colgroup>
           <thead>
@@ -1802,13 +1801,13 @@ onBeforeUnmount(() => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
-              <th class="reference-cell">关联规划项</th>
+              <!-- <th class="reference-cell">关联规划项</th> -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="masterLoading">
-              <td colspan="9" class="empty">正在加载 Skill 清单...</td>
+              <td colspan="8" class="empty">正在加载 Skill 清单...</td>
             </tr>
             <tr v-for="record in masterLoading ? [] : filteredRecords" :key="record.id">
               <td class="selection-cell">
@@ -1846,12 +1845,12 @@ onBeforeUnmount(() => {
               <td>
                 <span class="badge status" :class="'is-' + record.status">{{ record.status }}</span>
               </td>
-              <td class="reference-cell">
+              <!-- <td class="reference-cell">
                 <span
                   class="planning-reference-count"
                   :class="{ 'is-linked': (record.referenceCount ?? 0) > 0 }"
                 >{{ record.referenceCount ?? 0 }}</span>
-              </td>
+              </td> -->
               <td>
                 <div class="row-actions">
                   <button type="button" @click="openEdit(record)">编辑</button
@@ -1860,7 +1859,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!masterLoading && filteredRecords.length === 0">
-              <td colspan="9" class="empty">
+              <td colspan="8" class="empty">
                 {{ hasCompleteMasterScope ? '暂无符合条件的 Skill' : masterScopeErrorMessage }}
               </td>
             </tr>
@@ -2485,26 +2484,23 @@ onBeforeUnmount(() => {
   width: 4%;
 }
 .table-wrap col.skill-column {
-  width: 15%;
+  width: 16%;
 }
 .table-wrap col.description-column {
-  width: 22%;
+  width: 24%;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
-  width: 13%;
+  width: 14%;
 }
 .table-wrap col.date-column {
   width: 10%;
 }
 .table-wrap col.status-column {
-  width: 8%;
-}
-.table-wrap col.reference-column {
-  width: 7%;
+  width: 9%;
 }
 .table-wrap col.action-column {
-  width: 8%;
+  width: 9%;
 }
 .table-wrap .reference-cell { text-align: center; }
 .planning-reference-count {
