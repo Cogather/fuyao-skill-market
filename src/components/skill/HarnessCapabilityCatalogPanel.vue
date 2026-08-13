@@ -738,7 +738,7 @@ async function requestDelete(record: SkillMasterRecord): Promise<void> {
     open: true,
     ids: [record.id],
     title: `删除“${record.name}”？`,
-    message: '删除后将不能用于新规划，已有规划仍保留历史快照。',
+    message: '',
   });
 }
 
