@@ -63,6 +63,7 @@ import {
 import type {
   ProductPlanningOption,
   SkillPlanningImportResult,
+  SkillPlanningItem,
   SkillPlanningListResult,
   SkillPlanningQuery,
 } from './skillPlanningShared';
@@ -173,6 +174,15 @@ function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRec
     developOwnerDepartment: '',
     plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
     status: status || '未开始',
+    referenceCount: Number(
+      item.referenceCount ??
+        item.planningCount ??
+        item.planningReferenceCount ??
+        item.supplementCount ??
+        item.configCount ??
+        item.relatedPlanningCount ??
+        0,
+    ),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -304,6 +314,36 @@ const skillApi: HarnessCapabilityPlanningApi = {
 
 const commandApi = nonSkillApi('command');
 const agentApi = nonSkillApi('agent');
+
+export async function findReferencedCapabilityCatalogIds(
+  type: HarnessCapabilityType,
+  ids: string[],
+  query: SkillPlanningQuery = {},
+): Promise<string[]> {
+  const counts = await getCapabilityCatalogReferenceCounts(type, ids, query);
+  return Object.keys(counts).filter((id) => counts[id] > 0);
+}
+
+export async function getCapabilityCatalogReferenceCounts(
+  type: HarnessCapabilityType,
+  ids: string[],
+  query: SkillPlanningQuery = {},
+): Promise<Record<string, number>> {
+  const normalizedIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  const idSet = new Set(normalizedIds);
+  const counts = Object.fromEntries(normalizedIds.map((id) => [id, 0]));
+  if (!idSet.size) return counts;
+  const result = await getHarnessCapabilityPlanningApi(type).queryPlanning({
+    ...query,
+    pageNum: 1,
+    pageSize: 10000,
+  });
+  result.list.forEach((item: SkillPlanningItem) => {
+    const id = String(item.skillId ?? '').trim();
+    if (idSet.has(id)) counts[id] = (counts[id] ?? 0) + 1;
+  });
+  return counts;
+}
 
 export function getHarnessCapabilityPlanningApi(
   type: HarnessCapabilityType,

@@ -694,10 +694,6 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
 export async function querySkillPlanningSupplement(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillPlanningSupplement(query);
-  }
-
   // 新版 GET 接口只接收维度、关键词和分页；表头多选条件需要在当前维度全集上细化。
   if (hasHttpPlanningHeaderFilters(query)) {
     return queryHttpPlanningWithHeaderFilters(query);

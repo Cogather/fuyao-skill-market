@@ -451,6 +451,15 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
     developOwnerDepartment: '',
     plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
     status: statusText as SkillMasterStatus,
+    referenceCount: Number(
+      item.referenceCount ??
+        item.planningCount ??
+        item.planningReferenceCount ??
+        item.supplementCount ??
+        item.configCount ??
+        item.relatedPlanningCount ??
+        0,
+    ),
     createdAt: now,
     updatedAt: now,
   };
@@ -1271,7 +1280,11 @@ function saveAssociation(): void {
   closeAssociation();
   showToast('Skill 关联范围已更新');
 }
-function requestDelete(record: SkillMasterRecord): void {
+async function requestDelete(record: SkillMasterRecord): Promise<void> {
+  if ((record.referenceCount ?? 0) > 0) {
+    showToast(`“${record.name}”已关联 ${record.referenceCount} 个规划项，不能删除`);
+    return;
+  }
   Object.assign(deleteDialog, { open: true, id: record.id, name: record.name });
 }
 async function confirmDelete(): Promise<void> {
@@ -1402,7 +1415,21 @@ function requestBatchMasterDelete(): void {
     showToast('请先勾选需要批量删除的数据');
     return;
   }
-  Object.assign(batchDeleteDialog, { open: true, ids: [...selectedMasterIds.value] });
+  void requestBatchMasterDeleteConfirmation();
+}
+
+async function requestBatchMasterDeleteConfirmation(): Promise<void> {
+  const ids = [...selectedMasterIds.value];
+  const referencedRecords = records.value.filter(
+    (record) => ids.includes(record.id) && (record.referenceCount ?? 0) > 0,
+  );
+  if (referencedRecords.length) {
+    const names = referencedRecords
+      .map((record) => `“${record.name}”`);
+    showToast(`${names.join('、')}已关联规划项，不能删除`);
+    return;
+  }
+  Object.assign(batchDeleteDialog, { open: true, ids });
 }
 
 async function confirmBatchMasterDelete(): Promise<void> {
@@ -1702,6 +1729,7 @@ onBeforeUnmount(() => {
             <col class="develop-owner-column" />
             <col class="date-column" />
             <col class="status-column" />
+            <col class="reference-column" />
             <col class="action-column" />
           </colgroup>
           <thead>
@@ -1725,12 +1753,13 @@ onBeforeUnmount(() => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
+              <th class="reference-cell">关联规划项</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="masterLoading">
-              <td colspan="8" class="empty">正在加载 Skill 清单...</td>
+              <td colspan="9" class="empty">正在加载 Skill 清单...</td>
             </tr>
             <tr v-for="record in masterLoading ? [] : filteredRecords" :key="record.id">
               <td class="selection-cell">
@@ -1768,6 +1797,12 @@ onBeforeUnmount(() => {
               <td>
                 <span class="badge status" :class="'is-' + record.status">{{ record.status }}</span>
               </td>
+              <td class="reference-cell">
+                <span
+                  class="planning-reference-count"
+                  :class="{ 'is-linked': (record.referenceCount ?? 0) > 0 }"
+                >{{ record.referenceCount ?? 0 }}</span>
+              </td>
               <td>
                 <div class="row-actions">
                   <button type="button" @click="openEdit(record)">编辑</button
@@ -1776,7 +1811,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!masterLoading && filteredRecords.length === 0">
-              <td colspan="8" class="empty">
+              <td colspan="9" class="empty">
                 {{ hasCompleteMasterScope ? '暂无符合条件的 Skill' : masterScopeErrorMessage }}
               </td>
             </tr>
@@ -2393,32 +2428,51 @@ onBeforeUnmount(() => {
 }
 .table-wrap table {
   width: 100%;
-  min-width: 1320px;
+  min-width: 1080px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 .table-wrap col.selection-column {
-  width: 48px;
+  width: 4%;
 }
 .table-wrap col.skill-column {
-  width: 220px;
+  width: 15%;
 }
 .table-wrap col.description-column {
-  width: 330px;
+  width: 22%;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
-  width: 170px;
+  width: 13%;
 }
 .table-wrap col.date-column {
-  width: 140px;
+  width: 10%;
 }
 .table-wrap col.status-column {
-  width: 130px;
+  width: 8%;
+}
+.table-wrap col.reference-column {
+  width: 7%;
 }
 .table-wrap col.action-column {
-  width: 140px;
+  width: 8%;
+}
+.table-wrap .reference-cell { text-align: center; }
+.planning-reference-count {
+  display: inline-flex;
+  min-width: 30px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 800;
+}
+.planning-reference-count.is-linked {
+  background: #eef2ff;
+  color: #4f46e5;
 }
 .table-wrap th,
 .table-wrap td {

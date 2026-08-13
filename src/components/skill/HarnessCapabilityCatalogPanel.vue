@@ -685,7 +685,11 @@ async function submitEditor(): Promise<void> {
   }
 }
 
-function requestDelete(record: SkillMasterRecord): void {
+async function requestDelete(record: SkillMasterRecord): Promise<void> {
+  if ((record.referenceCount ?? 0) > 0) {
+    showToast(`“${record.name}”已关联 ${record.referenceCount} 个规划项，不能删除`, 5000);
+    return;
+  }
   Object.assign(deleteDialog, {
     open: true,
     ids: [record.id],
@@ -694,9 +698,14 @@ function requestDelete(record: SkillMasterRecord): void {
   });
 }
 
-function requestBatchDelete(): void {
-  if (!selectedIds.value.length) {
-    showToast('请先勾选需要批量删除的数据');
+async function requestBatchCatalogDelete(): Promise<void> {
+  const referencedRecords = records.value.filter(
+    (record) => selectedIds.value.includes(record.id) && (record.referenceCount ?? 0) > 0,
+  );
+  if (referencedRecords.length) {
+    const names = referencedRecords
+      .map((record) => `“${record.name}”`);
+    showToast(`${names.join('、')}已关联规划项，不能删除`, 5000);
     return;
   }
   Object.assign(deleteDialog, {
@@ -705,6 +714,14 @@ function requestBatchDelete(): void {
     title: `批量删除 ${capabilityLabel.value}？`,
     message: `确认删除已勾选的 ${selectedIds.value.length} 条数据吗？删除后将不能用于新规划。`,
   });
+}
+
+function requestBatchDelete(): void {
+  if (!selectedIds.value.length) {
+    showToast('请先勾选需要批量删除的数据');
+    return;
+  }
+  void requestBatchCatalogDelete();
 }
 
 async function confirmDelete(): Promise<void> {
@@ -982,6 +999,17 @@ onMounted(async () => {
 
       <div class="capability-master-table-wrap">
         <table class="capability-master-table">
+          <colgroup>
+            <col class="is-check-column" />
+            <col class="is-name-column" />
+            <col class="is-description-column" />
+            <col class="is-person-column" />
+            <col class="is-person-column" />
+            <col class="is-date-column" />
+            <col class="is-status-column" />
+            <col class="is-reference-column" />
+            <col class="is-action-column" />
+          </colgroup>
           <thead>
             <tr>
               <th class="is-check">
@@ -998,12 +1026,13 @@ onMounted(async () => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
+              <th class="is-reference">关联规划项</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="8" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
+              <td colspan="9" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
             </tr>
             <tr v-for="record in loading ? [] : pageRecords" :key="record.id">
               <td class="is-check">
@@ -1026,6 +1055,12 @@ onMounted(async () => {
                 <span class="capability-status" :class="`is-${record.status}`">{{
                   record.status
                 }}</span>
+              </td>
+              <td class="is-reference">
+                <span
+                  class="capability-reference-count"
+                  :class="{ 'is-linked': (record.referenceCount ?? 0) > 0 }"
+                >{{ record.referenceCount ?? 0 }}</span>
               </td>
               <td class="is-action">
                 <div class="capability-row-actions">
@@ -1050,7 +1085,7 @@ onMounted(async () => {
               </td>
             </tr>
             <tr v-if="!loading && !pageRecords.length">
-              <td colspan="8" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
+              <td colspan="9" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
             </tr>
           </tbody>
         </table>
@@ -1440,7 +1475,7 @@ onMounted(async () => {
 }
 .capability-master-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1080px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -1470,27 +1505,29 @@ onMounted(async () => {
   font-weight: 900;
   white-space: nowrap;
 }
-th:nth-child(1) {
-  width: 52px;
+.capability-master-table col.is-check-column { width: 4%; }
+.capability-master-table col.is-name-column { width: 15%; }
+.capability-master-table col.is-description-column { width: 22%; }
+.capability-master-table col.is-person-column { width: 13%; }
+.capability-master-table col.is-date-column { width: 10%; }
+.capability-master-table col.is-status-column { width: 8%; }
+.capability-master-table col.is-reference-column { width: 7%; }
+.capability-master-table col.is-action-column { width: 8%; }
+.capability-master-table .is-reference { text-align: center; }
+.capability-reference-count {
+  display: inline-flex;
+  min-width: 30px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 800;
 }
-th:nth-child(2) {
-  width: 220px;
-}
-th:nth-child(3) {
-  width: 300px;
-}
-th:nth-child(4),
-th:nth-child(5) {
-  width: 150px;
-}
-th:nth-child(6) {
-  width: 118px;
-}
-th:nth-child(7) {
-  width: 110px;
-}
-th:nth-child(8) {
-  width: 120px;
+.capability-reference-count.is-linked {
+  background: #eef2ff;
+  color: #4f46e5;
 }
 .capability-master-table tbody tr:hover td {
   background: #f8fbff;
