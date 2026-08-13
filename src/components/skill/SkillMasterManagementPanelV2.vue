@@ -2136,7 +2136,6 @@ onBeforeUnmount(() => {
         <div class="dialog delete-dialog" role="dialog" aria-modal="true">
           <i class="delete-dialog__icon" aria-hidden="true">!</i>
           <strong>删除“{{ deleteDialog.name }}”？</strong>
-          <p>删除后将不能用于新规划，已有规划仍保留历史快照。</p>
           <footer>
             <button type="button" @click="deleteDialog.open = false">取消</button
             ><button class="danger-btn" type="button" @click="confirmDelete">确认删除</button>
