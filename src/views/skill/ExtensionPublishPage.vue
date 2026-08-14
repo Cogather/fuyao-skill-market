@@ -40,7 +40,7 @@ const props = withDefaults(
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const scenes = ref<ExtensionScene[]>(createMockExtensionScenes());
-const filterLevelOptions: ExtensionFilterLevel[] = ['产品级', '部门级'];
+const filterLevelOptions: ExtensionFilterLevel[] = ['产品级'];
 const organizations = [
   { id: 'org-fuyao', name: '扶摇组织' },
   { id: 'org-yunshan', name: '云山组织' },
