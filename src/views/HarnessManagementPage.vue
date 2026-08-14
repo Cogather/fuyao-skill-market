@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
+import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
 import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
 import {
@@ -271,7 +272,9 @@ function updateTopbarElevation(): void {
   topbarElevated.value = window.scrollY > 8;
 }
 
-function planningMemoryKey(capabilityType: PlanningScopeChange['capabilityType']): PlanningMemoryKey {
+function planningMemoryKey(
+  capabilityType: PlanningScopeChange['capabilityType'],
+): PlanningMemoryKey {
   return capabilityType === 'skill' ? 'planning' : capabilityType;
 }
 
@@ -401,6 +404,21 @@ onBeforeUnmount(() => {
         :initial-catalog-scope="catalogScopeSnapshots[activePlanningMemoryKey()]"
         @scope-change="updatePlanningScopeSnapshot"
         @catalog-scope-change="updateCatalogScopeSnapshot"
+      />
+    </section>
+
+    <section
+      v-else-if="activeHarnessTab === 'extension'"
+      id="harness-panel-extension"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-extension"
+    >
+      <ExtensionPublishPage
+        :department-tree="departmentTree"
+        :current-user-department-path="currentUserDepartmentPermission.path"
+        :allowed-department-paths="permissionDepartmentPaths"
+        :restrict-to-allowed-departments="restrictToPermissionDepartments"
       />
     </section>
 

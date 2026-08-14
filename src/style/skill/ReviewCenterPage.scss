@@ -7,6 +7,56 @@
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 }
 
+.review-center-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin: 0 0 10px;
+  padding: 4px;
+  border: 1px solid #dbe5f2;
+  border-radius: 10px;
+  background: #f7f9fd;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.review-center-tab {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  outline: 0;
+  background: transparent;
+  color: #667085;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.review-center-tab:hover:not(.on) {
+  background: #eef4ff;
+  color: #2f6fe4;
+}
+
+.review-center-tab.on {
+  border-color: #b9ceff;
+  background: #ffffff;
+  color: #2563eb;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(47, 125, 246, 0.13);
+}
+
+.review-center-tab:focus-visible {
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.2);
+}
+
 .review-topbar {
   position: sticky;
   top: 0;

@@ -1822,12 +1822,14 @@ onBeforeUnmount(() => {
     </div>
   </header>
   <div class="review-center-page">
-    <div class="review-center-tabs">
+    <div class="review-center-tabs" role="tablist" aria-label="评审类型">
       <button
         v-if="props.isExpertReviewer"
         type="button"
         class="review-center-tab"
         :class="{ on: reviewCenterInnerTab === 'monthly' }"
+        role="tab"
+        :aria-selected="reviewCenterInnerTab === 'monthly'"
         @click="switchReviewTab('monthly')"
       >
         月度评审
@@ -1836,6 +1838,8 @@ onBeforeUnmount(() => {
         type="button"
         class="review-center-tab"
         :class="{ on: reviewCenterInnerTab === 'dept' }"
+        role="tab"
+        :aria-selected="reviewCenterInnerTab === 'dept'"
         @click="switchReviewTab('dept')"
       >
         部门评审
