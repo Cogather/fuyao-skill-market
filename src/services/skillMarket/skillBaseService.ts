@@ -804,6 +804,300 @@ export const skillBaseService = {
     });
   },
 
+  // Extension 相关接口
+  // 查询用户可发布组织列表
+  // 响应示例：{
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 2
+  //   },
+  //   "data": [
+  //     {
+  //       "deptId": "L0001",
+  //       "deptName": "开发一部",
+  //       "orgCode": "ORG001",
+  //       "orgName": "AI平台",
+  //     },
+  //     {
+  //       "deptId": "L0002",
+  //       "deptName": "开发二部",
+  //       "orgCode": "ORG002",
+  //       "orgName": "AI平台2",
+  //     }
+  //   ]
+  // }
+  queryUserPublishableOrgs: (params: { userId: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/extensions/orgs',
+      method: 'get',
+      params,
+    });
+  },
+  // 查询场景及绑定规划件
+  // 请求体body示例：
+  // {
+  //   "dimType": "部门级",
+  //   "dimCode": "00001",
+  //   "dimName": "开发一部",
+  // }
+  // 响应示例：
+  // {
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 2
+  //   },
+  //   "data": {
+  //     "scenes": [{
+  //       "firstScene": "1",
+  //       "secondScenes": [
+  //         {
+  //           "secondScene": "架构涉及",
+  //           "subScenes": "已就绪"
+  //           "components": {
+  //             "commands": [
+  //               {
+  //                 "name": "cmd-A",
+  //                 "version": "v1.0.0",
+  //                 "uploadAt": "2026-01-01 12:00:00",
+  //               }
+  //             ],
+  //             "agents": [
+  //               {
+  //                 "name": "agent-A",
+  //                 "version": "v1.0.0",
+  //                 "uploadAt": "2026-01-01 12:00:00",
+  //               }
+  //             ],
+  //             "skills": [
+  //               {
+  //                 "name": "skill-A",
+  //                 "version": "v1.0.0",
+  //                 "uploadAt": "2026-01-01 12:00:00",
+  //               }
+  //             ],
+  //           }
+  //         }
+  //       ]
+  //     }
+  //   ]
+  // }
+  querySceneAndBindingPlanningItems: (params: { userId: string }, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scenes/bindings',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+  // Extension 保存
+  // params示例：
+  // {
+  //   "userId": "1234567890",
+  //   "operatorName": "L0001",
+  //   "dimType": "部门级",
+  //   "dimCode": "00001",
+  //   "dimName": "开发一部",
+  // }
+  // body示例：
+  // {
+  //   "extensionName": "L0001",
+  //   "description": "v1.0.0",
+  //   "releaseType": "描述",
+  //   "firstScene": "命令",
+  //   "secondScene": "场景",
+  //   "targeteOrgCode": "架构涉及",
+  //   "targetOrgName": "已就绪",
+  //   "agents": [
+  //     {
+  //       "name": "agent-A",
+  //       "version": "v1.0.0",
+  //     }
+  //   ],
+  //   "skills": [
+  //     {
+  //       "name": "skill-A",
+  //       "version": "v1.0.0",
+  //     }
+  //   ],
+  //   "commands": [
+  //     {
+  //       "name": "command-A",
+  //       "version": "v1.0.0",
+  //     }
+  //   ],
+  // }
+  // 响应示例：
+  // {
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 1
+  //   },
+  //   "data": {
+  //     "id": "xxxxx",
+  //   }
+  // }
+  saveExtension: (params: any, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/extensions',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+  // 查询发布历史清单
+  // body示例：
+  // {
+  //   "dimType": "部门级",
+  //   "dimCode": "00001",
+  //   "dimName": "开发一部",
+  //   "firstScene": "命令",
+  //   "secondScene": "场景",
+  //   "keyword": "描述",
+  //   "publishStatus": "发布成功",
+  //   "releaseType": "beta",
+  //   "pageNum": 1,
+  //   "pageSize": 10,
+  //   "sortBy": "updatedAt",
+  //   "sortOrder": "desc",
+  // }
+  // 响应示例：
+  // {
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 1
+  //   },
+  //   "data": {
+  //     "total": 1,
+  //     "list": [
+  //       {
+  //         "id": "xxxxx",
+  //         "extensionName": "L0001",
+  //         "description": "v1.0.0",
+  //         "releaseType": "描述",
+  //         "firstScene": "命令",
+  //         "secondScene": "场景",
+  //         "targeteOrgCode": "架构涉及",
+  //         "targetOrgName": "已就绪",
+  //         "agents": [
+  //           {
+  //             "name": "agent-A",
+  //             "version": "v1.0.0",
+  //           }
+  //         ],
+  //         "skills": [
+  //           {
+  //             "name": "skill-A",
+  //             "version": "v1.0.0",
+  //           }
+  //         "commands": [
+  //           {
+  //             "name": "command-A",
+  //             "version": "v1.0.0",
+  //           }
+  //         ],
+  //       }
+  //     ],
+  //   }
+  // }
+  queryPublishedHistoryList: (body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/extensions/history',
+      method: 'post',
+      data: body,
+    });
+  },
+  // 规划件目录树
+  // params示例：
+  // {
+  //   "userId": "1234567890",
+  //   "componentType": "skill" | "agent" | "command",
+  //   "componentName": "skill-A",
+  //   "componentVersion": "v1.0.0"
+  // }
+  // 响应示例：
+  // {
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 1
+  //   },
+  //   "data": [
+  //     "README.md",
+  //     "src/index.js",
+  //     "src/utils.js",
+  //     "config.yaml",
+  //   ]
+  // }
+  queryPlanningItemTree: (params: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/packages/tree',
+      method: 'get',
+      params,
+    });
+  },
+  // 规划件文件内容
+  // params示例：
+  // {
+  //   "userId": "1234567890",
+  //   "componentType": "skill" | "agent" | "command",
+  //   "componentName": "skill-A",
+  //   "componentVersion": "v1.0.0",
+  //   "filePath": "README.md"
+  // }
+  // 响应示例：
+  // {
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 1
+  //   },
+  //   "data": {
+  //     "componentType": "skill" | "agent" | "command",
+  //     "componentName": "skill-A",
+  //     "componentVersion": "v1.0.0",
+  //     "filePath": "README.md",
+  //     "fileSize": 5120,
+  //     "encoding": "utf-8",
+  //     "content": "" // 文件内容
+  //   }
+  // }
+  queryPlanningItemContent: (params: any): Promise<unknown> => {
+    return httpRequest.harnessApi<unknown>({
+      url: '/packages/file',
+      method: 'get',
+      params,
+    });
+  },
+
+  // Extension 重试发布
+  // params示例：
+  // {
+  //   "userId": "1234567890",
+  //   "operatorName": "张三",
+  // }
+  // 响应示例：
+  // {
+  //   "meta": {
+  //     "success": true,
+  //     "message": "OK",
+  //     "number": 1
+  //   },
+  //   "data": {
+  //     "id": "xxxxx",
+  //   }
+  // }
+  retryPublishExtension: (id: string, params: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: `/extensions/${id}/retry`,
+      method: 'post',
+      params,
+    });
+  },
+
   // harness 查询接口
 
   // 查询当前用户的部门管理权限（有哪些部门可以管理）

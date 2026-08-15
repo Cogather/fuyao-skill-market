@@ -21,6 +21,8 @@ export type ExtensionReleaseItem = {
 };
 
 export type ExtensionRelease = {
+  /** 后端发布记录主键；mock 场景可不提供。 */
+  id?: string;
   version: string;
   extensionName: string;
   description: string;
