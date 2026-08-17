@@ -478,7 +478,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     releaseType: input.channel,
     firstScene: input.scene.primary,
     secondScene: input.scene.name,
-    targeteOrgCode: input.organization.id,
+    targetOrgCode: input.organization.id,
     targetOrgName: input.organization.name,
     agents: componentBody(input.scene, 'agent'),
     skills: componentBody(input.scene, 'skill'),

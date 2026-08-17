@@ -669,7 +669,7 @@ const modalHistory = computed(() => {
 });
 const visibleHistory = computed(() => modalHistory.value.slice(0, historyLimit.value));
 
-function openPublishModal(scene: ExtensionScene): void {
+async function openPublishModal(scene: ExtensionScene): Promise<void> {
   if (!scene.publishable) {
     showToast('场景不完备，无法发布');
     return;
@@ -683,9 +683,14 @@ function openPublishModal(scene: ExtensionScene): void {
   publishForm.name = latest?.extensionName || scene.extension.name || `${scene.name} Extension`;
   publishForm.description = scene.extension.description;
   publishForm.channel = 'beta';
+  activeModal.value = 'publish';
+  if (transportIsHttp) {
+    organizations.value = [];
+    publishForm.organizationId = '';
+    await loadHttpOrganizations();
+  }
   publishForm.organizationId = organizations.value[0]?.id ?? '';
   publishError.value = organizationError.value;
-  activeModal.value = 'publish';
 }
 
 async function openHistoryModal(scene: ExtensionScene): Promise<void> {
@@ -837,7 +842,6 @@ async function loadHttpOrganizations(): Promise<void> {
 async function initializeHttpPage(): Promise<void> {
   scopeLoading.value = true;
   scopeError.value = '';
-  const organizationPromise = loadHttpOrganizations();
   try {
     await loadHttpProducts(draftDepartmentPath.value);
     await applyFilters();
@@ -847,7 +851,6 @@ async function initializeHttpPage(): Promise<void> {
     scopeError.value = errorMessage(error, 'Extension 数据加载失败');
   } finally {
     scopeLoading.value = false;
-    await organizationPromise;
   }
 }
 

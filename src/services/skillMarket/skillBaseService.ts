@@ -907,7 +907,7 @@ export const skillBaseService = {
   //   "releaseType": "描述",
   //   "firstScene": "命令",
   //   "secondScene": "场景",
-  //   "targeteOrgCode": "架构涉及",
+  //   "targetOrgCode": "架构涉及",
   //   "targetOrgName": "已就绪",
   //   "agents": [
   //     {
@@ -980,7 +980,7 @@ export const skillBaseService = {
   //         "releaseType": "描述",
   //         "firstScene": "命令",
   //         "secondScene": "场景",
-  //         "targeteOrgCode": "架构涉及",
+  //         "targetOrgCode": "架构涉及",
   //         "targetOrgName": "已就绪",
   //         "agents": [
   //           {
