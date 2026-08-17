@@ -5367,8 +5367,15 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               v-model="aiEvolutionRejectReason"
               class="admin-textarea"
               rows="3"
+              maxlength="500"
               placeholder="简要说明原因，帮助自进化系统优化"
             />
+            <span
+              class="ai-evo-reject-reason-count"
+              :class="{ 'is-near-limit': aiEvolutionRejectReason.length >= 450 }"
+            >
+              {{ aiEvolutionRejectReason.length }}/500
+            </span>
           </label>
           <div class="v-actions">
             <button
