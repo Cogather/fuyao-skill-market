@@ -5,6 +5,7 @@ import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   publishHttpExtension,
+  queryHttpCurrentOperatorName,
   queryHttpExtensionBindings,
   queryHttpExtensionProducts,
   queryHttpExtensionScenes,
@@ -774,9 +775,10 @@ async function confirmPublish(): Promise<void> {
     publishSubmitting.value = true;
     publishError.value = '';
     try {
+      const operatorName = await queryHttpCurrentOperatorName(props.userName.trim());
       await publishHttpExtension({
         userId: props.userId.trim(),
-        operatorName: props.userName.trim() || props.userId.trim(),
+        operatorName,
         scope: appliedHttpScope.value,
         scene,
         extensionName: name,
@@ -826,11 +828,8 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     retryingReleaseId.value = release.id ?? '';
     historyError.value = '';
     try {
-      await retryHttpExtension(
-        release.id ?? '',
-        props.userId.trim(),
-        props.userName.trim() || props.userId.trim(),
-      );
+      const operatorName = await queryHttpCurrentOperatorName(props.userName.trim());
+      await retryHttpExtension(release.id ?? '', props.userId.trim(), operatorName);
       await refreshHttpScenes(scene.id, false);
       showToast(
         `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,

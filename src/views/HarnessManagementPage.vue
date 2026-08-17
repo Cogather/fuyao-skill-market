@@ -88,10 +88,10 @@ const userId = computed(() => {
 
 const userName = computed(
   () =>
-    String(skillMarketStore.userName ?? '').trim() ||
     String(profileStore.userInfo?.nameCn ?? '').trim() ||
+    String(skillMarketStore.userName ?? '').trim() ||
     String(profileStore.userInfo?.name ?? '').trim() ||
-    userId.value,
+    (transportIsHttp ? '' : '模拟用户'),
 );
 
 const departmentTree = computed(() => {
