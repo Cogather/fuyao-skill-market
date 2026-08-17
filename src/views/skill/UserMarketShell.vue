@@ -5360,12 +5360,14 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             v-if="aiEvolutionConfirm.decision === 'reject'"
             class="admin-field ai-evo-reject-reason"
           >
-            <span>拒绝原因（可选）</span>
+            <span class="ai-evo-reject-reason-label">
+              拒绝原因<span class="ai-evo-reject-reason-optional">（可选）</span>
+            </span>
             <textarea
               v-model="aiEvolutionRejectReason"
               class="admin-textarea"
               rows="3"
-              placeholder="请输入拒绝原因"
+              placeholder="简要说明原因，帮助自进化系统优化"
             />
           </label>
           <div class="v-actions">
