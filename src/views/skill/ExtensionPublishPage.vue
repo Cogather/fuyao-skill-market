@@ -5,6 +5,7 @@ import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   publishHttpExtension,
+  queryHttpExtensionBindings,
   queryHttpExtensionProducts,
   queryHttpExtensionScenes,
   queryHttpPlanningItemContent,
@@ -244,10 +245,13 @@ const loadingFiles = ref<Set<string>>(new Set());
 const fileErrors = reactive<Record<string, string>>({});
 const scopeLoading = ref(false);
 const productsLoading = ref(false);
+const bindingsLoading = ref(false);
 const scopeError = ref('');
 const organizationLoading = ref(false);
 const organizationError = ref('');
 let productLoadSequence = 0;
+let sceneListLoadSequence = 0;
+let bindingLoadSequence = 0;
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -304,10 +308,38 @@ function toggleFolder(type: ExtensionCapabilityType): void {
   expandedFolders.value = next;
 }
 
-function selectScene(sceneId: string): void {
+async function selectScene(sceneId: string): Promise<void> {
   selectedSceneId.value = sceneId;
   expandedCapabilities.value = new Set();
   expandedFiles.value = new Set();
+  if (!transportIsHttp || !sceneId) return;
+
+  const scope = appliedHttpScope.value;
+  const scene = scenes.value.find((item) => item.id === sceneId);
+  if (!scope || !scene) return;
+
+  const requestSequence = ++bindingLoadSequence;
+  bindingsLoading.value = true;
+  scopeError.value = '';
+  try {
+    const hydratedScene = await queryHttpExtensionBindings(props.userId.trim(), scope, scene);
+    if (
+      requestSequence !== bindingLoadSequence ||
+      appliedHttpScope.value !== scope ||
+      selectedSceneId.value !== sceneId
+    ) {
+      return;
+    }
+    scenes.value = scenes.value.map((item) =>
+      item.id === sceneId ? { ...hydratedScene, id: sceneId } : item,
+    );
+  } catch (error) {
+    if (requestSequence === bindingLoadSequence && selectedSceneId.value === sceneId) {
+      scopeError.value = errorMessage(error, '场景绑定规划件加载失败');
+    }
+  } finally {
+    if (requestSequence === bindingLoadSequence) bindingsLoading.value = false;
+  }
 }
 
 function buildDraftScope(): ExtensionScope {
@@ -346,7 +378,6 @@ async function loadHttpProducts(path: string[]): Promise<boolean> {
 
   productsLoading.value = true;
   products.value = [];
-  const preferredProductId = draftProductId.value;
   draftProductId.value = '';
   try {
     const nextProducts = await queryHttpExtensionProducts(
@@ -356,8 +387,7 @@ async function loadHttpProducts(path: string[]): Promise<boolean> {
     );
     if (requestSequence !== productLoadSequence) return false;
     products.value = nextProducts;
-    const restoredProduct = nextProducts.find((product) => product.id === preferredProductId);
-    draftProductId.value = restoredProduct?.id ?? nextProducts[0]?.id ?? '';
+    draftProductId.value = nextProducts[0]?.id ?? '';
     return true;
   } catch (error) {
     if (requestSequence !== productLoadSequence) return false;
@@ -370,22 +400,30 @@ async function loadHttpProducts(path: string[]): Promise<boolean> {
 async function refreshHttpScenes(preferredSceneId = '', showBoardLoading = true): Promise<void> {
   const scope = appliedHttpScope.value;
   if (!scope) return;
+  const requestSequence = ++sceneListLoadSequence;
+  bindingLoadSequence += 1;
+  bindingsLoading.value = false;
   if (showBoardLoading) scopeLoading.value = true;
   scopeError.value = '';
   try {
     const nextScenes = await queryHttpExtensionScenes(props.userId.trim(), scope);
+    if (requestSequence !== sceneListLoadSequence || appliedHttpScope.value !== scope) return;
     scenes.value = nextScenes;
     clearContentState();
     const nextSceneId = nextScenes.some((scene) => scene.id === preferredSceneId)
       ? preferredSceneId
       : (nextScenes[0]?.id ?? '');
     selectedSceneId.value = nextSceneId;
+    if (nextSceneId) await selectScene(nextSceneId);
   } catch (error) {
+    if (requestSequence !== sceneListLoadSequence || appliedHttpScope.value !== scope) return;
     scopeError.value = errorMessage(error, 'Extension 数据加载失败');
     if (showBoardLoading) scenes.value = [];
     throw error;
   } finally {
-    if (showBoardLoading) scopeLoading.value = false;
+    if (showBoardLoading && requestSequence === sceneListLoadSequence) {
+      scopeLoading.value = false;
+    }
   }
 }
 
@@ -442,7 +480,7 @@ async function applyFilters(): Promise<void> {
   const selectedStillVisible = visibleScenes.value.some(
     (scene) => scene.id === selectedSceneId.value,
   );
-  if (!selectedStillVisible) selectScene(visibleScenes.value[0]?.id ?? '');
+  if (!selectedStillVisible) void selectScene(visibleScenes.value[0]?.id ?? '');
 }
 
 function capabilityKey(scene: ExtensionScene, capability: ExtensionCapability): string {
@@ -914,7 +952,11 @@ onBeforeUnmount(() => {
       <span aria-hidden="true">!</span>{{ scopeError }}
     </div>
 
-    <section class="extension-board" aria-label="Extension 发布内容" :aria-busy="scopeLoading">
+    <section
+      class="extension-board"
+      aria-label="Extension 发布内容"
+      :aria-busy="scopeLoading || bindingsLoading"
+    >
       <aside class="panel-card scene-tree-card">
         <header class="panel-card__header">
           <h3>场景树</h3>
@@ -937,6 +979,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="scene-button"
                   :class="{ 'is-active': selectedSceneId === scene.id }"
+                  :disabled="bindingsLoading && selectedSceneId === scene.id"
                   @click="selectScene(scene.id)"
                 >
                   <span class="primary-tag">{{ scene.primary }}</span>

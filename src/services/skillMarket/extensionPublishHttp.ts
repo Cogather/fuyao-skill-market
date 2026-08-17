@@ -7,7 +7,8 @@ import type {
   ExtensionScene,
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
-import { getProductPlanning } from './skillPlanningService';
+import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
+import type { SkillPlanningOptionGroup } from './skillPlanningShared';
 
 export type ExtensionScope = {
   dimType: '产品级' | '部门级';
@@ -342,6 +343,33 @@ function mapBindingScenes(
   });
 }
 
+function mapSceneOptionGroups(
+  groups: SkillPlanningOptionGroup[],
+  scope: ExtensionScope,
+): ExtensionScene[] {
+  return groups.flatMap((group, firstIndex) =>
+    group.children.map((secondScene, secondIndex) => {
+      const firstScene = group.value;
+      const sceneKey = stableId([
+        scope.productId || scope.dimCode,
+        firstScene || String(firstIndex),
+        secondScene || String(secondIndex),
+      ]);
+      return {
+        id: sceneKey,
+        productId: scope.productId || scope.dimCode,
+        primary: firstScene,
+        name: secondScene,
+        publishable: false,
+        extension: { name: '', description: '' },
+        capabilities: { skill: [], command: [], agent: [] },
+        releases: [],
+        publishing: null,
+      };
+    }),
+  );
+}
+
 export async function queryHttpExtensionProducts(
   departmentCode: string,
   departmentName: string,
@@ -391,14 +419,36 @@ export async function queryHttpExtensionScenes(
   userId: string,
   scope: ExtensionScope,
 ): Promise<ExtensionScene[]> {
+  const groups = await querySkillPlanningSceneOptionGroups({
+    userId: requiredText(userId, '尚未获取当前用户工号'),
+    dimType: scope.dimType,
+    dimCode: scope.dimCode,
+    dimName: scope.dimName,
+  });
+  return mapSceneOptionGroups(groups, scope);
+}
+
+export async function queryHttpExtensionBindings(
+  userId: string,
+  scope: ExtensionScope,
+  scene: ExtensionScene,
+): Promise<ExtensionScene> {
   const [bindingResponse, releases] = await Promise.all([
     skillBaseService.querySceneAndBindingPlanningItems(
       { userId: requiredText(userId, '尚未获取当前用户工号') },
-      { dimType: scope.dimType, dimCode: scope.dimCode, dimName: scope.dimName },
+      {
+        dimType: scope.dimType,
+        dimCode: scope.dimCode,
+        dimName: scope.dimName,
+      },
     ),
     queryAllHistory(scope),
   ]);
-  return mapBindingScenes(bindingResponse, scope, releases);
+  const bindingScenes = mapBindingScenes(bindingResponse, scope, releases);
+  return (
+    bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ??
+    scene
+  );
 }
 
 function componentBody(
