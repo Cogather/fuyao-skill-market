@@ -1127,6 +1127,12 @@ onBeforeUnmount(() => {
                   >
                     <span class="capability-caret">{{ capability.ready ? '›' : '•' }}</span>
                     <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
+                    <span
+                      class="capability-type-tag"
+                      :class="`capability-type-tag--${section.type}`"
+                    >
+                      {{ section.label }}
+                    </span>
                     <span class="capability-name">{{ capability.name }}</span>
                     <template v-if="capability.ready">
                       <span class="capability-release-meta">
@@ -1283,6 +1289,9 @@ onBeforeUnmount(() => {
                   :src="capabilityTypeMeta[item.type].iconSrc"
                   :alt="capabilityTypeMeta[item.type].label"
                 />
+                <span class="capability-type-tag" :class="`capability-type-tag--${item.type}`">
+                  {{ capabilityTypeMeta[item.type].label }}
+                </span>
                 <strong>{{ item.name }}</strong>
                 <span>v{{ displayVersion(item.version) }}</span>
               </li>
@@ -1395,6 +1404,12 @@ onBeforeUnmount(() => {
                         :src="capabilityTypeMeta[item.type].iconSrc"
                         :alt="capabilityTypeMeta[item.type].label"
                       />
+                      <span
+                        class="capability-type-tag"
+                        :class="`capability-type-tag--${item.type}`"
+                      >
+                        {{ capabilityTypeMeta[item.type].label }}
+                      </span>
                       {{ item.name }}
                       <b>v{{ displayVersion(item.version) }}</b>
                     </span>
@@ -2239,6 +2254,38 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
+.capability-type-tag {
+  display: inline-flex;
+  min-height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.capability-type-tag--skill {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.capability-type-tag--command {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.capability-type-tag--agent {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
 .capability-name {
   min-width: 0;
   flex: 1;
@@ -2799,6 +2846,12 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 14px;
   border-radius: 3px;
+}
+
+.history-structure .capability-type-tag {
+  min-height: 14px;
+  padding: 1px 4px;
+  font-size: 8px;
 }
 
 .history-structure b {

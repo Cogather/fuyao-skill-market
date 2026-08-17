@@ -421,6 +421,158 @@ const scenes: ExtensionScene[] = [
     publishing: null,
   },
   {
+    id: 'scene-pipeline-build-diagnosis',
+    productId: 'harness-pipeline',
+    primary: '开发',
+    name: '构建诊断',
+    publishable: true,
+    extension: {
+      name: '构建诊断 Extension',
+      description: '聚合构建日志并快速定位编译、依赖与环境问题。',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-build-log-analysis',
+          name: '构建日志分析Skill',
+          version: '1.0.0',
+          publishDate: '2026-08-12',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content: '# 构建日志分析Skill\n\n识别编译、依赖和运行环境中的常见构建异常。',
+            },
+          ],
+        },
+      ],
+      command: [
+        {
+          id: 'command-diagnose-build',
+          name: '诊断构建',
+          version: '1.0.0',
+          publishDate: '2026-08-12',
+          ready: true,
+          files: [
+            {
+              name: '诊断构建.md',
+              content: '# 诊断构建\n\n采集构建上下文并生成可执行的排查建议。',
+            },
+          ],
+        },
+      ],
+      agent: [],
+    },
+    releases: [],
+    publishing: null,
+  },
+  {
+    id: 'scene-pipeline-trace',
+    productId: 'harness-pipeline',
+    primary: '问题定位',
+    name: '链路追踪',
+    publishable: true,
+    extension: {
+      name: '链路追踪 Extension',
+      description: '关联调用链、日志与指标，定位跨服务异常。',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-trace-analysis',
+          name: '调用链分析Skill',
+          version: '1.1.0',
+          publishDate: '2026-08-13',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content: '# 调用链分析Skill\n\n解析 Trace 数据并识别异常耗时与失败节点。',
+            },
+          ],
+        },
+      ],
+      command: [],
+      agent: [
+        {
+          id: 'agent-trace-diagnosis',
+          name: '链路诊断Agent',
+          version: '1.0.0',
+          publishDate: '2026-08-13',
+          ready: true,
+          files: [
+            {
+              name: '链路诊断Agent.md',
+              content: '# 链路诊断Agent\n\n结合服务依赖关系输出根因候选和建议。',
+            },
+          ],
+        },
+      ],
+    },
+    releases: [],
+    publishing: null,
+  },
+  {
+    id: 'scene-pipeline-release-risk',
+    productId: 'harness-pipeline',
+    primary: '发布治理',
+    name: '发布风险评估',
+    publishable: true,
+    extension: {
+      name: '发布风险评估 Extension',
+      description: '基于变更内容、历史故障与服务依赖评估发布风险。',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-release-risk-identification',
+          name: '变更风险识别Skill',
+          version: '1.0.0',
+          publishDate: '2026-08-14',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content: '# 变更风险识别Skill\n\n从代码、配置和依赖变更中识别高风险项。',
+            },
+          ],
+        },
+      ],
+      command: [
+        {
+          id: 'command-generate-risk-report',
+          name: '生成风险报告',
+          version: '1.0.0',
+          publishDate: '2026-08-14',
+          ready: true,
+          files: [
+            {
+              name: '生成风险报告.md',
+              content: '# 生成风险报告\n\n输出风险分级、影响范围和发布建议。',
+            },
+          ],
+        },
+      ],
+      agent: [
+        {
+          id: 'agent-release-risk-review',
+          name: '发布风险Agent',
+          version: '1.0.0',
+          publishDate: '2026-08-14',
+          ready: true,
+          files: [
+            {
+              name: '发布风险Agent.md',
+              content: '# 发布风险Agent\n\n综合评估变更风险并给出准入建议。',
+            },
+          ],
+        },
+      ],
+    },
+    releases: [],
+    publishing: null,
+  },
+  {
     id: 'scene-pipeline-report',
     productId: 'harness-pipeline',
     primary: '问题定位',
