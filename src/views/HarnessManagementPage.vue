@@ -86,6 +86,14 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
+const userName = computed(
+  () =>
+    String(skillMarketStore.userName ?? '').trim() ||
+    String(profileStore.userInfo?.nameCn ?? '').trim() ||
+    String(profileStore.userInfo?.name ?? '').trim() ||
+    userId.value,
+);
+
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
   const source =
@@ -415,6 +423,8 @@ onBeforeUnmount(() => {
       aria-labelledby="harness-tab-extension"
     >
       <ExtensionPublishPage
+        :user-id="userId"
+        :user-name="userName"
         :department-tree="departmentTree"
         :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-paths="permissionDepartmentPaths"

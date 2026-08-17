@@ -1,7 +1,21 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import {
+  publishHttpExtension,
+  queryHttpExtensionBindings,
+  queryHttpExtensionProducts,
+  queryHttpExtensionScenes,
+  queryHttpPlanningItemContent,
+  queryHttpPlanningItemFiles,
+  queryHttpPublishableOrganizations,
+  retryHttpExtension,
+  type ExtensionPublishChannel,
+  type ExtensionScope,
+  type PublishableOrganization,
+} from '../../services/skillMarket/extensionPublishHttp';
 import {
   MOCK_EXTENSION_PRODUCTS,
   createMockExtensionScenes,
@@ -12,9 +26,14 @@ import {
   type ExtensionReleaseItem,
   type ExtensionScene,
 } from '../../services/skillMarket/extensionPublishMock';
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 type DepartmentTreeNode = {
   id?: string;
+  deptCode?: string;
   name: string;
   levelNo?: number;
   children?: DepartmentTreeNode[];
@@ -25,12 +44,16 @@ type ExtensionModal = 'publish' | 'history' | null;
 
 const props = withDefaults(
   defineProps<{
+    userId?: string;
+    userName?: string;
     departmentTree?: DepartmentTreeNode[];
     currentUserDepartmentPath?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
   }>(),
   {
+    userId: '',
+    userName: '',
     departmentTree: () => [],
     currentUserDepartmentPath: () => [],
     allowedDepartmentPaths: () => [],
@@ -39,13 +62,18 @@ const props = withDefaults(
 );
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
-const scenes = ref<ExtensionScene[]>(createMockExtensionScenes());
+const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : createMockExtensionScenes());
+const products = ref<ExtensionProduct[]>(transportIsHttp ? [] : MOCK_EXTENSION_PRODUCTS);
 const filterLevelOptions: ExtensionFilterLevel[] = ['产品级'];
-const organizations = [
-  { id: 'org-fuyao', name: '扶摇组织' },
-  { id: 'org-yunshan', name: '云山组织' },
-  { id: 'org-haichuan', name: '海川组织' },
-];
+const organizations = ref<PublishableOrganization[]>(
+  transportIsHttp
+    ? []
+    : [
+        { id: 'org-fuyao', name: '扶摇组织', deptId: '', deptName: '' },
+        { id: 'org-yunshan', name: '云山组织', deptId: '', deptName: '' },
+        { id: 'org-haichuan', name: '海川组织', deptId: '', deptName: '' },
+      ],
+);
 const extensionAssetBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}extension/`;
 const extensionIconRevision = '20260814-1';
 const capabilityTypeMeta: Record<ExtensionCapabilityType, { label: string; iconSrc: string }> = {
@@ -82,6 +110,26 @@ function pathStartsWith(path: string[], prefix: string[]): boolean {
   return prefix.length <= path.length && prefix.every((segment, index) => path[index] === segment);
 }
 
+function filterDepartmentTreeByPaths(
+  nodes: DepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+): DepartmentTreeNode[] {
+  return nodes.flatMap((node) => {
+    const path = [...parentPath, node.name];
+    const relevant = allowedPaths.some(
+      (allowedPath) => pathStartsWith(path, allowedPath) || pathStartsWith(allowedPath, path),
+    );
+    if (!relevant) return [];
+    return [
+      {
+        ...node,
+        children: filterDepartmentTreeByPaths(node.children ?? [], allowedPaths, path),
+      },
+    ];
+  });
+}
+
 function productMatchesDepartment(product: ExtensionProduct, departmentPath: string[]): boolean {
   const normalizedDepartmentPath = normalizedPath(departmentPath);
   if (normalizedDepartmentPath.length === 0) return true;
@@ -91,52 +139,81 @@ function productMatchesDepartment(product: ExtensionProduct, departmentPath: str
   );
 }
 
-function resolveDefaultProduct(): ExtensionProduct {
+function resolveDefaultProduct(departmentPath: string[]): ExtensionProduct {
   const byCurrentDepartment = MOCK_EXTENSION_PRODUCTS.find((product) =>
-    productMatchesDepartment(product, props.currentUserDepartmentPath),
+    productMatchesDepartment(product, departmentPath),
   );
-  return byCurrentDepartment ?? MOCK_EXTENSION_PRODUCTS[0];
+  return (
+    byCurrentDepartment ??
+    MOCK_EXTENSION_PRODUCTS[0] ?? {
+      id: '',
+      name: '',
+      departmentPath: [],
+    }
+  );
 }
 
-const defaultProduct = resolveDefaultProduct();
-const defaultDepartmentPath = normalizedPath(
-  props.currentUserDepartmentPath.length
-    ? props.currentUserDepartmentPath
-    : defaultProduct.departmentPath,
+function findDepartmentNode(path: string[]): DepartmentTreeNode | null {
+  let nodes = selectableDepartmentTree.value;
+  let current: DepartmentTreeNode | null = null;
+  for (const segment of normalizedPath(path)) {
+    current = nodes.find((node) => node.name === segment) ?? null;
+    if (!current) return null;
+    nodes = current.children ?? [];
+  }
+  return current;
+}
+
+const normalizedAllowedDepartmentPaths = computed(() =>
+  props.allowedDepartmentPaths.map(normalizedPath).filter((path) => path.length > 0),
 );
+const selectableDepartmentTree = computed(() => {
+  if (!props.restrictToAllowedDepartments || !normalizedAllowedDepartmentPaths.value.length) {
+    return props.departmentTree;
+  }
+  return filterDepartmentTreeByPaths(props.departmentTree, normalizedAllowedDepartmentPaths.value);
+});
+const defaultDepartmentPath = computed(() => {
+  const permissionDefault = normalizedAllowedDepartmentPaths.value[0];
+  const currentUserDefault = normalizedPath(props.currentUserDepartmentPath);
+  if (permissionDefault?.length) return permissionDefault;
+  if (currentUserDefault.length) return currentUserDefault;
+  return transportIsHttp ? [] : normalizedPath(MOCK_EXTENSION_PRODUCTS[0]?.departmentPath ?? []);
+});
+const defaultProduct = resolveDefaultProduct(defaultDepartmentPath.value);
 const draftLevel = ref<ExtensionFilterLevel>('产品级');
-const draftDepartmentPath = ref<string[]>([...defaultDepartmentPath]);
-const draftProductId = ref(defaultProduct.id);
+const draftDepartmentPath = ref<string[]>([...defaultDepartmentPath.value]);
+const draftProductId = ref(transportIsHttp ? '' : defaultProduct.id);
 const appliedFilters = reactive<{
   level: ExtensionFilterLevel;
   departmentPath: string[];
   productId: string;
 }>({
   level: '产品级',
-  departmentPath: [...defaultDepartmentPath],
-  productId: defaultProduct.id,
+  departmentPath: [...defaultDepartmentPath.value],
+  productId: transportIsHttp ? '' : defaultProduct.id,
 });
+const appliedHttpScope = ref<ExtensionScope | null>(null);
 
 const availableDraftProducts = computed(() =>
-  MOCK_EXTENSION_PRODUCTS.filter((product) =>
-    productMatchesDepartment(product, draftDepartmentPath.value),
-  ),
+  products.value.filter((product) => productMatchesDepartment(product, draftDepartmentPath.value)),
+);
+const selectedDraftProduct = computed(
+  () => products.value.find((product) => product.id === draftProductId.value) ?? null,
 );
 
 const visibleProductIds = computed(() => {
   if (appliedFilters.level === '产品级') {
     return appliedFilters.productId ? [appliedFilters.productId] : [];
   }
-  return MOCK_EXTENSION_PRODUCTS.filter((product) =>
-    productMatchesDepartment(product, appliedFilters.departmentPath),
-  ).map((product) => product.id);
+  return products.value
+    .filter((product) => productMatchesDepartment(product, appliedFilters.departmentPath))
+    .map((product) => product.id);
 });
 
 const visibleScenes = computed(() => {
-  return scenes.value.filter((scene) => {
-    if (!visibleProductIds.value.includes(scene.productId)) return false;
-    return true;
-  });
+  if (transportIsHttp) return scenes.value;
+  return scenes.value.filter((scene) => visibleProductIds.value.includes(scene.productId));
 });
 
 const sceneGroups = computed(() => {
@@ -152,8 +229,10 @@ const currentScene = computed(
   () => visibleScenes.value.find((scene) => scene.id === selectedSceneId.value) ?? null,
 );
 const currentProduct = computed(
-  () =>
-    MOCK_EXTENSION_PRODUCTS.find((product) => product.id === currentScene.value?.productId) ?? null,
+  () => products.value.find((product) => product.id === currentScene.value?.productId) ?? null,
+);
+const currentScopeLabel = computed(
+  () => currentProduct.value?.departmentPath.at(-1) ?? appliedFilters.departmentPath.at(-1) ?? '',
 );
 const openSceneGroups = reactive<Record<string, boolean>>({});
 const expandedFolders = ref<Set<ExtensionCapabilityType>>(
@@ -161,6 +240,57 @@ const expandedFolders = ref<Set<ExtensionCapabilityType>>(
 );
 const expandedCapabilities = ref<Set<string>>(new Set());
 const expandedFiles = ref<Set<string>>(new Set());
+const loadedCapabilities = ref<Set<string>>(new Set());
+const loadingCapabilities = ref<Set<string>>(new Set());
+const capabilityErrors = reactive<Record<string, string>>({});
+const loadedFiles = ref<Set<string>>(new Set());
+const loadingFiles = ref<Set<string>>(new Set());
+const fileErrors = reactive<Record<string, string>>({});
+const scopeLoading = ref(false);
+const productsLoading = ref(false);
+const bindingsLoading = ref(false);
+const scopeError = ref('');
+const organizationLoading = ref(false);
+const organizationError = ref('');
+let productLoadSequence = 0;
+let sceneListLoadSequence = 0;
+let bindingLoadSequence = 0;
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function isDepartmentSelectionAllowed(path: string[]): boolean {
+  if (!props.restrictToAllowedDepartments) return true;
+  const normalized = normalizedPath(path);
+  return normalizedAllowedDepartmentPaths.value.some((allowedPath) =>
+    pathStartsWith(normalized, allowedPath),
+  );
+}
+
+function guardDepartmentSelection(path: string[]): boolean {
+  if (isDepartmentSelectionAllowed(path)) return true;
+  scopeError.value = '请选择您有权限的部门或其下级部门';
+  return false;
+}
+
+function withSetValue(source: Set<string>, key: string, included: boolean): Set<string> {
+  const next = new Set(source);
+  if (included) next.add(key);
+  else next.delete(key);
+  return next;
+}
+
+function clearContentState(): void {
+  expandedCapabilities.value = new Set();
+  expandedFiles.value = new Set();
+  loadedCapabilities.value = new Set();
+  loadingCapabilities.value = new Set();
+  loadedFiles.value = new Set();
+  loadingFiles.value = new Set();
+  Object.keys(capabilityErrors).forEach((key) => delete capabilityErrors[key]);
+  Object.keys(fileErrors).forEach((key) => delete fileErrors[key]);
+}
 
 function isSceneGroupOpen(name: string): boolean {
   return openSceneGroups[name] ?? true;
@@ -181,38 +311,179 @@ function toggleFolder(type: ExtensionCapabilityType): void {
   expandedFolders.value = next;
 }
 
-function selectScene(sceneId: string): void {
+async function selectScene(sceneId: string): Promise<void> {
   selectedSceneId.value = sceneId;
   expandedCapabilities.value = new Set();
   expandedFiles.value = new Set();
+  if (!transportIsHttp || !sceneId) return;
+
+  const scope = appliedHttpScope.value;
+  const scene = scenes.value.find((item) => item.id === sceneId);
+  if (!scope || !scene) return;
+
+  const requestSequence = ++bindingLoadSequence;
+  bindingsLoading.value = true;
+  scopeError.value = '';
+  try {
+    const hydratedScene = await queryHttpExtensionBindings(props.userId.trim(), scope, scene);
+    if (
+      requestSequence !== bindingLoadSequence ||
+      appliedHttpScope.value !== scope ||
+      selectedSceneId.value !== sceneId
+    ) {
+      return;
+    }
+    scenes.value = scenes.value.map((item) =>
+      item.id === sceneId ? { ...hydratedScene, id: sceneId } : item,
+    );
+  } catch (error) {
+    if (requestSequence === bindingLoadSequence && selectedSceneId.value === sceneId) {
+      scopeError.value = errorMessage(error, '场景绑定规划件加载失败');
+    }
+  } finally {
+    if (requestSequence === bindingLoadSequence) bindingsLoading.value = false;
+  }
 }
 
-function onDepartmentCommitted(path: string[]): void {
+function buildDraftScope(): ExtensionScope {
+  const departmentPath = normalizedPath(draftDepartmentPath.value);
+  const department = findDepartmentNode(departmentPath);
+  const departmentCode = getDepartmentNodeCode(department);
+  if (!departmentPath.length) throw new Error('请选择归属部门');
+  if (draftLevel.value === '部门级') {
+    if (!departmentCode) throw new Error('所选部门缺少部门编码，请重新选择');
+    return {
+      dimType: '部门级',
+      dimCode: departmentCode,
+      dimName: department?.name ?? '',
+      productId: departmentCode,
+      departmentPath,
+    };
+  }
+  const product = selectedDraftProduct.value;
+  if (!product) throw new Error('请选择产品');
+  return {
+    dimType: '产品级',
+    dimCode: product.id,
+    dimName: product.name,
+    productId: product.id,
+    departmentPath,
+  };
+}
+
+async function loadHttpProducts(path: string[]): Promise<boolean> {
+  const requestSequence = ++productLoadSequence;
+  const departmentPath = normalizedPath(path);
+  const department = findDepartmentNode(departmentPath);
+  const departmentCode = getDepartmentNodeCode(department);
+  if (!departmentPath.length) throw new Error('请选择产品所属部门');
+  if (!departmentCode) throw new Error('所选部门缺少部门编码，请重新选择');
+
+  productsLoading.value = true;
+  products.value = [];
+  draftProductId.value = '';
+  try {
+    const nextProducts = await queryHttpExtensionProducts(
+      departmentCode,
+      department?.name ?? '',
+      departmentPath,
+    );
+    if (requestSequence !== productLoadSequence) return false;
+    products.value = nextProducts;
+    draftProductId.value = nextProducts[0]?.id ?? '';
+    return true;
+  } catch (error) {
+    if (requestSequence !== productLoadSequence) return false;
+    throw error;
+  } finally {
+    if (requestSequence === productLoadSequence) productsLoading.value = false;
+  }
+}
+
+async function refreshHttpScenes(preferredSceneId = '', showBoardLoading = true): Promise<void> {
+  const scope = appliedHttpScope.value;
+  if (!scope) return;
+  const requestSequence = ++sceneListLoadSequence;
+  bindingLoadSequence += 1;
+  bindingsLoading.value = false;
+  if (showBoardLoading) scopeLoading.value = true;
+  scopeError.value = '';
+  try {
+    const nextScenes = await queryHttpExtensionScenes(props.userId.trim(), scope);
+    if (requestSequence !== sceneListLoadSequence || appliedHttpScope.value !== scope) return;
+    scenes.value = nextScenes;
+    clearContentState();
+    const nextSceneId = nextScenes.some((scene) => scene.id === preferredSceneId)
+      ? preferredSceneId
+      : (nextScenes[0]?.id ?? '');
+    selectedSceneId.value = nextSceneId;
+    if (nextSceneId) await selectScene(nextSceneId);
+  } catch (error) {
+    if (requestSequence !== sceneListLoadSequence || appliedHttpScope.value !== scope) return;
+    scopeError.value = errorMessage(error, 'Extension 数据加载失败');
+    if (showBoardLoading) scenes.value = [];
+    throw error;
+  } finally {
+    if (showBoardLoading && requestSequence === sceneListLoadSequence) {
+      scopeLoading.value = false;
+    }
+  }
+}
+
+async function onDepartmentCommitted(path: string[]): Promise<void> {
   draftDepartmentPath.value = normalizedPath(path);
-  const products = availableDraftProducts.value;
-  if (!products.some((product) => product.id === draftProductId.value)) {
-    draftProductId.value = products[0]?.id ?? '';
+  scopeError.value = '';
+  try {
+    if (transportIsHttp && draftLevel.value === '产品级') {
+      const productsApplied = await loadHttpProducts(draftDepartmentPath.value);
+      if (!productsApplied) return;
+    }
+    const options = availableDraftProducts.value;
+    if (!options.some((product) => product.id === draftProductId.value)) {
+      draftProductId.value = options[0]?.id ?? '';
+    }
+    await applyFilters();
+  } catch (error) {
+    products.value = transportIsHttp ? [] : products.value;
+    scenes.value = transportIsHttp ? [] : scenes.value;
+    scopeError.value = errorMessage(error, 'Extension 数据加载失败');
   }
-  applyFilters();
 }
 
-function onLevelChanged(): void {
-  if (draftLevel.value === '产品级' && !draftProductId.value) {
-    draftProductId.value = availableDraftProducts.value[0]?.id ?? '';
+async function onLevelChanged(): Promise<void> {
+  scopeError.value = '';
+  try {
+    draftDepartmentPath.value = [...defaultDepartmentPath.value];
+    if (transportIsHttp && draftLevel.value === '产品级') {
+      const productsApplied = await loadHttpProducts(draftDepartmentPath.value);
+      if (!productsApplied) return;
+    }
+    if (draftLevel.value === '产品级' && !draftProductId.value) {
+      draftProductId.value = availableDraftProducts.value[0]?.id ?? '';
+    }
+    await applyFilters();
+  } catch (error) {
+    scopeError.value = errorMessage(error, 'Extension 数据加载失败');
   }
-  applyFilters();
 }
 
-function applyFilters(): void {
+async function applyFilters(): Promise<void> {
+  if (transportIsHttp) {
+    const scope = buildDraftScope();
+    appliedFilters.level = draftLevel.value;
+    appliedFilters.departmentPath = [...draftDepartmentPath.value];
+    appliedFilters.productId = draftLevel.value === '产品级' ? draftProductId.value : '';
+    appliedHttpScope.value = scope;
+    await refreshHttpScenes();
+    return;
+  }
   appliedFilters.level = draftLevel.value;
   appliedFilters.departmentPath = [...draftDepartmentPath.value];
   appliedFilters.productId = draftLevel.value === '产品级' ? draftProductId.value : '';
   const selectedStillVisible = visibleScenes.value.some(
     (scene) => scene.id === selectedSceneId.value,
   );
-  if (!selectedStillVisible) {
-    selectScene(visibleScenes.value[0]?.id ?? '');
-  }
+  if (!selectedStillVisible) void selectScene(visibleScenes.value[0]?.id ?? '');
 }
 
 function capabilityKey(scene: ExtensionScene, capability: ExtensionCapability): string {
@@ -223,28 +494,91 @@ function fileKey(scene: ExtensionScene, capability: ExtensionCapability, fileNam
   return `${capabilityKey(scene, capability)}|${fileName}`;
 }
 
-function toggleCapability(scene: ExtensionScene, capability: ExtensionCapability): void {
+async function loadFileContent(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: ExtensionCapabilityType,
+  fileName: string,
+): Promise<void> {
+  const key = fileKey(scene, capability, fileName);
+  if (!transportIsHttp || loadedFiles.value.has(key) || loadingFiles.value.has(key)) return;
+  loadingFiles.value = withSetValue(loadingFiles.value, key, true);
+  delete fileErrors[key];
+  try {
+    const content = await queryHttpPlanningItemContent(
+      props.userId.trim(),
+      type,
+      capability,
+      fileName,
+    );
+    const file = capability.files.find((item) => item.name === fileName);
+    if (file) file.content = content;
+    loadedFiles.value = withSetValue(loadedFiles.value, key, true);
+  } catch (error) {
+    fileErrors[key] = errorMessage(error, '文件内容加载失败');
+  } finally {
+    loadingFiles.value = withSetValue(loadingFiles.value, key, false);
+  }
+}
+
+async function loadSkillCapabilityFiles(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+): Promise<void> {
+  const key = capabilityKey(scene, capability);
+  if (!transportIsHttp || loadedCapabilities.value.has(key) || loadingCapabilities.value.has(key)) {
+    return;
+  }
+  loadingCapabilities.value = withSetValue(loadingCapabilities.value, key, true);
+  delete capabilityErrors[key];
+  try {
+    const paths = await queryHttpPlanningItemFiles(props.userId.trim(), 'skill', capability);
+    capability.files = paths.map((name) => ({ name, content: '' }));
+    loadedCapabilities.value = withSetValue(loadedCapabilities.value, key, true);
+  } catch (error) {
+    capabilityErrors[key] = errorMessage(error, '规划件目录加载失败');
+  } finally {
+    loadingCapabilities.value = withSetValue(loadingCapabilities.value, key, false);
+  }
+}
+
+async function loadDirectCapabilityFile(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: Exclude<ExtensionCapabilityType, 'skill'>,
+): Promise<void> {
+  const fileName = capability.files[0]?.name || `${capability.name}.md`;
+  if (!capability.files[0]) capability.files = [{ name: fileName, content: '' }];
+  await loadFileContent(scene, capability, type, fileName);
+}
+
+async function toggleCapability(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: ExtensionCapabilityType,
+): Promise<void> {
   if (!capability.ready) {
-    showToast(`该能力暂未开发完成，无内容可查看`);
+    showToast('该能力暂未开发完成，无内容可查看');
     return;
   }
   const key = capabilityKey(scene, capability);
-  const next = new Set(expandedCapabilities.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
-  expandedCapabilities.value = next;
+  const opening = !expandedCapabilities.value.has(key);
+  expandedCapabilities.value = withSetValue(expandedCapabilities.value, key, opening);
+  if (!opening) return;
+  if (type === 'skill') await loadSkillCapabilityFiles(scene, capability);
+  else await loadDirectCapabilityFile(scene, capability, type);
 }
 
-function toggleFile(
+async function toggleFile(
   scene: ExtensionScene,
   capability: ExtensionCapability,
+  type: ExtensionCapabilityType,
   fileName: string,
-): void {
+): Promise<void> {
   const key = fileKey(scene, capability, fileName);
-  const next = new Set(expandedFiles.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
-  expandedFiles.value = next;
+  const opening = !expandedFiles.value.has(key);
+  expandedFiles.value = withSetValue(expandedFiles.value, key, opening);
+  if (opening) await loadFileContent(scene, capability, type, fileName);
 }
 
 function sortedReleases(scene: ExtensionScene): ExtensionRelease[] {
@@ -270,8 +604,12 @@ function sceneStatus(scene: ExtensionScene): {
 function treeStatusLabel(scene: ExtensionScene): string {
   if (scene.publishing) return '发布中';
   const latest = latestSuccessfulRelease(scene);
-  if (latest) return `v${latest.version}`;
+  if (latest?.version) return `v${displayVersion(latest.version)}`;
   return scene.publishable ? '就绪' : '不完备';
+}
+
+function displayVersion(version: string): string {
+  return version.replace(/^v(?=\d)/i, '') || '—';
 }
 
 function releaseStatusClass(status: ExtensionRelease['status']): 'ok' | 'fail' | 'pending' {
@@ -292,7 +630,7 @@ function capabilityItems(scene: ExtensionScene): ExtensionReleaseItem[] {
 
 function nextVersion(scene: ExtensionScene): string {
   const minorVersions = scene.releases
-    .map((release) => Number(release.version.split('.')[1]))
+    .map((release) => Number(displayVersion(release.version).split('.')[1]))
     .filter((version) => Number.isFinite(version));
   return `0.${Math.max(0, ...minorVersions) + 1}`;
 }
@@ -310,13 +648,25 @@ const modalSceneId = ref('');
 const modalScene = computed(
   () => scenes.value.find((scene) => scene.id === modalSceneId.value) ?? null,
 );
+const requiredExtensionNamePrefix = computed(() => {
+  const scene = modalScene.value;
+  if (!scene) return '';
+  const originalProductName = products.value.find(
+    (product) => product.id === scene.productId,
+  )?.name;
+  return getProductCatalogItemNamePrefix('产品级', originalProductName ?? '');
+});
 const publishForm = reactive({
   name: '',
   description: '',
-  channel: 'Beta' as ExtensionRelease['channel'],
-  organizationId: organizations[0].id,
+  channel: 'beta' as ExtensionPublishChannel,
+  organizationId: organizations.value[0]?.id ?? '',
 });
 const publishError = ref('');
+const publishSubmitting = ref(false);
+const historyLoading = ref(false);
+const historyError = ref('');
+const retryingReleaseId = ref('');
 const publishNameLocked = computed(() => Boolean(modalScene.value?.releases.length));
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
 const publishItems = computed(() => (modalScene.value ? capabilityItems(modalScene.value) : []));
@@ -331,7 +681,7 @@ const modalHistory = computed(() => {
 });
 const visibleHistory = computed(() => modalHistory.value.slice(0, historyLimit.value));
 
-function openPublishModal(scene: ExtensionScene): void {
+async function openPublishModal(scene: ExtensionScene): Promise<void> {
   if (!scene.publishable) {
     showToast('场景不完备，无法发布');
     return;
@@ -341,27 +691,52 @@ function openPublishModal(scene: ExtensionScene): void {
     return;
   }
   const latest = latestSuccessfulRelease(scene);
+  const firstPublish = scene.releases.length === 0;
+  const originalProductName = products.value.find(
+    (product) => product.id === scene.productId,
+  )?.name;
+  const requiredPrefix = getProductCatalogItemNamePrefix('产品级', originalProductName ?? '');
   modalSceneId.value = scene.id;
-  publishForm.name = latest?.extensionName || scene.extension.name || `${scene.name} Extension`;
+  publishForm.name =
+    firstPublish && requiredPrefix
+      ? requiredPrefix
+      : latest?.extensionName || scene.extension.name || '';
   publishForm.description = scene.extension.description;
-  publishForm.channel = 'Beta';
-  publishForm.organizationId = organizations[0].id;
-  publishError.value = '';
+  publishForm.channel = 'beta';
   activeModal.value = 'publish';
+  if (transportIsHttp) {
+    organizations.value = [];
+    publishForm.organizationId = '';
+    await loadHttpOrganizations();
+  }
+  publishForm.organizationId = organizations.value[0]?.id ?? '';
+  publishError.value = organizationError.value;
 }
 
-function openHistoryModal(scene: ExtensionScene): void {
+async function openHistoryModal(scene: ExtensionScene): Promise<void> {
   modalSceneId.value = scene.id;
   historyLimit.value = 3;
+  historyError.value = '';
   activeModal.value = 'history';
+  if (!transportIsHttp) return;
+  historyLoading.value = true;
+  try {
+    await refreshHttpScenes(scene.id, false);
+  } catch (error) {
+    historyError.value = errorMessage(error, '发布历史加载失败');
+  } finally {
+    historyLoading.value = false;
+  }
 }
 
 function closeModal(): void {
+  if (publishSubmitting.value || retryingReleaseId.value) return;
   activeModal.value = null;
   publishError.value = '';
+  historyError.value = '';
 }
 
-function confirmPublish(): void {
+async function confirmPublish(): Promise<void> {
   const scene = modalScene.value;
   if (!scene) return;
   const name = publishForm.name.trim();
@@ -370,36 +745,101 @@ function confirmPublish(): void {
     publishError.value = '请输入 Extension 名称';
     return;
   }
+  if (!isCatalogItemNameValid(name)) {
+    publishError.value = 'Extension 名称仅允许小写字母、数字、连字符，最长 64 字符';
+    return;
+  }
+  const requiredPrefix = requiredExtensionNamePrefix.value;
+  if (requiredPrefix && !name.startsWith(requiredPrefix)) {
+    publishError.value = `Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`;
+    return;
+  }
   if (!description) {
     publishError.value = '请输入 Extension 描述';
     return;
   }
   const organization =
-    organizations.find((item) => item.id === publishForm.organizationId) ?? organizations[0];
+    organizations.value.find((item) => item.id === publishForm.organizationId) ??
+    organizations.value[0];
+  if (!organization) {
+    publishError.value = organizationError.value || '当前用户暂无可发布组织';
+    return;
+  }
+
+  if (transportIsHttp) {
+    if (!appliedHttpScope.value) {
+      publishError.value = '当前发布范围无效，请重新选择';
+      return;
+    }
+    publishSubmitting.value = true;
+    publishError.value = '';
+    try {
+      await publishHttpExtension({
+        userId: props.userId.trim(),
+        operatorName: props.userName.trim() || props.userId.trim(),
+        scope: appliedHttpScope.value,
+        scene,
+        extensionName: name,
+        description,
+        channel: publishForm.channel,
+        organization,
+      });
+      const sceneId = scene.id;
+      await refreshHttpScenes(sceneId, false);
+      activeModal.value = null;
+      showToast(`已提交 ${publishForm.channel} 发布 → ${organization.name}，后台处理中`);
+    } catch (error) {
+      publishError.value = errorMessage(error, 'Extension 发布失败');
+    } finally {
+      publishSubmitting.value = false;
+    }
+    return;
+  }
+
   scene.extension.name = name;
   scene.extension.description = description;
   scene.publishing = {
     version: publishVersion.value,
     extensionName: name,
     description,
-    channel: publishForm.channel,
+    channel: publishForm.channel === 'product' ? 'Product' : 'Beta',
     operator: { no: 'A0123', name: '当前用户' },
     publishedAt: formatNow(),
     status: '进行中',
     organization: organization.name,
     items: publishItems.value,
   };
-  closeModal();
+  activeModal.value = null;
   showToast(
     `已提交 ${scene.publishing.channel} 发布 v${scene.publishing.version} → ${organization.name}，后台处理中`,
   );
 }
 
-function retryRelease(release: ExtensionRelease): void {
+async function retryRelease(release: ExtensionRelease): Promise<void> {
   const scene = modalScene.value;
   if (!scene || release.status !== '失败') return;
   if (scene.publishing) {
     showToast('已有发布进行中，无法重试');
+    return;
+  }
+  if (transportIsHttp) {
+    retryingReleaseId.value = release.id ?? '';
+    historyError.value = '';
+    try {
+      await retryHttpExtension(
+        release.id ?? '',
+        props.userId.trim(),
+        props.userName.trim() || props.userId.trim(),
+      );
+      await refreshHttpScenes(scene.id, false);
+      showToast(
+        `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,
+      );
+    } catch (error) {
+      historyError.value = errorMessage(error, 'Extension 重试发布失败');
+    } finally {
+      retryingReleaseId.value = '';
+    }
     return;
   }
   scene.publishing = {
@@ -409,12 +849,59 @@ function retryRelease(release: ExtensionRelease): void {
     status: '进行中',
     items: release.items.map((item) => ({ ...item })),
   };
-  closeModal();
-  showToast(`已重新提交 v${release.version} → ${release.organization}，后台处理中`);
+  showToast(`已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`);
 }
 
+async function loadHttpOrganizations(): Promise<void> {
+  organizationLoading.value = true;
+  organizationError.value = '';
+  try {
+    organizations.value = await queryHttpPublishableOrganizations(props.userId.trim());
+    if (!organizations.value.length) organizationError.value = '当前用户暂无可发布组织';
+  } catch (error) {
+    organizations.value = [];
+    organizationError.value = errorMessage(error, '可发布组织加载失败');
+  } finally {
+    organizationLoading.value = false;
+  }
+}
+
+async function initializeHttpPage(): Promise<void> {
+  scopeLoading.value = true;
+  scopeError.value = '';
+  try {
+    await loadHttpProducts(draftDepartmentPath.value);
+    await applyFilters();
+  } catch (error) {
+    products.value = [];
+    scenes.value = [];
+    scopeError.value = errorMessage(error, 'Extension 数据加载失败');
+  } finally {
+    scopeLoading.value = false;
+  }
+}
+
+watch(
+  [() => defaultDepartmentPath.value.join('\u0001'), () => selectableDepartmentTree.value],
+  () => {
+    if (!transportIsHttp || findDepartmentNode(draftDepartmentPath.value)) return;
+    draftDepartmentPath.value = [...defaultDepartmentPath.value];
+    void (async () => {
+      scopeError.value = '';
+      try {
+        const productsApplied = await loadHttpProducts(draftDepartmentPath.value);
+        if (productsApplied) await applyFilters();
+      } catch (error) {
+        products.value = [];
+        scenes.value = [];
+        scopeError.value = errorMessage(error, 'Extension 数据加载失败');
+      }
+    })();
+  },
+);
+
 const toastMessage = ref('');
-let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
+let toastTimer: number | null = null;
 
 function showToast(message: string): void {
   toastMessage.value = message;
@@ -425,19 +912,16 @@ function showToast(message: string): void {
   }, 2600);
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && activeModal.value) closeModal();
-}
-
-onMounted(() => window.addEventListener('keydown', onKeydown));
+onMounted(() => {
+  if (transportIsHttp) void initializeHttpPage();
+});
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown);
   if (toastTimer) window.clearTimeout(toastTimer);
 });
 </script>
 
 <template>
-  <div v-if="!transportIsHttp" class="extension-page">
+  <div class="extension-page">
     <header class="extension-hero">
       <h2>Extension 发布</h2>
       <p>用于统一管理各部门产品场景下的 Extension，支持内容查看、版本发布和历史追踪。</p>
@@ -447,7 +931,7 @@ onBeforeUnmount(() => {
       <div class="filter-grid" :class="{ 'is-department-level': draftLevel === '部门级' }">
         <label class="filter-field filter-field--level">
           <span>层级 <em>*</em></span>
-          <select v-model="draftLevel" @change="onLevelChanged">
+          <select v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
             <option v-for="level in filterLevelOptions" :key="level" :value="level">
               {{ level }}
             </option>
@@ -459,7 +943,7 @@ onBeforeUnmount(() => {
           <MarketDeptCascader
             v-model="draftDepartmentPath"
             class="extension-dept-cascader"
-            :tree="departmentTree"
+            :tree="selectableDepartmentTree"
             :max-level="6"
             :all-label="'请选择部门'"
             clear-behavior="reset"
@@ -469,6 +953,8 @@ onBeforeUnmount(() => {
             :permission-mode="restrictToAllowedDepartments ? 'review-center' : 'none'"
             :permission-path="currentUserDepartmentPath"
             :allowed-paths="restrictToAllowedDepartments ? allowedDepartmentPaths : []"
+            :before-done="guardDepartmentSelection"
+            :disabled="scopeLoading || productsLoading"
             searchable
             aria-label="按部门筛选 Extension"
             @clear="onDepartmentCommitted"
@@ -480,10 +966,11 @@ onBeforeUnmount(() => {
           <span>产品 <em>*</em></span>
           <select
             v-model="draftProductId"
-            :disabled="availableDraftProducts.length === 0"
+            :disabled="scopeLoading || productsLoading || availableDraftProducts.length === 0"
             @change="applyFilters"
           >
-            <option v-if="availableDraftProducts.length === 0" value="">暂无产品</option>
+            <option v-if="productsLoading" value="">产品加载中...</option>
+            <option v-else-if="availableDraftProducts.length === 0" value="">暂无产品</option>
             <option v-for="product in availableDraftProducts" :key="product.id" :value="product.id">
               {{ product.name }}
             </option>
@@ -492,7 +979,15 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="extension-board" aria-label="Extension 发布内容">
+    <div v-if="scopeError" class="extension-load-alert" role="alert">
+      <span aria-hidden="true">!</span>{{ scopeError }}
+    </div>
+
+    <section
+      class="extension-board"
+      aria-label="Extension 发布内容"
+      :aria-busy="scopeLoading || bindingsLoading"
+    >
       <aside class="panel-card scene-tree-card">
         <header class="panel-card__header">
           <h3>场景树</h3>
@@ -515,6 +1010,7 @@ onBeforeUnmount(() => {
                   type="button"
                   class="scene-button"
                   :class="{ 'is-active': selectedSceneId === scene.id }"
+                  :disabled="bindingsLoading && selectedSceneId === scene.id"
                   @click="selectScene(scene.id)"
                 >
                   <span class="primary-tag">{{ scene.primary }}</span>
@@ -526,8 +1022,9 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </div>
-          <div v-if="sceneGroups.length === 0" class="empty-state empty-state--tree">
-            暂无符合条件的场景
+          <div v-if="scopeLoading" class="empty-state empty-state--tree">正在加载场景…</div>
+          <div v-else-if="sceneGroups.length === 0" class="empty-state empty-state--tree">
+            {{ scopeError ? '场景加载失败' : '暂无符合条件的场景' }}
           </div>
         </div>
       </aside>
@@ -541,7 +1038,9 @@ onBeforeUnmount(() => {
                   {{ sceneStatus(currentScene).label }}
                 </span>
                 <h3>{{ currentScene.primary }} / {{ currentScene.name }}</h3>
-                <span class="department-chip">{{ currentProduct?.departmentPath.at(-1) }}</span>
+                <span v-if="currentScopeLabel" class="department-chip">{{
+                  currentScopeLabel
+                }}</span>
               </div>
               <div class="extension-meta">
                 <template v-if="currentScene.extension.name">
@@ -561,7 +1060,9 @@ onBeforeUnmount(() => {
                   <span class="release-meta-group">
                     <span class="release-meta-label">最新</span>
                     <b class="version-text"
-                      >v{{ latestSuccessfulRelease(currentScene)?.version }}</b
+                      >v{{
+                        displayVersion(latestSuccessfulRelease(currentScene)?.version ?? '')
+                      }}</b
                     >
                     <time>{{ latestSuccessfulRelease(currentScene)?.publishedAt }}</time>
                   </span>
@@ -570,7 +1071,9 @@ onBeforeUnmount(() => {
                   <span class="meta-divider">·</span>
                   <span class="release-meta-group release-meta-group--publishing">
                     <span class="release-meta-label">发布中</span>
-                    <b class="publishing-text">v{{ currentScene.publishing.version }}</b>
+                    <b class="publishing-text"
+                      >v{{ displayVersion(currentScene.publishing.version) }}</b
+                    >
                     <time>{{ currentScene.publishing.publishedAt }}</time>
                   </span>
                 </template>
@@ -641,14 +1144,22 @@ onBeforeUnmount(() => {
                       'is-open': expandedCapabilities.has(capabilityKey(currentScene, capability)),
                       'is-disabled': !capability.ready,
                     }"
-                    @click="toggleCapability(currentScene, capability)"
+                    @click="toggleCapability(currentScene, capability, section.type)"
                   >
                     <span class="capability-caret">{{ capability.ready ? '›' : '•' }}</span>
                     <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
+                    <span
+                      class="capability-type-tag"
+                      :class="`capability-type-tag--${section.type}`"
+                    >
+                      {{ section.label }}
+                    </span>
                     <span class="capability-name">{{ capability.name }}</span>
                     <template v-if="capability.ready">
                       <span class="capability-release-meta">
-                        <span class="capability-version">v{{ capability.version || '—' }}</span>
+                        <span class="capability-version"
+                          >v{{ displayVersion(capability.version) }}</span
+                        >
                         <time v-if="capability.publishDate">{{ capability.publishDate }}</time>
                       </span>
                     </template>
@@ -662,7 +1173,19 @@ onBeforeUnmount(() => {
                     "
                     class="file-list"
                   >
-                    <template v-if="section.type === 'skill'">
+                    <li
+                      v-if="loadingCapabilities.has(capabilityKey(currentScene, capability))"
+                      class="folder-empty"
+                    >
+                      正在加载目录…
+                    </li>
+                    <li
+                      v-else-if="capabilityErrors[capabilityKey(currentScene, capability)]"
+                      class="folder-empty folder-empty--error"
+                    >
+                      {{ capabilityErrors[capabilityKey(currentScene, capability)] }}
+                    </li>
+                    <template v-else-if="section.type === 'skill'">
                       <li v-for="file in capability.files" :key="file.name">
                         <button
                           type="button"
@@ -672,7 +1195,7 @@ onBeforeUnmount(() => {
                               fileKey(currentScene, capability, file.name),
                             ),
                           }"
-                          @click="toggleFile(currentScene, capability, file.name)"
+                          @click="toggleFile(currentScene, capability, section.type, file.name)"
                         >
                           <span class="file-caret">›</span>
                           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -684,13 +1207,27 @@ onBeforeUnmount(() => {
                         <pre
                           v-if="expandedFiles.has(fileKey(currentScene, capability, file.name))"
                           class="file-content"
-                          >{{ file.content || '(空)' }}</pre>
+                          >{{
+                            loadingFiles.has(fileKey(currentScene, capability, file.name))
+                              ? '正在加载…'
+                              : fileErrors[fileKey(currentScene, capability, file.name)] ||
+                                file.content ||
+                                '(空)'
+                          }}</pre>
                       </li>
                       <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
                     </template>
                     <li v-else-if="capability.files[0]">
                       <pre class="file-content file-content--direct">{{
-                        capability.files[0].content || '(空)'
+                        loadingFiles.has(
+                          fileKey(currentScene, capability, capability.files[0].name),
+                        )
+                          ? '正在加载…'
+                          : fileErrors[
+                              fileKey(currentScene, capability, capability.files[0].name)
+                            ] ||
+                            capability.files[0].content ||
+                            '(空)'
                       }}</pre>
                     </li>
                     <li v-else class="folder-empty">暂无文件</li>
@@ -701,11 +1238,13 @@ onBeforeUnmount(() => {
             </section>
           </div>
         </template>
-        <div v-else class="empty-state">选择左侧二级场景查看关联内容</div>
+        <div v-else class="empty-state">
+          {{ scopeLoading ? '正在加载 Extension 内容…' : '选择左侧二级场景查看关联内容' }}
+        </div>
       </article>
     </section>
 
-    <div v-if="activeModal" class="modal-overlay" @mousedown.self="closeModal">
+    <div v-if="activeModal" class="modal-overlay">
       <section
         v-if="activeModal === 'publish' && modalScene"
         class="extension-modal"
@@ -715,7 +1254,15 @@ onBeforeUnmount(() => {
       >
         <header class="modal-header">
           <h3 id="publish-modal-title">发布 Extension · {{ modalScene.name }}</h3>
-          <button type="button" class="modal-close" aria-label="关闭" @click="closeModal">×</button>
+          <button
+            type="button"
+            class="modal-close"
+            aria-label="关闭"
+            :disabled="publishSubmitting"
+            @click="closeModal"
+          >
+            ×
+          </button>
         </header>
         <div class="modal-body">
           <label class="modal-field">
@@ -723,7 +1270,17 @@ onBeforeUnmount(() => {
               Extension 名称 <em>*</em>
               <small v-if="publishNameLocked" class="lock-tag">已发布，不可修改</small>
             </span>
-            <input v-model="publishForm.name" type="text" :readonly="publishNameLocked" />
+            <input
+              v-model="publishForm.name"
+              type="text"
+              maxlength="64"
+              pattern="[a-z0-9-]{1,64}"
+              :readonly="publishNameLocked"
+              :disabled="publishSubmitting"
+            />
+            <small v-if="requiredExtensionNamePrefix" class="field-hint">
+              需以产品名称的小写形式“{{ requiredExtensionNamePrefix }}”开头
+            </small>
             <small v-if="publishNameLocked" class="field-hint">
               非首次发布，名称沿用历史版本。
             </small>
@@ -734,13 +1291,14 @@ onBeforeUnmount(() => {
               v-model="publishForm.description"
               rows="3"
               placeholder="请输入 Extension 描述"
+              :disabled="publishSubmitting"
             />
           </label>
           <label class="modal-field">
             <span>发布通道 <em>*</em></span>
-            <select v-model="publishForm.channel">
-              <option value="Beta">Beta（测试通道）</option>
-              <option value="Product">Product（正式通道）</option>
+            <select v-model="publishForm.channel" :disabled="publishSubmitting">
+              <option value="beta">beta</option>
+              <option value="product">product</option>
             </select>
           </label>
           <div class="modal-field">
@@ -756,14 +1314,22 @@ onBeforeUnmount(() => {
                   :src="capabilityTypeMeta[item.type].iconSrc"
                   :alt="capabilityTypeMeta[item.type].label"
                 />
+                <span class="capability-type-tag" :class="`capability-type-tag--${item.type}`">
+                  {{ capabilityTypeMeta[item.type].label }}
+                </span>
                 <strong>{{ item.name }}</strong>
-                <span>v{{ item.version || '—' }}</span>
+                <span>v{{ displayVersion(item.version) }}</span>
               </li>
             </ul>
           </div>
           <label class="modal-field">
             <span>目标组织 <em>*</em></span>
-            <select v-model="publishForm.organizationId">
+            <select
+              v-model="publishForm.organizationId"
+              :disabled="publishSubmitting || organizationLoading || organizations.length === 0"
+            >
+              <option v-if="organizationLoading" value="">正在加载组织…</option>
+              <option v-else-if="organizations.length === 0" value="">暂无可发布组织</option>
               <option
                 v-for="organization in organizations"
                 :key="organization.id"
@@ -778,17 +1344,19 @@ onBeforeUnmount(() => {
         <footer class="modal-footer">
           <button
             type="button"
-            class="extension-button extension-button--ghost"
+            class="extension-button extension-button--ghost extension-button--modal-action"
+            :disabled="publishSubmitting"
             @click="closeModal"
           >
             取消
           </button>
           <button
             type="button"
-            class="extension-button extension-button--publish"
+            class="extension-button extension-button--publish extension-button--modal-action"
+            :disabled="publishSubmitting || organizationLoading || organizations.length === 0"
             @click="confirmPublish"
           >
-            确认发布
+            {{ publishSubmitting ? '发布中…' : '确认发布' }}
           </button>
         </footer>
       </section>
@@ -805,10 +1373,22 @@ onBeforeUnmount(() => {
             发布历史 · {{ modalScene.name }}
             <small>共 {{ modalHistory.length }} 条</small>
           </h3>
-          <button type="button" class="modal-close" aria-label="关闭" @click="closeModal">×</button>
+          <button
+            type="button"
+            class="modal-close"
+            aria-label="关闭"
+            :disabled="Boolean(retryingReleaseId)"
+            @click="closeModal"
+          >
+            ×
+          </button>
         </header>
         <div class="modal-body history-body">
-          <div v-if="visibleHistory.length" class="timeline">
+          <div v-if="historyLoading" class="empty-state empty-state--history">
+            正在加载发布历史…
+          </div>
+          <div v-else-if="historyError" class="modal-error" role="alert">{{ historyError }}</div>
+          <div v-else-if="visibleHistory.length" class="timeline">
             <article
               v-for="release in visibleHistory"
               :key="`${release.version}-${release.publishedAt}-${release.status}`"
@@ -818,7 +1398,7 @@ onBeforeUnmount(() => {
               <i class="timeline-dot" aria-hidden="true"></i>
               <div class="timeline-card">
                 <header>
-                  <strong>v{{ release.version }}</strong>
+                  <strong>v{{ displayVersion(release.version) }}</strong>
                   <span class="channel-tag" :class="release.channel.toLowerCase()">
                     {{ release.channel }}
                   </span>
@@ -849,8 +1429,14 @@ onBeforeUnmount(() => {
                         :src="capabilityTypeMeta[item.type].iconSrc"
                         :alt="capabilityTypeMeta[item.type].label"
                       />
+                      <span
+                        class="capability-type-tag"
+                        :class="`capability-type-tag--${item.type}`"
+                      >
+                        {{ capabilityTypeMeta[item.type].label }}
+                      </span>
                       {{ item.name }}
-                      <b>v{{ item.version }}</b>
+                      <b>v{{ displayVersion(item.version) }}</b>
                     </span>
                   </div>
                   <footer class="release-meta">
@@ -862,9 +1448,10 @@ onBeforeUnmount(() => {
                     <button
                       type="button"
                       class="extension-button extension-button--ghost extension-button--small"
+                      :disabled="Boolean(retryingReleaseId)"
                       @click="retryRelease(release)"
                     >
-                      ↻ 重试发布
+                      {{ retryingReleaseId === release.id ? '重试中…' : '↻ 重试发布' }}
                     </button>
                   </div>
                 </div>
@@ -872,7 +1459,10 @@ onBeforeUnmount(() => {
             </article>
           </div>
           <div v-else class="empty-state empty-state--history">暂无发布记录</div>
-          <div v-if="modalHistory.length > historyLimit" class="history-more">
+          <div
+            v-if="!historyLoading && !historyError && modalHistory.length > historyLimit"
+            class="history-more"
+          >
             <button
               type="button"
               class="extension-button extension-button--ghost extension-button--small"
@@ -881,7 +1471,10 @@ onBeforeUnmount(() => {
               加载更多（剩余 {{ modalHistory.length - historyLimit }} 条）
             </button>
           </div>
-          <p v-else-if="modalHistory.length" class="history-end">
+          <p
+            v-else-if="!historyLoading && !historyError && modalHistory.length"
+            class="history-end"
+          >
             已全部加载 · 共 {{ modalHistory.length }} 条
           </p>
         </div>
@@ -889,6 +1482,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="extension-button extension-button--ghost"
+            :disabled="Boolean(retryingReleaseId)"
             @click="closeModal"
           >
             关闭
@@ -1510,6 +2104,30 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.extension-load-alert {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff7f7;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.extension-load-alert > span {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 900;
+}
+
 .warning-bar {
   display: flex;
   align-items: center;
@@ -1661,6 +2279,38 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
+.capability-type-tag {
+  display: inline-flex;
+  min-height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.capability-type-tag--skill {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.capability-type-tag--command {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.capability-type-tag--agent {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
 .capability-name {
   min-width: 0;
   flex: 1;
@@ -1774,6 +2424,10 @@ onBeforeUnmount(() => {
   padding: 10px 14px 2px 42px;
   color: #98a2b3;
   font-size: 10px;
+}
+
+.folder-empty--error {
+  color: #dc2626;
 }
 
 .empty-state {
@@ -2016,6 +2670,14 @@ onBeforeUnmount(() => {
   background: #fafbfd;
 }
 
+.modal-footer .extension-button--modal-action {
+  min-height: 0;
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .history-body {
   padding: 14px 16px;
 }
@@ -2209,6 +2871,12 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 14px;
   border-radius: 3px;
+}
+
+.history-structure .capability-type-tag {
+  min-height: 14px;
+  padding: 1px 4px;
+  font-size: 8px;
 }
 
 .history-structure b {
