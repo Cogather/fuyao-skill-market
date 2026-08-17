@@ -1664,13 +1664,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.extension-button--modal-action {
-  min-height: 30px;
-  padding: 0 11px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
 .extension-board .extension-button--small {
   font-size: 11px;
 }
@@ -2600,6 +2593,14 @@ onBeforeUnmount(() => {
   padding: 12px 18px;
   border-top: 1px solid #e4e7ec;
   background: #fafbfd;
+}
+
+.modal-footer .extension-button--modal-action {
+  min-height: 0;
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .history-body {
