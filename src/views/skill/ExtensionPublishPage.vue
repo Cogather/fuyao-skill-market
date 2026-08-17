@@ -803,7 +803,6 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
         props.userName.trim() || props.userId.trim(),
       );
       await refreshHttpScenes(scene.id, false);
-      activeModal.value = null;
       showToast(
         `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,
       );
@@ -821,7 +820,6 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     status: '进行中',
     items: release.items.map((item) => ({ ...item })),
   };
-  activeModal.value = null;
   showToast(`已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`);
 }
 
@@ -885,16 +883,10 @@ function showToast(message: string): void {
   }, 2600);
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && activeModal.value) closeModal();
-}
-
 onMounted(() => {
-  window.addEventListener('keydown', onKeydown);
   if (transportIsHttp) void initializeHttpPage();
 });
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown);
   if (toastTimer) window.clearTimeout(toastTimer);
 });
 </script>
@@ -1186,8 +1178,7 @@ onBeforeUnmount(() => {
                               : fileErrors[fileKey(currentScene, capability, file.name)] ||
                                 file.content ||
                                 '(空)'
-                          }}</pre
-                        >
+                          }}</pre>
                       </li>
                       <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
                     </template>
@@ -1218,7 +1209,7 @@ onBeforeUnmount(() => {
       </article>
     </section>
 
-    <div v-if="activeModal" class="modal-overlay" @mousedown.self="closeModal">
+    <div v-if="activeModal" class="modal-overlay">
       <section
         v-if="activeModal === 'publish' && modalScene"
         class="extension-modal"
