@@ -9,6 +9,10 @@ import type {
 import { skillBaseService } from './skillBaseService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 export type ExtensionScope = {
   dimType: '产品级' | '部门级';
@@ -465,6 +469,14 @@ function componentBody(
 }
 
 export async function publishHttpExtension(input: PublishExtensionInput): Promise<void> {
+  const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
+  if (!isCatalogItemNameValid(extensionName)) {
+    throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');
+  }
+  const requiredPrefix = getProductCatalogItemNamePrefix(input.scope.dimType, input.scope.dimName);
+  if (requiredPrefix && !extensionName.startsWith(requiredPrefix)) {
+    throw new Error(`Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`);
+  }
   const params = {
     userId: requiredText(input.userId, '尚未获取当前用户工号'),
     operatorName: requiredText(input.operatorName || input.userId, '尚未获取当前用户名称'),
@@ -473,7 +485,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     dimName: input.scope.dimName,
   };
   const body = {
-    extensionName: requiredText(input.extensionName, '请输入 Extension 名称'),
+    extensionName,
     description: requiredText(input.description, '请输入 Extension 描述'),
     releaseType: input.channel,
     firstScene: input.scene.primary,

@@ -26,6 +26,10 @@ import {
   type ExtensionReleaseItem,
   type ExtensionScene,
 } from '../../services/skillMarket/extensionPublishMock';
+import {
+  getProductCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -644,6 +648,14 @@ const modalSceneId = ref('');
 const modalScene = computed(
   () => scenes.value.find((scene) => scene.id === modalSceneId.value) ?? null,
 );
+const requiredExtensionNamePrefix = computed(() => {
+  const scene = modalScene.value;
+  if (!scene) return '';
+  const originalProductName = products.value.find(
+    (product) => product.id === scene.productId,
+  )?.name;
+  return getProductCatalogItemNamePrefix('产品级', originalProductName ?? '');
+});
 const publishForm = reactive({
   name: '',
   description: '',
@@ -679,8 +691,16 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
     return;
   }
   const latest = latestSuccessfulRelease(scene);
+  const firstPublish = scene.releases.length === 0;
+  const originalProductName = products.value.find(
+    (product) => product.id === scene.productId,
+  )?.name;
+  const requiredPrefix = getProductCatalogItemNamePrefix('产品级', originalProductName ?? '');
   modalSceneId.value = scene.id;
-  publishForm.name = latest?.extensionName || scene.extension.name || `${scene.name} Extension`;
+  publishForm.name =
+    firstPublish && requiredPrefix
+      ? requiredPrefix
+      : latest?.extensionName || scene.extension.name || '';
   publishForm.description = scene.extension.description;
   publishForm.channel = 'beta';
   activeModal.value = 'publish';
@@ -723,6 +743,15 @@ async function confirmPublish(): Promise<void> {
   const description = publishForm.description.trim();
   if (!name) {
     publishError.value = '请输入 Extension 名称';
+    return;
+  }
+  if (!isCatalogItemNameValid(name)) {
+    publishError.value = 'Extension 名称仅允许小写字母、数字、连字符，最长 64 字符';
+    return;
+  }
+  const requiredPrefix = requiredExtensionNamePrefix.value;
+  if (requiredPrefix && !name.startsWith(requiredPrefix)) {
+    publishError.value = `Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`;
     return;
   }
   if (!description) {
@@ -1119,6 +1148,12 @@ onBeforeUnmount(() => {
                   >
                     <span class="capability-caret">{{ capability.ready ? '›' : '•' }}</span>
                     <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
+                    <span
+                      class="capability-type-tag"
+                      :class="`capability-type-tag--${section.type}`"
+                    >
+                      {{ section.label }}
+                    </span>
                     <span class="capability-name">{{ capability.name }}</span>
                     <template v-if="capability.ready">
                       <span class="capability-release-meta">
@@ -1238,9 +1273,14 @@ onBeforeUnmount(() => {
             <input
               v-model="publishForm.name"
               type="text"
+              maxlength="64"
+              pattern="[a-z0-9-]{1,64}"
               :readonly="publishNameLocked"
               :disabled="publishSubmitting"
             />
+            <small v-if="requiredExtensionNamePrefix" class="field-hint">
+              需以产品名称的小写形式“{{ requiredExtensionNamePrefix }}”开头
+            </small>
             <small v-if="publishNameLocked" class="field-hint">
               非首次发布，名称沿用历史版本。
             </small>
@@ -1274,6 +1314,9 @@ onBeforeUnmount(() => {
                   :src="capabilityTypeMeta[item.type].iconSrc"
                   :alt="capabilityTypeMeta[item.type].label"
                 />
+                <span class="capability-type-tag" :class="`capability-type-tag--${item.type}`">
+                  {{ capabilityTypeMeta[item.type].label }}
+                </span>
                 <strong>{{ item.name }}</strong>
                 <span>v{{ displayVersion(item.version) }}</span>
               </li>
@@ -1386,6 +1429,12 @@ onBeforeUnmount(() => {
                         :src="capabilityTypeMeta[item.type].iconSrc"
                         :alt="capabilityTypeMeta[item.type].label"
                       />
+                      <span
+                        class="capability-type-tag"
+                        :class="`capability-type-tag--${item.type}`"
+                      >
+                        {{ capabilityTypeMeta[item.type].label }}
+                      </span>
                       {{ item.name }}
                       <b>v{{ displayVersion(item.version) }}</b>
                     </span>
@@ -2230,6 +2279,38 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
+.capability-type-tag {
+  display: inline-flex;
+  min-height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.capability-type-tag--skill {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.capability-type-tag--command {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.capability-type-tag--agent {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
 .capability-name {
   min-width: 0;
   flex: 1;
@@ -2790,6 +2871,12 @@ onBeforeUnmount(() => {
   width: 14px;
   height: 14px;
   border-radius: 3px;
+}
+
+.history-structure .capability-type-tag {
+  min-height: 14px;
+  padding: 1px 4px;
+  font-size: 8px;
 }
 
 .history-structure b {
