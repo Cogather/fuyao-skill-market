@@ -518,10 +518,9 @@ async function loadFileContent(
   }
 }
 
-async function loadCapabilityFiles(
+async function loadSkillCapabilityFiles(
   scene: ExtensionScene,
   capability: ExtensionCapability,
-  type: ExtensionCapabilityType,
 ): Promise<void> {
   const key = capabilityKey(scene, capability);
   if (!transportIsHttp || loadedCapabilities.value.has(key) || loadingCapabilities.value.has(key)) {
@@ -530,17 +529,24 @@ async function loadCapabilityFiles(
   loadingCapabilities.value = withSetValue(loadingCapabilities.value, key, true);
   delete capabilityErrors[key];
   try {
-    const paths = await queryHttpPlanningItemFiles(props.userId.trim(), type, capability);
+    const paths = await queryHttpPlanningItemFiles(props.userId.trim(), 'skill', capability);
     capability.files = paths.map((name) => ({ name, content: '' }));
     loadedCapabilities.value = withSetValue(loadedCapabilities.value, key, true);
-    if (type !== 'skill' && paths[0]) {
-      await loadFileContent(scene, capability, type, paths[0]);
-    }
   } catch (error) {
     capabilityErrors[key] = errorMessage(error, '规划件目录加载失败');
   } finally {
     loadingCapabilities.value = withSetValue(loadingCapabilities.value, key, false);
   }
+}
+
+async function loadDirectCapabilityFile(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: Exclude<ExtensionCapabilityType, 'skill'>,
+): Promise<void> {
+  const fileName = capability.files[0]?.name || `${capability.name}.md`;
+  if (!capability.files[0]) capability.files = [{ name: fileName, content: '' }];
+  await loadFileContent(scene, capability, type, fileName);
 }
 
 async function toggleCapability(
@@ -555,7 +561,9 @@ async function toggleCapability(
   const key = capabilityKey(scene, capability);
   const opening = !expandedCapabilities.value.has(key);
   expandedCapabilities.value = withSetValue(expandedCapabilities.value, key, opening);
-  if (opening) await loadCapabilityFiles(scene, capability, type);
+  if (!opening) return;
+  if (type === 'skill') await loadSkillCapabilityFiles(scene, capability);
+  else await loadDirectCapabilityFile(scene, capability, type);
 }
 
 async function toggleFile(

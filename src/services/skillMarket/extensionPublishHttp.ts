@@ -253,6 +253,10 @@ function mapCapability(
   const name = readText(record, ['name', 'componentName', `${type}Name`]);
   const version = normalizedVersion(record.version);
   const explicitReady = normalizeReady(record.ready ?? record.status ?? record.publishStatus);
+  const directFilePath =
+    type === 'skill'
+      ? ''
+      : readText(record, ['filePath', 'path', 'fileName']) || (name ? `${name}.md` : '');
   return {
     id:
       readText(record, ['id', 'componentId', 'packageId']) ||
@@ -264,7 +268,7 @@ function mapCapability(
       10,
     ),
     ready: explicitReady ?? Boolean(name && version),
-    files: [],
+    files: directFilePath ? [{ name: directFilePath, content: '' }] : [],
   };
 }
 
