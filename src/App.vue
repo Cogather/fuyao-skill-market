@@ -20,6 +20,7 @@ const startTokenCheck = () => {
   }, 300 * 1000); // 每5分钟检查一次
 };
 
+  
 function firstString(value: unknown): string {
   const raw = Array.isArray(value) ? value[0] : value;
   return typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
