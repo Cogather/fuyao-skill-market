@@ -12,6 +12,7 @@ import {
   queryHttpPlanningItemFiles,
   queryHttpPublishableOrganizations,
   retryHttpExtension,
+  type ExtensionPublishChannel,
   type ExtensionScope,
   type PublishableOrganization,
 } from '../../services/skillMarket/extensionPublishHttp';
@@ -646,7 +647,7 @@ const modalScene = computed(
 const publishForm = reactive({
   name: '',
   description: '',
-  channel: 'Beta' as ExtensionRelease['channel'],
+  channel: 'beta' as ExtensionPublishChannel,
   organizationId: organizations.value[0]?.id ?? '',
 });
 const publishError = ref('');
@@ -681,7 +682,7 @@ function openPublishModal(scene: ExtensionScene): void {
   modalSceneId.value = scene.id;
   publishForm.name = latest?.extensionName || scene.extension.name || `${scene.name} Extension`;
   publishForm.description = scene.extension.description;
-  publishForm.channel = 'Beta';
+  publishForm.channel = 'beta';
   publishForm.organizationId = organizations.value[0]?.id ?? '';
   publishError.value = organizationError.value;
   activeModal.value = 'publish';
@@ -767,7 +768,7 @@ async function confirmPublish(): Promise<void> {
     version: publishVersion.value,
     extensionName: name,
     description,
-    channel: publishForm.channel,
+    channel: publishForm.channel === 'product' ? 'Product' : 'Beta',
     operator: { no: 'A0123', name: '当前用户' },
     publishedAt: formatNow(),
     status: '进行中',
@@ -1262,8 +1263,8 @@ onBeforeUnmount(() => {
           <label class="modal-field">
             <span>发布通道 <em>*</em></span>
             <select v-model="publishForm.channel" :disabled="publishSubmitting">
-              <option value="Beta">Beta（测试通道）</option>
-              <option value="Product">Product（正式通道）</option>
+              <option value="beta">beta</option>
+              <option value="product">product</option>
             </select>
           </label>
           <div class="modal-field">
@@ -1306,7 +1307,7 @@ onBeforeUnmount(() => {
         <footer class="modal-footer">
           <button
             type="button"
-            class="extension-button extension-button--ghost"
+            class="extension-button extension-button--ghost extension-button--modal-action"
             :disabled="publishSubmitting"
             @click="closeModal"
           >
@@ -1314,7 +1315,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="extension-button extension-button--publish"
+            class="extension-button extension-button--publish extension-button--modal-action"
             :disabled="publishSubmitting || organizationLoading || organizations.length === 0"
             @click="confirmPublish"
           >
@@ -1661,6 +1662,13 @@ onBeforeUnmount(() => {
   min-height: 32px;
   padding: 0 11px;
   font-size: 12px;
+}
+
+.extension-button--modal-action {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .extension-board .extension-button--small {

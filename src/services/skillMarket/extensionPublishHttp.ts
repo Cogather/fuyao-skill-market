@@ -25,6 +25,8 @@ export type PublishableOrganization = {
   deptName: string;
 };
 
+export type ExtensionPublishChannel = 'beta' | 'product';
+
 export type PublishExtensionInput = {
   userId: string;
   operatorName: string;
@@ -32,7 +34,7 @@ export type PublishExtensionInput = {
   scene: ExtensionScene;
   extensionName: string;
   description: string;
-  channel: ExtensionRelease['channel'];
+  channel: ExtensionPublishChannel;
   organization: PublishableOrganization;
 };
 
@@ -473,7 +475,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
   const body = {
     extensionName: requiredText(input.extensionName, '请输入 Extension 名称'),
     description: requiredText(input.description, '请输入 Extension 描述'),
-    releaseType: input.channel.toLowerCase(),
+    releaseType: input.channel,
     firstScene: input.scene.primary,
     secondScene: input.scene.name,
     targeteOrgCode: input.organization.id,
