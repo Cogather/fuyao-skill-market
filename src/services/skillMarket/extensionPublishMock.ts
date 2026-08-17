@@ -60,6 +60,16 @@ export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
     departmentPath: ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'],
   },
   {
+    id: 'harness-pipeline-uppercase',
+    name: 'Harness-Pipeline-Pro',
+    departmentPath: ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'],
+  },
+  {
+    id: 'harness-pipeline-chinese',
+    name: '流水线管理平台',
+    departmentPath: ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'],
+  },
+  {
     id: 'release-manager',
     name: 'release-manager',
     departmentPath: ['部门1', '平台产品线', '平台工具组', 'DevOps部', '发布治理组'],
@@ -72,6 +82,98 @@ export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
 ];
 
 const scenes: ExtensionScene[] = [
+  {
+    id: 'scene-uppercase-product-build',
+    productId: 'harness-pipeline-uppercase',
+    primary: '开发',
+    name: '构建诊断',
+    publishable: true,
+    extension: {
+      name: '',
+      description: '用于验证大写字母产品名不会自动生成 Extension 前缀。',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-uppercase-product-build',
+          name: '构建诊断Skill',
+          version: '1.0.0',
+          publishDate: '2026-08-15',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content: '# 构建诊断Skill\n\n分析构建日志并输出诊断结果。',
+            },
+          ],
+        },
+      ],
+      command: [
+        {
+          id: 'command-uppercase-product-build',
+          name: '执行构建诊断',
+          version: '1.0.0',
+          publishDate: '2026-08-15',
+          ready: true,
+          files: [
+            {
+              name: '执行构建诊断.md',
+              content: '# 执行构建诊断\n\n采集构建信息并执行自动化排查。',
+            },
+          ],
+        },
+      ],
+      agent: [],
+    },
+    releases: [],
+    publishing: null,
+  },
+  {
+    id: 'scene-chinese-product-log',
+    productId: 'harness-pipeline-chinese',
+    primary: '问题定位',
+    name: '日志分析',
+    publishable: true,
+    extension: {
+      name: '',
+      description: '用于验证中文产品名不会自动生成 Extension 前缀。',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-chinese-product-log',
+          name: '日志分析Skill',
+          version: '1.0.0',
+          publishDate: '2026-08-15',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content: '# 日志分析Skill\n\n聚合日志并识别异常模式。',
+            },
+          ],
+        },
+      ],
+      command: [],
+      agent: [
+        {
+          id: 'agent-chinese-product-log',
+          name: '日志诊断Agent',
+          version: '1.0.0',
+          publishDate: '2026-08-15',
+          ready: true,
+          files: [
+            {
+              name: '日志诊断Agent.md',
+              content: '# 日志诊断Agent\n\n根据日志特征输出根因候选。',
+            },
+          ],
+        },
+      ],
+    },
+    releases: [],
+    publishing: null,
+  },
   {
     id: 'scene-pipeline-mml',
     productId: 'harness-pipeline',
