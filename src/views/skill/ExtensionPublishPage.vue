@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
+import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   publishHttpExtension,
   queryHttpExtensionProducts,
@@ -26,6 +27,7 @@ import {
 
 type DepartmentTreeNode = {
   id?: string;
+  deptCode?: string;
   name: string;
   levelNo?: number;
   children?: DepartmentTreeNode[];
@@ -104,6 +106,26 @@ function pathStartsWith(path: string[], prefix: string[]): boolean {
   return prefix.length <= path.length && prefix.every((segment, index) => path[index] === segment);
 }
 
+function filterDepartmentTreeByPaths(
+  nodes: DepartmentTreeNode[],
+  allowedPaths: string[][],
+  parentPath: string[] = [],
+): DepartmentTreeNode[] {
+  return nodes.flatMap((node) => {
+    const path = [...parentPath, node.name];
+    const relevant = allowedPaths.some(
+      (allowedPath) => pathStartsWith(path, allowedPath) || pathStartsWith(allowedPath, path),
+    );
+    if (!relevant) return [];
+    return [
+      {
+        ...node,
+        children: filterDepartmentTreeByPaths(node.children ?? [], allowedPaths, path),
+      },
+    ];
+  });
+}
+
 function productMatchesDepartment(product: ExtensionProduct, departmentPath: string[]): boolean {
   const normalizedDepartmentPath = normalizedPath(departmentPath);
   if (normalizedDepartmentPath.length === 0) return true;
@@ -113,9 +135,9 @@ function productMatchesDepartment(product: ExtensionProduct, departmentPath: str
   );
 }
 
-function resolveDefaultProduct(): ExtensionProduct {
+function resolveDefaultProduct(departmentPath: string[]): ExtensionProduct {
   const byCurrentDepartment = MOCK_EXTENSION_PRODUCTS.find((product) =>
-    productMatchesDepartment(product, props.currentUserDepartmentPath),
+    productMatchesDepartment(product, departmentPath),
   );
   return (
     byCurrentDepartment ??
@@ -128,7 +150,7 @@ function resolveDefaultProduct(): ExtensionProduct {
 }
 
 function findDepartmentNode(path: string[]): DepartmentTreeNode | null {
-  let nodes = props.departmentTree;
+  let nodes = selectableDepartmentTree.value;
   let current: DepartmentTreeNode | null = null;
   for (const segment of normalizedPath(path)) {
     current = nodes.find((node) => node.name === segment) ?? null;
@@ -138,14 +160,25 @@ function findDepartmentNode(path: string[]): DepartmentTreeNode | null {
   return current;
 }
 
-const defaultProduct = resolveDefaultProduct();
-const defaultDepartmentPath = normalizedPath(
-  props.currentUserDepartmentPath.length
-    ? props.currentUserDepartmentPath
-    : (props.allowedDepartmentPaths[0] ?? (transportIsHttp ? [] : defaultProduct.departmentPath)),
+const normalizedAllowedDepartmentPaths = computed(() =>
+  props.allowedDepartmentPaths.map(normalizedPath).filter((path) => path.length > 0),
 );
+const selectableDepartmentTree = computed(() => {
+  if (!props.restrictToAllowedDepartments || !normalizedAllowedDepartmentPaths.value.length) {
+    return props.departmentTree;
+  }
+  return filterDepartmentTreeByPaths(props.departmentTree, normalizedAllowedDepartmentPaths.value);
+});
+const defaultDepartmentPath = computed(() => {
+  const permissionDefault = normalizedAllowedDepartmentPaths.value[0];
+  const currentUserDefault = normalizedPath(props.currentUserDepartmentPath);
+  if (permissionDefault?.length) return permissionDefault;
+  if (currentUserDefault.length) return currentUserDefault;
+  return transportIsHttp ? [] : normalizedPath(MOCK_EXTENSION_PRODUCTS[0]?.departmentPath ?? []);
+});
+const defaultProduct = resolveDefaultProduct(defaultDepartmentPath.value);
 const draftLevel = ref<ExtensionFilterLevel>('产品级');
-const draftDepartmentPath = ref<string[]>([...defaultDepartmentPath]);
+const draftDepartmentPath = ref<string[]>([...defaultDepartmentPath.value]);
 const draftProductId = ref(transportIsHttp ? '' : defaultProduct.id);
 const appliedFilters = reactive<{
   level: ExtensionFilterLevel;
@@ -153,7 +186,7 @@ const appliedFilters = reactive<{
   productId: string;
 }>({
   level: '产品级',
-  departmentPath: [...defaultDepartmentPath],
+  departmentPath: [...defaultDepartmentPath.value],
   productId: transportIsHttp ? '' : defaultProduct.id,
 });
 const appliedHttpScope = ref<ExtensionScope | null>(null);
@@ -210,12 +243,28 @@ const loadedFiles = ref<Set<string>>(new Set());
 const loadingFiles = ref<Set<string>>(new Set());
 const fileErrors = reactive<Record<string, string>>({});
 const scopeLoading = ref(false);
+const productsLoading = ref(false);
 const scopeError = ref('');
 const organizationLoading = ref(false);
 const organizationError = ref('');
+let productLoadSequence = 0;
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function isDepartmentSelectionAllowed(path: string[]): boolean {
+  if (!props.restrictToAllowedDepartments) return true;
+  const normalized = normalizedPath(path);
+  return normalizedAllowedDepartmentPaths.value.some((allowedPath) =>
+    pathStartsWith(normalized, allowedPath),
+  );
+}
+
+function guardDepartmentSelection(path: string[]): boolean {
+  if (isDepartmentSelectionAllowed(path)) return true;
+  scopeError.value = '请选择您有权限的部门或其下级部门';
+  return false;
 }
 
 function withSetValue(source: Set<string>, key: string, included: boolean): Set<string> {
@@ -264,14 +313,15 @@ function selectScene(sceneId: string): void {
 function buildDraftScope(): ExtensionScope {
   const departmentPath = normalizedPath(draftDepartmentPath.value);
   const department = findDepartmentNode(departmentPath);
+  const departmentCode = getDepartmentNodeCode(department);
   if (!departmentPath.length) throw new Error('请选择归属部门');
   if (draftLevel.value === '部门级') {
-    if (!department?.id) throw new Error('所选部门缺少部门编码，请重新选择');
+    if (!departmentCode) throw new Error('所选部门缺少部门编码，请重新选择');
     return {
       dimType: '部门级',
-      dimCode: department.id,
-      dimName: department.name,
-      productId: department.id,
+      dimCode: departmentCode,
+      dimName: department?.name ?? '',
+      productId: departmentCode,
       departmentPath,
     };
   }
@@ -286,14 +336,34 @@ function buildDraftScope(): ExtensionScope {
   };
 }
 
-async function loadHttpProducts(path: string[]): Promise<void> {
+async function loadHttpProducts(path: string[]): Promise<boolean> {
+  const requestSequence = ++productLoadSequence;
   const departmentPath = normalizedPath(path);
   const department = findDepartmentNode(departmentPath);
+  const departmentCode = getDepartmentNodeCode(department);
   if (!departmentPath.length) throw new Error('请选择产品所属部门');
-  if (!department?.id) throw new Error('所选部门缺少部门编码，请重新选择');
-  products.value = await queryHttpExtensionProducts(department.id, department.name, departmentPath);
-  if (!products.value.some((product) => product.id === draftProductId.value)) {
-    draftProductId.value = products.value[0]?.id ?? '';
+  if (!departmentCode) throw new Error('所选部门缺少部门编码，请重新选择');
+
+  productsLoading.value = true;
+  products.value = [];
+  const preferredProductId = draftProductId.value;
+  draftProductId.value = '';
+  try {
+    const nextProducts = await queryHttpExtensionProducts(
+      departmentCode,
+      department?.name ?? '',
+      departmentPath,
+    );
+    if (requestSequence !== productLoadSequence) return false;
+    products.value = nextProducts;
+    const restoredProduct = nextProducts.find((product) => product.id === preferredProductId);
+    draftProductId.value = restoredProduct?.id ?? nextProducts[0]?.id ?? '';
+    return true;
+  } catch (error) {
+    if (requestSequence !== productLoadSequence) return false;
+    throw error;
+  } finally {
+    if (requestSequence === productLoadSequence) productsLoading.value = false;
   }
 }
 
@@ -324,7 +394,8 @@ async function onDepartmentCommitted(path: string[]): Promise<void> {
   scopeError.value = '';
   try {
     if (transportIsHttp && draftLevel.value === '产品级') {
-      await loadHttpProducts(draftDepartmentPath.value);
+      const productsApplied = await loadHttpProducts(draftDepartmentPath.value);
+      if (!productsApplied) return;
     }
     const options = availableDraftProducts.value;
     if (!options.some((product) => product.id === draftProductId.value)) {
@@ -341,8 +412,10 @@ async function onDepartmentCommitted(path: string[]): Promise<void> {
 async function onLevelChanged(): Promise<void> {
   scopeError.value = '';
   try {
+    draftDepartmentPath.value = [...defaultDepartmentPath.value];
     if (transportIsHttp && draftLevel.value === '产品级') {
-      await loadHttpProducts(draftDepartmentPath.value);
+      const productsApplied = await loadHttpProducts(draftDepartmentPath.value);
+      if (!productsApplied) return;
     }
     if (draftLevel.value === '产品级' && !draftProductId.value) {
       draftProductId.value = availableDraftProducts.value[0]?.id ?? '';
@@ -733,6 +806,25 @@ async function initializeHttpPage(): Promise<void> {
   }
 }
 
+watch(
+  [() => defaultDepartmentPath.value.join('\u0001'), () => selectableDepartmentTree.value],
+  () => {
+    if (!transportIsHttp || findDepartmentNode(draftDepartmentPath.value)) return;
+    draftDepartmentPath.value = [...defaultDepartmentPath.value];
+    void (async () => {
+      scopeError.value = '';
+      try {
+        const productsApplied = await loadHttpProducts(draftDepartmentPath.value);
+        if (productsApplied) await applyFilters();
+      } catch (error) {
+        products.value = [];
+        scenes.value = [];
+        scopeError.value = errorMessage(error, 'Extension 数据加载失败');
+      }
+    })();
+  },
+);
+
 const toastMessage = ref('');
 let toastTimer: number | null = null;
 
@@ -782,7 +874,7 @@ onBeforeUnmount(() => {
           <MarketDeptCascader
             v-model="draftDepartmentPath"
             class="extension-dept-cascader"
-            :tree="departmentTree"
+            :tree="selectableDepartmentTree"
             :max-level="6"
             :all-label="'请选择部门'"
             clear-behavior="reset"
@@ -792,7 +884,8 @@ onBeforeUnmount(() => {
             :permission-mode="restrictToAllowedDepartments ? 'review-center' : 'none'"
             :permission-path="currentUserDepartmentPath"
             :allowed-paths="restrictToAllowedDepartments ? allowedDepartmentPaths : []"
-            :disabled="scopeLoading"
+            :before-done="guardDepartmentSelection"
+            :disabled="scopeLoading || productsLoading"
             searchable
             aria-label="按部门筛选 Extension"
             @clear="onDepartmentCommitted"
@@ -804,10 +897,11 @@ onBeforeUnmount(() => {
           <span>产品 <em>*</em></span>
           <select
             v-model="draftProductId"
-            :disabled="scopeLoading || availableDraftProducts.length === 0"
+            :disabled="scopeLoading || productsLoading || availableDraftProducts.length === 0"
             @change="applyFilters"
           >
-            <option v-if="availableDraftProducts.length === 0" value="">暂无产品</option>
+            <option v-if="productsLoading" value="">产品加载中...</option>
+            <option v-else-if="availableDraftProducts.length === 0" value="">暂无产品</option>
             <option v-for="product in availableDraftProducts" :key="product.id" :value="product.id">
               {{ product.name }}
             </option>
