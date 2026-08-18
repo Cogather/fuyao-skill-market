@@ -100,8 +100,9 @@ const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(pro
 const capabilityLabel = computed(() => capabilityPlanningApi.value.label);
 const capabilityPlanningLabel = computed(() => `${capabilityLabel.value} 规划`);
 const capabilityCatalogLabel = computed(() => `${capabilityLabel.value} 清单`);
+const planningActivityRequired = computed(() => props.capabilityType === 'skill');
 
-const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
+const planningLevelOptions: PlanningLevel[] = ['产品级'];
 
 const planningHeaderFilterKeys = [
   'firstScene',
@@ -735,7 +736,12 @@ function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null
   const secondScene = planningForm.secondScene.trim();
   const activityNodeName = planningForm.activityNodeName.trim();
   const subActivityNodeName = planningForm.subActivityNodeName.trim();
-  if (!name || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
+  if (
+    !name ||
+    !firstScene ||
+    !secondScene ||
+    (planningActivityRequired.value && (!activityNodeName || !subActivityNodeName))
+  ) {
     return null;
   }
   return {
@@ -2169,14 +2175,15 @@ function validateForm(): boolean {
   const requiredFields: Array<keyof SkillPlanningPayload> = [
     'firstScene',
     'secondScene',
-    'activityNodeName',
-    'subActivityNodeName',
     'description',
     'owner',
     'developOwner',
     'level',
     'planningDeptName',
   ];
+  if (planningActivityRequired.value) {
+    requiredFields.push('activityNodeName', 'subActivityNodeName');
+  }
 
   requiredFields.forEach((field) => {
     if (!String(planningForm[field] ?? '').trim()) {
@@ -4226,7 +4233,10 @@ onBeforeUnmount(() => {
                   : `编辑 ${capabilityPlanningLabel}`
               }}</strong>
               <p>
-                层级及归属部门/产品继承顶部当前选择；请选择原子 {{ capabilityLabel }} 和场景、活动。
+                层级及归属部门/产品继承顶部当前选择；请选择原子 {{ capabilityLabel }} 和场景<span
+                  v-if="planningActivityRequired"
+                  >、活动</span
+                >。
               </p>
             </div>
             <button type="button" class="dialog-close" aria-label="关闭" @click="closeFormDialog">
@@ -4269,7 +4279,7 @@ onBeforeUnmount(() => {
               <small v-if="formErrors.secondScene">{{ formErrors.secondScene }}</small>
             </label>
             <label class="planning-field">
-              <span>归属活动 <em>*</em></span>
+              <span>归属活动 <em v-if="planningActivityRequired">*</em></span>
               <select v-model="planningForm.activityNodeName" @change="onPlanningActivityChange">
                 <option value="">请选择</option>
                 <option
@@ -4283,7 +4293,7 @@ onBeforeUnmount(() => {
               <small v-if="formErrors.activityNodeName">{{ formErrors.activityNodeName }}</small>
             </label>
             <label class="planning-field">
-              <span>归属子活动 <em>*</em></span>
+              <span>归属子活动 <em v-if="planningActivityRequired">*</em></span>
               <select
                 v-model="planningForm.subActivityNodeName"
                 :disabled="subActivitySelectDisabled"
