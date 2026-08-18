@@ -4,6 +4,11 @@ import { RouterView, useRouter } from 'vue-router';
 
 import { useSkillMarketStore } from './stores/skillMarketStore';
 import { useProfileStore } from './stores/userStore';
+import {
+  describeHarnessDepartmentError,
+  harnessDepartmentTrace,
+  summarizeDepartmentTree,
+} from './utils/harnessDepartmentDiagnostics';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
@@ -62,6 +67,21 @@ function handleEvent(event: MessageEvent): void {
     return;
   }
   const incomingUserId = firstString(p.userId);
+  const departmentSource = p.departmentList ?? p.departmentListStr;
+  harnessDepartmentTrace('parent-init.received', {
+    origin: event.origin,
+    payloadKeys: Object.keys(p),
+    incomingUserId: incomingUserId || '(empty)',
+    hasDepartmentList: p.departmentList != null,
+    hasDepartmentListStr: p.departmentListStr != null,
+    departmentSourceType: Array.isArray(departmentSource)
+      ? 'array'
+      : departmentSource === null
+        ? 'null'
+        : typeof departmentSource,
+    departmentSourceStringLength:
+      typeof departmentSource === 'string' ? departmentSource.length : undefined,
+  });
   if (incomingUserId) {
     skillMarketStore.updateUserId(incomingUserId);
   }
@@ -70,14 +90,43 @@ function handleEvent(event: MessageEvent): void {
     skillMarketStore.updateUserName(incomingUserName);
   }
   try {
-    const departmentSource = p.departmentList ?? p.departmentListStr;
     const list =
       typeof departmentSource === 'string' ? JSON.parse(departmentSource) : departmentSource;
     if (Array.isArray(list)) {
+      const rawTreeSummary = summarizeDepartmentTree(list);
       skillMarketStore.updateDept(list);
-      console.log('是否已存入departmentList', skillMarketStore.departmentList);
+      harnessDepartmentTrace(
+        'parent-init.department-stored',
+        {
+          userId: skillMarketStore.userId || '(empty)',
+          rawTreeSummary,
+          storedTreeSummary: summarizeDepartmentTree(skillMarketStore.departmentList),
+        },
+        rawTreeSummary.rootCount === 0 || rawTreeSummary.namedNodeCount === 0 ? 'warn' : 'info',
+      );
+    } else {
+      harnessDepartmentTrace(
+        'parent-init.department-ignored',
+        {
+          reason: 'departmentList/departmentListStr 解析后不是数组',
+          parsedType: list === null ? 'null' : typeof list,
+        },
+        'warn',
+      );
     }
-  } catch (error) {}
+  } catch (error) {
+    harnessDepartmentTrace(
+      'parent-init.department-parse-failed',
+      {
+        error: describeHarnessDepartmentError(error),
+        departmentSourceStringLength:
+          typeof departmentSource === 'string' ? departmentSource.length : undefined,
+        departmentSourcePreview:
+          typeof departmentSource === 'string' ? departmentSource.slice(0, 300) : undefined,
+      },
+      'error',
+    );
+  }
   syncRouteFromParent(p);
 }
 

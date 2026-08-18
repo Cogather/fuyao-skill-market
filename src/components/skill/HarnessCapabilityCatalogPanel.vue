@@ -920,6 +920,7 @@ onMounted(async () => {
           :max-level="6"
           all-label="请选择部门"
           selection-mode="confirm"
+          :diagnostic-context="`harness-${props.capabilityType}-catalog-filter`"
           searchable
           @clear="onDepartmentDone"
           @done="onDepartmentDone"
