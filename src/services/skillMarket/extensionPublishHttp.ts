@@ -486,6 +486,25 @@ export async function queryHttpExtensionBindings(
   );
 }
 
+export async function queryHttpExtensionHistory(
+  scope: ExtensionScope,
+  scene: ExtensionScene,
+): Promise<ExtensionScene> {
+  const sceneReleases = (await queryAllHistory(scope)).filter((release) =>
+    sameScene(release, scene.primary, scene.name),
+  );
+  const latestRelease = sceneReleases[0];
+  return {
+    ...scene,
+    extension: {
+      name: latestRelease?.extensionName ?? scene.extension.name,
+      description: latestRelease?.description ?? scene.extension.description,
+    },
+    releases: sceneReleases.filter((release) => release.status !== '进行中'),
+    publishing: sceneReleases.find((release) => release.status === '进行中') ?? null,
+  };
+}
+
 function componentBody(
   scene: ExtensionScene,
   type: ExtensionCapabilityType,

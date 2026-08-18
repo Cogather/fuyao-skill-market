@@ -7,6 +7,7 @@ import {
   publishHttpExtension,
   queryHttpCurrentOperatorName,
   queryHttpExtensionBindings,
+  queryHttpExtensionHistory,
   queryHttpExtensionProducts,
   queryHttpExtensionScenes,
   queryHttpPlanningItemContent,
@@ -765,9 +766,18 @@ async function openHistoryModal(scene: ExtensionScene): Promise<void> {
   historyError.value = '';
   activeModal.value = 'history';
   if (!transportIsHttp) return;
+  const scope = appliedHttpScope.value;
+  if (!scope) {
+    historyError.value = '当前发布范围无效，请重新选择';
+    return;
+  }
   historyLoading.value = true;
   try {
-    await refreshHttpScenes(scene.id, false);
+    const historyScene = await queryHttpExtensionHistory(scope, scene);
+    if (appliedHttpScope.value !== scope || modalSceneId.value !== scene.id) return;
+    scenes.value = scenes.value.map((item) =>
+      item.id === scene.id ? { ...historyScene, id: scene.id } : item,
+    );
   } catch (error) {
     historyError.value = errorMessage(error, '发布历史加载失败');
   } finally {
