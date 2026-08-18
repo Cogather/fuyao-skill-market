@@ -217,7 +217,7 @@ function mapHistoryRelease(value: unknown): HttpExtensionRelease {
     status: normalizeReleaseStatus(record.publishStatus ?? record.status),
     organization: readText(record, ['targetOrgName', 'organizationName', 'orgName']),
     items: mapReleaseItems(record),
-    failReason: readText(record, ['failReason', 'failureReason', 'errorMessage', 'message']),
+    failReason: readText(record, ['errorMessage']),
     firstScene: readText(record, ['firstScene', 'primaryScene']),
     secondScene: readText(record, ['secondScene', 'secondaryScene']),
   };
