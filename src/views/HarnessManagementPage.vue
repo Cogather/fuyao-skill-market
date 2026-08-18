@@ -65,8 +65,10 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
 ];
 
 const activeHarnessTab = ref<HarnessTab>('planning');
+const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const extensionScopeSnapshot = ref<HarnessScopeSnapshot>();
 const configurationScopeSnapshots = ref<
   Partial<Record<'scene' | 'activity', HarnessScopeSnapshot>>
 >({});
@@ -306,6 +308,18 @@ function updateCatalogScopeSnapshot(change: PlanningScopeChange): void {
   };
 }
 
+function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
+  extensionScopeSnapshot.value = {
+    ...snapshot,
+    departmentPath: [...snapshot.departmentPath],
+  };
+}
+
+function selectHarnessTab(tab: HarnessTab): void {
+  if (tab === 'extension') extensionTabActivated.value = true;
+  activeHarnessTab.value = tab;
+}
+
 function updateConfigurationScopeSnapshot(
   key: 'scene' | 'activity',
   snapshot: HarnessScopeSnapshot,
@@ -353,7 +367,7 @@ onBeforeUnmount(() => {
           :class="{ 'is-active': activeHarnessTab === tab.key }"
           :aria-selected="activeHarnessTab === tab.key"
           :aria-controls="`harness-panel-${tab.key}`"
-          @click="activeHarnessTab = tab.key"
+          @click="selectHarnessTab(tab.key)"
         >
           {{ tab.label }}
         </button>
@@ -416,23 +430,6 @@ onBeforeUnmount(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'extension'"
-      id="harness-panel-extension"
-      class="harness-tab-panel"
-      role="tabpanel"
-      aria-labelledby="harness-tab-extension"
-    >
-      <ExtensionPublishPage
-        :user-id="userId"
-        :user-name="userName"
-        :department-tree="departmentTree"
-        :current-user-department-path="currentUserDepartmentPermission.path"
-        :allowed-department-paths="permissionDepartmentPaths"
-        :restrict-to-allowed-departments="restrictToPermissionDepartments"
-      />
-    </section>
-
-    <section
       v-else-if="activeHarnessTab === 'tasks'"
       id="harness-panel-tasks"
       class="harness-tab-panel harness-tab-panel--tasks"
@@ -471,7 +468,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section
-      v-else
+      v-else-if="activeHarnessTab !== 'extension'"
       :id="`harness-panel-${activeHarnessTab}`"
       class="harness-tab-panel harness-placeholder-panel"
       role="tabpanel"
@@ -483,6 +480,26 @@ onBeforeUnmount(() => {
         <p>{{ activeHarnessTabMeta.description }}</p>
         <small>当前页签内容待接入</small>
       </div>
+    </section>
+
+    <section
+      v-if="permissionContextReady && extensionTabActivated"
+      v-show="activeHarnessTab === 'extension'"
+      id="harness-panel-extension"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-extension"
+    >
+      <ExtensionPublishPage
+        :user-id="userId"
+        :user-name="userName"
+        :department-tree="departmentTree"
+        :current-user-department-path="currentUserDepartmentPermission.path"
+        :allowed-department-paths="permissionDepartmentPaths"
+        :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :initial-scope="extensionScopeSnapshot"
+        @scope-change="updateExtensionScopeSnapshot"
+      />
     </section>
   </main>
 </template>

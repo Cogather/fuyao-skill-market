@@ -31,6 +31,7 @@ import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -51,6 +52,7 @@ const props = withDefaults(
     currentUserDepartmentPath?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     userId: '',
@@ -59,8 +61,13 @@ const props = withDefaults(
     currentUserDepartmentPath: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+}>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : createMockExtensionScenes());
@@ -372,7 +379,10 @@ function buildDraftScope(): ExtensionScope {
   };
 }
 
-async function loadHttpProducts(path: string[]): Promise<boolean> {
+async function loadHttpProducts(
+  path: string[],
+  preferredScope?: HarnessScopeSnapshot,
+): Promise<boolean> {
   const requestSequence = ++productLoadSequence;
   const departmentPath = normalizedPath(path);
   const department = findDepartmentNode(departmentPath);
@@ -391,7 +401,13 @@ async function loadHttpProducts(path: string[]): Promise<boolean> {
     );
     if (requestSequence !== productLoadSequence) return false;
     products.value = nextProducts;
-    draftProductId.value = nextProducts[0]?.id ?? '';
+    const restoredProduct = preferredScope
+      ? nextProducts.find(
+          (product) =>
+            Boolean(preferredScope.offeringId) && product.id === preferredScope.offeringId,
+        ) ?? nextProducts.find((product) => product.name === preferredScope.offeringName)
+      : undefined;
+    draftProductId.value = restoredProduct?.id ?? nextProducts[0]?.id ?? '';
     return true;
   } catch (error) {
     if (requestSequence !== productLoadSequence) return false;
@@ -475,6 +491,7 @@ async function applyFilters(): Promise<void> {
     appliedFilters.departmentPath = [...draftDepartmentPath.value];
     appliedFilters.productId = draftLevel.value === '产品级' ? draftProductId.value : '';
     appliedHttpScope.value = scope;
+    emitScopeSnapshot();
     await refreshHttpScenes();
     return;
   }
@@ -485,6 +502,34 @@ async function applyFilters(): Promise<void> {
     (scene) => scene.id === selectedSceneId.value,
   );
   if (!selectedStillVisible) void selectScene(visibleScenes.value[0]?.id ?? '');
+  emitScopeSnapshot();
+}
+
+function emitScopeSnapshot(): void {
+  const product = selectedDraftProduct.value;
+  emit('scope-change', {
+    level: draftLevel.value,
+    departmentPath: [...normalizedPath(draftDepartmentPath.value)],
+    offeringId: draftLevel.value === '产品级' ? product?.id ?? '' : '',
+    offeringName: draftLevel.value === '产品级' ? product?.name ?? '' : '',
+  });
+}
+
+function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  const departmentPath = normalizedPath(snapshot?.departmentPath ?? []);
+  if (
+    !snapshot ||
+    !filterLevelOptions.includes(snapshot.level) ||
+    !findDepartmentNode(departmentPath) ||
+    !isDepartmentSelectionAllowed(departmentPath)
+  ) {
+    return undefined;
+  }
+  draftLevel.value = snapshot.level;
+  draftDepartmentPath.value = [...departmentPath];
+  draftProductId.value = snapshot.offeringId;
+  return { ...snapshot, departmentPath: [...departmentPath] };
 }
 
 function capabilityKey(scene: ExtensionScene, capability: ExtensionCapability): string {
@@ -865,11 +910,11 @@ async function loadHttpOrganizations(): Promise<void> {
   }
 }
 
-async function initializeHttpPage(): Promise<void> {
+async function initializeHttpPage(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   scopeLoading.value = true;
   scopeError.value = '';
   try {
-    await loadHttpProducts(draftDepartmentPath.value);
+    await loadHttpProducts(draftDepartmentPath.value, preferredScope);
     await applyFilters();
   } catch (error) {
     products.value = [];
@@ -912,7 +957,20 @@ function showToast(message: string): void {
 }
 
 onMounted(() => {
-  if (transportIsHttp) void initializeHttpPage();
+  const restoredScope = restoreScopeSnapshot();
+  if (transportIsHttp) {
+    void initializeHttpPage(restoredScope);
+    return;
+  }
+  if (restoredScope) {
+    const restoredProduct =
+      products.value.find(
+        (product) =>
+          Boolean(restoredScope.offeringId) && product.id === restoredScope.offeringId,
+      ) ?? products.value.find((product) => product.name === restoredScope.offeringName);
+    draftProductId.value = restoredProduct?.id ?? availableDraftProducts.value[0]?.id ?? '';
+  }
+  void applyFilters();
 });
 onBeforeUnmount(() => {
   if (toastTimer) window.clearTimeout(toastTimer);
