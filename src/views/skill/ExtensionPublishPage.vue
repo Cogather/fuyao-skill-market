@@ -1367,11 +1367,8 @@ onBeforeUnmount(() => {
               <option value="beta">beta</option>
               <option value="product">product</option>
             </select>
+            <small class="field-hint">系统将在发布时自动递增 Extension 版本号。</small>
           </label>
-          <div class="modal-field">
-            <span>版本号（自增）</span>
-            <div class="readonly-value">v{{ publishVersion }}</div>
-          </div>
           <div class="modal-field">
             <span>包含清单（{{ publishItems.length }} 项）</span>
             <ul class="publish-summary">
@@ -2670,15 +2667,6 @@ onBeforeUnmount(() => {
 .field-hint {
   color: #98a2b3;
   font-size: 10px;
-}
-
-.readonly-value {
-  width: fit-content;
-  padding: 7px 10px;
-  border-radius: 6px;
-  background: #f7f8fa;
-  color: #17233d;
-  font-size: 13px;
 }
 
 .publish-summary {
