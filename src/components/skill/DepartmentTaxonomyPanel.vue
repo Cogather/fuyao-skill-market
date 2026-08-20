@@ -1053,7 +1053,17 @@ function exportRecords(): void {
         >
           <label class="configuration-field configuration-field--level">
             <span>层级 <em>*</em></span>
-            <select v-model="scopeForm.level" :disabled="loading" @change="onScopeLevelChange">
+            <div
+              v-if="
+                configurationLevelOptions.length === 1 &&
+                configurationLevelOptions[0] === '产品级'
+              "
+              class="single-level-value"
+              aria-label="当前层级：产品级"
+            >
+              产品级
+            </div>
+            <select v-else v-model="scopeForm.level" :disabled="loading" @change="onScopeLevelChange">
               <option v-for="level in configurationLevelOptions" :key="level" :value="level">
                 {{ level }}
               </option>
@@ -1540,6 +1550,18 @@ input:focus {
 .configuration-field select:disabled {
   background: #f7faff;
   color: #94a3b8;
+}
+
+.single-level-value {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 2px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 .configuration-dept-cascader {

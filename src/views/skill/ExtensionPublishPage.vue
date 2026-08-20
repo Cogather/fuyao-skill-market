@@ -998,7 +998,14 @@ onBeforeUnmount(() => {
       <div class="filter-grid" :class="{ 'is-department-level': draftLevel === '部门级' }">
         <label class="filter-field filter-field--level">
           <span>层级 <em>*</em></span>
-          <select v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
+          <div
+            v-if="filterLevelOptions.length === 1 && filterLevelOptions[0] === '产品级'"
+            class="single-level-value"
+            aria-label="当前层级：产品级"
+          >
+            产品级
+          </div>
+          <select v-else v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
             <option v-for="level in filterLevelOptions" :key="level" :value="level">
               {{ level }}
             </option>
@@ -1682,6 +1689,18 @@ onBeforeUnmount(() => {
   background: #f8fbff;
   color: #64748b;
   cursor: not-allowed;
+}
+
+.single-level-value {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 2px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 .extension-dept-cascader {
