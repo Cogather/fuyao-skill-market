@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
 import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
@@ -20,11 +20,6 @@ import { skillBaseService } from '../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
 import type { HarnessDepartmentSnapshot, HarnessScopeSnapshot } from '../types/harnessFilterMemory';
-import {
-  describeHarnessDepartmentError,
-  harnessDepartmentTrace,
-  summarizeDepartmentTree,
-} from '../utils/harnessDepartmentDiagnostics';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
@@ -109,30 +104,6 @@ const departmentTree = computed(() => {
       : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
-
-watch(
-  () => skillMarketStore.departmentList,
-  (injectedDepartments, previousDepartments) => {
-    const usesInjectedTree =
-      transportIsHttp && Array.isArray(injectedDepartments) && injectedDepartments.length > 0;
-    const rawSummary = summarizeDepartmentTree(injectedDepartments);
-    const mappedSummary = summarizeDepartmentTree(departmentTree.value);
-    harnessDepartmentTrace(
-      'shell.department-context-changed',
-      {
-        transport: transportIsHttp ? 'http' : 'mock',
-        source: usesInjectedTree ? 'parent-injected' : 'mock-fallback',
-        previousInjectedRootCount: Array.isArray(previousDepartments)
-          ? previousDepartments.length
-          : 0,
-        rawInjectedTreeSummary: rawSummary,
-        mappedTreeSummary: mappedSummary,
-      },
-      (transportIsHttp && !usesInjectedTree) || mappedSummary.namedNodeCount === 0 ? 'warn' : 'info',
-    );
-  },
-  { immediate: true },
-);
 
 function departmentLevelByPath(path: string[]): number {
   let nodes = departmentTree.value;
@@ -235,35 +206,13 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
   };
 
   visit(departmentTree.value, []);
+  if (codeMatch) return [...codeMatch];
+
   const suffixMatch = matchingPaths.find((path) => pathEndsWith(path, expectedPath));
+  if (suffixMatch) return [...suffixMatch];
   const onlyMatch = matchingPaths.length === 1 ? matchingPaths[0] : undefined;
-  const resolution = codeMatch
-    ? 'dept-code'
-    : suffixMatch
-      ? 'path-suffix'
-      : onlyMatch
-        ? 'unique-dept-name'
-        : 'permission-path-fallback';
-  const resolvedPath = codeMatch ?? suffixMatch ?? onlyMatch ?? expectedPath;
-  harnessDepartmentTrace(
-    'permission.department-path-resolved',
-    {
-      department: {
-        deptName: department.deptName,
-        deptCode: department.deptCode,
-        levelNo: department.levelNo,
-        permissionPath: expectedPath,
-        codePath: department.codePath,
-      },
-      resolution,
-      resolvedPath,
-      nameMatchCount: matchingPaths.length,
-      nameMatches: matchingPaths.slice(0, 10),
-      departmentTreeSummary: summarizeDepartmentTree(departmentTree.value),
-    },
-    resolution === 'permission-path-fallback' ? 'warn' : 'info',
-  );
-  return [...resolvedPath];
+  if (onlyMatch) return [...onlyMatch];
+  return [...expectedPath];
 }
 
 function pathEndsWith(path: string[], suffix: string[]): boolean {
@@ -292,99 +241,37 @@ async function loadHarnessDepartmentScope(): Promise<void> {
     harnessPermissions.value = createEmptyHarnessDepartmentPermissions();
     harnessPermissionLoadState.value = 'error';
     harnessPermissionError.value = HARNESS_PERMISSION_LOAD_FAILED_MESSAGE;
-    harnessDepartmentTrace(
-      'permission.request-skipped',
-      {
-        reason: 'user-id-empty',
-        injectedUserId: skillMarketStore.userId || '(empty)',
-        profileUserId: profileStore.userInfo?.w3Id || '(empty)',
-      },
-      'error',
-    );
     return;
   }
 
-  const startedAt = performance.now();
-  harnessDepartmentTrace('permission.request-start', {
-    endpoint: '/api/harness/permission/user-depts',
-    userId: userId.value,
-    departmentTreeSummary: summarizeDepartmentTree(departmentTree.value),
-  });
   try {
     const response = await skillBaseService.queryHarnessDeptPermissions({
       userId: userId.value,
     });
-    const normalizedPermissions = normalizeHarnessDepartmentPermissions(response);
-    harnessPermissions.value = normalizedPermissions;
+    harnessPermissions.value = normalizeHarnessDepartmentPermissions(response);
     harnessPermissionLoadState.value = 'ready';
-    harnessDepartmentTrace(
-      'permission.request-success',
-      {
-        endpoint: '/api/harness/permission/user-depts',
-        userId: userId.value,
-        durationMs: Math.round(performance.now() - startedAt),
-        rawResponse: response,
-        normalizedPermissions,
-        accessLevel: normalizedPermissions.accessLevel,
-        ownedDepartmentCount: normalizedPermissions.ownedOrgs.length,
-        adminDepartmentCount: normalizedPermissions.adminOrgs.length,
-        manageableDepartmentCount: normalizedPermissions.manageableOrgs.length,
-      },
-      normalizedPermissions.manageableOrgs.length === 0 ? 'warn' : 'info',
-    );
   } catch (error) {
+    console.error('Failed to load harness department scope:', error);
     harnessPermissions.value = createEmptyHarnessDepartmentPermissions();
     harnessPermissionLoadState.value = 'error';
     harnessPermissionError.value = HARNESS_PERMISSION_LOAD_FAILED_MESSAGE;
-    harnessDepartmentTrace(
-      'permission.request-failed',
-      {
-        endpoint: '/api/harness/permission/user-depts',
-        userId: userId.value,
-        durationMs: Math.round(performance.now() - startedAt),
-        error: describeHarnessDepartmentError(error),
-      },
-      'error',
-    );
   }
 }
 
 function waitForInjectedContext(timeout = 5000): Promise<void> {
   return new Promise((resolve) => {
-    const startedAt = performance.now();
-    harnessDepartmentTrace('parent-context.wait-start', {
-      timeoutMs: timeout,
-      userId: userId.value || '(empty)',
-      injectedDepartmentRootCount: skillMarketStore.departmentList.length,
-      injectedTreeSummary: summarizeDepartmentTree(skillMarketStore.departmentList),
-    });
     if (userId.value && skillMarketStore.departmentList.length > 0) {
-      harnessDepartmentTrace('parent-context.wait-finished', {
-        reason: 'already-ready',
-        durationMs: Math.round(performance.now() - startedAt),
-        userId: userId.value,
-        injectedTreeSummary: summarizeDepartmentTree(skillMarketStore.departmentList),
-      });
       resolve();
       return;
     }
 
+    const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      const contextReady = Boolean(userId.value && skillMarketStore.departmentList.length > 0);
-      const elapsedMs = performance.now() - startedAt;
-      if (contextReady || elapsedMs > timeout) {
+      if (
+        (userId.value && skillMarketStore.departmentList.length > 0) ||
+        Date.now() - startedAt > timeout
+      ) {
         window.clearInterval(timer);
-        harnessDepartmentTrace(
-          'parent-context.wait-finished',
-          {
-            reason: contextReady ? 'context-ready' : 'timeout',
-            durationMs: Math.round(elapsedMs),
-            userId: userId.value || '(empty)',
-            injectedTreeSummary: summarizeDepartmentTree(skillMarketStore.departmentList),
-            mappedTreeSummary: summarizeDepartmentTree(departmentTree.value),
-          },
-          contextReady ? 'info' : 'warn',
-        );
         resolve();
       }
     }, 100);
@@ -429,17 +316,8 @@ function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
 }
 
 function selectHarnessTab(tab: HarnessTab): void {
-  const previousTab = activeHarnessTab.value;
   if (tab === 'extension') extensionTabActivated.value = true;
   activeHarnessTab.value = tab;
-  harnessDepartmentTrace('shell.tab-selected', {
-    previousTab,
-    activeTab: tab,
-    accessLevel: harnessAccessLevel.value,
-    permissionLoadState: harnessPermissionLoadState.value,
-    allowedDepartmentPaths: permissionDepartmentPaths.value,
-    departmentTreeSummary: summarizeDepartmentTree(departmentTree.value),
-  });
 }
 
 function updateConfigurationScopeSnapshot(
@@ -461,39 +339,12 @@ function updateConfigurationDepartmentSnapshot(snapshot: HarnessDepartmentSnapsh
 onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
-  harnessDepartmentTrace('shell.mount-start', {
-    transport: transportIsHttp ? 'http' : 'mock',
-    route: window.location.href,
-    injectedUserId: skillMarketStore.userId || '(empty)',
-    profileUserId: profileStore.userInfo?.w3Id || '(empty)',
-    injectedTreeSummary: summarizeDepartmentTree(skillMarketStore.departmentList),
-    effectiveTreeSummary: summarizeDepartmentTree(departmentTree.value),
-  });
   try {
     if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
     activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'planning';
   } finally {
     permissionContextReady.value = true;
-    harnessDepartmentTrace(
-      'shell.context-ready',
-      {
-        activeHarnessTab: activeHarnessTab.value,
-        permissionLoadState: harnessPermissionLoadState.value,
-        permissionError: harnessPermissionError.value,
-        accessLevel: harnessAccessLevel.value,
-        manageableDepartments: manageableDepartments.value,
-        allowedDepartmentNames: permissionDepartmentNames.value,
-        allowedDepartmentPaths: permissionDepartmentPaths.value,
-        injectedTreeSummary: summarizeDepartmentTree(skillMarketStore.departmentList),
-        effectiveTreeSummary: summarizeDepartmentTree(departmentTree.value),
-      },
-      harnessPermissionLoadState.value === 'error' ||
-        departmentTree.value.length === 0 ||
-        (transportIsHttp && skillMarketStore.departmentList.length === 0)
-        ? 'warn'
-        : 'info',
-    );
   }
 });
 

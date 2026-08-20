@@ -1079,7 +1079,6 @@ function exportRecords(): void {
               clear-behavior="reset"
               :clear-value="defaultDepartmentPath"
               selection-mode="confirm"
-              :diagnostic-context="`harness-configuration-${props.kind}`"
               aria-label="配置范围部门级联选择"
               :before-clear="guardDefaultDepartmentRestore"
               :before-done="guardDepartmentChange"

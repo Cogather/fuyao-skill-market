@@ -945,7 +945,6 @@ onBeforeUnmount(() => {
           clear-behavior="reset"
           :clear-value="defaultOwnerDepartmentOption?.path ?? []"
           selection-mode="confirm"
-          diagnostic-context="harness-configuration-permission"
           aria-label="部门权限配置部门级联选择"
           :before-clear="() => Boolean(defaultOwnerDepartmentOption)"
           :before-done="guardDepartmentSelection"

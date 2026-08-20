@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { CSSProperties } from 'vue';
-import {
-  harnessDepartmentTrace,
-  summarizeDepartmentTree,
-} from '../../utils/harnessDepartmentDiagnostics';
 
 export type MarketDeptCascaderNode = {
   id?: string;
@@ -44,7 +40,6 @@ const props = withDefaults(
     searchable?: boolean;
     searchPlaceholder?: string;
     disabled?: boolean;
-    diagnosticContext?: string;
   }>(),
   {
     maxLevel: 6,
@@ -57,7 +52,6 @@ const props = withDefaults(
     searchable: false,
     searchPlaceholder: '搜索部门',
     disabled: false,
-    diagnosticContext: '',
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
     clearText: '清空部门',
@@ -82,9 +76,6 @@ const searchKeyword = ref('');
 let panelScrollCleanup: (() => void) | null = null;
 
 const normalizedTree = computed(() => props.tree ?? []);
-const diagnosticContext = computed(
-  () => props.diagnosticContext.trim() || props.ariaLabel.trim() || 'department-cascader',
-);
 const selectedPath = computed(() => props.modelValue ?? []);
 const draftPath = ref<string[]>([]);
 const activePath = computed(() =>
@@ -305,58 +296,12 @@ function setOpen(nextOpen: boolean): void {
   }
   open.value = nextOpen;
   if (nextOpen) {
-    harnessDepartmentTrace(
-      'cascader.open',
-      {
-        context: diagnosticContext.value,
-        treeSummary: summarizeDepartmentTree(normalizedTree.value),
-        modelValue: [...selectedPath.value],
-        draftPath: [...draftPath.value],
-        permissionMode: props.permissionMode,
-        permissionPath: [...normalizedPermissionPath.value],
-        allowedPaths: normalizedAllowedPaths.value.map((path) => [...path]),
-        maxLevel: props.maxLevel,
-      },
-      normalizedTree.value.length === 0 ? 'warn' : 'info',
-    );
     updatePanelLayout();
     void nextTick(() => {
       updatePanelLayout();
-      harnessDepartmentTrace(
-        'cascader.rendered',
-        {
-          context: diagnosticContext.value,
-          columnCount: columns.value.length,
-          columnOptionCounts: columns.value.map((column) => column.options.length),
-          activePath: [...activePath.value],
-          emptyReason:
-            columns.value.length === 0
-              ? normalizedTree.value.length === 0
-                ? 'tree-empty'
-                : 'active-path-does-not-match-tree'
-              : '',
-        },
-        columns.value.length === 0 ? 'warn' : 'info',
-      );
     });
   }
 }
-
-watch(normalizedTree, (tree, previousTree) => {
-  if (!open.value) return;
-  const treeSummary = summarizeDepartmentTree(tree);
-  harnessDepartmentTrace(
-    'cascader.tree-changed-while-open',
-    {
-      context: diagnosticContext.value,
-      previousTreeSummary: summarizeDepartmentTree(previousTree),
-      treeSummary,
-      activePath: [...activePath.value],
-      columnCount: columns.value.length,
-    },
-    treeSummary.namedNodeCount === 0 ? 'warn' : 'info',
-  );
-});
 
 function toggle(): void {
   if (props.disabled) {

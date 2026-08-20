@@ -35,10 +35,6 @@ import { harnessConfigurationRevision } from '../../services/skillMarket/harness
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import { openSkillExportResponse } from '../../services/skillMarket/skillTransferService';
-import {
-  harnessDepartmentTrace,
-  summarizeDepartmentTree,
-} from '../../utils/harnessDepartmentDiagnostics';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
@@ -173,36 +169,6 @@ const planningDepartmentTree = computed(() => {
     new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
   );
 });
-
-watch(
-  [
-    () => props.departmentTree,
-    () => props.restrictToAllowedDepartments,
-    normalizedAllowedPlanningDepartmentPaths,
-    () => props.allowedDepartmentNames,
-  ],
-  () => {
-    const sourceSummary = summarizeDepartmentTree(props.departmentTree ?? []);
-    const filteredSummary = summarizeDepartmentTree(planningDepartmentTree.value);
-    harnessDepartmentTrace(
-      'planning.department-tree-filtered',
-      {
-        capabilityType: props.capabilityType,
-        restrictToAllowedDepartments: props.restrictToAllowedDepartments,
-        allowedDepartmentNames: props.allowedDepartmentNames,
-        allowedDepartmentPaths: normalizedAllowedPlanningDepartmentPaths.value.map((path) => [
-          ...path,
-        ]),
-        sourceTreeSummary: sourceSummary,
-        filteredTreeSummary: filteredSummary,
-        filterRemovedAllNodes:
-          sourceSummary.namedNodeCount > 0 && filteredSummary.namedNodeCount === 0,
-      },
-      filteredSummary.namedNodeCount === 0 ? 'warn' : 'info',
-    );
-  },
-  { immediate: true },
-);
 const planningDepartmentSegments = ref<string[]>([]);
 const planningScopeDepartmentCommitted = ref(false);
 const departmentL3 = ref('');
@@ -2745,7 +2711,6 @@ onBeforeUnmount(() => {
               permission-mode="review-center"
               :permission-path="legacyPlanningPermissionPath"
               :before-done="guardPlanningDepartmentSelection"
-              :diagnostic-context="`harness-${props.capabilityType}-planning-filter`"
               searchable
               :aria-label="`按规划部门筛选 ${capabilityLabel}`"
               @change="onPlanningDepartmentChange"

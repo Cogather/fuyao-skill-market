@@ -33,10 +33,6 @@ import {
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
-import {
-  harnessDepartmentTrace,
-  summarizeDepartmentTree,
-} from '../../utils/harnessDepartmentDiagnostics';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -186,30 +182,6 @@ const selectableDepartmentTree = computed(() => {
   }
   return filterDepartmentTreeByPaths(props.departmentTree, normalizedAllowedDepartmentPaths.value);
 });
-watch(
-  [
-    () => props.departmentTree,
-    () => props.restrictToAllowedDepartments,
-    normalizedAllowedDepartmentPaths,
-  ],
-  () => {
-    const sourceTreeSummary = summarizeDepartmentTree(props.departmentTree);
-    const selectableTreeSummary = summarizeDepartmentTree(selectableDepartmentTree.value);
-    harnessDepartmentTrace(
-      'extension.department-tree-filtered',
-      {
-        restrictToAllowedDepartments: props.restrictToAllowedDepartments,
-        allowedDepartmentPaths: normalizedAllowedDepartmentPaths.value.map((path) => [...path]),
-        sourceTreeSummary,
-        selectableTreeSummary,
-        filterRemovedAllNodes:
-          sourceTreeSummary.namedNodeCount > 0 && selectableTreeSummary.namedNodeCount === 0,
-      },
-      selectableTreeSummary.namedNodeCount === 0 ? 'warn' : 'info',
-    );
-  },
-  { immediate: true },
-);
 const defaultDepartmentPath = computed(() => {
   const permissionDefault = normalizedAllowedDepartmentPaths.value[0];
   const currentUserDefault = normalizedPath(props.currentUserDepartmentPath);
@@ -1050,7 +1022,6 @@ onBeforeUnmount(() => {
             :allowed-paths="restrictToAllowedDepartments ? allowedDepartmentPaths : []"
             :before-done="guardDepartmentSelection"
             :disabled="scopeLoading || productsLoading"
-            diagnostic-context="harness-extension-filter"
             searchable
             aria-label="按部门筛选 Extension"
             @clear="onDepartmentCommitted"

@@ -44,10 +44,6 @@ import {
   skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
-import {
-  harnessDepartmentTrace,
-  summarizeDepartmentTree,
-} from '../../utils/harnessDepartmentDiagnostics';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
@@ -286,32 +282,6 @@ const masterDepartmentTree = computed(() => {
     new Set(props.allowedDepartmentNames.map((name) => name.trim()).filter(Boolean)),
   );
 });
-watch(
-  [
-    () => props.departmentTree,
-    () => props.restrictToAllowedDepartments,
-    normalizedAllowedDepartmentPaths,
-    () => props.allowedDepartmentNames,
-  ],
-  () => {
-    const sourceTreeSummary = summarizeDepartmentTree(props.departmentTree ?? []);
-    const filteredTreeSummary = summarizeDepartmentTree(masterDepartmentTree.value);
-    harnessDepartmentTrace(
-      'skill-catalog.department-tree-filtered',
-      {
-        restrictToAllowedDepartments: props.restrictToAllowedDepartments,
-        allowedDepartmentNames: props.allowedDepartmentNames,
-        allowedDepartmentPaths: normalizedAllowedDepartmentPaths.value.map((path) => [...path]),
-        sourceTreeSummary,
-        filteredTreeSummary,
-        filterRemovedAllNodes:
-          sourceTreeSummary.namedNodeCount > 0 && filteredTreeSummary.namedNodeCount === 0,
-      },
-      filteredTreeSummary.namedNodeCount === 0 ? 'warn' : 'info',
-    );
-  },
-  { immediate: true },
-);
 const currentUserMinimumDepartmentPath = computed(() =>
   normalizeDepartmentPath(props.currentUserDepartmentPath),
 );
@@ -1669,7 +1639,6 @@ onBeforeUnmount(() => {
             permission-mode="review-center"
             :permission-path="legacyMasterPermissionPath"
             :before-done="guardMasterDepartmentSelection"
-            diagnostic-context="harness-skill-catalog-filter"
             searchable
             aria-label="按部门筛选 Skill 清单"
             @change="onMasterDepartmentChange"
@@ -2132,7 +2101,6 @@ onBeforeUnmount(() => {
               <MarketDeptCascader
                 v-model="departmentPath"
                 :tree="props.departmentTree"
-                diagnostic-context="harness-skill-catalog-association"
                 selection-mode="confirm"
                 all-label="选择要关联的规划部门"
                 done-text="添加部门"
