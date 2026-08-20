@@ -6,6 +6,7 @@ import type {
   ExtensionReleaseItem,
   ExtensionScene,
 } from './extensionPublishMock';
+import { managerUserService } from '../../api/user';
 import { skillBaseService } from './skillBaseService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
@@ -41,6 +42,18 @@ export type PublishExtensionInput = {
   channel: ExtensionPublishChannel;
   organization: PublishableOrganization;
 };
+
+const currentOperatorNameKeys = [
+  'displayNameCN',
+  'nameCn',
+  'chName',
+  'cnName',
+  'userName',
+  'employeeName',
+  'displayName',
+  'name',
+  'displayNameEN',
+];
 
 type HttpExtensionRelease = ExtensionRelease & {
   firstScene: string;
@@ -106,6 +119,18 @@ function requiredText(value: unknown, message: string): string {
   const text = normalizeText(value);
   if (!text || /^(undefined|null)$/i.test(text)) throw new Error(message);
   return text;
+}
+
+export async function queryHttpCurrentOperatorName(fallbackName = ''): Promise<string> {
+  const normalizedFallback = normalizeText(fallbackName);
+  try {
+    const response = await managerUserService.getUserInfo();
+    const operatorName = readText(asRecord(unwrapResponseData(response)), currentOperatorNameKeys);
+    if (operatorName) return operatorName;
+  } catch (error) {
+    if (!normalizedFallback) throw error;
+  }
+  return requiredText(normalizedFallback, '当前用户姓名获取失败，无法发布 Extension');
 }
 
 function normalizedVersion(value: unknown): string {
@@ -192,7 +217,7 @@ function mapHistoryRelease(value: unknown): HttpExtensionRelease {
     status: normalizeReleaseStatus(record.publishStatus ?? record.status),
     organization: readText(record, ['targetOrgName', 'organizationName', 'orgName']),
     items: mapReleaseItems(record),
-    failReason: readText(record, ['failReason', 'failureReason', 'errorMessage', 'message']),
+    failReason: readText(record, ['errorMessage']),
     firstScene: readText(record, ['firstScene', 'primaryScene']),
     secondScene: readText(record, ['secondScene', 'secondaryScene']),
   };
@@ -461,6 +486,25 @@ export async function queryHttpExtensionBindings(
   );
 }
 
+export async function queryHttpExtensionHistory(
+  scope: ExtensionScope,
+  scene: ExtensionScene,
+): Promise<ExtensionScene> {
+  const sceneReleases = (await queryAllHistory(scope)).filter((release) =>
+    sameScene(release, scene.primary, scene.name),
+  );
+  const latestRelease = sceneReleases[0];
+  return {
+    ...scene,
+    extension: {
+      name: latestRelease?.extensionName ?? scene.extension.name,
+      description: latestRelease?.description ?? scene.extension.description,
+    },
+    releases: sceneReleases.filter((release) => release.status !== '进行中'),
+    publishing: sceneReleases.find((release) => release.status === '进行中') ?? null,
+  };
+}
+
 function componentBody(
   scene: ExtensionScene,
   type: ExtensionCapabilityType,
@@ -479,7 +523,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
   }
   const params = {
     userId: requiredText(input.userId, '尚未获取当前用户工号'),
-    operatorName: requiredText(input.operatorName || input.userId, '尚未获取当前用户名称'),
+    operatorName: requiredText(input.operatorName, '尚未获取当前用户姓名'),
     dimType: input.scope.dimType,
     dimCode: input.scope.dimCode,
     dimName: input.scope.dimName,
@@ -509,7 +553,7 @@ export async function retryHttpExtension(
     requiredText(releaseId, '该发布记录缺少 id，无法重试'),
     {
       userId: requiredText(userId, '尚未获取当前用户工号'),
-      operatorName: requiredText(operatorName || userId, '尚未获取当前用户名称'),
+      operatorName: requiredText(operatorName, '尚未获取当前用户姓名'),
     },
   );
   assertHttpSuccess(response, 'Extension 重试发布失败');

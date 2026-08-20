@@ -5,7 +5,9 @@ import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   publishHttpExtension,
+  queryHttpCurrentOperatorName,
   queryHttpExtensionBindings,
+  queryHttpExtensionHistory,
   queryHttpExtensionProducts,
   queryHttpExtensionScenes,
   queryHttpPlanningItemContent,
@@ -30,6 +32,7 @@ import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -50,6 +53,7 @@ const props = withDefaults(
     currentUserDepartmentPath?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     userId: '',
@@ -58,8 +62,13 @@ const props = withDefaults(
     currentUserDepartmentPath: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+}>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : createMockExtensionScenes());
@@ -371,7 +380,10 @@ function buildDraftScope(): ExtensionScope {
   };
 }
 
-async function loadHttpProducts(path: string[]): Promise<boolean> {
+async function loadHttpProducts(
+  path: string[],
+  preferredScope?: HarnessScopeSnapshot,
+): Promise<boolean> {
   const requestSequence = ++productLoadSequence;
   const departmentPath = normalizedPath(path);
   const department = findDepartmentNode(departmentPath);
@@ -390,7 +402,13 @@ async function loadHttpProducts(path: string[]): Promise<boolean> {
     );
     if (requestSequence !== productLoadSequence) return false;
     products.value = nextProducts;
-    draftProductId.value = nextProducts[0]?.id ?? '';
+    const restoredProduct = preferredScope
+      ? nextProducts.find(
+          (product) =>
+            Boolean(preferredScope.offeringId) && product.id === preferredScope.offeringId,
+        ) ?? nextProducts.find((product) => product.name === preferredScope.offeringName)
+      : undefined;
+    draftProductId.value = restoredProduct?.id ?? nextProducts[0]?.id ?? '';
     return true;
   } catch (error) {
     if (requestSequence !== productLoadSequence) return false;
@@ -474,6 +492,7 @@ async function applyFilters(): Promise<void> {
     appliedFilters.departmentPath = [...draftDepartmentPath.value];
     appliedFilters.productId = draftLevel.value === '产品级' ? draftProductId.value : '';
     appliedHttpScope.value = scope;
+    emitScopeSnapshot();
     await refreshHttpScenes();
     return;
   }
@@ -484,6 +503,34 @@ async function applyFilters(): Promise<void> {
     (scene) => scene.id === selectedSceneId.value,
   );
   if (!selectedStillVisible) void selectScene(visibleScenes.value[0]?.id ?? '');
+  emitScopeSnapshot();
+}
+
+function emitScopeSnapshot(): void {
+  const product = selectedDraftProduct.value;
+  emit('scope-change', {
+    level: draftLevel.value,
+    departmentPath: [...normalizedPath(draftDepartmentPath.value)],
+    offeringId: draftLevel.value === '产品级' ? product?.id ?? '' : '',
+    offeringName: draftLevel.value === '产品级' ? product?.name ?? '' : '',
+  });
+}
+
+function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  const departmentPath = normalizedPath(snapshot?.departmentPath ?? []);
+  if (
+    !snapshot ||
+    !filterLevelOptions.includes(snapshot.level) ||
+    !findDepartmentNode(departmentPath) ||
+    !isDepartmentSelectionAllowed(departmentPath)
+  ) {
+    return undefined;
+  }
+  draftLevel.value = snapshot.level;
+  draftDepartmentPath.value = [...departmentPath];
+  draftProductId.value = snapshot.offeringId;
+  return { ...snapshot, departmentPath: [...departmentPath] };
 }
 
 function capabilityKey(scene: ExtensionScene, capability: ExtensionCapability): string {
@@ -719,9 +766,18 @@ async function openHistoryModal(scene: ExtensionScene): Promise<void> {
   historyError.value = '';
   activeModal.value = 'history';
   if (!transportIsHttp) return;
+  const scope = appliedHttpScope.value;
+  if (!scope) {
+    historyError.value = '当前发布范围无效，请重新选择';
+    return;
+  }
   historyLoading.value = true;
   try {
-    await refreshHttpScenes(scene.id, false);
+    const historyScene = await queryHttpExtensionHistory(scope, scene);
+    if (appliedHttpScope.value !== scope || modalSceneId.value !== scene.id) return;
+    scenes.value = scenes.value.map((item) =>
+      item.id === scene.id ? { ...historyScene, id: scene.id } : item,
+    );
   } catch (error) {
     historyError.value = errorMessage(error, '发布历史加载失败');
   } finally {
@@ -774,9 +830,10 @@ async function confirmPublish(): Promise<void> {
     publishSubmitting.value = true;
     publishError.value = '';
     try {
+      const operatorName = await queryHttpCurrentOperatorName(props.userName.trim());
       await publishHttpExtension({
         userId: props.userId.trim(),
-        operatorName: props.userName.trim() || props.userId.trim(),
+        operatorName,
         scope: appliedHttpScope.value,
         scene,
         extensionName: name,
@@ -826,11 +883,8 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     retryingReleaseId.value = release.id ?? '';
     historyError.value = '';
     try {
-      await retryHttpExtension(
-        release.id ?? '',
-        props.userId.trim(),
-        props.userName.trim() || props.userId.trim(),
-      );
+      const operatorName = await queryHttpCurrentOperatorName(props.userName.trim());
+      await retryHttpExtension(release.id ?? '', props.userId.trim(), operatorName);
       await refreshHttpScenes(scene.id, false);
       showToast(
         `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,
@@ -866,11 +920,11 @@ async function loadHttpOrganizations(): Promise<void> {
   }
 }
 
-async function initializeHttpPage(): Promise<void> {
+async function initializeHttpPage(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   scopeLoading.value = true;
   scopeError.value = '';
   try {
-    await loadHttpProducts(draftDepartmentPath.value);
+    await loadHttpProducts(draftDepartmentPath.value, preferredScope);
     await applyFilters();
   } catch (error) {
     products.value = [];
@@ -913,7 +967,20 @@ function showToast(message: string): void {
 }
 
 onMounted(() => {
-  if (transportIsHttp) void initializeHttpPage();
+  const restoredScope = restoreScopeSnapshot();
+  if (transportIsHttp) {
+    void initializeHttpPage(restoredScope);
+    return;
+  }
+  if (restoredScope) {
+    const restoredProduct =
+      products.value.find(
+        (product) =>
+          Boolean(restoredScope.offeringId) && product.id === restoredScope.offeringId,
+      ) ?? products.value.find((product) => product.name === restoredScope.offeringName);
+    draftProductId.value = restoredProduct?.id ?? availableDraftProducts.value[0]?.id ?? '';
+  }
+  void applyFilters();
 });
 onBeforeUnmount(() => {
   if (toastTimer) window.clearTimeout(toastTimer);
@@ -1300,11 +1367,8 @@ onBeforeUnmount(() => {
               <option value="beta">beta</option>
               <option value="product">product</option>
             </select>
+            <small class="field-hint">系统将在发布时自动递增 Extension 版本号。</small>
           </label>
-          <div class="modal-field">
-            <span>版本号（自增）</span>
-            <div class="readonly-value">v{{ publishVersion }}</div>
-          </div>
           <div class="modal-field">
             <span>包含清单（{{ publishItems.length }} 项）</span>
             <ul class="publish-summary">
@@ -2603,15 +2667,6 @@ onBeforeUnmount(() => {
 .field-hint {
   color: #98a2b3;
   font-size: 10px;
-}
-
-.readonly-value {
-  width: fit-content;
-  padding: 7px 10px;
-  border-radius: 6px;
-  background: #f7f8fa;
-  color: #17233d;
-  font-size: 13px;
 }
 
 .publish-summary {

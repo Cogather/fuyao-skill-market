@@ -197,7 +197,7 @@ const departmentOptions = computed(() => {
 const departmentCascadeMaxLevel = computed(() =>
   Math.max(1, departmentTreeDepth(props.departmentTree)),
 );
-const configurationLevelOptions: ConfigurationLevel[] = ['产品级', '部门级'];
+const configurationLevelOptions: ConfigurationLevel[] = ['产品级'];
 const scopeForm = reactive({
   level: '产品级' as ConfigurationLevel,
   offeringId: '',
