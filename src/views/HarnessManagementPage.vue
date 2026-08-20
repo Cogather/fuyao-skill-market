@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
 import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
@@ -65,6 +66,7 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
 ];
 
 const activeHarnessTab = ref<HarnessTab>('planning');
+const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
 const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
@@ -316,6 +318,13 @@ function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
 }
 
 function selectHarnessTab(tab: HarnessTab): void {
+  if (
+    tab !== activeHarnessTab.value &&
+    activeHarnessTab.value === 'settings' &&
+    configurationPage.value?.validateBeforeLeave() === false
+  ) {
+    return;
+  }
   if (tab === 'extension') extensionTabActivated.value = true;
   activeHarnessTab.value = tab;
 }
@@ -350,6 +359,11 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateTopbarElevation);
+});
+
+onBeforeRouteLeave(() => {
+  if (activeHarnessTab.value !== 'settings') return true;
+  return configurationPage.value?.validateBeforeLeave() ?? true;
 });
 </script>
 
@@ -447,6 +461,7 @@ onBeforeUnmount(() => {
       aria-labelledby="harness-tab-settings"
     >
       <HarnessConfigurationPage
+        ref="configurationPage"
         :department-permission-path="currentUserDepartmentPermission.path"
         :department-tree="departmentTree"
         :user-id="userId"

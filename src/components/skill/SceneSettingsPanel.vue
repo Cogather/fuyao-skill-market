@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
@@ -42,10 +44,19 @@ defineEmits<{
   changed: [groups: SkillPlanningOptionGroup[], departmentName: string];
   'scope-change': [snapshot: HarnessScopeSnapshot];
 }>();
+
+const taxonomyPanel = ref<InstanceType<typeof DepartmentTaxonomyPanel> | null>(null);
+
+function validateBeforeLeave(): boolean {
+  return taxonomyPanel.value?.validateBeforeLeave() ?? true;
+}
+
+defineExpose({ validateBeforeLeave });
 </script>
 
 <template>
   <DepartmentTaxonomyPanel
+    ref="taxonomyPanel"
     kind="scene"
     :department-tree="departmentTree"
     :user-id="userId"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   getActivityOptionGroups,
   getDefaultActivityRecords,
@@ -317,6 +317,18 @@ const selectedPrimary = computed(
 );
 
 const dirty = computed(() => JSON.stringify(draftRecords.value) !== savedSnapshot.value);
+const incompletePrimaryRecords = computed(() =>
+  primaryRecords.value.filter(
+    (primary) => !draftRecords.value.some((record) => record.parentId === primary.id),
+  ),
+);
+const hasIncompletePrimaryDraft = computed(
+  () => dirty.value && incompletePrimaryRecords.value.length > 0,
+);
+const incompleteDraftMessage = computed(() => {
+  const names = incompletePrimaryRecords.value.map((record) => `“${record.name}”`).join('、');
+  return `请先为${labels.value.primary}${names ? ` ${names}` : ''}添加${labels.value.secondary}，仅有第一层的配置不会更新。`;
+});
 const totalSkillCount = computed(() =>
   draftRecords.value.reduce((sum, item) => sum + item.skillCount, 0),
 );
@@ -580,11 +592,10 @@ async function loadProducts(preferredScope?: HarnessScopeSnapshot): Promise<void
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
     const restoredOption = preferredScope
-      ? options.find(
+      ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
-        ) ??
-        options.find((item) => item.offeringName === preferredScope.offeringName)
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
     const firstOption = restoredOption ?? options[0];
     if (firstOption) {
@@ -613,7 +624,7 @@ function emitScopeSnapshot(): void {
   emit('scope-change', {
     level: scopeForm.level,
     departmentPath: [...selectedDepartmentPath.value],
-    offeringId: scopeForm.level === '产品级' ? product?.offeringId ?? '' : '',
+    offeringId: scopeForm.level === '产品级' ? (product?.offeringId ?? '') : '',
     offeringName: scopeForm.level === '产品级' ? scopeForm.offeringName : '',
   });
 }
@@ -729,11 +740,9 @@ function guardDepartmentChange(path: string[]): boolean {
     return false;
   }
 
-  return (
-    sameDepartmentPath(path, selectedDepartmentPath.value) ||
-    !dirty.value ||
-    window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？')
-  );
+  if (sameDepartmentPath(path, selectedDepartmentPath.value)) return true;
+  if (!validateBeforeLeave()) return false;
+  return !dirty.value || window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？');
 }
 
 function guardDefaultDepartmentRestore(): boolean {
@@ -745,7 +754,26 @@ function guardDefaultDepartmentRestore(): boolean {
   return guardDepartmentChange(defaultDepartmentPath.value);
 }
 
+function validateBeforeLeave(): boolean {
+  if (!hasIncompletePrimaryDraft.value) return true;
+  showToast(incompleteDraftMessage.value, 5000);
+  return false;
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!hasIncompletePrimaryDraft.value) return;
+  event.preventDefault();
+  event.returnValue = incompleteDraftMessage.value;
+}
+
+defineExpose({ validateBeforeLeave });
+
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload);
+});
+
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload);
   if (toastTimer) {
     window.clearTimeout(toastTimer);
     toastTimer = null;
@@ -834,7 +862,7 @@ function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
   editorOpen.value = true;
 }
 
-function saveEditor(): void {
+async function saveEditor(): Promise<void> {
   const name = editorName.value.trim();
   if (!name) {
     editorError.value = '请输入' + labels.value.item + '名称';
@@ -849,8 +877,10 @@ function saveEditor(): void {
     return;
   }
 
-  if (editorId.value) {
-    const record = draftRecords.value.find((item) => item.id === editorId.value);
+  const editedId = editorId.value;
+  const editedParentId = editorParentId.value;
+  if (editedId) {
+    const record = draftRecords.value.find((item) => item.id === editedId);
     if (record) {
       record.name = name;
     }
@@ -868,9 +898,16 @@ function saveEditor(): void {
     if (editorParentId.value === null) selectedPrimaryId.value = id;
   }
   editorOpen.value = false;
+  const involvesSecondary =
+    editedParentId !== null || (Boolean(editedId) && childRecords(editedId).length > 0);
+  if (involvesSecondary) {
+    await autoSaveCompleteDraft();
+  } else {
+    notice.value = `请继续添加${labels.value.secondary}，结构完整后将自动更新。`;
+  }
 }
 
-function moveRecord(id: string, direction: -1 | 1): void {
+async function moveRecord(id: string, direction: -1 | 1): Promise<void> {
   const record = draftRecords.value.find((item) => item.id === id);
   if (!record) return;
   const siblings = draftRecords.value
@@ -880,9 +917,10 @@ function moveRecord(id: string, direction: -1 | 1): void {
   const target = siblings[index + direction];
   if (!target) return;
   [record.sort, target.sort] = [target.sort, record.sort];
+  await autoSaveCompleteDraft();
 }
 
-function dropRecord(targetId: string): void {
+async function dropRecord(targetId: string): Promise<void> {
   const sourceId = draggedId.value;
   draggedId.value = '';
   const source = draftRecords.value.find((item) => item.id === sourceId);
@@ -898,6 +936,7 @@ function dropRecord(targetId: string): void {
   siblings.forEach((item, index) => {
     item.sort = index + 1;
   });
+  await autoSaveCompleteDraft();
 }
 
 const deleteOpen = ref(false);
@@ -914,7 +953,7 @@ function openDelete(record: TaxonomyRecord): void {
   deleteOpen.value = true;
 }
 
-function removeDraftRecord(): void {
+async function removeDraftRecord(): Promise<void> {
   const target = deleteTarget.value;
   if (!target) return;
   if (blockReferencedAction(target, '删除')) {
@@ -934,21 +973,23 @@ function removeDraftRecord(): void {
     normalizeSort(target.parentId);
   }
   deleteOpen.value = false;
+  await autoSaveCompleteDraft();
 }
 
-function resetToDefault(): void {
+async function resetToDefault(): Promise<void> {
   if (dirty.value && !window.confirm('将用系统默认配置覆盖当前草稿，是否继续？')) return;
   const records = props.kind === 'scene' ? getDefaultSceneRecords() : getDefaultActivityRecords();
   draftRecords.value = cloneRecords(records);
   selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-  notice.value = '已恢复为默认草稿，点击“确认更新”后生效。';
+  await autoSaveCompleteDraft();
 }
 
-async function saveAll(): Promise<void> {
+async function saveAll(): Promise<boolean> {
   if (!hasCompleteScope.value || !selectedDepartment.value || loading.value) {
     if (scopeErrorMessage.value) showToast(scopeErrorMessage.value);
-    return;
+    return false;
   }
+  const selectedPrimaryName = selectedPrimary.value?.name ?? '';
   loading.value = true;
   notice.value = '';
   try {
@@ -962,6 +1003,10 @@ async function saveAll(): Promise<void> {
           );
     draftRecords.value = cloneRecords(records);
     savedSnapshot.value = JSON.stringify(draftRecords.value);
+    selectedPrimaryId.value =
+      primaryRecords.value.find((record) => record.name === selectedPrimaryName)?.id ??
+      primaryRecords.value[0]?.id ??
+      '';
     const groups = useHttpTaxonomySource
       ? recordsToOptionGroups(records)
       : props.kind === 'scene'
@@ -971,12 +1016,26 @@ async function saveAll(): Promise<void> {
       notifyHarnessConfigurationChanged(props.kind, selectedDepartment.value);
     }
     emit('changed', groups, selectedDepartment.value);
-    notice.value = selectedDepartment.value + '的配置已全量保存。';
+    notice.value = selectedDepartment.value + '的配置已自动更新。';
+    showToast(notice.value);
+    return true;
   } catch (error) {
     notice.value = error instanceof Error ? error.message : '保存失败，请检查配置';
+    showToast(notice.value, 5000);
+    return false;
   } finally {
     loading.value = false;
   }
+}
+
+async function autoSaveCompleteDraft(): Promise<void> {
+  if (!dirty.value) return;
+  if (hasIncompletePrimaryDraft.value) {
+    notice.value = incompleteDraftMessage.value;
+    showToast(notice.value, 5000);
+    return;
+  }
+  await saveAll();
 }
 
 function triggerImport(): void {
@@ -1017,7 +1076,7 @@ async function importRecords(event: Event): Promise<void> {
     normalizeSort(null);
     primaryRecords.value.forEach((item) => normalizeSort(item.id));
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-    notice.value = '导入成功，当前仅为草稿，请点击“确认更新”。';
+    await autoSaveCompleteDraft();
   } catch (error) {
     notice.value = error instanceof Error ? error.message : '导入失败';
   }
@@ -1055,15 +1114,19 @@ function exportRecords(): void {
             <span>层级 <em>*</em></span>
             <div
               v-if="
-                configurationLevelOptions.length === 1 &&
-                configurationLevelOptions[0] === '产品级'
+                configurationLevelOptions.length === 1 && configurationLevelOptions[0] === '产品级'
               "
               class="single-level-value"
               aria-label="当前层级：产品级"
             >
               产品级
             </div>
-            <select v-else v-model="scopeForm.level" :disabled="loading" @change="onScopeLevelChange">
+            <select
+              v-else
+              v-model="scopeForm.level"
+              :disabled="loading"
+              @change="onScopeLevelChange"
+            >
               <option v-for="level in configurationLevelOptions" :key="level" :value="level">
                 {{ level }}
               </option>
@@ -1147,29 +1210,6 @@ function exportRecords(): void {
           <strong>{{ totalSkillCount }}</strong
           ><span>关联规划项</span>
         </div>
-      </div>
-      <div
-        v-if="dirty || notice"
-        class="save-state"
-        :class="{ dirty }"
-        role="status"
-        aria-live="polite"
-      >
-        <span class="save-state__icon" aria-hidden="true">{{ dirty ? '!' : '✓' }}</span>
-        <span class="save-state__copy">
-          <span class="save-state__label">{{ dirty ? '有未保存修改' : '已保存' }}</span>
-          <span v-if="notice" class="save-state__detail" :title="notice">{{ notice }}</span>
-        </span>
-      </div>
-      <div class="summary-update">
-        <button
-          class="primary-button summary-confirm-button"
-          type="button"
-          :disabled="loading || !dirty || !hasCompleteScope"
-          @click="saveAll"
-        >
-          确认更新
-        </button>
       </div>
     </div>
     <div v-if="loading" class="empty-department">
@@ -1337,7 +1377,13 @@ function exportRecords(): void {
         <p v-if="editorError" class="form-error">{{ editorError }}</p>
         <div class="modal-actions">
           <button type="button" @click="editorOpen = false">取消</button>
-          <button class="primary-button" type="submit">保存到草稿</button>
+          <button class="primary-button" type="submit">
+            {{
+              editorParentId !== null || (editorId && childRecords(editorId).length > 0)
+                ? '保存并更新'
+                : '保存'
+            }}
+          </button>
         </div>
       </form>
     </div>
@@ -1345,7 +1391,7 @@ function exportRecords(): void {
     <div v-if="deleteOpen && deleteTarget" class="modal-backdrop" @click.self="deleteOpen = false">
       <div class="modal-card delete-card">
         <h3>删除{{ labels.item }}“{{ deleteTarget.name }}”</h3>
-        <p>该项暂无关联规划，删除将在确认更新后生效。</p>
+        <p>该项暂无关联规划，确认后将自动更新配置。</p>
         <div class="modal-actions">
           <button type="button" @click="deleteOpen = false">取消</button>
           <button class="danger-button" type="button" @click="removeDraftRecord">确认删除</button>
@@ -1414,8 +1460,7 @@ function exportRecords(): void {
 }
 
 .toolbar-copy,
-.toolbar-controls,
-.save-state {
+.toolbar-controls {
   position: relative;
   z-index: 1;
 }
@@ -1579,79 +1624,9 @@ input:focus {
   display: none;
 }
 
-.save-state {
-  grid-column: 2;
-  align-self: center;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  min-height: 46px;
-  padding: 8px 12px;
-  border: 1px solid #bbf7d0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
-  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.12);
-  box-sizing: border-box;
-  color: #15803d;
-}
-
-.save-state.dirty {
-  border-color: #fdba74;
-  background: linear-gradient(135deg, #fff7ed, #fffbeb);
-  box-shadow: 0 10px 26px rgba(217, 119, 6, 0.18);
-  color: #b45309;
-}
-
-.summary-strip .save-state__icon {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: #22c55e;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.save-state.dirty .save-state__icon {
-  background: #f59e0b;
-  box-shadow: 0 5px 12px rgba(245, 158, 11, 0.28);
-}
-
-.summary-strip .save-state__copy {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  color: inherit;
-}
-
-.summary-strip .save-state__label {
-  color: inherit;
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1.35;
-}
-
-.summary-strip .save-state__detail {
-  overflow: hidden;
-  color: inherit;
-  opacity: 0.78;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .summary-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 180px) minmax(180px, 240px);
-  align-items: stretch;
-  gap: 12px;
+  display: block;
+  width: 100%;
 }
 
 .summary-metrics {
@@ -1668,23 +1643,6 @@ input:focus {
   justify-items: center;
   padding: 18px;
   border-right: 1px solid #e6ebf4;
-}
-
-.summary-update {
-  grid-column: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 18px;
-  background: transparent;
-}
-
-.summary-confirm-button {
-  min-width: 128px;
-  min-height: 42px;
-  border-radius: 10px !important;
-  box-shadow: 0 12px 24px rgba(76, 92, 238, 0.18);
-  font-size: 13px;
 }
 
 .summary-strip strong {
@@ -2046,26 +2004,6 @@ td {
   font-size: 13px;
 }
 
-.save-state {
-  min-height: 38px;
-  padding: 7px 10px;
-}
-
-.summary-strip .save-state__icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  font-size: 12px;
-}
-
-.summary-strip .save-state__label {
-  font-size: 11px;
-}
-
-.summary-strip .save-state__detail {
-  font-size: 9px;
-}
-
 .summary-metrics > div {
   padding: 12px;
 }
@@ -2077,11 +2015,6 @@ td {
 
 .summary-strip span {
   font-size: 10px;
-}
-
-.summary-confirm-button {
-  min-height: 38px;
-  font-size: 12px;
 }
 
 .panel-heading {
@@ -2205,25 +2138,6 @@ td strong {
   }
 }
 
-@media (max-width: 900px) {
-  .summary-strip {
-    grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
-  }
-
-  .summary-metrics {
-    grid-column: 1 / -1;
-  }
-
-  .save-state {
-    grid-column: 1;
-  }
-
-  .summary-update {
-    grid-column: 2;
-    padding: 0;
-  }
-}
-
 @media (max-width: 720px) {
   .toolbar-card {
     padding: 22px;
@@ -2242,27 +2156,8 @@ td strong {
     justify-content: flex-start;
   }
 
-  .summary-strip {
-    grid-template-columns: 1fr;
-  }
-
   .summary-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .save-state,
-  .summary-update {
-    grid-column: 1;
-    width: 100%;
-  }
-
-  .summary-update {
-    justify-content: stretch;
-    padding: 0;
-  }
-
-  .summary-confirm-button {
-    width: 100%;
   }
 }
 
