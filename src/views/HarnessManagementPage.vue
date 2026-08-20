@@ -90,13 +90,17 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
-const userName = computed(
-  () =>
+const userName = computed(() => {
+  const injectedUserName = String(skillMarketStore.userName ?? '').trim();
+  if (transportIsHttp) return injectedUserName;
+
+  return (
+    injectedUserName ||
     String(profileStore.userInfo?.nameCn ?? '').trim() ||
-    String(skillMarketStore.userName ?? '').trim() ||
     String(profileStore.userInfo?.name ?? '').trim() ||
-    (transportIsHttp ? '' : '模拟用户'),
-);
+    '模拟用户'
+  );
+});
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
