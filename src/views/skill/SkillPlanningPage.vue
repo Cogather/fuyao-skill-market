@@ -2685,7 +2685,7 @@ onBeforeUnmount(() => {
     <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
       <section class="planning-filter-card" :aria-label="`${capabilityPlanningLabel}查询`">
         <div class="filter-grid" :class="{ 'is-department-level': filterForm.level === '部门级' }">
-          <label class="planning-field planning-field--level">
+          <label v-if="false" class="planning-field planning-field--level">
             <span>层级 <em>*</em></span>
             <div
               v-if="planningLevelOptions.length === 1 && planningLevelOptions[0] === '产品级'"

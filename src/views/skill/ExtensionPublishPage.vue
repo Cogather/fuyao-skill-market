@@ -996,7 +996,7 @@ onBeforeUnmount(() => {
 
     <section class="extension-filter-card" aria-label="Extension 发布查询">
       <div class="filter-grid" :class="{ 'is-department-level': draftLevel === '部门级' }">
-        <label class="filter-field filter-field--level">
+        <label v-if="false" class="filter-field filter-field--level">
           <span>层级 <em>*</em></span>
           <div
             v-if="filterLevelOptions.length === 1 && filterLevelOptions[0] === '产品级'"

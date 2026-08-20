@@ -1110,7 +1110,7 @@ function exportRecords(): void {
           class="configuration-scope-grid"
           :class="{ 'is-department-level': scopeForm.level === '部门级' }"
         >
-          <label class="configuration-field configuration-field--level">
+          <label v-if="false" class="configuration-field configuration-field--level">
             <span>层级 <em>*</em></span>
             <div
               v-if="
