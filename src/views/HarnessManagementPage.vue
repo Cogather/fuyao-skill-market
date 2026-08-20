@@ -90,18 +90,6 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
-const userName = computed(() => {
-  const injectedUserName = String(skillMarketStore.userName ?? '').trim();
-  if (transportIsHttp) return injectedUserName;
-
-  return (
-    injectedUserName ||
-    String(profileStore.userInfo?.nameCn ?? '').trim() ||
-    String(profileStore.userInfo?.name ?? '').trim() ||
-    '模拟用户'
-  );
-});
-
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
   const source =
@@ -511,7 +499,6 @@ onBeforeRouteLeave(() => {
     >
       <ExtensionPublishPage
         :user-id="userId"
-        :user-name="userName"
         :department-tree="departmentTree"
         :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-paths="permissionDepartmentPaths"

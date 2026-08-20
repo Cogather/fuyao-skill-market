@@ -32,6 +32,7 @@ import {
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { useSkillMarketStore } from '../../stores/skillMarketStore';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -47,7 +48,6 @@ type ExtensionModal = 'publish' | 'history' | null;
 const props = withDefaults(
   defineProps<{
     userId?: string;
-    userName?: string;
     departmentTree?: DepartmentTreeNode[];
     currentUserDepartmentPath?: string[];
     allowedDepartmentPaths?: string[][];
@@ -56,7 +56,6 @@ const props = withDefaults(
   }>(),
   {
     userId: '',
-    userName: '',
     departmentTree: () => [],
     currentUserDepartmentPath: () => [],
     allowedDepartmentPaths: () => [],
@@ -64,6 +63,9 @@ const props = withDefaults(
     initialScope: undefined,
   },
 );
+
+const skillMarketStore = useSkillMarketStore();
+const currentUserName = computed(() => String(skillMarketStore.userName ?? '').trim());
 
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
@@ -831,7 +833,7 @@ async function confirmPublish(): Promise<void> {
     try {
       await publishHttpExtension({
         userId: props.userId.trim(),
-        operatorName: props.userName.trim(),
+        operatorName: currentUserName.value,
         scope: appliedHttpScope.value,
         scene,
         extensionName: name,
@@ -881,7 +883,7 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     retryingReleaseId.value = release.id ?? '';
     historyError.value = '';
     try {
-      await retryHttpExtension(release.id ?? '', props.userId.trim(), props.userName.trim());
+      await retryHttpExtension(release.id ?? '', props.userId.trim(), currentUserName.value);
       await refreshHttpScenes(scene.id, false);
       showToast(
         `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,
