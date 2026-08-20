@@ -81,6 +81,52 @@ export const corecode = _corecode_env;
 export const ai = import.meta.env.VITE_SKILL_CORE_CODE_URL;
 export const webfrondUrl = import.meta.env.VITE_WEBFROND_APP_BASE;
 
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+let departmentLinkLogSequence = 0;
+
+function errorResponseData(error: unknown): unknown {
+  if (!error || typeof error !== 'object') return error;
+  const response = (error as Record<string, unknown>).response;
+  if (!response || typeof response !== 'object') return response ?? error;
+  return (response as Record<string, unknown>).data ?? response;
+}
+
+/** HTTP 模式部门选择链路日志：同时保留原始 response，便于排查权限、产品和部门树问题。 */
+function withDepartmentLinkResponseLog<T>(
+  methodName: string,
+  endpoint: string,
+  requestParams: unknown,
+  request: () => Promise<T>,
+): Promise<T> {
+  if (!transportIsHttp) return request();
+
+  departmentLinkLogSequence += 1;
+  const traceId = `dept-link-${Date.now()}-${departmentLinkLogSequence}`;
+  const startedAt = Date.now();
+  return request().then(
+    (response) => {
+      console.info(`[部门选择链路][${methodName}] response`, {
+        traceId,
+        endpoint,
+        requestParams,
+        durationMs: Date.now() - startedAt,
+        response,
+      });
+      return response;
+    },
+    (error: unknown) => {
+      console.error(`[部门选择链路][${methodName}] error response`, {
+        traceId,
+        endpoint,
+        requestParams,
+        durationMs: Date.now() - startedAt,
+        response: errorResponseData(error),
+      });
+      return Promise.reject(error);
+    },
+  );
+}
+
 export const skillBaseService = {
   // 获取用户部门信息
   getUserDepartment: (params: any): any => {
@@ -869,11 +915,17 @@ export const skillBaseService = {
 
   // 查询当前用户的部门管理权限（有哪些部门可以管理）
   queryHarnessDeptPermissions: (params: { userId: string }): any => {
-    return httpRequest.harnessApi<any>({
-      url: '/permission/user-depts',
-      method: 'get',
-      params, // { userId }
-    });
+    return withDepartmentLinkResponseLog(
+      'queryHarnessDeptPermissions',
+      '/api/harness/permission/user-depts',
+      params,
+      () =>
+        httpRequest.harnessApi<any>({
+          url: '/permission/user-depts',
+          method: 'get',
+          params, // { userId }
+        }),
+    );
   },
 
   // harness 权限人员列表查询
@@ -897,11 +949,17 @@ export const skillBaseService = {
   // 产品
   // 查询某个部门的产品列表
   queryHarnessDeptProducts: (params: { deptCode: string }): any => {
-    return httpRequest.harnessApi<any>({
-      url: '/smapi-product-by-dept',
-      method: 'get',
-      params, // { deptCode }
-    });
+    return withDepartmentLinkResponseLog(
+      'queryHarnessDeptProducts',
+      '/api/harness/smapi-product-by-dept',
+      params,
+      () =>
+        httpRequest.harnessApi<any>({
+          url: '/smapi-product-by-dept',
+          method: 'get',
+          params, // { deptCode }
+        }),
+    );
   },
 
   // 获取场景列表
@@ -1201,10 +1259,16 @@ export const skillBaseService = {
 
   // 1. 部门树
   queryDeptReviewDepartments: (): any => {
-    return httpRequest.api<any>({
-      url: 'versioninfo/v1/hrms/departments/product/ai',
-      method: 'get',
-    });
+    return withDepartmentLinkResponseLog(
+      'queryDeptReviewDepartments',
+      '/api/versioninfo/v1/hrms/departments/product/ai',
+      undefined,
+      () =>
+        httpRequest.api<any>({
+          url: 'versioninfo/v1/hrms/departments/product/ai',
+          method: 'get',
+        }),
+    );
   },
 
   // 1.1 可视部门树（用于部门评审可选性控制）
