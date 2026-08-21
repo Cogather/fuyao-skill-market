@@ -779,16 +779,16 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
-// 部门树由真实接口独立加载，此处只等待父应用注入用户上下文。
-function waitForUserContext(timeout = 8000): Promise<void> {
+// userId 和部门树都由父页面通过 Skill_Square_Init 注入。
+function waitForParentContext(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value) {
+    if (userId.value && departmentList.value.length > 0) {
       resolve();
       return;
     }
     const start = Date.now();
     const timer = setInterval(() => {
-      if (userId.value) {
+      if (userId.value && departmentList.value.length > 0) {
         clearInterval(timer);
         resolve();
         return;
@@ -912,7 +912,7 @@ window.onmessage = handleParentMessage;
 
 onMounted(async () => {
   if (transportIsHttp) {
-    await Promise.all([skillMarketStore.refreshDepartmentTree(), waitForUserContext()]);
+    await waitForParentContext();
   }
   console.log('userId', userId.value);
   console.log('departmentList', departmentList.value);
@@ -1342,7 +1342,7 @@ function normalizeSyncRecord(raw: unknown): SyncApplicationListItemDto {
 
 async function loadAdminOrganizations(): Promise<void> {
   if (transportIsHttp) {
-    await waitUserIdAndDepartmentList();
+    await waitForParentContext();
   }
   orgListLoading.value = true;
   try {
@@ -1463,7 +1463,7 @@ const debounceMyReleaseScroll = debounce(myReleaseHandleScroll, 200);
 
 async function loadMyPublishedSkills(isPageOver?: boolean): Promise<void> {
   if (transportIsHttp) {
-    await waitUserIdAndDepartmentList();
+    await waitForParentContext();
   }
   myReleaseFilterObj.value.userId = effectiveSkillUserId();
   const res = await skillBaseService.queryMySkills(myReleaseFilterObj.value);
@@ -2781,7 +2781,7 @@ function mapSkillDraftToRow(dto: any): AiEvolutionSkillRow {
 
 async function loadAiEvolutionSkills(): Promise<void> {
   if (transportIsHttp) {
-    await waitUserIdAndDepartmentList();
+    await waitForParentContext();
   }
   aiEvolutionLoading.value = true;
   try {

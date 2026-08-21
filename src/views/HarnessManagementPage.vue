@@ -47,8 +47,8 @@ const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
 const harnessPermissionError = ref('');
 const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
   '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
-const HARNESS_DEPARTMENT_TREE_LOAD_FAILED_MESSAGE =
-  '真实部门树获取失败，请重新加载部门树后再进行选择。';
+const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
+  '未从父页面获取到部门树，请检查初始化参数后重新进入。';
 
 type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
@@ -96,7 +96,7 @@ const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
-  // HTTP 模式严禁回退 Mock；真实数据为空时明确展示空态与重试入口。
+  // HTTP 模式只使用父页面注入的数据，不请求部门树接口，也不回退 Mock。
   const source = transportIsHttp ? injectedDepartments : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
@@ -104,8 +104,7 @@ const departmentTreeUnavailable = computed(
   () =>
     transportIsHttp &&
     permissionContextReady.value &&
-    departmentTree.value.length === 0 &&
-    skillMarketStore.departmentTreeLoadState === 'error',
+    departmentTree.value.length === 0,
 );
 
 function departmentLevelByPath(path: string[]): number {
@@ -266,28 +265,19 @@ async function loadHarnessDepartmentScope(): Promise<void> {
 
 function waitForInjectedContext(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value) {
+    if (userId.value && departmentTree.value.length > 0) {
       resolve();
       return;
     }
 
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      if (userId.value || Date.now() - startedAt > timeout) {
+      if ((userId.value && departmentTree.value.length > 0) || Date.now() - startedAt > timeout) {
         window.clearInterval(timer);
         resolve();
       }
     }, 100);
   });
-}
-
-async function ensureHttpDepartmentTree(): Promise<boolean> {
-  if (!transportIsHttp || departmentTree.value.length > 0) return true;
-  return skillMarketStore.refreshDepartmentTree();
-}
-
-async function retryDepartmentTree(): Promise<void> {
-  await skillMarketStore.refreshDepartmentTree();
 }
 
 function updateTopbarElevation(): void {
@@ -359,7 +349,7 @@ onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
   try {
-    if (transportIsHttp) await Promise.all([waitForInjectedContext(), ensureHttpDepartmentTree()]);
+    if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
     activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'planning';
   } finally {
@@ -404,12 +394,7 @@ onBeforeRouteLeave(() => {
     </header>
 
     <div v-if="departmentTreeUnavailable" class="harness-permission-alert" role="alert">
-      <span>
-        {{
-          skillMarketStore.departmentTreeLoadError || HARNESS_DEPARTMENT_TREE_LOAD_FAILED_MESSAGE
-        }}
-      </span>
-      <button type="button" @click="retryDepartmentTree">重新加载部门树</button>
+      {{ HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE }}
     </div>
 
     <div
@@ -722,17 +707,6 @@ onBeforeRouteLeave(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.harness-permission-alert button {
-  flex: 0 0 auto;
-  padding: 5px 10px;
-  border: 1px solid #fda4af;
-  border-radius: 7px;
-  background: #fff;
-  color: #b42318;
-  font: inherit;
-  cursor: pointer;
 }
 
 .harness-tab-panel {
