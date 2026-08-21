@@ -47,6 +47,8 @@ const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
 const harnessPermissionError = ref('');
 const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
   '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
+const HARNESS_DEPARTMENT_TREE_LOAD_FAILED_MESSAGE =
+  '真实部门树获取失败，请重新加载部门树后再进行选择。';
 
 type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
@@ -94,12 +96,17 @@ const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
-  const source =
-    transportIsHttp && Array.isArray(injectedDepartments) && injectedDepartments.length > 0
-      ? injectedDepartments
-      : getMockMarketDepartmentsTree();
+  // HTTP 模式严禁回退 Mock；真实数据为空时明确展示空态与重试入口。
+  const source = transportIsHttp ? injectedDepartments : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
+const departmentTreeUnavailable = computed(
+  () =>
+    transportIsHttp &&
+    permissionContextReady.value &&
+    departmentTree.value.length === 0 &&
+    skillMarketStore.departmentTreeLoadState === 'error',
+);
 
 function departmentLevelByPath(path: string[]): number {
   let nodes = departmentTree.value;
@@ -182,6 +189,7 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
   const expectedLevelNo = Number(department.levelNo);
   const hasExpectedLevelNo = Number.isFinite(expectedLevelNo) && expectedLevelNo > 0;
   const matchingPaths: string[][] = [];
+  let strictCodeMatch: string[] | null = null;
   let codeMatch: string[] | null = null;
 
   const visit = (nodes: typeof departmentTree.value, parentPath: string[]): void => {
@@ -189,10 +197,10 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
       const path = [...parentPath, node.name];
       if (
         department.deptCode &&
-        (node.deptCode === department.deptCode || node.id === department.deptCode) &&
-        (!hasExpectedLevelNo || node.levelNo === expectedLevelNo)
+        (node.deptCode === department.deptCode || node.id === department.deptCode)
       ) {
         codeMatch = path;
+        if (!hasExpectedLevelNo || node.levelNo === expectedLevelNo) strictCodeMatch = path;
       }
       if (node.name === department.deptName || pathEndsWith(path, expectedPath)) {
         matchingPaths.push(path);
@@ -202,6 +210,8 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
   };
 
   visit(departmentTree.value, []);
+  if (strictCodeMatch) return [...strictCodeMatch];
+  // 权限接口可能使用 L3-L8，而部门树使用 L1-L6；编码一致时不能被层级编号差异挡住。
   if (codeMatch) return [...codeMatch];
 
   const suffixMatch = matchingPaths.find((path) => pathEndsWith(path, expectedPath));
@@ -254,24 +264,30 @@ async function loadHarnessDepartmentScope(): Promise<void> {
   }
 }
 
-function waitForInjectedContext(timeout = 5000): Promise<void> {
+function waitForInjectedContext(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value && skillMarketStore.departmentList.length > 0) {
+    if (userId.value) {
       resolve();
       return;
     }
 
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      if (
-        (userId.value && skillMarketStore.departmentList.length > 0) ||
-        Date.now() - startedAt > timeout
-      ) {
+      if (userId.value || Date.now() - startedAt > timeout) {
         window.clearInterval(timer);
         resolve();
       }
     }, 100);
   });
+}
+
+async function ensureHttpDepartmentTree(): Promise<boolean> {
+  if (!transportIsHttp || departmentTree.value.length > 0) return true;
+  return skillMarketStore.refreshDepartmentTree();
+}
+
+async function retryDepartmentTree(): Promise<void> {
+  await skillMarketStore.refreshDepartmentTree();
 }
 
 function updateTopbarElevation(): void {
@@ -343,7 +359,7 @@ onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
   try {
-    if (transportIsHttp) await waitForInjectedContext();
+    if (transportIsHttp) await Promise.all([waitForInjectedContext(), ensureHttpDepartmentTree()]);
     if (transportIsHttp) await loadHarnessDepartmentScope();
     activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'planning';
   } finally {
@@ -387,8 +403,17 @@ onBeforeRouteLeave(() => {
       </div>
     </header>
 
+    <div v-if="departmentTreeUnavailable" class="harness-permission-alert" role="alert">
+      <span>
+        {{
+          skillMarketStore.departmentTreeLoadError || HARNESS_DEPARTMENT_TREE_LOAD_FAILED_MESSAGE
+        }}
+      </span>
+      <button type="button" @click="retryDepartmentTree">重新加载部门树</button>
+    </div>
+
     <div
-      v-if="harnessPermissionLoadState === 'error'"
+      v-else-if="harnessPermissionLoadState === 'error'"
       class="harness-permission-alert"
       role="alert"
     >
@@ -694,6 +719,20 @@ onBeforeRouteLeave(() => {
   box-shadow: 0 12px 30px rgba(180, 35, 24, 0.12);
   font-size: 13px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.harness-permission-alert button {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid #fda4af;
+  border-radius: 7px;
+  background: #fff;
+  color: #b42318;
+  font: inherit;
+  cursor: pointer;
 }
 
 .harness-tab-panel {

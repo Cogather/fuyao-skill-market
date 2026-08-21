@@ -478,7 +478,9 @@ const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
   const source =
     Array.isArray(departmentList.value) && departmentList.value.length > 0
       ? departmentList.value
-      : getMockMarketDepartmentsTree();
+      : transportIsHttp
+        ? []
+        : getMockMarketDepartmentsTree();
   const coerced = coerceDepartmentTreeFromUnknown(source);
   return mapDepartmentTreeDtoToForest(coerced);
 });
@@ -777,16 +779,16 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
-// 等待 userId 和 departmentList 加载完成
-function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
+// 部门树由真实接口独立加载，此处只等待父应用注入用户上下文。
+function waitForUserContext(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value && departmentList.value.length > 0) {
+    if (userId.value) {
       resolve();
       return;
     }
     const start = Date.now();
     const timer = setInterval(() => {
-      if (userId.value && departmentList.value.length > 0) {
+      if (userId.value) {
         clearInterval(timer);
         resolve();
         return;
@@ -910,7 +912,7 @@ window.onmessage = handleParentMessage;
 
 onMounted(async () => {
   if (transportIsHttp) {
-    await waitUserIdAndDepartmentList();
+    await Promise.all([skillMarketStore.refreshDepartmentTree(), waitForUserContext()]);
   }
   console.log('userId', userId.value);
   console.log('departmentList', departmentList.value);

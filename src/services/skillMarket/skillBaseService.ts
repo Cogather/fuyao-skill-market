@@ -1266,15 +1266,17 @@ export const skillBaseService = {
    */
 
   // 1. 部门树
-  queryDeptReviewDepartments: (): any => {
+  queryDeptReviewDepartments: (params?: Record<string, unknown>): any => {
     return withDepartmentLinkResponseLog(
       'queryDeptReviewDepartments',
       '/api/versioninfo/v1/hrms/departments/product/ai',
-      undefined,
+      params,
       () =>
         httpRequest.api<any>({
           url: 'versioninfo/v1/hrms/departments/product/ai',
           method: 'get',
+          params,
+          timeout: 10000,
         }),
     );
   },
