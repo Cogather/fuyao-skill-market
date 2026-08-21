@@ -1,0 +1,647 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import type { CSSProperties } from 'vue';
+import type { SkillVersionListItemDto } from '../../services/skillMarket/apiTypes';
+
+const props = withDefaults(
+  defineProps<{
+    /** 当前对外版本（展示「当前」角标） */
+    skill: any;
+    loading?: boolean;
+    unpublishingVersion?: string | null;
+    /** 为 false 时隐藏「操作」列（如从市场详情进入） */
+    showOperationsColumn?: boolean;
+  }>(),
+  {
+    loading: false,
+    unpublishingVersion: null,
+    showOperationsColumn: true,
+  },
+);
+
+const emit = defineEmits<{
+  close: [];
+  back: [];
+  download: [version: string];
+  unpublish: [version: string];
+  viewDetail: [row: SkillVersionListItemDto];
+}>();
+
+function parseVersionTimeValue(raw: unknown): number {
+  const s = String(raw ?? '').trim();
+  if (!s) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const match =
+    /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.(\d{1,6}))?)?$/.exec(s);
+  if (match) {
+    const [, year, month, day, hour, minute, second = '0', fraction = '0'] = match;
+    const micros = Number(fraction.padEnd(6, '0').slice(0, 6));
+    const millis = Math.floor(micros / 1000);
+    const extraMicros = micros % 1000;
+    const time = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      millis,
+    ).getTime();
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time * 1000 + extraMicros;
+  }
+
+  const normalized = s.includes('T') ? s : s.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time * 1000;
+}
+
+function compareVersionCreatedAtDesc(
+  a: SkillVersionListItemDto,
+  b: SkillVersionListItemDto,
+): number {
+  return parseVersionTimeValue(b.createdAt) - parseVersionTimeValue(a.createdAt);
+}
+
+function formatPublishTime(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) {
+    return '—';
+  }
+  const forDate = s.includes('T') ? s : s.replace(/^(\d{4}-\d{1,2}-\d{1,2})\s+/, '$1T');
+  const d = new Date(forDate);
+  if (!Number.isNaN(d.getTime())) {
+    return new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+      .format(d)
+      .replace(/\//g, '-');
+  }
+  return s;
+}
+
+const sortedVersions = computed(() =>
+  [...(props.skill?.versions ?? [])].sort(compareVersionCreatedAtDesc),
+);
+
+function isUnpublished(row: SkillVersionListItemDto): boolean {
+  return Number(row.deleted) === 1;
+}
+
+function isCurrent(row: SkillVersionListItemDto): boolean {
+  return String(row.version) === String(props.skill?.version ?? '').trim();
+}
+
+const deleteConfirmStyle = ref<CSSProperties>({});
+const isShowUnpublish = ref(false);
+const unpublishVersion = ref('');
+async function onVersionRowUnpublish(evt: any, version: string): Promise<void> {
+  unpublishVersion.value = version;
+  const el = evt.currentTarget as HTMLElement | null;
+  if (el && !isShowUnpublish.value) {
+    const rect = el.getBoundingClientRect();
+    const panelW = 232;
+    const idealLeft = rect.left + rect.width / 2 - panelW / 2;
+    const left = Math.max(8, Math.min(idealLeft, window.innerWidth - panelW - 8));
+    deleteConfirmStyle.value = {
+      position: 'fixed',
+      top: `${Math.round(rect.bottom + 6)}px`,
+      left: `${Math.round(left)}px`,
+      width: `${panelW}px`,
+      zIndex: 5000,
+    };
+  }
+  isShowUnpublish.value = true;
+}
+
+const cancelUnpublish = () => {
+  isShowUnpublish.value = false;
+  unpublishVersion.value = '';
+};
+
+const confirmUnpublish = () => {
+  emit('unpublish', unpublishVersion.value);
+  cancelUnpublish();
+};
+</script>
+
+<template>
+  <div
+    v-if="isShowUnpublish"
+    class="my-delete-popconfirm"
+    :style="deleteConfirmStyle"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="my-delete-pop-title"
+    @click.stop
+  >
+    <p id="my-delete-pop-title" class="my-delete-pop-title">
+      确定下架版本 {{ unpublishVersion }} ？
+    </p>
+    <p class="my-delete-pop-hint">此操作不可恢复。</p>
+    <div class="my-delete-pop-actions">
+      <button type="button" class="mini" @click="cancelUnpublish">取消</button>
+      <button type="button" class="mini my-rel-delete-btn" @click="confirmUnpublish">确定</button>
+    </div>
+  </div>
+  <Teleport to="body">
+    <div class="ver-mgmt-overlay" role="presentation" @click.self="emit('close')">
+      <div
+        class="ver-mgmt-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ver-mgmt-title"
+        @click.stop
+      >
+        <header class="ver-mgmt-head">
+          <h2 id="ver-mgmt-title" class="ver-mgmt-title">{{ props.skill?.name ?? '' }} 版本管理</h2>
+          <div class="ver-mgmt-head-actions">
+            <button type="button" class="ver-mgmt-btn ghost" @click="emit('back')">
+              ← 返回 Skill 详情
+            </button>
+            <button type="button" class="ver-mgmt-btn" @click="emit('close')">关闭</button>
+          </div>
+        </header>
+
+        <div class="ver-mgmt-body">
+          <p v-if="loading" class="ver-mgmt-loading">版本列表加载中…</p>
+          <div v-else class="ver-mgmt-table-wrap">
+            <table class="ver-mgmt-table">
+              <thead>
+                <tr>
+                  <th class="col-ver">版本号</th>
+                  <th class="col-pub">创建人</th>
+                  <th class="col-time">创建时间</th>
+                  <th v-if="showOperationsColumn" class="col-ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in sortedVersions"
+                  :key="row.version + String(row.publishTime)"
+                  class="ver-mgmt-row"
+                  :class="{ 'is-unpublished': isUnpublished(row) }"
+                >
+                  <td class="col-ver">
+                    <div class="ver-vercell">
+                      <span class="ver-num">{{ row.version }}</span>
+                      <span v-if="isCurrent(row) && !isUnpublished(row)" class="badge badge-current"
+                        >当前</span
+                      >
+                      <span v-if="isUnpublished(row)" class="badge badge-off">已下架</span>
+                      <button
+                        v-if="!showOperationsColumn"
+                        type="button"
+                        class="ver-op-link neutral"
+                        @click="emit('viewDetail', row)"
+                      >
+                        查看
+                      </button>
+                    </div>
+                  </td>
+                  <td class="col-pub">{{ row.createdBy || '—' }}</td>
+                  <td class="col-time">{{ formatPublishTime(row.createdAt) }}</td>
+                  <td v-if="showOperationsColumn" class="col-ops">
+                    <div class="ver-ops-inline">
+                      <button
+                        type="button"
+                        class="ver-op-link neutral"
+                        @click="emit('viewDetail', row)"
+                      >
+                        查看
+                      </button>
+                      <template v-if="!isUnpublished(row)">
+                        <button
+                          type="button"
+                          class="ver-op-link primary"
+                          @click="emit('download', row.version)"
+                        >
+                          下载
+                        </button>
+                        <button
+                          type="button"
+                          class="ver-op-link danger"
+                          :disabled="unpublishingVersion === row.version"
+                          @click="onVersionRowUnpublish($event, row.version)"
+                        >
+                          {{ unpublishingVersion === row.version ? '下架中…' : '下架' }}
+                        </button>
+                      </template>
+                      <button v-else type="button" class="ver-op-pill disabled" disabled>
+                        已下架
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-if="!loading && sortedVersions.length === 0" class="ver-mgmt-empty">
+              暂无版本记录
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped lang="scss">
+// 下架弹框样式
+.my-delete-popconfirm {
+  padding: 12px 14px 14px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e8ecf1;
+  box-shadow:
+    0 12px 32px rgba(15, 23, 42, 0.12),
+    0 2px 8px rgba(15, 23, 42, 0.06);
+  box-sizing: border-box;
+}
+
+.my-delete-pop-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #0f172a;
+}
+
+.my-delete-pop-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.my-delete-pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-delete-pop-actions .mini {
+  min-width: 72px;
+}
+
+// 当前文件样式
+.ver-mgmt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 920;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.ver-mgmt-dialog {
+  width: min(67%, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ver-mgmt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.ver-mgmt-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ver-mgmt-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.ver-mgmt-btn {
+  border: 1px solid #dbe4f0;
+  background: #fff;
+  color: #1e293b;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ver-mgmt-btn:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.ver-mgmt-btn.ghost {
+  border-color: #93c5fd;
+  color: #2563eb;
+  background: #fff;
+}
+
+.ver-mgmt-btn.ghost:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
+}
+
+.ver-mgmt-body {
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+}
+
+.ver-mgmt-loading {
+  margin: 0;
+  padding: 28px 22px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.ver-mgmt-table-wrap {
+  padding: 0 0 16px;
+}
+
+.ver-mgmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ver-mgmt-table thead th {
+  text-align: left;
+  padding: 12px 22px;
+  font-weight: 750;
+  color: #475569;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.ver-mgmt-table tbody td {
+  padding: 14px 22px;
+  border-bottom: 1px solid #eef2f7;
+  vertical-align: middle;
+  color: #0f172a;
+}
+
+.ver-mgmt-row.is-unpublished td {
+  color: #94a3b8;
+}
+
+.col-ver {
+  width: 15%;
+}
+
+.col-pub {
+  width: 15%;
+}
+
+.col-time {
+  width: 18%;
+}
+
+.col-ops {
+  width: 30%;
+  white-space: nowrap;
+}
+
+.ver-mgmt-table tbody td.col-ops {
+  vertical-align: middle;
+}
+
+.ver-num {
+  font-weight: 700;
+  color: inherit;
+}
+
+.ver-vercell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.ver-ops-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.ver-ops-inline .ver-op-link {
+  margin-right: 0;
+}
+
+.ver-vercell .ver-op-link {
+  margin-right: 0;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.badge-current {
+  background: #ecfdf5;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-off {
+  margin-left: 8px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.ver-op-link {
+  margin-right: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.ver-op-link.neutral {
+  color: #334155;
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.ver-op-link.neutral:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.ver-op-link.primary {
+  color: #2563eb;
+  border-color: #bfdbfe;
+  background: #fff;
+}
+
+.ver-op-link.primary:hover {
+  background: #eff6ff;
+}
+
+.ver-op-link.danger {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fff;
+}
+
+.ver-op-link.danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.ver-op-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ver-op-pill.disabled {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  font-size: 13px;
+  cursor: not-allowed;
+}
+
+.ver-mgmt-empty {
+  margin: 0;
+  padding: 28px 22px;
+  text-align: center;
+  color: #64748b;
+}
+
+/* Prototype-aligned version dialog polish */
+.my-delete-popconfirm,
+.ver-mgmt-dialog {
+  border: 1px solid rgba(232, 236, 245, 0.92);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 28px 70px rgba(22, 34, 51, 0.18);
+}
+
+.ver-mgmt-overlay {
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.ver-mgmt-head {
+  padding: 18px 24px;
+  border-bottom-color: #e9edf3;
+  background: linear-gradient(180deg, rgba(120, 98, 255, 0.08), rgba(255, 255, 255, 0));
+}
+
+.ver-mgmt-title {
+  color: #15171d;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.ver-mgmt-btn,
+.ver-op-link,
+.ver-op-pill.disabled,
+.my-delete-pop-actions .mini {
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.ver-mgmt-btn {
+  border-color: #e9edf3;
+  background: #ffffff;
+  color: #373b45;
+  box-shadow: 0 8px 18px rgba(12, 20, 35, 0.05);
+}
+
+.ver-mgmt-btn:hover {
+  color: #2f7df6;
+  border-color: #cfd7e6;
+  background: #fbfcff;
+}
+
+.ver-mgmt-btn.ghost {
+  color: #2f7df6;
+  border-color: #d8eaff;
+  background: #eef6ff;
+}
+
+.ver-mgmt-table thead th {
+  color: #475569;
+  background: #f8fafc;
+  border-bottom-color: #e9edf3;
+  font-weight: 900;
+}
+
+.ver-mgmt-table tbody td {
+  border-bottom-color: #f1f3f7;
+}
+
+.badge {
+  border-radius: 999px;
+  font-weight: 850;
+}
+
+.badge-current {
+  color: #19905b;
+  background: #effaf4;
+  border-color: #d8f0e3;
+}
+
+.badge-off {
+  color: #6b7280;
+  background: #f5f7fb;
+  border-color: #edf0f5;
+}
+
+.ver-op-link.neutral {
+  color: #373b45;
+  border-color: #e9edf3;
+  background: #ffffff;
+}
+
+.ver-op-link.primary {
+  color: #2f7df6;
+  border-color: #d8eaff;
+  background: #eef6ff;
+}
+
+.ver-op-link.danger {
+  color: #c33d3d;
+  border-color: #ffd8d8;
+  background: #fff2f2;
+}
+
+.ver-op-link:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+</style>

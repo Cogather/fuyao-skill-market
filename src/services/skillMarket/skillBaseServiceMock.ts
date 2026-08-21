@@ -1,0 +1,3327 @@
+﻿import PizZip from 'pizzip';
+import type { AxiosRequestConfig } from 'axios';
+import type { Skill, SkillVersionEntry } from '../../types/skill';
+import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
+import { stableNumericId } from './mappers';
+import { getBuiltInSkills } from './mock/builtInSkills';
+import { getMockBusinessDimensions } from './mock/businessDimensionsDefault';
+import { mapSkillVersionsToListDto } from './mock/mapSkillVersionsToListDto';
+import { getMockMarketDepartmentsTree } from './mock/marketDepartmentsTreeDefault';
+import { marketSkillsToOpsExcelRows } from './opsBundleFromSkills';
+import {
+  mockDeptSkills,
+  mockPublishTasks,
+  mockPublishTargetOrgs,
+  type DeptSkillCommentItem,
+  type DeptSkillRow,
+  type PublishTask,
+  type PublishTaskSkill,
+} from './deptSkillReviewMock';
+
+function semverNums(v: string): number[] {
+  return String(v)
+    .split('.')
+    .map((p) => Number.parseInt(p, 10))
+    .map((n) => (Number.isFinite(n) ? n : 0));
+}
+
+/** 版本号降序（2.0.1 > 1.2.0） */
+function compareSemverDesc(a: string, b: string): number {
+  const pa = semverNums(a);
+  const pb = semverNums(b);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const d = (pb[i] ?? 0) - (pa[i] ?? 0);
+    if (d !== 0) {
+      return d;
+    }
+  }
+  return 0;
+}
+
+type MockChannel = 'api' | 'skill' | 'fuyao' | 'direct';
+
+const MOCK_VALIDATE_USER = {
+  uid: 'w30000001',
+  displayNameEN: 'Mock User',
+  displayNameCN: '模拟用户',
+  mail: 'mock.user@example.com',
+} as const;
+
+const MOCK_USER_DEPARTMENT_OPTIONS = [
+  {
+    id: 'w30000001',
+    sAMAccountName: 'w30000001',
+    chName: '张三',
+    department_l1: '部门1',
+    department_l2: '平台产品线',
+    department_l3: '平台工具组',
+    department_l4: 'DevOps部',
+    department_l5: '持续交付组',
+  },
+  {
+    id: 'w30000002',
+    sAMAccountName: 'w30000002',
+    chName: '李四',
+    department_l1: '云核装备经营管理部',
+    department_l2: '质量产品线',
+    department_l3: '质量工具组',
+  },
+  {
+    id: 'w30000003',
+    sAMAccountName: 'w30000003',
+    chName: '王五',
+    department_l1: '数据与智能平台部',
+    department_l2: '数据产品线',
+    department_l3: '日志智能组',
+  },
+  {
+    id: 'w30000004',
+    sAMAccountName: 'w30000004',
+    chName: '赵六',
+    department_l1: '研发效能产品部',
+    department_l2: '知识工程组',
+  },
+  {
+    id: 'w30000005',
+    sAMAccountName: 'w30000005',
+    chName: '钱慧',
+    department_l1: '云平台产品部',
+    department_l2: '发布治理组',
+  },
+  {
+    id: 'w30000006',
+    sAMAccountName: 'w30000006',
+    chName: '李明',
+    department_l1: '云核装备经营管理部',
+    department_l2: '智能终端产品部',
+    department_l3: '平台工具部',
+    department_l4: '接口开发组',
+  },
+  {
+    id: 'w30000007',
+    sAMAccountName: 'w30000007',
+    chName: '周扬',
+    department_l1: '云核装备经营管理部',
+    department_l2: '质量产品线',
+    department_l3: '质量工具组',
+  },
+  {
+    id: 'w30000008',
+    sAMAccountName: 'w30000008',
+    chName: '陈七',
+    department_l1: '数据与智能平台部',
+    department_l2: '数据产品线',
+    department_l3: '日志智能组',
+  },
+  {
+    id: 'w30000009',
+    sAMAccountName: 'w30000009',
+    chName: '刘岚',
+    department_l1: '研发效能产品部',
+    department_l2: '知识工程组',
+  },
+] as const;
+
+type MockEnvelope<T> = {
+  code: number;
+  message: string;
+  meta: {
+    number: number;
+    message: string;
+    success: boolean;
+  };
+  data: T;
+};
+
+type MockSkillMasterManagementRecord = {
+  id: string;
+  skillName: string;
+  skillDescription: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  ownerName: string;
+  ownerId: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  status: string;
+  planFinishDate: string;
+  createdAt: number[];
+  updatedAt: number[];
+  skillMatchId: string | null;
+  skillMatchLevel: string | null;
+};
+
+type MockSkillPlanningSupplementRecord = {
+  id: string;
+  skillId?: string;
+  skillName: string;
+  name?: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  level?: string;
+  offeringId?: string;
+  offeringName?: string;
+  skillDescription: string;
+  description?: string;
+  ownerName: string;
+  ownerId: string;
+  owner?: string;
+  developOwnerName: string;
+  developOwnerId: string;
+  developOwner?: string;
+  status: string;
+  planFinishDate: string;
+  planedCompleteDate?: string;
+  deptCode?: string;
+  deptName?: string;
+  planDeptCode?: string;
+  planDeptName?: string;
+  l5DeptCode?: string;
+  l5DeptName?: string;
+  l4DeptCode?: string;
+  l4DeptName?: string;
+  l3DeptCode?: string;
+  l3DeptName?: string;
+  l2DeptCode?: string;
+  l2DeptName?: string;
+  l1DeptCode?: string;
+  l1DeptName?: string;
+  createTime?: string;
+  updateTime?: string;
+};
+
+function nowLocalDateTimeArray(): number[] {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    now.getMonth() + 1,
+    now.getDate(),
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds() * 1_000_000,
+  ];
+}
+
+let mockSkillMasterManagementIdSeq = 1000;
+
+function nextMockSkillMasterManagementId(): string {
+  mockSkillMasterManagementIdSeq += 1;
+  return String(mockSkillMasterManagementIdSeq);
+}
+
+let mockSkillPlanningSupplementIdSeq = 8000;
+
+function nextMockSkillPlanningSupplementId(): string {
+  mockSkillPlanningSupplementIdSeq += 1;
+  return String(mockSkillPlanningSupplementIdSeq);
+}
+
+const mockSkillPlanningSupplementRecords: MockSkillPlanningSupplementRecord[] = [];
+
+const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
+  {
+    id: '501',
+    skillName: '稳定性日报 Skill',
+    skillDescription: '汇总稳定性指标并生成日报摘要',
+    dimType: '部门级',
+    dimCode: 'D001',
+    dimName: '持续交付组',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李四',
+    developOwnerId: 'w30000002',
+    status: '已完成',
+    planFinishDate: '2026-06-26',
+    createdAt: [2026, 6, 1, 10, 0, 0, 0],
+    updatedAt: [2026, 6, 26, 18, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+  },
+  {
+    id: '502',
+    skillName: '接口巡检 Skill',
+    skillDescription: '定期巡检关键接口可用性',
+    dimType: '部门级',
+    dimCode: 'D001',
+    dimName: '持续交付组',
+    ownerName: '王五',
+    ownerId: 'w30000003',
+    developOwnerName: '赵六',
+    developOwnerId: 'w30000004',
+    status: '进行中',
+    planFinishDate: '2026-08-31',
+    createdAt: [2026, 7, 1, 9, 0, 0, 0],
+    updatedAt: [2026, 7, 20, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+  },
+  {
+    id: '503',
+    skillName: '产品A-发布检查 Skill',
+    skillDescription: '产品级发布前检查清单',
+    dimType: '产品级',
+    dimCode: 'P001',
+    dimName: '产品A',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李四',
+    developOwnerId: 'w30000002',
+    status: '未开始',
+    planFinishDate: '2026-09-15',
+    createdAt: [2026, 7, 10, 8, 0, 0, 0],
+    updatedAt: [2026, 7, 10, 8, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+  },
+];
+
+function readSkillRequestBody(data: unknown): unknown {
+  if (data === undefined || data === null || data === '') {
+    return {};
+  }
+  if (typeof data === 'string') {
+    const text = data.trim();
+    if (!text) {
+      return {};
+    }
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  return data;
+}
+
+function filterMockSkillMasterManagement(body: Record<string, unknown>): {
+  list: MockSkillMasterManagementRecord[];
+  total: number;
+} {
+  const keyword = String(body.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  const dimType = String(body.dimType ?? '').trim();
+  const dimCode = String(body.dimCode ?? '').trim();
+  const dimName = String(body.dimName ?? '').trim();
+  const ownerId = String(body.ownerId ?? '').trim();
+  const developOwnerId = String(body.developOwnerId ?? '').trim();
+  const statusList = Array.isArray(body.statusList)
+    ? body.statusList.map((item) => String(item ?? '').trim()).filter(Boolean)
+    : [];
+
+  let list = mockSkillMasterManagementRecords.slice();
+  if (dimType) {
+    list = list.filter((item) => item.dimType === dimType);
+  }
+  if (dimCode) {
+    list = list.filter((item) => item.dimCode === dimCode);
+  }
+  if (dimName) {
+    list = list.filter((item) => item.dimName === dimName);
+  }
+  if (ownerId) {
+    list = list.filter((item) => item.ownerId === ownerId);
+  }
+  if (developOwnerId) {
+    list = list.filter((item) => item.developOwnerId === developOwnerId);
+  }
+  if (statusList.length > 0) {
+    list = list.filter((item) => statusList.includes(item.status));
+  }
+  if (keyword) {
+    list = list.filter((item) =>
+      [item.skillName, item.skillDescription, item.ownerName, item.developOwnerName].some((field) =>
+        field.toLowerCase().includes(keyword),
+      ),
+    );
+  }
+
+  const sortBy = String(body.sortBy ?? '').trim();
+  const sortOrder =
+    String(body.sortOrder ?? 'desc')
+      .trim()
+      .toLowerCase() === 'asc'
+      ? 1
+      : -1;
+  if (sortBy === 'updatedAt' || sortBy === 'createdAt' || sortBy === 'planFinishDate') {
+    list.sort((left, right) => {
+      const leftValue = String(
+        sortBy === 'planFinishDate' ? left.planFinishDate : JSON.stringify(left[sortBy]),
+      );
+      const rightValue = String(
+        sortBy === 'planFinishDate' ? right.planFinishDate : JSON.stringify(right[sortBy]),
+      );
+      if (leftValue === rightValue) {
+        return 0;
+      }
+      return leftValue > rightValue ? sortOrder : -sortOrder;
+    });
+  }
+
+  const pageNum = Math.max(1, Number(body.pageNum) || 1);
+  const pageSize = Math.max(1, Number(body.pageSize) || list.length || 10);
+  const start = (pageNum - 1) * pageSize;
+  return {
+    list: list.slice(start, start + pageSize),
+    total: list.length,
+  };
+}
+
+function mockPlanningQueryValues(value: unknown): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : value === undefined || value === null
+      ? []
+      : [value];
+  return [...new Set(source.map((item) => String(item ?? '').trim()).filter(Boolean))];
+}
+
+function filterMockSkillPlanningSupplement(query: Record<string, unknown>): {
+  list: MockSkillPlanningSupplementRecord[];
+  total: number;
+} {
+  const keyword = String(query.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  const dimType = String(query.dimType ?? '').trim();
+  const dimCode = String(query.dimCode ?? '').trim();
+  const dimName = String(query.dimName ?? '').trim();
+  const firstScenes = mockPlanningQueryValues(query.firstScene);
+  const secondScenes = mockPlanningQueryValues(query.secondScene);
+  const activities = mockPlanningQueryValues(query.activityNodeName);
+  const subActivities = mockPlanningQueryValues(query.subActivityNodeName);
+  const levels = mockPlanningQueryValues(query.level);
+  const statuses = mockPlanningQueryValues(query.status);
+  const deptCodes = mockPlanningQueryValues([
+    ...mockPlanningQueryValues(query.deptCodes),
+    ...mockPlanningQueryValues(query.deptCode),
+    ...mockPlanningQueryValues(query.dimCode),
+  ]);
+  const departmentFilters = [
+    [query.departmentL3, 'l3DeptName'],
+    [query.departmentL4, 'l4DeptName'],
+    [query.departmentL5, 'l5DeptName'],
+    [query.departmentL6, 'l6DeptName'],
+    [query.departmentL7, 'l7DeptName'],
+    [query.departmentL8, 'l8DeptName'],
+  ] as const;
+
+  let list = mockSkillPlanningSupplementRecords.filter((item) => {
+    const record = item as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+    if (firstScenes.length > 0 && !firstScenes.includes(item.firstScene)) return false;
+    if (secondScenes.length > 0 && !secondScenes.includes(item.secondScene)) return false;
+    if (activities.length > 0 && !activities.includes(item.activityNodeName)) return false;
+    if (subActivities.length > 0 && !subActivities.includes(item.subActivityNodeName)) return false;
+    if (levels.length > 0 && !levels.includes(item.level || item.dimType)) return false;
+    if (statuses.length > 0 && !statuses.includes(item.status)) return false;
+    if (dimType && String(item.dimType || item.level).trim() !== dimType) {
+      return false;
+    }
+    if (
+      dimCode &&
+      ![item.dimCode, item.deptCode, item.planDeptCode, item.offeringId].some(
+        (value) => String(value ?? '').trim() === dimCode,
+      )
+    ) {
+      return false;
+    }
+    if (
+      dimName &&
+      ![item.dimName, item.planDeptName, item.offeringName].some(
+        (value) => String(value ?? '').trim() === dimName,
+      )
+    ) {
+      return false;
+    }
+    if (
+      deptCodes.length > 0 &&
+      ![item.deptCode, item.planDeptCode, item.dimCode].some((value) =>
+        deptCodes.includes(String(value ?? '').trim()),
+      )
+    ) {
+      return false;
+    }
+    if (
+      departmentFilters.some(
+        ([value, key]) =>
+          String(value ?? '').trim() && String(record[key] ?? '').trim() !== String(value).trim(),
+      )
+    ) {
+      return false;
+    }
+    if (!keyword) return true;
+    return [
+      item.skillName,
+      item.firstScene,
+      item.secondScene,
+      item.activityNodeName,
+      item.subActivityNodeName,
+      item.skillDescription,
+      item.ownerName,
+      item.developOwnerName,
+    ].some((field) => field.toLowerCase().includes(keyword));
+  });
+
+  const sortBy = String(query.sortBy ?? '').trim();
+  const sortOrder =
+    String(query.sortOrder ?? '')
+      .trim()
+      .toLowerCase() === 'asc'
+      ? 1
+      : -1;
+  if (sortBy) {
+    list = [...list].sort((left, right) => {
+      const leftRecord = left as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+      const rightRecord = right as MockSkillPlanningSupplementRecord & Record<string, unknown>;
+      const leftValue = String(
+        sortBy === 'planedCompleteDate' ? left.planFinishDate : (leftRecord[sortBy] ?? ''),
+      );
+      const rightValue = String(
+        sortBy === 'planedCompleteDate' ? right.planFinishDate : (rightRecord[sortBy] ?? ''),
+      );
+      return leftValue.localeCompare(rightValue) * sortOrder;
+    });
+  }
+
+  const total = list.length;
+  const pageNum = Math.max(1, Number(query.pageNum) || 1);
+  const pageSize = Math.max(1, Number(query.pageSize) || total || 10);
+  const start = (pageNum - 1) * pageSize;
+  return {
+    list: list.slice(start, start + pageSize),
+    total,
+  };
+}
+
+type PagedArray<T> = T[] & {
+  records: T[];
+  total: number;
+};
+
+type MockOrganization = {
+  id: number;
+  orgName: string;
+  orgCode: string;
+  admins: string;
+  enabled: boolean;
+};
+
+type MockSyncRow = {
+  id: number;
+  skillId?: string | number;
+  skillName: string;
+  applyType: string;
+  targetLevel: string;
+  targetOrgId: number;
+  targetOrgName: string;
+  reason: string;
+  reasonDetail?: string;
+  approverLabel: string;
+  status: string;
+  reviewResult?: string;
+  reviewComment?: string;
+  completedAt?: string;
+};
+
+type MockQualityReviewRow = {
+  id: number;
+  reviewMonth: string;
+  skillId: string;
+  skillName: string;
+  deptName: string;
+  score: number;
+  qualityMark: string;
+  reviewComment: string;
+  reviewStatus: string;
+};
+
+type MockExpertReviewDimension = {
+  dimensionId: string;
+  name: string;
+  description: string;
+  weight: number;
+};
+
+type MockReviewBadge = {
+  badgeId: string;
+  name: string;
+  description: string;
+};
+
+type MockExpertReviewDimensionScore = {
+  dimensionId: string;
+  score?: number;
+  reason?: string;
+};
+
+type MockSkillReviewDetail = {
+  reviewId: string;
+  skillId: string;
+  aiScore: number;
+  reviewStatus: 'pending' | 'draft' | 'submitted';
+  totalScore: number | null;
+  dimensionScores: MockExpertReviewDimensionScore[];
+  badgeIds: string[];
+  badgeReason?: string;
+  overallOpinion?: string;
+  updatedAt?: string;
+};
+type MockAiReviewDimensionScore = {
+  dimensionId: string;
+  score: number;
+  deductionBreakdown: string;
+};
+
+type MockAiReviewDetail = {
+  aiModel: string;
+  evaluateTime: string;
+  aiScore: number;
+  dimensionScores: MockAiReviewDimensionScore[];
+  advices: Record<'SKILL.md' | 'references' | 'scripts', string>;
+};
+
+type MockCurrentUserReview = {
+  reviewId: string;
+  skillId: string;
+  expertUserId: string;
+  reviewStatus: 'draft' | 'submitted';
+  status: 'draft' | 'submitted';
+  overallScore: number | null;
+  dimensions: {
+    dimensionId: string;
+    score?: number;
+    comment?: string;
+  }[];
+  badges: {
+    badgeIds: string;
+    reason: string;
+  };
+  reviewComment: string;
+  reviewedAt: string;
+  updatedAt: string;
+};
+
+type MockReviewVersionDetail = {
+  version: string;
+  aiScore: MockAiReviewDetail;
+  expertReviews: MockCurrentUserReview[];
+};
+
+type MockSkillReviewDetailPayload = {
+  skillInfo: {
+    skillId: string;
+    name: string;
+    version: string;
+    ownerUser: string;
+    departmentL6: string;
+    totalAccess: number;
+  };
+  aiScore: MockAiReviewDetail;
+  currentUserReview: MockCurrentUserReview | null;
+  versionDetails: MockReviewVersionDetail[];
+};
+
+type MockSkillRecord = Skill & {
+  author: string;
+  createdBy: string;
+  currentVersion: string;
+  category: string;
+  categoryGroupName: string;
+  status: string;
+  orgId: number | null;
+  orgName: string | null;
+  departmentL1: string;
+  departmentL2: string;
+  departmentL3: string;
+  departmentL4: string;
+  departmentL5: string;
+  departmentL6: string;
+  requirements: string;
+  fileDir: string;
+  packagePath: string;
+  fileTree: string | string[];
+  skillMdContent: string;
+  createdAt: string;
+  updatedAt: string;
+  likes: number;
+  dislikes: number;
+  qualityMark: string | null;
+  qualityBadges: string[];
+  scored: boolean;
+};
+
+const MOCK_ORGS: MockOrganization[] = [
+  {
+    id: 1,
+    orgName: 'IT装备部',
+    orgCode: 'ORG-IT-001',
+    admins: 'it_admin_a,it_admin_b',
+    enabled: true,
+  },
+  {
+    id: 2,
+    orgName: '质量工具组',
+    orgCode: 'ORG-QA-002',
+    admins: 'qa_admin_a,qa_admin_b',
+    enabled: true,
+  },
+  {
+    id: 3,
+    orgName: '平台工具组',
+    orgCode: 'ORG-PLAT-003',
+    admins: 'plat_admin_a,plat_admin_b',
+    enabled: true,
+  },
+  {
+    id: 4,
+    orgName: '云服务组',
+    orgCode: 'ORG-CLOUD-004',
+    admins: 'cloud_admin_a,cloud_admin_b',
+    enabled: true,
+  },
+  {
+    id: 5,
+    orgName: 'SRE团队',
+    orgCode: 'ORG-SRE-005',
+    admins: 'sre_admin_a,sre_admin_b',
+    enabled: true,
+  },
+  { id: 6, orgName: 'DevOps组', orgCode: 'ORG-DEVOPS-006', admins: 'devops_admin', enabled: true },
+];
+
+const CATEGORY_BY_GROUP: Record<string, string> = {
+  公共: 'COMMON',
+  设计: 'DESIGN',
+  开发: 'DEVELOPMENT',
+  测试: 'TEST',
+  运维: 'OPERATIONS',
+  维护: 'MAINTENANCE',
+  研究: 'RESEARCH',
+  项目管理: 'PROJECT_MANAGEMENT',
+};
+
+const GROUP_BY_CATEGORY_CODE = Object.entries(CATEGORY_BY_GROUP).reduce<Record<string, string>>(
+  (map, [group, code]) => {
+    map[code] = group;
+    return map;
+  },
+  {},
+);
+
+const orgStore: MockOrganization[] = MOCK_ORGS.map((o) => ({ ...o }));
+
+let syncPending: MockSyncRow[] = [
+  {
+    id: 90_001,
+    skillId: 10_001,
+    skillName: '日志分析 Skill',
+    applyType: '同步至公司组织',
+    targetLevel: '组织级',
+    targetOrgId: 5,
+    targetOrgName: 'SRE团队',
+    reason: '已在个人级完成使用验证，希望沉淀到 SRE 团队统一排障使用。',
+    reasonDetail: '首版手动评审；后续接入评测集与代码仓门禁。',
+    approverLabel: 'SRE团队组织管理员',
+    status: '待审核',
+  },
+  {
+    id: 90_002,
+    skillId: 10_002,
+    skillName: '接口 Mock 生成 Skill',
+    applyType: '同步至公司组织',
+    targetLevel: '组织级',
+    targetOrgId: 3,
+    targetOrgName: '平台工具组',
+    reason: '已在个人级快速验证，可复用到接口联调场景。',
+    reasonDetail: '首版手动评审；后续接入评测集与代码仓门禁。',
+    approverLabel: '平台工具组组织管理员',
+    status: '待审核',
+  },
+];
+
+let syncDone: MockSyncRow[] = [
+  {
+    id: 80_001,
+    skillName: '接口设计检查 Skill',
+    applyType: '同步至公司组织',
+    targetLevel: '组织级',
+    targetOrgId: 2,
+    targetOrgName: '质量工具组',
+    reason: '',
+    approverLabel: '',
+    status: '已完成',
+    reviewResult: '通过',
+    reviewComment: '复用场景明确，已具备组织级沉淀价值。',
+    completedAt: '2026-04-22 15:20',
+  },
+  {
+    id: 80_002,
+    skillName: 'PDF 表格抽取 Skill',
+    applyType: '同步至公司组织',
+    targetLevel: '组织级',
+    targetOrgId: 2,
+    targetOrgName: 'PDF处理小组',
+    reason: '',
+    approverLabel: '',
+    status: '已完成',
+    reviewResult: '不通过',
+    reviewComment: '缺少评测样例和复用数据，需补充后重新提交。',
+    completedAt: '2026-04-21 18:06',
+  },
+];
+
+let qualityReviews: MockQualityReviewRow[] = [
+  {
+    id: 70_001,
+    reviewMonth: '2026-04',
+    skillId: '2',
+    skillName: 'test2',
+    deptName: '平台工具部',
+    score: 92,
+    qualityMark: '优秀 Skill',
+    reviewComment: '下载量高，复用场景稳定。',
+    reviewStatus: '已保存',
+  },
+  {
+    id: 70_002,
+    reviewMonth: '2026-04',
+    skillId: '5',
+    skillName: '接口 Mock 生成 Skill',
+    deptName: '平台工具组',
+    score: 86,
+    qualityMark: '高复用 Skill',
+    reviewComment: '建议补充更多接口协议示例。',
+    reviewStatus: '待归档',
+  },
+];
+
+const MOCK_EXPERT_REVIEW_DIMENSIONS: MockExpertReviewDimension[] = [
+  {
+    dimensionId: 'dim-001',
+    name: '问题定义准确性',
+    description: '是否准确识别业务痛点、约束条件和核心目标。',
+    weight: 0.34,
+  },
+  {
+    dimensionId: 'dim-002',
+    name: '场景价值覆盖度',
+    description: '是否覆盖高频或高价值场景，并能说明预期收益。',
+    weight: 0.33,
+  },
+  {
+    dimensionId: 'dim-003',
+    name: '解决方案创新性',
+    description: '方案是否具有创新性、差异化思路或明显效率提升。',
+    weight: 0.33,
+  },
+];
+const MOCK_REVIEW_BADGES: MockReviewBadge[] = [
+  {
+    badgeId: 'breaking-pioneer',
+    name: 'breaking-pioneer',
+    description: 'public/badges/breaking-pioneer.png',
+  },
+  {
+    badgeId: 'craftsmanship-foundation',
+    name: 'craftsmanship-foundation',
+    description: 'public/badges/craftsmanship-foundation.png',
+  },
+  {
+    badgeId: 'innovation-spark',
+    name: 'innovation-spark',
+    description: 'public/badges/innovation-spark.png',
+  },
+];
+
+const expertReviewDetailStore: Record<string, MockSkillReviewDetail> = {};
+
+function nowText(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(
+    2,
+    '0',
+  )} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function roundToTwo(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function mockSeedFromSkillId(skillId: string): number {
+  const numeric = Number(String(skillId).replace(/[^\d]/g, ''));
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric;
+  }
+  return Array.from(skillId).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function clampReviewScore(value: number): number {
+  return roundToTwo(Math.min(100, Math.max(0, value)));
+}
+
+function computeWeightedTotal(dimensionScores: MockExpertReviewDimensionScore[]): number | null {
+  if (!dimensionScores.length) {
+    return null;
+  }
+
+  let total = 0;
+  let hasScore = false;
+
+  for (const dimension of MOCK_EXPERT_REVIEW_DIMENSIONS) {
+    const item = dimensionScores.find((score) => score.dimensionId === dimension.dimensionId);
+    if (typeof item?.score !== 'number' || Number.isNaN(item.score)) {
+      continue;
+    }
+    hasScore = true;
+    total += item.score * dimension.weight;
+  }
+
+  return hasScore ? roundToTwo(total) : null;
+}
+
+function defaultReasonForDimension(name: string, score: number): string {
+  return `${name}表现较好，评分为${score.toFixed(2)}分，优势明确且仍有进一步优化空间。`;
+}
+
+function createSubmittedDimensionScores(seed: number): MockExpertReviewDimensionScore[] {
+  return MOCK_EXPERT_REVIEW_DIMENSIONS.map((dimension, index) => {
+    const score = clampReviewScore(82 + ((seed + index * 7) % 15) + index * 1.25);
+    return {
+      dimensionId: dimension.dimensionId,
+      score,
+      reason: defaultReasonForDimension(dimension.name, score),
+    };
+  });
+}
+
+function createDraftDimensionScores(seed: number): MockExpertReviewDimensionScore[] {
+  const firstDimension = MOCK_EXPERT_REVIEW_DIMENSIONS[0];
+  if (!firstDimension) {
+    return [];
+  }
+
+  const score = clampReviewScore(84 + (seed % 10) * 0.5);
+  return [
+    {
+      dimensionId: firstDimension.dimensionId,
+      score,
+      reason: `${firstDimension.name}分析较完整，先记录初步判断，后续补全其他维度。`,
+    },
+  ];
+}
+
+function normalizeDraftDimensionScores(raw: unknown): MockExpertReviewDimensionScore[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .map((item) => {
+      const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : null;
+      if (!record) {
+        return null;
+      }
+
+      const dimensionId = String(record.dimensionId ?? '').trim();
+      if (!dimensionId) {
+        return null;
+      }
+
+      const nextItem: MockExpertReviewDimensionScore = { dimensionId };
+      const score = record.score;
+      if (typeof score === 'number' && Number.isFinite(score)) {
+        nextItem.score = roundToTwo(score);
+      } else if (typeof score === 'string' && score.trim()) {
+        const parsed = Number(score);
+        if (Number.isFinite(parsed)) {
+          nextItem.score = roundToTwo(parsed);
+        }
+      }
+
+      const reason = String(record.reason ?? record.comment ?? '').trim();
+      if (reason) {
+        nextItem.reason = reason;
+      }
+
+      return nextItem;
+    })
+    .filter((item): item is MockExpertReviewDimensionScore => {
+      return Boolean(item && (item.reason || item.score != null));
+    });
+}
+
+function normalizeBadgeIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return [...new Set(raw.map((item) => String(item ?? '').trim()).filter(Boolean))];
+}
+
+function normalizeBadgeReason(raw: unknown, badgeIds: string[]): string {
+  if (badgeIds.length === 0) {
+    return '';
+  }
+  return readString(raw, '').trim();
+}
+
+function normalizeOverallOpinion(raw: unknown): string {
+  return readString(raw, '').trim();
+}
+
+function ensureExpertReviewDetail(skillId: string): MockSkillReviewDetail {
+  const key = String(skillId).trim();
+  const existing = expertReviewDetailStore[key];
+  if (existing) {
+    return existing;
+  }
+
+  const seed = mockSeedFromSkillId(key);
+  const submitted = seed % 3 !== 1;
+  const drafted = !submitted && seed % 2 === 0;
+  const dimensionScores = submitted
+    ? createSubmittedDimensionScores(seed)
+    : drafted
+      ? createDraftDimensionScores(seed)
+      : [];
+  const detail: MockSkillReviewDetail = {
+    reviewId: `review-${key}`,
+    skillId: key,
+    aiScore: 8600 + (seed % 1200),
+    reviewStatus: submitted ? 'submitted' : drafted ? 'draft' : 'pending',
+    totalScore: computeWeightedTotal(dimensionScores),
+    dimensionScores,
+    badgeIds: submitted
+      ? MOCK_REVIEW_BADGES.slice(0, seed % 2 === 0 ? 2 : 1).map((badge) => badge.badgeId)
+      : [],
+    badgeReason: '',
+    overallOpinion: '',
+    updatedAt: nowText(),
+  };
+
+  detail.badgeIds = detail.badgeIds.filter(Boolean);
+  if (detail.badgeIds.length > 0) {
+    detail.badgeReason = `推荐授予${detail.badgeIds.length}项勋章，Skill 在对应能力维度上表现突出。`;
+  }
+  if (submitted) {
+    detail.overallOpinion =
+      '整体来看，该 Skill 在问题识别、方案设计与工程落地上表现均衡，具备较好的推广复用价值。';
+  }
+  expertReviewDetailStore[key] = detail;
+  return detail;
+}
+const MOCK_AI_REVIEW_DIMENSIONS = [
+  { dimensionId: 'D1', maxScore: 20, label: '技能边界完整性' },
+  { dimensionId: 'D2', maxScore: 20, label: '接口规范完整性' },
+  { dimensionId: 'D3', maxScore: 20, label: '异常与边界处理' },
+  { dimensionId: 'D4', maxScore: 20, label: '规则一致性' },
+  { dimensionId: 'D5', maxScore: 20, label: '安全与权限约束' },
+] as const;
+
+function mockReviewTime(seed: number, dayOffset = 0): string {
+  const day = String(8 + ((seed + dayOffset) % 18)).padStart(2, '0');
+  const hour = String(9 + (seed % 8)).padStart(2, '0');
+  const minute = String((seed * 7 + dayOffset) % 60).padStart(2, '0');
+  return `2026-05-${day} ${hour}:${minute}`;
+}
+
+function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiReviewDetail {
+  const seed = mockSeedFromSkillId(skillId);
+  const dimensionScores = MOCK_AI_REVIEW_DIMENSIONS.map((dimension, index) => {
+    const ratio = 0.78 + ((seed + index * 9) % 16) / 100;
+    const score = roundToTwo(Math.min(dimension.maxScore, dimension.maxScore * ratio));
+    return {
+      dimensionId: dimension.dimensionId,
+      score,
+      deductionBreakdown: `${dimension.label}得分 ${score}/${dimension.maxScore}，Mock 数据用于查看 AI 评审明细展示。`,
+    };
+  });
+  const aiScore = roundToTwo(dimensionScores.reduce((sum, item) => sum + item.score, 0));
+  const skillName = skill?.name ?? `Mock Skill ${skillId}`;
+
+  return {
+    aiModel: 'mock-ai-review-v2',
+    evaluateTime: mockReviewTime(seed, 2),
+    aiScore,
+    dimensionScores,
+    advices: {
+      'SKILL.md': `${skillName} 的目标、输入输出和适用场景描述较完整，可补充失败示例。`,
+      references: '引用材料覆盖核心场景，建议增加边界样例和反例说明。',
+      scripts: '脚本结构清晰，建议补充参数校验和异常日志。',
+    },
+  };
+}
+
+function createMockCurrentUserReview(detail: MockSkillReviewDetail): MockCurrentUserReview | null {
+  if (detail.reviewStatus === 'pending') {
+    return null;
+  }
+
+  return {
+    reviewId: detail.reviewId,
+    skillId: detail.skillId,
+    expertUserId: 'mock-expert-001',
+    reviewStatus: detail.reviewStatus,
+    status: detail.reviewStatus,
+    overallScore: detail.totalScore,
+    dimensions: detail.dimensionScores.map((dimension) => ({
+      dimensionId: dimension.dimensionId,
+      score: dimension.score,
+      comment: dimension.reason ?? '',
+    })),
+    badges: {
+      badgeIds: detail.badgeIds.join(','),
+      reason: detail.badgeReason ?? '',
+    },
+    reviewComment: detail.overallOpinion ?? '',
+    reviewedAt: detail.updatedAt ?? nowText(),
+    updatedAt: detail.updatedAt ?? nowText(),
+  };
+}
+
+function createMockSkillReviewDetailPayload(
+  skillId: string,
+  params: Record<string, unknown> = {},
+): MockSkillReviewDetailPayload {
+  const key = String(skillId).trim();
+  const skill = findSkill(key);
+  const detail = ensureExpertReviewDetail(key);
+  const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
+  const aiScore = createMockAiReview(key, skill);
+  const currentUserReview = createMockCurrentUserReview(detail);
+
+  return {
+    skillInfo: {
+      skillId: key,
+      name: skill?.name ?? `Mock Skill ${key}`,
+      version,
+      ownerUser: skill?.createdBy ?? skill?.author ?? 'mock-owner',
+      departmentL6: skill?.departmentL6 ?? skill?.departmentL5 ?? 'Mock 评审部门',
+      totalAccess: skill?.totalAccess ?? 0,
+    },
+    aiScore,
+    currentUserReview,
+    versionDetails: [
+      {
+        version,
+        aiScore,
+        expertReviews: currentUserReview ? [currentUserReview] : [],
+      },
+    ],
+  };
+}
+
+function ok<T>(data: T, number?: number): MockEnvelope<T> {
+  const n = number ?? (Array.isArray(data) ? data.length : data == null ? 0 : 1);
+  return {
+    code: 0,
+    message: 'OK',
+    meta: { number: n, message: 'OK', success: true },
+    data,
+  };
+}
+
+function fail<T>(message: string, data: T, code = 50001): MockEnvelope<T> {
+  return {
+    code,
+    message,
+    meta: { number: 0, message, success: false },
+    data,
+  };
+}
+
+function withPageMeta<T extends object>(items: T[], total: number): PagedArray<T> {
+  const out = items.map((item) => ({ ...item })) as PagedArray<T>;
+  out.records = out;
+  out.total = total;
+  return out;
+}
+
+function normalizePath(path: unknown): string {
+  const raw = String(path ?? '').trim();
+  if (!raw) {
+    return '';
+  }
+  const pathOnly = raw.split('?')[0] ?? '';
+  return pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`;
+}
+
+function normalizeMethod(method: unknown): string {
+  return String(method ?? 'get').toLowerCase();
+}
+
+function readParams(config: AxiosRequestConfig): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  if (config.params && typeof config.params === 'object') {
+    Object.assign(params, config.params as Record<string, unknown>);
+  }
+  const rawUrl = String(config.url ?? '');
+  const query = rawUrl.includes('?') ? rawUrl.slice(rawUrl.indexOf('?') + 1) : '';
+  if (query) {
+    const sp = new URLSearchParams(query);
+    sp.forEach((value, key) => {
+      params[key] = value;
+    });
+  }
+  return params;
+}
+
+/** 开发环境 mock 日志：避免直接打印 FormData/Blob 等不可读内容 */
+function summarizeMockRequestBody(data: unknown): unknown {
+  if (data === undefined || data === null || data === '') {
+    return undefined;
+  }
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    const fields: string[] = [];
+    data.forEach((value, key) => {
+      if (typeof File !== 'undefined' && value instanceof File) {
+        fields.push(`${key}=File(${value.name}, ${value.size}b)`);
+      } else {
+        const s = String(value);
+        fields.push(`${key}=${s.length > 120 ? `${s.slice(0, 120)}…` : s}`);
+      }
+    });
+    return { _type: 'FormData', fields };
+  }
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    return { _type: 'Blob', size: data.size };
+  }
+  if (typeof data === 'string') {
+    const t = data.trim();
+    if (!t) {
+      return undefined;
+    }
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        return JSON.parse(t) as unknown;
+      } catch {
+        return t.length > 500 ? `${t.slice(0, 500)}…` : t;
+      }
+    }
+    return t.length > 500 ? `${t.slice(0, 500)}…` : t;
+  }
+  return data;
+}
+
+function readNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Number(String(value ?? '').trim());
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function splitTags(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((x) => String(x).trim()).filter(Boolean);
+  }
+  return String(value ?? '')
+    .split(/[,，\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function tagsText(value: unknown): string {
+  return splitTags(value).join(',');
+}
+
+function categoryGroupFromCategory(category: string): string {
+  const raw = category.trim();
+  if (CATEGORY_BY_GROUP[raw]) {
+    return raw;
+  }
+  const upper = raw.toUpperCase();
+  if (GROUP_BY_CATEGORY_CODE[upper]) {
+    return GROUP_BY_CATEGORY_CODE[upper];
+  }
+  return '公共';
+}
+
+function categoryFromGroup(group: string | undefined): string {
+  return CATEGORY_BY_GROUP[group ?? ''] ?? 'COMMON';
+}
+
+function categoryCandidatesFromParam(category: string): string[] {
+  const raw = category.trim();
+  if (!raw) {
+    return [];
+  }
+  const out = new Set<string>([raw]);
+  const visit = (nodes: ReturnType<typeof getMockBusinessDimensions>, parentCode = ''): boolean => {
+    for (const node of nodes) {
+      const code = String(node.dimensionCode ?? '').trim();
+      const name = String(node.dimensionName ?? '').trim();
+      const id = String(node.id ?? '').trim();
+      if (raw === id || raw === code || raw === name) {
+        if (code) {
+          out.add(code);
+        }
+        if (parentCode) {
+          out.add(parentCode);
+        }
+        return true;
+      }
+      if (node.children && visit(node.children, code || parentCode)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  visit(getMockBusinessDimensions());
+  return [...out];
+}
+
+function orgByName(name: string | undefined): MockOrganization | undefined {
+  const key = (name ?? '').trim();
+  return orgStore.find((o) => o.orgName === key);
+}
+
+function skillMockId(seed: Skill): string {
+  return String(seed.id ?? stableNumericId(seed));
+}
+
+function skillDeptParts(skill: Skill): string[] {
+  const direct = [
+    (skill as any).departmentL1,
+    (skill as any).departmentL2,
+    (skill as any).departmentL3,
+    (skill as any).departmentL4,
+    (skill as any).departmentL5,
+    (skill as any).departmentL6,
+  ]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean);
+  return direct.length > 0 ? direct : parseDeptNamePath(skill.dept_name ?? '');
+}
+
+function makeSkillMd(
+  record: Pick<
+    MockSkillRecord,
+    'name' | 'description' | 'requirements' | 'author' | 'currentVersion' | 'category' | 'tags'
+  >,
+): string {
+  return [
+    '---',
+    `name: ${record.name}`,
+    `description: ${record.description}`,
+    `requirements: ${record.requirements}`,
+    'metadata:',
+    `  author: ${record.author}`,
+    `  version: ${record.currentVersion}`,
+    `  category: ${record.category}`,
+    `  tags: ${String(record.tags ?? '').replace(/,/g, ' ')}`,
+    '---',
+    '',
+    `# ${record.name}`,
+    '',
+    record.description,
+  ].join('\n');
+}
+
+const DEFAULT_MOCK_FILE_TREE: string[] = ['SKILL.md', 'README.md', 'scripts/main.py'];
+const MOCK_FIRST_SKILL_PNG_PATH = 'assets/mock-preview.png';
+const MOCK_FIRST_SKILL_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAPAAAAB4CAYAAADMtn8nAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAN2SURBVHhe7dqxreBWEAPA68gVujVX4jqc3uUMDBDQF7XAEJhEId8y06+//v7vN3DTr/wA3GHAcJgBw2EGDIcZMBxmwHCYAcNhBgyHGTAcZsBwmAHDYQYMhxkwHGbAcJgBw2EGDIcZMBxmwHCYAcNhBgyHGTAcZsBwmAHDYT8+YPn/ZF/QMOBxsi9oGPA42Rc0DHic7AsaBjxO9gUNAx4n+4KGAY+TfbX++fc3H5bv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsq9WHgzfku/1NAMeJ/tq5cHwLfleTzPgcbKvVh4M35Lv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsq9WHgzfku/1NAMeJ/tq5cHwLfleTzPgcbKvVh4M35Lv9TQDHif7auXB8C35Xk8z4HGyr1YeDN+S7/U0Ax4n+2rlwfAt+V5PM+Bxsi9oGPA42Rc0DHic7AsaBjxO9gUNAx4n+4KGAY+TfUHDgMfJvqBhwONkX9Aw4HGyL2gY8DjZFzQMeJzsq5W/7tHJPq8x4HGyr1YeJJ3s8xoDHif7auVB0sk+rzHgcbKvVh4knezzGgMeJ/tq5UHSyT6vMeBxsq9WHiSd7PMaAx4n+2rlQdLJPq8x4HGyr1YeJJ3s8xoDHif7auVB0sk+rzHgcbKvVh4knezzGgMeJ/tq5UHSyT6vMeBxsq9WHiSd7PMaAx4n+4KGAY+TfUHDgMfJvqBhwONkX9Aw4HGyL2gY8DjZFzQMeJzsCxoGPE72BQ0DHif7goYBj5N9QcOAx8m+WvlrIO/K93ibAY+TfbXyoHhXvsfbDHic7KuVB8W78j3eZsDjZF+tPCjele/xNgMeJ/tq5UHxrnyPtxnwONlXKw+Kd+V7vM2Ax8m+WnlQvCvf420GPE721cqD4l35Hm8z4HGyr1YeFO/K93ibAY+TfbXyoHhXvsfbDHic7KuVB8W78j3eZsDjZF+tPCjele/xNgMeJ/uChgGPk31Bw4DHyb6gYcDjZF/QMOBxsi9oGPA42Rc0fnzAwM8xYDjMgOEwA4bDDBgOM2A4zIDhMAOGwwwYDjNgOMyA4TADhsMMGA4zYDjMgOEwA4bDDBgOM2A4zIDhMAOGwwwYDjNgOMyA4TADhsP+ACwMgkAIacqvAAAAAElFTkSuQmCC';
+
+function pickMockFileTreeFromSeed(seed: Skill): string | string[] {
+  const ft = (seed as { fileTree?: unknown }).fileTree;
+  if (typeof ft === 'string' && ft.trim()) {
+    return ft;
+  }
+  if (Array.isArray(ft) && ft.length > 0) {
+    return ft.map((x) => String(x));
+  }
+  return [...DEFAULT_MOCK_FILE_TREE];
+}
+
+function pickMockSkillMdFromSeed(seed: Skill, base: MockSkillRecord): string {
+  const raw = seed.skillMdContent;
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw;
+  }
+  return makeSkillMd(base);
+}
+
+function pickQualityBadgesFromSeed(seed: Skill): string[] {
+  const source = seed.qualityBadges;
+  const labels = Array.isArray(source)
+    ? source
+    : typeof source === 'string'
+      ? source.split(/[,，;；、\s]+/)
+      : [];
+
+  return [...new Set(labels.map((label) => String(label).trim()).filter(Boolean))];
+}
+
+function toMockSkillRecord(seed: Skill): MockSkillRecord {
+  const id = skillMockId(seed);
+  const level = seed.publish_level ?? seed.level ?? '个人级';
+  const publishName =
+    seed.publish_name ??
+    seed.publisher ??
+    (level.includes('个人') ? 'xxx_个人发布商' : '平台工具组');
+  const org = level.includes('组织') ? orgByName(publishName) : undefined;
+  const categoryGroupName = categoryGroupFromCategory(seed.tagFunctional || '公共');
+  const category = categoryFromGroup(categoryGroupName);
+  const updatedAt = seed.latestPublishTime ?? nowText();
+  const downloads = seed.download_count ?? seed.downloads ?? 0;
+  const totalAccess = seed.totalAccess ?? downloads * 8;
+  const currentVersion = seed.version ?? '1.0.0';
+  const dept = seed.dept_name || '部门1/平台产品线/平台工具组';
+  const deptParts = skillDeptParts({ ...seed, dept_name: dept });
+  const author = seed.publisher ?? publishName;
+  const qualityBadges = pickQualityBadgesFromSeed(seed);
+  const versions = seed.versions?.map((v) => ({ ...v })) ?? [
+    {
+      version: currentVersion,
+      publishTime: updatedAt,
+      note: 'Mock 初始版本',
+      packageFileName: `${seed.name ?? seed.skill_id}-v${currentVersion}.zip`,
+      packageSize: 128000,
+    },
+  ];
+  const base: MockSkillRecord = {
+    ...seed,
+    id,
+    skill_id: seed.skill_id ?? id,
+    name: seed.name ?? seed.skill_id,
+    description: seed.description ?? '',
+    publish_name: publishName,
+    publish_level: level,
+    owner_list: seed.owner_list ?? '[]',
+    download_count: downloads,
+    dept_name: dept,
+    icon: seed.icon ?? 'PK',
+    publisher: author,
+    latestPublishTime: updatedAt,
+    level,
+    downloads,
+    totalAccess,
+    rating: seed.rating ?? 4.5,
+    version: currentVersion,
+    currentVersion,
+    versions,
+    ownedByUser: seed.ownedByUser ?? level.includes('个人'),
+    marketStatus: seed.marketStatus ?? level,
+    tagFunctional: categoryGroupName,
+    tagOrg: level,
+    tags: typeof seed.tags === 'string' ? seed.tags : tagsText(seed.tags),
+    author,
+    createdBy: seed.createdBy ?? author,
+    category,
+    categoryGroupName,
+    status: seed.marketStatus ?? level,
+    orgId: org?.id ?? null,
+    orgName: org?.orgName ?? (level.includes('组织') ? publishName : null),
+    departmentL1: deptParts[0] ?? '',
+    departmentL2: deptParts[1] ?? '',
+    departmentL3: deptParts[2] ?? '',
+    departmentL4: deptParts[3] ?? '',
+    departmentL5: deptParts[4] ?? '',
+    departmentL6: deptParts[5] ?? '',
+    requirements: '需要 Python 3.10+，可按 Skill 文档安装依赖。',
+    fileDir: `fuyao/skills/${seed.name ?? seed.skill_id}/${currentVersion}`,
+    packagePath: `fuyao/skills/${seed.name ?? seed.skill_id}/${currentVersion}/skill.zip`,
+    fileTree: pickMockFileTreeFromSeed(seed),
+    skillMdContent: '',
+    createdAt: updatedAt,
+    updatedAt,
+    likes: Math.max(0, Math.floor(downloads * 0.05)),
+    dislikes: Math.max(0, Math.floor(downloads * 0.004)),
+    qualityMark:
+      seed.qualityMark ?? qualityBadges[0] ?? ((seed.rating ?? 0) >= 4.7 ? '优秀 Skill' : null),
+    qualityBadges:
+      qualityBadges.length > 0
+        ? qualityBadges
+        : (seed.rating ?? 0) >= 4.7
+          ? ['优秀 Skill', '高分 Skill']
+          : [],
+    scored: (seed.rating ?? 0) > 0,
+  };
+  base.skillMdContent = pickMockSkillMdFromSeed(seed, base);
+  return base;
+}
+
+let skillRecords: MockSkillRecord[] = getBuiltInSkills().map(toMockSkillRecord);
+
+function readReviewCenterSkillSnapshot(sid: string): Record<string, any> | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem('__review_skill_detail__' + sid);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, any>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function createReviewCenterSkillRecord(sid: string): MockSkillRecord | undefined {
+  if (!sid.startsWith('review-skill-')) {
+    return undefined;
+  }
+
+  const task = readReviewCenterSkillSnapshot(sid);
+  const record = toMockSkillRecord({
+    id: sid,
+    skill_id: sid,
+    name: task?.name ?? 'Mock Skill ' + sid,
+    description: task
+      ? 'Review center mock detail for ' + task.name
+      : 'Review center mock skill detail',
+    publishName: task?.team ?? 'Review Center Mock Team',
+    createdBy: task?.ownerUser ?? task?.ownerName ?? 'mock-reviewer',
+    deptName: task?.team ? 'Review Center/' + task.team : 'Review Center/Mock Team',
+    downloads: Number(task?.downloads ?? 0),
+    totalAccess: Number(task?.totalAccess ?? task?.usage ?? 0),
+    category: task?.categoryId ?? 'review',
+    icon: 'RV',
+    version: task?.version ?? '1.0.0',
+    tags: task?.tags
+      ? task.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : ['review'],
+    fileTree: sid + '/\n' + sid + '/SKILL.md\n' + sid + '/references/review-rubric.md',
+    skillMdContent:
+      '# ' + (task?.name ?? sid) + '\n\nMock detail generated from review center task ' + sid + '.',
+  } as Skill);
+  skillRecords = [record, ...skillRecords];
+  return record;
+}
+
+function findSkill(id: string | number | undefined): MockSkillRecord | undefined {
+  const sid = String(id ?? '').trim();
+  if (!sid) {
+    return undefined;
+  }
+  return (
+    skillRecords.find(
+      (s) =>
+        s.id === sid || s.skill_id === sid || s.name === sid || String(stableNumericId(s)) === sid,
+    ) ?? createReviewCenterSkillRecord(sid)
+  );
+}
+
+function matchesDepartmentFields(skill: MockSkillRecord, params: Record<string, unknown>): boolean {
+  const expected = [
+    params.departmentL1,
+    params.departmentL2,
+    params.departmentL3,
+    params.departmentL4,
+    params.departmentL5,
+    params.departmentL6,
+  ].map((v) => String(v ?? '').trim());
+  const actual = [
+    skill.departmentL1,
+    skill.departmentL2,
+    skill.departmentL3,
+    skill.departmentL4,
+    skill.departmentL5,
+    skill.departmentL6,
+  ];
+  return expected.every((want, i) => !want || actual[i] === want);
+}
+
+function filterSkills(params: Record<string, unknown>, source = skillRecords): MockSkillRecord[] {
+  let list = [...source];
+  const keyword = String(params.keyword ?? '')
+    .trim()
+    .toLowerCase();
+  if (keyword) {
+    list = list.filter((s) =>
+      [s.id, s.skill_id, s.name, s.description, s.publish_name, s.author, s.dept_name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword)),
+    );
+  }
+  const status = String(params.status ?? params.level ?? '').trim();
+  if (status) {
+    list = list.filter(
+      (s) =>
+        s.status.includes(status) || s.level.includes(status) || s.publish_level.includes(status),
+    );
+  }
+  const orgId = readNumber(params.orgId, 0);
+  if (orgId > 0) {
+    list = list.filter((s) => s.orgId === orgId);
+  }
+  const categoryGroupName = String(params.categoryGroupName ?? '').trim();
+  if (categoryGroupName) {
+    list = list.filter((s) => s.categoryGroupName === categoryGroupName);
+  }
+  const category = String(params.categoryId ?? params.category ?? '').trim();
+  if (category) {
+    const categoryCandidates = categoryCandidatesFromParam(category);
+    list = list.filter(
+      (s) =>
+        categoryCandidates.includes(s.category) ||
+        categoryCandidates.includes(s.categoryGroupName) ||
+        categoryCandidates.includes(s.tagFunctional ?? ''),
+    );
+  }
+  const tags = splitTags(params.tagList ?? params.tag);
+  if (tags.length > 0) {
+    list = list.filter((s) => {
+      const own = new Set(splitTags(s.tags));
+      return tags.some((tag) => own.has(tag));
+    });
+  }
+  list = list.filter((s) => matchesDepartmentFields(s, params));
+  return list.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+}
+
+function pageSkills(
+  params: Record<string, unknown>,
+  source = skillRecords,
+): PagedArray<MockSkillRecord> {
+  const list = filterSkills(params, source);
+  const total = list.length;
+  const pageNo = Math.max(1, readNumber(params.pageNo ?? params.pageNum, 1));
+  const pageSize = Math.max(1, readNumber(params.pageSize, 12));
+  const start = (pageNo - 1) * pageSize;
+  return withPageMeta(list.slice(start, start + pageSize), total);
+}
+
+function fileFromFormData(data: unknown): File | undefined {
+  if (typeof FormData === 'undefined' || !(data instanceof FormData)) {
+    return undefined;
+  }
+  for (const key of ['file', 'uploadFile']) {
+    const value = data.get(key);
+    if (value && typeof value === 'object' && 'name' in value) {
+      return value as File;
+    }
+  }
+  return undefined;
+}
+
+function fileBaseName(file: File | undefined, fallback: string): string {
+  const raw = file?.name?.replace(/\.[^.]+$/, '').trim();
+  return raw || fallback;
+}
+
+function bumpPatchVersion(version: string): string {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
+  if (!match) {
+    return `${version}.1`;
+  }
+  return `${Number(match[1])}.${Number(match[2])}.${Number(match[3]) + 1}`;
+}
+
+function parsedSkillFromFile(file: File | undefined): Record<string, unknown> {
+  const name = fileBaseName(file, 'pdf-document-extractor');
+  const existing = skillRecords.find((s) => s.name?.toLowerCase() === name.toLowerCase());
+  const version = existing ? bumpPatchVersion(existing.currentVersion) : '1.0.0';
+  return {
+    name,
+    version,
+    description: `Mock：根据「${file?.name ?? `${name}.zip`}」解析出的 Skill 描述`,
+    requirements: '需要 Python 3.10+，可按 SKILL.md 安装依赖。',
+    author: '当前用户',
+    createdBy: '当前用户',
+    category: 'COMMON',
+    categoryGroupName: '公共',
+    tags: ['mock', 'upload'],
+    level: '个人级（默认发布，无需审核）',
+    nameExists: Boolean(existing),
+    canSubmit: true,
+    existingVersion: existing?.currentVersion,
+    nextVersion: version,
+    fileTree: ['SKILL.md', 'README.md', 'scripts/main.py'],
+    warnings: [],
+  };
+}
+
+function nextSkillId(): string {
+  return String(Math.max(0, ...skillRecords.map((s) => Number(s.id)).filter(Number.isFinite)) + 1);
+}
+
+function upsertUploadedSkill(
+  file: File | undefined,
+  params: Record<string, unknown> = {},
+): MockSkillRecord {
+  const parsed = parsedSkillFromFile(file);
+  const name = String(parsed.name);
+  const categoryGroupName = readString(params.categoryGroupName, String(parsed.categoryGroupName));
+  const stamp = nowText();
+  const existing = skillRecords.find((s) => s.name?.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    const nextVersion = String(parsed.version);
+    const entry: SkillVersionEntry = {
+      version: nextVersion,
+      publishTime: stamp,
+      note: 'Mock 上传新版本',
+      packageFileName: file?.name ?? `${name}-v${nextVersion}.zip`,
+      packageSize: file?.size ?? 0,
+    };
+    existing.currentVersion = nextVersion;
+    existing.version = nextVersion;
+    existing.versions = [...(existing.versions ?? []), entry];
+    existing.updatedAt = stamp;
+    existing.latestPublishTime = stamp;
+    existing.packagePath = `fuyao/skills/${name}/${nextVersion}/skill.zip`;
+    existing.fileDir = `fuyao/skills/${name}/${nextVersion}`;
+    existing.tagFunctional = categoryGroupName;
+    existing.categoryGroupName = categoryGroupName;
+    existing.skillMdContent = makeSkillMd(existing);
+    return { ...existing };
+  }
+
+  const newSkill = toMockSkillRecord({
+    id: nextSkillId(),
+    skill_id: name,
+    name,
+    description: String(parsed.description),
+    publish_name: 'xxx_个人发布商',
+    publish_level: '个人级',
+    owner_list: '[]',
+    download_count: 0,
+    dept_name: '部门1/个人空间/默认部门/Skill上传组',
+    publisher: String(parsed.author),
+    latestPublishTime: stamp,
+    level: '个人级',
+    downloads: 0,
+    rating: 4.5,
+    version: String(parsed.version),
+    versions: [
+      {
+        version: String(parsed.version),
+        publishTime: stamp,
+        note: 'Mock 首次上传',
+        packageFileName: file?.name ?? `${name}-v${parsed.version}.zip`,
+        packageSize: file?.size ?? 0,
+      },
+    ],
+    ownedByUser: true,
+    tagFunctional: categoryGroupName,
+    tagOrg: '个人级',
+    tags: tagsText(parsed.tags),
+  });
+  skillRecords = [newSkill, ...skillRecords];
+  return { ...newSkill };
+}
+
+function createSkillFromBody(body: Record<string, unknown>): MockSkillRecord {
+  const stamp = nowText();
+  const name = readString(body.name, `mock-skill-${Date.now()}`);
+  const category = readString(body.category, 'COMMON');
+  const group = categoryGroupFromCategory(category);
+  const version = readString(body.version, '1.0.0');
+  const record = toMockSkillRecord({
+    id: nextSkillId(),
+    skill_id: name,
+    name,
+    description: readString(body.description, ''),
+    publish_name: readString(body.author, '当前用户'),
+    publish_level: '个人级',
+    owner_list: '[]',
+    download_count: 0,
+    dept_name: '部门1/个人空间/默认部门/手动创建组',
+    publisher: readString(body.author, '当前用户'),
+    latestPublishTime: stamp,
+    level: '个人级',
+    downloads: 0,
+    rating: 4.5,
+    version,
+    versions: [
+      {
+        version,
+        publishTime: stamp,
+        note: 'Mock 手动创建',
+        packageFileName: `${name}-v${version}.zip`,
+        packageSize: 0,
+      },
+    ],
+    ownedByUser: true,
+    tagFunctional: group,
+    tagOrg: '个人级',
+    tags: tagsText(body.tags),
+  });
+  record.requirements = readString(body.requirements, record.requirements);
+  record.packagePath = readString(body.packagePath, record.packagePath);
+  record.skillMdContent = readString(body.skillMdContent, record.skillMdContent);
+  const ftBody = body.fileTree;
+  if (Array.isArray(ftBody)) {
+    record.fileTree = ftBody.map((x) => String(x));
+  } else if (typeof ftBody === 'string' && ftBody.trim()) {
+    record.fileTree = ftBody;
+  }
+  skillRecords = [record, ...skillRecords];
+  return { ...record };
+}
+
+function createZipUrl(skill: MockSkillRecord): string {
+  const zip = new PizZip();
+  zip.file('SKILL.md', skill.skillMdContent || makeSkillMd(skill));
+  zip.file('README.md', `# ${skill.name}\n\n${skill.description}\n`);
+  zip.folder('scripts')?.file('main.py', `print("hello from ${skill.name}")\n`);
+  const blob = zip.generate({ type: 'blob', mimeType: 'application/zip' });
+  return URL.createObjectURL(blob);
+}
+
+function handleSkillRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  const params = readParams(config);
+  if (method === 'get' && (path === '/business-dimensions' || path === '/categories')) {
+    const data = getMockBusinessDimensions();
+    return ok(data, data.length);
+  }
+  if (method === 'post' && path === '/upload/parse') {
+    return ok(parsedSkillFromFile(fileFromFormData(config.data)));
+  }
+  if (method === 'post' && path === '/upload') {
+    return ok(upsertUploadedSkill(fileFromFormData(config.data), params));
+  }
+  if (method === 'post' && path === '') {
+    return ok(createSkillFromBody((config.data ?? {}) as Record<string, unknown>));
+  }
+  if (method === 'get' && path === '') {
+    const data = pageSkills(params);
+    return ok(data, data.total);
+  }
+  if (method === 'get' && path === '/my') {
+    const mine = skillRecords.filter((s) => s.ownedByUser);
+    const data = pageSkills(params, mine.length > 0 ? mine : skillRecords.slice(0, 4));
+    return ok(data, data.total);
+  }
+  if (method === 'post' && path === '/publish-to-market') {
+    return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
+  }
+
+  const isSkillPlanningSupplementQuery =
+    path === '/config/query' || path === '/config/supplement/query';
+  const isSkillPlanningSupplementUpdate =
+    path === '/config/update' || path === '/config/supplement/update';
+  const isSkillPlanningSupplementBatchDelete =
+    path === '/config/batch_delete' || path === '/config/supplement/batch_delete';
+  const supplementDeleteMatch = /^\/config\/(?:supplement\/)?delete\/([^/]+)$/.exec(path);
+  const isSkillPlanningSupplementCreate =
+    path === '/config/add' || path === '/config/supplement/add';
+  const skillPlanningSupplementRequiresUserId =
+    isSkillPlanningSupplementCreate ||
+    isSkillPlanningSupplementQuery ||
+    isSkillPlanningSupplementUpdate ||
+    isSkillPlanningSupplementBatchDelete ||
+    Boolean(supplementDeleteMatch);
+  if (skillPlanningSupplementRequiresUserId && !String(params.userId ?? '').trim()) {
+    return fail('缺少必填参数: userId', null);
+  }
+
+  if (
+    isSkillPlanningSupplementCreate ||
+    isSkillPlanningSupplementQuery ||
+    isSkillPlanningSupplementUpdate
+  ) {
+    const missingMutationParams = ['dimCode', 'dimType', 'dimName'].filter(
+      (key) => !String(params[key] ?? '').trim(),
+    );
+    if (missingMutationParams.length > 0) {
+      return fail(
+        `\u7f3a\u5c11\u5fc5\u586b\u53c2\u6570: ${missingMutationParams.join(', ')}`,
+        null,
+      );
+    }
+  }
+  const readPlanningSupplementPayload = (): Record<string, unknown> => {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const entity =
+      body.skillConfigEntity && typeof body.skillConfigEntity === 'object'
+        ? (body.skillConfigEntity as Record<string, unknown>)
+        : {};
+    return { ...body, ...entity };
+  };
+  if (method === 'post' && isSkillPlanningSupplementCreate) {
+    const entity = readPlanningSupplementPayload();
+    entity.name = entity.skillName ?? entity.name;
+    entity.level = entity.dimType ?? entity.level;
+    entity.offeringId = entity.dimCode ?? entity.offeringId;
+    entity.offeringName = entity.dimName ?? entity.offeringName;
+    entity.planDeptCode = entity.dimCode ?? entity.planDeptCode;
+    entity.planDeptName = entity.dimName ?? entity.planDeptName;
+    const requiredKeys = [
+      'name',
+      'firstScene',
+      'secondScene',
+      'activityNodeName',
+      'subActivityNodeName',
+      'level',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(entity[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const dimType = String(entity.level).trim();
+    if (dimType !== '部门级' && dimType !== '产品级') {
+      return fail('level 仅支持 部门级 或 产品级', null);
+    }
+    const dimCode = String(dimType === '产品级' ? entity.offeringId : entity.planDeptCode).trim();
+    const dimName = String(dimType === '产品级' ? entity.offeringName : entity.planDeptName).trim();
+    if (!dimCode || !dimName) {
+      return fail('缺少维度编码或名称', null);
+    }
+    const skillName = String(entity.name).trim();
+    const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
+    const record: MockSkillPlanningSupplementRecord = {
+      id: nextMockSkillPlanningSupplementId(),
+      skillId: master?.id,
+      skillName,
+      name: skillName,
+      firstScene: String(entity.firstScene).trim(),
+      secondScene: String(entity.secondScene).trim(),
+      activityNodeName: String(entity.activityNodeName).trim(),
+      subActivityNodeName: String(entity.subActivityNodeName).trim(),
+      dimType,
+      dimCode,
+      dimName,
+      level: dimType,
+      offeringId: String(entity.offeringId ?? '').trim(),
+      offeringName: String(entity.offeringName ?? '').trim(),
+      skillDescription: String(entity.description ?? '').trim() || master?.skillDescription || '',
+      description: String(entity.description ?? '').trim(),
+      ownerName: String(entity.owner ?? '').trim() || master?.ownerName || '',
+      ownerId: master?.ownerId ?? '',
+      owner: String(entity.owner ?? '').trim(),
+      developOwnerName: String(entity.developOwner ?? '').trim() || master?.developOwnerName || '',
+      developOwnerId: master?.developOwnerId ?? '',
+      developOwner: String(entity.developOwner ?? '').trim(),
+      status: String(entity.status ?? '').trim() || master?.status || '未开始',
+      planFinishDate:
+        String(entity.planedCompleteDate ?? '').trim() || master?.planFinishDate || '',
+      planedCompleteDate: String(entity.planedCompleteDate ?? '').trim(),
+      deptCode: String(entity.deptCode ?? '').trim(),
+      deptName: String(entity.deptName ?? '').trim(),
+      planDeptCode: String(entity.planDeptCode ?? '').trim(),
+      planDeptName: String(entity.planDeptName ?? '').trim(),
+      l5DeptCode: String(entity.l5DeptCode ?? '').trim(),
+      l5DeptName: String(entity.l5DeptName ?? '').trim(),
+      l4DeptCode: String(entity.l4DeptCode ?? '').trim(),
+      l4DeptName: String(entity.l4DeptName ?? '').trim(),
+      l3DeptCode: String(entity.l3DeptCode ?? '').trim(),
+      l3DeptName: String(entity.l3DeptName ?? '').trim(),
+      l2DeptCode: String(entity.l2DeptCode ?? '').trim(),
+      l2DeptName: String(entity.l2DeptName ?? '').trim(),
+      l1DeptCode: String(entity.l1DeptCode ?? '').trim(),
+      l1DeptName: String(entity.l1DeptName ?? '').trim(),
+      createTime: String(entity.createTime ?? '').trim(),
+      updateTime: String(entity.updateTime ?? '').trim(),
+    };
+    mockSkillPlanningSupplementRecords.unshift(record);
+    return ok({ ...record });
+  }
+
+  if ((method === 'get' || method === 'post') && isSkillPlanningSupplementQuery) {
+    const body =
+      method === 'post' ? (readSkillRequestBody(config.data) as Record<string, unknown>) : {};
+    const query =
+      method === 'post' && body.query && typeof body.query === 'object'
+        ? (body.query as Record<string, unknown>)
+        : params;
+    const result = filterMockSkillPlanningSupplement(query);
+    return ok(result.list, result.total);
+  }
+
+  if (method === 'put' && isSkillPlanningSupplementUpdate) {
+    const entity = readPlanningSupplementPayload();
+    entity.name = entity.skillName ?? entity.name;
+    entity.level = entity.dimType ?? entity.level;
+    entity.offeringId = entity.dimCode ?? entity.offeringId;
+    entity.offeringName = entity.dimName ?? entity.offeringName;
+    entity.planDeptCode = entity.dimCode ?? entity.planDeptCode;
+    entity.planDeptName = entity.dimName ?? entity.planDeptName;
+    const id = String(entity.id ?? '').trim();
+    if (!id) {
+      return fail('缺少 id', null);
+    }
+    const requiredKeys = [
+      'name',
+      'firstScene',
+      'secondScene',
+      'activityNodeName',
+      'subActivityNodeName',
+      'level',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(entity[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const dimType = String(entity.level).trim();
+    if (dimType !== '部门级' && dimType !== '产品级') {
+      return fail('level 仅支持 部门级 或 产品级', null);
+    }
+    const dimCode = String(dimType === '产品级' ? entity.offeringId : entity.planDeptCode).trim();
+    const dimName = String(dimType === '产品级' ? entity.offeringName : entity.planDeptName).trim();
+    if (!dimCode || !dimName) {
+      return fail('缺少维度编码或名称', null);
+    }
+    const target = mockSkillPlanningSupplementRecords.find((item) => item.id === id);
+    if (!target) {
+      return fail('Skill 规划不存在', null);
+    }
+    const skillName = String(entity.name).trim();
+    const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
+    Object.assign(target, {
+      skillId: master?.id,
+      skillName,
+      name: skillName,
+      firstScene: String(entity.firstScene).trim(),
+      secondScene: String(entity.secondScene).trim(),
+      activityNodeName: String(entity.activityNodeName).trim(),
+      subActivityNodeName: String(entity.subActivityNodeName).trim(),
+      dimType,
+      dimCode,
+      dimName,
+      level: dimType,
+      offeringId: String(entity.offeringId ?? '').trim(),
+      offeringName: String(entity.offeringName ?? '').trim(),
+      skillDescription:
+        String(entity.description ?? '').trim() ||
+        master?.skillDescription ||
+        target.skillDescription,
+      description: String(entity.description ?? '').trim(),
+      ownerName: String(entity.owner ?? '').trim() || master?.ownerName || target.ownerName,
+      ownerId: master?.ownerId ?? target.ownerId,
+      owner: String(entity.owner ?? '').trim(),
+      developOwnerName:
+        String(entity.developOwner ?? '').trim() ||
+        master?.developOwnerName ||
+        target.developOwnerName,
+      developOwnerId: master?.developOwnerId ?? target.developOwnerId,
+      developOwner: String(entity.developOwner ?? '').trim(),
+      status: String(entity.status ?? '').trim() || master?.status || target.status,
+      planFinishDate:
+        String(entity.planedCompleteDate ?? '').trim() ||
+        master?.planFinishDate ||
+        target.planFinishDate,
+      planedCompleteDate: String(entity.planedCompleteDate ?? '').trim(),
+      deptCode: String(entity.deptCode ?? '').trim(),
+      deptName: String(entity.deptName ?? '').trim(),
+      planDeptCode: String(entity.planDeptCode ?? '').trim(),
+      planDeptName: String(entity.planDeptName ?? '').trim(),
+      l5DeptCode: String(entity.l5DeptCode ?? '').trim(),
+      l5DeptName: String(entity.l5DeptName ?? '').trim(),
+      l4DeptCode: String(entity.l4DeptCode ?? '').trim(),
+      l4DeptName: String(entity.l4DeptName ?? '').trim(),
+      l3DeptCode: String(entity.l3DeptCode ?? '').trim(),
+      l3DeptName: String(entity.l3DeptName ?? '').trim(),
+      l2DeptCode: String(entity.l2DeptCode ?? '').trim(),
+      l2DeptName: String(entity.l2DeptName ?? '').trim(),
+      l1DeptCode: String(entity.l1DeptCode ?? '').trim(),
+      l1DeptName: String(entity.l1DeptName ?? '').trim(),
+      createTime: String(entity.createTime ?? '').trim(),
+      updateTime: String(entity.updateTime ?? '').trim(),
+    });
+    return ok({ ...target });
+  }
+
+  if (method === 'delete' && supplementDeleteMatch) {
+    const id = decodeURIComponent(supplementDeleteMatch[1] ?? '').trim();
+    if (!id) {
+      return fail('缺少删除 id', null);
+    }
+    const index = mockSkillPlanningSupplementRecords.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return fail('Skill 规划不存在', null);
+    }
+    const [removed] = mockSkillPlanningSupplementRecords.splice(index, 1);
+    return ok(removed);
+  }
+
+  if (method === 'delete' && isSkillPlanningSupplementBatchDelete) {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map((item) => String(item ?? '').trim()).filter(Boolean)
+      : [];
+    if (ids.length === 0) {
+      return fail('ids 不能为空', null);
+    }
+    const idSet = new Set(ids);
+    const before = mockSkillPlanningSupplementRecords.length;
+    for (let index = mockSkillPlanningSupplementRecords.length - 1; index >= 0; index -= 1) {
+      const current = mockSkillPlanningSupplementRecords[index];
+      if (idSet.has(current.id)) {
+        mockSkillPlanningSupplementRecords.splice(index, 1);
+      }
+    }
+    const removed = before - mockSkillPlanningSupplementRecords.length;
+    return ok({ removed }, removed);
+  }
+
+  if (method === 'post' && path === '/management/add') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const payload = { ...params, ...body };
+    const requiredKeys = [
+      'userId',
+      'skillName',
+      'skillDescription',
+      'dimType',
+      'dimCode',
+      'dimName',
+      'ownerName',
+      'ownerId',
+      'developOwnerName',
+      'developOwnerId',
+      'planFinishDate',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(payload[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
+      return fail('status 不应传入', null);
+    }
+    const stamp = nowLocalDateTimeArray();
+    const record: MockSkillMasterManagementRecord = {
+      id: nextMockSkillMasterManagementId(),
+      skillName: String(payload.skillName).trim(),
+      skillDescription: String(payload.skillDescription).trim(),
+      dimType: String(payload.dimType).trim(),
+      dimCode: String(payload.dimCode).trim(),
+      dimName: String(payload.dimName).trim(),
+      ownerName: String(payload.ownerName).trim(),
+      ownerId: String(payload.ownerId).trim(),
+      developOwnerName: String(payload.developOwnerName).trim(),
+      developOwnerId: String(payload.developOwnerId).trim(),
+      status: '未开始',
+      planFinishDate: String(payload.planFinishDate).trim(),
+      createdAt: stamp,
+      updatedAt: stamp,
+      skillMatchId: null,
+      skillMatchLevel: null,
+    };
+    if (
+      mockSkillMasterManagementRecords.some(
+        (item) => item.skillName === record.skillName && item.dimCode === record.dimCode,
+      )
+    ) {
+      return fail(`Skill 已存在: ${record.skillName}`, null);
+    }
+    mockSkillMasterManagementRecords.unshift(record);
+    return ok({
+      ...record,
+    });
+  }
+
+  if (method === 'get' && path === '/management/query') {
+    const { list, total } = filterMockSkillMasterManagement(params);
+    return ok(
+      list.map((item) => ({
+        ...item,
+        referenceCount: mockSkillPlanningSupplementRecords.filter(
+          (planning) =>
+            planning.skillId === item.id ||
+            (!planning.skillId && planning.skillName === item.skillName),
+        ).length,
+      })),
+      total,
+    );
+  }
+
+  if (method === 'put' && path === '/management/update') {
+    const body = readSkillRequestBody(config.data) as Record<string, unknown>;
+    const payload = { ...params, ...body };
+    const id = String(payload.id ?? '').trim();
+    if (!id) {
+      return fail('缺少必填字段: id', null);
+    }
+    const requiredKeys = [
+      'skillName',
+      'userId',
+      'skillDescription',
+      'dimType',
+      'dimCode',
+      'dimName',
+      'ownerName',
+      'ownerId',
+      'developOwnerName',
+      'developOwnerId',
+      'planFinishDate',
+    ] as const;
+    const missing = requiredKeys.filter((key) => !String(payload[key] ?? '').trim());
+    if (missing.length > 0) {
+      return fail(`缺少必填字段: ${missing.join(', ')}`, null);
+    }
+    const target = mockSkillMasterManagementRecords.find((item) => item.id === id);
+    if (!target) {
+      return fail(`未找到 Skill: ${id}`, null);
+    }
+    Object.assign(target, {
+      skillName: String(payload.skillName).trim(),
+      skillDescription: String(payload.skillDescription).trim(),
+      dimType: String(payload.dimType).trim(),
+      dimCode: String(payload.dimCode).trim(),
+      dimName: String(payload.dimName).trim(),
+      ownerName: String(payload.ownerName).trim(),
+      ownerId: String(payload.ownerId).trim(),
+      developOwnerName: String(payload.developOwnerName).trim(),
+      developOwnerId: String(payload.developOwnerId).trim(),
+      planFinishDate: String(payload.planFinishDate).trim(),
+      updatedAt: nowLocalDateTimeArray(),
+    });
+    return ok({
+      ...target,
+    });
+  }
+
+  const deleteMatch = /^\/management\/delete\/([^/]+)$/.exec(path);
+  if (method === 'delete' && deleteMatch) {
+    const id = decodeURIComponent(deleteMatch[1] ?? '').trim();
+    if (!id) {
+      return fail('缺少删除 id', null);
+    }
+    const index = mockSkillMasterManagementRecords.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return fail(`未找到 Skill: ${id}`, null);
+    }
+    const target = mockSkillMasterManagementRecords[index];
+    const referenceCount = mockSkillPlanningSupplementRecords.filter(
+      (planning) =>
+        planning.skillId === id ||
+        (!planning.skillId && planning.skillName === target?.skillName),
+    ).length;
+    if (referenceCount > 0) {
+      return fail(`Skill 已关联 ${referenceCount} 个规划项，不能删除`, null);
+    }
+    const [removed] = mockSkillMasterManagementRecords.splice(index, 1);
+    return ok({
+      id,
+      skillName: removed?.skillName ?? '',
+    });
+  }
+
+  if (method === 'delete' && path === '/management/batch_delete') {
+    const body = readSkillRequestBody(config.data);
+    const ids = Array.isArray(body)
+      ? body.map((item) => String(item ?? '').trim()).filter(Boolean)
+      : [];
+    if (ids.length === 0) {
+      return fail('批量删除列表不能为空', null);
+    }
+    const idSet = new Set(ids);
+    const referenced = mockSkillMasterManagementRecords.filter(
+      (master) =>
+        idSet.has(master.id) &&
+        mockSkillPlanningSupplementRecords.some(
+          (planning) =>
+            planning.skillId === master.id ||
+            (!planning.skillId && planning.skillName === master.skillName),
+        ),
+    );
+    if (referenced.length > 0) {
+      return fail(`${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`, null);
+    }
+    const before = mockSkillMasterManagementRecords.length;
+    for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {
+      const current = mockSkillMasterManagementRecords[index];
+      if (current && idSet.has(current.id)) {
+        mockSkillMasterManagementRecords.splice(index, 1);
+      }
+    }
+    const removed = before - mockSkillMasterManagementRecords.length;
+    return ok(
+      {
+        removed,
+        ids,
+      },
+      removed,
+    );
+  }
+
+  if (method === 'get' && path === '/review/expert/check') {
+    return ok({
+      isExpert: true,
+      expertName: '张三',
+      dept: {
+        dept3: '部门1',
+        dept4: '平台产品线',
+        dept5: '平台工具组',
+        dept6: 'DevOps部',
+        dept7: '持续交付组',
+      },
+    });
+  }
+
+  if (method === 'get' && path === '/review/dimensions') {
+    return ok(MOCK_EXPERT_REVIEW_DIMENSIONS, MOCK_EXPERT_REVIEW_DIMENSIONS.length);
+  }
+
+  if (method === 'get' && path === '/review/ai-dimensions') {
+    const dimensions = MOCK_AI_REVIEW_DIMENSIONS.map((dimension) => ({ ...dimension }));
+    return ok(dimensions, dimensions.length);
+  }
+
+  if (method === 'get' && path === '/review/badges') {
+    return ok(MOCK_REVIEW_BADGES, MOCK_REVIEW_BADGES.length);
+  }
+
+  const reviewDetailMatch = /^\/review\/([^/]+)\/detail$/.exec(path);
+  if (method === 'get' && reviewDetailMatch) {
+    return ok(createMockSkillReviewDetailPayload(reviewDetailMatch[1], params));
+  }
+
+  const reviewHistoryMatch = /^\/review\/([^/]+)\/history$/.exec(path);
+  if (method === 'get' && reviewHistoryMatch) {
+    const detailPayload = createMockSkillReviewDetailPayload(reviewHistoryMatch[1], params);
+    return ok({ versionDetails: detailPayload.versionDetails });
+  }
+
+  const reviewDraftMatch = /^\/review\/([^/]+)\/draft$/.exec(path);
+  if (method === 'post' && reviewDraftMatch) {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const badges =
+      body.badges && typeof body.badges === 'object'
+        ? (body.badges as Record<string, unknown>)
+        : {};
+    const detail = ensureExpertReviewDetail(reviewDraftMatch[1]);
+    detail.reviewId = readString(body.reviewId, detail.reviewId);
+    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores ?? body.dimensions);
+    detail.badgeIds = normalizeBadgeIds(body.badgeIds ?? badges.badgeIds);
+    detail.badgeReason = normalizeBadgeReason(body.badgeReason ?? badges.reason, detail.badgeIds);
+    detail.overallOpinion = normalizeOverallOpinion(body.overallOpinion ?? body.reviewComment);
+    const totalScore = body.totalScore;
+    if (typeof totalScore === 'number' && Number.isFinite(totalScore)) {
+      detail.totalScore = roundToTwo(totalScore);
+    } else {
+      detail.totalScore = computeWeightedTotal(detail.dimensionScores);
+    }
+    detail.reviewStatus = 'draft';
+    detail.updatedAt = nowText();
+    return ok(createMockSkillReviewDetailPayload(reviewDraftMatch[1], params));
+  }
+
+  const reviewSubmitMatch = /^\/review\/([^/]+)\/submit$/.exec(path);
+  if (method === 'post' && reviewSubmitMatch) {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const badges =
+      body.badges && typeof body.badges === 'object'
+        ? (body.badges as Record<string, unknown>)
+        : {};
+    const detail = ensureExpertReviewDetail(reviewSubmitMatch[1]);
+    detail.reviewId = readString(body.reviewId, detail.reviewId);
+    detail.dimensionScores = normalizeDraftDimensionScores(body.dimensionScores ?? body.dimensions);
+    detail.badgeIds = normalizeBadgeIds(body.badgeIds ?? badges.badgeIds);
+    detail.badgeReason = normalizeBadgeReason(body.badgeReason ?? badges.reason, detail.badgeIds);
+    detail.overallOpinion = normalizeOverallOpinion(body.overallOpinion ?? body.reviewComment);
+    const totalScore = body.totalScore;
+    if (typeof totalScore === 'number' && Number.isFinite(totalScore)) {
+      detail.totalScore = roundToTwo(totalScore);
+    } else {
+      detail.totalScore = computeWeightedTotal(detail.dimensionScores);
+    }
+    detail.reviewStatus = 'submitted';
+    detail.updatedAt = nowText();
+    return ok(createMockSkillReviewDetailPayload(reviewSubmitMatch[1], params));
+  }
+
+  const deleteAllMatch = /^\/([^/]+)\/all$/.exec(path);
+  if (method === 'delete' && deleteAllMatch) {
+    const skill = findSkill(deleteAllMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    skillRecords = skillRecords.filter((s) => s !== skill);
+    return ok({ ok: true });
+  }
+
+  const downloadMatch = /^\/([^/]+)\/download$/.exec(path);
+  if (method === 'post' && downloadMatch) {
+    const skill = findSkill(downloadMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', '');
+    }
+    const reqVersion = String(params.version ?? '').trim();
+    if (reqVersion && !(skill.versions ?? []).some((v) => v.version === reqVersion)) {
+      return fail('指定版本不存在', '');
+    }
+    if (reqVersion) {
+      const v = (skill.versions ?? []).find((x) => x.version === reqVersion);
+      if (v && (v as { unpublished?: boolean }).unpublished) {
+        return fail('该版本已下架，无法下载', '');
+      }
+    }
+    skill.downloads = (skill.downloads ?? 0) + 1;
+    skill.download_count = (skill.download_count ?? 0) + 1;
+    return ok(createZipUrl(skill));
+  }
+
+  const statsMatch = /^\/([^/]+)\/download-stats$/.exec(path);
+  if (method === 'get' && statsMatch) {
+    const skill = findSkill(statsMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null);
+    }
+    return ok({
+      skillId: Number(skill.id),
+      name: skill.name,
+      totalDownloads: skill.downloads,
+      currentDownloads: skill.downloads,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      granularity: params.granularity ?? 'day',
+      trend: [],
+    });
+  }
+
+  const fileContentMatch = /^\/([^/]+)\/fileContent$/.exec(path);
+  if (method === 'get' && fileContentMatch) {
+    let skillId = fileContentMatch[1];
+    let filePath = String(params.filePath ?? '');
+    try {
+      skillId = decodeURIComponent(skillId);
+      filePath = filePath
+        .split('/')
+        .map((segment) => decodeURIComponent(segment))
+        .join('/');
+    } catch {
+      // 解码失败时继续使用原始参数，Mock 仍可返回可识别的错误。
+    }
+
+    const skill = findSkill(skillId);
+    if (!skill) {
+      return fail('Skill 不存在', '', 40401);
+    }
+    const rootNames = [skill.name, skill.skill_id, skill.id].map((item) => String(item ?? ''));
+    const rootName = rootNames.find((item) => item && filePath.startsWith(`${item}/`));
+    const relativePath = rootName ? filePath.slice(rootName.length + 1) : filePath;
+    const fileName = relativePath.split('/').at(-1)?.toLowerCase() ?? '';
+    const version = String(params.version ?? skill.currentVersion ?? skill.version ?? '').trim();
+
+    if (skill.skill_id === 'test1' && relativePath === MOCK_FIRST_SKILL_PNG_PATH) {
+      return ok(MOCK_FIRST_SKILL_PNG_BASE64);
+    }
+    if (fileName === 'skill.md') {
+      return ok(skill.skillMdContent || makeSkillMd(skill));
+    }
+    if (fileName === 'readme.md') {
+      return ok(`# ${skill.name}\n\n${skill.description}\n`);
+    }
+    if (fileName.endsWith('.json')) {
+      return ok(JSON.stringify({ skill: skill.name, version, file: relativePath }, null, 2));
+    }
+    if (fileName.endsWith('.py')) {
+      return ok(`# ${relativePath}\nprint(${JSON.stringify(`hello from ${skill.name}`)})\n`);
+    }
+    if (fileName.endsWith('.md')) {
+      return ok(`# ${relativePath}\n\nMock file for ${skill.name} ${version}.\n`);
+    }
+    return ok(`# Mock file: ${relativePath}\n# Skill: ${skill.name}\n# Version: ${version}\n`);
+  }
+
+  const detailMatch = /^\/([^/]+)$/.exec(path);
+  if (method === 'delete' && detailMatch) {
+    const ver = String(params.version ?? '').trim();
+    if (!ver) {
+      return fail('请传入 query.version 以下架指定版本', null, 40001);
+    }
+    const skill = findSkill(detailMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    const list = [...(skill.versions ?? [])];
+    const ix = list.findIndex((x) => x.version === ver);
+    if (ix < 0) {
+      return fail('版本不存在', null, 40401);
+    }
+    const target = list[ix] as SkillVersionEntry & { unpublished?: boolean };
+    if (target.unpublished) {
+      return fail('该版本已下架', null, 40001);
+    }
+    list[ix] = { ...target, unpublished: true };
+    skill.versions = list;
+    const active = list.filter((x) => !(x as { unpublished?: boolean }).unpublished);
+    if (active.length > 0) {
+      const sorted = [...active].sort((a, b) => compareSemverDesc(a.version, b.version));
+      const head = sorted[0];
+      if (head) {
+        skill.version = head.version;
+        skill.currentVersion = head.version;
+      }
+    }
+    skill.updatedAt = nowText();
+    return ok({ ok: true });
+  }
+  if (method === 'get' && detailMatch) {
+    const skill = findSkill(detailMatch[1]);
+    return skill ? ok({ ...skill }) : fail('Skill 不存在', null, 40401);
+  }
+
+  const versionsPathMatch = /^\/([^/]+)\/versions$/.exec(path);
+  if (method === 'get' && versionsPathMatch) {
+    const skill = findSkill(versionsPathMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    const rows = mapSkillVersionsToListDto(skill as Skill);
+    return ok(rows);
+  }
+  if (method === 'post' && versionsPathMatch) {
+    const skill = findSkill(versionsPathMatch[1]);
+    if (!skill) {
+      return fail('Skill 不存在', null, 40401);
+    }
+    const nextVersion = bumpPatchVersion(skill.currentVersion);
+    const stamp = nowText();
+    skill.currentVersion = nextVersion;
+    skill.version = nextVersion;
+    skill.updatedAt = stamp;
+    skill.latestPublishTime = stamp;
+    skill.versions = [
+      ...(skill.versions ?? []),
+      {
+        version: nextVersion,
+        publishTime: stamp,
+        note: 'Mock 上传新版本',
+        packageFileName: `${skill.name}-v${nextVersion}.zip`,
+        packageSize: fileFromFormData(config.data)?.size ?? 0,
+      },
+    ];
+    return ok({ ok: true, skillId: skill.id, version: nextVersion });
+  }
+
+  const syncMatch = /^\/([^/]+)\/sync-applications$/.exec(path);
+  if (method === 'post' && syncMatch) {
+    const skill = findSkill(syncMatch[1]);
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const targetOrgId = readNumber(body.targetOrgId, 1);
+    const targetOrg = orgStore.find((o) => o.id === targetOrgId) ?? orgStore[0];
+    const id = Math.max(90_000, ...syncPending.map((r) => r.id), ...syncDone.map((r) => r.id)) + 1;
+    syncPending = [
+      {
+        id,
+        skillId: skill?.id ?? syncMatch[1],
+        skillName: skill?.name ?? `Skill ${syncMatch[1]}`,
+        applyType: '同步至公司组织',
+        targetLevel: '组织级',
+        targetOrgId,
+        targetOrgName: targetOrg?.orgName ?? '',
+        reason: readString(body.reason, 'Mock 同步申请'),
+        approverLabel: `${targetOrg?.orgName ?? '目标组织'}组织管理员`,
+        status: '待审核',
+      },
+      ...syncPending,
+    ];
+    return ok({ applicationId: id, status: '待审核', skillStatus: '组织审核中' });
+  }
+
+  const syncUpdateMatch = /^\/([^/]+)\/sync-update-applications$/.exec(path);
+  if (method === 'post' && syncUpdateMatch) {
+    const skill = findSkill(syncUpdateMatch[1]);
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const targetOrgId = readNumber(body.targetOrgId, skill?.orgId ?? 1);
+    const targetOrg = orgStore.find((o) => o.id === targetOrgId) ?? orgStore[0];
+    const id = Math.max(90_000, ...syncPending.map((r) => r.id), ...syncDone.map((r) => r.id)) + 1;
+    syncPending = [
+      {
+        id,
+        skillId: skill?.id ?? syncUpdateMatch[1],
+        skillName: skill?.name ?? `Skill ${syncUpdateMatch[1]}`,
+        applyType: '更新同步',
+        targetLevel: '组织级',
+        targetOrgId,
+        targetOrgName: targetOrg?.orgName ?? '',
+        reason: readString(body.updateReason, 'Mock 更新同步申请'),
+        approverLabel: `${targetOrg?.orgName ?? '目标组织'}组织管理员`,
+        status: '待审核',
+      },
+      ...syncPending,
+    ];
+    return ok({ applicationId: id, status: '待审核', syncType: '更新同步' });
+  }
+
+  return null;
+}
+
+function handleApiRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  const params = readParams(config);
+  const reviewMatch = /^\/sync-applications\/([^/]+)\/review$/.exec(path);
+  if (method === 'post' && reviewMatch) {
+    const id = readNumber(reviewMatch[1], 0);
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const idx = syncPending.findIndex((r) => r.id === id);
+    if (idx >= 0) {
+      const row = syncPending[idx];
+      syncPending = syncPending.filter((r) => r.id !== id);
+      syncDone = [
+        {
+          ...row,
+          status: '已完成',
+          reviewResult: body.decision === 'approve' ? '通过' : '不通过',
+          reviewComment: readString(body.comment, ''),
+          completedAt: nowText(),
+        },
+        ...syncDone,
+      ];
+    }
+    return ok({ ok: true });
+  }
+
+  if (method === 'get' && path === '/sync-applications') {
+    const source = params.tab === 'done' ? syncDone : syncPending;
+    const total = source.length;
+    const pageNo = Math.max(1, readNumber(params.pageNo, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 20));
+    const start = (pageNo - 1) * pageSize;
+    const data = withPageMeta(source.slice(start, start + pageSize), total);
+    return ok(data, total);
+  }
+
+  if (method === 'get' && path === '/organizations') {
+    const data = orgStore.map((organization) => ({ ...organization }));
+    return ok(data, data.length);
+  }
+
+  if (method === 'post' && path === '/organizations') {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const dto: MockOrganization = {
+      id: Math.max(0, ...orgStore.map((o) => o.id)) + 1,
+      orgName: readString(body.orgName),
+      orgCode: readString(body.orgCode),
+      admins: readString(body.admins),
+      enabled: body.enabled !== false,
+    };
+    orgStore.push(dto);
+    return ok({ ...dto });
+  }
+
+  const orgMatch = /^\/organizations\/([^/]+)$/.exec(path);
+  if (method === 'put' && orgMatch) {
+    const id = readNumber(orgMatch[1], 0);
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const dto: MockOrganization = {
+      id,
+      orgName: readString(body.orgName),
+      orgCode: readString(body.orgCode),
+      admins: readString(body.admins),
+      enabled: body.enabled !== false,
+    };
+    const idx = orgStore.findIndex((o) => o.id === id);
+    if (idx >= 0) {
+      orgStore[idx] = dto;
+    } else {
+      orgStore.push(dto);
+    }
+    return ok({ ...dto });
+  }
+
+  if (method === 'get' && path === '/departments/tree') {
+    return ok(getMockMarketDepartmentsTree());
+  }
+
+  if (method === 'get' && (path === '/business-dimensions' || path === '/categories')) {
+    const data = getMockBusinessDimensions();
+    return ok(data, data.length);
+  }
+
+  if (method === 'get' && path === '/dashboard/overview') {
+    const bundle = buildOpsDashboardBundle(marketSkillsToOpsExcelRows(skillRecords));
+    const rankings = bundle.orgBars.map((row) => ({
+      name: row.name,
+      totalSkills: row.skills,
+      skillCount: row.skills,
+      downloads: row.downloads,
+    }));
+    return ok({ ...bundle, rankings });
+  }
+
+  if (method === 'get' && path === '/skill-quality-reviews') {
+    let rows = [...qualityReviews];
+    const reviewMonth = String(params.reviewMonth ?? '').trim();
+    if (reviewMonth) {
+      rows = rows.filter((r) => r.reviewMonth === reviewMonth);
+    }
+    const keyword = String(params.keyword ?? '')
+      .trim()
+      .toLowerCase();
+    if (keyword) {
+      rows = rows.filter(
+        (r) =>
+          r.skillName.toLowerCase().includes(keyword) || r.deptName.toLowerCase().includes(keyword),
+      );
+    }
+    const reviewStatus = String(params.reviewStatus ?? '').trim();
+    if (reviewStatus) {
+      rows = rows.filter((r) => r.reviewStatus === reviewStatus);
+    }
+    return ok(withPageMeta(rows, rows.length), rows.length);
+  }
+
+  if (method === 'post' && path === '/skill-quality-reviews/save') {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const reviewMonth = readString(body.reviewMonth, '2026-04');
+    const items = Array.isArray(body.items) ? body.items : [];
+    for (const item of items as Record<string, unknown>[]) {
+      const skillId = String(item.skillId ?? '');
+      const skill = findSkill(skillId);
+      qualityReviews = [
+        {
+          id: Math.max(70_000, ...qualityReviews.map((r) => r.id)) + 1,
+          reviewMonth,
+          skillId,
+          skillName: skill?.name ?? `Skill ${skillId}`,
+          deptName: skill?.departmentL4 || skill?.publish_name || '',
+          score: readNumber(item.score, 0),
+          qualityMark: readString(item.qualityMark, ''),
+          reviewComment: readString(item.reviewComment, ''),
+          reviewStatus: '已保存',
+        },
+        ...qualityReviews,
+      ];
+    }
+    return ok({ ok: true });
+  }
+
+  if (method === 'post' && path === '/skill-quality-reviews/archive') {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const reviewMonth = readString(body.reviewMonth, '');
+    qualityReviews = qualityReviews.map((r) =>
+      !reviewMonth || r.reviewMonth === reviewMonth ? { ...r, reviewStatus: '已归档' } : r,
+    );
+    return ok({ ok: true });
+  }
+
+  const deptReview = handleDeptReviewRequest(method, path, config);
+  if (deptReview) {
+    return deptReview;
+  }
+
+  return null;
+}
+
+/**
+ * 部门 Skill 评审模块 Mock 处理器
+ * 详见 docs/部门Skill评审模块_接口设计文档.md
+ */
+let deptReviewSkills: DeptSkillRow[] = mockDeptSkills.map((row) => ({
+  ...row,
+  comments: row.comments.map((c) => ({ ...c })),
+}));
+let deptReviewTasks: PublishTask[] = mockPublishTasks.map((task) => ({
+  ...task,
+  skills: task.skills.map((s) => ({ ...s })),
+}));
+
+function handleDeptReviewRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  const params = readParams(config);
+  const userId = readString(params.userId, 'mock001');
+
+  // 1. 看管部门列表
+  if (method === 'get' && path === '/dept-review/departments') {
+    // 从 Skill 的 deptPath 聚合出管理员看管的部门树（扁平路径列表）
+    const seen = new Map<string, { id: string; path: string; name: string }>();
+    for (const row of deptReviewSkills) {
+      const segs = row.deptPath
+        .split(' / ')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (segs.length === 0) {
+        continue;
+      }
+      const full = segs.join(' / ');
+      if (!seen.has(full)) {
+        seen.set(full, { id: `dept-${seen.size}`, path: full, name: segs[segs.length - 1]! });
+      }
+    }
+    return ok({ departments: [...seen.values()] }, seen.size);
+  }
+
+  // 2. 部门评审 Skill 列表
+  if (method === 'get' && path === '/dept-review/skills') {
+    let list = deptReviewSkills.map((row) => ({
+      ...row,
+      comments: undefined,
+      commentCount: row.comments.length,
+    }));
+    const deptSegsRaw = readString(params.deptSegments, '');
+    if (deptSegsRaw) {
+      const segs = deptSegsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      list = list.filter((row) => {
+        const parts = row.deptPath.split(' / ');
+        if (parts.length < segs.length) return false;
+        return segs.every((seg, i) => parts[i] === seg);
+      });
+    }
+    const sortBy = readString(params.sortBy, 'downloads');
+    const sortOrder = readString(params.sortOrder, 'desc');
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    if (sortBy === 'downloads') {
+      list.sort((a, b) => (a.downloads - b.downloads) * dir);
+    } else if (sortBy === 'access') {
+      list.sort((a, b) => (a.totalAccess - b.totalAccess) * dir);
+    } else if (sortBy === 'aiScore') {
+      list.sort((a, b) => ((a.aiScore ?? -1) - (b.aiScore ?? -1)) * dir);
+    } else if (sortBy === 'expertScore') {
+      list.sort((a, b) => ((a.expertScore ?? -1) - (b.expertScore ?? -1)) * dir);
+    }
+    const total = list.length;
+    const pageNum = Math.max(1, readNumber(params.pageNum, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 10));
+    const start = (pageNum - 1) * pageSize;
+    return ok(list.slice(start, start + pageSize), total);
+  }
+
+  // 3. 某 Skill 的意见列表
+  const commentsMatch = /^\/dept-review\/skills\/([^/]+)\/comments$/.exec(path);
+  if (method === 'get' && commentsMatch) {
+    const skillId = commentsMatch[1]!;
+    const row = deptReviewSkills.find((r) => r.id === skillId);
+    if (!row) {
+      return ok({ comments: [] }, 0);
+    }
+    const comments = [...row.comments].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return ok({ comments }, comments.length);
+  }
+
+  // 4. 提交评审意见
+  if (method === 'post' && commentsMatch) {
+    const skillId = commentsMatch[1]!;
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const content = readString(body.content, '');
+    const row = deptReviewSkills.find((r) => r.id === skillId);
+    if (!row) {
+      return fail('Skill 不存在', { comment: null });
+    }
+    const item: DeptSkillCommentItem = {
+      id: `cm-${Date.now()}`,
+      type: 'review',
+      submitter: userId,
+      submitterId: userId,
+      content,
+      status: 'processing',
+      createdAt: nowText(),
+      isMine: true,
+      publishTaskId: undefined,
+    };
+    row.comments = [...row.comments, item];
+    return ok({ comment: item });
+  }
+
+  // 5. 创建发布任务（一键发布到组织）
+  if (method === 'post' && path === '/dept-review/publish-tasks') {
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const targetOrgId = readString(body.targetOrgId, '');
+    const skillIdsRaw = body.skillIds;
+    const skillIds: string[] = Array.isArray(skillIdsRaw) ? skillIdsRaw.map((s) => String(s)) : [];
+    const org = mockPublishTargetOrgs.find((o) => o.id === targetOrgId);
+    const orgName = org?.orgName ?? '未知组织';
+    const owner = org?.owner ?? '';
+    const taskSkills: PublishTaskSkill[] = skillIds
+      .map((sid) => deptReviewSkills.find((r) => r.id === sid))
+      .filter((r): r is DeptSkillRow => Boolean(r))
+      .map((r) => ({ id: r.id, name: r.name, version: r.version, author: r.author }));
+    const taskId = `task-${Date.now()}`;
+    const task: PublishTask = {
+      id: taskId,
+      taskName: `${orgName} · 批量发布任务（${taskSkills.length} 个 Skill）`,
+      targetOrgId,
+      targetOrgName: orgName,
+      orgOwner: owner,
+      status: 'processing',
+      skills: taskSkills,
+      createdAt: nowText(),
+      completedAt: null,
+      creator: userId,
+      approvalComment: null,
+    };
+    deptReviewTasks = [task, ...deptReviewTasks];
+    // 为每个选中 Skill 追加 publish 类型意见
+    for (const sid of skillIds) {
+      const row = deptReviewSkills.find((r) => r.id === sid);
+      if (!row) continue;
+      row.comments = [
+        ...row.comments,
+        {
+          id: `cm-${Date.now()}-${sid}`,
+          type: 'publish',
+          submitter: userId,
+          submitterId: userId,
+          content: `一键发布到组织：${orgName}，等待 owner 确认。`,
+          status: 'processing',
+          createdAt: nowText(),
+          isMine: true,
+          publishTaskId: taskId,
+        },
+      ];
+      row.publishTaskId = taskId;
+    }
+    return ok({
+      task: {
+        ...task,
+        skillCount: task.skills.length,
+        skills: task.skills,
+      },
+    });
+  }
+
+  // 6. 处理发布任务（close/reject/approve）
+  const processMatch = /^\/dept-review\/publish-tasks\/([^/]+)\/process$/.exec(path);
+  if (method === 'post' && processMatch) {
+    const taskId = processMatch[1]!;
+    const body = (config.data ?? {}) as Record<string, unknown>;
+    const action = readString(body.action, '');
+    const comment = readString(body.comment, '');
+    const idx = deptReviewTasks.findIndex((t) => t.id === taskId);
+    if (idx < 0) {
+      return fail('任务不存在', { task: null });
+    }
+    const task = deptReviewTasks[idx]!;
+    if (action === 'reject' && !comment) {
+      return fail('请填写驳回原因', { task: null });
+    }
+    let status: PublishTask['status'] = task.status;
+    let commentStatus: DeptSkillCommentItem['status'] = 'closed';
+    if (action === 'close') {
+      status = 'closed';
+      commentStatus = 'closed';
+    } else if (action === 'reject') {
+      status = 'rejected';
+      commentStatus = 'rejected';
+    } else if (action === 'approve') {
+      status = 'approved';
+      commentStatus = 'closed';
+    } else {
+      return fail('未知的处理动作', { task: null });
+    }
+    const updated: PublishTask = {
+      ...task,
+      status,
+      completedAt: nowText(),
+      approvalComment: comment || undefined,
+    };
+    deptReviewTasks[idx] = updated;
+    // 联动更新 Skill 的 publish 意见状态
+    for (const row of deptReviewSkills) {
+      if (row.publishTaskId === taskId) {
+        row.comments = row.comments.map((c) =>
+          c.publishTaskId === taskId && c.type === 'publish' ? { ...c, status: commentStatus } : c,
+        );
+        if (action === 'close' || action === 'reject') {
+          row.publishTaskId = null;
+        }
+      }
+    }
+    return ok({
+      task: {
+        ...updated,
+        skillCount: updated.skills.length,
+        skills: updated.skills,
+      },
+    });
+  }
+
+  // 7. 发布任务列表
+  if (method === 'get' && path === '/dept-review/publish-tasks') {
+    let list = deptReviewTasks.map((t) => ({
+      id: t.id,
+      targetOrgName: t.targetOrgName,
+      creator: t.creator,
+      skillCount: t.skills.length,
+      status: t.status,
+      createdAt: t.createdAt,
+      completedAt: t.completedAt,
+    }));
+    const statusFilter = readString(params.status, '');
+    if (statusFilter) {
+      list = list.filter((t) => t.status === statusFilter);
+    }
+    const sortOrder = readString(params.sortOrder, 'desc');
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt) * dir);
+    const total = list.length;
+    const pageNum = Math.max(1, readNumber(params.pageNum, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 10));
+    const start = (pageNum - 1) * pageSize;
+    return ok(list.slice(start, start + pageSize), total);
+  }
+
+  // 8. 发布任务详情
+  const detailMatch = /^\/dept-review\/publish-tasks\/([^/]+)$/.exec(path);
+  if (method === 'get' && detailMatch) {
+    const taskId = detailMatch[1]!;
+    const task = deptReviewTasks.find((t) => t.id === taskId);
+    if (!task) {
+      return fail('任务不存在', { task: null });
+    }
+    return ok({
+      task: {
+        ...task,
+        skills: task.skills,
+      },
+    });
+  }
+
+  return null;
+}
+
+type MockSkillDraft = {
+  skillId: string;
+  skillName: string;
+  description: string;
+  type?: string;
+  userId: string;
+  archiveData: string;
+  archiveSize: number;
+  sessionId: string;
+  sessionCreateTime: string;
+  skillGenerateTime: string;
+  skillStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
+  downloadCount: number;
+  ide: string;
+  codeRepo: string;
+  firstMessage: string;
+  version: string;
+  skillMdContent: string;
+  fileTree: string;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+let skillDrafts: MockSkillDraft[] = [
+  {
+    skillId: 'ai-evo-001',
+    skillName: '智能日报汇总（自进化）',
+    description: '自动汇总团队每日工作进展，生成结构化日报，支持多数据源聚合与异常兜底。',
+    userId: 'mock001',
+    archiveData: 'fuyao/skill_drafts/智能日报汇总/1.3.0',
+    archiveSize: 20480,
+    sessionId: 'sess-20260621-7f3a9c1d',
+    sessionCreateTime: '2026-06-21 08:42:00',
+    skillGenerateTime: '2026-06-21 09:14:00',
+    skillStatus: 'PENDING',
+    downloadCount: 0,
+    ide: 'VS Code',
+    codeRepo: 'git@code.company.com:agent-center/daily-report-skill.git',
+    firstMessage: '帮我把团队每天的工作进展自动整理成结构化日报，要能处理某些人没填写的情况。',
+    version: '1.3.0',
+    skillMdContent:
+      '# 智能日报汇总（自进化）\n\n## 简介\n自动汇总团队每日工作进展，生成结构化日报。\n\n## 本次自进化变更\n- 新增空数据兜底逻辑\n- 优化分段总结提示词\n- 补充字段缺失校验\n\n## 触发原因\n近 30 天调用失败率达 8.6%，自动优化 Prompt 与异常分支。',
+    fileTree: 'SKILL.md\nprompts/\n  summary.md\n  fallback.md\nscripts/\n  collect.py',
+    createdAt: '2026-06-21 09:15:00',
+    updatedAt: null,
+  },
+  {
+    skillId: 'ai-evo-002',
+    skillName: '会议纪要生成器（自进化）',
+    description: '将会议录音转写文本整理为结构化纪要与待办，支持长会议分块摘要。',
+    userId: 'mock001',
+    archiveData: 'fuyao/skill_drafts/会议纪要生成器/2.1.0',
+    archiveSize: 30720,
+    sessionId: 'sess-20260620-2b8e45af',
+    sessionCreateTime: '2026-06-20 17:05:00',
+    skillGenerateTime: '2026-06-20 17:42:00',
+    skillStatus: 'PENDING',
+    downloadCount: 0,
+    ide: 'Cursor',
+    codeRepo: 'git@code.company.com:agent-center/meeting-minutes-skill.git',
+    firstMessage: '会议录音转写出来太长了，模型经常截断，帮我做成能分段总结再合并的纪要工具。',
+    version: '2.1.0',
+    skillMdContent:
+      '# 会议纪要生成器（自进化）\n\n## 简介\n将会议录音转写文本整理为结构化纪要与待办。\n\n## 本次自进化变更\n- 引入分块摘要 + 二次合并\n- 适配 200k 上下文窗口模型\n\n## 触发原因\n用户反馈显示长会议截断率上升，触发上下文窗口策略升级。',
+    fileTree: 'SKILL.md\nprompts/\n  chunk.md\n  merge.md\nconfig.json',
+    createdAt: '2026-06-20 17:43:00',
+    updatedAt: null,
+  },
+  {
+    skillId: 'ai-evo-003',
+    skillName: '客户工单分类器（自进化）',
+    description: '根据工单内容自动分类并路由到对应处理队列，支持少样本提示与阈值调优。',
+    userId: 'mock001',
+    archiveData: 'fuyao/skill_drafts/客户工单分类器/1.0.0',
+    archiveSize: 15360,
+    sessionId: 'sess-20260619-c0d172e6',
+    sessionCreateTime: '2026-06-19 21:30:00',
+    skillGenerateTime: '2026-06-19 22:08:00',
+    skillStatus: 'PENDING',
+    downloadCount: 0,
+    ide: 'JetBrains IDEA',
+    codeRepo: 'git@code.company.com:agent-center/ticket-classifier-skill.git',
+    firstMessage: '客户工单越来越多，帮我做一个能根据内容自动分类并路由到处理队列的技能。',
+    version: '1.0.0',
+    skillMdContent:
+      '# 客户工单分类器（自进化）\n\n## 简介\n根据工单内容自动分类并路由到对应处理队列。\n\n## 本次自进化变更\n- 引入新一轮标注数据\n- 调整分类阈值与少样本提示\n\n## 触发原因\n准确率从 87% 提升至 94%，可发起一次正式版本升级。',
+    fileTree: 'SKILL.md\ndata/\n  labels.csv\nprompts/\n  classify.md',
+    createdAt: '2026-06-19 22:09:00',
+    updatedAt: null,
+  },
+];
+
+function findSkillDraft(id: string | undefined): MockSkillDraft | undefined {
+  const sid = String(id ?? '').trim();
+  if (!sid) {
+    return undefined;
+  }
+  return skillDrafts.find((d) => d.skillId === sid);
+}
+
+function handleSkillDraftRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  const params = readParams(config);
+
+  // 列表（前端展示用）
+  if (method === 'get' && path === '') {
+    let list = [...skillDrafts];
+    const skillStatus = String(params.skillStatus ?? '')
+      .trim()
+      .toUpperCase();
+    if (skillStatus) {
+      list = list.filter((d) => d.skillStatus === skillStatus);
+    }
+    const skillName = String(params.skillName ?? '')
+      .trim()
+      .toLowerCase();
+    if (skillName) {
+      list = list.filter((d) => d.skillName.toLowerCase().includes(skillName));
+    }
+    const total = list.length;
+    const pageNo = Math.max(1, readNumber(params.pageNo, 1));
+    const pageSize = Math.max(1, readNumber(params.pageSize, 10));
+    const start = (pageNo - 1) * pageSize;
+    const data = withPageMeta(list.slice(start, start + pageSize), total);
+    return ok(data, total);
+  }
+
+  const approveMatch = /^\/([^/]+)\/approve$/.exec(path);
+  if (method === 'post' && approveMatch) {
+    const draft = findSkillDraft(approveMatch[1]);
+    if (!draft) {
+      return fail('草稿不存在', null);
+    }
+    if (draft.skillStatus !== 'PENDING') {
+      return fail('草稿状态不是待审批，无法审批', null);
+    }
+    draft.skillStatus = 'APPROVED';
+    draft.updatedAt = nowText();
+    const approver = readString(params.userId, draft.userId);
+    return ok({
+      id: `skill-${draft.skillId}`,
+      name: draft.skillName,
+      description: draft.description,
+      author: draft.userId,
+      currentVersion: draft.version,
+      level: '个人级',
+      status: '个人级',
+      ownerUser: draft.userId,
+      packagePath: `fuyao/skills/${draft.skillName}/${draft.version}`,
+      downloads: 0,
+      deleted: 0,
+      sourceType: 'market',
+      createdBy: approver,
+      createdAt: nowText(),
+      fileTree: draft.fileTree,
+      skillMdContent: draft.skillMdContent,
+    });
+  }
+
+  const rejectMatch = /^\/([^/]+)\/reject$/.exec(path);
+  if (method === 'post' && rejectMatch) {
+    const draft = findSkillDraft(rejectMatch[1]);
+    if (!draft) {
+      return fail('草稿不存在', null);
+    }
+    if (draft.skillStatus !== 'PENDING') {
+      return fail('草稿状态不是待审批，无法驳回', null);
+    }
+    draft.skillStatus = 'REJECTED';
+    draft.updatedAt = nowText();
+    return ok('驳回成功');
+  }
+
+  const downloadMatch = /^\/([^/]+)\/download$/.exec(path);
+  if (method === 'post' && downloadMatch) {
+    const draft = findSkillDraft(downloadMatch[1]);
+    if (!draft) {
+      return fail('草稿不存在', null);
+    }
+    draft.downloadCount += 1;
+    return ok(
+      `https://mock.s3.file.url?fileName=${encodeURIComponent(
+        `${draft.skillName}.zip`,
+      )}&fileDir=${encodeURIComponent(draft.archiveData)}`,
+    );
+  }
+
+  // 详情
+  const detailMatch = /^\/([^/]+)$/.exec(path);
+  if (method === 'get' && detailMatch) {
+    const draft = findSkillDraft(detailMatch[1]);
+    return draft ? ok({ ...draft }) : fail('草稿不存在', null);
+  }
+
+  return null;
+}
+
+function handleDirectRequest(method: string, path: string): Record<string, string> | null {
+  if (method !== 'get') {
+    return null;
+  }
+  if (path.includes('matestoreauthservice/v1/users/validate') || path.endsWith('/users/validate')) {
+    return { ...MOCK_VALIDATE_USER };
+  }
+  return null;
+}
+
+function handleFuyaoUserPlainResponse(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): unknown | null {
+  if (method !== 'get') {
+    return null;
+  }
+  if (path.includes('auth-manager/login')) {
+    return { success: true, code: 0, data: { status: 'ok' } };
+  }
+  if (path.includes('config-center/hw-userinfo')) {
+    const info = String(readParams(config).info ?? '')
+      .trim()
+      .toLowerCase();
+    const data = MOCK_USER_DEPARTMENT_OPTIONS.filter((item) => {
+      if (!info) {
+        return true;
+      }
+      return Object.values(item).some((value) => String(value).toLowerCase().includes(info));
+    });
+    return ok(data, data.length);
+  }
+  if (path.includes('config-center/user')) {
+    const userId = String(readParams(config).userId ?? '').trim();
+    return {
+      messageEn: 'success',
+      data: {
+        list: userId ? [{ userId, role: 'SUPER_ADMIN' }] : [],
+      },
+    };
+  }
+  return null;
+}
+
+function handleFuyaoRequest(
+  method: string,
+  path: string,
+  config: AxiosRequestConfig,
+): MockEnvelope<unknown> | null {
+  if (method === 'post' && path === '/resource/resource-management/v1/storage/file') {
+    const file = fileFromFormData(config.data);
+    const form = config.data instanceof FormData ? config.data : undefined;
+    const fileDir = String(form?.get('fileDir') ?? 'fuyao/skills/mock/1.0.0');
+    return ok({
+      fileName: file?.name ?? 'skill.zip',
+      fileDir,
+      filePath: `${fileDir}/${file?.name ?? 'skill.zip'}`,
+      url: `${fileDir}/${file?.name ?? 'skill.zip'}`,
+    });
+  }
+  return null;
+}
+
+function shouldUseMock(): boolean {
+  const explicit = String(import.meta.env.VITE_SKILL_BASE_SERVICE_MOCK ?? '')
+    .trim()
+    .toLowerCase();
+  if (explicit === 'false' || explicit === '0') {
+    return false;
+  }
+  if (explicit === 'true' || explicit === '1') {
+    return true;
+  }
+  return import.meta.env.VITE_SKILL_MARKET_TRANSPORT !== 'http';
+}
+
+export function maybeHandleSkillBaseMockRequest<T>(
+  channel: string,
+  config: AxiosRequestConfig,
+): Promise<T> | null {
+  if (!shouldUseMock()) {
+    return null;
+  }
+  const method = normalizeMethod(config.method);
+  const path = normalizePath(config.url);
+  if (import.meta.env.DEV) {
+    const params = readParams(config);
+    const data = summarizeMockRequestBody(config.data);
+    console.info('[skillBaseMock]', {
+      channel,
+      method: method.toUpperCase(),
+      path: path || '(empty)',
+      params,
+      data,
+    });
+  }
+
+  if (channel === 'direct') {
+    const raw = handleDirectRequest(method, path);
+    if (raw != null) {
+      return Promise.resolve(raw as T);
+    }
+    if (import.meta.env.DEV) {
+      console.warn('[skillBaseMock] no handler (direct)', path);
+    }
+    return null;
+  }
+
+  if (channel === 'fuyao') {
+    const plain = handleFuyaoUserPlainResponse(method, path, config);
+    if (plain != null) {
+      return Promise.resolve(plain as T);
+    }
+    const envelope = handleFuyaoRequest(method, path, config);
+    if (envelope) {
+      return Promise.resolve(envelope as T);
+    }
+    if (import.meta.env.DEV) {
+      console.warn('[skillBaseMock] no handler (fuyao)', {
+        path,
+        params: readParams(config),
+        data: summarizeMockRequestBody(config.data),
+      });
+    }
+    return null;
+  }
+
+  if (channel === 'skill' || channel === 'harnessSkill') {
+    const envelope = handleSkillRequest(method, path, config);
+    return envelope ? Promise.resolve(envelope as T) : null;
+  }
+  if (channel === 'skillDraft') {
+    const envelope = handleSkillDraftRequest(method, path, config);
+    return envelope ? Promise.resolve(envelope as T) : null;
+  }
+  if (channel === 'api') {
+    const envelope = handleApiRequest(method, path, config);
+    return envelope ? Promise.resolve(envelope as T) : null;
+  }
+  return null;
+}

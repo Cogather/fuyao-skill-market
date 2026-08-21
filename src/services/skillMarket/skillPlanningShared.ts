@@ -1,0 +1,354 @@
+import * as XLSX from 'xlsx';
+
+export type SkillPlanningSortField = 'planedCompleteDate';
+export type SkillPlanningSortOrder = 'asc' | 'desc';
+
+export interface SkillPlanningItem {
+  id: string;
+  skillId?: string;
+  sceneId?: string;
+  activityId?: string;
+  firstScene: string;
+  secondScene: string;
+  activityNodeName: string;
+  subActivityNodeName: string;
+  name: string;
+  description: string;
+  level: string;
+  offeringId: string;
+  offeringName: string;
+  owner: string;
+  deptCode: string;
+  deptName: string;
+  planningDeptCode?: string;
+  planningDeptName: string;
+  developOwner: string;
+  planedCompleteDate: string;
+  status: string;
+  l5DeptCode?: string;
+  l5DeptName?: string;
+  l4DeptCode?: string;
+  l4DeptName?: string;
+  l3DeptCode?: string;
+  l3DeptName?: string;
+  l2DeptCode?: string;
+  l2DeptName?: string;
+  l1DeptCode?: string;
+  l1DeptName?: string;
+}
+
+export interface SkillPlanningQuery {
+  userId?: string;
+  deptName?: string;
+  planningDeptName?: string;
+  offeringName?: string;
+  departmentL3?: string;
+  departmentL4?: string;
+  departmentL5?: string;
+  departmentL6?: string;
+  departmentL7?: string;
+  departmentL8?: string;
+  deptCode?: string;
+  deptCodes?: string[];
+  firstScene?: string | string[];
+  secondScene?: string | string[];
+  activityNodeName?: string | string[];
+  subActivityNodeName?: string | string[];
+  level?: string | string[];
+  status?: string | string[];
+  owner?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  keyword?: string;
+  /** 补充查询维度：部门级 / 产品级 */
+  dimType?: string;
+  dimCode?: string;
+  dimName?: string;
+  sortBy?: SkillPlanningSortField;
+  sortOrder?: SkillPlanningSortOrder;
+  pageNum?: number;
+  pageSize?: number;
+}
+
+export interface SkillPlanningListResult {
+  list: SkillPlanningItem[];
+  total: number;
+}
+
+export interface SkillPlanningOptionGroup {
+  value: string;
+  children: string[];
+}
+
+export interface ProductPlanningOption {
+  offeringId: string;
+  offeringName: string;
+  planningDeptName: string;
+}
+
+export interface SkillPlanningUserOption {
+  id: string;
+  sAMAccountName: string;
+  chName: string;
+  label: string;
+  deptName: string;
+  raw: Record<string, unknown>;
+}
+
+export interface SkillPlanningFilterOptions {
+  firstScene: string[];
+  secondScene: string[];
+  activityNodeName: string[];
+  subActivityNodeName: string[];
+  level: string[];
+  sceneGroups: SkillPlanningOptionGroup[];
+  activityGroups: SkillPlanningOptionGroup[];
+}
+
+export interface SkillPlanningImportResult {
+  created: number;
+  missingFields: string[];
+  totalCount: number;
+  successCount: number;
+  failCount: number;
+  errorList: Array<{
+    rowNum: number;
+    errMsg: string;
+  }>;
+}
+
+export type SkillPlanningPayload = Omit<SkillPlanningItem, 'id'>;
+export type SkillPlanningBatchPatch = Partial<
+  Pick<
+    SkillPlanningItem,
+    | 'description'
+    | 'offeringName'
+    | 'owner'
+    | 'deptName'
+    | 'planningDeptName'
+    | 'developOwner'
+    | 'planedCompleteDate'
+  >
+>;
+export type SkillPlanningBatchUpdatePayload = { ids: string[] } & SkillPlanningBatchPatch;
+
+export const skillPlanningFieldMap: Record<string, keyof SkillPlanningPayload> = {
+  一级场景: 'firstScene',
+  二级场景: 'secondScene',
+  归属活动: 'activityNodeName',
+  归属子活动: 'subActivityNodeName',
+  'Skill 名称': 'name',
+  Skill名称: 'name',
+  SKILL名称: 'name',
+  'Skill 说明': 'description',
+  Skill说明: 'description',
+  SKILL说明: 'description',
+  层级: 'level',
+  产品: 'offeringName',
+  '责任 Owner': 'owner',
+  责任Owner: 'owner',
+  '责任 Owener': 'owner',
+  责任Owener: 'owner',
+  归属部门: 'deptName',
+  规划部门: 'planningDeptName',
+  开发责任人: 'developOwner',
+  计划完成时间: 'planedCompleteDate',
+};
+
+export const skillPlanningExportHeaders: Array<keyof typeof skillPlanningFieldMap> = [
+  '一级场景',
+  '二级场景',
+  '归属活动',
+  '归属子活动',
+  'Skill 名称',
+  'Skill 说明',
+  '层级',
+  '产品',
+  '责任 Owner',
+  '归属部门',
+  '规划部门',
+  '开发责任人',
+  '计划完成时间',
+  '当前进展',
+];
+
+export const skillPlanningImportHeaders: Array<keyof typeof skillPlanningFieldMap> = [
+  '一级场景',
+  '二级场景',
+  '归属活动',
+  '归属子活动',
+  'Skill 名称',
+  '层级',
+  '产品',
+  '规划部门',
+];
+
+export function normalizeText(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function normalizeSkillPlanningLevel(value: unknown): string {
+  const level = normalizeText(value);
+  if (!level) return '';
+  return level === '部门级' ? '部门级' : '产品级';
+}
+
+export function normalizeTextArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.map((item) => normalizeText(item)).filter(Boolean))];
+}
+
+export function createEmptySkillPlanningPayload(): SkillPlanningPayload {
+  return {
+    skillId: '',
+    firstScene: '',
+    secondScene: '',
+    activityNodeName: '',
+    subActivityNodeName: '',
+    name: '',
+    description: '',
+    level: '',
+    offeringId: '',
+    offeringName: '',
+    owner: '',
+    deptCode: '',
+    deptName: '',
+    planningDeptName: '',
+    developOwner: '',
+    planedCompleteDate: '',
+    status: '',
+  };
+}
+
+export function normalizeSkillPlanningPayload(
+  payload: Partial<SkillPlanningPayload>,
+): SkillPlanningPayload {
+  return {
+    skillId: normalizeText(payload.skillId),
+    sceneId: normalizeText(payload.sceneId),
+    activityId: normalizeText(payload.activityId),
+    firstScene: normalizeText(payload.firstScene),
+    secondScene: normalizeText(payload.secondScene),
+    activityNodeName: normalizeText(payload.activityNodeName),
+    subActivityNodeName: normalizeText(payload.subActivityNodeName),
+    name: normalizeText(payload.name),
+    description: normalizeText(payload.description),
+    level: normalizeSkillPlanningLevel(payload.level),
+    offeringId: normalizeText(payload.offeringId),
+    offeringName: normalizeText(payload.offeringName),
+    owner: normalizeText(payload.owner),
+    deptCode: normalizeText(payload.deptCode),
+    deptName: normalizeText(payload.deptName),
+    planningDeptName: normalizeText(payload.planningDeptName) || normalizeText(payload.deptName),
+    l5DeptCode: normalizeText(payload.l5DeptCode),
+    l5DeptName: normalizeText(payload.l5DeptName),
+    l4DeptCode: normalizeText(payload.l4DeptCode),
+    l4DeptName: normalizeText(payload.l4DeptName),
+    l3DeptCode: normalizeText(payload.l3DeptCode),
+    l3DeptName: normalizeText(payload.l3DeptName),
+    l2DeptCode: normalizeText(payload.l2DeptCode),
+    l2DeptName: normalizeText(payload.l2DeptName),
+    l1DeptCode: normalizeText(payload.l1DeptCode),
+    l1DeptName: normalizeText(payload.l1DeptName),
+    developOwner: normalizeText(payload.developOwner),
+    planedCompleteDate: normalizeText(payload.planedCompleteDate),
+    status: normalizeText(payload.status),
+  };
+}
+
+export function normalizeSkillPlanningItem(value: unknown): SkillPlanningItem {
+  const record =
+    value && typeof value === 'object'
+      ? (value as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+
+  return {
+    id: normalizeText(record.id),
+    skillId: normalizeText(record.skillId) || normalizeText(record.skillMasterId),
+    sceneId: normalizeText(record.sceneId),
+    activityId: normalizeText(record.activityId),
+    firstScene: normalizeText(record.firstScene),
+    secondScene: normalizeText(record.secondScene),
+    activityNodeName: normalizeText(record.activityNodeName),
+    subActivityNodeName: normalizeText(record.subActivityNodeName),
+    name: normalizeText(record.name),
+    description: normalizeText(record.description),
+    level: normalizeSkillPlanningLevel(record.level),
+    offeringId: normalizeText(record.offeringId),
+    offeringName: normalizeText(record.offeringName),
+    owner: normalizeText(record.owner),
+    deptCode: normalizeText(record.deptCode),
+    deptName: normalizeText(record.deptName),
+    planningDeptName: normalizeText(record.planningDeptName) || normalizeText(record.deptName),
+    l5DeptCode: normalizeText(record.l5DeptCode),
+    l5DeptName: normalizeText(record.l5DeptName),
+    l4DeptCode: normalizeText(record.l4DeptCode),
+    l4DeptName: normalizeText(record.l4DeptName),
+    l3DeptCode: normalizeText(record.l3DeptCode),
+    l3DeptName: normalizeText(record.l3DeptName),
+    l2DeptCode: normalizeText(record.l2DeptCode),
+    l2DeptName: normalizeText(record.l2DeptName),
+    l1DeptCode: normalizeText(record.l1DeptCode),
+    l1DeptName: normalizeText(record.l1DeptName),
+    developOwner: normalizeText(record.developOwner),
+    planedCompleteDate: normalizeText(record.planedCompleteDate),
+    status: normalizeText(record.status),
+  };
+}
+
+export function cloneSkillPlanningItem(item: SkillPlanningItem): SkillPlanningItem {
+  return { ...item };
+}
+
+export function rowToSkillPlanningPayload(row: Record<string, unknown>): SkillPlanningPayload {
+  const payload = createEmptySkillPlanningPayload();
+  for (const [label, key] of Object.entries(skillPlanningFieldMap)) {
+    if (row[label] !== undefined) {
+      (payload as unknown as Record<string, string>)[key] = normalizeText(row[label]);
+    }
+  }
+  return normalizeSkillPlanningPayload(payload);
+}
+
+export function itemToSkillPlanningExportRow(item: SkillPlanningItem): Record<string, string> {
+  return {
+    一级场景: item.firstScene,
+    二级场景: item.secondScene,
+    归属活动: item.activityNodeName,
+    归属子活动: item.subActivityNodeName,
+    'Skill 名称': item.name,
+    'Skill 说明': item.description,
+    层级: item.level,
+    产品: item.offeringName,
+    '责任 Owner': item.owner,
+    归属部门: item.deptName,
+    规划部门: item.planningDeptName,
+    开发责任人: item.developOwner,
+    计划完成时间: item.planedCompleteDate,
+    当前进展: item.status,
+  };
+}
+
+export async function exportSkillPlanningTemplateToExcel(
+  filename = 'Skill规划导入模板.xlsx',
+): Promise<void> {
+  const sheet = XLSX.utils.aoa_to_sheet([[...skillPlanningImportHeaders]]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Skill规划模板');
+  XLSX.writeFile(workbook, filename);
+}
+
+export async function exportSkillPlanningToExcel(
+  rows: SkillPlanningItem[],
+  filename = 'Skill规划清单.xlsx',
+): Promise<void> {
+  const sheet = XLSX.utils.json_to_sheet(rows.map(itemToSkillPlanningExportRow), {
+    header: [...skillPlanningExportHeaders],
+  });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Skill规划');
+  XLSX.writeFile(workbook, filename);
+}
