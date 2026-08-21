@@ -1,4 +1,4 @@
-import { skillBaseService } from './skillBaseService';
+import { skillBaseService, type QueryHarnessDeptProductsParams } from './skillBaseService';
 import type {
   ApiEnvelope,
   CreateSkillPlanningSupplementBody,
@@ -651,6 +651,7 @@ export async function getProductPlanning(
   offeringName: string,
   planningDeptName: string,
   deptCode: string,
+  userName?: string,
 ): Promise<ProductPlanningOption[]> {
   const params = {
     offeringName: normalizeText(offeringName),
@@ -669,9 +670,11 @@ export async function getProductPlanning(
     );
   }
 
-  const response = await skillBaseService.queryHarnessDeptProducts({
+  const productParams: QueryHarnessDeptProductsParams = {
     deptCode: normalizedDeptCode,
-  });
+    ...(userName !== undefined ? { userName: normalizeText(userName) } : {}),
+  };
+  const response = await skillBaseService.queryHarnessDeptProducts(productParams);
   const keyword = params.offeringName.toLowerCase();
   return normalizeProductPlanningOptions(response)
     .map((option) => ({

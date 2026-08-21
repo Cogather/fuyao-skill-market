@@ -11,3 +11,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  /** 父页面初始化上下文：由入口桥接脚本提前捕获，并在当前标签页内恢复。 */
+  __SKILL_MARKET_PARENT_CONTEXT__?: Record<string, unknown>;
+}

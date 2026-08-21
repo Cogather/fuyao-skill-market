@@ -478,7 +478,9 @@ const marketOverviewDeptTree = computed((): MarketDeptNode[] => {
   const source =
     Array.isArray(departmentList.value) && departmentList.value.length > 0
       ? departmentList.value
-      : getMockMarketDepartmentsTree();
+      : transportIsHttp
+        ? []
+        : getMockMarketDepartmentsTree();
   const coerced = coerceDepartmentTreeFromUnknown(source);
   return mapDepartmentTreeDtoToForest(coerced);
 });
@@ -777,8 +779,8 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
-// 等待 userId 和 departmentList 加载完成
-function waitUserIdAndDepartmentList(timeout = 5000): Promise<void> {
+// userId 和部门树都由父页面通过 Skill_Square_Init 注入。
+function waitUserIdAndDepartmentList(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
     if (userId.value && departmentList.value.length > 0) {
       resolve();

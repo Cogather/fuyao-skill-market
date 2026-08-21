@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
 import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
@@ -46,6 +47,8 @@ const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
 const harnessPermissionError = ref('');
 const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
   '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
+const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
+  '未从父页面获取到部门树，请检查初始化参数后重新进入。';
 
 type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
@@ -65,6 +68,7 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
 ];
 
 const activeHarnessTab = ref<HarnessTab>('planning');
+const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
 const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
@@ -88,22 +92,20 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
-const userName = computed(
-  () =>
-    String(profileStore.userInfo?.nameCn ?? '').trim() ||
-    String(skillMarketStore.userName ?? '').trim() ||
-    String(profileStore.userInfo?.name ?? '').trim() ||
-    (transportIsHttp ? '' : '模拟用户'),
-);
+const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
-  const source =
-    transportIsHttp && Array.isArray(injectedDepartments) && injectedDepartments.length > 0
-      ? injectedDepartments
-      : getMockMarketDepartmentsTree();
+  // HTTP 模式只使用父页面注入的数据，不请求部门树接口，也不回退 Mock。
+  const source = transportIsHttp ? injectedDepartments : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
+const departmentTreeUnavailable = computed(
+  () =>
+    transportIsHttp &&
+    permissionContextReady.value &&
+    departmentTree.value.length === 0,
+);
 
 function departmentLevelByPath(path: string[]): number {
   let nodes = departmentTree.value;
@@ -186,6 +188,7 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
   const expectedLevelNo = Number(department.levelNo);
   const hasExpectedLevelNo = Number.isFinite(expectedLevelNo) && expectedLevelNo > 0;
   const matchingPaths: string[][] = [];
+  let strictCodeMatch: string[] | null = null;
   let codeMatch: string[] | null = null;
 
   const visit = (nodes: typeof departmentTree.value, parentPath: string[]): void => {
@@ -193,10 +196,10 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
       const path = [...parentPath, node.name];
       if (
         department.deptCode &&
-        (node.deptCode === department.deptCode || node.id === department.deptCode) &&
-        (!hasExpectedLevelNo || node.levelNo === expectedLevelNo)
+        (node.deptCode === department.deptCode || node.id === department.deptCode)
       ) {
         codeMatch = path;
+        if (!hasExpectedLevelNo || node.levelNo === expectedLevelNo) strictCodeMatch = path;
       }
       if (node.name === department.deptName || pathEndsWith(path, expectedPath)) {
         matchingPaths.push(path);
@@ -206,6 +209,8 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
   };
 
   visit(departmentTree.value, []);
+  if (strictCodeMatch) return [...strictCodeMatch];
+  // 权限接口可能使用 L3-L8，而部门树使用 L1-L6；编码一致时不能被层级编号差异挡住。
   if (codeMatch) return [...codeMatch];
 
   const suffixMatch = matchingPaths.find((path) => pathEndsWith(path, expectedPath));
@@ -258,19 +263,16 @@ async function loadHarnessDepartmentScope(): Promise<void> {
   }
 }
 
-function waitForInjectedContext(timeout = 5000): Promise<void> {
+function waitForInjectedContext(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value && skillMarketStore.departmentList.length > 0) {
+    if (userId.value && departmentTree.value.length > 0) {
       resolve();
       return;
     }
 
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      if (
-        (userId.value && skillMarketStore.departmentList.length > 0) ||
-        Date.now() - startedAt > timeout
-      ) {
+      if ((userId.value && departmentTree.value.length > 0) || Date.now() - startedAt > timeout) {
         window.clearInterval(timer);
         resolve();
       }
@@ -316,6 +318,13 @@ function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
 }
 
 function selectHarnessTab(tab: HarnessTab): void {
+  if (
+    tab !== activeHarnessTab.value &&
+    activeHarnessTab.value === 'settings' &&
+    configurationPage.value?.validateBeforeLeave() === false
+  ) {
+    return;
+  }
   if (tab === 'extension') extensionTabActivated.value = true;
   activeHarnessTab.value = tab;
 }
@@ -351,6 +360,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateTopbarElevation);
 });
+
+onBeforeRouteLeave(() => {
+  if (activeHarnessTab.value !== 'settings') return true;
+  return configurationPage.value?.validateBeforeLeave() ?? true;
+});
 </script>
 
 <template>
@@ -379,8 +393,12 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <div v-if="departmentTreeUnavailable" class="harness-permission-alert" role="alert">
+      {{ HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE }}
+    </div>
+
     <div
-      v-if="harnessPermissionLoadState === 'error'"
+      v-else-if="harnessPermissionLoadState === 'error'"
       class="harness-permission-alert"
       role="alert"
     >
@@ -447,6 +465,7 @@ onBeforeUnmount(() => {
       aria-labelledby="harness-tab-settings"
     >
       <HarnessConfigurationPage
+        ref="configurationPage"
         :department-permission-path="currentUserDepartmentPermission.path"
         :department-tree="departmentTree"
         :user-id="userId"
@@ -685,6 +704,9 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 30px rgba(180, 35, 24, 0.12);
   font-size: 13px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .harness-tab-panel {
