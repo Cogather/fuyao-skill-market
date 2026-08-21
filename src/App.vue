@@ -3,22 +3,30 @@ import { onBeforeUnmount, onMounted } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
 
 import { useSkillMarketStore } from './stores/skillMarketStore';
-import { useProfileStore } from './stores/userStore';
+import { isUsableDepartmentTree } from './services/skillMarket/departmentTreeLoader';
+// import { useProfileStore } from './stores/userStore';
 
 const skillMarketStore = useSkillMarketStore();
-const profileStore = useProfileStore();
+// const profileStore = useProfileStore();
 const router = useRouter();
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 
-onMounted(async () => {
-  await profileStore.initUserInfo();
-  startTokenCheck();
+onMounted(() => {
+  // 用户信息仍由父应用注入；这里只独立加载真实部门树，避免父消息时序影响 Harness。
+  if (transportIsHttp) void skillMarketStore.refreshDepartmentTree();
 });
 
-const startTokenCheck = () => {
-  setInterval(() => {
-    profileStore.checkUserToken();
-  }, 300 * 1000); // 每5分钟检查一次
-};
+// 当前项目的用户上下文由父应用注入，暂不调用 /users/validate。
+// onMounted(async () => {
+//   await profileStore.initUserInfo();
+//   startTokenCheck();
+// });
+//
+// const startTokenCheck = () => {
+//   setInterval(() => {
+//     profileStore.checkUserToken();
+//   }, 300 * 1000); // 每5分钟检查一次
+// };
 
 function firstString(value: unknown): string {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -73,11 +81,33 @@ function handleEvent(event: MessageEvent): void {
     const departmentSource = p.departmentList ?? p.departmentListStr;
     const list =
       typeof departmentSource === 'string' ? JSON.parse(departmentSource) : departmentSource;
-    if (Array.isArray(list)) {
-      skillMarketStore.updateDept(list);
-      console.log('是否已存入departmentList', skillMarketStore.departmentList);
+    if (Array.isArray(list) && isUsableDepartmentTree(list)) {
+      const updated = skillMarketStore.updateDept(list, 'parent');
+      console.info('[部门选择链路][Skill_Square_Init] departmentList', {
+        receivedAt: new Date().toISOString(),
+        incomingCount: list.length,
+        accepted: updated,
+        currentSource: skillMarketStore.departmentTreeSource,
+        currentCount: skillMarketStore.departmentList.length,
+        departmentList: list,
+      });
+    } else if (departmentSource !== undefined) {
+      console.warn('[部门选择链路][Skill_Square_Init] 收到空部门树，已忽略', {
+        receivedAt: new Date().toISOString(),
+        incomingDepartmentList: list,
+        currentSource: skillMarketStore.departmentTreeSource,
+        currentCount: skillMarketStore.departmentList.length,
+      });
+      if (transportIsHttp && !isUsableDepartmentTree(skillMarketStore.departmentList)) {
+        void skillMarketStore.refreshDepartmentTree();
+      }
     }
-  } catch (error) {}
+  } catch (error) {
+    console.error('父应用部门树解析失败：', error);
+    if (transportIsHttp && !isUsableDepartmentTree(skillMarketStore.departmentList)) {
+      void skillMarketStore.refreshDepartmentTree();
+    }
+  }
   syncRouteFromParent(p);
 }
 

@@ -6,7 +6,6 @@ import type {
   ExtensionReleaseItem,
   ExtensionScene,
 } from './extensionPublishMock';
-import { managerUserService } from '../../api/user';
 import { skillBaseService } from './skillBaseService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
@@ -42,18 +41,6 @@ export type PublishExtensionInput = {
   channel: ExtensionPublishChannel;
   organization: PublishableOrganization;
 };
-
-const currentOperatorNameKeys = [
-  'displayNameCN',
-  'nameCn',
-  'chName',
-  'cnName',
-  'userName',
-  'employeeName',
-  'displayName',
-  'name',
-  'displayNameEN',
-];
 
 type HttpExtensionRelease = ExtensionRelease & {
   firstScene: string;
@@ -119,18 +106,6 @@ function requiredText(value: unknown, message: string): string {
   const text = normalizeText(value);
   if (!text || /^(undefined|null)$/i.test(text)) throw new Error(message);
   return text;
-}
-
-export async function queryHttpCurrentOperatorName(fallbackName = ''): Promise<string> {
-  const normalizedFallback = normalizeText(fallbackName);
-  try {
-    const response = await managerUserService.getUserInfo();
-    const operatorName = readText(asRecord(unwrapResponseData(response)), currentOperatorNameKeys);
-    if (operatorName) return operatorName;
-  } catch (error) {
-    if (!normalizedFallback) throw error;
-  }
-  return requiredText(normalizedFallback, '当前用户姓名获取失败，无法发布 Extension');
 }
 
 function normalizedVersion(value: unknown): string {
@@ -409,11 +384,13 @@ export async function queryHttpExtensionProducts(
   departmentCode: string,
   departmentName: string,
   departmentPath: string[],
+  userName: string,
 ): Promise<ExtensionProduct[]> {
   const options = await getProductPlanning(
     '',
     departmentName,
     requiredText(departmentCode, '所选部门缺少编码'),
+    { userName: userName.trim() },
   );
   return options.map((option) => ({
     id: option.offeringId || option.offeringName,

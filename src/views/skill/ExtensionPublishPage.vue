@@ -5,7 +5,6 @@ import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   publishHttpExtension,
-  queryHttpCurrentOperatorName,
   queryHttpExtensionBindings,
   queryHttpExtensionHistory,
   queryHttpExtensionProducts,
@@ -65,6 +64,8 @@ const props = withDefaults(
     initialScope: undefined,
   },
 );
+
+const currentUserName = computed(() => String(props.userName ?? '').trim());
 
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
@@ -399,6 +400,7 @@ async function loadHttpProducts(
       departmentCode,
       department?.name ?? '',
       departmentPath,
+      currentUserName.value,
     );
     if (requestSequence !== productLoadSequence) return false;
     products.value = nextProducts;
@@ -830,10 +832,9 @@ async function confirmPublish(): Promise<void> {
     publishSubmitting.value = true;
     publishError.value = '';
     try {
-      const operatorName = await queryHttpCurrentOperatorName(props.userName.trim());
       await publishHttpExtension({
         userId: props.userId.trim(),
-        operatorName,
+        operatorName: currentUserName.value,
         scope: appliedHttpScope.value,
         scene,
         extensionName: name,
@@ -883,8 +884,7 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     retryingReleaseId.value = release.id ?? '';
     historyError.value = '';
     try {
-      const operatorName = await queryHttpCurrentOperatorName(props.userName.trim());
-      await retryHttpExtension(release.id ?? '', props.userId.trim(), operatorName);
+      await retryHttpExtension(release.id ?? '', props.userId.trim(), currentUserName.value);
       await refreshHttpScenes(scene.id, false);
       showToast(
         `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,
@@ -996,9 +996,16 @@ onBeforeUnmount(() => {
 
     <section class="extension-filter-card" aria-label="Extension 发布查询">
       <div class="filter-grid" :class="{ 'is-department-level': draftLevel === '部门级' }">
-        <label class="filter-field filter-field--level">
+        <label v-if="false" class="filter-field filter-field--level">
           <span>层级 <em>*</em></span>
-          <select v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
+          <div
+            v-if="filterLevelOptions.length === 1 && filterLevelOptions[0] === '产品级'"
+            class="single-level-value"
+            aria-label="当前层级：产品级"
+          >
+            产品级
+          </div>
+          <select v-else v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
             <option v-for="level in filterLevelOptions" :key="level" :value="level">
               {{ level }}
             </option>
@@ -1682,6 +1689,18 @@ onBeforeUnmount(() => {
   background: #f8fbff;
   color: #64748b;
   cursor: not-allowed;
+}
+
+.single-level-value {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 2px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 .extension-dept-cascader {
