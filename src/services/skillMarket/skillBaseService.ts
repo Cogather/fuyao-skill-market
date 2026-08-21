@@ -1262,23 +1262,7 @@ export const skillBaseService = {
    * 对接后端 SkillBatchPublishController
    */
 
-  // 1. 部门树
-  queryDeptReviewDepartments: (params?: Record<string, unknown>): any => {
-    return withDepartmentLinkResponseLog(
-      'queryDeptReviewDepartments',
-      '/api/versioninfo/v1/hrms/departments/product/ai',
-      params,
-      () =>
-        httpRequest.api<any>({
-          url: 'versioninfo/v1/hrms/departments/product/ai',
-          method: 'get',
-          params,
-          timeout: 10000,
-        }),
-    );
-  },
-
-  // 1.1 可视部门树（用于部门评审可选性控制）
+  // 1. 可视部门树（用于部门评审可选性控制）
   queryVisibleDepts: (params?: { userId?: string }): any => {
     return httpRequest.api<any>({
       url: '/api/skills/personal-batch/visible-depts',
