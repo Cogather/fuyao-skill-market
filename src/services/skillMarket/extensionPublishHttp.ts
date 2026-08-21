@@ -384,11 +384,13 @@ export async function queryHttpExtensionProducts(
   departmentCode: string,
   departmentName: string,
   departmentPath: string[],
+  userName: string,
 ): Promise<ExtensionProduct[]> {
   const options = await getProductPlanning(
     '',
     departmentName,
     requiredText(departmentCode, '所选部门缺少编码'),
+    { userName: userName.trim() },
   );
   return options.map((option) => ({
     id: option.offeringId || option.offeringName,

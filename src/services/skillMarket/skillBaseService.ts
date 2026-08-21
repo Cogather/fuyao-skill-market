@@ -74,6 +74,10 @@ export interface RefreshActivityOptionGroupsBody {
   activities: RefreshTaxonomyItem[];
 }
 
+export interface QueryHarnessDeptProductsBody {
+  userName: string;
+}
+
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
 export const corecode = _corecode_env;
@@ -948,7 +952,10 @@ export const skillBaseService = {
 
   // 产品
   // 查询某个部门的产品列表
-  queryHarnessDeptProducts: (params: { deptCode: string }): any => {
+  queryHarnessDeptProducts: (
+    params: { deptCode: string },
+    body?: QueryHarnessDeptProductsBody,
+  ): any => {
     return withDepartmentLinkResponseLog(
       'queryHarnessDeptProducts',
       '/api/harness/smapi-product-by-dept',
@@ -958,6 +965,7 @@ export const skillBaseService = {
           url: '/smapi-product-by-dept',
           method: 'get',
           params, // { deptCode }
+          data: body ?? {},
         }),
     );
   },

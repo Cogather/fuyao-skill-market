@@ -32,7 +32,6 @@ import {
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
-import { useSkillMarketStore } from '../../stores/skillMarketStore';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -48,6 +47,7 @@ type ExtensionModal = 'publish' | 'history' | null;
 const props = withDefaults(
   defineProps<{
     userId?: string;
+    userName?: string;
     departmentTree?: DepartmentTreeNode[];
     currentUserDepartmentPath?: string[];
     allowedDepartmentPaths?: string[][];
@@ -56,6 +56,7 @@ const props = withDefaults(
   }>(),
   {
     userId: '',
+    userName: '',
     departmentTree: () => [],
     currentUserDepartmentPath: () => [],
     allowedDepartmentPaths: () => [],
@@ -64,8 +65,7 @@ const props = withDefaults(
   },
 );
 
-const skillMarketStore = useSkillMarketStore();
-const currentUserName = computed(() => String(skillMarketStore.userName ?? '').trim());
+const currentUserName = computed(() => String(props.userName ?? '').trim());
 
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
@@ -400,6 +400,7 @@ async function loadHttpProducts(
       departmentCode,
       department?.name ?? '',
       departmentPath,
+      currentUserName.value,
     );
     if (requestSequence !== productLoadSequence) return false;
     products.value = nextProducts;
