@@ -110,8 +110,8 @@ const innerTab = ref<UserInnerTab>(route?.query?.tab || 'hot');
 const uploadOpen = ref(false);
 const search = ref('');
 const hotSearch = ref('');
-/** 热榜检索模式：normal 普通检索（精确关键词）、semantic 智能检索（语义理解） */
-const hotSearchMode = ref<'normal' | 'semantic'>('normal');
+/** 热榜检索模式：normal 普通检索（精确关键词，请求不带 searchMode）、smart 智能检索（语义理解，请求带 searchMode=smart） */
+const hotSearchMode = ref<'normal' | 'smart'>('normal');
 const hotSkills = ref<any[]>([]);
 const hotSkillsLoading = ref(false);
 /** Mock：组织展示名；HTTP：组织 id 字符串（对接 `orgId`） */
@@ -1390,14 +1390,17 @@ const loadHotSkillNums = async () => {
 async function loadHotSkillCards(): Promise<void> {
   hotSkillsLoading.value = true;
   try {
-    const res = await skillBaseService.querySkillList({
+    const params: Record<string, unknown> = {
       pageNum: 1,
       pageSize: 6,
       sortBy: 'downloads',
       sortOrder: 'desc',
       keyword: hotSearch.value,
-      searchMode: hotSearchMode.value,
-    });
+    };
+    if (hotSearchMode.value === 'smart') {
+      params.searchMode = 'smart';
+    }
+    const res = await skillBaseService.querySkillList(params);
     if (res?.meta?.success && res?.data) {
       hotSkills.value = [...res.data];
     }
@@ -1416,7 +1419,7 @@ const onSearchHot = async (e: Event | KeyboardEvent) => {
   await loadHotSkillCards();
 };
 
-const setHotSearchMode = async (mode: 'normal' | 'semantic') => {
+const setHotSearchMode = async (mode: 'normal' | 'smart') => {
   if (hotSearchMode.value === mode) {
     return;
   }
@@ -3761,10 +3764,10 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           <button
             type="button"
             class="hot-search-mode-item"
-            :class="{ active: hotSearchMode === 'semantic' }"
+            :class="{ active: hotSearchMode === 'smart' }"
             role="radio"
-            :aria-checked="hotSearchMode === 'semantic'"
-            @click="setHotSearchMode('semantic')"
+            :aria-checked="hotSearchMode === 'smart'"
+            @click="setHotSearchMode('smart')"
           >
             <span class="hot-search-mode-label">智能检索</span>
             <span
