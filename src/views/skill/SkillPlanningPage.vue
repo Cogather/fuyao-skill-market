@@ -2685,9 +2685,16 @@ onBeforeUnmount(() => {
     <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
       <section class="planning-filter-card" :aria-label="`${capabilityPlanningLabel}查询`">
         <div class="filter-grid" :class="{ 'is-department-level': filterForm.level === '部门级' }">
-          <label class="planning-field planning-field--level">
+          <label v-if="false" class="planning-field planning-field--level">
             <span>层级 <em>*</em></span>
-            <select v-model="filterForm.level" @change="onPlanningScopeLevelChange">
+            <div
+              v-if="planningLevelOptions.length === 1 && planningLevelOptions[0] === '产品级'"
+              class="single-level-value"
+              aria-label="当前层级：产品级"
+            >
+              产品级
+            </div>
+            <select v-else v-model="filterForm.level" @change="onPlanningScopeLevelChange">
               <option v-for="item in planningLevelOptions" :key="`scope-${item}`" :value="item">
                 {{ item }}
               </option>
@@ -4794,6 +4801,18 @@ onBeforeUnmount(() => {
 
 .planning-field input {
   min-width: 50%;
+}
+
+.single-level-value {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 2px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 .planning-field--dept {

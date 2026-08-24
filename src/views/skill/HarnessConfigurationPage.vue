@@ -5,7 +5,10 @@ import ActivityManagementPanel from '../../components/skill/ActivityManagementPa
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
-import type { HarnessDepartmentSnapshot, HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import type {
+  HarnessDepartmentSnapshot,
+  HarnessScopeSnapshot,
+} from '../../types/harnessFilterMemory';
 
 type ConfigurationTab = 'scenes' | 'activities' | 'permissions';
 type DepartmentTreeNode = {
@@ -58,6 +61,8 @@ const emit = defineEmits<{
 }>();
 
 const activeConfigurationTab = ref<ConfigurationTab>('scenes');
+const scenePanel = ref<InstanceType<typeof SceneSettingsPanel> | null>(null);
+const activityPanel = ref<InstanceType<typeof ActivityManagementPanel> | null>(null);
 const configurationTabs = computed(() => {
   const tabs: Array<{
     key: ConfigurationTab;
@@ -87,6 +92,23 @@ watch(
     }
   },
 );
+
+function validateBeforeLeave(): boolean {
+  if (activeConfigurationTab.value === 'scenes') {
+    return scenePanel.value?.validateBeforeLeave() ?? true;
+  }
+  if (activeConfigurationTab.value === 'activities') {
+    return activityPanel.value?.validateBeforeLeave() ?? true;
+  }
+  return true;
+}
+
+function selectConfigurationTab(tab: ConfigurationTab): void {
+  if (tab === activeConfigurationTab.value || !validateBeforeLeave()) return;
+  activeConfigurationTab.value = tab;
+}
+
+defineExpose({ validateBeforeLeave });
 </script>
 
 <template>
@@ -115,7 +137,7 @@ watch(
         :class="{ 'is-active': activeConfigurationTab === tab.key }"
         :aria-selected="activeConfigurationTab === tab.key"
         :aria-controls="`configuration-panel-${tab.key}`"
-        @click="activeConfigurationTab = tab.key"
+        @click="selectConfigurationTab(tab.key)"
       >
         <span class="configuration-tab__icon" aria-hidden="true">
           {{ String(index + 1).padStart(2, '0') }}
@@ -133,6 +155,7 @@ watch(
       aria-labelledby="configuration-tab-scenes"
     >
       <SceneSettingsPanel
+        ref="scenePanel"
         :department-tree="props.departmentTree"
         :user-id="props.userId"
         :department-permission-path="props.departmentPermissionPath"
@@ -154,6 +177,7 @@ watch(
       aria-labelledby="configuration-tab-activities"
     >
       <ActivityManagementPanel
+        ref="activityPanel"
         :department-tree="props.departmentTree"
         :user-id="props.userId"
         :department-permission-path="props.departmentPermissionPath"
