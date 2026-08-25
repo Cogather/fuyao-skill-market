@@ -1694,7 +1694,6 @@ onBeforeUnmount(() => {
     <div class="master-board">
       <header class="master-toolbar">
         <div class="master-toolbar__title">
-          <strong>Skill 原子清单</strong>
           <small
             >已选 {{ selectedMasterIds.length }} 条 / 共 {{ masterTotal }} 条 ·
             可被不同部门的规划复用</small
@@ -2304,11 +2303,6 @@ onBeforeUnmount(() => {
   display: grid;
   min-width: 0;
   gap: 4px;
-}
-.master-toolbar__title strong {
-  color: #101828;
-  font-size: 17px;
-  font-weight: 900;
 }
 .master-toolbar small {
   color: #64748b;
