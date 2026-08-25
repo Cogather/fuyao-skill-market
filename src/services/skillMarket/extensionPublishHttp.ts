@@ -401,9 +401,12 @@ export async function queryHttpExtensionProducts(
 
 export async function queryHttpPublishableOrganizations(
   userId: string,
+  scope: Pick<ExtensionScope, 'dimType' | 'dimCode'>,
 ): Promise<PublishableOrganization[]> {
   const response = await skillBaseService.queryUserPublishableOrgs({
     userId: requiredText(userId, '尚未获取当前用户工号'),
+    dimType: scope.dimType,
+    dimCode: scope.dimCode,
   });
   assertHttpSuccess(response, '可发布组织加载失败');
   const data = unwrapResponseData(response);

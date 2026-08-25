@@ -907,10 +907,16 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
 }
 
 async function loadHttpOrganizations(): Promise<void> {
+  const scope = appliedHttpScope.value;
+  if (!scope) {
+    organizations.value = [];
+    organizationError.value = '当前发布范围无效，请重新选择';
+    return;
+  }
   organizationLoading.value = true;
   organizationError.value = '';
   try {
-    organizations.value = await queryHttpPublishableOrganizations(props.userId.trim());
+    organizations.value = await queryHttpPublishableOrganizations(props.userId.trim(), scope);
     if (!organizations.value.length) organizationError.value = '当前用户暂无可发布组织';
   } catch (error) {
     organizations.value = [];
