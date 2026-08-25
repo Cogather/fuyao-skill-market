@@ -40,7 +40,13 @@
     if (payload.userId !== undefined) next.userId = payload.userId;
     if (payload.userName !== undefined) next.userName = payload.userName;
     var departmentList = departmentListFromPayload(payload);
-    if (departmentList !== undefined) next.departmentList = departmentList;
+    // 父页面在 iframe 重载初期可能先发空数组；不能覆盖同一标签页内已经收到的有效树。
+    if (
+      departmentList !== undefined &&
+      (departmentList.length > 0 || !Array.isArray(next.departmentList) || next.departmentList.length === 0)
+    ) {
+      next.departmentList = departmentList;
+    }
     currentContext = next;
     window.__SKILL_MARKET_PARENT_CONTEXT__ = next;
     writeStoredContext(next);

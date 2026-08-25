@@ -102,12 +102,17 @@ function applyParentContext(p: Record<string, unknown>, source: 'message' | 'buf
     const list =
       typeof departmentSource === 'string' ? JSON.parse(departmentSource) : departmentSource;
     if (Array.isArray(list)) {
-      skillMarketStore.updateDept(list);
-      contextUpdated = true;
+      const keepExistingTree =
+        list.length === 0 && skillMarketStore.departmentList.length > 0;
+      if (!keepExistingTree) {
+        skillMarketStore.updateDept(list);
+        contextUpdated = true;
+      }
       console.info('[部门选择链路][Skill_Square_Init] departmentList', {
         receivedAt: new Date().toISOString(),
         source,
         incomingCount: list.length,
+        ignoredEmptyUpdate: keepExistingTree,
         currentCount: skillMarketStore.departmentList.length,
         departmentList: list,
       });
