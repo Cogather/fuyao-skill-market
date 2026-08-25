@@ -100,7 +100,7 @@ const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(pro
 const capabilityLabel = computed(() => capabilityPlanningApi.value.label);
 const capabilityPlanningLabel = computed(() => `${capabilityLabel.value} 规划`);
 const capabilitySceneRelationLabel = computed(() => '场景关系配置');
-const capabilityCatalogLabel = computed(() => '原子清单');
+const capabilityCatalogLabel = computed(() => `${capabilityLabel.value} 清单`);
 const planningActivityRequired = computed(() => props.capabilityType === 'skill');
 
 const planningLevelOptions: PlanningLevel[] = ['产品级'];

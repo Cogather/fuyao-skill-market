@@ -626,7 +626,7 @@ export async function importMockCapabilityPlanning(
     if (missing.length > 0 || !catalog) {
       errors.push({
         rowNum: index + 2,
-        errMsg: !catalog ? `${label} 不在原子清单中` : `缺少必填字段：${missing.join('、')}`,
+        errMsg: !catalog ? `${label} 不在 ${label} 清单中` : `缺少必填字段：${missing.join('、')}`,
       });
       return;
     }
@@ -808,8 +808,8 @@ export async function exportMockCapabilityCatalog(
     })),
   );
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, `${label}清单`);
-  XLSX.writeFile(workbook, `${label}原子清单.xlsx`);
+  XLSX.utils.book_append_sheet(workbook, sheet, `${label} 清单`);
+  XLSX.writeFile(workbook, `${label} 清单.xlsx`);
 }
 
 export async function importMockCapabilityCatalog(

@@ -857,7 +857,7 @@ export const skillBaseService = {
 
   // Extension 相关接口
   // 查询用户可发布组织列表
-  queryUserPublishableOrgs: (params: { userId: string }): any => {
+  queryUserPublishableOrgs: (params: { userId: string; dimType: string; dimCode: string }): any => {
     return httpRequest.harnessApi<any>({
       url: '/extensions/orgs',
       method: 'get',
