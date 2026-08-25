@@ -1393,6 +1393,9 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </div>
+          <p class="extension-follow-publish-note">
+            列表中归属于当前所选产品的 skill, command, agent 实体会跟随 Extension 一起发布到 Agent Center 平台。
+          </p>
           <label class="modal-field">
             <span>目标组织 <em>*</em></span>
             <select
@@ -2725,6 +2728,13 @@ onBeforeUnmount(() => {
 .publish-summary > li > span:last-child {
   color: #16a34a;
   font-size: 11px;
+}
+
+.extension-follow-publish-note {
+  margin: -2px 0 13px;
+  color: #52647d;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .modal-error {

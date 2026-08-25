@@ -99,7 +99,8 @@ const emit = defineEmits<{
 const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => capabilityPlanningApi.value.label);
 const capabilityPlanningLabel = computed(() => `${capabilityLabel.value} 规划`);
-const capabilityCatalogLabel = computed(() => `${capabilityLabel.value} 清单`);
+const capabilitySceneRelationLabel = computed(() => '场景关系配置');
+const capabilityCatalogLabel = computed(() => '原子清单');
 const planningActivityRequired = computed(() => props.capabilityType === 'skill');
 
 const planningLevelOptions: PlanningLevel[] = ['产品级'];
@@ -128,6 +129,11 @@ const batchReadonlyHeaders = computed(() => [
 ]);
 
 const activePlanningTab = ref<'skills' | 'management'>('skills');
+const activePlanningDescription = computed(() =>
+  activePlanningTab.value === 'management'
+    ? '用于维护部门/产品范围内的原子能力及基础建设信息，作为场景关系配置的数据来源，支持查询、新增、导入、导出和批量维护。'
+    : '用于配置原子能力在部门/产品下的场景关系，将能力关联到一级/二级场景及归属活动/子活动，形成可跟踪的能力规划关系。',
+);
 
 const emptyFilters = {
   planningDeptName: '',
@@ -2650,10 +2656,7 @@ onBeforeUnmount(() => {
     <header class="planning-hero">
       <div>
         <h2 class="panel-title">{{ capabilityPlanningLabel }}</h2>
-        <p class="all-desc">
-          用于统一管理各部门规划建设中的
-          {{ capabilityLabel }} 清单，支持查询、新增、导入、导出和批量维护。
-        </p>
+        <p class="all-desc">{{ activePlanningDescription }}</p>
       </div>
     </header>
 
@@ -2666,7 +2669,7 @@ onBeforeUnmount(() => {
       >
         <span class="planning-tab__icon" aria-hidden="true">01</span>
         <span
-          ><strong>{{ capabilityPlanningLabel }}</strong></span
+          ><strong>{{ capabilitySceneRelationLabel }}</strong></span
         >
       </button>
       <button
@@ -2783,10 +2786,9 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="planning-board" :aria-label="`${capabilityPlanningLabel}清单`">
+      <section class="planning-board" :aria-label="capabilitySceneRelationLabel">
         <div class="planning-toolbar">
           <div class="planning-toolbar__summary">
-            <strong>{{ capabilityPlanningLabel }}清单</strong>
             <span>
               已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条
               <template v-if="hasActivePlanningHeaderFilters || plannedFinishSortOrder">
@@ -4715,6 +4717,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 18px 48px rgba(35, 52, 84, 0.08); */
 }
 
+.planning-hero > div {
+  width: 100%;
+  min-width: 0;
+}
+
 .planning-hero h2 {
   margin: 0;
   color: #07172f;
@@ -4725,7 +4732,7 @@ onBeforeUnmount(() => {
 }
 
 .planning-hero p {
-  max-width: 820px;
+  max-width: none;
   margin: 12px 0 0;
   color: #52647d;
   font-size: 15px;
@@ -4987,12 +4994,6 @@ onBeforeUnmount(() => {
 .planning-toolbar__summary {
   display: grid;
   gap: 4px;
-}
-
-.planning-toolbar__summary strong {
-  color: #101828;
-  font-size: 17px;
-  font-weight: 900;
 }
 
 .planning-toolbar__summary span {

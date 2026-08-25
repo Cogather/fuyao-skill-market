@@ -979,7 +979,6 @@ onMounted(async () => {
     <section class="capability-master-board">
       <header class="capability-master-toolbar">
         <div class="capability-master-toolbar__summary">
-          <strong>{{ capabilityLabel }} 原子清单</strong>
           <small
             >已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条 · 可被不同部门的规划复用</small
           >
@@ -1489,11 +1488,6 @@ onMounted(async () => {
 .capability-master-toolbar__summary {
   display: grid;
   gap: 4px;
-}
-.capability-master-toolbar__summary strong {
-  color: #101828;
-  font-size: 17px;
-  font-weight: 900;
 }
 .capability-master-toolbar__summary small {
   color: #64748b;
