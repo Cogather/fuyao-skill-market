@@ -222,6 +222,7 @@ onBeforeUnmount(() => {
               <col class="task-col-department" />
               <col class="task-col-owner" />
               <col class="task-col-status" />
+              <col class="task-col-version" />
               <col class="task-col-updated" />
               <col class="task-col-actions" />
             </colgroup>
@@ -232,6 +233,7 @@ onBeforeUnmount(() => {
                 <th>规划部门</th>
                 <th>负责人</th>
                 <th>状态</th>
+                <th>版本</th>
                 <th>更新时间</th>
                 <th>操作</th>
               </tr>
@@ -256,9 +258,18 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
                 <td>
-                  <span class="status-badge">
+                  <span
+                    class="status-badge"
+                    :class="{
+                      'is-done': task.status === '已完成',
+                      'is-inProgress': task.status === '进行中',
+                    }"
+                  >
                     {{ task.status || '—' }}
                   </span>
+                </td>
+                <td>
+                  <span class="task-version">{{ task.version || '—' }}</span>
                 </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
                 <td>
@@ -270,7 +281,7 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="pagedTasks.length === 0">
-                <td colspan="8" class="task-empty">
+                <td colspan="7" class="task-empty">
                   {{
                     loadError ||
                     (loading
@@ -555,27 +566,31 @@ onBeforeUnmount(() => {
 }
 
 .task-col-name {
-  width: 34%;
+  width: 31%;
 }
 
 .task-col-department {
-  width: 16%;
+  width: 15%;
 }
 
 .task-col-owner {
-  width: 15%;
+  width: 14%;
 }
 
 .task-col-status {
   width: 10%;
 }
 
+.task-col-version {
+  width: 8%;
+}
+
 .task-col-updated {
-  width: 12%;
+  width: 11%;
 }
 
 .task-col-actions {
-  width: 13%;
+  width: 11%;
 }
 
 .task-table th {
@@ -664,13 +679,44 @@ onBeforeUnmount(() => {
 }
 
 .status-badge.is-inProgress {
-  background: #fff3df;
-  color: #b06a18;
+  gap: 5px;
+  border: 1px solid #c5d7ff;
+  background: linear-gradient(135deg, #f1f6ff, #e7efff);
+  color: #3156b5;
+  box-shadow: 0 2px 8px rgba(70, 109, 224, 0.1);
+}
+
+.status-badge.is-inProgress::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #5b7fe5;
+  box-shadow: 0 0 0 3px rgba(91, 127, 229, 0.12);
+  content: '';
 }
 
 .status-badge.is-done {
-  background: #eaf8f1;
-  color: #27815d;
+  gap: 5px;
+  border: 1px solid #bce8d1;
+  background: linear-gradient(135deg, #effaf4, #e4f6ed);
+  color: #18794e;
+  box-shadow: 0 2px 8px rgba(39, 129, 93, 0.1);
+}
+
+.status-badge.is-done::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #2fac78;
+  box-shadow: 0 0 0 3px rgba(47, 172, 120, 0.12);
+  content: '';
+}
+
+.task-version {
+  color: #53627a;
+  font-weight: 700;
 }
 
 .progress-cell {

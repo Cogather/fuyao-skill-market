@@ -10,6 +10,7 @@ export interface SkillPlanningTask {
   description: string;
   priority: SkillTaskPriority;
   status: SkillTaskStatus;
+  version: string;
   progress: number;
   department: string;
   planningDepartment: string;
@@ -31,7 +32,7 @@ export interface SkillTaskAssociation {
   services: string[];
 }
 
-const TASK_STORAGE_KEY = 'skill-market-planning-tasks-v2';
+const TASK_STORAGE_KEY = 'skill-market-planning-tasks-v3';
 const ASSOCIATION_STORAGE_KEY = 'skill-market-task-associations-v1';
 
 const skillNames = [
@@ -74,30 +75,36 @@ const descriptions = [
   '沉淀可复用的流程能力，减少重复人工操作。',
 ];
 
-const statusSeeds: Array<{ status: SkillTaskStatus; count: number; progress: number }> = [
-  { status: 'todo', count: 5, progress: 0 },
-  { status: 'inProgress', count: 21, progress: 46 },
-  { status: 'done', count: 41, progress: 100 },
+const statusSeeds: Array<{
+  idStatus: 'done' | 'inProgress';
+  status: SkillTaskStatus;
+  count: number;
+  progress: number;
+}> = [
+  { idStatus: 'done', status: '已完成', count: 6, progress: 100 },
+  { idStatus: 'inProgress', status: '进行中', count: 6, progress: 46 },
 ];
 
 function createDefaultTasks(): SkillPlanningTask[] {
   let globalIndex = 0;
-  return statusSeeds.flatMap(({ status, count, progress }) =>
+  return statusSeeds.flatMap(({ idStatus, status, count, progress }) =>
     Array.from({ length: count }, (_, index) => {
       const number = globalIndex++;
       const day = String(20 - (number % 12)).padStart(2, '0');
       const hour = String(18 - (number % 9)).padStart(2, '0');
       return {
-        id: 'skill-task-' + status + '-' + String(index + 1).padStart(3, '0'),
+        id: 'skill-task-' + idStatus + '-' + String(index + 1).padStart(3, '0'),
         name: skillNames[number % skillNames.length] ?? '??? Skill',
         description: descriptions[number % descriptions.length] ?? '',
         priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3] ?? 'medium',
         status,
-        progress: status === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
+        version: `v0.0.${number + 1}`,
+        progress:
+          idStatus === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
         department: departments[number % departments.length] ?? '',
         planningDepartment: planningDepartments[number % planningDepartments.length] ?? '',
         dimName: planningDepartments[number % planningDepartments.length] ?? '',
-        ownerId: 'mock001',
+        ownerId: 'w30000001',
         owner: '演示用户',
         ownerName: '演示用户',
         dueDate: '2026-08-' + String(10 + (number % 18)).padStart(2, '0'),
@@ -167,6 +174,7 @@ function normalizeTask(task: SkillPlanningTask): SkillPlanningTask {
   return {
     ...task,
     status,
+    version: readText(task.version) || readText(defaultTask?.version),
     progress: normalizeProgress(task.progress, status),
     department: String(task.department || defaultTask?.department || '').trim(),
     planningDepartment: String(
@@ -356,6 +364,7 @@ function normalizeHttpTask(
     description,
     priority: normalizeHttpTaskPriority(record.priority),
     status,
+    version: readText(record.version),
     progress,
     department,
     planningDepartment,
