@@ -11,6 +11,7 @@ export interface SkillPlanningTask {
   priority: SkillTaskPriority;
   status: SkillTaskStatus;
   version: string;
+  filePath: string;
   progress: number;
   department: string;
   planningDepartment: string;
@@ -99,6 +100,7 @@ function createDefaultTasks(): SkillPlanningTask[] {
         priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3] ?? 'medium',
         status,
         version: `v0.0.${number + 1}`,
+        filePath: '',
         progress:
           idStatus === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
         department: departments[number % departments.length] ?? '',
@@ -175,6 +177,7 @@ function normalizeTask(task: SkillPlanningTask): SkillPlanningTask {
     ...task,
     status,
     version: readText(task.version) || readText(defaultTask?.version),
+    filePath: readText(task.filePath) || readText(defaultTask?.filePath),
     progress: normalizeProgress(task.progress, status),
     department: String(task.department || defaultTask?.department || '').trim(),
     planningDepartment: String(
@@ -365,6 +368,7 @@ function normalizeHttpTask(
     priority: normalizeHttpTaskPriority(record.priority),
     status,
     version: readText(record.version),
+    filePath: readText(record.filePath ?? record.path ?? record.fileName),
     progress,
     department,
     planningDepartment,

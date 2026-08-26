@@ -12,7 +12,6 @@ test.describe('Harness 任务管理 Mock 数据', () => {
       { tab: 'Skill待办', capability: 'Skill' },
       { tab: 'Agent待办', capability: 'Agent' },
     ];
-
     for (const item of cases) {
       await page.getByRole('tab', { name: new RegExp(`^${item.tab}`) }).click();
 
@@ -37,6 +36,87 @@ test.describe('Harness 任务管理 Mock 数据', () => {
       const inProgressStatus = statuses.filter({ hasText: '进行中' }).first();
       await expect(inProgressStatus).toHaveClass(/is-inProgress/);
       await expect(inProgressStatus).toHaveCSS('color', 'rgb(49, 86, 181)');
+    }
+  });
+
+  test('任务详情按版本展示对应目录和文件内容', async ({ page }) => {
+    await page.goto(`${APP_BASE_PATH}/harness-management`);
+    await page.getByRole('tab', { name: '任务管理', exact: true }).click();
+
+    const cases = [
+      { tab: 'Command待办', capability: 'Command' },
+      { tab: 'Skill待办', capability: 'Skill' },
+      { tab: 'Agent待办', capability: 'Agent' },
+    ];
+    let expectedDialogHeight: number | undefined;
+    let expectedCapabilityHeight: number | undefined;
+
+    for (const item of cases) {
+      await page.getByRole('tab', { name: new RegExp(`^${item.tab}`) }).click();
+      await page
+        .getByRole('button', { name: `查看 ${item.capability}`, exact: true })
+        .first()
+        .click();
+
+      const dialog = page.getByRole('dialog');
+      const versionSelect = dialog.getByLabel('详情版本');
+      const fileContent = dialog.locator('.task-detail-file-content').first();
+      const capabilitySection = dialog.locator('.task-detail-capability');
+      const detailContent = dialog.locator('.task-detail-content');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toHaveCSS('overflow-y', 'hidden');
+      await expect(detailContent).toHaveCSS('overflow-y', 'auto');
+      await expect(versionSelect.locator('option')).toHaveCount(3);
+      await expect(versionSelect).toHaveValue('v0.0.1');
+      await expect(dialog.locator('.task-detail-folder-heading')).toHaveCount(0);
+      await expect(dialog.locator('.task-detail-type-tag')).toHaveCount(0);
+      await expect(fileContent).toContainText('v0.0.1');
+
+      const capabilityToggle = dialog.locator('.task-detail-capability-toggle');
+      await capabilityToggle.click();
+      await expect(capabilityToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(dialog.locator('.task-detail-content')).toBeHidden();
+      await capabilityToggle.click();
+      await expect(detailContent).toBeVisible();
+
+      const initialDialogBox = await dialog.boundingBox();
+      const initialCapabilityBox = await capabilitySection.boundingBox();
+      expect(initialDialogBox).not.toBeNull();
+      expect(initialCapabilityBox).not.toBeNull();
+      expectedDialogHeight ??= initialDialogBox!.height;
+      expectedCapabilityHeight ??= initialCapabilityBox!.height;
+      expect(Math.abs(initialDialogBox!.height - expectedDialogHeight)).toBeLessThanOrEqual(1);
+      expect(Math.abs(initialCapabilityBox!.height - expectedCapabilityHeight)).toBeLessThanOrEqual(
+        1,
+      );
+
+      await versionSelect.selectOption('v0.0.2');
+      await expect(dialog.locator('.task-detail-selected-version')).toHaveText('v0.0.2');
+      await expect(fileContent).toContainText('v0.0.2');
+
+      const updatedDialogBox = await dialog.boundingBox();
+      const updatedCapabilityBox = await capabilitySection.boundingBox();
+      expect(updatedDialogBox).not.toBeNull();
+      expect(updatedCapabilityBox).not.toBeNull();
+      expect(Math.abs(updatedDialogBox!.height - initialDialogBox!.height)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(updatedCapabilityBox!.height - initialCapabilityBox!.height),
+      ).toBeLessThanOrEqual(1);
+
+      if (item.capability === 'Skill') {
+        const firstFileRow = dialog.locator('.task-detail-file-row').first();
+        await expect(dialog.locator('.task-detail-file-row')).toHaveCount(4);
+        const caretBox = await firstFileRow.locator('.task-detail-caret').boundingBox();
+        const fileNameBox = await firstFileRow.locator('span').last().boundingBox();
+        expect(caretBox).not.toBeNull();
+        expect(fileNameBox).not.toBeNull();
+        expect(
+          Math.abs(caretBox!.y + caretBox!.height / 2 - (fileNameBox!.y + fileNameBox!.height / 2)),
+        ).toBeLessThanOrEqual(1);
+      }
+
+      await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
+      await expect(dialog).toBeHidden();
     }
   });
 });

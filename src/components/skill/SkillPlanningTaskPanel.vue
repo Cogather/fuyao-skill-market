@@ -7,6 +7,12 @@ import {
   type PlanningTaskCapabilityType,
   type SkillPlanningTask,
 } from '../../services/skillMarket/skillPlanningTaskService';
+import {
+  planningTaskDetailVersions,
+  queryPlanningTaskDetailFileContent,
+  queryPlanningTaskDetailFilePaths,
+  type PlanningTaskDetailIdentity,
+} from '../../services/skillMarket/planningTaskDetailService';
 
 type TaskNotice = {
   id: string;
@@ -38,7 +44,22 @@ let toastTimer: number | null = null;
 const detailDialog = reactive({
   open: false,
   task: null as SkillPlanningTask | null,
+  versions: [] as string[],
+  selectedVersion: '',
 });
+type DetailFileState = {
+  path: string;
+  content: string;
+  loaded: boolean;
+  loading: boolean;
+  error: string;
+};
+const detailFiles = ref<DetailFileState[]>([]);
+const detailLoading = ref(false);
+const detailError = ref('');
+const expandedDetailFilePath = ref('');
+const detailCapabilityExpanded = ref(true);
+let detailLoadSequence = 0;
 
 const notices = ref<TaskNotice[]>(
   remoteTasks
@@ -156,15 +177,108 @@ function showToast(message: string): void {
   }, 2400);
 }
 
+function detailIdentity(): PlanningTaskDetailIdentity | null {
+  const task = detailDialog.task;
+  const version = detailDialog.selectedVersion.trim();
+  if (!task || !version) return null;
+  return {
+    userId: props.userId.trim(),
+    capabilityType: props.capabilityType,
+    capabilityName: task.name,
+    version,
+    filePath: task.filePath,
+  };
+}
+
+function detailErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
+
+async function loadDetailFile(file: DetailFileState, sequence = detailLoadSequence): Promise<void> {
+  const identity = detailIdentity();
+  if (!identity || file.loaded || file.loading) return;
+  file.loading = true;
+  file.error = '';
+  try {
+    const content = await queryPlanningTaskDetailFileContent(identity, file.path);
+    if (sequence !== detailLoadSequence) return;
+    file.content = content;
+    file.loaded = true;
+  } catch (error) {
+    if (sequence !== detailLoadSequence) return;
+    file.error = detailErrorMessage(error, '文件内容加载失败');
+  } finally {
+    if (sequence === detailLoadSequence) file.loading = false;
+  }
+}
+
+async function loadDetailVersion(): Promise<void> {
+  const identity = detailIdentity();
+  const sequence = ++detailLoadSequence;
+  detailFiles.value = [];
+  expandedDetailFilePath.value = '';
+  detailError.value = '';
+  if (!identity) {
+    detailError.value = '暂无可用版本';
+    return;
+  }
+
+  detailLoading.value = true;
+  try {
+    const paths = await queryPlanningTaskDetailFilePaths(identity);
+    if (sequence !== detailLoadSequence) return;
+    detailFiles.value = paths.map((path) => ({
+      path,
+      content: '',
+      loaded: false,
+      loading: false,
+      error: '',
+    }));
+    const firstFile = detailFiles.value[0];
+    if (firstFile) {
+      expandedDetailFilePath.value = firstFile.path;
+      await loadDetailFile(firstFile, sequence);
+    }
+  } catch (error) {
+    if (sequence !== detailLoadSequence) return;
+    detailError.value = detailErrorMessage(error, '详情加载失败');
+  } finally {
+    if (sequence === detailLoadSequence) detailLoading.value = false;
+  }
+}
+
+async function toggleDetailFile(file: DetailFileState): Promise<void> {
+  if (expandedDetailFilePath.value === file.path) {
+    expandedDetailFilePath.value = '';
+    return;
+  }
+  expandedDetailFilePath.value = file.path;
+  await loadDetailFile(file);
+}
+
 function openTask(task: SkillPlanningTask): void {
+  const versions = planningTaskDetailVersions(task, tasks.value);
+  const taskVersion = task.version.trim().replace(/^v/i, '');
+  const selectedVersion =
+    versions.find((version) => version.replace(/^v/i, '') === taskVersion) ?? versions[0] ?? '';
   Object.assign(detailDialog, {
     open: true,
     task: { ...task },
+    versions,
+    selectedVersion,
   });
+  detailCapabilityExpanded.value = true;
+  void loadDetailVersion();
 }
 
 function closeTask(): void {
+  detailLoadSequence += 1;
   detailDialog.open = false;
+  detailDialog.task = null;
+  detailFiles.value = [];
+  detailLoading.value = false;
+  detailError.value = '';
+  expandedDetailFilePath.value = '';
 }
 
 function goPage(next: number): void {
@@ -315,7 +429,12 @@ onBeforeUnmount(() => {
         class="task-overlay"
         @click.self="closeTask"
       >
-        <div class="skill-detail-dialog">
+        <div
+          class="skill-detail-dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`${detailDialog.task.name} 详情`"
+        >
           <header>
             <div class="skill-detail-dialog__heading">
               <small>{{ capabilityLabelUpper }} TASK DETAIL</small>
@@ -323,10 +442,33 @@ onBeforeUnmount(() => {
               <p>{{ detailDialog.task.description }}</p>
             </div>
             <div class="skill-detail-dialog__actions">
-              <span class="status-badge">{{ detailDialog.task.status || '—' }}</span>
+              <span
+                class="status-badge"
+                :class="{
+                  'is-done': detailDialog.task.status === '已完成',
+                  'is-inProgress': detailDialog.task.status === '进行中',
+                }"
+              >
+                {{ detailDialog.task.status || '—' }}
+              </span>
               <button type="button" aria-label="关闭" @click="closeTask">×</button>
             </div>
           </header>
+
+          <label class="task-detail-version-filter">
+            <span>版本</span>
+            <select
+              v-model="detailDialog.selectedVersion"
+              aria-label="详情版本"
+              :disabled="detailDialog.versions.length === 0"
+              @change="loadDetailVersion"
+            >
+              <option v-for="version in detailDialog.versions" :key="version" :value="version">
+                {{ version }}
+              </option>
+            </select>
+            <small>选择版本后展示对应的目录和文件内容</small>
+          </label>
 
           <dl>
             <div>
@@ -346,6 +488,66 @@ onBeforeUnmount(() => {
               <dd>{{ formatDetailUpdatedAt(detailDialog.task.updatedAt) }}</dd>
             </div>
           </dl>
+
+          <section class="task-detail-capability" :aria-label="`${capabilityLabel} 详情内容`">
+            <div class="task-detail-capability-row">
+              <button
+                type="button"
+                class="task-detail-toggle task-detail-capability-toggle"
+                :aria-expanded="detailCapabilityExpanded"
+                :aria-label="
+                  detailCapabilityExpanded ? `收起 ${capabilityLabel}` : `展开 ${capabilityLabel}`
+                "
+                @click="detailCapabilityExpanded = !detailCapabilityExpanded"
+              >
+                <span class="task-detail-caret" :class="{ 'is-open': detailCapabilityExpanded }"
+                  >›</span
+                >
+              </button>
+              <strong>{{ detailDialog.task.name }}</strong>
+              <span class="task-detail-selected-version">
+                {{ detailDialog.selectedVersion || '—' }}
+              </span>
+            </div>
+
+            <div v-if="detailCapabilityExpanded" class="task-detail-content">
+              <div v-if="detailLoading" class="task-detail-state">正在加载详情…</div>
+              <div v-else-if="detailError" class="task-detail-state is-error">
+                <span>{{ detailError }}</span>
+                <button type="button" @click="loadDetailVersion">重试</button>
+              </div>
+              <template v-else-if="props.capabilityType === 'skill'">
+                <ul v-if="detailFiles.length" class="task-detail-file-list">
+                  <li v-for="file in detailFiles" :key="file.path">
+                    <button
+                      type="button"
+                      class="task-detail-file-row"
+                      :class="{ 'is-open': expandedDetailFilePath === file.path }"
+                      @click="toggleDetailFile(file)"
+                    >
+                      <span class="task-detail-caret">›</span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 3.5h8l4 4V20H6V3.5Z" />
+                        <path d="M14 3.5v4h4" />
+                      </svg>
+                      <span>{{ file.path }}</span>
+                    </button>
+                    <pre
+                      v-if="expandedDetailFilePath === file.path"
+                      class="task-detail-file-content"
+                      >{{ file.loading ? '正在加载…' : file.error || file.content || '(空)' }}</pre>
+                  </li>
+                </ul>
+                <div v-else class="task-detail-state">暂无文件</div>
+              </template>
+              <pre v-else-if="detailFiles[0]" class="task-detail-file-content is-direct">{{
+                detailFiles[0].loading
+                  ? '正在加载…'
+                  : detailFiles[0].error || detailFiles[0].content || '(空)'
+              }}</pre>
+              <div v-else class="task-detail-state">暂无文件</div>
+            </div>
+          </section>
 
           <footer><button type="button" @click="closeTask">关闭</button></footer>
         </div>
@@ -976,9 +1178,12 @@ onBeforeUnmount(() => {
 }
 
 .skill-detail-dialog {
-  width: min(760px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
-  overflow: auto;
+  display: flex;
+  box-sizing: border-box;
+  width: min(1040px, calc(100vw - 32px));
+  height: min(820px, calc(100vh - 48px));
+  flex-direction: column;
+  overflow: hidden;
   padding: 24px;
   border-radius: 14px;
   background: #fff;
@@ -988,6 +1193,7 @@ onBeforeUnmount(() => {
 .skill-detail-dialog > header {
   display: flex;
   align-items: flex-start;
+  flex: 0 0 auto;
   justify-content: space-between;
   gap: 18px;
 }
@@ -1035,8 +1241,54 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.task-detail-version-filter {
+  display: grid;
+  grid-template-columns: 110px minmax(220px, 360px) minmax(0, 1fr);
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid #dfe6f2;
+  border-radius: 10px;
+  background: #f8faff;
+}
+
+.task-detail-version-filter > span {
+  color: #34435d;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.task-detail-version-filter select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 34px 0 11px;
+  border: 1px solid #cfd9ea;
+  border-radius: 8px;
+  outline: 0;
+  background: #fff;
+  color: #33435c;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.task-detail-version-filter select:focus {
+  border-color: #6684e3;
+  box-shadow: 0 0 0 3px rgba(84, 120, 228, 0.12);
+}
+
+.task-detail-version-filter > small {
+  color: #8c98aa;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .skill-detail-dialog dl {
   display: grid;
+  flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin: 20px 0 0;
@@ -1066,8 +1318,209 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
+.task-detail-capability {
+  display: flex;
+  min-height: 0;
+  margin-top: 18px;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dfe6f1;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.task-detail-capability-row,
+.task-detail-file-row {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  text-align: left;
+}
+
+.task-detail-capability-row {
+  flex: 0 0 auto;
+  gap: 9px;
+  min-height: 50px;
+  padding: 0 16px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.task-detail-capability-row > strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #25344c;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-toggle {
+  display: inline-grid;
+  width: 22px;
+  height: 28px;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.task-detail-toggle:hover,
+.task-detail-toggle:focus-visible {
+  outline: 0;
+  background: #eaf0fb;
+}
+
+.task-detail-caret {
+  display: inline-block;
+  width: 12px;
+  flex: 0 0 auto;
+  color: #8795aa;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.task-detail-caret.is-open,
+.task-detail-file-row.is-open .task-detail-caret {
+  transform: rotate(90deg);
+}
+
+.task-detail-selected-version {
+  flex: 0 0 auto;
+  color: #16a34a;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.task-detail-content {
+  min-height: 0;
+  padding: 10px 16px 16px 40px;
+  overflow-y: auto;
+  flex: 1;
+  background: #fff;
+  scrollbar-color: #aab6c9 transparent;
+  scrollbar-width: thin;
+}
+
+.task-detail-content::-webkit-scrollbar {
+  width: 7px;
+}
+
+.task-detail-content::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: #aab6c9;
+}
+
+.task-detail-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.task-detail-state {
+  display: flex;
+  min-height: 150px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #8b97a9;
+  font-size: 11px;
+}
+
+.task-detail-state.is-error {
+  color: #c2413c;
+}
+
+.task-detail-state button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d7dfeb;
+  border-radius: 6px;
+  background: #fff;
+  color: #536da8;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.task-detail-file-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-detail-file-row {
+  gap: 7px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #627087;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.task-detail-file-row:hover,
+.task-detail-file-row.is-open {
+  background: #f5f8fe;
+  color: #26354d;
+}
+
+.task-detail-file-row svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: #eef2ff;
+  stroke: #8797b4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.task-detail-file-row .task-detail-caret {
+  display: inline-flex;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  line-height: 18px;
+  transform-origin: center;
+}
+
+.task-detail-file-row > span:last-child {
+  overflow: hidden;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-file-content {
+  margin: 5px 0 9px 27px;
+  padding: 13px 15px;
+  overflow: visible;
+  border: 1px solid #dfe7f3;
+  border-radius: 8px;
+  background: #fbfcff;
+  color: #17233d;
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.task-detail-file-content.is-direct {
+  margin: 0;
+}
+
 .skill-detail-dialog footer {
   display: flex;
+  flex: 0 0 auto;
   justify-content: flex-end;
   margin-top: 18px;
 }
@@ -1143,6 +1596,10 @@ onBeforeUnmount(() => {
   .task-toolbar input {
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .task-detail-version-filter {
+    grid-template-columns: 1fr;
   }
 
   .notification-panel {
