@@ -1,6 +1,7 @@
 import { queryHttpPlanningItemContent, queryHttpPlanningItemFiles } from './extensionPublishHttp';
 import type { ExtensionCapability, ExtensionCapabilityType } from './extensionPublishMock';
 import {
+  sortedPlanningTaskVersions,
   usesRemotePlanningTasks,
   type PlanningTaskCapabilityType,
   type SkillPlanningTask,
@@ -44,9 +45,12 @@ export function planningTaskDetailVersions(
 ): string[] {
   if (Array.isArray(task.versions) && task.versions.length === 0) return [];
 
-  const versions = tasks
-    .filter((item) => item.name === task.name)
-    .flatMap((item) => [item.version, ...(item.versions ?? [])])
+  const versions = sortedPlanningTaskVersions({
+    versions: tasks
+      .filter((item) => item.name === task.name)
+      .flatMap((item) => item.versions),
+  })
+    .map((item) => item.version)
     .map(normalizedVersion)
     .filter(Boolean);
 
@@ -54,9 +58,7 @@ export function planningTaskDetailVersions(
     versions.push('v0.0.1', 'v0.0.2', 'v0.0.3');
   }
 
-  const uniqueVersions = [
-    ...new Set([normalizedVersion(task.version), ...versions].filter(Boolean)),
-  ];
+  const uniqueVersions = [...new Set(versions.filter(Boolean))];
   return usesRemotePlanningTasks()
     ? uniqueVersions
     : uniqueVersions.sort(compareVersionsDescending);

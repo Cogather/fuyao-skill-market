@@ -71,10 +71,10 @@ test.describe('Harness 任务管理 Mock 数据', () => {
       await expect(dialog).toHaveCSS('overflow-y', 'hidden');
       await expect(detailContent).toHaveCSS('overflow-y', 'auto');
       await expect(versionSelect.locator('option')).toHaveCount(3);
-      await expect(versionSelect).toHaveValue('v0.0.1');
+      await expect(versionSelect).toHaveValue('v0.0.3');
       await expect(dialog.locator('.task-detail-folder-heading')).toHaveCount(0);
       await expect(dialog.locator('.task-detail-type-tag')).toHaveCount(0);
-      await expect(fileContent).toContainText('v0.0.1');
+      await expect(fileContent).toContainText('v0.0.3');
 
       const capabilityToggle = dialog.locator('.task-detail-capability-toggle');
       await capabilityToggle.click();

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
+  latestPlanningTaskVersion,
   planningTaskCapabilityLabel,
   queryPlanningTasks,
   usesRemotePlanningTasks,
@@ -168,6 +169,10 @@ function formatDetailUpdatedAt(value: string): string {
   return value || '—';
 }
 
+function displayTaskVersion(task: SkillPlanningTask): string {
+  return latestPlanningTaskVersion(task)?.version || '—';
+}
+
 function showToast(message: string): void {
   toast.value = message;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
@@ -258,9 +263,7 @@ async function toggleDetailFile(file: DetailFileState): Promise<void> {
 
 function openTask(task: SkillPlanningTask): void {
   const versions = planningTaskDetailVersions(task, tasks.value);
-  const taskVersion = task.version.trim().replace(/^v/i, '');
-  const selectedVersion =
-    versions.find((version) => version.replace(/^v/i, '') === taskVersion) ?? versions[0] ?? '';
+  const selectedVersion = versions[0] ?? '';
   Object.assign(detailDialog, {
     open: true,
     task: { ...task },
@@ -383,7 +386,7 @@ onBeforeUnmount(() => {
                   </span>
                 </td>
                 <td>
-                  <span class="task-version">{{ task.version || '—' }}</span>
+                  <span class="task-version">{{ displayTaskVersion(task) }}</span>
                 </td>
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
                 <td>

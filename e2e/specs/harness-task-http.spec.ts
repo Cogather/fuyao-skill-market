@@ -25,7 +25,7 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     await page.route('**/api/harness/task/skill/my**', (route) =>
       route.fulfill({
         json: {
-          meta: { number: 3, message: 'OK', success: true },
+          meta: { number: 5, message: 'OK', success: true },
           data: [
             {
               id: 'skill-task-http-001',
@@ -48,6 +48,28 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
               skillName: '无可用版本 Skill',
               status: '进行中',
               versions: [],
+            },
+            {
+              id: 'skill-task-http-004',
+              skillName: '单版本响应 Skill',
+              status: '进行中',
+              versions: [
+                {
+                  version: '0.0.1',
+                  uploadedAt: '2026-08-25 19:39:59',
+                  mrId: '22',
+                  repoUrl: 'https://example.com/skill.git',
+                  tagName: null,
+                },
+              ],
+            },
+            {
+              id: 'skill-task-http-005',
+              skillName: '字符串版本响应 Skill',
+              status: '进行中',
+              versions: JSON.stringify([
+                { version: '3.0.1', uploadedAt: '2026-08-26 10:30:00' },
+              ]),
             },
           ],
         },
@@ -73,7 +95,13 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     await page.getByRole('tab', { name: '任务管理', exact: true }).click();
     await page.getByRole('tab', { name: /^Skill待办/ }).click();
 
-    await expect(page.locator('tbody .task-version')).toHaveText(['1.9.0', '2.10.0', '—']);
+    await expect(page.locator('tbody .task-version')).toHaveText([
+      '1.9.0',
+      '2.10.0',
+      '—',
+      '0.0.1',
+      '3.0.1',
+    ]);
 
     const initialTreeRequest = page.waitForRequest(
       (request) =>
