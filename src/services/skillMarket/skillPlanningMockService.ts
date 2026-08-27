@@ -22,6 +22,78 @@ import {
 
 const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName'>> = [
   {
+    id: 'plan-1101',
+    firstScene: '发布运维',
+    secondScene: '流水线诊断',
+    activityNodeName: '版本发布',
+    subActivityNodeName: '失败定位',
+    name: '流水线失败诊断 Skill',
+    description: '分析流水线日志和失败节点，输出定位结论与恢复建议。',
+    level: '产品级',
+    offeringId: 'offering-harness-pipeline-valid',
+    offeringName: 'harness-pipeline',
+    owner: '张三 w30000001',
+    deptCode: 'dept-continuous-delivery',
+    deptName: '持续交付组',
+    developOwner: '李明 w30000006',
+    planedCompleteDate: '2026-08-18',
+    status: '已完成',
+  },
+  {
+    id: 'plan-1102',
+    firstScene: '质量保障',
+    secondScene: '发布评估',
+    activityNodeName: '变更评估',
+    subActivityNodeName: '风险扫描',
+    name: '发布风险扫描 Skill',
+    description: '扫描发布变更、依赖服务和历史事故，生成风险检查清单。',
+    level: '产品级',
+    offeringId: 'offering-harness-pipeline-valid',
+    offeringName: 'harness-pipeline',
+    owner: '李四 w30000002',
+    deptCode: 'dept-continuous-delivery',
+    deptName: '持续交付组',
+    developOwner: '周扬 w30000007',
+    planedCompleteDate: '2026-09-08',
+    status: '进行中',
+  },
+  {
+    id: 'plan-1103',
+    firstScene: '研发提效',
+    secondScene: '效能洞察',
+    activityNodeName: '数据分析',
+    subActivityNodeName: '指标汇总',
+    name: '交付指标汇总 Skill',
+    description: '汇总构建成功率、平均耗时和发布频次等交付指标。',
+    level: '产品级',
+    offeringId: 'offering-harness-pipeline-valid',
+    offeringName: 'harness-pipeline',
+    owner: '王五 w30000003',
+    deptCode: 'dept-continuous-delivery',
+    deptName: '持续交付组',
+    developOwner: '陈七 w30000008',
+    planedCompleteDate: '2026-09-15',
+    status: '进行中',
+  },
+  {
+    id: 'plan-1104',
+    firstScene: '稳定性保障',
+    secondScene: '配置巡检',
+    activityNodeName: '线上运营',
+    subActivityNodeName: '巡检报告',
+    name: '流水线配置巡检 Skill',
+    description: '巡检流水线配置完整性、权限和环境变量引用情况。',
+    level: '产品级',
+    offeringId: 'offering-harness-pipeline-valid',
+    offeringName: 'harness-pipeline',
+    owner: '赵六 w30000004',
+    deptCode: 'dept-continuous-delivery',
+    deptName: '持续交付组',
+    developOwner: '刘岚 w30000009',
+    planedCompleteDate: '2026-09-28',
+    status: '未开始',
+  },
+  {
     id: 'plan-1001',
     firstScene: '研发提效',
     secondScene: '代码生成',
@@ -430,6 +502,10 @@ export function queryMockProductPlanningOptions(
 }
 
 const mockPlanningDepartmentByItemId: Record<string, string> = {
+  'plan-1101': '持续交付组',
+  'plan-1102': '持续交付组',
+  'plan-1103': '持续交付组',
+  'plan-1104': '持续交付组',
   'plan-1001': '持续交付组',
   'plan-1002': '持续交付组',
   'plan-1003': '日志工具组',
@@ -448,11 +524,20 @@ const mockPlanningDepartmentByItemId: Record<string, string> = {
   'plan-1016': '联调工具部',
 };
 
-let skillPlanningItems: SkillPlanningItem[] = initialSkillPlanningItems.map((item, index) => ({
+const mockSkillMasterIdByPlanningItemId: Record<string, string> = {
+  'plan-1101': '504',
+  'plan-1102': '505',
+  'plan-1103': '506',
+  'plan-1104': '507',
+};
+
+let skillPlanningItems: SkillPlanningItem[] = initialSkillPlanningItems.map((item) => ({
   ...item,
-  skillId: `skill-master-${item.id.slice('plan-'.length)}`,
+  skillId:
+    mockSkillMasterIdByPlanningItemId[item.id] ??
+    `skill-master-${item.id.slice('plan-'.length)}`,
   level: item.level === '部门级' ? '部门级' : '产品级',
-  ...(index === 0
+  ...(item.id === 'plan-1001'
     ? {
         offeringId: 'offering-harness-pipeline',
         offeringName: 'Harness 流水线平台',

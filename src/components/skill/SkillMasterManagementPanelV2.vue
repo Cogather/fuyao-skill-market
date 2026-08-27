@@ -1902,7 +1902,14 @@ onBeforeUnmount(() => {
                       <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
                     </svg>
                   </button>
-                  <button type="button" @click="openDetail(record)">查看 Skill</button>
+                  <button
+                    v-if="latestSkillMasterVersion(record)"
+                    type="button"
+                    class="is-view"
+                    @click="openDetail(record)"
+                  >
+                    查看 Skill
+                  </button>
                 </div>
               </td>
             </tr>
@@ -2526,7 +2533,7 @@ onBeforeUnmount(() => {
 }
 .table-wrap table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 1280px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -2538,23 +2545,23 @@ onBeforeUnmount(() => {
   width: 16%;
 }
 .table-wrap col.description-column {
-  width: 14%;
+  width: 18%;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
-  width: 13%;
+  width: 11%;
 }
 .table-wrap col.date-column {
   width: 9%;
 }
 .table-wrap col.status-column {
-  width: 9%;
-}
-.table-wrap col.version-column {
   width: 8%;
 }
+.table-wrap col.version-column {
+  width: 7%;
+}
 .table-wrap col.action-column {
-  width: 14%;
+  width: 16%;
 }
 .table-wrap .reference-cell { text-align: center; }
 .planning-reference-count {
@@ -2578,7 +2585,7 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #edf2f7;
   color: #334155;
   font-size: 13px;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   word-break: break-word;
 }
@@ -2590,6 +2597,10 @@ onBeforeUnmount(() => {
   color: #64748b;
   font-size: 12px;
   font-weight: 900;
+}
+.table-wrap td:nth-child(2) {
+  padding-left: 24px;
+  text-align: left;
 }
 .table-wrap td {
   height: 78px;
@@ -2653,6 +2664,7 @@ onBeforeUnmount(() => {
 .name-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   justify-content: flex-start;
   gap: 9px;
   min-width: 0;
@@ -2748,7 +2760,10 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 .row-actions {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: 32px 32px 104px;
+  justify-content: center;
+  gap: 4px;
   white-space: nowrap;
 }
 .row-actions__muted {
@@ -2768,6 +2783,22 @@ onBeforeUnmount(() => {
 }
 .row-actions button:hover {
   background: #eef3ff;
+  color: #3569e8;
+}
+.row-actions button.is-view {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid #cfd9eb;
+  background: #fff;
+  color: #526b9d;
+  box-shadow: 0 2px 6px rgba(74, 98, 150, 0.08);
+}
+.row-actions button.is-view:hover {
+  border-color: #aebfed;
+  background: #f2f6ff;
   color: #3569e8;
 }
 .row-actions button.icon-action {

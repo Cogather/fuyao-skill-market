@@ -1142,7 +1142,12 @@ onMounted(async () => {
                       <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
                     </svg>
                   </button>
-                  <button type="button" class="is-view" @click="openDetail(record)">
+                  <button
+                    v-if="latestSkillMasterVersion(record)"
+                    type="button"
+                    class="is-view"
+                    @click="openDetail(record)"
+                  >
                     查看 {{ capabilityLabel }}
                   </button>
                 </div>
@@ -1542,7 +1547,7 @@ onMounted(async () => {
 }
 .capability-master-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 1280px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -1557,7 +1562,7 @@ onMounted(async () => {
   border-bottom: 1px solid #edf2f7;
   color: #334155;
   font-size: 13px;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   word-break: break-word;
 }
@@ -1572,6 +1577,10 @@ onMounted(async () => {
   font-weight: 900;
   white-space: nowrap;
 }
+.capability-master-table td:nth-child(2) {
+  padding-left: 24px;
+  text-align: left;
+}
 .capability-master-table col.is-check-column {
   width: 4%;
 }
@@ -1579,22 +1588,22 @@ onMounted(async () => {
   width: 16%;
 }
 .capability-master-table col.is-description-column {
-  width: 14%;
+  width: 18%;
 }
 .capability-master-table col.is-person-column {
-  width: 13%;
+  width: 11%;
 }
 .capability-master-table col.is-date-column {
   width: 9%;
 }
 .capability-master-table col.is-status-column {
-  width: 9%;
-}
-.capability-master-table col.is-version-column {
   width: 8%;
 }
+.capability-master-table col.is-version-column {
+  width: 7%;
+}
 .capability-master-table col.is-action-column {
-  width: 14%;
+  width: 16%;
 }
 .capability-master-table .is-reference {
   text-align: center;
@@ -1626,6 +1635,7 @@ td.is-description {
 .capability-name-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
 }
 .capability-name {
   color: #10243e;
@@ -1680,8 +1690,10 @@ td.is-description {
   font-weight: 700;
 }
 .capability-row-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 32px 32px 104px;
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 .capability-row-actions button {
@@ -1702,18 +1714,22 @@ td.is-description {
   background: #eff6ff;
 }
 .capability-row-actions button.is-view {
-  width: auto;
-  min-width: 86px;
-  padding: 0 9px;
-  border-color: transparent;
-  background: transparent;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  border-color: #cfd9eb;
+  background: #fff;
   color: #526b9d;
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(74, 98, 150, 0.08);
 }
 .capability-row-actions button.is-view:hover:not(:disabled) {
-  border-color: transparent;
+  border-color: #aebfed;
+  background: #f2f6ff;
+  color: #3569e8;
 }
 .capability-row-actions button.is-danger {
   color: #dc2626;

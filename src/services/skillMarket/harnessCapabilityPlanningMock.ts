@@ -32,7 +32,7 @@ interface CapabilityState {
   planningSeed: number;
 }
 
-const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v3';
+const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v4';
 const now = '2026-08-01T08:00:00.000Z';
 
 const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPlanningOption[]> = {
@@ -153,6 +153,7 @@ function planning(
     'firstScene' | 'secondScene' | 'activityNodeName' | 'subActivityNodeName'
   >,
 ): SkillPlanningItem {
+  const productLevel = record.level === '产品级' && Boolean(record.product);
   return {
     id,
     skillId: capabilityId,
@@ -161,9 +162,9 @@ function planning(
     ...taxonomy,
     name: record.name,
     description: record.description,
-    level: '部门级',
-    offeringId: '',
-    offeringName: '',
+    level: productLevel ? '产品级' : '部门级',
+    offeringId: productLevel ? record.product : '',
+    offeringName: productLevel ? record.product : '',
     owner: record.owner,
     deptCode: 'dept-continuous-delivery',
     deptName: record.department,
@@ -323,6 +324,12 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
         activityNodeName: '问题闭环',
         subActivityNodeName: '根因分析',
       }),
+      planning('command-plan-1003', commandCatalog[2]!.id, commandCatalog[2]!, {
+        firstScene: '研发提效',
+        secondScene: '环境准备',
+        activityNodeName: '测试验证',
+        subActivityNodeName: '环境初始化',
+      }),
     ],
     catalogSeed: 2000,
     planningSeed: 2000,
@@ -341,6 +348,12 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
         secondScene: '缺陷复盘',
         activityNodeName: '问题闭环',
         subActivityNodeName: '根因分析',
+      }),
+      planning('agent-plan-1003', agentCatalog[2]!.id, agentCatalog[2]!, {
+        firstScene: '交付管理',
+        secondScene: '依赖协同',
+        activityNodeName: '项目推进',
+        subActivityNodeName: '阻塞跟踪',
       }),
     ],
     catalogSeed: 2000,

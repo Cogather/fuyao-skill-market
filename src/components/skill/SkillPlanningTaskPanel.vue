@@ -399,7 +399,12 @@ onBeforeUnmount(() => {
                 <td>{{ formatUpdatedAt(task.updatedAt) }}</td>
                 <td>
                   <div class="task-actions">
-                    <button type="button" class="is-link" @click="openTask(task)">
+                    <button
+                      v-if="latestPlanningTaskVersion(task)"
+                      type="button"
+                      class="is-link"
+                      @click="openTask(task)"
+                    >
                       查看 {{ capabilityLabel }}
                     </button>
                   </div>
@@ -788,11 +793,11 @@ onBeforeUnmount(() => {
 }
 
 .task-col-name {
-  width: 31%;
+  width: 30%;
 }
 
 .task-col-department {
-  width: 15%;
+  width: 14%;
 }
 
 .task-col-owner {
@@ -804,11 +809,11 @@ onBeforeUnmount(() => {
 }
 
 .task-col-version {
-  width: 8%;
+  width: 9%;
 }
 
 .task-col-updated {
-  width: 11%;
+  width: 12%;
 }
 
 .task-col-actions {
@@ -823,7 +828,7 @@ onBeforeUnmount(() => {
   color: #7f8b9e;
   font-size: 10px;
   font-weight: 800;
-  text-align: left;
+  text-align: center;
 }
 
 .task-table td {
@@ -832,16 +837,18 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #eff2f7;
   color: #435169;
   font-size: 10px;
+  text-align: center;
 }
 
-.task-table th:last-child,
-.task-table td:last-child {
-  text-align: right;
+.task-table td:first-child {
+  padding-left: 24px;
+  text-align: left;
 }
 
 .task-name-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 9px;
   min-width: 0;
 }
@@ -1013,7 +1020,7 @@ onBeforeUnmount(() => {
 .task-actions {
   display: flex;
   flex-wrap: nowrap;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 4px;
   white-space: nowrap;
 }
@@ -1041,11 +1048,18 @@ onBeforeUnmount(() => {
 }
 
 .task-actions .is-link {
+  min-width: 76px;
+  padding: 0 10px;
+  border: 1px solid #cfd9eb;
+  background: #fff;
   color: #536da8;
+  box-shadow: 0 2px 6px rgba(74, 98, 150, 0.08);
 }
 
 .task-actions .is-link:hover {
-  background: #f0f3f9;
+  border-color: #aebfed;
+  background: #f2f6ff;
+  color: #3569e8;
 }
 
 .task-empty {
