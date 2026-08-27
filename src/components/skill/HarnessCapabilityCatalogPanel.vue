@@ -1146,9 +1146,14 @@ onMounted(async () => {
                     v-if="latestSkillMasterVersion(record)"
                     type="button"
                     class="is-view"
+                    :title="`查看 ${capabilityLabel}`"
+                    :aria-label="`查看 ${capabilityLabel}`"
                     @click="openDetail(record)"
                   >
-                    查看 {{ capabilityLabel }}
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
                   </button>
                 </div>
               </td>
@@ -1585,16 +1590,16 @@ onMounted(async () => {
   width: 4%;
 }
 .capability-master-table col.is-name-column {
-  width: 16%;
+  width: 18%;
 }
 .capability-master-table col.is-description-column {
-  width: 18%;
+  width: 20%;
 }
 .capability-master-table col.is-person-column {
   width: 11%;
 }
 .capability-master-table col.is-date-column {
-  width: 9%;
+  width: 10%;
 }
 .capability-master-table col.is-status-column {
   width: 8%;
@@ -1603,7 +1608,7 @@ onMounted(async () => {
   width: 7%;
 }
 .capability-master-table col.is-action-column {
-  width: 16%;
+  width: 11%;
 }
 .capability-master-table .is-reference {
   text-align: center;
@@ -1691,7 +1696,7 @@ td.is-description {
 }
 .capability-row-actions {
   display: grid;
-  grid-template-columns: 32px 32px 104px;
+  grid-template-columns: repeat(3, 32px);
   align-items: center;
   justify-content: center;
   gap: 4px;
@@ -1714,21 +1719,16 @@ td.is-description {
   background: #eff6ff;
 }
 .capability-row-actions button.is-view {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  padding: 0 8px;
-  border-color: #cfd9eb;
-  background: #fff;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-color: #dbe5f2;
+  background: #ffffff;
   color: #526b9d;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(74, 98, 150, 0.08);
 }
 .capability-row-actions button.is-view:hover:not(:disabled) {
-  border-color: #aebfed;
-  background: #f2f6ff;
+  border-color: #b9ccff;
+  background: #eff6ff;
   color: #3569e8;
 }
 .capability-row-actions button.is-danger {

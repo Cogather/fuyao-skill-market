@@ -403,9 +403,16 @@ onBeforeUnmount(() => {
                       v-if="latestPlanningTaskVersion(task)"
                       type="button"
                       class="is-link"
+                      :title="`查看 ${capabilityLabel}`"
+                      :aria-label="`查看 ${capabilityLabel}`"
                       @click="openTask(task)"
                     >
-                      查看 {{ capabilityLabel }}
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+                        />
+                        <circle cx="12" cy="12" r="2.5" />
+                      </svg>
                     </button>
                   </div>
                 </td>
@@ -793,11 +800,11 @@ onBeforeUnmount(() => {
 }
 
 .task-col-name {
-  width: 30%;
+  width: 32%;
 }
 
 .task-col-department {
-  width: 14%;
+  width: 15%;
 }
 
 .task-col-owner {
@@ -813,11 +820,11 @@ onBeforeUnmount(() => {
 }
 
 .task-col-updated {
-  width: 12%;
+  width: 13%;
 }
 
 .task-col-actions {
-  width: 11%;
+  width: 7%;
 }
 
 .task-table th {
@@ -1048,12 +1055,26 @@ onBeforeUnmount(() => {
 }
 
 .task-actions .is-link {
-  min-width: 76px;
-  padding: 0 10px;
+  display: inline-flex;
+  width: 30px;
+  min-width: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1px solid #cfd9eb;
   background: #fff;
   color: #536da8;
   box-shadow: 0 2px 6px rgba(74, 98, 150, 0.08);
+}
+
+.task-actions .is-link svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .task-actions .is-link:hover {

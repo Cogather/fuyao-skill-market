@@ -1905,10 +1905,15 @@ onBeforeUnmount(() => {
                   <button
                     v-if="latestSkillMasterVersion(record)"
                     type="button"
-                    class="is-view"
+                    class="icon-action is-view"
+                    title="查看 Skill"
+                    aria-label="查看 Skill"
                     @click="openDetail(record)"
                   >
-                    查看 Skill
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
                   </button>
                 </div>
               </td>
@@ -2542,17 +2547,17 @@ onBeforeUnmount(() => {
   width: 4%;
 }
 .table-wrap col.skill-column {
-  width: 16%;
+  width: 18%;
 }
 .table-wrap col.description-column {
-  width: 18%;
+  width: 20%;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
   width: 11%;
 }
 .table-wrap col.date-column {
-  width: 9%;
+  width: 10%;
 }
 .table-wrap col.status-column {
   width: 8%;
@@ -2561,7 +2566,7 @@ onBeforeUnmount(() => {
   width: 7%;
 }
 .table-wrap col.action-column {
-  width: 16%;
+  width: 11%;
 }
 .table-wrap .reference-cell { text-align: center; }
 .planning-reference-count {
@@ -2761,7 +2766,7 @@ onBeforeUnmount(() => {
 }
 .row-actions {
   display: grid;
-  grid-template-columns: 32px 32px 104px;
+  grid-template-columns: repeat(3, 32px);
   justify-content: center;
   gap: 4px;
   white-space: nowrap;
@@ -2786,19 +2791,9 @@ onBeforeUnmount(() => {
   color: #3569e8;
 }
 .row-actions button.is-view {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 32px;
-  padding: 0 8px;
-  border: 1px solid #cfd9eb;
-  background: #fff;
   color: #526b9d;
-  box-shadow: 0 2px 6px rgba(74, 98, 150, 0.08);
 }
 .row-actions button.is-view:hover {
-  border-color: #aebfed;
-  background: #f2f6ff;
   color: #3569e8;
 }
 .row-actions button.icon-action {
