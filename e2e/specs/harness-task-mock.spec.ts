@@ -25,8 +25,12 @@ test.describe('Harness 任务管理 Mock 数据', () => {
 
       const statusTexts = (await statuses.allTextContents()).map((text) => text.trim());
       expect(new Set(statusTexts)).toEqual(new Set(['已完成', '进行中']));
+      const versionTexts = (await versions.allTextContents()).map((version) => version.trim());
+      expect(versionTexts.filter((version) => version === '—')).toHaveLength(2);
       expect(
-        (await versions.allTextContents()).every((version) => /^v0\.0\.\d+$/.test(version)),
+        versionTexts
+          .filter((version) => version !== '—')
+          .every((version) => /^v0\.0\.\d+$/.test(version)),
       ).toBe(true);
 
       const completedStatus = statuses.filter({ hasText: '已完成' }).first();
@@ -115,6 +119,34 @@ test.describe('Harness 任务管理 Mock 数据', () => {
         ).toBeLessThanOrEqual(1);
       }
 
+      await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
+      await expect(dialog).toBeHidden();
+    }
+  });
+
+  test('versions 为空时仅展示任务基本信息', async ({ page }) => {
+    await page.goto(`${APP_BASE_PATH}/harness-management`);
+    await page.getByRole('tab', { name: '任务管理', exact: true }).click();
+
+    const taskPanel = page.locator('.task-management-content');
+    const cases = [
+      { tab: 'Command待办', capability: 'Command' },
+      { tab: 'Skill待办', capability: 'Skill' },
+      { tab: 'Agent待办', capability: 'Agent' },
+    ];
+
+    for (const item of cases) {
+      await page.getByRole('tab', { name: new RegExp(`^${item.tab}`) }).click();
+      const emptyVersionCell = taskPanel
+        .locator('tbody .task-version')
+        .filter({ hasText: '—' })
+        .first();
+      await emptyVersionCell.locator('xpath=ancestor::tr').getByRole('button').click();
+
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('.task-detail-version-filter')).toHaveCount(0);
+      await expect(dialog.locator('.task-detail-capability')).toHaveCount(0);
       await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
       await expect(dialog).toBeHidden();
     }

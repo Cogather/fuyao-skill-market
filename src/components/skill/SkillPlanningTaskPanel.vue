@@ -268,7 +268,7 @@ function openTask(task: SkillPlanningTask): void {
     selectedVersion,
   });
   detailCapabilityExpanded.value = true;
-  void loadDetailVersion();
+  if (selectedVersion) void loadDetailVersion();
 }
 
 function closeTask(): void {
@@ -455,7 +455,7 @@ onBeforeUnmount(() => {
             </div>
           </header>
 
-          <label class="task-detail-version-filter">
+          <label v-if="detailDialog.versions.length > 0" class="task-detail-version-filter">
             <span>版本</span>
             <select
               v-model="detailDialog.selectedVersion"
@@ -489,7 +489,11 @@ onBeforeUnmount(() => {
             </div>
           </dl>
 
-          <section class="task-detail-capability" :aria-label="`${capabilityLabel} 详情内容`">
+          <section
+            v-if="detailDialog.versions.length > 0"
+            class="task-detail-capability"
+            :aria-label="`${capabilityLabel} 详情内容`"
+          >
             <div class="task-detail-capability-row">
               <button
                 type="button"
@@ -1248,7 +1252,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   gap: 12px;
   margin-top: 20px;
-  padding: 14px 16px;
+  padding: 8px 14px;
   border: 1px solid #dfe6f2;
   border-radius: 10px;
   background: #f8faff;

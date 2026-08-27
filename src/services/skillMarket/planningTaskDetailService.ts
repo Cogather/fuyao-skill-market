@@ -42,6 +42,8 @@ export function planningTaskDetailVersions(
   task: SkillPlanningTask,
   tasks: SkillPlanningTask[],
 ): string[] {
+  if (Array.isArray(task.versions) && task.versions.length === 0) return [];
+
   const versions = tasks
     .filter((item) => item.name === task.name)
     .flatMap((item) => [item.version, ...(item.versions ?? [])])

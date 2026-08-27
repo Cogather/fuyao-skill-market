@@ -126,6 +126,7 @@ const capabilityLabels: Record<PlanningTaskCapabilityType, 'Command' | 'Skill' |
   skill: 'Skill',
   agent: 'Agent',
 };
+const mockEmptyVersionTaskIds = new Set(['skill-task-done-002', 'skill-task-inProgress-001']);
 
 export function planningTaskCapabilityLabel(
   capabilityType: PlanningTaskCapabilityType,
@@ -137,13 +138,17 @@ function adaptMockPlanningTask(
   task: SkillPlanningTask,
   capabilityType: PlanningTaskCapabilityType,
 ): SkillPlanningTask {
-  if (capabilityType === 'skill') return cloneTask(task);
-  const label = planningTaskCapabilityLabel(capabilityType);
-  return {
-    ...task,
-    id: task.id.replace(/^skill-task-/, `${capabilityType}-task-`),
-    name: `${task.name.replace(/\s+Skill$/i, '')} ${label}`,
-  };
+  const adaptedTask =
+    capabilityType === 'skill'
+      ? cloneTask(task)
+      : {
+          ...task,
+          id: task.id.replace(/^skill-task-/, `${capabilityType}-task-`),
+          name: `${task.name.replace(/\s+Skill$/i, '')} ${planningTaskCapabilityLabel(capabilityType)}`,
+        };
+  return mockEmptyVersionTaskIds.has(task.id)
+    ? { ...adaptedTask, version: '', versions: [] }
+    : adaptedTask;
 }
 
 const defaultAssociations: SkillTaskAssociation[] = [
@@ -358,6 +363,7 @@ function normalizeHttpTask(
   capabilityType: PlanningTaskCapabilityType,
 ): SkillPlanningTask {
   const record = asRecord(value);
+  const hasVersions = Array.isArray(record.versions);
   const versions = normalizeHttpTaskVersions(record.versions);
   const status = normalizeHttpTaskStatus(record.status);
   const numericProgress = Number(record.progress);
@@ -413,7 +419,7 @@ function normalizeHttpTask(
     description,
     priority: normalizeHttpTaskPriority(record.priority),
     status,
-    version: versions[0] || readText(record.version) || '',
+    version: hasVersions ? versions[0] || '' : readText(record.version),
     versions,
     filePath: readText(record.filePath ?? record.path ?? record.fileName),
     progress,

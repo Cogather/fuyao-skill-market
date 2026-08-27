@@ -25,7 +25,7 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     await page.route('**/api/harness/task/skill/my**', (route) =>
       route.fulfill({
         json: {
-          meta: { number: 1, message: 'OK', success: true },
+          meta: { number: 3, message: 'OK', success: true },
           data: [
             {
               id: 'skill-task-http-001',
@@ -43,16 +43,26 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
               status: '已完成',
               versions: [{ version: '2.9.0' }, { version: '2.10.0' }],
             },
+            {
+              id: 'skill-task-http-003',
+              skillName: '无可用版本 Skill',
+              status: '进行中',
+              versions: [],
+            },
           ],
         },
       }),
     );
-    await page.route('**/api/harness/packages/tree**', (route) =>
-      route.fulfill({
+    let treeRequestCount = 0;
+    let fileRequestCount = 0;
+    await page.route('**/api/harness/packages/tree**', (route) => {
+      treeRequestCount += 1;
+      return route.fulfill({
         json: { meta: { success: true, message: 'OK' }, data: ['SKILL.md'] },
-      }),
-    );
+      });
+    });
     await page.route('**/api/harness/packages/file**', (route) => {
+      fileRequestCount += 1;
       const version = new URL(route.request().url()).searchParams.get('componentVersion');
       return route.fulfill({
         json: { meta: { success: true, message: 'OK' }, data: `# HTTP Skill\n\n${version}` },
@@ -63,7 +73,7 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     await page.getByRole('tab', { name: '任务管理', exact: true }).click();
     await page.getByRole('tab', { name: /^Skill待办/ }).click();
 
-    await expect(page.locator('tbody .task-version')).toHaveText(['1.9.0', '2.10.0']);
+    await expect(page.locator('tbody .task-version')).toHaveText(['1.9.0', '2.10.0', '—']);
 
     const initialTreeRequest = page.waitForRequest(
       (request) =>
@@ -97,5 +107,19 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     await versionSelect.selectOption('v1.10.0');
     await Promise.all([switchedTreeRequest, switchedFileRequest]);
     await expect(dialog.locator('.task-detail-file-content')).toContainText('1.10.0');
+
+    await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
+    await expect(dialog).toBeHidden();
+    const treeRequestsBeforeEmptyDetail = treeRequestCount;
+    const fileRequestsBeforeEmptyDetail = fileRequestCount;
+    const emptyVersionRow = page.getByRole('row', { name: /无可用版本 Skill/ });
+    await emptyVersionRow.getByRole('button', { name: '查看 Skill', exact: true }).click();
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('.task-detail-version-filter')).toHaveCount(0);
+    await expect(dialog.locator('.task-detail-capability')).toHaveCount(0);
+    await page.waitForTimeout(100);
+    expect(treeRequestCount).toBe(treeRequestsBeforeEmptyDetail);
+    expect(fileRequestCount).toBe(fileRequestsBeforeEmptyDetail);
   });
 });
