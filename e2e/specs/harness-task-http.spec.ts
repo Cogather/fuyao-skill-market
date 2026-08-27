@@ -119,7 +119,7 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     const dialog = page.getByRole('dialog');
     const versionSelect = dialog.getByLabel('详情版本');
     await expect(versionSelect.locator('option')).toHaveCount(3);
-    await expect(versionSelect).toHaveValue('v1.9.0');
+    await expect(versionSelect).toHaveValue('1.9.0');
     await expect(dialog.locator('.task-detail-file-content')).toContainText('1.9.0');
 
     const switchedTreeRequest = page.waitForRequest(
@@ -132,7 +132,7 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
         request.url().includes('/api/harness/packages/file') &&
         new URL(request.url()).searchParams.get('componentVersion') === '1.10.0',
     );
-    await versionSelect.selectOption('v1.10.0');
+    await versionSelect.selectOption('1.10.0');
     await Promise.all([switchedTreeRequest, switchedFileRequest]);
     await expect(dialog.locator('.task-detail-file-content')).toContainText('1.10.0');
 

@@ -41,7 +41,7 @@ export interface SkillTaskAssociation {
   services: string[];
 }
 
-const TASK_STORAGE_KEY = 'skill-market-planning-tasks-v3';
+const TASK_STORAGE_KEY = 'skill-market-planning-tasks-v4';
 const ASSOCIATION_STORAGE_KEY = 'skill-market-task-associations-v1';
 
 const skillNames = [
@@ -108,7 +108,7 @@ function createDefaultTasks(): SkillPlanningTask[] {
         description: descriptions[number % descriptions.length] ?? '',
         priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3] ?? 'medium',
         status,
-        versions: [{ version: `v0.0.${number + 1}`, uploadedAt: updatedAt }],
+        versions: [{ version: `0.0.${number + 1}`, uploadedAt: updatedAt }],
         filePath: '',
         progress:
           idStatus === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
@@ -354,7 +354,7 @@ function normalizePlanningTaskVersions(value: unknown): SkillPlanningTaskVersion
     .sort(compareTaskVersionEntriesDescending);
   const seen = new Set<string>();
   return entries.filter((item) => {
-    const key = item.version.replace(/^v/i, '').toLowerCase();
+    const key = item.version.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

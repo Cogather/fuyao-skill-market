@@ -15,14 +15,12 @@ export type PlanningTaskDetailIdentity = {
   filePath?: string;
 };
 
-function normalizedVersion(value: unknown): string {
-  const version = String(value ?? '').trim();
-  if (!version) return '';
-  return /^v/i.test(version) ? version : `v${version}`;
+function exactVersion(value: unknown): string {
+  return String(value ?? '').trim();
 }
 
 function versionParts(version: string): number[] {
-  return normalizedVersion(version)
+  return exactVersion(version)
     .replace(/^v/i, '')
     .split('.')
     .map((part) => Number(part) || 0);
@@ -48,14 +46,14 @@ export function planningTaskDetailVersions(
   const versions = sortedPlanningTaskVersions({
     versions: tasks
       .filter((item) => item.name === task.name)
-      .flatMap((item) => item.versions),
+    .flatMap((item) => item.versions),
   })
     .map((item) => item.version)
-    .map(normalizedVersion)
+    .map(exactVersion)
     .filter(Boolean);
 
   if (!usesRemotePlanningTasks()) {
-    versions.push('v0.0.1', 'v0.0.2', 'v0.0.3');
+    versions.push('0.0.1', '0.0.2', '0.0.3');
   }
 
   const uniqueVersions = [...new Set(versions.filter(Boolean))];
@@ -68,7 +66,7 @@ function extensionCapability(identity: PlanningTaskDetailIdentity): ExtensionCap
   return {
     id: `${identity.capabilityType}:${identity.capabilityName}:${identity.version}`,
     name: identity.capabilityName,
-    version: normalizedVersion(identity.version).replace(/^v/i, ''),
+    version: exactVersion(identity.version),
     publishDate: '',
     ready: true,
     files: [],
@@ -96,7 +94,7 @@ function capabilityLabel(type: PlanningTaskCapabilityType): 'Command' | 'Skill' 
 
 function mockFileContent(identity: PlanningTaskDetailIdentity, filePath: string): string {
   const label = capabilityLabel(identity.capabilityType);
-  const version = normalizedVersion(identity.version);
+  const version = exactVersion(identity.version);
   const title = identity.capabilityName || `未命名 ${label}`;
 
   if (identity.capabilityType === 'command') {
@@ -108,7 +106,7 @@ function mockFileContent(identity: PlanningTaskDetailIdentity, filePath: string)
   }
 
   if (filePath === 'SKILL.md') {
-    return `# ${title}\n\n版本：${version}\n\n自动检查输入信息与上下游约束，形成可执行的分析结果。\n\n## 调用\n\`\`\`yaml\ncapability: ${title}\nversion: ${version.replace(/^v/i, '')}\n\`\`\``;
+    return `# ${title}\n\n版本：${version}\n\n自动检查输入信息与上下游约束，形成可执行的分析结果。\n\n## 调用\n\`\`\`yaml\ncapability: ${title}\nversion: ${version}\n\`\`\``;
   }
   if (filePath === 'references/usage.md') {
     return `# 使用说明\n\n当前版本：${version}\n\n1. 准备任务上下文。\n2. 调用 ${title}。\n3. 校验并保存输出结果。`;
@@ -116,7 +114,7 @@ function mockFileContent(identity: PlanningTaskDetailIdentity, filePath: string)
   if (filePath === 'scripts/run.sh') {
     return `#!/usr/bin/env bash\n\n# ${title} ${version}\necho "running ${title}"`;
   }
-  return `{\n  "name": "${title}",\n  "version": "${version.replace(/^v/i, '')}",\n  "enabled": true\n}`;
+  return `{\n  "name": "${title}",\n  "version": "${version}",\n  "enabled": true\n}`;
 }
 
 export async function queryPlanningTaskDetailFilePaths(

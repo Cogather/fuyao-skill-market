@@ -30,7 +30,7 @@ test.describe('Harness 任务管理 Mock 数据', () => {
       expect(
         versionTexts
           .filter((version) => version !== '—')
-          .every((version) => /^v0\.0\.\d+$/.test(version)),
+          .every((version) => /^0\.0\.\d+$/.test(version)),
       ).toBe(true);
 
       const completedStatus = statuses.filter({ hasText: '已完成' }).first();
@@ -71,10 +71,10 @@ test.describe('Harness 任务管理 Mock 数据', () => {
       await expect(dialog).toHaveCSS('overflow-y', 'hidden');
       await expect(detailContent).toHaveCSS('overflow-y', 'auto');
       await expect(versionSelect.locator('option')).toHaveCount(3);
-      await expect(versionSelect).toHaveValue('v0.0.3');
+      await expect(versionSelect).toHaveValue('0.0.3');
       await expect(dialog.locator('.task-detail-folder-heading')).toHaveCount(0);
       await expect(dialog.locator('.task-detail-type-tag')).toHaveCount(0);
-      await expect(fileContent).toContainText('v0.0.3');
+      await expect(fileContent).toContainText('0.0.3');
 
       const capabilityToggle = dialog.locator('.task-detail-capability-toggle');
       await capabilityToggle.click();
@@ -94,9 +94,9 @@ test.describe('Harness 任务管理 Mock 数据', () => {
         1,
       );
 
-      await versionSelect.selectOption('v0.0.2');
-      await expect(dialog.locator('.task-detail-selected-version')).toHaveText('v0.0.2');
-      await expect(fileContent).toContainText('v0.0.2');
+      await versionSelect.selectOption('0.0.2');
+      await expect(dialog.locator('.task-detail-selected-version')).toHaveText('0.0.2');
+      await expect(fileContent).toContainText('0.0.2');
 
       const updatedDialogBox = await dialog.boundingBox();
       const updatedCapabilityBox = await capabilitySection.boundingBox();
