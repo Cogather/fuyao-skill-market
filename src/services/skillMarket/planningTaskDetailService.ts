@@ -52,10 +52,6 @@ export function planningTaskDetailVersions(
     .map(exactVersion)
     .filter(Boolean);
 
-  if (!usesRemotePlanningTasks()) {
-    versions.push('0.0.1', '0.0.2', '0.0.3');
-  }
-
   const uniqueVersions = [...new Set(versions.filter(Boolean))];
   return usesRemotePlanningTasks()
     ? uniqueVersions

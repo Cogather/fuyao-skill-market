@@ -108,7 +108,10 @@ function createDefaultTasks(): SkillPlanningTask[] {
         description: descriptions[number % descriptions.length] ?? '',
         priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3] ?? 'medium',
         status,
-        versions: [{ version: `0.0.${number + 1}`, uploadedAt: updatedAt }],
+        versions: Array.from({ length: 3 }, (_, versionIndex) => ({
+          version: `0.0.${number + versionIndex + 1}`,
+          uploadedAt: `2026-07-${18 + versionIndex}T${hour}:20:00.000Z`,
+        })),
         filePath: '',
         progress:
           idStatus === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,

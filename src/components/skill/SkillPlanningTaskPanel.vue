@@ -48,6 +48,14 @@ const detailDialog = reactive({
   versions: [] as string[],
   selectedVersion: '',
 });
+const selectedDetailVersion = computed(() => {
+  const task = detailDialog.task;
+  const selectedVersion = detailDialog.selectedVersion.trim();
+  if (!task || !selectedVersion) return null;
+  return [task, ...tasks.value.filter((item) => item.id !== task.id && item.name === task.name)]
+    .flatMap((item) => item.versions)
+    .find((item) => item.version === selectedVersion) ?? null;
+});
 type DetailFileState = {
   path: string;
   content: string;
@@ -434,6 +442,7 @@ onBeforeUnmount(() => {
       >
         <div
           class="skill-detail-dialog"
+          :class="{ 'is-basic-only': detailDialog.versions.length === 0 }"
           role="dialog"
           aria-modal="true"
           :aria-label="`${detailDialog.task.name} 详情`"
@@ -443,6 +452,21 @@ onBeforeUnmount(() => {
               <small>{{ capabilityLabelUpper }} TASK DETAIL</small>
               <strong>{{ detailDialog.task.name }}</strong>
               <p>{{ detailDialog.task.description }}</p>
+            </div>
+            <div class="skill-detail-dialog__meta">
+              <div>
+                <span>规划部门或产品</span>
+                <strong>{{
+                  detailDialog.task.dimName ||
+                  detailDialog.task.planningDepartment ||
+                  detailDialog.task.department ||
+                  '—'
+                }}</strong>
+              </div>
+              <div>
+                <span>负责人</span>
+                <strong>{{ detailDialog.task.ownerName || detailDialog.task.owner || '—' }}</strong>
+              </div>
             </div>
             <div class="skill-detail-dialog__actions">
               <span
@@ -459,7 +483,10 @@ onBeforeUnmount(() => {
           </header>
 
           <label v-if="detailDialog.versions.length > 0" class="task-detail-version-filter">
-            <span>版本</span>
+            <span class="task-detail-version-filter__copy">
+              <strong>版本</strong>
+              <small>选择版本后展示对应的目录和文件内容</small>
+            </span>
             <select
               v-model="detailDialog.selectedVersion"
               aria-label="详情版本"
@@ -470,27 +497,11 @@ onBeforeUnmount(() => {
                 {{ version }}
               </option>
             </select>
-            <small>选择版本后展示对应的目录和文件内容</small>
+            <span class="task-detail-version-filter__updated">
+              <small>更新时间</small>
+              <strong>{{ formatDetailUpdatedAt(selectedDetailVersion?.uploadedAt || '') }}</strong>
+            </span>
           </label>
-
-          <dl>
-            <div>
-              <dt>规划部门或产品</dt>
-              <dd>{{ detailDialog.task.dimName || '—' }}</dd>
-            </div>
-            <div>
-              <dt>负责人</dt>
-              <dd>{{ detailDialog.task.ownerName || '—' }}</dd>
-            </div>
-            <div>
-              <dt>计划完成时间</dt>
-              <dd>{{ detailDialog.task.planFinishDate || '—' }}</dd>
-            </div>
-            <div>
-              <dt>更新时间</dt>
-              <dd>{{ formatDetailUpdatedAt(detailDialog.task.updatedAt) }}</dd>
-            </div>
-          </dl>
 
           <section
             v-if="detailDialog.versions.length > 0"
@@ -556,7 +567,9 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <footer><button type="button" @click="closeTask">关闭</button></footer>
+          <footer v-if="detailDialog.versions.length > 0">
+            <button type="button" @click="closeTask">关闭</button>
+          </footer>
         </div>
       </div>
     </Teleport>
@@ -1185,6 +1198,7 @@ onBeforeUnmount(() => {
 }
 
 .skill-detail-dialog {
+  position: relative;
   display: flex;
   box-sizing: border-box;
   width: min(1040px, calc(100vw - 32px));
@@ -1197,12 +1211,16 @@ onBeforeUnmount(() => {
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
 }
 
+.skill-detail-dialog.is-basic-only {
+  height: auto;
+}
+
 .skill-detail-dialog > header {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(320px, 0.9fr) auto;
+  align-items: center;
   flex: 0 0 auto;
-  justify-content: space-between;
-  gap: 18px;
+  gap: 22px;
 }
 
 .skill-detail-dialog__heading {
@@ -1230,14 +1248,48 @@ onBeforeUnmount(() => {
   line-height: 1.7;
 }
 
+.skill-detail-dialog__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skill-detail-dialog__meta > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 2px solid #e1e8f5;
+}
+
+.skill-detail-dialog__meta span {
+  color: #8c97a8;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.skill-detail-dialog__meta strong {
+  overflow: hidden;
+  color: #34435c;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .skill-detail-dialog__actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 10px;
+  padding-right: 48px;
 }
 
 .skill-detail-dialog__actions > button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   width: 30px;
   height: 30px;
   border: 0;
@@ -1250,7 +1302,7 @@ onBeforeUnmount(() => {
 
 .task-detail-version-filter {
   display: grid;
-  grid-template-columns: 110px minmax(220px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(190px, 0.8fr) minmax(280px, 1.25fr) minmax(180px, 0.75fr);
   align-items: center;
   flex: 0 0 auto;
   gap: 12px;
@@ -1261,10 +1313,36 @@ onBeforeUnmount(() => {
   background: #f8faff;
 }
 
-.task-detail-version-filter > span {
+.task-detail-version-filter__copy,
+.task-detail-version-filter__updated {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.task-detail-version-filter__copy > strong {
   color: #34435d;
   font-size: 11px;
   font-weight: 850;
+}
+
+.task-detail-version-filter__copy > small,
+.task-detail-version-filter__updated > small {
+  color: #8c98aa;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.task-detail-version-filter__updated {
+  padding-left: 14px;
+  border-left: 1px solid #dfe6f2;
+}
+
+.task-detail-version-filter__updated > strong {
+  color: #3e4c63;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .task-detail-version-filter select {
@@ -1285,44 +1363,6 @@ onBeforeUnmount(() => {
 .task-detail-version-filter select:focus {
   border-color: #6684e3;
   box-shadow: 0 0 0 3px rgba(84, 120, 228, 0.12);
-}
-
-.task-detail-version-filter > small {
-  color: #8c98aa;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.skill-detail-dialog dl {
-  display: grid;
-  flex: 0 0 auto;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin: 20px 0 0;
-}
-
-.skill-detail-dialog dl > div {
-  box-sizing: border-box;
-  min-height: 80px;
-  padding: 15px;
-  border: 1px solid #e4e9f1;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.skill-detail-dialog dt {
-  color: #8c97a8;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.skill-detail-dialog dd {
-  margin: 8px 0 0;
-  color: #3e4c63;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.5;
-  word-break: break-word;
 }
 
 .task-detail-capability {
@@ -1609,6 +1649,21 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
+  .skill-detail-dialog > header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .skill-detail-dialog__meta {
+    grid-column: 1 / -1;
+  }
+
+  .task-detail-version-filter__updated {
+    padding: 8px 0 0;
+    border-top: 1px solid #dfe6f2;
+    border-left: 0;
+  }
+
   .notification-panel {
     display: block;
   }
@@ -1624,8 +1679,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 560px) {
-  .metric-grid,
-  .skill-detail-dialog dl {
+  .metric-grid {
     grid-template-columns: 1fr;
   }
 

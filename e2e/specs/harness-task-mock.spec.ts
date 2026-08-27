@@ -67,13 +67,30 @@ test.describe('Harness 任务管理 Mock 数据', () => {
       const fileContent = dialog.locator('.task-detail-file-content').first();
       const capabilitySection = dialog.locator('.task-detail-capability');
       const detailContent = dialog.locator('.task-detail-content');
+      const versionUpdatedAt = dialog.locator('.task-detail-version-filter__updated > strong');
       await expect(dialog).toBeVisible();
       await expect(dialog).toHaveCSS('overflow-y', 'hidden');
+      const dialogFrame = await dialog.boundingBox();
+      const topCloseButton = await dialog
+        .getByRole('button', { name: '关闭', exact: true })
+        .first()
+        .boundingBox();
+      expect(dialogFrame).not.toBeNull();
+      expect(topCloseButton).not.toBeNull();
+      expect(
+        Math.abs(
+          dialogFrame!.x + dialogFrame!.width - (topCloseButton!.x + topCloseButton!.width) - 12,
+        ),
+      ).toBeLessThanOrEqual(1);
+      expect(Math.abs(topCloseButton!.y - dialogFrame!.y - 12)).toBeLessThanOrEqual(1);
       await expect(detailContent).toHaveCSS('overflow-y', 'auto');
       await expect(versionSelect.locator('option')).toHaveCount(3);
       await expect(versionSelect).toHaveValue('0.0.3');
       await expect(dialog.locator('.task-detail-folder-heading')).toHaveCount(0);
       await expect(dialog.locator('.task-detail-type-tag')).toHaveCount(0);
+      await expect(dialog.getByText('计划完成时间', { exact: true })).toHaveCount(0);
+      await expect(dialog.locator('.skill-detail-dialog__meta')).toContainText('规划部门或产品');
+      await expect(versionUpdatedAt).toHaveText('2026-07-20 18:20:00');
       await expect(fileContent).toContainText('0.0.3');
 
       const capabilityToggle = dialog.locator('.task-detail-capability-toggle');
@@ -96,6 +113,7 @@ test.describe('Harness 任务管理 Mock 数据', () => {
 
       await versionSelect.selectOption('0.0.2');
       await expect(dialog.locator('.task-detail-selected-version')).toHaveText('0.0.2');
+      await expect(versionUpdatedAt).toHaveText('2026-07-19 18:20:00');
       await expect(fileContent).toContainText('0.0.2');
 
       const updatedDialogBox = await dialog.boundingBox();
@@ -145,8 +163,13 @@ test.describe('Harness 任务管理 Mock 数据', () => {
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
+      await expect(dialog).toHaveClass(/is-basic-only/);
       await expect(dialog.locator('.task-detail-version-filter')).toHaveCount(0);
       await expect(dialog.locator('.task-detail-capability')).toHaveCount(0);
+      await expect(dialog.locator('footer')).toHaveCount(0);
+      const compactDialogBox = await dialog.boundingBox();
+      expect(compactDialogBox).not.toBeNull();
+      expect(compactDialogBox!.height).toBeLessThan(200);
       await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
       await expect(dialog).toBeHidden();
     }

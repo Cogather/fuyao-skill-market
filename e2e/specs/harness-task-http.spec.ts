@@ -120,6 +120,9 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     const versionSelect = dialog.getByLabel('详情版本');
     await expect(versionSelect.locator('option')).toHaveCount(3);
     await expect(versionSelect).toHaveValue('1.9.0');
+    await expect(dialog.locator('.task-detail-version-filter__updated > strong')).toHaveText(
+      '2026-08-17 10:30:00',
+    );
     await expect(dialog.locator('.task-detail-file-content')).toContainText('1.9.0');
 
     const switchedTreeRequest = page.waitForRequest(
@@ -134,6 +137,9 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     );
     await versionSelect.selectOption('1.10.0');
     await Promise.all([switchedTreeRequest, switchedFileRequest]);
+    await expect(dialog.locator('.task-detail-version-filter__updated > strong')).toHaveText(
+      '2026-08-14 10:30:00',
+    );
     await expect(dialog.locator('.task-detail-file-content')).toContainText('1.10.0');
 
     await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
@@ -144,8 +150,10 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     await emptyVersionRow.getByRole('button', { name: '查看 Skill', exact: true }).click();
 
     await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveClass(/is-basic-only/);
     await expect(dialog.locator('.task-detail-version-filter')).toHaveCount(0);
     await expect(dialog.locator('.task-detail-capability')).toHaveCount(0);
+    await expect(dialog.locator('footer')).toHaveCount(0);
     await page.waitForTimeout(100);
     expect(treeRequestCount).toBe(treeRequestsBeforeEmptyDetail);
     expect(fileRequestCount).toBe(fileRequestsBeforeEmptyDetail);
