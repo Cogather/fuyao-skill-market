@@ -11,6 +11,7 @@ export interface SkillPlanningTask {
   priority: SkillTaskPriority;
   status: SkillTaskStatus;
   version: string;
+  versions?: string[];
   filePath: string;
   progress: number;
   department: string;
@@ -159,7 +160,7 @@ let memoryTasks: SkillPlanningTask[] | null = null;
 let memoryAssociations: SkillTaskAssociation[] | null = null;
 
 function cloneTask(task: SkillPlanningTask): SkillPlanningTask {
-  return { ...task };
+  return { ...task, versions: task.versions ? [...task.versions] : undefined };
 }
 
 function normalizeProgress(value: unknown, status: SkillTaskStatus): number {
@@ -257,6 +258,50 @@ function readText(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 }
 
+function compareTaskVersionsDescending(left: string, right: string): number {
+  const leftParts = left
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const rightParts = right
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return right.localeCompare(left);
+}
+
+function taskVersionTimestamp(value: string): number | null {
+  const timestamp = Date.parse(value.replace(' ', 'T'));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function normalizeHttpTaskVersions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const entries = value
+    .map((item) => {
+      const record = asRecord(item);
+      return {
+        version: readText(record.version),
+        uploadedAt: readText(record.uploadedAt),
+      };
+    })
+    .filter((item) => Boolean(item.version))
+    .sort((left, right) => {
+      const leftTimestamp = taskVersionTimestamp(left.uploadedAt);
+      const rightTimestamp = taskVersionTimestamp(right.uploadedAt);
+      if (leftTimestamp !== null && rightTimestamp !== null && leftTimestamp !== rightTimestamp) {
+        return rightTimestamp - leftTimestamp;
+      }
+      return compareTaskVersionsDescending(left.version, right.version);
+    });
+  return [...new Set(entries.map((item) => item.version))];
+}
+
 function readDateTime(value: unknown): string {
   if (Array.isArray(value)) {
     const [year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0] = value.map(Number);
@@ -313,6 +358,7 @@ function normalizeHttpTask(
   capabilityType: PlanningTaskCapabilityType,
 ): SkillPlanningTask {
   const record = asRecord(value);
+  const versions = normalizeHttpTaskVersions(record.versions);
   const status = normalizeHttpTaskStatus(record.status);
   const numericProgress = Number(record.progress);
   const progress = normalizeProgress(
@@ -367,7 +413,8 @@ function normalizeHttpTask(
     description,
     priority: normalizeHttpTaskPriority(record.priority),
     status,
-    version: readText(record.version),
+    version: versions[0] || readText(record.version) || '',
+    versions,
     filePath: readText(record.filePath ?? record.path ?? record.fileName),
     progress,
     department,

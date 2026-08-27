@@ -44,16 +44,20 @@ export function planningTaskDetailVersions(
 ): string[] {
   const versions = tasks
     .filter((item) => item.name === task.name)
-    .map((item) => normalizedVersion(item.version))
+    .flatMap((item) => [item.version, ...(item.versions ?? [])])
+    .map(normalizedVersion)
     .filter(Boolean);
 
   if (!usesRemotePlanningTasks()) {
     versions.push('v0.0.1', 'v0.0.2', 'v0.0.3');
   }
 
-  return [...new Set([normalizedVersion(task.version), ...versions].filter(Boolean))].sort(
-    compareVersionsDescending,
-  );
+  const uniqueVersions = [
+    ...new Set([normalizedVersion(task.version), ...versions].filter(Boolean)),
+  ];
+  return usesRemotePlanningTasks()
+    ? uniqueVersions
+    : uniqueVersions.sort(compareVersionsDescending);
 }
 
 function extensionCapability(identity: PlanningTaskDetailIdentity): ExtensionCapability {
