@@ -682,6 +682,14 @@ export type QuerySkillMasterManagementBody = {
 };
 
 /** Skill 清单查询行 */
+export type SkillMasterManagementVersionDto = {
+  version: string;
+  uploadedAt?: string | null;
+  mrId?: string | null;
+  repoUrl?: string | null;
+  tagName?: string | null;
+};
+
 export type SkillMasterManagementItemDto = {
   id: string | number;
   skillName: string;
@@ -705,6 +713,7 @@ export type SkillMasterManagementItemDto = {
   supplementCount?: number;
   configCount?: number;
   relatedPlanningCount?: number;
+  versions?: SkillMasterManagementVersionDto[] | null;
 };
 
 /** Skill 清单更新（PUT /management/update） */

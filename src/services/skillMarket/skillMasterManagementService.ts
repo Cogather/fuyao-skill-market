@@ -6,6 +6,14 @@ import {
 } from '../../utils/catalogItemName';
 export type SkillMasterStatus = '未开始' | '开发中' | '已完成' | '进行中' | '联调中';
 
+export interface SkillMasterVersion {
+  version: string;
+  uploadedAt: string;
+  mrId?: string;
+  repoUrl?: string;
+  tagName?: string | null;
+}
+
 export interface SkillMasterRecord {
   id: string;
   name: string;
@@ -18,13 +26,17 @@ export interface SkillMasterRecord {
   developOwnerDepartment?: string;
   plannedCompleteDate: string;
   status: SkillMasterStatus;
+  versions?: SkillMasterVersion[];
   /** Number of planning records that currently reference this catalog item. */
   referenceCount?: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export type SkillMasterPayload = Omit<SkillMasterRecord, 'id' | 'createdAt' | 'updatedAt'>;
+export type SkillMasterPayload = Omit<
+  SkillMasterRecord,
+  'id' | 'createdAt' | 'updatedAt' | 'versions'
+>;
 
 export interface SkillMasterQuery {
   keyword?: string;
@@ -37,8 +49,9 @@ export interface SkillMasterQuery {
   scopeStrict?: boolean;
 }
 
-const STORAGE_KEY = 'skill-market-master-records-v4';
+const STORAGE_KEY = 'skill-market-master-records-v5';
 const LEGACY_STORAGE_KEYS = [
+  'skill-market-master-records-v4',
   'skill-market-master-records-v3',
   'skill-market-master-records-v2',
   'skill-market-master-records-v1',
@@ -51,6 +64,19 @@ const defaultRecords: SkillMasterRecord[] = skillMasterSeedRecords.map((record, 
     level: '',
     product: '',
     developOwnerDepartment: String(record.developOwnerDepartment ?? '').trim(),
+    versions:
+      index % 4 === 1
+        ? []
+        : [
+            {
+              version: `0.${Math.floor(index / 4)}.${index + 1}`,
+              uploadedAt: new Date(seedTimestamp + index * 10 * 60 * 1000).toISOString(),
+            },
+            {
+              version: `0.${Math.floor(index / 4)}.${index + 2}`,
+              uploadedAt: new Date(seedTimestamp + (index + 1) * 10 * 60 * 1000).toISOString(),
+            },
+          ],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -59,11 +85,103 @@ const defaultRecords: SkillMasterRecord[] = skillMasterSeedRecords.map((record, 
 let memoryRecords: SkillMasterRecord[] | null = null;
 
 function cloneRecord(record: SkillMasterRecord): SkillMasterRecord {
-  return { ...record };
+  return {
+    ...record,
+    versions: normalizeSkillMasterVersions(record.versions),
+  };
 }
 
 function normalize(value: unknown): string {
   return String(value ?? '').trim();
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function parseJsonCollection(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const text = value.trim();
+  if (!text || (!text.startsWith('[') && !text.startsWith('{'))) return value;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function collectionRows(value: unknown): unknown[] {
+  const parsed = parseJsonCollection(value);
+  if (Array.isArray(parsed)) return parsed;
+  const record = asRecord(parsed);
+  return (
+    ['data', 'list', 'records', 'items', 'rows']
+      .map((key) => parseJsonCollection(record[key]))
+      .find((item): item is unknown[] => Array.isArray(item)) ?? []
+  );
+}
+
+function compareVersionNumbersDescending(left: string, right: string): number {
+  const leftParts = left
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const rightParts = right
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return right.localeCompare(left);
+}
+
+function versionTimestamp(value: string): number | null {
+  const timestamp = Date.parse(value.replace(' ', 'T'));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function compareVersionEntriesDescending(
+  left: SkillMasterVersion,
+  right: SkillMasterVersion,
+): number {
+  const leftTimestamp = versionTimestamp(left.uploadedAt);
+  const rightTimestamp = versionTimestamp(right.uploadedAt);
+  if (leftTimestamp !== null && rightTimestamp !== null && leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  return compareVersionNumbersDescending(left.version, right.version);
+}
+
+export function normalizeSkillMasterVersions(value: unknown): SkillMasterVersion[] {
+  const entries = collectionRows(value)
+    .map((item) => {
+      const record = asRecord(item);
+      return {
+        version: normalize(record.version) || normalize(item),
+        uploadedAt: normalize(record.uploadedAt),
+        mrId: normalize(record.mrId),
+        repoUrl: normalize(record.repoUrl),
+        tagName: record.tagName == null ? null : normalize(record.tagName),
+      };
+    })
+    .filter((item) => Boolean(item.version))
+    .sort(compareVersionEntriesDescending);
+  const seen = new Set<string>();
+  return entries.filter((item) => {
+    const key = item.version.toLocaleLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function latestSkillMasterVersion(
+  record: Pick<SkillMasterRecord, 'versions'>,
+): SkillMasterVersion | null {
+  return normalizeSkillMasterVersions(record.versions)[0] ?? null;
 }
 
 function normalizeStoredStatus(value: unknown): SkillMasterStatus {
@@ -97,6 +215,7 @@ function migrateLegacyRecords(records: SkillMasterRecord[]): SkillMasterRecord[]
       developOwnerDepartment:
         normalize(record.developOwnerDepartment) || defaultRecord?.developOwnerDepartment || '',
       status: normalizeStoredStatus(record.status),
+      versions: normalizeSkillMasterVersions(record.versions ?? defaultRecord?.versions),
     };
   });
   const existingIds = new Set(migrated.map((record) => record.id));
@@ -115,7 +234,7 @@ function readRecords(): SkillMasterRecord[] {
       if (raw) {
         const parsed = JSON.parse(raw) as SkillMasterRecord[];
         if (Array.isArray(parsed)) {
-          memoryRecords = currentRaw ? parsed : migrateLegacyRecords(parsed);
+          memoryRecords = migrateLegacyRecords(parsed);
           if (!currentRaw) {
             window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryRecords));
           }
@@ -221,6 +340,7 @@ export function createSkillMasterRecord(payload: SkillMasterPayload): SkillMaste
   const record: SkillMasterRecord = {
     id: `skill-master-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ...normalized,
+    versions: [],
     createdAt: now,
     updatedAt: now,
   };

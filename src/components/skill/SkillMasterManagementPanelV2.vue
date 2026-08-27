@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import { listScenes, type SceneRecord } from '../../services/skillMarket/sceneManagementService';
 import {
   listActivities,
@@ -13,6 +14,8 @@ import {
   type SkillMasterAssociation,
 } from '../../services/skillMarket/skillMasterAssociationService';
 import {
+  latestSkillMasterVersion,
+  normalizeSkillMasterVersions,
   type SkillMasterRecord,
   type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
@@ -92,6 +95,7 @@ const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
 }>();
 const records = ref<SkillMasterRecord[]>([]);
+const detailRecord = ref<SkillMasterRecord | null>(null);
 const masterLoading = ref(false);
 const masterPageSizeOptions = [5, 10, 20, 50];
 const masterPageNum = ref(1);
@@ -457,6 +461,7 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
     developOwnerDepartment: '',
     plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
     status: statusText as SkillMasterStatus,
+    versions: normalizeSkillMasterVersions(item.versions),
     referenceCount: Number(
       item.referenceCount ??
         item.planningCount ??
@@ -1056,6 +1061,14 @@ function openCreate(): void {
   applyCurrentScopeToEditor();
   editor.name = requiredSkillNamePrefix.value;
   editor.open = true;
+}
+
+function openDetail(record: SkillMasterRecord): void {
+  detailRecord.value = record;
+}
+
+function closeDetail(): void {
+  detailRecord.value = null;
 }
 
 function openEdit(record: SkillMasterRecord): void {
@@ -1777,6 +1790,7 @@ onBeforeUnmount(() => {
             <col class="develop-owner-column" />
             <col class="date-column" />
             <col class="status-column" />
+            <col class="version-column" />
             <col class="action-column" />
           </colgroup>
           <thead>
@@ -1800,13 +1814,14 @@ onBeforeUnmount(() => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
+              <th>版本</th>
               <!-- <th class="reference-cell">关联规划项</th> -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="masterLoading">
-              <td colspan="8" class="empty">正在加载 Skill 清单...</td>
+              <td colspan="9" class="empty">正在加载 Skill 清单...</td>
             </tr>
             <tr v-for="record in masterLoading ? [] : filteredRecords" :key="record.id">
               <td class="selection-cell">
@@ -1842,7 +1857,19 @@ onBeforeUnmount(() => {
               <td class="person-column">{{ personDisplayLabel(record.developOwner) }}</td>
               <td>{{ record.plannedCompleteDate || '无' }}</td>
               <td>
-                <span class="badge status" :class="'is-' + record.status">{{ record.status }}</span>
+                <span
+                  class="badge status"
+                  :class="{
+                    'is-done': record.status === '已完成',
+                    'is-inProgress': record.status === '进行中',
+                  }"
+                  >{{ record.status }}</span
+                >
+              </td>
+              <td>
+                <span class="master-version">{{
+                  latestSkillMasterVersion(record)?.version || '—'
+                }}</span>
               </td>
               <!-- <td class="reference-cell">
                 <span
@@ -1852,13 +1879,35 @@ onBeforeUnmount(() => {
               </td> -->
               <td>
                 <div class="row-actions">
-                  <button type="button" @click="openEdit(record)">编辑</button
-                  ><button class="danger" type="button" @click="requestDelete(record)">删除</button>
+                  <button
+                    type="button"
+                    class="icon-action"
+                    title="编辑"
+                    aria-label="编辑"
+                    @click="openEdit(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                      <path d="m13 7 4 4" />
+                    </svg>
+                  </button>
+                  <button
+                    class="icon-action danger"
+                    type="button"
+                    title="删除"
+                    aria-label="删除"
+                    @click="requestDelete(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
+                    </svg>
+                  </button>
+                  <button type="button" @click="openDetail(record)">查看 Skill</button>
                 </div>
               </td>
             </tr>
             <tr v-if="!masterLoading && filteredRecords.length === 0">
-              <td colspan="8" class="empty">
+              <td colspan="9" class="empty">
                 {{ hasCompleteMasterScope ? '暂无符合条件的 Skill' : masterScopeErrorMessage }}
               </td>
             </tr>
@@ -1895,6 +1944,14 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <HarnessCatalogDetailDialog
+      :open="Boolean(detailRecord)"
+      :record="detailRecord"
+      :user-id="props.userId"
+      capability-type="skill"
+      @close="closeDetail"
+    />
 
     <Teleport to="body">
       <div
@@ -2481,20 +2538,23 @@ onBeforeUnmount(() => {
   width: 16%;
 }
 .table-wrap col.description-column {
-  width: 24%;
+  width: 14%;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
-  width: 14%;
+  width: 13%;
 }
 .table-wrap col.date-column {
-  width: 10%;
+  width: 9%;
 }
 .table-wrap col.status-column {
   width: 9%;
 }
+.table-wrap col.version-column {
+  width: 8%;
+}
 .table-wrap col.action-column {
-  width: 9%;
+  width: 14%;
 }
 .table-wrap .reference-cell { text-align: center; }
 .planning-reference-count {
@@ -2639,15 +2699,39 @@ onBeforeUnmount(() => {
   background: #f1f3f7;
   color: #66758c;
 }
-.status.is-开发中,
-.status.is-联调中,
-.status.is-进行中 {
-  background: #fff3df;
-  color: #aa6415;
+.status.is-inProgress {
+  gap: 5px;
+  border: 1px solid #c5d7ff;
+  background: linear-gradient(135deg, #f1f6ff, #e7efff);
+  color: #3156b5;
+  box-shadow: 0 2px 8px rgba(70, 109, 224, 0.1);
 }
-.status.is-已完成 {
-  background: #eaf8f1;
-  color: #27815d;
+.status.is-inProgress::before,
+.status.is-done::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  content: '';
+}
+.status.is-inProgress::before {
+  background: #5b7fe5;
+  box-shadow: 0 0 0 3px rgba(91, 127, 229, 0.12);
+}
+.status.is-done {
+  gap: 5px;
+  border: 1px solid #bce8d1;
+  background: linear-gradient(135deg, #effaf4, #e4f6ed);
+  color: #18794e;
+  box-shadow: 0 2px 8px rgba(39, 129, 93, 0.1);
+}
+.status.is-done::before {
+  background: #2fac78;
+  box-shadow: 0 0 0 3px rgba(47, 172, 120, 0.12);
+}
+.master-version {
+  color: #53627a;
+  font-weight: 700;
 }
 .association-summary {
   display: flex;
@@ -2685,6 +2769,34 @@ onBeforeUnmount(() => {
 .row-actions button:hover {
   background: #eef3ff;
   color: #3569e8;
+}
+.row-actions button.icon-action {
+  display: inline-flex;
+  width: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #dbe5f2;
+  background: #fff;
+  color: #2563eb;
+}
+.row-actions button.icon-action:hover {
+  border-color: #b9ccff;
+  background: #eff6ff;
+}
+.row-actions button.icon-action.danger:hover {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+.row-actions button.icon-action svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 .row-actions .associate {
   background: #eef3ff;

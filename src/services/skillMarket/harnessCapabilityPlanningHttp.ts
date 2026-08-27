@@ -31,10 +31,11 @@ import {
   openSkillExportResponse,
   skillImportErrorMessage,
 } from './skillTransferService';
-import type {
-  SkillMasterPayload,
-  SkillMasterRecord,
-  SkillMasterStatus,
+import {
+  normalizeSkillMasterVersions,
+  type SkillMasterPayload,
+  type SkillMasterRecord,
+  type SkillMasterStatus,
 } from './skillMasterManagementService';
 import {
   normalizeSkillPlanningItem,
@@ -662,6 +663,9 @@ function mapCapabilityCatalogItem(
     developOwnerDepartment: readText(record, ['developOwnerDepartment', 'deptName']),
     plannedCompleteDate: readText(record, ['planFinishDate', 'plannedCompleteDate']),
     status: normalizeStatus(record.status),
+    versions: normalizeSkillMasterVersions(
+      record.versions ?? record.versionList ?? record.version_list,
+    ),
     referenceCount: readNumber(
       record.referenceCount ??
         record.planningCount ??

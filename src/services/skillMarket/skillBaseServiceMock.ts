@@ -151,6 +151,13 @@ type MockSkillMasterManagementRecord = {
   updatedAt: number[];
   skillMatchId: string | null;
   skillMatchLevel: string | null;
+  versions?: Array<{
+    version: string;
+    uploadedAt: string;
+    mrId?: string;
+    repoUrl?: string;
+    tagName?: string | null;
+  }>;
 };
 
 type MockSkillPlanningSupplementRecord = {
@@ -228,6 +235,91 @@ const mockSkillPlanningSupplementRecords: MockSkillPlanningSupplementRecord[] = 
 
 const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
   {
+    id: '504',
+    skillName: '流水线失败诊断 Skill',
+    skillDescription: '分析流水线日志和失败节点，输出定位结论与恢复建议',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李明',
+    developOwnerId: 'w30000006',
+    status: '已完成',
+    planFinishDate: '2026-08-18',
+    createdAt: [2026, 7, 10, 9, 0, 0, 0],
+    updatedAt: [2026, 8, 18, 18, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    versions: [
+      { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
+      { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
+    ],
+  },
+  {
+    id: '505',
+    skillName: '发布风险扫描 Skill',
+    skillDescription: '扫描发布变更、依赖服务和历史事故，生成风险检查清单',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '李四',
+    ownerId: 'w30000002',
+    developOwnerName: '周扬',
+    developOwnerId: 'w30000007',
+    status: '进行中',
+    planFinishDate: '2026-09-08',
+    createdAt: [2026, 8, 1, 9, 0, 0, 0],
+    updatedAt: [2026, 8, 25, 19, 39, 59, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    versions: [
+      { version: '1.9.0', uploadedAt: '2026-08-20 10:00:00' },
+      { version: '1.10.0', uploadedAt: '2026-08-25 19:39:59' },
+    ],
+  },
+  {
+    id: '506',
+    skillName: '交付指标汇总 Skill',
+    skillDescription: '汇总构建成功率、平均耗时和发布频次等交付指标',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '王五',
+    ownerId: 'w30000003',
+    developOwnerName: '陈七',
+    developOwnerId: 'w30000008',
+    status: '进行中',
+    planFinishDate: '2026-09-15',
+    createdAt: [2026, 8, 5, 10, 0, 0, 0],
+    updatedAt: [2026, 8, 24, 15, 30, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    versions: [
+      { version: '0.0.1', uploadedAt: '2026-08-15 10:00:00' },
+      { version: '0.0.2', uploadedAt: '2026-08-24 15:30:00' },
+    ],
+  },
+  {
+    id: '507',
+    skillName: '流水线配置巡检 Skill',
+    skillDescription: '巡检流水线配置完整性、权限和环境变量引用情况',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '赵六',
+    ownerId: 'w30000004',
+    developOwnerName: '刘岚',
+    developOwnerId: 'w30000009',
+    status: '未开始',
+    planFinishDate: '2026-09-28',
+    createdAt: [2026, 8, 10, 11, 0, 0, 0],
+    updatedAt: [2026, 8, 20, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    versions: [],
+  },
+  {
     id: '501',
     skillName: '稳定性日报 Skill',
     skillDescription: '汇总稳定性指标并生成日报摘要',
@@ -244,6 +336,10 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 6, 26, 18, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    versions: [
+      { version: '0.0.2', uploadedAt: '2026-06-20 18:00:00' },
+      { version: '0.0.3', uploadedAt: '2026-06-26 18:00:00' },
+    ],
   },
   {
     id: '502',
@@ -262,6 +358,10 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 7, 20, 11, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    versions: [
+      { version: '1.9.0', uploadedAt: '2026-07-18 11:00:00' },
+      { version: '1.10.0', uploadedAt: '2026-07-20 11:00:00' },
+    ],
   },
   {
     id: '503',
@@ -280,6 +380,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 7, 10, 8, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    versions: [],
   },
 ];
 
@@ -2108,6 +2209,7 @@ function handleSkillRequest(
       updatedAt: stamp,
       skillMatchId: null,
       skillMatchLevel: null,
+      versions: [],
     };
     if (
       mockSkillMasterManagementRecords.some(
