@@ -4,12 +4,22 @@ export type SkillTaskStatus = string;
 export type PlanningTaskCapabilityType = 'command' | 'skill' | 'agent';
 export type SkillTaskPriority = 'high' | 'medium' | 'low';
 
+export interface SkillPlanningTaskVersion {
+  version: string;
+  uploadedAt: string;
+  mrId?: string;
+  repoUrl?: string;
+  tagName?: string | null;
+}
+
 export interface SkillPlanningTask {
   id: string;
   name: string;
   description: string;
   priority: SkillTaskPriority;
   status: SkillTaskStatus;
+  versions: SkillPlanningTaskVersion[];
+  filePath: string;
   progress: number;
   department: string;
   planningDepartment: string;
@@ -31,7 +41,7 @@ export interface SkillTaskAssociation {
   services: string[];
 }
 
-const TASK_STORAGE_KEY = 'skill-market-planning-tasks-v2';
+const TASK_STORAGE_KEY = 'skill-market-planning-tasks-v4';
 const ASSOCIATION_STORAGE_KEY = 'skill-market-task-associations-v1';
 
 const skillNames = [
@@ -74,36 +84,47 @@ const descriptions = [
   '沉淀可复用的流程能力，减少重复人工操作。',
 ];
 
-const statusSeeds: Array<{ status: SkillTaskStatus; count: number; progress: number }> = [
-  { status: 'todo', count: 5, progress: 0 },
-  { status: 'inProgress', count: 21, progress: 46 },
-  { status: 'done', count: 41, progress: 100 },
+const statusSeeds: Array<{
+  idStatus: 'done' | 'inProgress';
+  status: SkillTaskStatus;
+  count: number;
+  progress: number;
+}> = [
+  { idStatus: 'done', status: '已完成', count: 6, progress: 100 },
+  { idStatus: 'inProgress', status: '进行中', count: 6, progress: 46 },
 ];
 
 function createDefaultTasks(): SkillPlanningTask[] {
   let globalIndex = 0;
-  return statusSeeds.flatMap(({ status, count, progress }) =>
+  return statusSeeds.flatMap(({ idStatus, status, count, progress }) =>
     Array.from({ length: count }, (_, index) => {
       const number = globalIndex++;
       const day = String(20 - (number % 12)).padStart(2, '0');
       const hour = String(18 - (number % 9)).padStart(2, '0');
+      const updatedAt = '2026-07-' + day + 'T' + hour + ':20:00.000Z';
       return {
-        id: 'skill-task-' + status + '-' + String(index + 1).padStart(3, '0'),
+        id: 'skill-task-' + idStatus + '-' + String(index + 1).padStart(3, '0'),
         name: skillNames[number % skillNames.length] ?? '??? Skill',
         description: descriptions[number % descriptions.length] ?? '',
         priority: (['high', 'medium', 'low'] as SkillTaskPriority[])[number % 3] ?? 'medium',
         status,
-        progress: status === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
+        versions: Array.from({ length: 3 }, (_, versionIndex) => ({
+          version: `0.0.${number + versionIndex + 1}`,
+          uploadedAt: `2026-07-${18 + versionIndex}T${hour}:20:00.000Z`,
+        })),
+        filePath: '',
+        progress:
+          idStatus === 'inProgress' ? Math.min(85, progress + ((index * 7) % 38)) : progress,
         department: departments[number % departments.length] ?? '',
         planningDepartment: planningDepartments[number % planningDepartments.length] ?? '',
         dimName: planningDepartments[number % planningDepartments.length] ?? '',
-        ownerId: 'mock001',
+        ownerId: 'w30000001',
         owner: '演示用户',
         ownerName: '演示用户',
         dueDate: '2026-08-' + String(10 + (number % 18)).padStart(2, '0'),
         planFinishDate: '2026-08-' + String(10 + (number % 18)).padStart(2, '0'),
         createdAt: '2026-07-01T09:00:00.000Z',
-        updatedAt: '2026-07-' + day + 'T' + hour + ':20:00.000Z',
+        updatedAt,
       };
     }),
   );
@@ -116,6 +137,7 @@ const capabilityLabels: Record<PlanningTaskCapabilityType, 'Command' | 'Skill' |
   skill: 'Skill',
   agent: 'Agent',
 };
+const mockEmptyVersionTaskIds = new Set(['skill-task-done-002', 'skill-task-inProgress-001']);
 
 export function planningTaskCapabilityLabel(
   capabilityType: PlanningTaskCapabilityType,
@@ -127,13 +149,17 @@ function adaptMockPlanningTask(
   task: SkillPlanningTask,
   capabilityType: PlanningTaskCapabilityType,
 ): SkillPlanningTask {
-  if (capabilityType === 'skill') return cloneTask(task);
-  const label = planningTaskCapabilityLabel(capabilityType);
-  return {
-    ...task,
-    id: task.id.replace(/^skill-task-/, `${capabilityType}-task-`),
-    name: `${task.name.replace(/\s+Skill$/i, '')} ${label}`,
-  };
+  const adaptedTask =
+    capabilityType === 'skill'
+      ? cloneTask(task)
+      : {
+          ...task,
+          id: task.id.replace(/^skill-task-/, `${capabilityType}-task-`),
+          name: `${task.name.replace(/\s+Skill$/i, '')} ${planningTaskCapabilityLabel(capabilityType)}`,
+        };
+  return mockEmptyVersionTaskIds.has(task.id)
+    ? { ...adaptedTask, versions: [] }
+    : adaptedTask;
 }
 
 const defaultAssociations: SkillTaskAssociation[] = [
@@ -150,7 +176,7 @@ let memoryTasks: SkillPlanningTask[] | null = null;
 let memoryAssociations: SkillTaskAssociation[] | null = null;
 
 function cloneTask(task: SkillPlanningTask): SkillPlanningTask {
-  return { ...task };
+  return { ...task, versions: task.versions.map((version) => ({ ...version })) };
 }
 
 function normalizeProgress(value: unknown, status: SkillTaskStatus): number {
@@ -163,10 +189,23 @@ function normalizeProgress(value: unknown, status: SkillTaskStatus): number {
 
 function normalizeTask(task: SkillPlanningTask): SkillPlanningTask {
   const defaultTask = defaultTasks.find((item) => item.id === task.id);
+  const taskRecord = asRecord(task);
+  const hasVersions = Object.prototype.hasOwnProperty.call(taskRecord, 'versions');
+  const versions = normalizePlanningTaskVersions(taskRecord.versions);
+  const legacyVersion = readText(taskRecord.version);
+  const normalizedVersions = hasVersions
+    ? versions
+    : normalizePlanningTaskVersions(
+        legacyVersion
+          ? [{ version: legacyVersion, uploadedAt: readText(taskRecord.updatedAt) }]
+          : defaultTask?.versions,
+      );
   const status = readText(task.status) || '未设置';
   return {
     ...task,
     status,
+    versions: normalizedVersions,
+    filePath: readText(task.filePath) || readText(defaultTask?.filePath),
     progress: normalizeProgress(task.progress, status),
     department: String(task.department || defaultTask?.department || '').trim(),
     planningDepartment: String(
@@ -246,6 +285,97 @@ function readText(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 }
 
+function parseHttpJsonValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const text = value.trim();
+  if (!text || (!text.startsWith('[') && !text.startsWith('{'))) return value;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function httpCollectionRows(value: unknown): unknown[] {
+  const parsed = parseHttpJsonValue(value);
+  if (Array.isArray(parsed)) return parsed;
+  const record = asRecord(parsed);
+  return (
+    ['data', 'list', 'records', 'items', 'rows']
+      .map((key) => parseHttpJsonValue(record[key]))
+      .find((item): item is unknown[] => Array.isArray(item)) ?? []
+  );
+}
+
+function compareTaskVersionsDescending(left: string, right: string): number {
+  const leftParts = left
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const rightParts = right
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (rightParts[index] ?? 0) - (leftParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return right.localeCompare(left);
+}
+
+function taskVersionTimestamp(value: string): number | null {
+  const timestamp = Date.parse(value.replace(' ', 'T'));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function compareTaskVersionEntriesDescending(
+  left: SkillPlanningTaskVersion,
+  right: SkillPlanningTaskVersion,
+): number {
+  const leftTimestamp = taskVersionTimestamp(left.uploadedAt);
+  const rightTimestamp = taskVersionTimestamp(right.uploadedAt);
+  if (leftTimestamp !== null && rightTimestamp !== null && leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  return compareTaskVersionsDescending(left.version, right.version);
+}
+
+function normalizePlanningTaskVersions(value: unknown): SkillPlanningTaskVersion[] {
+  const entries = httpCollectionRows(value)
+    .map((item) => {
+      const record = asRecord(item);
+      return {
+        version: readText(record.version) || readText(item),
+        uploadedAt: readText(record.uploadedAt),
+        mrId: readText(record.mrId),
+        repoUrl: readText(record.repoUrl),
+        tagName: record.tagName == null ? null : readText(record.tagName),
+      };
+    })
+    .filter((item) => Boolean(item.version))
+    .sort(compareTaskVersionEntriesDescending);
+  const seen = new Set<string>();
+  return entries.filter((item) => {
+    const key = item.version.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function sortedPlanningTaskVersions(
+  task: Pick<SkillPlanningTask, 'versions'>,
+): SkillPlanningTaskVersion[] {
+  return normalizePlanningTaskVersions(task.versions);
+}
+
+export function latestPlanningTaskVersion(
+  task: Pick<SkillPlanningTask, 'versions'>,
+): SkillPlanningTaskVersion | null {
+  return sortedPlanningTaskVersions(task)[0] ?? null;
+}
+
 function readDateTime(value: unknown): string {
   if (Array.isArray(value)) {
     const [year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0] = value.map(Number);
@@ -282,18 +412,23 @@ function normalizeHttpTaskPriority(value: unknown): SkillTaskPriority {
 }
 
 function responseTaskRows(response: unknown): unknown[] {
-  const responseRecord = asRecord(response);
-  const meta = asRecord(responseRecord.meta);
-  if (meta.success === false) {
-    throw new Error(readText(responseRecord.message) || '待办任务加载失败');
+  let current = parseHttpJsonValue(response);
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (Array.isArray(current)) return current;
+    const record = asRecord(current);
+    const meta = asRecord(record.meta);
+    if (meta.success === false) {
+      throw new Error(readText(record.message ?? meta.message) || '待办任务加载失败');
+    }
+
+    const rows = httpCollectionRows(current);
+    if (rows.length > 0 || Array.isArray(parseHttpJsonValue(record.data))) return rows;
+
+    const next = parseHttpJsonValue(record.data);
+    if (next === undefined || next === current) return [];
+    current = next;
   }
-  const data = responseRecord.data ?? response;
-  const dataRecord = asRecord(data);
-  return Array.isArray(data)
-    ? data
-    : (['list', 'records', 'items', 'rows']
-        .map((key) => dataRecord[key])
-        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+  return [];
 }
 
 function normalizeHttpTask(
@@ -302,6 +437,8 @@ function normalizeHttpTask(
   capabilityType: PlanningTaskCapabilityType,
 ): SkillPlanningTask {
   const record = asRecord(value);
+  const versionSource = record.versions ?? record.versionList ?? record.version_list;
+  const versions = normalizePlanningTaskVersions(versionSource);
   const status = normalizeHttpTaskStatus(record.status);
   const numericProgress = Number(record.progress);
   const progress = normalizeProgress(
@@ -356,6 +493,8 @@ function normalizeHttpTask(
     description,
     priority: normalizeHttpTaskPriority(record.priority),
     status,
+    versions,
+    filePath: readText(record.filePath ?? record.path ?? record.fileName),
     progress,
     department,
     planningDepartment,

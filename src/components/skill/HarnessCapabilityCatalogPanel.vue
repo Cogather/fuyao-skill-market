@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import {
   getHarnessCapabilityPlanningApi,
   type HarnessCapabilityType,
@@ -13,10 +14,11 @@ import {
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
 import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
-import type {
-  SkillMasterPayload,
-  SkillMasterRecord,
-  SkillMasterStatus,
+import {
+  latestSkillMasterVersion,
+  type SkillMasterPayload,
+  type SkillMasterRecord,
+  type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
 import {
   getProductCatalogItemNamePrefix,
@@ -90,6 +92,7 @@ const filterForm = reactive({
 const productOptions = ref<ProductPlanningOption[]>([]);
 const productsLoading = ref(false);
 const records = ref<SkillMasterRecord[]>([]);
+const detailRecord = ref<SkillMasterRecord | null>(null);
 const loading = ref(false);
 const selectedIds = ref<string[]>([]);
 const pageNum = ref(1);
@@ -623,6 +626,14 @@ function openCreate(): void {
   editor.open = true;
 }
 
+function openDetail(record: SkillMasterRecord): void {
+  detailRecord.value = record;
+}
+
+function closeDetail(): void {
+  detailRecord.value = null;
+}
+
 function openEdit(record: SkillMasterRecord): void {
   Object.assign(editor, {
     open: true,
@@ -1046,6 +1057,7 @@ onMounted(async () => {
             <col class="is-person-column" />
             <col class="is-date-column" />
             <col class="is-status-column" />
+            <col class="is-version-column" />
             <col class="is-action-column" />
           </colgroup>
           <thead>
@@ -1064,13 +1076,14 @@ onMounted(async () => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
+              <th>版本</th>
               <!-- <th class="is-reference">关联规划项</th> -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="8" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
+              <td colspan="9" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
             </tr>
             <tr v-for="record in loading ? [] : pageRecords" :key="record.id">
               <td class="is-check">
@@ -1090,8 +1103,18 @@ onMounted(async () => {
               <td>{{ record.developOwner }}</td>
               <td>{{ record.plannedCompleteDate || '—' }}</td>
               <td>
-                <span class="capability-status" :class="`is-${record.status}`">{{
-                  record.status
+                <span
+                  class="capability-status"
+                  :class="{
+                    'is-done': record.status === '已完成',
+                    'is-inProgress': record.status === '进行中',
+                  }"
+                  >{{ record.status }}</span
+                >
+              </td>
+              <td>
+                <span class="capability-version">{{
+                  latestSkillMasterVersion(record)?.version || '—'
                 }}</span>
               </td>
               <!-- <td class="is-reference">
@@ -1119,11 +1142,24 @@ onMounted(async () => {
                       <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
                     </svg>
                   </button>
+                  <button
+                    v-if="latestSkillMasterVersion(record)"
+                    type="button"
+                    class="is-view"
+                    :title="`查看 ${capabilityLabel}`"
+                    :aria-label="`查看 ${capabilityLabel}`"
+                    @click="openDetail(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  </button>
                 </div>
               </td>
             </tr>
             <tr v-if="!loading && !pageRecords.length">
-              <td colspan="8" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
+              <td colspan="9" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
             </tr>
           </tbody>
         </table>
@@ -1146,6 +1182,14 @@ onMounted(async () => {
         </div>
       </footer>
     </section>
+
+    <HarnessCatalogDetailDialog
+      :open="Boolean(detailRecord)"
+      :record="detailRecord"
+      :user-id="props.userId"
+      :capability-type="props.capabilityType"
+      @close="closeDetail"
+    />
 
     <Teleport to="body">
       <div
@@ -1508,7 +1552,7 @@ onMounted(async () => {
 }
 .capability-master-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: 1280px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -1523,7 +1567,7 @@ onMounted(async () => {
   border-bottom: 1px solid #edf2f7;
   color: #334155;
   font-size: 13px;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   word-break: break-word;
 }
@@ -1538,14 +1582,37 @@ onMounted(async () => {
   font-weight: 900;
   white-space: nowrap;
 }
-.capability-master-table col.is-check-column { width: 4%; }
-.capability-master-table col.is-name-column { width: 16%; }
-.capability-master-table col.is-description-column { width: 24%; }
-.capability-master-table col.is-person-column { width: 14%; }
-.capability-master-table col.is-date-column { width: 10%; }
-.capability-master-table col.is-status-column { width: 9%; }
-.capability-master-table col.is-action-column { width: 9%; }
-.capability-master-table .is-reference { text-align: center; }
+.capability-master-table td:nth-child(2) {
+  padding-left: 24px;
+  text-align: left;
+}
+.capability-master-table col.is-check-column {
+  width: 4%;
+}
+.capability-master-table col.is-name-column {
+  width: 18%;
+}
+.capability-master-table col.is-description-column {
+  width: 20%;
+}
+.capability-master-table col.is-person-column {
+  width: 11%;
+}
+.capability-master-table col.is-date-column {
+  width: 10%;
+}
+.capability-master-table col.is-status-column {
+  width: 8%;
+}
+.capability-master-table col.is-version-column {
+  width: 7%;
+}
+.capability-master-table col.is-action-column {
+  width: 11%;
+}
+.capability-master-table .is-reference {
+  text-align: center;
+}
 .capability-reference-count {
   display: inline-flex;
   min-width: 30px;
@@ -1573,6 +1640,7 @@ td.is-description {
 .capability-name-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
 }
 .capability-name {
   color: #10243e;
@@ -1592,9 +1660,45 @@ td.is-description {
   font-size: 12px;
   font-weight: 900;
 }
+.capability-status.is-inProgress {
+  gap: 5px;
+  border-color: #c5d7ff;
+  background: linear-gradient(135deg, #f1f6ff, #e7efff);
+  color: #3156b5;
+  box-shadow: 0 2px 8px rgba(70, 109, 224, 0.1);
+}
+.capability-status.is-inProgress::before,
+.capability-status.is-done::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  content: '';
+}
+.capability-status.is-inProgress::before {
+  background: #5b7fe5;
+  box-shadow: 0 0 0 3px rgba(91, 127, 229, 0.12);
+}
+.capability-status.is-done {
+  gap: 5px;
+  border-color: #bce8d1;
+  background: linear-gradient(135deg, #effaf4, #e4f6ed);
+  color: #18794e;
+  box-shadow: 0 2px 8px rgba(39, 129, 93, 0.1);
+}
+.capability-status.is-done::before {
+  background: #2fac78;
+  box-shadow: 0 0 0 3px rgba(47, 172, 120, 0.12);
+}
+.capability-version {
+  color: #53627a;
+  font-weight: 700;
+}
 .capability-row-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 .capability-row-actions button {
@@ -1613,6 +1717,19 @@ td.is-description {
 .capability-row-actions button:hover:not(:disabled) {
   border-color: #b9ccff;
   background: #eff6ff;
+}
+.capability-row-actions button.is-view {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-color: #dbe5f2;
+  background: #ffffff;
+  color: #526b9d;
+}
+.capability-row-actions button.is-view:hover:not(:disabled) {
+  border-color: #b9ccff;
+  background: #eff6ff;
+  color: #3569e8;
 }
 .capability-row-actions button.is-danger {
   color: #dc2626;

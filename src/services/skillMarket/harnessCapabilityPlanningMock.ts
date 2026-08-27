@@ -32,7 +32,7 @@ interface CapabilityState {
   planningSeed: number;
 }
 
-const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v1';
+const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v4';
 const now = '2026-08-01T08:00:00.000Z';
 
 const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPlanningOption[]> = {
@@ -111,19 +111,34 @@ function master(
   developOwner: string,
   plannedCompleteDate: string,
   status: SkillMasterStatus,
+  scope: { level?: string; product?: string } = {},
 ): SkillMasterRecord {
+  const versionSeed = Number(id.match(/(\d+)$/)?.[1] ?? 1);
   return {
     id,
     name,
     description,
-    level: '部门级',
-    product: '',
+    level: scope.level || '部门级',
+    product: scope.product || '',
     owner,
     department,
     developOwner,
     developOwnerDepartment: department,
     plannedCompleteDate,
     status,
+    versions:
+      status === '未开始'
+        ? []
+        : [
+            {
+              version: `0.0.${versionSeed % 10 || 1}`,
+              uploadedAt: '2026-07-18 10:00:00',
+            },
+            {
+              version: `0.1.${versionSeed % 10 || 1}`,
+              uploadedAt: '2026-08-18 10:00:00',
+            },
+          ],
     createdAt: now,
     updatedAt: now,
   };
@@ -138,6 +153,7 @@ function planning(
     'firstScene' | 'secondScene' | 'activityNodeName' | 'subActivityNodeName'
   >,
 ): SkillPlanningItem {
+  const productLevel = record.level === '产品级' && Boolean(record.product);
   return {
     id,
     skillId: capabilityId,
@@ -146,9 +162,9 @@ function planning(
     ...taxonomy,
     name: record.name,
     description: record.description,
-    level: '部门级',
-    offeringId: '',
-    offeringName: '',
+    level: productLevel ? '产品级' : '部门级',
+    offeringId: productLevel ? record.product : '',
+    offeringName: productLevel ? record.product : '',
     owner: record.owner,
     deptCode: 'dept-continuous-delivery',
     deptName: record.department,
@@ -162,6 +178,39 @@ function planning(
 
 const commandCatalog = [
   master(
+    'command-master-1101',
+    '接口契约检查 Command',
+    '自动校验接口契约、请求参数和返回结构，输出可执行的差异清单。',
+    '张三 w30000001',
+    '持续交付组',
+    '李明 w30000006',
+    '2026-08-18',
+    '已完成',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'command-master-1102',
+    '发布流水线诊断 Command',
+    '汇总流水线日志、任务耗时和失败节点，快速定位发布阻塞原因。',
+    '李四 w30000002',
+    '持续交付组',
+    '周扬 w30000007',
+    '2026-09-05',
+    '进行中',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'command-master-1103',
+    '测试环境初始化 Command',
+    '按流水线配置初始化测试环境、依赖服务和基础测试数据。',
+    '王五 w30000003',
+    '持续交付组',
+    '陈七 w30000008',
+    '2026-09-20',
+    '未开始',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
     'command-master-1001',
     '发布前检查 Command',
     '汇总部署差异、变更窗口和发布门禁结果，生成可执行的发布前检查清单。',
@@ -169,7 +218,7 @@ const commandCatalog = [
     '持续交付组',
     '周扬 w30000007',
     '2026-08-12',
-    '开发中',
+    '进行中',
   ),
   master(
     'command-master-1002',
@@ -194,6 +243,39 @@ const commandCatalog = [
 ];
 
 const agentCatalog = [
+  master(
+    'agent-master-1101',
+    '流水线异常分析 Agent',
+    '持续分析流水线运行数据，识别失败模式并给出恢复建议。',
+    '张三 w30000001',
+    '持续交付组',
+    '李明 w30000006',
+    '2026-08-22',
+    '已完成',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'agent-master-1102',
+    '发布风险评估 Agent',
+    '结合代码变更、依赖关系和历史事故，动态评估版本发布风险。',
+    '李四 w30000002',
+    '持续交付组',
+    '周扬 w30000007',
+    '2026-09-08',
+    '进行中',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'agent-master-1103',
+    '交付协同 Agent',
+    '跟踪跨团队交付依赖、阻塞事项和待确认信息，推动事项闭环。',
+    '王五 w30000003',
+    '持续交付组',
+    '陈七 w30000008',
+    '2026-09-25',
+    '未开始',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
   master(
     'agent-master-1001',
     '测试用例评审 Agent',
@@ -222,7 +304,7 @@ const agentCatalog = [
     '需求分析组',
     '孟扬 w30000032',
     '2026-09-16',
-    '开发中',
+    '进行中',
   ),
 ];
 
@@ -241,6 +323,12 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
         secondScene: '缺陷复盘',
         activityNodeName: '问题闭环',
         subActivityNodeName: '根因分析',
+      }),
+      planning('command-plan-1003', commandCatalog[2]!.id, commandCatalog[2]!, {
+        firstScene: '研发提效',
+        secondScene: '环境准备',
+        activityNodeName: '测试验证',
+        subActivityNodeName: '环境初始化',
       }),
     ],
     catalogSeed: 2000,
@@ -261,6 +349,12 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
         activityNodeName: '问题闭环',
         subActivityNodeName: '根因分析',
       }),
+      planning('agent-plan-1003', agentCatalog[2]!.id, agentCatalog[2]!, {
+        firstScene: '交付管理',
+        secondScene: '依赖协同',
+        activityNodeName: '项目推进',
+        subActivityNodeName: '阻塞跟踪',
+      }),
     ],
     catalogSeed: 2000,
     planningSeed: 2000,
@@ -270,7 +364,10 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
 const memoryStates = new Map<MockHarnessCapabilityType, CapabilityState>();
 
 function cloneRecord(record: SkillMasterRecord): SkillMasterRecord {
-  return { ...record };
+  return {
+    ...record,
+    versions: record.versions?.map((version) => ({ ...version })) ?? [],
+  };
 }
 
 function clonePlanningItem(item: SkillPlanningItem): SkillPlanningItem {
@@ -736,6 +833,7 @@ export async function createMockCapabilityCatalogRecord(
   const record: SkillMasterRecord = {
     id: `${type}-master-${state.catalogSeed++}`,
     ...normalized,
+    versions: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };

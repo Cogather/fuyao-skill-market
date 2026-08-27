@@ -44,10 +44,11 @@ import {
   type MockHarnessCapabilityType,
 } from './harnessCapabilityPlanningMock';
 import { skillBaseService } from './skillBaseService';
-import type {
-  SkillMasterPayload,
-  SkillMasterRecord,
-  SkillMasterStatus,
+import {
+  normalizeSkillMasterVersions,
+  type SkillMasterPayload,
+  type SkillMasterRecord,
+  type SkillMasterStatus,
 } from './skillMasterManagementService';
 import {
   batchDeleteSkillPlanningSupplement,
@@ -174,6 +175,7 @@ function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRec
     developOwnerDepartment: '',
     plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
     status: status || '未开始',
+    versions: normalizeSkillMasterVersions(item.versions),
     referenceCount: Number(
       item.referenceCount ??
         item.planningCount ??
