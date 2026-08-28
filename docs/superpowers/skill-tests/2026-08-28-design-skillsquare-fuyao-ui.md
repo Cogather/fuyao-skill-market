@@ -330,288 +330,481 @@ Missing rubric items:
 
 ## GREEN verification
 
+Final fresh evidence uses round-one A/C and the post-correction B/D reruns. Each response body below is copied verbatim from its heading in `.superpowers/sdd/2026-08-28-design-skillsquare-fuyao-ui/final-green-results-raw.md`; scoring follows outside each body.
+
 ### Scenario A
 
-Selected task mode: content discovery with standard-density support for deeper filtering. Preserve framework-neutral TypeScript patterns, plain semantic HTML roles, accessible keyboard behavior, and a professional internal-tool tone rather than a consumer or analytics-dashboard look.
+Selected task mode: content discovery.
 
-Visual direction:
-Use a light canvas with subtle depth: `canvas` `#F8FAFD`, `canvas-accent` `linear-gradient(180deg, #F5F8FF 0%, #FBFCFF 28%, #F8FAFD 100%)`, `surface` `#FFFFFF`, `surface-muted` `#F3F6FA`, `border` `#DCE4EE`, `text-strong` `#10233D`, `text` `#51657D`, `text-muted` `#7F92AA`, `primary` `#2C78F4`, `primary-hover` `#1F67DC`, `focus` `#8AB4FF`, `success` `#1E9B57`, `warning` `#D9901A`, `danger` `#D64545`. Keep any accent gradient limited to the page intro badge, active search chip, or small icon tiles: `linear-gradient(135deg, #2F7DF6 0%, #6D63FF 100%)`. Typography should stay neutral and readable: `font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;` with `h1 32px/40px 600`, `h2 22px/30px 600`, card title `16px/24px 600`, body `14px/22px 400`, metadata `12px/18px 500`. Spacing scale: `4, 8, 12, 16, 20, 24, 32`. Radius: `10px` for panels/cards, `8px` for inputs/buttons, full pill for tags. Shadow only on layered elements: `0 8px 24px rgba(16, 35, 61, 0.08)` for sticky filter tray or popovers; cards mostly rely on border plus a very soft hover lift.
+Target context supplied: a new TypeScript frontend for browsing reusable internal resources, with no framework or component library chosen. I inspected only the skill guidance at `E:\project\frontProject\fuyao-skill-market\.worktrees\design-skillsquare-fuyao-ui\skills\design-skillsquare-fuyao-ui\SKILL.md` plus `references/design-language.md`, `references/page-patterns.md`, and `references/component-patterns.md`. That evidence verifies the intended hierarchy: discovery-first layout, relaxed density, strong search and lightweight filters above a browsable card grid, restrained identity treatment, semantic token roles, subtle motion, and accessibility-first state handling. Framework, tokens already in use, existing components, routes, permissions, and business rules remain unknown.
+
+Visual direction: professional and inviting, closer to a polished internal resource library than a dashboard. Use a bright neutral canvas with a faint cool tint at the top, one restrained corner glow, and mostly flat white surfaces with crisp borders. Identity should come from typography, spacing, and one controlled blue accent rather than heavy gradients or glass. The page should feel calm, searchable, and trustworthy.
 
 Layout:
-Use a restrained top bar at `56px` height with product title left, optional saved views/history center-right, and utility actions on the far right. Below it, the page body should be a single discovery flow:
-1. Intro band, `72-96px` tall, with title, one-line purpose, result count, and a compact “recently used / curated / all resources” segmented switch.
-2. Search and filter region directly under the intro, sticky after scroll, inside a surface panel with `16px` padding.
-3. Results grid as the primary content, visible above the fold on common laptop sizes.
-4. Optional right-side detail preview drawer on desktop only when an item is selected, otherwise keep the grid full width.
+- Top bar: 56px high, white or translucent-white after scroll, left-aligned product title, center or left primary nav if needed, right utility actions.
+- Page shell: max content width `1280-1440px`, horizontal padding `24px` desktop, `16px` tablet/mobile.
+- First screen order: title/value statement, primary search, filter row, result summary, first card rows.
+- Main content: two-column at large sizes only if filters need persistence; otherwise keep filters inline above results. Avoid a permanent analytics sidebar.
+- Card grid: `4` columns at `>=1440px`, `3` at `>=1100px`, `2` at `>=720px`, `1` below that.
 
-Desktop content width should cap around `1280px` with `24px` page gutters. Results area uses a 12-column grid:
-- `>=1280px`: search/filter row full width, resource cards in 4 columns.
-- `1024-1279px`: 3 columns.
-- `768-1023px`: 2 columns.
-- `<768px`: 1 column, with filters moved into a sheet and search always visible.
+Token model:
+- `--canvas-start: #f2f7ff`
+- `--canvas: #fbfcff`
+- `--canvas-end: #ffffff`
+- `--surface: #ffffff`
+- `--surface-muted: #f8fafc`
+- `--text-heading: #07172f`
+- `--text-body: #52647d`
+- `--text-secondary: #667085`
+- `--text-muted: #94a3b8`
+- `--line: #e2e8f0`
+- `--primary: #2f7df6`
+- `--primary-strong: #2563eb`
+- `--on-primary: #ffffff`
+- `--success: #16a34a`
+- `--warning: #f59e0b`
+- `--danger: #dc2626`
+- `--focus: #2f7df6`
+- Radius: controls `8px`, cards `12px`, metric/promo surfaces `20px`, pills `999px`.
+- Spacing scale: `4, 8, 12, 16, 24, 32`.
+- Control heights: `44px` primary search/actions, `36-40px` standard filters, `32px` compact secondary controls.
 
-Search:
-Make search the dominant control at `44px` high and `min-width: 320px` on desktop. Structure: leading search icon, placeholder like “Search by name, team, tag, or use case”, clear button when filled, and trailing keyboard hint only on desktop. On focus, border shifts to `primary`, and a 2px outer ring uses `focus`. Support immediate local filtering with debounced remote search if needed; the field should never collapse or hide behind an icon. Beneath the field, show lightweight query assist chips like “API”, “Template”, “Playbook”, “Design asset” only when empty. Search results state should report “24 matches” or “No results for ‘…’” adjacent to the controls, not buried below the grid.
+Typography:
+- Prefer the target brand font if one is later chosen; otherwise use a modern sans stack suitable for English and Chinese content.
+- Hero/page title `36-40px / 600-700`.
+- Section title `22-24px / 600`.
+- Card title `16-18px / 600`.
+- Body `14px / 400-500`.
+- Metadata `12-13px / 500`.
+- Use color sparingly; rely on weight and spacing for hierarchy.
 
-Filters:
-Use grouped filters rather than a long toolbar. Recommended groups:
+Search and filters:
+- Search is the dominant control: full-width on mobile, `480-640px` on desktop, with placeholder text like “Search by name, owner, tag, or use case”.
+- Support quick filters as low-saturation pills or segmented chips for high-value dimensions only: type, team/owner, status, maturity, access level.
+- Place advanced filters in a collapsible drawer or popover, not permanently expanded.
+- Show active filters as removable pills under the control row.
+- Result summary line should show count, sort, and a clear “Reset filters” action when scoped.
+
+Card design:
+- Card padding `16-18px`, border `1px solid var(--line)`, minimal or no shadow by default.
+- Structure: title, one-line purpose, provenance/owner row, quality signals, tags, primary action.
+- Title can wrap to 2 lines; description clamps to 2-3 lines.
+- Provenance row should carry the trust signal: owner, last updated, usage count, or verification badge.
+- Limit visible tags to `2-3`; overflow becomes `+N`.
+- Primary action sits at the bottom and remains visually singular. Secondary actions stay quiet or move into a menu.
+- Optional small icon tile may use a very subtle blue tint, but the text should remain the main signal.
+
+Recommended card fields:
+- Name
+- Short purpose
 - Resource type
-- Team / owner
-- Lifecycle or trust status
-- Format / platform
-- Access level or availability
-- Sort
+- Owner/team
+- Last updated
+- Trust or quality marker
+- Tags/use cases
+- Primary action: `Open`, `View details`, or `Use resource`
 
-Desktop behavior: first row shows 3-5 most-used filters as compact pill buttons or selects; “More filters” opens a side sheet or popover with advanced options. Each active filter becomes a removable chip below the controls. Keep “Clear all” text-button aligned right in the chip row. Filter controls should be `36-40px` high, wrap naturally, and preserve logical grouping. Avoid multicolor tags; selected chips use soft primary background and stronger text, not solid saturated fills.
-
-Cards:
-Each resource card should feel useful first, decorative second. Geometry: `padding 16px`, `min-height 220px`, vertical flex layout, border-first styling. Recommended structure from top to bottom:
-- Top row: small icon tile or file-type glyph, resource type tag, trust/status tag.
-- Title row: resource name, max 2 lines.
-- Description: 2-3 line clamp.
-- Metadata block: owner/team, last updated, usage count or endorsement count.
-- Utility strip: 1-2 capability bullets such as “Reusable in onboarding” or “Works with Jira exports”.
-- Footer: one primary action like `Open` or `Preview`, one quiet secondary action like `Save` or `Copy link`.
-
-States:
-- Default: white surface, border `#DCE4EE`.
-- Hover: border darkens slightly, translateY `-1px`, shadow `0 6px 18px rgba(16, 35, 61, 0.06)`.
-- Focus-visible: 2px focus ring outside card, no hover-only reliance.
-- Selected: border `primary`, subtle tinted background `#F4F8FF`.
-- Loading: fixed-height skeleton preserving icon, title, text, metadata, footer slots.
-- Unavailable/restricted: muted footer action plus short inline explanation.
-- Long text: clamp description and title before truncating metadata; tags must never push actions off-card.
-
-Interaction details:
-Use one primary action per region. In the search/filter region, the primary action is refining results; avoid adding heavy CTA buttons there. In cards, only `Open` or `Preview` gets filled-primary treatment. Secondary actions stay ghost or soft-outline. Motion should stay inside `160-180ms` for border, shadow, and opacity. Reduced-motion mode removes lift and animated shimmer but keeps clear static state changes.
+Interaction states:
+- Hover: border darkens slightly, surface tint shifts, max `1px` upward lift.
+- Selected/active: stronger border plus subtle inset or background cue, not color alone.
+- Focus-visible: solid `2px` outline with `2px` offset on every interactive element.
+- Disabled: muted visuals plus short explanation if the reason is not obvious.
+- Loading: preserve card and control geometry with skeletons; no layout jump.
+- Empty: explain whether there is no data or no match, then offer clear recovery.
+- Error: local inline feedback near the affected region with retry.
+- Reduced motion: remove lift and animated glow, keep state changes through contrast/border.
 
 Responsive behavior:
-On tablet, keep the intro short, allow filters to wrap in two rows, and maintain 2-column cards with full-width search on top. On mobile:
-- Top bar collapses utilities into an overflow menu.
-- Intro becomes title + short subtitle + count.
-- Search stays pinned near the top.
-- Filters move into a bottom or side sheet with grouped sections and a sticky apply/reset footer.
-- Cards become single-column with metadata stacked, never squeezed into dense mini-cards.
-- If a detail preview exists, it becomes a separate route or full-screen sheet with a clear back action.
+- On tablet and mobile, stack title, search, and filters in that order.
+- Turn filter groups into horizontally scrollable chips plus an “All filters” drawer.
+- Keep result count and sort visible above the grid.
+- Cards become single-column and maintain full-width primary actions.
+- If a detail panel is later added, collapse to list -> detail -> action sequence with a clear back path.
 
-Accessibility and state coverage:
-Keyboard order should be nav -> intro switch -> search -> filters -> results -> pagination/load more. Every selected/active state must use more than color: underline, icon, weight, or border change. Empty states should be modest: icon, one sentence explaining why nothing appears, one relevant recovery action like `Clear filters`. Error states belong inline within the affected region with retry. Loading must preserve layout. Overflow for long filter sets should wrap before horizontal scroll; only data-like subcontent inside cards may truncate.
+Accessibility and content safety:
+- All body and metadata text that users must read should meet `4.5:1` contrast.
+- Large headings and meaningful boundaries should meet `3:1`.
+- Do not rely on color alone for status, selection, or verification.
+- Long titles and multilingual text must wrap cleanly without pushing actions off-card.
+- Keyboard users must be able to traverse search, filters, sort, grid, and pagination/load-more in a predictable order.
 
-GREEN score: 6/7
+Implementation-ready page recipe:
+1. `AppShell`
+2. `TopNav`
+3. `DiscoveryHeader` with title, short supportive description, dominant search
+4. `FilterBar` with quick chips, sort, advanced-filter trigger
+5. `ResultMeta` with count and active filter pills
+6. `ResourceGrid`
+7. `ResourceCard`
+8. `EmptyState` / `ErrorState` / `LoadingGrid`
+9. Optional `Pagination` or `LoadMore`
 
-Rubric check:
-- Item 1: Pass — identifies content discovery as the primary task mode and standard-density support.
-- Item 2: Pass — preserves framework-neutral TypeScript and semantic HTML rather than inventing a replacement stack.
-- Item 3: Pass — establishes layout, search/filter relationships, and card structure before decorative accents.
-- Item 4: Pass — supplies semantic tokens, layout ranges, states, and responsive breakpoints.
-- Item 5: Pass — gradients, shadows, and motion are explicitly limited and restrained.
-- Item 6: Miss — the response covers focus, long-text handling, overflow, loading/error states, and accessible interaction order, but it gives no explicit contrast target or guardrail, and its `text-muted` token `#7F92AA` at `12px` metadata on white is only about `3.185:1`.
-- Item 7: Pass — no source-domain terminology or workflow assumptions are imported.
+Unknown and therefore conditional:
+- Framework choice: React, Vue, Svelte, or others unknown.
+- Styling approach: CSS modules, Tailwind, CSS-in-JS, or design tokens pipeline unknown.
+- Existing token system unknown, so these roles should map into any later theme layer rather than become hardcoded.
+- Existing routing, permissions, access control, and business taxonomy unknown, so card fields and filters should remain configurable.
+- Existing detail-page pattern unknown, so “Open” versus inline preview should stay reversible.
 
-Missing rubric items:
-- Item 6: Add an explicit contrast target or guardrail; the proposed `text-muted` token `#7F92AA` on white under-serves 12px metadata contrast.
-
-Comparison to RED:
-- Improved from 6/7 to 6/7 by closing the missing long-text and overflow recovery gap for cards, filters, and truncation behavior, but leaving contrast unguarded.
-
-### Scenario B
-
-Selected task mode: data management with a lightweight discovery-style header.
-
-Preserved conventions: React structure, Material UI components, the existing green brand palette, and your current spacing and typography tokens. The restyle should come from hierarchy, surface treatment, and density tuning rather than swapping libraries or inventing a new visual language.
-
-The overview should feel lighter by separating the page into four clear layers:
-
-1. A restrained page header with title, short supporting text, and one primary action.
-2. A compact KPI row for operational confidence.
-3. A surface for filters and quick scope controls.
-4. A dense but calmer primary content area for tables, lists, or pending work.
-
-Use the existing green only where trust and action matter most: primary CTA, selected states, active filter chips when meaningful, success/status accents, and focus-visible rings if your theme already derives them from `primary`. Keep the rest of the page mostly neutral so the green reads as intentional instead of noisy.
-
-Layout and hierarchy:
-- Header: left-aligned title and summary, right-aligned primary action and 1-2 secondary actions. Avoid a hero block; keep working content visible in the first screen.
-- KPI cards: 3-4 cards max per row on desktop, collapsing to 2 then 1 on smaller widths. Emphasize number first, label second, tiny trend or status third.
-- Filters: place in a dedicated `Paper`/`Card` surface above the main table. Group by task, not by field count. Standard controls can stay at existing heights; make dense controls compact only inside high-frequency admin regions.
-- Main content: prefer one dominant table or queue surface with sticky header, quiet row separators, and reachable row actions. Bulk actions should appear only when rows are selected.
-
-Mapping to the existing theme:
-- `theme.palette.primary.main`: keep as the brand green for primary buttons, selected tabs/segments, active icons, and key emphasis.
-- `theme.palette.primary.light` or `alpha(primary.main, low opacity)`: use for selected row backgrounds, active filter fills, and soft highlight panels.
-- `theme.palette.background.default`: page canvas.
-- `theme.palette.background.paper`: cards, filter panels, table container, dialogs.
-- `theme.palette.text.primary`: headings, KPI values, important labels.
-- `theme.palette.text.secondary`: supporting descriptions, metadata, helper text.
-- `theme.palette.divider`: all structural lines, card boundaries, row separators.
-- `theme.palette.success|warning|error`: semantic statuses only; do not use brand green for every badge.
-- `theme.spacing()`: keep all gaps on your token scale. A good target is larger spacing between page sections, tighter spacing within controls and tables.
-- `theme.typography.h4/h5/h6/body2/caption`: use existing roles instead of custom font sizes. Let weight and spacing create clarity before introducing color.
-
-Recommended visual adjustments inside Material UI:
-- Page background: a very subtle tint or gradient derived from `background.default`, not a new color family.
-- Surfaces: white or near-white `Paper` with thin borders; minimize shadows in dense regions.
-- Radius: stay inside your existing token system, but use slightly more generous radius for KPI cards than for tables and forms.
-- Buttons: one contained primary button per local region; secondary actions should be outlined or text buttons.
-- Tabs/segmented controls: active state should combine green text or indicator with shape/underline, not color alone.
-- Chips and status pills: low-saturation fills, compact height, limited count.
-- Tables: slightly taller header than rows, clearer column labels, muted secondary metadata, sticky header when the dataset is long.
-- Empty states: quiet illustration-free panel or table row with a short explanation and one valid next action.
-
-Density guidance:
-- Header and KPI region: relaxed to standard.
-- Filters: standard.
-- Table and bulk operations: compact.
-This contrast helps the page feel open at the top and efficient where work actually happens.
-
-Responsive behavior:
-- Desktop: header actions inline, KPI row 4->3->2 columns, filters wrap by logical group, table remains horizontally scrollable if needed.
-- Tablet/mobile: sequence becomes header -> KPI cards -> filters -> results. Do not hide key actions inside overflow if they are the main task path.
-- In narrow widths, move row actions into a menu only after preserving the most common action inline.
-
-State behavior:
-- Hover: subtle border or surface shift only.
-- Selected: use green plus shape/background, not green alone.
-- Focus-visible: explicit ring using primary-derived focus color.
-- Loading: reserve KPI and table structure with skeletons to avoid jumpiness.
-- Empty/error: keep messaging adjacent to the affected region, with one clear recovery path.
-
-The net effect should be “calm operations dashboard”: more white space between sections, quieter chrome, stronger information grouping, and a more disciplined use of the existing green so the interface feels clearer and more trustworthy without breaking the current theme.
-
-GREEN score: 6/7
-
-Rubric check:
-- Item 1: Pass — identifies the task mode and gives an explicit density split between relaxed/standard header zones and compact work zones.
-- Item 2: Pass — preserves React, Material UI, the existing green palette, and existing spacing/typography tokens.
-- Item 3: Pass — uses hierarchy, surfaces, and information grouping before decorative styling.
-- Item 4: Pass — maps semantic theme roles, layout behavior, states, and responsive rules into executable guidance.
-- Item 5: Pass — keeps gradients, shadows, and accent color use restrained.
-- Item 6: Miss — focus, status feedback, scrolling, and row-action reachability are covered, but the response does not define explicit long-text handling or a concrete contrast guardrail for admin metadata and table content.
-- Item 7: Pass — no source-domain terminology or imported workflow assumptions appear.
-
-Missing rubric items:
-- Item 6: Add explicit long-text treatment and contrast targets if this scenario is revised in a later cycle.
-
-Comparison to RED:
-- Improved from 5/7 to 6/7 by fixing the missing density-mode callout and adding responsive/state guidance while preserving the existing green brand and Material UI contract.
-
-Scenario-specific check:
-- Pass — the response keeps Material UI, keeps the existing green brand color, and maps recommendations directly onto the existing theme instead of replacing either.
-
-### Scenario C
-
-Selected task mode: data management with compact density, preserving the target TypeScript app’s existing tokens, table patterns, form semantics, routing, and permission model.
-
-Use a 3-layer page at desktop widths: a sticky page header, a filter/work area, and the result table. At `1440px`, keep the content frame around `1360px` max width with `24px` outer gutters. The header should be `64px` tall with the page title, result count, primary action, and a secondary “saved views” or export action. Below it, place filters in a surface panel with `16px` padding, `12px` row gaps, and compact controls at `32px` height. Group filters into 3 bands: quick search and status, advanced attributes, and date/range fields. Keep advanced filters collapsed behind a button by default; expanded mode can grow to 2 rows on desktop. Use a 12-column grid: search spans 4 columns, common selects 2 columns each, date ranges 3 columns, and the action row aligns right with “Reset”, “Apply”, and “Save view”. On widths below `1024px`, turn the filter panel into wrapped 2-column groups; below `640px`, stack controls full width and keep “Apply” sticky at the bottom of the filter sheet or drawer.
-
-Place a result toolbar directly above the table, `44px` tall, with left-aligned selection state and bulk actions, right-aligned column settings and density toggle. Bulk actions should appear only when rows are selected, but reserve the toolbar height so the table does not jump. Use compact chips or labels for active filters, each removable with keyboard support. Inline validation belongs inside the filter panel and table cells, never in global toasts alone. Field errors should sit `4px` below the control, use icon plus text, and not rely on red alone. For editable table cells, use a quiet default state, then on focus show a `2px` focus ring, helper text beneath the cell editor, and an error row expansion or anchored message if validation fails. Recommended validation states: `default`, `dirty`, `valid`, `invalid`, `saving`, `saved`, `conflict`, and `disabled`.
-
-The table should be the primary surface. Use sticky header and sticky operation column. Dense row height: `44px` for read-only rows, `52px` when rows contain status plus metadata. Header height `40px`. Cell padding `10px 12px`. Text size `13px` for body, `12px` for metadata, `14px` semibold for key identifiers. At `1440px`, a wide management table remains scannable if you cap visible columns to roughly 8 to 10 meaningful fields and use min widths instead of equal distribution. A solid starting map is: selection `48px`, primary name/ID `240px`, status `120px`, owner `140px`, category `140px`, last updated `160px`, numeric metric columns `120px`, notes/summary `220px`, and operation column `160px`. Keep the first identifying column and the operation column sticky when horizontal scroll is present. The operation column should use an opaque surface with a left divider shadow so users always know actions remain available.
-
-Sorting should be available on every non-action header via full-header buttons, not tiny icons alone. Show three states: unsorted, ascending, descending. Preserve hit targets of at least `32px`. Status labels should be low-saturation pills around `22px` to `24px` tall with stable semantics: success for active/completed, warning for pending/review, danger for failed/blocked, neutral for draft/inactive. Do not color-code arbitrary categories. If multiple statuses exist in one row, keep the primary lifecycle status in the dedicated status column and move secondary flags into subtle tags or icons with tooltips.
-
-For overflow, prefer a real horizontal scroller over squeezing columns below readability. Keep table container `overflow-x: auto`, `overflow-y: visible`, and reserve `16px` bottom padding so the horizontal scrollbar does not collide with pagination. Truncate long text to one line in dense cells with tooltip-on-focus/hover; allow the primary name column to wrap to two lines if it is the main recognition field. Numeric and date columns should never wrap. On narrow screens below `900px`, switch from full table to priority-based column reduction plus row expansion. Keep only selection, primary label, status, and operation visible; move secondary data into an expandable details panel per row. Below `640px`, replace bulk action toolbar with a bottom action bar once selection exists.
-
-Pagination belongs below the table in a `56px` footer: left side shows total count and selected count, right side shows page size, page index, and next/previous controls. Keep page size options modest, such as `20`, `50`, `100`. If the table supports infinite loading, still preserve explicit progress feedback and a clear “loaded x of y” state.
-
-Accessibility guidance:
-- Use semantic table markup where possible, with `aria-sort` on sortable headers and clear row selection announcements.
-- Every status chip needs a text label, not color-only meaning.
-- Sticky columns must remain in DOM order; avoid duplicated action buttons for screen readers unless hidden correctly.
-- Inline errors need programmatic association via `aria-describedby`.
-- Keyboard flow should reach filters, result toolbar, table headers, cells, row actions, and pagination in a predictable order.
-- Provide visible focus on all interactive elements, including icon-only controls.
-- Respect reduced motion by removing lift and transition-heavy feedback.
-- Maintain contrast of at least `4.5:1` for body text and `3:1` for component boundaries and large labels.
-
-Loading and empty states should preserve layout. Use skeleton headers and 5 to 8 skeleton rows during fetch, keep column widths stable, and never replace the whole page with a spinner. Empty states should distinguish “no data yet”, “no matches for current filters”, and “no permission”. Error states should stay local to the affected region and always leave retry or reset paths visible.
+If this direction is implemented faithfully, the result should feel like a curated internal library: easy to trust, easy to scan, and efficient to use without slipping into a metrics-heavy dashboard aesthetic.
 
 GREEN score: 7/7
 
 Rubric check:
-- Item 1: Pass — identifies data management as the task mode and compact as the density mode.
-- Item 2: Pass — preserves the target app’s existing tokens and interaction patterns.
-- Item 3: Pass — leads with layout zones, spacing, and table structure before decoration.
-- Item 4: Pass — includes concrete sizing, states, overflow rules, and responsive breakpoints.
-- Item 5: Pass — keeps chrome subdued and motion limited through reduced-motion and quiet-surface guidance.
-- Item 6: Pass — explicitly covers focus, contrast, long text, scrolling, status semantics, and operation reachability.
-- Item 7: Pass — stays generic and does not import source-domain terminology or assumptions.
+- Item 1: Pass — identifies content discovery and relaxed density.
+- Item 2: Pass — labels the absent framework, styling, tokens, components, routes, permissions, and business rules as unknown and keeps mappings conditional.
+- Item 3: Pass — establishes hierarchy, search/filter relationships, and card composition before decoration.
+- Item 4: Pass — supplies semantic roles, dimensions, states, and responsive rules.
+- Item 5: Pass — keeps glows, gradients, shadows, and motion restrained.
+- Item 6: Pass — covers 4.5:1/3:1 contrast, solid focus, long-text wrapping/clamping, overflow, feedback states, and reachable actions.
+- Item 7: Pass — imports no source-domain terminology or workflow assumptions.
 
 Missing rubric items:
 - None.
 
 Comparison to RED:
-- Improved from 6/7 to 7/7 by adding the missing explicit contrast standard and preserving strong sticky/overflow/narrow-screen behavior.
+- Improved from 6/7 to 7/7 by retaining long-text/overflow recovery and adding explicit contrast plus accurate unknown-context handling.
+
+Incomplete-context check:
+- Pass — supplied and inspected evidence is distinguished from unknown target conventions, which remain conditional and reversible.
+
+### Scenario B
+
+Selected task mode: configuration and relationships overview with data-management secondary density.
+
+Target context supplied: an established TypeScript administrative overview built with React, Material UI, and an existing green brand palette plus spacing and typography tokens. The goal is to make it feel lighter, clearer, and more trustworthy without replacing Material UI, changing the brand color, or introducing global class overrides.
+
+What I inspected and what that verifies: I inspected the `design-skillsquare-fuyao-ui` skill plus its `design-language.md`, `page-patterns.md`, and `component-patterns.md` references. That verifies the intended visual language: lightweight enterprise surfaces, restrained decoration, clear hierarchy, compact-to-standard density, semantic role mapping into an existing theme, one primary action per task region, and accessibility-first states. Uninspected and therefore unknown: the product’s exact MUI theme object, token names, component wrappers, routes, permissions, business rules, and the current overview layout.
+
+Restyle direction:
+Use a quieter canvas, whiter working surfaces, stronger text hierarchy, and tighter grouping instead of adding more color. The page should read as: page title and context, concise status/actions, filter bar, key metrics, primary table or queue, then secondary panels such as alerts, recent activity, or pending approvals. Let the overview feel open by increasing separation between groups, not by inflating every spacing value.
+
+Map the existing green brand into semantic roles instead of repainting the whole screen:
+- `primary.main`: keep the existing green as the single brand accent for selected states, focused highlights, and primary actions.
+- `primary.dark` or the nearest darker green token: use for filled primary buttons where white text must meet contrast.
+- `background.default`: use the lightest existing neutral or a very subtle green-tinted neutral if the theme already supports it.
+- `background.paper`: use plain white or the theme’s standard paper for cards, filter trays, and tables.
+- `text.primary`: use the darkest existing heading/body neutral.
+- `text.secondary`: use the readable secondary token, not a low-contrast muted gray.
+- `divider`: use the existing border token for all structural separation.
+- `success`, `warning`, `error`: keep semantic statuses separate from the brand green so “healthy” and “primary” do not blur together.
+
+Material UI composition:
+- Keep the page in `Container` or the existing content shell, with a `Stack`-based vertical rhythm.
+- Build each functional region with `Card` or `Paper`, but keep them mostly flat: 1px borders, minimal shadow, slightly larger radius only for KPI cards.
+- Use `Tabs`, segmented filters, or compact chips only where they clarify scope; avoid colorful pills everywhere.
+- Use `Table`/`DataGrid` in compact density for row-heavy admin content, with sticky headers if the current product already supports them.
+- Use `Button` emphasis sparingly: one filled green primary action per region, all other actions as `outlined` or quiet `text` buttons.
+- Prefer `Alert` or inline helper text for state feedback instead of decorative banners.
+
+Hierarchy and spacing:
+- Header region: standard density, with the title, one-line operational summary, and 1 to 2 highest-priority actions.
+- Filters: compact controls grouped in a single surface directly above the main data region.
+- Metrics: 3 to 4 cards max in the first row, emphasizing label then number; any icon tile should be subtle and low saturation.
+- Main content: one dominant operational block, usually the table or master-detail area.
+- Secondary content: smaller cards for exceptions, reminders, or recent changes.
+- Use the existing spacing token scale, aiming for roughly 24 to 32px between major sections, 12 to 16px inside ordinary cards, and 8 to 12px inside dense toolbars and tables.
+
+Typography mapping:
+- Reuse the existing type family and token weights.
+- Make trust come from type contrast, not color contrast: stronger page title, crisp section titles, readable body copy, and clearly secondary metadata.
+- If the theme has variants like `h4`, `h5`, `subtitle2`, `body2`, prefer those over custom font sizing.
+- Keep metrics visually calm: large numeric values, smaller labels, limited supporting text.
+
+State and interaction rules:
+- Selected nav/filter states should use green plus a non-color cue such as underline, border, or weight change.
+- Hover should be restrained: small border/surface shift, no dramatic lift.
+- Dense areas like tables and forms should stay mostly flat.
+- Loading, empty, error, and disabled states should be inline and local to the affected region.
+- Long labels, counts, and organization names should wrap or clamp before pushing actions off-screen.
+
+Accessibility and resilience:
+- Normal and small text, including metadata and helper text, should meet 4.5:1 contrast in the rendered green theme.
+- Large text and meaningful boundaries such as selected tabs, input borders, and focus outlines should meet 3:1.
+- Every interactive element should keep a solid 2px focus outline with a 2px offset; forced-colors mode must not rely on shadows or tinted fills.
+- Filters should wrap by group on narrow widths; wide tables should scroll horizontally with key actions kept reachable.
+- Empty, unauthorized, and error states should explain the condition and preserve the next valid action.
+- Reduced-motion mode should remove nonessential fades/lifts while keeping selection, focus, and status clear.
+
+GREEN score: 7/7
+
+Rubric check:
+- Item 1: Pass — identifies a configuration/relationships overview with data-management secondary density and a compact-to-standard split.
+- Item 2: Pass — explicitly preserves React, Material UI, the green brand, and existing spacing/typography tokens without global class overrides.
+- Item 3: Pass — leads with hierarchy, grouping, quiet surfaces, and spacing before decorative accents.
+- Item 4: Pass — provides executable semantic mapping, MUI composition, dimensions, states, and responsive behavior.
+- Item 5: Pass — keeps brand color, shadow, motion, chips, and icon treatment restrained.
+- Item 6: Pass — explicitly covers 4.5:1/3:1 contrast, solid offset focus and forced colors, long-text wrapping/clamping, horizontal overflow, regional feedback states, and reachable actions.
+- Item 7: Pass — imports no source-domain terminology or workflow assumptions.
+
+Missing rubric items:
+- None.
+
+Comparison to fresh round 1:
+- Improved from 6/7 to 7/7 by closing the mandatory Item 6 gap with explicit contrast and long-text resilience while preserving the React/MUI/green/token contract.
 
 Scenario-specific check:
-- Pass — defines sticky header and sticky operation column behavior, internal table overflow, and narrow-screen reduction/expansion patterns.
+- Pass — React, Material UI, the existing green brand, and existing spacing/typography tokens remain the source of truth.
+
+### Scenario C
+
+Selected task mode: data management.
+
+Target context supplied: only the Fuyao UI skill package. I inspected `SKILL.md`, `references/design-language.md`, `references/page-patterns.md`, and `references/component-patterns.md`. That verifies these conventions: compact density for row-heavy work, filters above results, sticky table headers, selection-linked bulk actions, deliberate horizontal overflow, reachable row operations, restrained decoration, semantic status colors, and explicit narrow-screen reflow.
+
+Unknown and therefore conditional: framework, design tokens, component library, routes, permissions, backend capabilities, exact business fields, and validation rules.
+
+Use a compact management layout with four vertical bands:
+
+1. Page header, `72px` tall on desktop, `auto` on small screens. Left side has title plus a one-line result description; right side has one primary action and up to two secondary actions. Header content wraps below `960px`.
+2. Filter panel in a surface card with `16px` padding desktop, `12px` mobile. Use a 12-column grid at `>=1280px`, 6 columns at `768-1279px`, and single column below `768px`. Keep common filters visible and advanced filters collapsible.
+3. Result toolbar, `44px` tall desktop, sticky under the page header if the page scrolls. Left side shows selection count and bulk actions; right side shows column settings, density toggle, export, and total count.
+4. Table region filling the remaining height with its own horizontal scroll.
+
+Recommended filter layout:
+
+- Search input: `minmax(280px, 2fr)`, compact `36px` height, leading icon, clear button.
+- Status multi-select: `180-220px`.
+- Owner / category / region selects: `160-200px` each.
+- Date range: two controls or one range picker, `240-280px`.
+- Advanced section: tags, numeric ranges, validation state, created/updated by.
+- Action row: `Reset`, `Apply filters`, optional `Save view`. Keep one primary button only.
+
+For the wide table, design around `min-width: 1480-1680px` so it stays scannable at `1440px` through horizontal scroll rather than over-compression. Use dense text `12-13px`, row height `44px`, header height `40px`, cell padding `10px 12px`. Suggested columns:
+
+- Selection checkbox, `48px`, sticky left
+- Name / identifier, `260px`, sticky left
+- Status, `120px`
+- Validation state, `140px`
+- Owner, `160px`
+- Type, `140px`
+- Updated time, `168px`
+- Source / channel, `160px`
+- Notes / summary, `240px`
+- Metrics or amount, `140px`, right aligned
+- Operation column, `180-220px`, sticky right
+
+Sticky behavior:
+
+- Header row sticks to top of the table container.
+- First one or two identity columns may stick left if row recognition matters.
+- Operation column must stick right with an opaque background, left border, and slight shadow so it remains visually separated during horizontal scroll.
+- Keep `z-index` tiers explicit: body cells `1`, sticky cells `2`, sticky header `3`, sticky header + sticky sides `4`.
+
+Sorting and overflow:
+
+- Sortable headers need a full-button hit area, not icon-only triggers.
+- Default sort indicator should combine icon plus `aria-sort`.
+- Long text in dense cells should truncate with tooltip only for secondary content; primary identifiers should wrap to two lines max if needed.
+- Numeric columns should not wrap.
+- Table container should expose both vertical and horizontal scrollbars when needed; avoid nested scrolling inside cells.
+
+Bulk actions:
+
+- Hidden when nothing is selected.
+- On selection, replace passive summary with an action bar showing count and actions like `Change status`, `Assign owner`, `Export selected`, `Delete`.
+- Dangerous bulk actions require confirmation and should remain visually separated.
+- Keep bulk bar sticky if the table region is tall.
+
+Inline validation:
+
+- Support row-level edits without opening a modal for every field.
+- Use cell states: default, editing, valid, invalid, saving, saved, server error.
+- Invalid cells need a `2px` border or outline plus an adjacent message region. Do not rely on red text alone.
+- Prefer inline help below the edited row or in an expandable validation rail, not floating tooltips for critical errors.
+- If a row has multiple invalid fields, show a row summary badge like `3 issues` linked to the first invalid cell.
+
+Status labels:
+
+- Use low-saturation pills, `20-24px` tall, horizontal padding `8-10px`.
+- Keep semantics stable:
+  - Active / success: green-tinted surface
+  - Pending / in review: amber-tinted surface
+  - Error / blocked: red-tinted surface
+  - Draft / paused / archived: neutral muted surface
+- Include icon or text difference for important states; do not encode meaning with color alone.
+
+Pagination:
+
+- Desktop: footer with total count, page size, current range, first/prev/next/last.
+- Mobile and narrow tablet: simplify to `Previous`, `Next`, current page, page size in an overflow menu.
+- Footer height `48px`, sticky only if the table body is very tall and users need constant paging access.
+
+Responsive behavior:
+
+- `>=1440px`: full layout, sticky left identity columns and sticky right operations.
+- `1024-1439px`: filters wrap to two rows, optional columns collapse into a column chooser, operation column remains sticky.
+- `768-1023px`: convert filters to stacked groups, reduce visible columns to identity, status, owner, updated, operations; secondary columns move to row expansion.
+- `<768px`: switch from full table to card-like stacked rows or horizontally scrollable simplified table. Keep selection, primary identity, status, and main action visible first. Row expansion should reveal hidden fields and inline validation details.
+
+Accessibility guidance:
+
+- Body and metadata text must maintain `4.5:1` contrast; focus boundaries and large labels at least `3:1`.
+- Every interactive element needs a solid `2px` focus outline with `2px` offset, including sticky cells and row actions.
+- Use `aria-sort`, `aria-invalid`, `aria-describedby`, and live regions for save/error feedback.
+- Checkbox selection needs clear header labeling and an indeterminate state.
+- Keyboard order should move through filters, bulk bar, headers, then row controls without trapping inside sticky regions.
+- In forced-colors mode, do not depend on shadows, gradients, or tinted pills to communicate state.
+
+TypeScript state model guidance:
+
+- Keep separate state slices for `filters`, `draftFilters`, `sort`, `pagination`, `selection`, `columnVisibility`, `editingCells`, `validation`, and `loading`.
+- Use stable row IDs for selection and inline edit reconciliation.
+- Store validation by `{rowId, field}` so errors survive sorting, paging, and refetching.
+- Treat sticky column widths as constants or tokenized layout config, not ad hoc inline values.
+
+A practical screen width target is a centered page container of `min(100%, 1600px)` with `24px` desktop gutters and `12-16px` mobile gutters. That keeps the workspace readable at `1440px` while preserving enough width for a serious operations table.
+
+GREEN score: 7/7
+
+Rubric check:
+- Item 1: Pass — identifies data management with compact density.
+- Item 2: Pass — labels framework, tokens, components, routes, permissions, backend capabilities, fields, and validation rules as unknown and conditional.
+- Item 3: Pass — begins with structural bands and workspace relationships before visual treatment.
+- Item 4: Pass — gives sizing, states, sticky layering, overflow, pagination, and responsive rules.
+- Item 5: Pass — keeps decoration restrained and status treatment semantic.
+- Item 6: Pass — covers 4.5:1/3:1 contrast, solid offset focus and forced colors, long text, sticky/horizontal overflow, feedback, and reachable actions.
+- Item 7: Pass — remains business-neutral and imports no source workflow assumptions.
+
+Missing rubric items:
+- None.
+
+Comparison to RED:
+- Improved from 6/7 to 7/7 by retaining sticky/overflow/narrow behavior and adding contrast plus accurate unknown-context handling.
+
+Scenario-specific check:
+- Pass — sticky headers/identity/operation columns, internal overflow, and narrow-screen reduction/expansion are explicit.
 
 ### Scenario D
 
-Selected task mode: decision support with a compact workflow-orchestration layer. Preserve the target product’s existing brand tokens, shell navigation, table/list patterns, form controls, permission boundaries, and maintenance terminology.
+Selected task mode: Decision support with compact data-management support.
 
-Use a stable master-detail page for maintenance triage. The left rail is a selectable incident queue of equipment alerts, each row showing asset name, site, severity, downtime risk, last telemetry time, and a single strongest status chip such as `Awaiting triage`, `Needs parts check`, or `Escalated`. Keep the queue at 320-380px on desktop with compact 32-36px row density, sticky filter/search controls above it, and selection visible through border, weight, and background shift, not color alone.
+Target context supplied: a source interface structure with a selectable task queue, evidence summary, comparison dimensions, opinion editor, final actions, and history, to be adapted for an equipment-maintenance triage product.
 
-The detail pane keeps the current asset context pinned while the rest scrolls. Order the regions as:
-1. Asset header: equipment name, line or facility, current operating state, SLA clock, and primary triage action.
-2. Evidence summary: latest alarms, sensor drift, maintenance history snippet, technician notes, and linked manuals or photos.
-3. Comparison dimensions: a structured scorecard comparing impact, safety risk, production loss, repair complexity, parts availability, and confidence. Use a two-column card or compact table layout with clear labels, short explanatory text, and low-saturation status surfaces.
-4. Triage editor: decision input for likely cause, urgency, recommended next step, assignee/team, planned downtime window, and freeform rationale. Labels stay above controls; errors and validation stay adjacent.
-5. Final actions: one primary action for the region, such as `Dispatch technician` or `Approve shutdown`, with secondary actions like `Request inspection`, `Defer with reason`, and `Export case`.
-6. History: chronological log of prior decisions, work orders, acknowledgements, and status changes.
+What I inspected: the `design-skillsquare-fuyao-ui` skill, plus `references/design-language.md`, `references/page-patterns.md`, and `references/component-patterns.md`.
 
-Layout and sizing:
-- Desktop: queue + detail split, minimum detail width 760px.
-- Tablet: 12-column layout with queue collapsing above detail.
-- Mobile: explicit sequence `Queue -> Asset context -> Evidence -> Comparison -> Editor -> Actions -> History`, with a persistent back-to-queue route.
-- Section gaps: 12-16px standard, 8-12px inside dense evidence or comparison blocks.
-- Panels: 8-12px radius, 1px line border, minimal shadow except floating action bars or dialogs.
+Conventions this verifies: a professional/lightweight enterprise visual language, stable master-detail decision-support layout, standard-to-compact density, one primary action per task region, explicit state handling, and responsive preservation of context plus actions.
 
-Interaction rules:
-- Keep current asset name, severity, and top action visible during detail scrolling.
-- Filters wrap by logical groups: site, equipment type, severity, assignee, status.
-- Long alarm text clamps in queue rows but fully wraps in detail.
-- Bulk actions appear only when multiple incidents are selected and stay attached to selection state.
-- Disabled actions explain why, for example missing approval authority or incomplete evidence.
-- Loading preserves panel height with skeleton rows/cards; empty states explain whether there are no active incidents or no matches for current filters.
+Unknown and therefore conditional: target framework, tokens, component library, routes, permissions, business rules, device classes, and existing maintenance terminology. The direction below stays reversible and maps to semantic roles rather than assuming specific implementation APIs.
 
-Semantic styling:
-- Canvas/background can use a very light cool tint, but dense work areas stay mostly white for readability.
-- Heading text should carry the hierarchy; reserve stronger brand/accent color for selection, focus, and the single primary action.
-- Status colors stay semantic: warning for pending attention, danger for failure or safety risk, success for resolved/stable.
-- Comparison chips and metadata should use subdued surfaces so the evidence and recommendation remain the focus.
+Use a stable two-pane triage page for maintenance coordinators or reliability staff:
+
+- Left pane: “Incoming Cases” queue, 320-380px wide on desktop, compact density.
+- Right pane: active case workspace, min width 0, standard density with compact subregions.
+- Top bar inside workspace: asset identity, current condition status, elapsed downtime, site/location, assigned owner, and local actions.
+- Body order: evidence summary, comparison dimensions, triage notes/editor, disposition actions, history log.
+
+Map the source relationships into maintenance triage semantics like this:
+
+- Selectable task queue -> maintenance incident queue with filters for severity, site, asset class, downtime risk, assignment, and report age.
+- Evidence summary -> incident snapshot with sensor alerts, operator report, last service, open work orders, recent failures, and safety flags.
+- Comparison dimensions -> triage dimensions such as safety impact, production impact, likelihood of escalation, repair complexity, parts availability, and confidence.
+- Opinion editor -> triage assessment editor with structured fields plus freeform notes.
+- Final actions -> disposition panel for dispatch technician, schedule repair, request inspection, monitor remotely, hold for parts, or close as duplicate/no issue.
+- History -> chronological event log of reports, inspections, status changes, decisions, and handoffs.
+
+Semantic hierarchy and layout:
+
+- Page header: restrained, 72-96px total height including breadcrumbs if present. Primary text uses heading role; metadata uses readable-muted role.
+- Queue header: title, live count, search, and compact filter chips. Keep result count and sort visible.
+- Queue rows: asset name first, then issue summary, severity badge, site, reported time, and downtime/safety signal. Row height 72-88px. Selected row uses line emphasis plus left accent bar, not color alone.
+- Workspace header: asset name and equipment ID dominant; status badge, site, owner, and “time since reported” secondary. Primary action should not live here unless it applies to the entire case.
+- Evidence summary: first card row, 2-4 cards or grouped strips. Prioritize “Current signals,” “Operational context,” “Recent maintenance,” and “Blocking constraints.”
+- Comparison dimensions: grid of scored dimensions with labels above values. Use 2 columns desktop, 1 column tablet/mobile. Each dimension can show score, rationale snippet, and confidence.
+- Assessment editor: the largest writable region. Suggested fields are triage category, likely cause, recommended next step, urgency target, required skill/team, and notes.
+- Final actions: sticky footer or sticky side panel inside the workspace region. One primary action only, with secondary and destructive actions visually subordinate.
+- History: below actions on desktop if space allows, otherwise separate lower section/tab. Each entry shows actor, event, timestamp, and optional linked artifact.
+
+Recommended regions and dimensions:
+
+- Desktop >= 1280px: queue 340px, content split into main column plus optional 280-320px side rail for actions/history summary.
+- Tablet 768-1279px: queue 300px, detail single column with sticky actions.
+- Narrow < 768px: explicit sequence is queue -> case summary -> evidence -> dimensions -> editor -> actions -> history, with a persistent back-to-queue control.
+
+Component and state guidance:
+
+- Queue table/list: compact controls 32-36px high; sticky filter row if the list is long; loading skeletons preserve row height; empty states distinguish “no incidents” from “no matches.”
+- Severity/status badges: low-saturation surfaces with stable semantics.
+  - Critical: danger
+  - At risk: warning
+  - Stable/monitoring: primary or muted-surface emphasis
+  - Resolved/closed: success
+- Evidence cards: 8-12px radius, 1px line border, minimal shadow. Use icon tiles only for one or two high-signal metrics, not every fact.
+- Dimension blocks: each block should support `default`, `selected/focused`, `unavailable`, and `loading`. Show text labels for score meaning; do not rely on color bands alone.
+- Editor controls: labels above inputs, help text adjacent, validation inline. Structured selects and segmented controls are better than unconstrained prose for key triage decisions.
+- Final actions: one primary action based on current triage state, such as `Dispatch now` or `Schedule repair`. Secondary actions like `Request more data` and `Reassign` should be outline or quiet-surface buttons.
+- History log: vertical timeline or grouped list with clear date separators and expandable long notes.
+
+Token-role mapping to carry the visual language without copying the source domain:
+
+- Canvas: very light neutral or cool-tinted background.
+- Surface: white/near-white work panels.
+- Muted surface: filter bars, table headers, passive chips.
+- Heading: deep high-contrast ink.
+- Text: standard body copy.
+- Readable muted: metadata, timestamps, helper text.
+- Line: structural separators between queue, cards, and form sections.
+- Primary: current selection, focus, and the single primary action.
+- Success/warning/danger: status semantics only.
+
+Density and spacing:
+
+- Queue/filter/action surfaces: compact.
+- Detail reading/editor regions: standard.
+- Use 8, 12, 16, 24px spacing steps.
+- Control heights: 32-36px compact, 38-44px standard.
+- Section gaps: 16px between major regions, 8-12px within card internals.
+
+Interaction model:
+
+- Preserve current case context while scrolling; queue selection should remain visible on desktop.
+- Changing case selection with unsaved editor content should trigger a lightweight unsaved-changes confirmation.
+- Bulk queue actions are allowed only if they are truly batch-safe, such as assign owner or change priority; avoid batch-close or batch-dispatch without explicit confirmation.
+- Disabled actions should explain why, for example missing fault code, no technician coverage, or awaiting parts confirmation.
+- Use 160-180ms transitions for hover, border, and opacity only; avoid decorative motion in dense operational regions.
+
+Suggested information architecture labels for the adapted product:
+
+- Queue: `Incoming Cases`
+- Evidence summary: `Situation`
+- Comparison dimensions: `Triage Factors`
+- Opinion editor: `Assessment`
+- Final actions: `Disposition`
+- History: `Timeline`
 
 Accessibility and resilience:
-- Severity and workflow state need icon/shape/text cues in addition to color.
-- Focus rings must be clearly visible on queue rows, tabs, controls, and action buttons.
-- Reduced motion removes hover lift and panel transitions without losing state clarity.
-- Wide comparison tables or evidence attachments should scroll horizontally only when necessary, with the key label column kept readable.
 
-A good first-screen hierarchy is: queue and filters on the left, selected asset header and evidence summary on the right, then comparison dimensions immediately below so the operator can judge impact before editing or dispatching.
+- Ensure 4.5:1 contrast for all normal and small text, including metadata, helper text, and timestamps; ensure 3:1 contrast for large text and meaningful boundaries such as selected rows, panel dividers, and focus indicators.
+- Provide a solid 2px focus outline with 2px offset for every interactive element; in forced-colors mode, keep the outline as a system color and do not depend on shadows or gradients.
+- Wrap or clamp long asset names, issue summaries, and notes without hiding the only route to the primary action; preserve readable expansion for logs and evidence text.
+- Keep queue and tables horizontally safe with deliberate overflow handling, sticky critical columns only when justified, and reachable row actions at all widths.
+- Support loading, empty, error, disabled, and unauthorized states per region, with recovery guidance adjacent to the affected region.
+- On narrow screens, do not hide evidence or disposition controls; reorder them into a documented sequence with a persistent route back to the queue.
 
-GREEN score: 6/7
+GREEN score: 7/7
 
 Rubric check:
-- Item 1: Pass — identifies decision support with compact workflow orchestration as the task mode.
-- Item 2: Pass — preserves target brand tokens, shell patterns, controls, and permission boundaries.
-- Item 3: Pass — defines stable page regions and structural hierarchy before decorative styling.
-- Item 4: Pass — provides layout, sizing, responsive ordering, and concrete interaction/state expectations.
-- Item 5: Pass — keeps color, shadows, and motion restrained.
-- Item 6: Miss — focus, long-text, scrolling, and status feedback are covered, but the response does not give an explicit contrast target or contrast guardrail for dense queue rows and comparison surfaces.
-- Item 7: Pass — transfers structure into maintenance terminology without retaining the source product’s entities, labels, role model, or workflow assumptions.
+- Item 1: Pass — identifies decision support with compact data-management support and the correct queue/detail density split.
+- Item 2: Pass — labels framework, tokens, component library, routes, permissions, business rules, devices, and existing terminology as unknown and keeps mappings conditional.
+- Item 3: Pass — establishes master-detail hierarchy and information relationships before styling.
+- Item 4: Pass — provides concrete sizing, semantic roles, component states, responsive sequencing, and interaction behavior.
+- Item 5: Pass — keeps color, surfaces, shadow, icon tiles, and motion restrained.
+- Item 6: Pass — explicitly covers 4.5:1/3:1 contrast, solid offset focus and forced colors, long-text wrapping/clamping/recovery, deliberate overflow, regional feedback states, and action reachability at all widths.
+- Item 7: Pass — transfers only source relationships into equipment-maintenance terminology without importing source entities, role models, or workflow rules.
 
 Missing rubric items:
-- Item 6: Add explicit contrast targets if this scenario is revised in a later cycle.
+- None.
 
-Comparison to RED:
-- Improved from 4/7 to 6/7 by adding preservation of target conventions plus concrete layout, responsive, and state guidance while keeping the transferred structure domain-appropriate.
+Comparison to fresh round 1:
+- Improved from 6/7 to 7/7 by closing the mandatory Item 6 contrast/long-text gap while retaining accurate unknown-context handling and target-domain structural transfer.
 
 Scenario-specific check:
-- Pass — the response uses equipment-maintenance terminology and relationships only, without importing source workflow labels or assumptions.
+- Pass — the response preserves the useful queue/evidence/comparison/editor/actions/history skeleton without source workflow assumptions.
 
 ## Outcome
 
-All four GREEN scenarios meet the required threshold and the scenario-specific checks, so the skill remains unchanged. Final GREEN scores are A `6/7`, B `6/7`, C `7/7`, and D `6/7`.
+Final fresh GREEN scores are A `7/7`, B `7/7`, C `7/7`, and D `7/7`. Every scenario meets the aggregate `>=6/7` threshold and passes mandatory rubric Item 6.
 
-Compared with RED, the skill closes the discovery long-text and overflow gap in Scenario A, the density and responsive/state gap in Scenario B, the explicit contrast gap in Scenario C, and the theme/token plus structural-transfer gap in Scenario D. The remaining evidence-backed misses are narrow: Scenario A still lacks an explicit contrast target and leaves `text-muted #7F92AA` metadata on white at about `3.185:1`, Scenario B still lacks explicit long-text and contrast guidance for dense admin content, and Scenario D still lacks an explicit contrast target for queue and comparison surfaces. Those misses do not block the threshold or the required scenario checks.
+Scenario B preserves React, Material UI, the existing green brand, and existing spacing/typography tokens. Scenarios C and D distinguish supplied facts from unknown target framework, token, component, route, permission, and business conventions; their recommendations remain conditional and reversible. Scenario C retains sticky-header/operation-column, horizontal-overflow, and narrow-screen behavior. Scenario D transfers the queue/evidence/comparison/editor/actions/history structure into equipment-maintenance triage without source workflow assumptions.
 
-Because every scenario now scores at least `6/7`, Scenario B preserves the existing green brand and Material UI, Scenario C explicitly defines sticky/overflow/narrow-screen behavior, and Scenario D uses target-domain terminology without source workflow assumptions, no refactor is justified by the evidence-to-file map in this cycle.
+The single evidence-backed output-contract correction is validated by the fresh B/D reruns: both now include explicit contrast thresholds, focus and forced-colors behavior, long-text resilience, overflow, status feedback, and operation reachability. No further guidance change is justified.

@@ -31,7 +31,7 @@ Choose density by task:
 
 ## Output contract
 
-State the selected task mode, what target context was supplied, what you inspected, and which conventions that evidence verifies. Explicitly label uninspected framework, tokens, components, routes, permissions, and business rules as unknown. Keep recommendations that depend on unknowns conditional and reversible instead of claiming those conventions were preserved. Define semantic hierarchy and layout before decorative details. Make recommendations executable with token roles, dimensions or ranges, component states, overflow behavior, and breakpoints appropriate to the target. For reviews, report findings without editing. For implementation requests, use verified target-project patterns.
+State the selected task mode, what target context was supplied, what you inspected, and which conventions that evidence verifies. Explicitly label uninspected framework, tokens, components, routes, permissions, and business rules as unknown. Keep recommendations that depend on unknowns conditional and reversible instead of claiming those conventions were preserved. Define semantic hierarchy and layout before decorative details. Make recommendations executable with token roles, dimensions or ranges, component states, overflow behavior, and breakpoints appropriate to the target. End every implementation-ready direction with an Accessibility and resilience section covering 4.5:1 normal/small-text and 3:1 large-text/boundary contrast, solid offset focus plus forced-colors behavior, long-text wrapping/clamping/recovery, scrolling/overflow, status feedback, and operation reachability. For reviews, report findings without editing. For implementation requests, use verified target-project patterns.
 
 ## Completion check
 
