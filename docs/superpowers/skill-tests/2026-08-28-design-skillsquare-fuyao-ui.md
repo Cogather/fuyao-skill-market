@@ -12,19 +12,19 @@ Give one point for each observable behavior:
 6. Covers focus, contrast, long text, scrolling, status feedback, and operation reachability where relevant.
 7. Transfers structure without importing source-domain terminology or assumptions.
 
-### Scenario A - new discovery interface
+### Scenario A — new discovery interface
 
 You are designing a new TypeScript frontend for browsing reusable internal resources. No framework or component library has been chosen. Create an implementation-ready visual direction covering layout, tokens, cards, search, filters, responsive behavior, and interaction states. Keep it professional and inviting without becoming a technology-showcase dashboard.
 
-### Scenario B - existing brand and component system
+### Scenario B — existing brand and component system
 
 An established TypeScript product uses React, Material UI, and an existing green brand palette with spacing and typography tokens. Restyle its administrative overview so it feels lighter, clearer, and more trustworthy. Do not replace Material UI, introduce global class overrides, or change the brand color. Explain the mapping to the existing theme.
 
-### Scenario C - dense data workspace
+### Scenario C — dense data workspace
 
 Design a TypeScript management screen containing advanced filters, a wide sortable table, bulk actions, inline validation, status labels, pagination, and a sticky operation column. It must remain scannable at 1440px and usable on narrow screens. Provide concrete sizing, state, overflow, and accessibility guidance.
 
-### Scenario D - cross-domain structural transfer
+### Scenario D — cross-domain structural transfer
 
 A source interface contains a selectable task queue, evidence summary, several comparison dimensions, an opinion editor, final actions, and history. Adapt that structure for an equipment-maintenance triage product. Reuse useful layout and interaction relationships, but do not retain the source product's entities, labels, role model, or workflow assumptions.
 
@@ -32,13 +32,13 @@ A source interface contains a selectable task queue, evidence summary, several c
 
 ### Scenario A
 
-Visual direction: a calm 鈥渓ibrary lounge鈥?rather than an analytics dashboard. Use a warm-neutral base, one confident accent color, generous spacing, and strong typography contrast so the interface feels curated and trustworthy. The product should read as a place to discover and reuse resources, not monitor systems.
+Visual direction: a calm “library lounge” rather than an analytics dashboard. Use a warm-neutral base, one confident accent color, generous spacing, and strong typography contrast so the interface feels curated and trustworthy. The product should read as a place to discover and reuse resources, not monitor systems.
 
 Core layout:
 - Desktop uses a 12-column grid with a fixed top bar, a left filter rail, and a main browsing area.
 - Top bar: product title on the left, centered or slightly left-weighted search, utility actions on the right.
 - Main area: a short intro row with result count and active filter chips, then a card grid.
-- Left rail: collapsible filter groups with checkboxes, pill toggles, and a 鈥渃lear all鈥?action pinned near the top.
+- Left rail: collapsible filter groups with checkboxes, pill toggles, and a “clear all” action pinned near the top.
 - Mobile: stack into search first, horizontal filter chips second, then cards; move the full filter UI into a slide-over sheet.
 
 Suggested design tokens:
@@ -92,28 +92,28 @@ Typography:
 - Keep sizes restrained: 32/40 for page title, 18/28 for section title, 15/22 for body, 13/18 for metadata.
 
 Card design:
-- Cards should feel like resource 鈥渢iles鈥?from a curated collection.
+- Cards should feel like resource “tiles” from a curated collection.
 - Structure: title, short description, metadata row, optional tags, and a clear primary action.
 - Optional thumbnail or icon area at the top, but keep it compact so text remains primary.
 - Metadata examples: owner, last updated, type, popularity, internal team.
 - Tags should use muted filled pills, not loud badges.
-- Hover raises the card slightly, strengthens shadow, and reveals a secondary action like 鈥淧review鈥?or 鈥淪ave.鈥?
+- Hover raises the card slightly, strengthens shadow, and reveals a secondary action like “Preview” or “Save.”
 - Selected state uses accent border plus soft tinted background, not a heavy glow.
 
 Search:
-- Prominent search input in the header or hero row, around 480鈥?40px wide on desktop.
-- Include leading search icon, placeholder like 鈥淪earch resources, teams, or tags鈥?
+- Prominent search input in the header or hero row, around 480–640px wide on desktop.
+- Include leading search icon, placeholder like “Search resources, teams, or tags”.
 - Support inline recent searches and zero-state suggestions below the field on focus.
 - Search results should visibly highlight matched terms in titles and descriptions with a soft marker color.
 
 Filters:
-- Organize into 4鈥? predictable groups, such as Type, Team, Status, Format, Topic, Recently Updated.
-- Use checkboxes for multi-select groups and pill toggles for quick filters like 鈥淧opular鈥? 鈥淣ew鈥? 鈥淪aved鈥?
+- Organize into 4–6 predictable groups, such as Type, Team, Status, Format, Topic, Recently Updated.
+- Use checkboxes for multi-select groups and pill toggles for quick filters like “Popular”, “New”, “Saved”.
 - Active filters should appear as removable chips above results.
-- Keep sorting lightweight and useful: Relevance, Recently Updated, Most Used, A鈥揨.
+- Keep sorting lightweight and useful: Relevance, Recently Updated, Most Used, A–Z.
 
 Responsive behavior:
-- Desktop: 3鈥? card columns depending on width.
+- Desktop: 3–4 card columns depending on width.
 - Tablet: filter rail collapses into a button; grid drops to 2 columns.
 - Mobile: 1 column, sticky search, horizontally scrollable quick filters, full filters in bottom sheet.
 - Preserve large tap targets: 44px minimum height for inputs, buttons, chips.
@@ -123,11 +123,11 @@ Interaction states:
 - Focus: high-contrast outline using `focus` token with 2px ring and offset.
 - Pressed: reduce elevation and slightly darken filled surfaces.
 - Disabled: lower contrast but keep readable; never rely on opacity alone for text.
-- Empty state: show a warm illustration or icon with practical guidance and a 鈥淐lear filters鈥?CTA.
+- Empty state: show a warm illustration or icon with practical guidance and a “Clear filters” CTA.
 - Loading: use skeleton cards with title and metadata bars; avoid spinners for the full page.
 - Error: inline message near results with retry action, not a blocking modal.
 
-A good mental model for implementation is: 鈥渆ditorial resource library with modern app ergonomics.鈥?If you want, I can turn this into a concrete CSS variable file plus HTML structure next.
+A good mental model for implementation is: “editorial resource library with modern app ergonomics.” If you want, I can turn this into a concrete CSS variable file plus HTML structure next.
 
 RED score: 6/7
 
@@ -140,7 +140,7 @@ Use the existing MUI theme as the source of truth and change the admin overview 
 
 The direction:
 - Make the page feel lighter by increasing whitespace, reducing heavy borders, and using more tinted surfaces instead of solid fills.
-- Make it clearer by separating 鈥渟ummary鈥? 鈥渁ctivity鈥? and 鈥渁ctions鈥?into distinct visual layers.
+- Make it clearer by separating “summary”, “activity”, and “actions” into distinct visual layers.
 - Make it feel more trustworthy by using restrained color, stable alignment, consistent card structure, and readable data emphasis.
 
 Theme mapping:
@@ -149,7 +149,7 @@ Theme mapping:
 - `theme.palette.background.paper` remains the base for cards, but mix in very light green-tinted accents via `alpha(theme.palette.primary.main, 0.04-0.08)` for highlighted summary cards.
 - `theme.spacing()` should drive all layout rhythm, ideally an 8px cadence: `2`, `3`, `4`, `6`.
 - `theme.typography.h4/h5/h6`, `subtitle2`, and `body2` should define hierarchy instead of custom font styling.
-- `theme.shape.borderRadius` can be slightly more visible on cards and panels if the product already supports it, but don鈥檛 invent a separate radius system.
+- `theme.shape.borderRadius` can be slightly more visible on cards and panels if the product already supports it, but don’t invent a separate radius system.
 
 Recommended layout:
 - Top row: page title, short supporting description, right-aligned primary action.
@@ -202,8 +202,8 @@ Typography hierarchy:
 
 Trust-building details:
 - Show timestamps, statuses, and owners consistently.
-- Use explicit labels like 鈥淯pdated 2 hours ago鈥?and 鈥? items need review鈥?
-- Keep status chips subdued; reserve strong green for 鈥渉ealthy鈥?or 鈥渙n track鈥?
+- Use explicit labels like “Updated 2 hours ago” and “3 items need review”.
+- Keep status chips subdued; reserve strong green for “healthy” or “on track”.
 - Use iconography lightly and consistently, preferably outline icons.
 
 What to avoid:
@@ -229,7 +229,7 @@ Build the screen around three persistent zones: a compact page header, a filter/
 
 Layout:
 - Header: 64px tall. Left side has title and result count; right side has primary action plus export/import overflow menu.
-- Filter bar: 2 rows max on desktop before collapsing secondary filters into 鈥淢ore filters鈥? Row 1 should contain search, status, owner, date range, and a reset link. Row 2 can hold tags, numeric range, and saved views.
+- Filter bar: 2 rows max on desktop before collapsing secondary filters into “More filters”. Row 1 should contain search, status, owner, date range, and a reset link. Row 2 can hold tags, numeric range, and saved views.
 - Bulk action bar: hidden until rows are selected, then appears pinned above the table header. Height 44px.
 - Table region: fills remaining width; horizontal scrolling is allowed only inside the table viewport, not the whole page.
 
@@ -263,13 +263,13 @@ State model:
 Overflow guidance:
 - Never truncate critical identifiers without a recovery path. For truncated cells, show ellipsis plus full value on focus/hover.
 - Long text fields should clamp to one line in dense mode and two lines in relaxed mode.
-- Keep inline actions inside the sticky operation column; collapse excess actions into a 鈥淢ore鈥?menu after two visible buttons.
+- Keep inline actions inside the sticky operation column; collapse excess actions into a “More” menu after two visible buttons.
 - On narrow screens, convert low-priority columns into expandable row details or a row drawer. Do not force users to pan through 10+ columns on mobile.
 
 Responsive strategy:
 - >= 1280px: full table with sticky header and sticky operation column
 - 960px to 1279px: hide lowest-priority columns, keep horizontal scroll modest, move advanced filters into a slide-down panel
-- 600px to 959px: switch to cardified rows or a two-column summary list with 鈥淰iew details鈥?drawer; keep bulk selection and status visible
+- 600px to 959px: switch to cardified rows or a two-column summary list with “View details” drawer; keep bulk selection and status visible
 - < 600px: stack filters vertically, replace date-range inline inputs with modal/popup pickers, and make per-row actions bottom-sheet based
 
 Inline validation:
@@ -293,7 +293,7 @@ Accessibility:
 - Treat the table as a real data table, not a generic grid, unless spreadsheet-like cell navigation is required.
 - Every sortable header must be keyboard reachable and expose sort state via `aria-sort`.
 - Sticky columns need solid backgrounds and shadow separators so overlap remains legible at 200% zoom.
-- Selection checkboxes need explicit labels, including 鈥淪elect all rows on this page鈥?
+- Selection checkboxes need explicit labels, including “Select all rows on this page”.
 - Validation errors should be associated to inputs with `aria-describedby`.
 - Preserve visible focus rings in sticky cells, menus, and inline editors.
 - Minimum hit target: 36px desktop, 44px touch.
@@ -315,11 +315,11 @@ Missing rubric items:
 
 Design the maintenance-triage interface around one active asset case at a time, with the left side acting as a persistent work queue and the main canvas focused on diagnosis and disposition. The queue should list equipment incidents rather than abstract tasks: each row shows asset name, location, severity, downtime clock, reported symptom, and a compact status chip such as `Needs Review`, `Waiting on Parts`, or `Escalated`. Support filtering by plant, line, equipment type, severity, and SLA risk. Selecting a row loads the case without losing queue context, so supervisors can move quickly across incidents.
 
-The main workspace should preserve the same 鈥渞eview then decide鈥?rhythm, but translate it into maintenance language. Start with an asset summary band across the top: equipment ID, operational state, last service date, warranty/vendor status, and a downtime timer. Below that, use a two-column diagnostic area. The primary column contains a fault evidence summary: operator report, sensor anomalies, recent alarms, maintenance history, attached photos, and suggested likely causes. The secondary column compares remediation paths across several dimensions, for example `Safety risk`, `Production impact`, `Repair time`, `Parts availability`, `Skill required`, and `Estimated cost`. Each row in the comparison should let the triage user quickly contrast options like `Reset and monitor`, `Dispatch technician`, `Schedule planned repair`, `Shut down immediately`, or `Send to vendor`. Use color sparingly for urgency and safety, not as decorative emphasis.
+The main workspace should preserve the same “review then decide” rhythm, but translate it into maintenance language. Start with an asset summary band across the top: equipment ID, operational state, last service date, warranty/vendor status, and a downtime timer. Below that, use a two-column diagnostic area. The primary column contains a fault evidence summary: operator report, sensor anomalies, recent alarms, maintenance history, attached photos, and suggested likely causes. The secondary column compares remediation paths across several dimensions, for example `Safety risk`, `Production impact`, `Repair time`, `Parts availability`, `Skill required`, and `Estimated cost`. Each row in the comparison should let the triage user quickly contrast options like `Reset and monitor`, `Dispatch technician`, `Schedule planned repair`, `Shut down immediately`, or `Send to vendor`. Use color sparingly for urgency and safety, not as decorative emphasis.
 
 Replace the opinion editor with a triage decision panel that feels operational and structured. It should let the user record the working diagnosis, confidence level, immediate containment steps, recommended action, required approvals, and handoff notes for the field team. Make this editable in place, with autosave and a visible draft state. Final actions should sit in a sticky footer or right rail: `Assign technician`, `Approve shutdown`, `Order parts`, `Schedule outage`, `Escalate to reliability engineer`, and `Close as false alarm`. Each action should preview downstream effects before commit, like notifying a team, creating a work order, or impacting the production schedule.
 
-History should remain visible but shifted to maintenance chronology. Show a reverse-chronological timeline of prior breakdowns, inspections, parts replacements, technician notes, and escalation decisions for the same asset. Include quick jumps between 鈥渃urrent case,鈥?鈥渟imilar past failures,鈥?and 鈥渟ervice record.鈥?Interaction-wise, optimize for fast triage under pressure: keyboardable queue navigation, expandable evidence cards, side-by-side option comparison, and persistent context when moving between incidents. If this is headed for implementation, a clean component breakdown would be `IncidentQueue`, `AssetHeader`, `EvidenceSummary`, `RemediationComparisonTable`, `TriageDecisionEditor`, `ActionRail`, and `MaintenanceHistoryTimeline`.
+History should remain visible but shifted to maintenance chronology. Show a reverse-chronological timeline of prior breakdowns, inspections, parts replacements, technician notes, and escalation decisions for the same asset. Include quick jumps between “current case,” “similar past failures,” and “service record.” Interaction-wise, optimize for fast triage under pressure: keyboardable queue navigation, expandable evidence cards, side-by-side option comparison, and persistent context when moving between incidents. If this is headed for implementation, a clean component breakdown would be `IncidentQueue`, `AssetHeader`, `EvidenceSummary`, `RemediationComparisonTable`, `TriageDecisionEditor`, `ActionRail`, and `MaintenanceHistoryTimeline`.
 
 RED score: 4/7
 
