@@ -397,7 +397,7 @@ On tablet, keep the intro short, allow filters to wrap in two rows, and maintain
 Accessibility and state coverage:
 Keyboard order should be nav -> intro switch -> search -> filters -> results -> pagination/load more. Every selected/active state must use more than color: underline, icon, weight, or border change. Empty states should be modest: icon, one sentence explaining why nothing appears, one relevant recovery action like `Clear filters`. Error states belong inline within the affected region with retry. Loading must preserve layout. Overflow for long filter sets should wrap before horizontal scroll; only data-like subcontent inside cards may truncate.
 
-GREEN score: 7/7
+GREEN score: 6/7
 
 Rubric check:
 - Item 1: Pass — identifies content discovery as the primary task mode and standard-density support.
@@ -405,14 +405,14 @@ Rubric check:
 - Item 3: Pass — establishes layout, search/filter relationships, and card structure before decorative accents.
 - Item 4: Pass — supplies semantic tokens, layout ranges, states, and responsive breakpoints.
 - Item 5: Pass — gradients, shadows, and motion are explicitly limited and restrained.
-- Item 6: Pass — covers focus, long-text handling, overflow, loading/error states, and accessible interaction order.
+- Item 6: Miss — the response covers focus, long-text handling, overflow, loading/error states, and accessible interaction order, but it gives no explicit contrast target or guardrail, and its `text-muted` token `#7F92AA` at `12px` metadata on white is only about `3.185:1`.
 - Item 7: Pass — no source-domain terminology or workflow assumptions are imported.
 
 Missing rubric items:
-- None.
+- Item 6: Add an explicit contrast target or guardrail; the proposed `text-muted` token `#7F92AA` on white under-serves 12px metadata contrast.
 
 Comparison to RED:
-- Improved from 6/7 to 7/7 by adding the missing long-text and overflow recovery guidance for cards, filters, and truncation behavior.
+- Improved from 6/7 to 6/7 by closing the missing long-text and overflow recovery gap for cards, filters, and truncation behavior, but leaving contrast unguarded.
 
 ### Scenario B
 
@@ -610,8 +610,8 @@ Scenario-specific check:
 
 ## Outcome
 
-All four GREEN scenarios meet the required threshold and the scenario-specific checks, so the skill remains unchanged. Final GREEN scores are A `7/7`, B `6/7`, C `7/7`, and D `6/7`.
+All four GREEN scenarios meet the required threshold and the scenario-specific checks, so the skill remains unchanged. Final GREEN scores are A `6/7`, B `6/7`, C `7/7`, and D `6/7`.
 
-Compared with RED, the skill closes the discovery overflow gap in Scenario A, the density and responsive/state gap in Scenario B, the explicit contrast gap in Scenario C, and the theme/token plus structural-transfer gap in Scenario D. The remaining evidence-backed misses are narrow: Scenario B still lacks explicit long-text and contrast guidance for dense admin content, and Scenario D still lacks an explicit contrast target for queue and comparison surfaces. Those misses do not block the threshold or the required scenario checks.
+Compared with RED, the skill closes the discovery long-text and overflow gap in Scenario A, the density and responsive/state gap in Scenario B, the explicit contrast gap in Scenario C, and the theme/token plus structural-transfer gap in Scenario D. The remaining evidence-backed misses are narrow: Scenario A still lacks an explicit contrast target and leaves `text-muted #7F92AA` metadata on white at about `3.185:1`, Scenario B still lacks explicit long-text and contrast guidance for dense admin content, and Scenario D still lacks an explicit contrast target for queue and comparison surfaces. Those misses do not block the threshold or the required scenario checks.
 
 Because every scenario now scores at least `6/7`, Scenario B preserves the existing green brand and Material UI, Scenario C explicitly defines sticky/overflow/narrow-screen behavior, and Scenario D uses target-domain terminology without source workflow assumptions, no refactor is justified by the evidence-to-file map in this cycle.
