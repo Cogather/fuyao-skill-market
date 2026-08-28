@@ -14,6 +14,13 @@ import {
   replaceScenesForDepartment,
   type SceneRecord,
 } from '../../services/skillMarket/sceneManagementService';
+import {
+  getSceneTags,
+  listSceneTags,
+  saveSceneTags,
+  type SceneTag,
+  type SceneTagDimContext,
+} from '../../services/skillMarket/sceneTagService';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
 import {
   skillBaseService,
@@ -252,6 +259,17 @@ let productLoadSequence = 0;
 let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
+
+// 一级场景标签（仅 kind === 'scene' 时启用）
+const sceneTagBindings = ref<Record<string, string[]>>({});
+const tagDialogOpen = ref(false);
+const tagDialogSceneId = ref('');
+const tagDialogSceneName = ref('');
+const tagOptions = ref<SceneTag[]>([]);
+const tagSelected = ref<string[]>([]);
+const tagLoading = ref(false);
+const tagSaving = ref(false);
+const tagError = ref('');
 
 const DEPARTMENT_PERMISSION_MESSAGE =
   '\u8bf7\u9009\u62e9\u60a8\u6709\u7ba1\u7406\u6743\u9650\u7684\u90e8\u95e8\u3002';
@@ -544,6 +562,8 @@ async function loadDepartment(departmentName: string): Promise<void> {
     savedSnapshot.value = JSON.stringify(draftRecords.value);
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
     collapsedPrimaryIds.value = new Set<string>();
+    await refreshSceneTagBindings();
+    if (requestSequence !== departmentLoadSequence) return;
   } catch (error) {
     if (requestSequence !== departmentLoadSequence) return;
     draftRecords.value = [];
@@ -939,6 +959,107 @@ async function dropRecord(targetId: string): Promise<void> {
   await autoSaveCompleteDraft();
 }
 
+// ===== 一级场景标签（仅场景模式） =====
+function sceneTagKey(record: TaxonomyRecord): string {
+  return useHttpTaxonomySource ? record.name : record.id;
+}
+
+function tagsOf(record: TaxonomyRecord): string[] {
+  return sceneTagBindings.value[record.id] ?? [];
+}
+
+const tagDisplayLimit = 4;
+const expandedTagSceneIds = ref(new Set<string>());
+
+function shownTagsOf(record: TaxonomyRecord): string[] {
+  const tags = tagsOf(record);
+  return expandedTagSceneIds.value.has(record.id) ? tags : tags.slice(0, tagDisplayLimit);
+}
+
+function hiddenTagsOf(record: TaxonomyRecord): string[] {
+  return tagsOf(record).slice(tagDisplayLimit);
+}
+
+function toggleTagExpand(id: string): void {
+  const next = new Set(expandedTagSceneIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  expandedTagSceneIds.value = next;
+}
+
+async function refreshSceneTagBindings(): Promise<void> {
+  if (props.kind !== 'scene') return;
+  expandedTagSceneIds.value = new Set<string>();
+  const next: Record<string, string[]> = {};
+  await Promise.all(
+    primaryRecords.value.map(async (primary) => {
+      next[primary.id] = await getSceneTags(sceneTagKey(primary), selectedDepartment.value);
+    }),
+  );
+  sceneTagBindings.value = next;
+}
+
+async function openTagDialog(record: TaxonomyRecord): Promise<void> {
+  tagDialogSceneId.value = record.id;
+  tagDialogSceneName.value = record.name;
+  tagSelected.value = [...tagsOf(record)];
+  tagError.value = '';
+  tagLoading.value = true;
+  tagDialogOpen.value = true;
+  try {
+    tagOptions.value = await listSceneTags();
+  } catch (error) {
+    tagError.value = error instanceof Error ? error.message : '标签列表加载失败';
+    tagOptions.value = [];
+  } finally {
+    tagLoading.value = false;
+  }
+}
+
+function closeTagDialog(): void {
+  tagDialogOpen.value = false;
+  tagDialogSceneId.value = '';
+  tagDialogSceneName.value = '';
+  tagSelected.value = [];
+  tagError.value = '';
+}
+
+function selectAllTags(): void {
+  tagSelected.value = tagOptions.value.map((tag) => tag.name);
+}
+
+function clearSelectedTags(): void {
+  tagSelected.value = [];
+}
+
+async function confirmTagDialog(): Promise<void> {
+  const record = primaryRecords.value.find((item) => item.id === tagDialogSceneId.value);
+  if (!record || tagSaving.value) return;
+  tagSaving.value = true;
+  tagError.value = '';
+  try {
+    const dimContext: SceneTagDimContext | undefined = useHttpTaxonomySource
+      ? httpDimContext(selectedDepartment.value, props.userId, scopeForm, departmentOptions.value)
+      : undefined;
+    await saveSceneTags(
+      sceneTagKey(record),
+      tagSelected.value,
+      selectedDepartment.value,
+      dimContext,
+    );
+    sceneTagBindings.value = {
+      ...sceneTagBindings.value,
+      [record.id]: [...tagSelected.value],
+    };
+    tagDialogOpen.value = false;
+    showToast(`已为“${record.name}”更新标签`);
+  } catch (error) {
+    tagError.value = error instanceof Error ? error.message : '标签保存失败';
+  } finally {
+    tagSaving.value = false;
+  }
+}
+
 const deleteOpen = ref(false);
 const deleteTargetId = ref('');
 
@@ -1266,6 +1387,34 @@ function exportRecords(): void {
                 ×
               </button>
             </div>
+            <div v-if="kind === 'scene'" class="primary-tags-row">
+              <button class="tag-add" type="button" @click="openTagDialog(primary)">
+                ＋ 添加标签
+              </button>
+              <template v-if="tagsOf(primary).length">
+                <span
+                  v-for="tag in shownTagsOf(primary)"
+                  :key="tag"
+                  class="scene-tag-pill"
+                  :title="tag"
+                >
+                  {{ tag }}
+                </span>
+                <button
+                  v-if="tagsOf(primary).length > tagDisplayLimit"
+                  class="tag-more"
+                  type="button"
+                  :title="hiddenTagsOf(primary).join('、')"
+                  @click="toggleTagExpand(primary.id)"
+                >
+                  {{
+                    expandedTagSceneIds.has(primary.id)
+                      ? '收起'
+                      : '＋' + (tagsOf(primary).length - tagDisplayLimit)
+                  }}
+                </button>
+              </template>
+            </div>
             <div v-if="!collapsedPrimaryIds.has(primary.id)" class="tree-children">
               <button
                 v-for="child in childRecords(primary.id)"
@@ -1395,6 +1544,65 @@ function exportRecords(): void {
         <div class="modal-actions">
           <button type="button" @click="deleteOpen = false">取消</button>
           <button class="danger-button" type="button" @click="removeDraftRecord">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="tagDialogOpen" class="modal-backdrop" @click.self="closeTagDialog">
+      <div class="modal-card tag-dialog">
+        <header class="tag-dialog-header">
+          <div>
+            <span class="tag-dialog-eyebrow">SCENE TAG</span>
+            <h3>添加标签</h3>
+          </div>
+          <button
+            class="tag-dialog-close"
+            type="button"
+            aria-label="关闭"
+            @click="closeTagDialog"
+          >
+            ×
+          </button>
+        </header>
+        <p class="tag-dialog-desc">
+          为一级场景<strong>“{{ tagDialogSceneName }}”</strong>选择标签，可多选。
+        </p>
+
+        <div v-if="tagLoading" class="tag-loading">标签加载中…</div>
+        <div v-else-if="tagError" class="form-error">{{ tagError }}</div>
+        <div v-else class="tag-options-wrap">
+          <div class="tag-options-meta">
+            <span>共 {{ tagOptions.length }} 个标签</span>
+            <span class="tag-options-actions">
+              <button type="button" @click="selectAllTags">全选</button>
+              <button type="button" @click="clearSelectedTags">清空</button>
+            </span>
+          </div>
+          <div class="tag-options">
+            <label
+              v-for="tag in tagOptions"
+              :key="tag.id"
+              class="tag-option"
+              :class="{ 'is-checked': tagSelected.includes(tag.name) }"
+            >
+              <input v-model="tagSelected" type="checkbox" :value="tag.name" />
+              <span>{{ tag.name }}</span>
+            </label>
+            <p v-if="!tagOptions.length" class="tag-empty">暂无可选标签</p>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <span class="tag-selected-count">已选 {{ tagSelected.length }} 项</span>
+          <button type="button" :disabled="tagSaving" @click="closeTagDialog">取消</button>
+          <button
+            class="primary-button"
+            type="button"
+            :disabled="tagSaving || tagLoading"
+            @click="confirmTagDialog"
+          >
+            {{ tagSaving ? '保存中…' : '保存标签' }}
+          </button>
         </div>
       </div>
     </div>
@@ -1800,6 +2008,308 @@ input:focus {
   padding: 6px 0;
   color: #9ba7b9;
   font-size: 12px;
+}
+
+.primary-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 10px 67px;
+}
+
+.tag-add {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px dashed #b9c6ff;
+  border-radius: 999px;
+  background: #f3f5ff;
+  color: #5367df;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-add:hover {
+  border-color: #6f7ff2;
+  background: #e9ecff;
+  color: #3b4fd0;
+}
+
+.scene-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 150px;
+  padding: 0 9px;
+  border: 1px solid #dbe4ff;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4557a6;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px dashed #b9c6ff;
+  border-radius: 999px;
+  background: #f6f7ff;
+  color: #5367df;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-more:hover {
+  border-color: #6f7ff2;
+  background: #e9ecff;
+  color: #3b4fd0;
+}
+
+.modal-card.tag-dialog {
+  width: min(520px, 100%);
+}
+
+.tag-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.modal-card .tag-dialog-header h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.tag-dialog-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #5b67e8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.tag-dialog-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: #f1f4fa;
+  color: #7c8aa0;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-dialog-close:hover {
+  background: #e7ecf6;
+  color: #33415e;
+}
+
+.tag-dialog-desc {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.tag-dialog-desc strong {
+  color: #1e2f4a;
+}
+
+.tag-loading,
+.tag-empty {
+  padding: 30px 0;
+  text-align: center;
+  color: #8b98ac;
+  font-size: 13px;
+}
+
+.tag-options-wrap {
+  min-width: 0;
+}
+
+.tag-options-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #8b98ac;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tag-options-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.tag-options-actions button {
+  min-height: 0;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #f1f4fa;
+  color: #5367df;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-options-actions button:hover {
+  background: #e7ecf6;
+  color: #3b4fd0;
+}
+
+.tag-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 300px;
+  padding: 6px 2px 4px;
+  overflow: auto;
+}
+
+.tag-options::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tag-options::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d3e8;
+}
+
+.tag-options::-webkit-scrollbar-thumb:hover {
+  background: #aebadb;
+}
+
+.tag-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tag-dialog .tag-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-top: 0;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f4;
+  border-radius: 10px;
+  background: #fbfcff;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.tag-dialog .tag-option:hover {
+  border-color: #c3cdf5;
+  background: #f6f8ff;
+}
+
+.tag-dialog .tag-option.is-checked {
+  border-color: #a9b6f7;
+  background: #eef1ff;
+  box-shadow: inset 0 0 0 1px rgba(83, 103, 223, 0.14);
+}
+
+.tag-dialog .tag-option input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid #c6d0e4;
+  border-radius: 6px;
+  background: #ffffff;
+  position: relative;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.tag-dialog .tag-option input:hover {
+  border-color: #8f9ef0;
+}
+
+.tag-dialog .tag-option input:checked {
+  border-color: #5367df;
+  background: linear-gradient(135deg, #3b7df6, #6358ee);
+}
+
+.tag-dialog .tag-option input:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.tag-dialog .tag-option input:focus-visible {
+  outline: 2px solid #8f9ef0;
+  outline-offset: 2px;
+}
+
+.tag-dialog .tag-option span {
+  color: #33415e;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.tag-selected-count {
+  margin-right: auto;
+  align-self: center;
+  color: #7c8aa0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .tag-options {
+    grid-template-columns: 1fr;
+  }
 }
 
 .table-wrap {

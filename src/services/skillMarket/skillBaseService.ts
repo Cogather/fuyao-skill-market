@@ -1013,6 +1013,24 @@ export const skillBaseService = {
     });
   },
 
+  // 查询场景可选标签列表（后端契约待对齐，暂定 GET /scene-activity/scene/tags）
+  querySceneTags: (params?: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scene-activity/scene/tags',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 保存一级场景标签绑定（后端契约待对齐，暂定 POST /scene-activity/scene/tags）
+  saveSceneTags: (body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scene-activity/scene/tags',
+      method: 'post',
+      data: body,
+    });
+  },
+
   // 查询当前用户的 Command 规划待办
   queryMyCommandPlanningTasks: (params: { userId: string }): any => {
     return httpRequest.harnessApi<any>({
