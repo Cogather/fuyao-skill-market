@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fuyao UI composition example</title>
+    <link rel="stylesheet" href="./fuyao-theme.css" />
+  </head>
+  <body class="fy-ui">
+    <div class="fy-page">
+      <header class="fy-shell fy-topbar">
+        <nav class="fy-nav" aria-label="Primary navigation">
+          <a class="fy-nav-link" href="#" aria-current="page">Overview</a>
+          <a class="fy-nav-link" href="#">Library</a>
+          <a class="fy-nav-link" href="#">Activity</a>
+        </nav>
+        <button class="fy-button fy-button--primary" type="button">Create resource</button>
+      </header>
+
+      <main class="fy-shell">
+        <section class="fy-hero" aria-labelledby="page-title">
+          <h1 id="page-title">
+            Find reliable <span class="fy-gradient-text">shared resources</span> faster
+          </h1>
+          <p>
+            A framework-neutral composition showing clear hierarchy, restrained product
+            identity, and adaptable enterprise density.
+          </p>
+        </section>
+
+        <section class="fy-metric-grid" aria-label="Summary metrics">
+          <article class="fy-metric"><span>Available</span><strong>248</strong></article>
+          <article class="fy-metric"><span>Contributors</span><strong>63</strong></article>
+          <article class="fy-metric"><span>Active teams</span><strong>18</strong></article>
+          <article class="fy-metric"><span>Updates this week</span><strong>31</strong></article>
+        </section>
+
+        <form class="fy-toolbar" role="search">
+          <div class="fy-field">
+            <label for="resource-search">Search</label>
+            <input id="resource-search" type="search" placeholder="Name, owner, or purpose" />
+          </div>
+          <div class="fy-field">
+            <label for="resource-type">Type</label>
+            <select id="resource-type">
+              <option>All types</option>
+              <option>Template</option>
+              <option>Guide</option>
+            </select>
+          </div>
+          <div class="fy-field">
+            <label for="resource-status">Status</label>
+            <select id="resource-status">
+              <option>Any status</option>
+              <option>Ready</option>
+              <option>Draft</option>
+            </select>
+          </div>
+          <button class="fy-button fy-button--primary" type="submit">Search</button>
+        </form>
+
+        <section aria-labelledby="resource-heading">
+          <h2 id="resource-heading" class="fy-section-title">Featured resources</h2>
+          <div class="fy-card-grid">
+            <article class="fy-card">
+              <h2>Release checklist</h2>
+              <p>Owner: Platform team</p>
+              <p>A concise, reusable checklist for coordinating production releases.</p>
+              <div class="fy-tags"><span class="fy-tag">Ready</span><span class="fy-tag">Operations</span></div>
+              <p><a class="fy-button" href="#">View details</a></p>
+            </article>
+            <article class="fy-card">
+              <h2>Research brief</h2>
+              <p>Owner: Insights team</p>
+              <p>A structured starting point for documenting findings and open questions.</p>
+              <div class="fy-tags"><span class="fy-tag">Updated</span><span class="fy-tag">Research</span></div>
+              <p><a class="fy-button" href="#">View details</a></p>
+            </article>
+            <article class="fy-card">
+              <h2>Service map</h2>
+              <p>Owner: Architecture group</p>
+              <p>A maintained overview of service relationships and operational ownership.</p>
+              <div class="fy-tags"><span class="fy-tag">Verified</span><span class="fy-tag">Architecture</span></div>
+              <p><a class="fy-button" href="#">View details</a></p>
+            </article>
+          </div>
+        </section>
+
+        <section aria-labelledby="activity-heading">
+          <h2 id="activity-heading" class="fy-section-title">Recent activity</h2>
+          <div class="fy-table-wrap" tabindex="0" aria-label="Recent activity, horizontally scrollable">
+            <table class="fy-table">
+              <thead>
+                <tr><th>Resource</th><th>Owner</th><th>Change</th><th>Status</th><th>Updated</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Release checklist</td><td>Platform team</td><td>Version updated</td><td>Ready</td><td>Today</td></tr>
+                <tr><td>Research brief</td><td>Insights team</td><td>New evidence</td><td>Updated</td><td>Yesterday</td></tr>
+                <tr><td>Service map</td><td>Architecture group</td><td>Ownership confirmed</td><td>Verified</td><td>2 days ago</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
