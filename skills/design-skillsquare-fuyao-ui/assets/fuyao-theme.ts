@@ -33,7 +33,7 @@ export const fuyaoTheme = {
     soft: '0 10px 28px rgba(35, 52, 84, 0.06)',
     raised: '0 18px 48px rgba(35, 52, 84, 0.08)',
     floating: '0 24px 70px rgba(15, 23, 42, 0.18)',
-    focus: '0 0 0 3px rgba(47, 125, 246, 0.18)',
+    focus: '0 0 0 3px rgba(47, 125, 246, 0.14)',
   },
   motion: { fast: 160, standard: 180, easing: 'ease' },
   breakpoint: { compact: 640, medium: 1040, wide: 1320 },

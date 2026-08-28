@@ -91,6 +91,18 @@ foreach ($role in $colorRoles) {
   Assert-True ($cssMatch.Groups['value'].Value.Trim() -eq $typescriptMatch.Groups['value'].Value.Trim()) "CSS/TypeScript parity failed for $($role.TypeScript)"
 }
 
+$typescriptPrimaryGlow = [regex]::Match(
+  $typescript,
+  "(?m)^\s*primaryGlow:\s*'(?<value>[^']+)',\s*$"
+).Groups['value'].Value.Trim()
+$typescriptFocusShadow = [regex]::Match(
+  $typescript,
+  "(?m)^\s*focus:\s*'(?<value>[^']+)',\s*$"
+).Groups['value'].Value.Trim()
+Assert-True (
+  $typescriptFocusShadow -eq "0 0 0 3px $typescriptPrimaryGlow"
+) 'TypeScript focus shadow must consume the same default as primaryGlow'
+
 $pageRule = [regex]::Match($css, '(?s)\.fy-ui \.fy-page\s*\{(?<body>.*?)\}').Groups['body'].Value
 Assert-True ($pageRule -match 'var\(--fy-color-primary-glow\)') 'Page glow must consume the primary-glow semantic role'
 Assert-True ($pageRule -match 'var\(--fy-color-accent-glow\)') 'Page glow must consume the accent-glow semantic role'
