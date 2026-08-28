@@ -7,7 +7,7 @@ description: Use when designing, implementing, or restyling a frontend that need
 
 ## Core principle
 
-Transfer the visual language, not the source product. Preserve the target project's framework, brand, components, terminology, information architecture, and authorization boundaries.
+Transfer the visual language, not the source product. Preserve verified target-project framework, brand, component, terminology, information-architecture, and authorization conventions.
 
 ## Adapt before applying
 
@@ -31,8 +31,8 @@ Choose density by task:
 
 ## Output contract
 
-State the selected task mode and the existing conventions being preserved. Define semantic hierarchy and layout before decorative details. Make recommendations executable with token roles, dimensions or ranges, component states, overflow behavior, and breakpoints appropriate to the target. For reviews, report findings without editing. For implementation requests, use the target project's native patterns.
+State the selected task mode, what target context was supplied, what you inspected, and which conventions that evidence verifies. Explicitly label uninspected framework, tokens, components, routes, permissions, and business rules as unknown. Keep recommendations that depend on unknowns conditional and reversible instead of claiming those conventions were preserved. Define semantic hierarchy and layout before decorative details. Make recommendations executable with token roles, dimensions or ranges, component states, overflow behavior, and breakpoints appropriate to the target. For reviews, report findings without editing. For implementation requests, use verified target-project patterns.
 
 ## Completion check
 
-Verify hierarchy, semantic states, keyboard focus, contrast, long text, scrolling, loading and empty states, reduced motion, responsive priority, and operation reachability. Remove source-domain language and assumptions from reusable structures.
+Verify hierarchy and semantic states; 4.5:1 contrast for normal or small text; 3:1 for large text and meaningful component or focus boundaries; a solid offset keyboard-focus indicator with forced-colors support; long text; scrolling; loading and empty states; reduced motion; responsive priority; and operation reachability. Remove source-domain language and assumptions from reusable structures.

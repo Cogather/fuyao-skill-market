@@ -1,15 +1,22 @@
 :root {
   --fy-color-canvas-start: #f2f7ff;
   --fy-color-canvas: #fbfcff;
+  --fy-color-canvas-end: #ffffff;
   --fy-color-surface: #ffffff;
+  --fy-color-surface-muted: #f8fafc;
+  --fy-color-surface-translucent: rgba(255, 255, 255, 0.88);
   --fy-color-heading: #07172f;
   --fy-color-text: #52647d;
+  --fy-color-readable-muted: #667085;
   --fy-color-muted: #94a3b8;
   --fy-color-line: #e2e8f0;
   --fy-color-primary: #2f7df6;
   --fy-color-primary-strong: #2563eb;
+  --fy-color-on-primary: #ffffff;
   --fy-color-accent: #7552ff;
   --fy-color-accent-secondary: #2ecdd3;
+  --fy-color-primary-glow: rgba(47, 125, 246, 0.14);
+  --fy-color-accent-glow: rgba(117, 82, 255, 0.11);
   --fy-color-success: #16a34a;
   --fy-color-warning: #f59e0b;
   --fy-color-danger: #dc2626;
@@ -43,7 +50,7 @@
   --fy-shadow-soft: 0 10px 28px rgba(35, 52, 84, 0.06);
   --fy-shadow-raised: 0 18px 48px rgba(35, 52, 84, 0.08);
   --fy-shadow-floating: 0 24px 70px rgba(15, 23, 42, 0.18);
-  --fy-focus-ring: 0 0 0 3px rgba(47, 125, 246, 0.18);
+  --fy-focus-ring: 0 0 0 3px var(--fy-color-primary-glow);
   --fy-motion-fast: 160ms;
   --fy-motion-standard: 180ms;
   --fy-motion-easing: ease;
@@ -66,9 +73,9 @@
 .fy-ui .fy-page {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 10% -5%, rgba(47, 125, 246, 0.14), transparent 28%),
-    radial-gradient(circle at 90% -4%, rgba(117, 82, 255, 0.11), transparent 30%),
-    linear-gradient(180deg, var(--fy-color-canvas-start), var(--fy-color-canvas) 44%, #fff);
+    radial-gradient(circle at 10% -5%, var(--fy-color-primary-glow), transparent 28%),
+    radial-gradient(circle at 90% -4%, var(--fy-color-accent-glow), transparent 30%),
+    linear-gradient(180deg, var(--fy-color-canvas-start), var(--fy-color-canvas) 44%, var(--fy-color-canvas-end));
 }
 
 .fy-ui .fy-shell {
@@ -152,7 +159,7 @@
   padding: var(--fy-space-7);
   border: 1px solid var(--fy-color-line);
   border-radius: var(--fy-radius-feature);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--fy-color-surface-translucent);
   box-shadow: var(--fy-shadow-soft);
 }
 
@@ -161,6 +168,11 @@
   margin-top: var(--fy-space-2);
   color: var(--fy-color-heading);
   font-size: var(--fy-font-size-section);
+}
+
+.fy-ui .fy-metric > span,
+.fy-ui .fy-card > p {
+  color: var(--fy-color-readable-muted);
 }
 
 .fy-ui .fy-toolbar {
@@ -172,7 +184,7 @@
   padding: var(--fy-space-7);
   border: 1px solid var(--fy-color-line);
   border-radius: var(--fy-radius-panel);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--fy-color-surface-translucent);
   box-shadow: var(--fy-shadow-soft);
 }
 
@@ -219,9 +231,9 @@
 }
 
 .fy-ui .fy-button--primary {
-  border-color: #1d1d1f;
-  background: #1d1d1f;
-  color: #fff;
+  border-color: var(--fy-color-primary-strong);
+  background: var(--fy-color-primary-strong);
+  color: var(--fy-color-on-primary);
 }
 
 .fy-ui .fy-button:hover {
@@ -229,7 +241,8 @@
 }
 
 .fy-ui :focus-visible {
-  outline: 0;
+  outline: 2px solid var(--fy-color-primary);
+  outline-offset: 2px;
   box-shadow: var(--fy-focus-ring);
 }
 
@@ -273,7 +286,7 @@
   padding-inline: var(--fy-space-3);
   border: 1px solid var(--fy-color-line);
   border-radius: var(--fy-radius-control);
-  background: #f8fafc;
+  background: var(--fy-color-surface-muted);
   color: var(--fy-color-text);
   font-size: var(--fy-font-size-sm);
 }
@@ -302,7 +315,7 @@
 .fy-ui .fy-table th {
   position: sticky;
   top: 0;
-  background: #f8fafc;
+  background: var(--fy-color-surface-muted);
   color: var(--fy-color-heading);
   font-size: var(--fy-font-size-sm);
 }
@@ -322,6 +335,14 @@
   .fy-ui .fy-card-grid,
   .fy-ui .fy-toolbar { grid-template-columns: 1fr; }
   .fy-ui .fy-button { width: 100%; }
+}
+
+@media (forced-colors: active) {
+  .fy-ui :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

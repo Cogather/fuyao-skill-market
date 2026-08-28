@@ -34,13 +34,19 @@ Consumes semantic roles and density modes from `design-language.md` plus page re
 - Feedback distinguishes loading, success, warning, error, empty, disabled, and unauthorized states and gives a next step when one exists.
 - Empty states explain why content is absent and offer an action only when that action is valid.
 
+## Accessibility guardrails
+
+- Normal and small text, including metadata and help, meets at least 4.5:1 contrast. Large text and meaningful component or focus boundaries meet at least 3:1.
+- Readable metadata, help, and secondary content use the readable-muted role. Reserve the weaker muted role for disabled or nonessential context.
+- Every interactive component exposes a solid 2px focus outline with a 2px offset. Keep any low-opacity shadow as enhancement, and use a solid system-color outline when forced colors are active.
+
 ## State checklist
 
 - `default`: Preserve the intended hierarchy without depending on decoration, motion, or high-saturation color.
 - `hover`: Use subtle surface, border, or text emphasis with a restrained 1–3px maximum lift; never let hover outrank the primary task.
 - `active/selected`: Keep selection explicit with shape, placement, weight, or underline in addition to color.
-- `focus-visible`: Show a visible focus ring and ensure the focused element remains readable against canvas and surface roles.
-- `disabled`: Communicate unavailable actions through muted treatment and, when helpful, short explanatory copy.
+- `focus-visible`: Show the solid offset outline, retain an optional shadow enhancement, and ensure the focused element remains readable against canvas and surface roles, including in forced-colors mode.
+- `disabled`: Communicate unavailable actions through the muted role and, when helpful, short explanatory copy; do not reuse that weak contrast for readable metadata or help.
 - `loading`: Reserve space for incoming content, avoid layout jumps, and show whether the user should wait or can continue elsewhere.
 - `empty`: Explain absence before suggesting recovery, and keep the empty treatment proportional to the surrounding pattern.
 - `error`: Place the message adjacent to the affected region, preserve recovery actions, and use danger semantics without overwhelming the page.

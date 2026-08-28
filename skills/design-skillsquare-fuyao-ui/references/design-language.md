@@ -17,20 +17,29 @@ Professional, lightweight, clear, and trustworthy, with restrained AI-product cu
 | --- | --- | --- |
 | Canvas start | #f2f7ff | Optional cool opening tint |
 | Canvas | #fbfcff | Main light background |
+| Canvas end | #ffffff | Neutral gradient endpoint |
 | Surface | #ffffff | Cards, filters, work areas |
+| Muted surface | #f8fafc | Quiet tags and table headers |
+| Translucent surface | rgba(255, 255, 255, 0.88) | Optional elevated surface over a decorative canvas |
 | Heading | #07172f | Highest text emphasis |
 | Text | #52647d | Body and descriptions |
-| Muted | #94a3b8 | Hints, placeholders, disabled context |
+| Readable muted | #667085 | Metadata, help, and secondary content that must remain readable |
+| Muted | #94a3b8 | Disabled or nonessential context only |
 | Line | #e2e8f0 | Structural boundaries |
-| Primary | #2f7df6 | Actions, selection, focus |
-| Primary strong | #2563eb | Hover and high-emphasis blue |
+| Primary | #2f7df6 | Selection, focus, and restrained accent |
+| Primary strong | #2563eb | Contrast-safe primary actions with on-primary content |
+| On primary | #ffffff | Text and icons on the primary-action surface |
 | Accent | #7552ff | Restrained gradient or intelligent feature cue |
 | Accent secondary | #2ecdd3 | Restrained gradient support |
+| Primary glow | rgba(47, 125, 246, 0.14) | Low-opacity primary atmosphere and focus enhancement |
+| Accent glow | rgba(117, 82, 255, 0.11) | Low-opacity accent atmosphere |
 | Success | #16a34a | Completed and positive state |
 | Warning | #f59e0b | Attention and pending state |
 | Danger | #dc2626 | Destructive and failed state |
 
 Use blue-purple or blue-cyan gradients only for a hero phrase, compact icon tile, intelligent-feature cue, or primary action that needs product identity. Do not apply gradients to every card, table row, or status.
+
+Map every rendered role through the target theme, including canvas endpoints, readable-muted text, quiet and translucent surfaces, on-primary content, and glows. A remapped primary or accent must not leave hardcoded component colors behind.
 
 ## Typography
 
@@ -53,6 +62,12 @@ Controls use 6–8px radii, ordinary panels 8–12px, feature metrics 18–22px,
 ## Background
 
 A page may combine a very light neutral gradient, one or two low-opacity corner glows, and a subtle 34px grid that fades before the content body. Remove these effects when they reduce contrast or crowd a dense workspace.
+
+## Contrast and focus
+
+Measure contrast in the rendered target theme: normal and small text, including readable metadata and help, needs at least 4.5:1; large text and meaningful component or focus boundaries need at least 3:1. Reserve the weaker muted role for disabled or nonessential context rather than readable secondary content.
+
+Keyboard focus uses a solid 2px outline with a 2px offset. A low-opacity shadow may enhance it but cannot be the only indicator. In forced-colors mode, retain a solid system-color outline and do not depend on shadows, gradients, or author colors.
 
 ## Interaction
 
