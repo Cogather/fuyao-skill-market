@@ -1,0 +1,5 @@
+interface:
+  display_name: "鎵舵憞 Skillsquare UI"
+  short_description: "灏嗘壎鎽囪交閲忎紒涓?UI 璁捐璇█鐏垫椿杩佺Щ鍒颁换鎰忓墠绔」鐩?
+  brand_color: "#2F7DF6"
+  default_prompt: "Use $design-skillsquare-fuyao-ui to design this frontend with the Fuyao visual language while preserving its existing framework, brand, components, and business terminology."
