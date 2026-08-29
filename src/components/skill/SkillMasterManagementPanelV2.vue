@@ -1268,7 +1268,7 @@ async function changeImportPageSize(): Promise<void> {
 }
 
 function selectSquareSkill(id: string): void {
-  importSelectedId.value = id;
+  importSelectedId.value = importSelectedId.value === id ? '' : id;
   editor.error = '';
 }
 
@@ -2599,7 +2599,7 @@ onBeforeUnmount(() => {
                 <strong>已选 Skill</strong>
                 <span>名称与说明以 Skill 广场为准，不可修改</span>
               </header>
-              <div class="import-selected__name">{{ selectedSquareSkill.name }}</div>
+              <div class="import-selected__name" :title="selectedSquareSkill.name">{{ selectedSquareSkill.name }}</div>
               <div class="import-selected__tags">
                 <em v-for="tag in selectedSquareSkill.tags.slice(0, 4)" :key="tag">
                   {{ tag }}
@@ -2607,7 +2607,7 @@ onBeforeUnmount(() => {
                 <em>{{ selectedSquareSkill.category }}</em>
                 <em v-if="selectedSquareSkill.version">v{{ selectedSquareSkill.version }}</em>
               </div>
-              <p>{{ selectedSquareSkill.description || '暂无描述' }}</p>
+              <p :title="selectedSquareSkill.description || '暂无描述'">{{ selectedSquareSkill.description || '暂无描述' }}</p>
             </div>
 
             <div class="form-grid import-form-grid">
@@ -3271,6 +3271,7 @@ onBeforeUnmount(() => {
   gap: 11px;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   flex: 0 0 54px;
   height: 54px;
   box-sizing: border-box;
@@ -3336,10 +3337,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex: 0 1 auto;
   min-width: 0;
+  max-width: 45%;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
 }
 .import-row__meta em {
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 120px;
   overflow: hidden;
   padding: 3px 7px;
@@ -3433,8 +3438,10 @@ onBeforeUnmount(() => {
 }
 .import-selected__name {
   min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #23314f;
   font-size: 15px;
   font-weight: 850;
@@ -3456,7 +3463,13 @@ onBeforeUnmount(() => {
 }
 .import-selected > p {
   margin: 8px 0 0;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
   word-break: break-word;
   color: #66758c;
   font-size: 12px;
