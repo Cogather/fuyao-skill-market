@@ -767,6 +767,9 @@ function applyCurrentScopeToEditor(): void {
 }
 
 function ensureProductSkillNamePrefix(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   const prefix = requiredSkillNamePrefix.value;
   if (!prefix) {
     return true;
@@ -783,6 +786,9 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 function ensureSkillNameFormat(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   if (isCatalogItemNameValid(editor.name.trim())) return true;
   editor.error =
     'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
@@ -2317,7 +2323,9 @@ onBeforeUnmount(() => {
         <form
           class="dialog"
           :class="{
-            'is-imported-edit': editor.mode === 'edit' && editor.skillSource === 'imported',
+            'is-imported-edit':
+              (editor.mode === 'edit' && editor.skillSource === 'imported') ||
+              (editor.mode === 'create' && createTab === 'import'),
           }"
           @click.stop
           @pointerdown.stop
@@ -3893,7 +3901,7 @@ onBeforeUnmount(() => {
   border-color: #d7dfeb;
   box-shadow: none;
 }
-/* 广场引入的记录编辑时：责任 Owner / 开发责任人可修改，输入框保持白底（与计划完成时间一致），避免误读为禁用 */
+/* 广场引入场景（编辑引入记录 / 新建从广场引入）：责任 Owner / 开发责任人可修改，输入框保持白底，避免误读为禁用 */
 .dialog.is-imported-edit .person-search__control > input[readonly] {
   background: #ffffff;
   color: #344159;

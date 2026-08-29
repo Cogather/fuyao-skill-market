@@ -134,6 +134,9 @@ function validateProductCapabilityName(
   type: MockHarnessCapabilityType,
   payload: SkillMasterPayload,
 ): void {
+  if (payload.skillSource === 'imported') {
+    return;
+  }
   const name = payload.name.trim();
   const label = capabilityLabel(type);
   if (!isCatalogItemNameValid(name)) {
