@@ -767,6 +767,9 @@ function applyCurrentScopeToEditor(): void {
 }
 
 function ensureProductSkillNamePrefix(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   const prefix = requiredSkillNamePrefix.value;
   if (!prefix) {
     return true;
@@ -783,6 +786,9 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 function ensureSkillNameFormat(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   if (isCatalogItemNameValid(editor.name.trim())) return true;
   editor.error =
     'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
@@ -2317,7 +2323,10 @@ onBeforeUnmount(() => {
         <form
           class="dialog"
           :class="{
-            'is-imported-edit': editor.mode === 'edit' && editor.skillSource === 'imported',
+            'is-create-dialog': editor.mode === 'create',
+            'is-imported-edit':
+              (editor.mode === 'edit' && editor.skillSource === 'imported') ||
+              (editor.mode === 'create' && createTab === 'import'),
           }"
           @click.stop
           @pointerdown.stop
@@ -2370,6 +2379,7 @@ onBeforeUnmount(() => {
               从 Skill 广场引入
             </button>
           </div>
+          <div class="dialog-scroll-body">
           <div v-if="editor.mode === 'edit'" class="note">
             <b>来源</b
             ><span>
@@ -2378,9 +2388,6 @@ onBeforeUnmount(() => {
                 >，仅可修改责任 Owner、开发责任人和计划完成时间</template
               ></span
             >
-          </div>
-          <div v-else class="note">
-            <b>部门语义</b><span>Owner 所在部门是人员属性，不作为 Skill 的规划归属。</span>
           </div>
           <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
             <label class="wide"
@@ -2714,6 +2721,7 @@ onBeforeUnmount(() => {
           </div>
 
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
+          </div>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
             <button
@@ -3142,18 +3150,18 @@ onBeforeUnmount(() => {
 }
 .dialog-tabs {
   display: inline-flex;
-  gap: 4px;
+  gap: 28px;
   margin-bottom: 16px;
-  padding: 4px;
-  border: 1px solid #e2e8f4;
-  border-radius: 10px;
-  background: #f7f9fd;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 .dialog-tab {
+  position: relative;
   min-height: 34px;
-  padding: 0 16px;
+  padding: 0 0 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 0;
   background: transparent;
   color: #64748b;
   font-size: 13px;
@@ -3168,11 +3176,18 @@ onBeforeUnmount(() => {
   color: #3156b5;
 }
 .dialog-tab.is-active {
-  background: #ffffff;
   color: #3569e8;
-  box-shadow:
-    0 2px 8px rgba(53, 105, 232, 0.12),
-    inset 0 0 0 1px #c9d8ff;
+  box-shadow: none;
+}
+.dialog-tab.is-active::after {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: #3569e8;
+  content: '';
 }
 .dialog-source-badge {
   display: inline-flex;
@@ -3810,6 +3825,26 @@ onBeforeUnmount(() => {
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
 }
+.dialog.is-create-dialog {
+  display: flex;
+  flex-direction: column;
+  height: calc(68vh - 44px);
+  max-height: calc(100vh - 92px);
+  overflow: hidden;
+}
+.dialog.is-create-dialog > header,
+.dialog.is-create-dialog > .dialog-tabs,
+.dialog.is-create-dialog > footer {
+  flex: 0 0 auto;
+}
+.dialog-scroll-body {
+  min-height: 0;
+  overflow-x: hidden;
+}
+.dialog.is-create-dialog > .dialog-scroll-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
 .dialog > header {
   display: flex;
   align-items: start;
@@ -3893,10 +3928,11 @@ onBeforeUnmount(() => {
   border-color: #d7dfeb;
   box-shadow: none;
 }
-/* 广场引入的记录编辑时：责任 Owner / 开发责任人可修改，输入框保持白底（与计划完成时间一致），避免误读为禁用 */
+/* 广场引入场景（新建引入 / 编辑引入记录）：人员选中后仍可清除重选，保持白底避免误读为禁用。 */
 .dialog.is-imported-edit .person-search__control > input[readonly] {
   background: #ffffff;
-  color: #344159;
+  color: #17233d;
+  font-size: 13px;
 }
 .person-search {
   position: relative;
@@ -3918,7 +3954,9 @@ onBeforeUnmount(() => {
 }
 .person-search__control > input[readonly] {
   padding-right: 38px;
-  background: #f8fbff;
+  background: #ffffff;
+  color: #17233d;
+  font-size: 13px;
   cursor: default;
 }
 .person-search__control > input:focus {
