@@ -2548,8 +2548,10 @@ onBeforeUnmount(() => {
                 >
                   <span class="import-row__radio" aria-hidden="true"></span>
                   <span class="import-row__main">
-                    <strong>{{ row.name }}</strong>
-                    <small>{{ row.description || '暂无描述' }}</small>
+                    <strong :title="row.name">{{ row.name }}</strong>
+                    <small :title="row.description || '暂无描述'">{{
+                      row.description || '暂无描述'
+                    }}</small>
                   </span>
                   <span class="import-row__meta">
                     <em v-if="row.version" class="is-version">v{{ row.version }}</em>
@@ -3241,7 +3243,8 @@ onBeforeUnmount(() => {
   /* 固定为默认每页 5 条时的高度：切换每页条数只影响是否出现滚动条，高度与行高都保持不变 */
   height: 305px;
   padding: 3px 2px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .import-list::-webkit-scrollbar {
   width: 6px;
@@ -3261,6 +3264,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 11px;
   width: 100%;
+  max-width: 100%;
   flex: 0 0 54px;
   height: 54px;
   box-sizing: border-box;
@@ -3269,6 +3273,7 @@ onBeforeUnmount(() => {
   border-radius: 9px;
   background: #fbfcff;
   text-align: left;
+  overflow: hidden;
   cursor: pointer;
   transition:
     border-color 0.16s ease,
@@ -3295,12 +3300,15 @@ onBeforeUnmount(() => {
   border: 5px solid #3569e8;
 }
 .import-row__main {
-  display: grid;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 3px;
 }
 .import-row__main strong {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: #2c3950;
   font-size: 13px;
@@ -3309,6 +3317,8 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .import-row__main small {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   color: #8c97a8;
   font-size: 11px;
@@ -3318,12 +3328,13 @@ onBeforeUnmount(() => {
 }
 .import-row__meta {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   align-items: center;
   gap: 6px;
 }
 .import-row__meta em {
-  max-width: 140px;
+  max-width: 120px;
   overflow: hidden;
   padding: 3px 7px;
   border-radius: 6px;
