@@ -639,6 +639,9 @@ export type CreateSkillMasterManagementParams = {
   dimName: string;
 };
 
+/** Skill 清单来源：created 直接新建 / imported 从 Skill 广场引入（缺省视为 created） */
+export type SkillMasterSkillSource = 'created' | 'imported';
+
 export type CreateSkillMasterManagementBody = {
   skillName: string;
   skillDescription: string;
@@ -647,6 +650,8 @@ export type CreateSkillMasterManagementBody = {
   developOwnerName: string;
   developOwnerId: string;
   planFinishDate: string;
+  /** 来源标识；后端契约待对齐，缺省按 created 处理 */
+  skillSource?: SkillMasterSkillSource;
 };
 
 export type CreateCommandMasterManagementBody = Omit<
@@ -707,6 +712,8 @@ export type SkillMasterManagementItemDto = {
   updatedAt?: number[] | string | null;
   skillMatchId?: string | null;
   skillMatchLevel?: string | null;
+  /** 来源：created 直接新建 / imported 从 Skill 广场引入；缺省按 created 处理 */
+  skillSource?: string;
   referenceCount?: number;
   planningCount?: number;
   planningReferenceCount?: number;

@@ -1398,7 +1398,7 @@ function exportRecords(): void {
                   class="scene-tag-pill"
                   :title="tag"
                 >
-                  {{ tag }}
+                  <span class="scene-tag-pill__text">{{ tag }}</span>
                 </span>
                 <button
                   v-if="tagsOf(primary).length > tagDisplayLimit"
@@ -2055,8 +2055,13 @@ input:focus {
   font-size: 11px;
   font-weight: 650;
   line-height: 1;
-  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.scene-tag-pill__text {
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 
