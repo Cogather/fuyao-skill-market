@@ -3311,6 +3311,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 55%;
   gap: 3px;
 }
 .import-row__main strong {
@@ -3335,7 +3336,7 @@ onBeforeUnmount(() => {
 }
 .import-row__meta {
   display: flex;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   max-width: 45%;
   align-items: center;
@@ -3345,7 +3346,7 @@ onBeforeUnmount(() => {
 .import-row__meta em {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 120px;
+  max-width: 140px;
   overflow: hidden;
   padding: 3px 7px;
   border-radius: 6px;
