@@ -275,16 +275,13 @@ function normalizePayload(payload: SkillMasterPayload): SkillMasterPayload {
 
 function validatePayload(payload: SkillMasterPayload, requiredProductPrefix: string): void {
   if (!payload.name) throw new Error('请输入 Skill 名称');
-  if (!payload.description) throw new Error('请输入 Skill 说明');
-  if (!payload.owner) throw new Error('请输入责任 Owner');
-  if (payload.skillSource === 'imported') {
-    return;
-  }
   if (!isCatalogItemNameValid(payload.name)) {
     throw new Error(
       'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26',
     );
   }
+  if (!payload.description) throw new Error('请输入 Skill 说明');
+  if (!payload.owner) throw new Error('请输入责任 Owner');
   if (payload.level === '产品级' && requiredProductPrefix) {
     if (!payload.name.startsWith(requiredProductPrefix)) {
       throw new Error('产品级 Skill 名称需以产品名称的小写形式“' + requiredProductPrefix + '”开头');
