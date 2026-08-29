@@ -3214,16 +3214,22 @@ onBeforeUnmount(() => {
 .import-panel {
   display: grid;
   gap: 12px;
+  min-width: 0;
   margin-top: 14px;
+}
+.import-panel > * {
+  min-width: 0;
 }
 .import-search {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
   gap: 9px;
 }
 .import-search input {
   box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   height: 40px;
   padding: 0 12px;
   border: 1px solid #d7dfeb;
@@ -3358,9 +3364,11 @@ onBeforeUnmount(() => {
 }
 .import-pagination {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 9px;
+  min-width: 0;
   color: #7c879a;
   font-size: 11px;
 }
@@ -3402,6 +3410,7 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 .import-selected {
+  min-width: 0;
   padding: 12px 14px;
   border: 1px solid #c9d8ff;
   border-radius: 10px;
@@ -3423,6 +3432,9 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 .import-selected__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   color: #23314f;
   font-size: 15px;
   font-weight: 850;
@@ -3444,12 +3456,17 @@ onBeforeUnmount(() => {
 }
 .import-selected > p {
   margin: 8px 0 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   color: #66758c;
   font-size: 12px;
   line-height: 1.6;
 }
 .import-form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.import-form-grid > * {
+  min-width: 0;
 }
 .import-form-grid label:last-child {
   grid-column: 1 / -1;
@@ -3772,7 +3789,8 @@ onBeforeUnmount(() => {
 .dialog {
   width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 22px;
   border-radius: 14px;
   background: #fff;
