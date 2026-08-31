@@ -38,7 +38,7 @@ import MarketDeptCascader from './MarketDeptCascader.vue';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type TaxonomyKind = 'scene' | 'activity';
-type TaxonomyRecord = SceneRecord | ActivityRecord;
+type TaxonomyRecord = (SceneRecord | ActivityRecord) & { tags?: string[] };
 type ConfigurationLevel = '产品级' | '部门级';
 
 interface DepartmentTreeNode {
@@ -377,6 +377,7 @@ interface HttpTaxonomyRow {
   deptName: string;
   primary: string;
   secondary: string;
+  tags: string[];
   sort: number;
   referenceCount: number;
 }
@@ -398,6 +399,17 @@ function responseRows(response: unknown): unknown[] {
         .find((value): value is unknown[] => Array.isArray(value)) ?? []);
 }
 
+function normalizeTagNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const tags = value.map((item) => {
+    if (typeof item === 'string' || typeof item === 'number') return readText(item);
+    const record = asRecord(item);
+    return readText(record.tagName ?? record.name ?? record.label ?? record.tag);
+  });
+  return [...new Set(tags.filter(Boolean))];
+}
+
 function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
   assertHttpSuccess(response, labels.value.item + '列表加载失败');
   const primaryKey = props.kind === 'scene' ? 'firstScene' : 'activityNodeName';
@@ -415,6 +427,7 @@ function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
         deptName: readText(record.deptName),
         primary,
         secondary: readText(record[secondaryKey]),
+        tags: props.kind === 'scene' ? normalizeTagNames(record.tags) : [],
         sort: Number.isFinite(parsedSort) ? parsedSort : index + 1,
         referenceCount:
           Number.isFinite(parsedReferenceCount) && parsedReferenceCount > 0
@@ -446,6 +459,7 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
       id: parentId,
       parentId: null,
       name: primary,
+      tags: [...new Set(children.flatMap(({ row }) => row.tags))],
       sort: primaryIndex + 1,
       status: 'enabled',
       skillCount: directReferenceCount,
@@ -473,10 +487,13 @@ function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[]
 
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
   const params = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
-  const response =
-    props.kind === 'scene'
-      ? await skillBaseService.getSceneOptionGroups(params)
-      : await skillBaseService.getActivityOptionGroups(params);
+  if (props.kind === 'scene') {
+    tagOptions.value = await listSceneTags();
+    const response = await skillBaseService.getSceneOptionGroups(params);
+    return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
+  }
+
+  const response = await skillBaseService.getActivityOptionGroups(params);
   return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
 }
 
@@ -990,6 +1007,14 @@ function toggleTagExpand(id: string): void {
 async function refreshSceneTagBindings(): Promise<void> {
   if (props.kind !== 'scene') return;
   expandedTagSceneIds.value = new Set<string>();
+
+  if (useHttpTaxonomySource) {
+    sceneTagBindings.value = Object.fromEntries(
+      primaryRecords.value.map((primary) => [primary.id, [...(primary.tags ?? [])]]),
+    );
+    return;
+  }
+
   const next: Record<string, string[]> = {};
   await Promise.all(
     primaryRecords.value.map(async (primary) => {
@@ -1004,8 +1029,10 @@ async function openTagDialog(record: TaxonomyRecord): Promise<void> {
   tagDialogSceneName.value = record.name;
   tagSelected.value = [...tagsOf(record)];
   tagError.value = '';
-  tagLoading.value = true;
+  tagLoading.value = !useHttpTaxonomySource;
   tagDialogOpen.value = true;
+  if (useHttpTaxonomySource) return;
+
   try {
     tagOptions.value = await listSceneTags();
   } catch (error) {

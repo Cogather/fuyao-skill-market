@@ -39,6 +39,7 @@ export interface SceneOptionGroupRow {
   deptName: string;
   firstScene: string;
   secondScene: string;
+  tags: string[];
   sort: number;
   referenceCount: number;
 }
