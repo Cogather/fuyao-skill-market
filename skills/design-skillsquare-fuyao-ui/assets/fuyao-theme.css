@@ -20,8 +20,9 @@
   --fy-color-success: #16a34a;
   --fy-color-warning: #f59e0b;
   --fy-color-danger: #dc2626;
-  --fy-font-sans: 'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC',
-    'Microsoft YaHei UI', system-ui, sans-serif;
+  --fy-font-sans:
+    'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI', system-ui,
+    sans-serif;
   --fy-font-size-xs: 10px;
   --fy-font-size-sm: 12px;
   --fy-font-size-compact: 13px;
@@ -75,7 +76,12 @@
   background:
     radial-gradient(circle at 10% -5%, var(--fy-color-primary-glow), transparent 28%),
     radial-gradient(circle at 90% -4%, var(--fy-color-accent-glow), transparent 30%),
-    linear-gradient(180deg, var(--fy-color-canvas-start), var(--fy-color-canvas) 44%, var(--fy-color-canvas-end));
+    linear-gradient(
+      180deg,
+      var(--fy-color-canvas-start),
+      var(--fy-color-canvas) 44%,
+      var(--fy-color-canvas-end)
+    );
 }
 
 .fy-ui .fy-shell {
@@ -131,7 +137,12 @@
 
 .fy-ui .fy-gradient-text {
   color: transparent;
-  background: linear-gradient(105deg, var(--fy-color-primary), var(--fy-color-accent) 52%, var(--fy-color-accent-secondary));
+  background: linear-gradient(
+    105deg,
+    var(--fy-color-primary),
+    var(--fy-color-accent) 52%,
+    var(--fy-color-accent-secondary)
+  );
   background-clip: text;
   -webkit-background-clip: text;
 }
@@ -321,20 +332,34 @@
 }
 
 @media (max-width: 1320px) {
-  .fy-ui .fy-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fy-ui .fy-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1040px) {
-  .fy-ui .fy-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .fy-ui .fy-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fy-ui .fy-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fy-ui .fy-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
-  .fy-ui .fy-topbar { align-items: flex-start; flex-direction: column; padding-block: var(--fy-space-3); }
+  .fy-ui .fy-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-block: var(--fy-space-3);
+  }
   .fy-ui .fy-metric-grid,
   .fy-ui .fy-card-grid,
-  .fy-ui .fy-toolbar { grid-template-columns: 1fr; }
-  .fy-ui .fy-button { width: 100%; }
+  .fy-ui .fy-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .fy-ui .fy-button {
+    width: 100%;
+  }
 }
 
 @media (forced-colors: active) {

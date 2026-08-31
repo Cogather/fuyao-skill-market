@@ -112,17 +112,13 @@ export const harnessCapabilityPlanningHttpEndpoints: Record<
 };
 
 type CapabilityPlanningCreateBody =
-  | CreateCommandPlanningSupplementBody
-  | CreateAgentPlanningSupplementBody;
+  CreateCommandPlanningSupplementBody | CreateAgentPlanningSupplementBody;
 type CapabilityPlanningUpdateBody =
-  | UpdateCommandPlanningSupplementBody
-  | UpdateAgentPlanningSupplementBody;
+  UpdateCommandPlanningSupplementBody | UpdateAgentPlanningSupplementBody;
 type CapabilityCatalogCreateBody =
-  | CreateCommandMasterManagementBody
-  | CreateAgentMasterManagementBody;
+  CreateCommandMasterManagementBody | CreateAgentMasterManagementBody;
 type CapabilityCatalogUpdateBody =
-  | UpdateCommandMasterManagementBody
-  | UpdateAgentMasterManagementBody;
+  UpdateCommandMasterManagementBody | UpdateAgentMasterManagementBody;
 
 type CapabilityHttpClient = {
   queryPlanning(params: QuerySkillPlanningSupplementParams): Promise<unknown>;
@@ -776,7 +772,9 @@ function validateHttpCatalogItemName(
     );
   }
   if (name.length === prefix.length) {
-    throw new Error(`\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${capabilityLabel} \u540d\u79f0`);
+    throw new Error(
+      `\u8bf7\u5728\u201c${prefix}\u201d\u540e\u8865\u5145 ${capabilityLabel} \u540d\u79f0`,
+    );
   }
 }
 

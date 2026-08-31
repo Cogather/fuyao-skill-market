@@ -582,7 +582,9 @@ async function reload(): Promise<void> {
   const currentOption =
     ownerManageableDepartmentOptions.value.find((option) =>
       sameDepartmentPath(option.path, selectedDepartmentPath.value),
-    ) ?? restoredOption ?? ownerOptions[0];
+    ) ??
+    restoredOption ??
+    ownerOptions[0];
   selectedDepartmentPath.value = [...currentOption.path];
   emit('scope-change', { departmentPath: [...currentOption.path] });
 

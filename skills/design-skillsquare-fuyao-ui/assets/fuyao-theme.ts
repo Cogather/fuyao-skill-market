@@ -23,9 +23,18 @@ export const fuyaoTheme = {
     danger: '#dc2626',
   },
   font: {
-    sans:
-      "'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif",
-    size: { xs: 10, sm: 12, compact: 13, body: 15, title: 18, section: 24, page: 34, display: 42, hero: 52 },
+    sans: "'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif",
+    size: {
+      xs: 10,
+      sm: 12,
+      compact: 13,
+      body: 15,
+      title: 18,
+      section: 24,
+      page: 34,
+      display: 42,
+      hero: 52,
+    },
   },
   space: [0, 4, 6, 8, 10, 12, 14, 16, 18, 24, 28, 32],
   radius: { control: 6, comfortable: 8, panel: 12, feature: 20, pill: 999 },

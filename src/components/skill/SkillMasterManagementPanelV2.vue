@@ -538,11 +538,10 @@ async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promis
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;
     const restoredOption = preferredScope
-      ? options.find(
+      ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
-        ) ??
-        options.find((item) => item.offeringName === preferredScope.offeringName)
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
     const firstOption = restoredOption ?? options[0];
     if (firstOption) {
@@ -566,7 +565,7 @@ function emitMasterScopeSnapshot(): void {
     departmentPath: [...masterDepartmentSegments.value],
     offeringId:
       masterScopeForm.level === '产品级'
-        ? selectedMasterProduct.value?.offeringId ?? masterScopeForm.offeringId
+        ? (selectedMasterProduct.value?.offeringId ?? masterScopeForm.offeringId)
         : '',
     offeringName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
   });
@@ -1111,7 +1110,12 @@ function publisherLabelOf(row: Record<string, unknown>): string {
   if (typeof rawOwnerList === 'string' && rawOwnerList.trim()) {
     try {
       const parsed = JSON.parse(rawOwnerList) as unknown;
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object') {
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed[0] &&
+        typeof parsed[0] === 'object'
+      ) {
         const ownerRecord = parsed[0] as Record<string, unknown>;
         const name = String(
           ownerRecord.lastName ??
@@ -1121,11 +1125,7 @@ function publisherLabelOf(row: Record<string, unknown>): string {
             '',
         ).trim();
         const id = String(
-          ownerRecord.Account ??
-            ownerRecord.account ??
-            ownerRecord.userId ??
-            ownerRecord.id ??
-            '',
+          ownerRecord.Account ?? ownerRecord.account ?? ownerRecord.userId ?? ownerRecord.id ?? '',
         ).trim();
         if (name || id) return [name, id].filter(Boolean).join(' ');
       }
@@ -1175,17 +1175,14 @@ function normalizeSquareSkillRows(response: unknown): {
   const record =
     response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
   const data = record.data ?? response;
-  const dataRecord =
-    data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const dataRecord = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
   const rawRows = Array.isArray(data)
     ? data
     : (['records', 'list', 'items', 'rows']
         .map((key) => dataRecord[key])
         .find((value): value is unknown[] => Array.isArray(value)) ?? []);
   const meta =
-    record.meta && typeof record.meta === 'object'
-      ? (record.meta as Record<string, unknown>)
-      : {};
+    record.meta && typeof record.meta === 'object' ? (record.meta as Record<string, unknown>) : {};
   const total = Number(dataRecord.total ?? meta.number ?? meta.total ?? rawRows.length);
   const rows = rawRows.map((item, index) => {
     const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
@@ -1364,9 +1361,7 @@ async function importFromSquare(): Promise<void> {
   try {
     const response = await skillBaseService.createSkillMasterManagement(body, params);
     if (response?.meta?.success !== true) {
-      editor.error = String(
-        response?.meta?.message || response?.message || '引入失败，请稍后重试',
-      );
+      editor.error = String(response?.meta?.message || response?.message || '引入失败，请稍后重试');
       return;
     }
     closeEditor();
@@ -1819,8 +1814,7 @@ async function requestBatchMasterDeleteConfirmation(): Promise<void> {
     (record) => ids.includes(record.id) && (record.referenceCount ?? 0) > 0,
   );
   if (referencedRecords.length) {
-    const names = referencedRecords
-      .map((record) => `“${record.name}”`);
+    const names = referencedRecords.map((record) => `“${record.name}”`);
     showToast(`${names.join('、')}已关联规划项，不能删除`);
     return;
   }
@@ -1919,19 +1913,16 @@ async function changeMasterPageSize(): Promise<void> {
   await reload();
 }
 
-watch(
-  requiredSkillNamePrefix,
-  (nextPrefix, previousPrefix) => {
-    if (!editor.open || editor.mode !== 'create') return;
-    if (!editor.name || editor.name === previousPrefix) {
-      editor.name = nextPrefix;
-      return;
-    }
-    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
-      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
-    }
-  },
-);
+watch(requiredSkillNamePrefix, (nextPrefix, previousPrefix) => {
+  if (!editor.open || editor.mode !== 'create') return;
+  if (!editor.name || editor.name === previousPrefix) {
+    editor.name = nextPrefix;
+    return;
+  }
+  if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+    editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  }
+});
 
 watch(importKeyword, scheduleImportKeywordSearch);
 
@@ -2313,13 +2304,7 @@ onBeforeUnmount(() => {
     />
 
     <Teleport to="body">
-      <div
-        v-if="editor.open"
-        class="overlay"
-        @click.stop
-        @pointerdown.stop
-        @pointerup.stop
-      >
+      <div v-if="editor.open" class="overlay" @click.stop @pointerdown.stop @pointerup.stop>
         <form
           class="dialog"
           :class="{
@@ -2380,244 +2365,46 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div class="dialog-scroll-body">
-          <div v-if="editor.mode === 'edit'" class="note">
-            <b>来源</b
-            ><span>
-              {{ sourceLabel(editor.skillSource)
-              }}<template v-if="editor.skillSource === 'imported'"
-                >，仅可修改责任 Owner、开发责任人和计划完成时间</template
-              ></span
-            >
-          </div>
-          <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
-            <label class="wide"
-              ><span>Skill 名称 *</span
-              ><input
-                v-model.trim="editor.name"
-                maxlength="64"
-                :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
-                :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
-              />
-              <small
-                v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
-                class="field-hint"
-                >从 Skill 广场引入的 Skill 名称不可修改</small
-              ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
-                >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
-              ></label
-            >
-            <label class="wide"
-              ><span>Skill 说明 *</span
-              ><textarea
-                v-model.trim="editor.description"
-                maxlength="300"
-                rows="4"
-                :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
-              ></textarea>
-              <small
-                v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
-                class="field-hint"
-                >从 Skill 广场引入的 Skill 说明不可修改</small
-              ></label
-            >
-            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
-              <span>责任 Owner *</span>
-              <div class="person-search__control">
-                <input
-                  :value="ownerPicker.keyword"
-                  type="text"
-                  autocomplete="off"
-                  :readonly="Boolean(editor.owner.trim())"
-                  placeholder="输入姓名或工号后选择"
-                  @focus="onOwnerPickerFocus"
-                  @input="onOwnerPickerInput"
+            <div v-if="editor.mode === 'edit'" class="note">
+              <b>来源</b
+              ><span>
+                {{ sourceLabel(editor.skillSource)
+                }}<template v-if="editor.skillSource === 'imported'"
+                  >，仅可修改责任 Owner、开发责任人和计划完成时间</template
+                ></span
+              >
+            </div>
+            <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
+              <label class="wide"
+                ><span>Skill 名称 *</span
+                ><input
+                  v-model.trim="editor.name"
+                  maxlength="64"
+                  :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
                 />
-                <button
-                  v-if="editor.owner.trim()"
-                  type="button"
-                  class="person-search__clear"
-                  title="清除责任 Owner"
-                  aria-label="清除责任 Owner"
-                  @mousedown.prevent
-                  @click.stop="clearOwnerSelection"
-                >
-                  ×
-                </button>
-              </div>
-              <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
-                <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
-                <template v-else>
-                  <button
-                    v-for="option in ownerPicker.options"
-                    :key="option.id || option.label"
-                    type="button"
-                    @click="selectOwner(option)"
-                  >
-                    <span
-                      ><strong>{{ option.chName || option.label }}</strong
-                      ><small>{{ option.id }}</small></span
-                    >
-                    <em>{{ option.deptName || '部门信息待补充' }}</em>
-                  </button>
-                  <span v-if="ownerPicker.message" class="person-search__empty">{{
-                    ownerPicker.message
-                  }}</span>
-                </template>
-              </div>
-            </label>
-            <!-- <label
-              ><span>Owner 所在部门</span
-              ><input v-model.trim="editor.department" placeholder="由 Owner 资料自动带出" readonly
-            /></label> -->
-            <label
-              class="develop-owner-picker person-search"
-              @keydown.esc="closeDevelopOwnerPersonSearch"
-            >
-              <span>开发责任人 *</span>
-              <div class="person-search__control">
-                <input
-                  :value="developOwnerPicker.keyword"
-                  type="text"
-                  autocomplete="off"
-                  :readonly="Boolean(editor.developOwner.trim())"
-                  placeholder="输入姓名或工号后选择"
-                  @focus="onDevelopOwnerPickerFocus"
-                  @input="onDevelopOwnerPickerInput"
-                />
-                <button
-                  v-if="editor.developOwner.trim()"
-                  type="button"
-                  class="person-search__clear"
-                  title="清除开发责任人"
-                  aria-label="清除开发责任人"
-                  @mousedown.prevent
-                  @click.stop="clearDevelopOwnerSelection"
-                >
-                  ×
-                </button>
-              </div>
-              <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
-                <span v-if="developOwnerPicker.loading" class="person-search__empty"
-                  >查询中...</span
-                >
-                <template v-else>
-                  <button
-                    v-for="option in developOwnerPicker.options"
-                    :key="option.id || option.label"
-                    type="button"
-                    @click="selectDevelopOwner(option)"
-                  >
-                    <span
-                      ><strong>{{ option.chName || option.label }}</strong
-                      ><small>{{ option.id }}</small></span
-                    >
-                    <em>{{ option.deptName || '部门信息待补充' }}</em>
-                  </button>
-                  <span v-if="developOwnerPicker.message" class="person-search__empty">{{
-                    developOwnerPicker.message
-                  }}</span>
-                </template>
-              </div>
-            </label>
-            <label
-              ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
-            /></label>
-          </div>
-
-          <div v-if="editor.mode === 'create' && createTab === 'import'" class="import-panel">
-            <div class="import-search">
-              <input
-                v-model.trim="importKeyword"
-                type="search"
-                placeholder="输入关键词实时搜索 Skill 广场中的 Skill"
-                @keydown.enter.prevent="triggerImportSearchNow"
-              />
-              <button
-                class="primary"
-                type="button"
-                :disabled="importLoading"
-                @click="triggerImportSearchNow"
+                <small
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="field-hint"
+                  >从 Skill 广场引入的 Skill 名称不可修改</small
+                ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
+                  >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
+                ></label
               >
-                搜索
-              </button>
-            </div>
-
-            <div class="import-list" :aria-busy="importLoading">
-              <div v-if="importLoading" class="import-empty">正在加载 Skill 广场列表…</div>
-              <template v-else>
-                <button
-                  v-for="row in importRows"
-                  :key="row.id"
-                  type="button"
-                  class="import-row"
-                  :class="{ 'is-selected': importSelectedId === row.id }"
-                  @click="selectSquareSkill(row.id)"
-                >
-                  <span class="import-row__radio" aria-hidden="true"></span>
-                  <span class="import-row__main">
-                    <strong :title="row.name">{{ row.name }}</strong>
-                    <small :title="row.description || '暂无描述'">{{
-                      row.description || '暂无描述'
-                    }}</small>
-                  </span>
-                  <span class="import-row__meta">
-                    <em v-if="row.version" class="is-version">v{{ row.version }}</em>
-                    <em v-if="row.publisher" :title="row.publisher">{{ row.publisher }}</em>
-                    <em v-if="row.department" :title="row.department">{{ row.department }}</em>
-                  </span>
-                </button>
-                <div v-if="!importRows.length" class="import-empty">
-                  未找到匹配的 Skill，请调整关键词后重试
-                </div>
-              </template>
-            </div>
-
-            <div class="import-pagination">
-              <span>共 {{ importTotal }} 条</span>
-              <select
-                v-model.number="importPageSize"
-                :disabled="importLoading"
-                aria-label="每页条数"
-                @change="changeImportPageSize"
+              <label class="wide"
+                ><span>Skill 说明 *</span
+                ><textarea
+                  v-model.trim="editor.description"
+                  maxlength="300"
+                  rows="4"
+                  :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                ></textarea>
+                <small
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="field-hint"
+                  >从 Skill 广场引入的 Skill 说明不可修改</small
+                ></label
               >
-                <option v-for="size in importPageSizeOptions" :key="size" :value="size">
-                  {{ size }} 条/页
-                </option>
-              </select>
-              <button
-                type="button"
-                :disabled="importLoading || importPageNum <= 1"
-                @click="goSquarePage(importPageNum - 1)"
-              >
-                上一页
-              </button>
-              <strong>{{ importPageNum }} / {{ importTotalPages }}</strong>
-              <button
-                type="button"
-                :disabled="importLoading || importPageNum >= importTotalPages"
-                @click="goSquarePage(importPageNum + 1)"
-              >
-                下一页
-              </button>
-            </div>
-
-            <div v-if="selectedSquareSkill" class="import-selected">
-              <header>
-                <strong>已选 Skill</strong>
-                <span>名称与说明以 Skill 广场为准，不可修改</span>
-              </header>
-              <div class="import-selected__name" :title="selectedSquareSkill.name">{{ selectedSquareSkill.name }}</div>
-              <div class="import-selected__tags">
-                <em v-for="tag in selectedSquareSkill.tags.slice(0, 4)" :key="tag">
-                  {{ tag }}
-                </em>
-                <em>{{ selectedSquareSkill.category }}</em>
-                <em v-if="selectedSquareSkill.version">v{{ selectedSquareSkill.version }}</em>
-              </div>
-              <p :title="selectedSquareSkill.description || '暂无描述'">{{ selectedSquareSkill.description || '暂无描述' }}</p>
-            </div>
-
-            <div class="form-grid import-form-grid">
               <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
                 <span>责任 Owner *</span>
                 <div class="person-search__control">
@@ -2663,6 +2450,10 @@ onBeforeUnmount(() => {
                   </template>
                 </div>
               </label>
+              <!-- <label
+              ><span>Owner 所在部门</span
+              ><input v-model.trim="editor.department" placeholder="由 Owner 资料自动带出" readonly
+            /></label> -->
               <label
                 class="develop-owner-picker person-search"
                 @keydown.esc="closeDevelopOwnerPersonSearch"
@@ -2714,13 +2505,211 @@ onBeforeUnmount(() => {
                 </div>
               </label>
               <label
-                ><span>计划完成时间 *</span
-                ><input v-model="editor.plannedCompleteDate" type="date"
+                ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
               /></label>
             </div>
-          </div>
 
-          <p v-if="editor.error" class="error">{{ editor.error }}</p>
+            <div v-if="editor.mode === 'create' && createTab === 'import'" class="import-panel">
+              <div class="import-search">
+                <input
+                  v-model.trim="importKeyword"
+                  type="search"
+                  placeholder="输入关键词实时搜索 Skill 广场中的 Skill"
+                  @keydown.enter.prevent="triggerImportSearchNow"
+                />
+                <button
+                  class="primary"
+                  type="button"
+                  :disabled="importLoading"
+                  @click="triggerImportSearchNow"
+                >
+                  搜索
+                </button>
+              </div>
+
+              <div class="import-list" :aria-busy="importLoading">
+                <div v-if="importLoading" class="import-empty">正在加载 Skill 广场列表…</div>
+                <template v-else>
+                  <button
+                    v-for="row in importRows"
+                    :key="row.id"
+                    type="button"
+                    class="import-row"
+                    :class="{ 'is-selected': importSelectedId === row.id }"
+                    @click="selectSquareSkill(row.id)"
+                  >
+                    <span class="import-row__radio" aria-hidden="true"></span>
+                    <span class="import-row__main">
+                      <strong :title="row.name">{{ row.name }}</strong>
+                      <small :title="row.description || '暂无描述'">{{
+                        row.description || '暂无描述'
+                      }}</small>
+                    </span>
+                    <span class="import-row__meta">
+                      <em v-if="row.version" class="is-version">v{{ row.version }}</em>
+                      <em v-if="row.publisher" :title="row.publisher">{{ row.publisher }}</em>
+                      <em v-if="row.department" :title="row.department">{{ row.department }}</em>
+                    </span>
+                  </button>
+                  <div v-if="!importRows.length" class="import-empty">
+                    未找到匹配的 Skill，请调整关键词后重试
+                  </div>
+                </template>
+              </div>
+
+              <div class="import-pagination">
+                <span>共 {{ importTotal }} 条</span>
+                <select
+                  v-model.number="importPageSize"
+                  :disabled="importLoading"
+                  aria-label="每页条数"
+                  @change="changeImportPageSize"
+                >
+                  <option v-for="size in importPageSizeOptions" :key="size" :value="size">
+                    {{ size }} 条/页
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  :disabled="importLoading || importPageNum <= 1"
+                  @click="goSquarePage(importPageNum - 1)"
+                >
+                  上一页
+                </button>
+                <strong>{{ importPageNum }} / {{ importTotalPages }}</strong>
+                <button
+                  type="button"
+                  :disabled="importLoading || importPageNum >= importTotalPages"
+                  @click="goSquarePage(importPageNum + 1)"
+                >
+                  下一页
+                </button>
+              </div>
+
+              <div v-if="selectedSquareSkill" class="import-selected">
+                <header>
+                  <strong>已选 Skill</strong>
+                  <span>名称与说明以 Skill 广场为准，不可修改</span>
+                </header>
+                <div class="import-selected__name" :title="selectedSquareSkill.name">
+                  {{ selectedSquareSkill.name }}
+                </div>
+                <div class="import-selected__tags">
+                  <em v-for="tag in selectedSquareSkill.tags.slice(0, 4)" :key="tag">
+                    {{ tag }}
+                  </em>
+                  <em>{{ selectedSquareSkill.category }}</em>
+                  <em v-if="selectedSquareSkill.version">v{{ selectedSquareSkill.version }}</em>
+                </div>
+                <p :title="selectedSquareSkill.description || '暂无描述'">
+                  {{ selectedSquareSkill.description || '暂无描述' }}
+                </p>
+              </div>
+
+              <div class="form-grid import-form-grid">
+                <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
+                  <span>责任 Owner *</span>
+                  <div class="person-search__control">
+                    <input
+                      :value="ownerPicker.keyword"
+                      type="text"
+                      autocomplete="off"
+                      :readonly="Boolean(editor.owner.trim())"
+                      placeholder="输入姓名或工号后选择"
+                      @focus="onOwnerPickerFocus"
+                      @input="onOwnerPickerInput"
+                    />
+                    <button
+                      v-if="editor.owner.trim()"
+                      type="button"
+                      class="person-search__clear"
+                      title="清除责任 Owner"
+                      aria-label="清除责任 Owner"
+                      @mousedown.prevent
+                      @click.stop="clearOwnerSelection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                    <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                    <template v-else>
+                      <button
+                        v-for="option in ownerPicker.options"
+                        :key="option.id || option.label"
+                        type="button"
+                        @click="selectOwner(option)"
+                      >
+                        <span
+                          ><strong>{{ option.chName || option.label }}</strong
+                          ><small>{{ option.id }}</small></span
+                        >
+                        <em>{{ option.deptName || '部门信息待补充' }}</em>
+                      </button>
+                      <span v-if="ownerPicker.message" class="person-search__empty">{{
+                        ownerPicker.message
+                      }}</span>
+                    </template>
+                  </div>
+                </label>
+                <label
+                  class="develop-owner-picker person-search"
+                  @keydown.esc="closeDevelopOwnerPersonSearch"
+                >
+                  <span>开发责任人 *</span>
+                  <div class="person-search__control">
+                    <input
+                      :value="developOwnerPicker.keyword"
+                      type="text"
+                      autocomplete="off"
+                      :readonly="Boolean(editor.developOwner.trim())"
+                      placeholder="输入姓名或工号后选择"
+                      @focus="onDevelopOwnerPickerFocus"
+                      @input="onDevelopOwnerPickerInput"
+                    />
+                    <button
+                      v-if="editor.developOwner.trim()"
+                      type="button"
+                      class="person-search__clear"
+                      title="清除开发责任人"
+                      aria-label="清除开发责任人"
+                      @mousedown.prevent
+                      @click.stop="clearDevelopOwnerSelection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                    <span v-if="developOwnerPicker.loading" class="person-search__empty"
+                      >查询中...</span
+                    >
+                    <template v-else>
+                      <button
+                        v-for="option in developOwnerPicker.options"
+                        :key="option.id || option.label"
+                        type="button"
+                        @click="selectDevelopOwner(option)"
+                      >
+                        <span
+                          ><strong>{{ option.chName || option.label }}</strong
+                          ><small>{{ option.id }}</small></span
+                        >
+                        <em>{{ option.deptName || '部门信息待补充' }}</em>
+                      </button>
+                      <span v-if="developOwnerPicker.message" class="person-search__empty">{{
+                        developOwnerPicker.message
+                      }}</span>
+                    </template>
+                  </div>
+                </label>
+                <label
+                  ><span>计划完成时间 *</span
+                  ><input v-model="editor.plannedCompleteDate" type="date"
+                /></label>
+              </div>
+            </div>
+
+            <p v-if="editor.error" class="error">{{ editor.error }}</p>
           </div>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
@@ -3538,7 +3527,9 @@ onBeforeUnmount(() => {
 .table-wrap col.action-column {
   width: 11%;
 }
-.table-wrap .reference-cell { text-align: center; }
+.table-wrap .reference-cell {
+  text-align: center;
+}
 .planning-reference-count {
   display: inline-flex;
   min-width: 30px;

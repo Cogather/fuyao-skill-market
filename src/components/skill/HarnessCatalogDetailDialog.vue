@@ -59,9 +59,7 @@ const selectedVersionRecord = computed<SkillMasterVersion | null>(() => {
 
 function formatUpdatedTime(value?: string): string {
   if (!value) return '—';
-  const matched = value.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/,
-  );
+  const matched = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
   if (!matched) return value;
   return `${matched[1]}-${matched[2]}-${matched[3]} ${matched[4]}:${matched[5]}${
     matched[6] ? `:${matched[6]}` : ''
@@ -193,7 +191,9 @@ onBeforeUnmount(() => {
           <div class="catalog-detail-meta">
             <div>
               <small>规划部门或产品</small>
-              <strong>{{ props.record.product || props.record.department || props.record.level || '—' }}</strong>
+              <strong>{{
+                props.record.product || props.record.department || props.record.level || '—'
+              }}</strong>
             </div>
             <div>
               <small>负责人</small>
@@ -211,7 +211,14 @@ onBeforeUnmount(() => {
             >
               {{ props.record.status || '未开始' }}
             </span>
-            <button type="button" class="catalog-detail-close" aria-label="关闭" @click="closeDialog">×</button>
+            <button
+              type="button"
+              class="catalog-detail-close"
+              aria-label="关闭"
+              @click="closeDialog"
+            >
+              ×
+            </button>
           </div>
         </header>
 
@@ -238,7 +245,9 @@ onBeforeUnmount(() => {
             :aria-expanded="detailCapabilityExpanded"
             @click="detailCapabilityExpanded = !detailCapabilityExpanded"
           >
-            <span class="catalog-detail-caret" :class="{ 'is-open': detailCapabilityExpanded }">›</span>
+            <span class="catalog-detail-caret" :class="{ 'is-open': detailCapabilityExpanded }"
+              >›</span
+            >
             <strong>{{ props.record.name }}</strong>
             <span>{{ selectedVersion }}</span>
           </button>
@@ -249,7 +258,9 @@ onBeforeUnmount(() => {
               <span>{{ detailError }}</span>
               <button type="button" @click="loadDetailVersion">重试</button>
             </div>
-            <p v-else-if="detailFiles.length === 0" class="catalog-detail-state">暂无可展示的文件</p>
+            <p v-else-if="detailFiles.length === 0" class="catalog-detail-state">
+              暂无可展示的文件
+            </p>
 
             <template v-else-if="props.capabilityType === 'skill'">
               <article v-for="file in detailFiles" :key="file.path" class="catalog-detail-file">
@@ -262,11 +273,15 @@ onBeforeUnmount(() => {
                   <span
                     class="catalog-detail-file-caret"
                     :class="{ 'is-open': expandedDetailFilePath === file.path }"
-                  >›</span>
+                    >›</span
+                  >
                   <span class="catalog-detail-file-icon">▧</span>
                   <span>{{ file.path }}</span>
                 </button>
-                <div v-if="expandedDetailFilePath === file.path" class="catalog-detail-file-content">
+                <div
+                  v-if="expandedDetailFilePath === file.path"
+                  class="catalog-detail-file-content"
+                >
                   <p v-if="file.loading">正在加载文件内容...</p>
                   <div v-else-if="file.error" class="catalog-detail-state is-error">
                     <span>{{ file.error }}</span>

@@ -55,8 +55,7 @@ export interface ActivityOptionGroupRow {
 }
 
 export type ActivityOptionGroupsResponse =
-  | ApiEnvelope<ActivityOptionGroupRow[]>
-  | ActivityOptionGroupRow[];
+  ApiEnvelope<ActivityOptionGroupRow[]> | ActivityOptionGroupRow[];
 
 export interface RefreshTaxonomyItem {
   firstScene?: string;

@@ -52,9 +52,11 @@ const selectedDetailVersion = computed(() => {
   const task = detailDialog.task;
   const selectedVersion = detailDialog.selectedVersion.trim();
   if (!task || !selectedVersion) return null;
-  return [task, ...tasks.value.filter((item) => item.id !== task.id && item.name === task.name)]
-    .flatMap((item) => item.versions)
-    .find((item) => item.version === selectedVersion) ?? null;
+  return (
+    [task, ...tasks.value.filter((item) => item.id !== task.id && item.name === task.name)]
+      .flatMap((item) => item.versions)
+      .find((item) => item.version === selectedVersion) ?? null
+  );
 });
 type DetailFileState = {
   path: string;
@@ -408,9 +410,7 @@ onBeforeUnmount(() => {
                       @click="openTask(task)"
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path
-                          d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
-                        />
+                        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
                         <circle cx="12" cy="12" r="2.5" />
                       </svg>
                     </button>

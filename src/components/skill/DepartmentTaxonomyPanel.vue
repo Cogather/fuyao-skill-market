@@ -1555,12 +1555,7 @@ function exportRecords(): void {
             <span class="tag-dialog-eyebrow">SCENE TAG</span>
             <h3>添加标签</h3>
           </div>
-          <button
-            class="tag-dialog-close"
-            type="button"
-            aria-label="关闭"
-            @click="closeTagDialog"
-          >
+          <button class="tag-dialog-close" type="button" aria-label="关闭" @click="closeTagDialog">
             ×
           </button>
         </header>

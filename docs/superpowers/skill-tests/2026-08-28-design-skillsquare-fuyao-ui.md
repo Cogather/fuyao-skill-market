@@ -35,6 +35,7 @@ A source interface contains a selectable task queue, evidence summary, several c
 Visual direction: a calm “library lounge” rather than an analytics dashboard. Use a warm-neutral base, one confident accent color, generous spacing, and strong typography contrast so the interface feels curated and trustworthy. The product should read as a place to discover and reuse resources, not monitor systems.
 
 Core layout:
+
 - Desktop uses a 12-column grid with a fixed top bar, a left filter rail, and a main browsing area.
 - Top bar: product title on the left, centered or slightly left-weighted search, utility actions on the right.
 - Main area: a short intro row with result count and active filter chips, then a card grid.
@@ -42,56 +43,59 @@ Core layout:
 - Mobile: stack into search first, horizontal filter chips second, then cards; move the full filter UI into a slide-over sheet.
 
 Suggested design tokens:
+
 ```ts
 export const tokens = {
   color: {
-    bg: "#F6F3EE",
-    surface: "#FFFDF9",
-    surfaceAlt: "#F0EBE3",
-    border: "#D8CFC2",
-    text: "#1F1A14",
-    textMuted: "#6B6257",
-    accent: "#0F766E",
-    accentHover: "#0B5E58",
-    accentSoft: "#D9F0EC",
-    success: "#2F6F4F",
-    warning: "#A56A1C",
-    danger: "#A14646",
-    focus: "#1D4ED8"
+    bg: '#F6F3EE',
+    surface: '#FFFDF9',
+    surfaceAlt: '#F0EBE3',
+    border: '#D8CFC2',
+    text: '#1F1A14',
+    textMuted: '#6B6257',
+    accent: '#0F766E',
+    accentHover: '#0B5E58',
+    accentSoft: '#D9F0EC',
+    success: '#2F6F4F',
+    warning: '#A56A1C',
+    danger: '#A14646',
+    focus: '#1D4ED8',
   },
   radius: {
-    sm: "10px",
-    md: "16px",
-    lg: "24px",
-    pill: "999px"
+    sm: '10px',
+    md: '16px',
+    lg: '24px',
+    pill: '999px',
   },
   space: {
-    xs: "4px",
-    sm: "8px",
-    md: "12px",
-    lg: "16px",
-    xl: "24px",
-    "2xl": "32px",
-    "3xl": "48px"
+    xs: '4px',
+    sm: '8px',
+    md: '12px',
+    lg: '16px',
+    xl: '24px',
+    '2xl': '32px',
+    '3xl': '48px',
   },
   shadow: {
-    card: "0 6px 20px rgba(31, 26, 20, 0.06)",
-    hover: "0 10px 28px rgba(31, 26, 20, 0.10)"
+    card: '0 6px 20px rgba(31, 26, 20, 0.06)',
+    hover: '0 10px 28px rgba(31, 26, 20, 0.10)',
   },
   type: {
     display: "'Fraunces', 'Georgia', serif",
     body: "'Source Sans 3', sans-serif",
-    mono: "'IBM Plex Mono', monospace"
-  }
+    mono: "'IBM Plex Mono', monospace",
+  },
 };
 ```
 
 Typography:
+
 - Use a serif display face for page titles and section headings to make the catalog feel editorial.
 - Use a humanist sans for everything interactive and body copy.
 - Keep sizes restrained: 32/40 for page title, 18/28 for section title, 15/22 for body, 13/18 for metadata.
 
 Card design:
+
 - Cards should feel like resource “tiles” from a curated collection.
 - Structure: title, short description, metadata row, optional tags, and a clear primary action.
 - Optional thumbnail or icon area at the top, but keep it compact so text remains primary.
@@ -101,24 +105,28 @@ Card design:
 - Selected state uses accent border plus soft tinted background, not a heavy glow.
 
 Search:
+
 - Prominent search input in the header or hero row, around 480–640px wide on desktop.
 - Include leading search icon, placeholder like “Search resources, teams, or tags”.
 - Support inline recent searches and zero-state suggestions below the field on focus.
 - Search results should visibly highlight matched terms in titles and descriptions with a soft marker color.
 
 Filters:
+
 - Organize into 4–6 predictable groups, such as Type, Team, Status, Format, Topic, Recently Updated.
 - Use checkboxes for multi-select groups and pill toggles for quick filters like “Popular”, “New”, “Saved”.
 - Active filters should appear as removable chips above results.
 - Keep sorting lightweight and useful: Relevance, Recently Updated, Most Used, A–Z.
 
 Responsive behavior:
+
 - Desktop: 3–4 card columns depending on width.
 - Tablet: filter rail collapses into a button; grid drops to 2 columns.
 - Mobile: 1 column, sticky search, horizontally scrollable quick filters, full filters in bottom sheet.
 - Preserve large tap targets: 44px minimum height for inputs, buttons, chips.
 
 Interaction states:
+
 - Hover: subtle lift, border darkens slightly, secondary metadata becomes more legible.
 - Focus: high-contrast outline using `focus` token with 2px ring and offset.
 - Pressed: reduce elevation and slightly darken filled surfaces.
@@ -132,6 +140,7 @@ A good mental model for implementation is: “editorial resource library with mo
 RED score: 6/7
 
 Missing rubric items:
+
 - Item 6: The response does not explain how long titles, descriptions, or tag rows should clamp, wrap, or recover when cards and chips overflow narrower grid widths.
 
 ### Scenario B
@@ -139,11 +148,13 @@ Missing rubric items:
 Use the existing MUI theme as the source of truth and change the admin overview through composition, spacing, surface treatment, and information hierarchy rather than new branding.
 
 The direction:
+
 - Make the page feel lighter by increasing whitespace, reducing heavy borders, and using more tinted surfaces instead of solid fills.
 - Make it clearer by separating “summary”, “activity”, and “actions” into distinct visual layers.
 - Make it feel more trustworthy by using restrained color, stable alignment, consistent card structure, and readable data emphasis.
 
 Theme mapping:
+
 - `theme.palette.primary` stays the green brand color and should be used sparingly for high-value signals only: active states, key KPIs, links, and positive status.
 - `theme.palette.background.default` becomes the page canvas.
 - `theme.palette.background.paper` remains the base for cards, but mix in very light green-tinted accents via `alpha(theme.palette.primary.main, 0.04-0.08)` for highlighted summary cards.
@@ -152,6 +163,7 @@ Theme mapping:
 - `theme.shape.borderRadius` can be slightly more visible on cards and panels if the product already supports it, but don’t invent a separate radius system.
 
 Recommended layout:
+
 - Top row: page title, short supporting description, right-aligned primary action.
 - Second row: 3-4 KPI cards with one highlighted primary metric.
 - Main content below in a 2-column grid:
@@ -160,6 +172,7 @@ Recommended layout:
 - Keep one consistent card shell across the whole page.
 
 MUI treatment:
+
 - Wrap the page in a `Container maxWidth="xl"` or equivalent bounded shell.
 - Use `Grid` with generous gaps, not divider-heavy sections.
 - For cards, prefer:
@@ -170,6 +183,7 @@ MUI treatment:
 - Replace dense tables at the top level with compact summaries and defer detailed rows lower on the page.
 
 Component styling pattern:
+
 ```tsx
 <Card
   elevation={0}
@@ -182,6 +196,7 @@ Component styling pattern:
 ```
 
 Primary KPI card:
+
 ```tsx
 <Card
   elevation={0}
@@ -194,6 +209,7 @@ Primary KPI card:
 ```
 
 Typography hierarchy:
+
 - Title: `h4` or `h5`, medium weight
 - Section headers: `h6`
 - KPI number: large numeric style derived from `h4/h3`, not a custom font
@@ -201,12 +217,14 @@ Typography hierarchy:
 - Avoid all-caps overload and avoid multiple font weights in the same card
 
 Trust-building details:
+
 - Show timestamps, statuses, and owners consistently.
 - Use explicit labels like “Updated 2 hours ago” and “3 items need review”.
 - Keep status chips subdued; reserve strong green for “healthy” or “on track”.
 - Use iconography lightly and consistently, preferably outline icons.
 
 What to avoid:
+
 - Full-green card backgrounds
 - Heavy shadows
 - Dense border grids
@@ -219,6 +237,7 @@ If you want, I can turn this into a concrete React/MUI `OverviewPage.tsx` struct
 RED score: 5/7
 
 Missing rubric items:
+
 - Item 1: The response does not state the target density mode for the administrative overview, so the reader is left to infer how compact or relaxed the page should feel.
 - Item 4: It gives layout and theme guidance, but it does not define responsive rules or concrete interactive component states beyond the general note about active states.
 - Item 6: It omits explicit focus treatment, long-text handling, scrolling behavior, and operation reachability guidance for narrower viewports or keyboard use.
@@ -228,12 +247,14 @@ Missing rubric items:
 Build the screen around three persistent zones: a compact page header, a filter/action rail, and the data region. At 1440px, target a centered content width of 1360px with 24px page gutters, so the table can stay visually calm without feeling cramped. Use an 8px spacing scale, 14px body text, 12px metadata text, and 36px control heights. Keep the visual rhythm flat and disciplined: light row dividers, low-contrast borders, and strong alignment over decorative chrome.
 
 Layout:
+
 - Header: 64px tall. Left side has title and result count; right side has primary action plus export/import overflow menu.
 - Filter bar: 2 rows max on desktop before collapsing secondary filters into “More filters”. Row 1 should contain search, status, owner, date range, and a reset link. Row 2 can hold tags, numeric range, and saved views.
 - Bulk action bar: hidden until rows are selected, then appears pinned above the table header. Height 44px.
 - Table region: fills remaining width; horizontal scrolling is allowed only inside the table viewport, not the whole page.
 
 Recommended column sizing for a wide management table:
+
 - Selection checkbox: 48px
 - Name / primary entity: 240px min
 - Secondary info: 180px
@@ -247,6 +268,7 @@ Recommended column sizing for a wide management table:
 - Total expected width: about 1488 to 1680px, which justifies an internal horizontal scroll container
 
 Table behavior:
+
 - Header stays sticky below the filter/bulk area.
 - First column and operation column should be sticky if row identity is important; if only one sticky side is allowed, prioritize the operation column.
 - Row height: 48px default, 64px when a row contains stacked metadata or validation help.
@@ -254,6 +276,7 @@ Table behavior:
 - Hover should reveal row emphasis, not new layout shifts.
 
 State model:
+
 - Filters: dirty, applied, loading, empty
 - Table: loading, populated, empty, error
 - Rows: default, selected, editing, invalid, disabled
@@ -261,18 +284,21 @@ State model:
 - Pagination: default, loading next page, exhausted
 
 Overflow guidance:
+
 - Never truncate critical identifiers without a recovery path. For truncated cells, show ellipsis plus full value on focus/hover.
 - Long text fields should clamp to one line in dense mode and two lines in relaxed mode.
 - Keep inline actions inside the sticky operation column; collapse excess actions into a “More” menu after two visible buttons.
 - On narrow screens, convert low-priority columns into expandable row details or a row drawer. Do not force users to pan through 10+ columns on mobile.
 
 Responsive strategy:
-- >= 1280px: full table with sticky header and sticky operation column
+
+- > = 1280px: full table with sticky header and sticky operation column
 - 960px to 1279px: hide lowest-priority columns, keep horizontal scroll modest, move advanced filters into a slide-down panel
 - 600px to 959px: switch to cardified rows or a two-column summary list with “View details” drawer; keep bulk selection and status visible
 - < 600px: stack filters vertically, replace date-range inline inputs with modal/popup pickers, and make per-row actions bottom-sheet based
 
 Inline validation:
+
 - Validate at cell or row level depending on dependency scope.
 - Use color plus icon plus text, never color alone.
 - Show error text directly under the edited field inside the row when possible; reserve toast messages for save outcomes, not field errors.
@@ -280,16 +306,19 @@ Inline validation:
 - If bulk edit creates mixed validity, preserve edits and mark only affected cells.
 
 Status labels:
+
 - Use compact pills, 24px to 28px tall, with plain-language states like Active, Draft, Scheduled, Failed, Archived.
 - Keep status color semantics stable across table, filters, and detail views.
 - Include iconography only for exceptional states like Failed or Warning.
 
 Pagination:
+
 - Desktop: footer with page size, total count, page index, previous/next, and optional jump-to-page.
 - Large datasets: prefer server-side pagination with stable sorting/filter query params.
 - Consider sticky footer only if the table routinely exceeds one viewport height and bulk actions happen near the bottom.
 
 Accessibility:
+
 - Treat the table as a real data table, not a generic grid, unless spreadsheet-like cell navigation is required.
 - Every sortable header must be keyboard reachable and expose sort state via `aria-sort`.
 - Sticky columns need solid backgrounds and shadow separators so overlap remains legible at 200% zoom.
@@ -299,6 +328,7 @@ Accessibility:
 - Minimum hit target: 36px desktop, 44px touch.
 
 A practical implementation pattern in TypeScript is:
+
 - `ManagementPageState`: filters, sort, pagination, selectedRowIds, editingRowId, columnVisibility
 - `FilterDraft` separate from `AppliedFilters`
 - `TableRow` with `validation: { level: 'none' | 'warning' | 'error'; messages: string[] }`
@@ -309,6 +339,7 @@ If you want, I can turn this into a concrete React + TypeScript component struct
 RED score: 6/7
 
 Missing rubric items:
+
 - Item 6: The response covers focus, long text, scrolling, status feedback, and reachability well, but it never gives an explicit contrast standard or token-level contrast guardrail for sticky surfaces, labels, and validation states.
 
 ### Scenario D
@@ -324,6 +355,7 @@ History should remain visible but shifted to maintenance chronology. Show a reve
 RED score: 4/7
 
 Missing rubric items:
+
 - Item 2: The response does not preserve or propose any styling approach, design-token strategy, or component-library guidance, so it is not implementation-ready in the same way as the stronger scenarios.
 - Item 4: It transfers structure clearly, but it does not define semantic tokens, responsive rules, or a concrete state model for the queue, comparison rows, editor, and actions.
 - Item 6: It mentions draft state and keyboardable navigation, but it omits explicit focus treatment, contrast guidance, long-text behavior, and scrolling rules for the queue, comparison area, and history timeline.
@@ -341,6 +373,7 @@ Target context supplied: a new TypeScript frontend for browsing reusable interna
 Visual direction: professional and inviting, closer to a polished internal resource library than a dashboard. Use a bright neutral canvas with a faint cool tint at the top, one restrained corner glow, and mostly flat white surfaces with crisp borders. Identity should come from typography, spacing, and one controlled blue accent rather than heavy gradients or glass. The page should feel calm, searchable, and trustworthy.
 
 Layout:
+
 - Top bar: 56px high, white or translucent-white after scroll, left-aligned product title, center or left primary nav if needed, right utility actions.
 - Page shell: max content width `1280-1440px`, horizontal padding `24px` desktop, `16px` tablet/mobile.
 - First screen order: title/value statement, primary search, filter row, result summary, first card rows.
@@ -348,6 +381,7 @@ Layout:
 - Card grid: `4` columns at `>=1440px`, `3` at `>=1100px`, `2` at `>=720px`, `1` below that.
 
 Token model:
+
 - `--canvas-start: #f2f7ff`
 - `--canvas: #fbfcff`
 - `--canvas-end: #ffffff`
@@ -370,6 +404,7 @@ Token model:
 - Control heights: `44px` primary search/actions, `36-40px` standard filters, `32px` compact secondary controls.
 
 Typography:
+
 - Prefer the target brand font if one is later chosen; otherwise use a modern sans stack suitable for English and Chinese content.
 - Hero/page title `36-40px / 600-700`.
 - Section title `22-24px / 600`.
@@ -379,6 +414,7 @@ Typography:
 - Use color sparingly; rely on weight and spacing for hierarchy.
 
 Search and filters:
+
 - Search is the dominant control: full-width on mobile, `480-640px` on desktop, with placeholder text like “Search by name, owner, tag, or use case”.
 - Support quick filters as low-saturation pills or segmented chips for high-value dimensions only: type, team/owner, status, maturity, access level.
 - Place advanced filters in a collapsible drawer or popover, not permanently expanded.
@@ -386,6 +422,7 @@ Search and filters:
 - Result summary line should show count, sort, and a clear “Reset filters” action when scoped.
 
 Card design:
+
 - Card padding `16-18px`, border `1px solid var(--line)`, minimal or no shadow by default.
 - Structure: title, one-line purpose, provenance/owner row, quality signals, tags, primary action.
 - Title can wrap to 2 lines; description clamps to 2-3 lines.
@@ -395,6 +432,7 @@ Card design:
 - Optional small icon tile may use a very subtle blue tint, but the text should remain the main signal.
 
 Recommended card fields:
+
 - Name
 - Short purpose
 - Resource type
@@ -405,6 +443,7 @@ Recommended card fields:
 - Primary action: `Open`, `View details`, or `Use resource`
 
 Interaction states:
+
 - Hover: border darkens slightly, surface tint shifts, max `1px` upward lift.
 - Selected/active: stronger border plus subtle inset or background cue, not color alone.
 - Focus-visible: solid `2px` outline with `2px` offset on every interactive element.
@@ -415,6 +454,7 @@ Interaction states:
 - Reduced motion: remove lift and animated glow, keep state changes through contrast/border.
 
 Responsive behavior:
+
 - On tablet and mobile, stack title, search, and filters in that order.
 - Turn filter groups into horizontally scrollable chips plus an “All filters” drawer.
 - Keep result count and sort visible above the grid.
@@ -422,6 +462,7 @@ Responsive behavior:
 - If a detail panel is later added, collapse to list -> detail -> action sequence with a clear back path.
 
 Accessibility and content safety:
+
 - All body and metadata text that users must read should meet `4.5:1` contrast.
 - Large headings and meaningful boundaries should meet `3:1`.
 - Do not rely on color alone for status, selection, or verification.
@@ -429,6 +470,7 @@ Accessibility and content safety:
 - Keyboard users must be able to traverse search, filters, sort, grid, and pagination/load-more in a predictable order.
 
 Implementation-ready page recipe:
+
 1. `AppShell`
 2. `TopNav`
 3. `DiscoveryHeader` with title, short supportive description, dominant search
@@ -440,6 +482,7 @@ Implementation-ready page recipe:
 9. Optional `Pagination` or `LoadMore`
 
 Unknown and therefore conditional:
+
 - Framework choice: React, Vue, Svelte, or others unknown.
 - Styling approach: CSS modules, Tailwind, CSS-in-JS, or design tokens pipeline unknown.
 - Existing token system unknown, so these roles should map into any later theme layer rather than become hardcoded.
@@ -451,6 +494,7 @@ If this direction is implemented faithfully, the result should feel like a curat
 GREEN score: 7/7
 
 Rubric check:
+
 - Item 1: Pass — identifies content discovery and relaxed density.
 - Item 2: Pass — labels the absent framework, styling, tokens, components, routes, permissions, and business rules as unknown and keeps mappings conditional.
 - Item 3: Pass — establishes hierarchy, search/filter relationships, and card composition before decoration.
@@ -460,12 +504,15 @@ Rubric check:
 - Item 7: Pass — imports no source-domain terminology or workflow assumptions.
 
 Missing rubric items:
+
 - None.
 
 Comparison to RED:
+
 - Improved from 6/7 to 7/7 by retaining long-text/overflow recovery and adding explicit contrast plus accurate unknown-context handling.
 
 Incomplete-context check:
+
 - Pass — supplied and inspected evidence is distinguished from unknown target conventions, which remain conditional and reversible.
 
 ### Scenario B
@@ -480,6 +527,7 @@ Restyle direction:
 Use a quieter canvas, whiter working surfaces, stronger text hierarchy, and tighter grouping instead of adding more color. The page should read as: page title and context, concise status/actions, filter bar, key metrics, primary table or queue, then secondary panels such as alerts, recent activity, or pending approvals. Let the overview feel open by increasing separation between groups, not by inflating every spacing value.
 
 Map the existing green brand into semantic roles instead of repainting the whole screen:
+
 - `primary.main`: keep the existing green as the single brand accent for selected states, focused highlights, and primary actions.
 - `primary.dark` or the nearest darker green token: use for filled primary buttons where white text must meet contrast.
 - `background.default`: use the lightest existing neutral or a very subtle green-tinted neutral if the theme already supports it.
@@ -490,6 +538,7 @@ Map the existing green brand into semantic roles instead of repainting the whole
 - `success`, `warning`, `error`: keep semantic statuses separate from the brand green so “healthy” and “primary” do not blur together.
 
 Material UI composition:
+
 - Keep the page in `Container` or the existing content shell, with a `Stack`-based vertical rhythm.
 - Build each functional region with `Card` or `Paper`, but keep them mostly flat: 1px borders, minimal shadow, slightly larger radius only for KPI cards.
 - Use `Tabs`, segmented filters, or compact chips only where they clarify scope; avoid colorful pills everywhere.
@@ -498,6 +547,7 @@ Material UI composition:
 - Prefer `Alert` or inline helper text for state feedback instead of decorative banners.
 
 Hierarchy and spacing:
+
 - Header region: standard density, with the title, one-line operational summary, and 1 to 2 highest-priority actions.
 - Filters: compact controls grouped in a single surface directly above the main data region.
 - Metrics: 3 to 4 cards max in the first row, emphasizing label then number; any icon tile should be subtle and low saturation.
@@ -506,12 +556,14 @@ Hierarchy and spacing:
 - Use the existing spacing token scale, aiming for roughly 24 to 32px between major sections, 12 to 16px inside ordinary cards, and 8 to 12px inside dense toolbars and tables.
 
 Typography mapping:
+
 - Reuse the existing type family and token weights.
 - Make trust come from type contrast, not color contrast: stronger page title, crisp section titles, readable body copy, and clearly secondary metadata.
 - If the theme has variants like `h4`, `h5`, `subtitle2`, `body2`, prefer those over custom font sizing.
 - Keep metrics visually calm: large numeric values, smaller labels, limited supporting text.
 
 State and interaction rules:
+
 - Selected nav/filter states should use green plus a non-color cue such as underline, border, or weight change.
 - Hover should be restrained: small border/surface shift, no dramatic lift.
 - Dense areas like tables and forms should stay mostly flat.
@@ -519,6 +571,7 @@ State and interaction rules:
 - Long labels, counts, and organization names should wrap or clamp before pushing actions off-screen.
 
 Accessibility and resilience:
+
 - Normal and small text, including metadata and helper text, should meet 4.5:1 contrast in the rendered green theme.
 - Large text and meaningful boundaries such as selected tabs, input borders, and focus outlines should meet 3:1.
 - Every interactive element should keep a solid 2px focus outline with a 2px offset; forced-colors mode must not rely on shadows or tinted fills.
@@ -529,6 +582,7 @@ Accessibility and resilience:
 GREEN score: 7/7
 
 Rubric check:
+
 - Item 1: Pass — identifies a configuration/relationships overview with data-management secondary density and a compact-to-standard split.
 - Item 2: Pass — explicitly preserves React, Material UI, the green brand, and existing spacing/typography tokens without global class overrides.
 - Item 3: Pass — leads with hierarchy, grouping, quiet surfaces, and spacing before decorative accents.
@@ -538,12 +592,15 @@ Rubric check:
 - Item 7: Pass — imports no source-domain terminology or workflow assumptions.
 
 Missing rubric items:
+
 - None.
 
 Comparison to fresh round 1:
+
 - Improved from 6/7 to 7/7 by closing the mandatory Item 6 gap with explicit contrast and long-text resilience while preserving the React/MUI/green/token contract.
 
 Scenario-specific check:
+
 - Pass — React, Material UI, the existing green brand, and existing spacing/typography tokens remain the source of truth.
 
 ### Scenario C
@@ -658,6 +715,7 @@ A practical screen width target is a centered page container of `min(100%, 1600p
 GREEN score: 7/7
 
 Rubric check:
+
 - Item 1: Pass — identifies data management with compact density.
 - Item 2: Pass — labels framework, tokens, components, routes, permissions, backend capabilities, fields, and validation rules as unknown and conditional.
 - Item 3: Pass — begins with structural bands and workspace relationships before visual treatment.
@@ -667,12 +725,15 @@ Rubric check:
 - Item 7: Pass — remains business-neutral and imports no source workflow assumptions.
 
 Missing rubric items:
+
 - None.
 
 Comparison to RED:
+
 - Improved from 6/7 to 7/7 by retaining sticky/overflow/narrow behavior and adding contrast plus accurate unknown-context handling.
 
 Scenario-specific check:
+
 - Pass — sticky headers/identity/operation columns, internal overflow, and narrow-screen reduction/expansion are explicit.
 
 ### Scenario D
@@ -784,6 +845,7 @@ Accessibility and resilience:
 GREEN score: 7/7
 
 Rubric check:
+
 - Item 1: Pass — identifies decision support with compact data-management support and the correct queue/detail density split.
 - Item 2: Pass — labels framework, tokens, component library, routes, permissions, business rules, devices, and existing terminology as unknown and keeps mappings conditional.
 - Item 3: Pass — establishes master-detail hierarchy and information relationships before styling.
@@ -793,12 +855,15 @@ Rubric check:
 - Item 7: Pass — transfers only source relationships into equipment-maintenance terminology without importing source entities, role models, or workflow rules.
 
 Missing rubric items:
+
 - None.
 
 Comparison to fresh round 1:
+
 - Improved from 6/7 to 7/7 by closing the mandatory Item 6 contrast/long-text gap while retaining accurate unknown-context handling and target-domain structural transfer.
 
 Scenario-specific check:
+
 - Pass — the response preserves the useful queue/evidence/comparison/editor/actions/history skeleton without source workflow assumptions.
 
 ## Outcome

@@ -4,14 +4,14 @@ Select by the user's primary task, not by industry or source-page name.
 
 ## Quick reference
 
-| Task | Pattern | Density | First-screen priority |
-| --- | --- | --- | --- |
-| Browse and compare | Content discovery | Relaxed | Purpose, search, filters, first results |
-| Understand one item | Detail reading | Standard | Identity, status, actions, readable content |
-| Scan and operate on many rows | Data management | Compact | Filters, result state, table, bulk/row actions |
-| Compare evidence and decide | Decision support | Standard/compact | Current subject, evidence, dimensions, input, final action |
-| Complete staged setup or planning | Workflow orchestration | Standard/compact | Current step, scope, validation, progress, actions |
-| Understand and change relationships | Configuration/relationships | Standard | Structure, selection, dependencies, safe change |
+| Task                                | Pattern                     | Density          | First-screen priority                                      |
+| ----------------------------------- | --------------------------- | ---------------- | ---------------------------------------------------------- |
+| Browse and compare                  | Content discovery           | Relaxed          | Purpose, search, filters, first results                    |
+| Understand one item                 | Detail reading              | Standard         | Identity, status, actions, readable content                |
+| Scan and operate on many rows       | Data management             | Compact          | Filters, result state, table, bulk/row actions             |
+| Compare evidence and decide         | Decision support            | Standard/compact | Current subject, evidence, dimensions, input, final action |
+| Complete staged setup or planning   | Workflow orchestration      | Standard/compact | Current step, scope, validation, progress, actions         |
+| Understand and change relationships | Configuration/relationships | Standard         | Structure, selection, dependencies, safe change            |
 
 ## Content discovery
 

@@ -4,20 +4,20 @@ Consumes semantic roles and density modes from `design-language.md` plus page re
 
 ## Quick reference
 
-| Component | Hierarchy rule | Default geometry | Required states |
-| --- | --- | --- | --- |
-| Navigation | Product context, sections, then utility actions | 56–66px bar; 44–48px targets | default, hover, active, focus, scrolled |
-| Stepper | Completed/current/future status before detail | 32–44px step targets | completed, current, blocked, future |
-| Master-detail | Selection context remains visible beside detail | flexible list + minmax detail | empty, selected, loading, narrow |
-| Metric card | Label and value dominate the icon | 18–22px radius; 44–48px icon tile | default, loading, unavailable |
-| Button | One primary action per local task region | 38–44px standard; 32–38px compact | hover, focus, disabled, loading |
-| Form control | Label, input, help/error in reading order | 38–44px standard; 32–38px compact | focus, filled, error, disabled |
-| Content card | Title, purpose, provenance, signal, action | 8–12px ordinary radius | hover, focus, loading, long text |
-| Table | Scope, result state, data, actions | 12–13px text; sticky header as needed | sort, filter, select, empty, overflow |
-| Tag/status | Semantics stay stable and subordinate | 22–28px height; pill or 4–6px radius | default, selected, disabled |
-| Dialog | Title, impact, content, actions | 8–12px radius; bounded viewport | open, busy, error, destructive |
-| Feedback | Explain state and next step | inline first; toast for transient results | loading, success, warning, error |
-| Empty state | Reason before optional action | restrained panel or table row | no data, no match, unauthorized |
+| Component     | Hierarchy rule                                  | Default geometry                          | Required states                         |
+| ------------- | ----------------------------------------------- | ----------------------------------------- | --------------------------------------- |
+| Navigation    | Product context, sections, then utility actions | 56–66px bar; 44–48px targets              | default, hover, active, focus, scrolled |
+| Stepper       | Completed/current/future status before detail   | 32–44px step targets                      | completed, current, blocked, future     |
+| Master-detail | Selection context remains visible beside detail | flexible list + minmax detail             | empty, selected, loading, narrow        |
+| Metric card   | Label and value dominate the icon               | 18–22px radius; 44–48px icon tile         | default, loading, unavailable           |
+| Button        | One primary action per local task region        | 38–44px standard; 32–38px compact         | hover, focus, disabled, loading         |
+| Form control  | Label, input, help/error in reading order       | 38–44px standard; 32–38px compact         | focus, filled, error, disabled          |
+| Content card  | Title, purpose, provenance, signal, action      | 8–12px ordinary radius                    | hover, focus, loading, long text        |
+| Table         | Scope, result state, data, actions              | 12–13px text; sticky header as needed     | sort, filter, select, empty, overflow   |
+| Tag/status    | Semantics stay stable and subordinate           | 22–28px height; pill or 4–6px radius      | default, selected, disabled             |
+| Dialog        | Title, impact, content, actions                 | 8–12px radius; bounded viewport           | open, busy, error, destructive          |
+| Feedback      | Explain state and next step                     | inline first; toast for transient results | loading, success, warning, error        |
+| Empty state   | Reason before optional action                   | restrained panel or table row             | no data, no match, unauthorized         |
 
 ## Behavioral contracts
 

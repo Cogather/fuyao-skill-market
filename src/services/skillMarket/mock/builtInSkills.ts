@@ -214,7 +214,8 @@ const EXTRA_MOCK_SKILL_SEEDS: ExtraMockSkillSeed[] = [
     qualityBadges: ['优秀', '复用'],
     fileTree:
       'report-viz-skill/\nreport-viz-skill/SKILL.md\nreport-viz-skill/charts/render.py\nreport-viz-skill/export/excel.py',
-    skillMdContent: '# 面向多端多场景的智能报表与数据可视化自动化生成及一键导出 Skill（长名称样例）',
+    skillMdContent:
+      '# 面向多端多场景的智能报表与数据可视化自动化生成及一键导出 Skill（长名称样例）',
   },
   {
     name: '基于大语言模型的代码审查与安全漏洞智能检测及自动修复建议生成 Skill',
@@ -232,7 +233,8 @@ const EXTRA_MOCK_SKILL_SEEDS: ExtraMockSkillSeed[] = [
     qualityBadges: ['稳定'],
     fileTree:
       'code-review-skill/\ncode-review-skill/SKILL.md\ncode-review-skill/scanners/sast.py\ncode-review-skill/rules/owasp.yaml',
-    skillMdContent: '# 基于大语言模型的代码审查与安全漏洞智能检测及自动修复建议生成 Skill（长名称样例）',
+    skillMdContent:
+      '# 基于大语言模型的代码审查与安全漏洞智能检测及自动修复建议生成 Skill（长名称样例）',
   },
   {
     name: '跨云资源编排与成本优化及容量规划智能调度 Skill',

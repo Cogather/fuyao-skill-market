@@ -245,11 +245,10 @@ async function loadProductOptions(preferredScope?: HarnessScopeSnapshot): Promis
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
     const restoredOption = preferredScope
-      ? options.find(
+      ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
-        ) ??
-        options.find((item) => item.offeringName === preferredScope.offeringName)
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
     const firstOption = restoredOption ?? options[0];
     if (firstOption) {
@@ -284,7 +283,7 @@ function emitScopeSnapshot(): void {
   emit('scope-change', {
     level: filterForm.level as HarnessScopeSnapshot['level'],
     departmentPath: [...departmentSegments.value],
-    offeringId: filterForm.level === '产品级' ? selectedProduct.value?.offeringId ?? '' : '',
+    offeringId: filterForm.level === '产品级' ? (selectedProduct.value?.offeringId ?? '') : '',
     offeringName: filterForm.level === '产品级' ? filterForm.product.trim() : '',
   });
 }
@@ -758,8 +757,7 @@ async function requestBatchCatalogDelete(): Promise<void> {
     (record) => selectedIds.value.includes(record.id) && (record.referenceCount ?? 0) > 0,
   );
   if (referencedRecords.length) {
-    const names = referencedRecords
-      .map((record) => `“${record.name}”`);
+    const names = referencedRecords.map((record) => `“${record.name}”`);
     showToast(`${names.join('、')}已关联规划项，不能删除`, 5000);
     return;
   }
@@ -843,19 +841,16 @@ function goPage(next: number): void {
   pageNum.value = Math.max(1, Math.min(totalPages.value, next));
 }
 
-watch(
-  requiredCapabilityNamePrefix,
-  (nextPrefix, previousPrefix) => {
-    if (!editor.open || editor.mode !== 'create') return;
-    if (!editor.name || editor.name === previousPrefix) {
-      editor.name = nextPrefix;
-      return;
-    }
-    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
-      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
-    }
-  },
-);
+watch(requiredCapabilityNamePrefix, (nextPrefix, previousPrefix) => {
+  if (!editor.open || editor.mode !== 'create') return;
+  if (!editor.name || editor.name === previousPrefix) {
+    editor.name = nextPrefix;
+    return;
+  }
+  if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+    editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  }
+});
 
 watch(
   () => props.capabilityType,

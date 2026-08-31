@@ -89,24 +89,11 @@ export interface SkillVersionEntry {
 export type MarketPerspective = 'user' | 'admin';
 
 export type UserInnerTab =
-  | 'hot'
-  | 'overview'
-  | 'core'
-  | 'releases'
-  | 'org'
-  | 'approval'
-  | 'ops'
-  | 'review';
+  'hot' | 'overview' | 'core' | 'releases' | 'org' | 'approval' | 'ops' | 'review';
 
 /** 市场总览 · 快捷入口 */
 export type OverviewQuickFilter =
-  | 'all'
-  | 'personal'
-  | 'devDept'
-  | 'pdu'
-  | 'productLine'
-  | 'recent'
-  | 'highDl';
+  'all' | 'personal' | 'devDept' | 'pdu' | 'productLine' | 'recent' | 'highDl';
 
 export type SkillMarketScope = 'all' | 'personal' | 'devDept' | 'pdu' | 'productLine';
 

@@ -67,9 +67,7 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
               id: 'skill-task-http-005',
               skillName: '字符串版本响应 Skill',
               status: '进行中',
-              versions: JSON.stringify([
-                { version: '3.0.1', uploadedAt: '2026-08-26 10:30:00' },
-              ]),
+              versions: JSON.stringify([{ version: '3.0.1', uploadedAt: '2026-08-26 10:30:00' }]),
             },
           ],
         },

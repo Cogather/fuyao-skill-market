@@ -13,29 +13,29 @@ Professional, lightweight, clear, and trustworthy, with restrained AI-product cu
 
 ## Default color roles
 
-| Role | Default | Usage |
-| --- | --- | --- |
-| Canvas start | #f2f7ff | Optional cool opening tint |
-| Canvas | #fbfcff | Main light background |
-| Canvas end | #ffffff | Neutral gradient endpoint |
-| Surface | #ffffff | Cards, filters, work areas |
-| Muted surface | #f8fafc | Quiet tags and table headers |
-| Translucent surface | rgba(255, 255, 255, 0.88) | Optional elevated surface over a decorative canvas |
-| Heading | #07172f | Highest text emphasis |
-| Text | #52647d | Body and descriptions |
-| Readable muted | #667085 | Metadata, help, and secondary content that must remain readable |
-| Muted | #94a3b8 | Disabled or nonessential context only |
-| Line | #e2e8f0 | Structural boundaries |
-| Primary | #2f7df6 | Selection, focus, and restrained accent |
-| Primary strong | #2563eb | Contrast-safe primary actions with on-primary content |
-| On primary | #ffffff | Text and icons on the primary-action surface |
-| Accent | #7552ff | Restrained gradient or intelligent feature cue |
-| Accent secondary | #2ecdd3 | Restrained gradient support |
-| Primary glow | rgba(47, 125, 246, 0.14) | Low-opacity primary atmosphere and focus enhancement |
-| Accent glow | rgba(117, 82, 255, 0.11) | Low-opacity accent atmosphere |
-| Success | #16a34a | Completed and positive state |
-| Warning | #f59e0b | Attention and pending state |
-| Danger | #dc2626 | Destructive and failed state |
+| Role                | Default                   | Usage                                                           |
+| ------------------- | ------------------------- | --------------------------------------------------------------- |
+| Canvas start        | #f2f7ff                   | Optional cool opening tint                                      |
+| Canvas              | #fbfcff                   | Main light background                                           |
+| Canvas end          | #ffffff                   | Neutral gradient endpoint                                       |
+| Surface             | #ffffff                   | Cards, filters, work areas                                      |
+| Muted surface       | #f8fafc                   | Quiet tags and table headers                                    |
+| Translucent surface | rgba(255, 255, 255, 0.88) | Optional elevated surface over a decorative canvas              |
+| Heading             | #07172f                   | Highest text emphasis                                           |
+| Text                | #52647d                   | Body and descriptions                                           |
+| Readable muted      | #667085                   | Metadata, help, and secondary content that must remain readable |
+| Muted               | #94a3b8                   | Disabled or nonessential context only                           |
+| Line                | #e2e8f0                   | Structural boundaries                                           |
+| Primary             | #2f7df6                   | Selection, focus, and restrained accent                         |
+| Primary strong      | #2563eb                   | Contrast-safe primary actions with on-primary content           |
+| On primary          | #ffffff                   | Text and icons on the primary-action surface                    |
+| Accent              | #7552ff                   | Restrained gradient or intelligent feature cue                  |
+| Accent secondary    | #2ecdd3                   | Restrained gradient support                                     |
+| Primary glow        | rgba(47, 125, 246, 0.14)  | Low-opacity primary atmosphere and focus enhancement            |
+| Accent glow         | rgba(117, 82, 255, 0.11)  | Low-opacity accent atmosphere                                   |
+| Success             | #16a34a                   | Completed and positive state                                    |
+| Warning             | #f59e0b                   | Attention and pending state                                     |
+| Danger              | #dc2626                   | Destructive and failed state                                    |
 
 Use blue-purple or blue-cyan gradients only for a hero phrase, compact icon tile, intelligent-feature cue, or primary action that needs product identity. Do not apply gradients to every card, table row, or status.
 
@@ -49,11 +49,11 @@ Use the target font first. Without one, use a system Chinese sans-serif stack. S
 
 Compose from 4, 6, 8, 10, 12, 14, 16, 18, 24, 28, and 32px.
 
-| Density | Controls | Content gap | Use |
-| --- | --- | --- | --- |
-| Relaxed | 44–58px | 16–24px | Discovery and prominent search |
-| Standard | 38–44px | 12–18px | Detail and ordinary forms |
-| Compact | 32–38px | 8–14px | Tables, filters, batch workflows |
+| Density  | Controls | Content gap | Use                              |
+| -------- | -------- | ----------- | -------------------------------- |
+| Relaxed  | 44–58px  | 16–24px     | Discovery and prominent search   |
+| Standard | 38–44px  | 12–18px     | Detail and ordinary forms        |
+| Compact  | 32–38px  | 8–14px      | Tables, filters, batch workflows |
 
 ## Shape and elevation
 

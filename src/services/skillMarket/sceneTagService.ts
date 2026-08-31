@@ -117,8 +117,7 @@ function normalizeSceneTags(response: unknown): SceneTag[] {
     const record = asRecord(item);
     const name = readText(record.tagName ?? record.name ?? record.label ?? record.tag);
     if (!name) return [];
-    const id =
-      readText(record.tagId ?? record.id ?? record.code ?? record.value) || name;
+    const id = readText(record.tagId ?? record.id ?? record.code ?? record.value) || name;
     return [{ id, name }];
   });
   return Array.from(new Map(tags.map((tag) => [tag.name, tag])).values());
@@ -166,10 +165,7 @@ export async function listSceneTags(): Promise<SceneTag[]> {
 }
 
 /** 读取某个一级场景当前绑定的标签名列表。 */
-export async function getSceneTags(
-  sceneKey: string,
-  departmentName = '',
-): Promise<string[]> {
+export async function getSceneTags(sceneKey: string, departmentName = ''): Promise<string[]> {
   if (!transportIsHttp) {
     const stored = readTagStore()[bindingKey(sceneKey, departmentName)];
     if (stored) return [...stored];

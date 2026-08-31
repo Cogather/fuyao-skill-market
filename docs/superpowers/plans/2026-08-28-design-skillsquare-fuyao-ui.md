@@ -27,10 +27,12 @@
 ### Task 1: Establish RED behavior evidence and artifact contract
 
 **Files:**
+
 - Create: docs/superpowers/skill-tests/2026-08-28-design-skillsquare-fuyao-ui.md
 - Create: tests/design-skillsquare-fuyao-ui.tests.ps1
 
 **Interfaces:**
+
 - Consumes: the approved spec and the absence of skills/design-skillsquare-fuyao-ui.
 - Produces: four stable scenario prompts, a seven-point scoring rubric, verbatim baseline evidence, and a dependency-free PowerShell artifact validator used by later tasks.
 
@@ -38,7 +40,7 @@
 
 Create docs/superpowers/skill-tests/2026-08-28-design-skillsquare-fuyao-ui.md with these exact scenarios and rubric:
 
-~~~markdown
+```markdown
 # design-skillsquare-fuyao-ui behavior campaign
 
 ## Scoring
@@ -80,7 +82,7 @@ For each scenario, preserve the evaluator response verbatim, then record its sco
 ## Outcome
 
 Summarize the baseline failure patterns, the guidance added to address them, any GREEN gaps, and the smallest refactors made.
-~~~
+```
 
 - [ ] **Step 2: Run the four RED scenarios without the skill**
 
@@ -90,7 +92,7 @@ Dispatch one fresh-context evaluator per scenario. Do not mention the proposed s
 
 Create tests/design-skillsquare-fuyao-ui.tests.ps1:
 
-~~~powershell
+```powershell
 param(
   [string]$SkillPath = (
     Join-Path (Split-Path -Parent $PSScriptRoot) 'skills/design-skillsquare-fuyao-ui'
@@ -164,33 +166,35 @@ $example = Get-Content -Raw -Encoding UTF8 (Join-Path $SkillPath 'assets/example
 Assert-True ($example -match '<main\b') 'Example must use a main landmark'
 
 Write-Host 'design-skillsquare-fuyao-ui artifact contract: PASS'
-~~~
+```
 
 - [ ] **Step 4: Run the artifact test and verify RED**
 
 Run:
 
-~~~powershell
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/design-skillsquare-fuyao-ui.tests.ps1
-~~~
+```
 
 Expected: FAIL with Skill directory is missing.
 
 - [ ] **Step 5: Commit RED evidence and tests**
 
-~~~powershell
+```powershell
 git add -- docs/superpowers/skill-tests/2026-08-28-design-skillsquare-fuyao-ui.md tests/design-skillsquare-fuyao-ui.tests.ps1
 git commit -m "test: define fuyao ui skill behavior"
-~~~
+```
 
 ### Task 2: Create the skill entrypoint and metadata
 
 **Files:**
+
 - Create: skills/design-skillsquare-fuyao-ui/SKILL.md
 - Create: skills/design-skillsquare-fuyao-ui/agents/openai.yaml
 - Create directories: skills/design-skillsquare-fuyao-ui/references and skills/design-skillsquare-fuyao-ui/assets
 
 **Interfaces:**
+
 - Consumes: baseline failure patterns from Task 1.
 - Produces: automatic skill discovery metadata and a compact router that later references and assets satisfy.
 
@@ -198,9 +202,9 @@ git commit -m "test: define fuyao ui skill behavior"
 
 Run:
 
-~~~powershell
+```powershell
 python 'D:\Codex\home\skills\.system\skill-creator\scripts\init_skill.py' design-skillsquare-fuyao-ui --path skills --resources references,assets
-~~~
+```
 
 Expected: the new directory contains SKILL.md, agents/openai.yaml, references, and assets. Do not use --examples.
 
@@ -208,7 +212,7 @@ Expected: the new directory contains SKILL.md, agents/openai.yaml, references, a
 
 Use this content, adding only guidance supported by actual RED omissions:
 
-~~~markdown
+```markdown
 ---
 name: design-skillsquare-fuyao-ui
 description: Use when designing, implementing, or restyling a frontend that needs a professional, lightweight, clear, and trustworthy enterprise UI across discovery, detail, data-management, decision-support, workflow, or configuration views.
@@ -247,45 +251,47 @@ State the selected task mode and the existing conventions being preserved. Defin
 ## Completion check
 
 Verify hierarchy, semantic states, keyboard focus, contrast, long text, scrolling, loading and empty states, reduced motion, responsive priority, and operation reachability. Remove source-domain language and assumptions from reusable structures.
-~~~
+```
 
 - [ ] **Step 3: Replace agents/openai.yaml**
 
-~~~yaml
+```yaml
 interface:
-  display_name: "扶摇 Skillsquare UI"
-  short_description: "将扶摇轻量企业 UI 设计语言灵活迁移到任意前端项目"
-  brand_color: "#2F7DF6"
-  default_prompt: "Use $design-skillsquare-fuyao-ui to design this frontend with the Fuyao visual language while preserving its existing framework, brand, components, and business terminology."
-~~~
+  display_name: '扶摇 Skillsquare UI'
+  short_description: '将扶摇轻量企业 UI 设计语言灵活迁移到任意前端项目'
+  brand_color: '#2F7DF6'
+  default_prompt: 'Use $design-skillsquare-fuyao-ui to design this frontend with the Fuyao visual language while preserving its existing framework, brand, components, and business terminology.'
+```
 
 - [ ] **Step 4: Verify entrypoint and metadata**
 
 Run:
 
-~~~powershell
+```powershell
 $entry = Get-Content -Raw -Encoding UTF8 'skills/design-skillsquare-fuyao-ui/SKILL.md'
 if ($entry -notmatch '(?m)^description:\s*Use when\b') { throw 'Invalid description' }
 if ($entry -notmatch 'Transfer the visual language, not the source product') { throw 'Missing core principle' }
 $metadata = Get-Content -Raw -Encoding UTF8 'skills/design-skillsquare-fuyao-ui/agents/openai.yaml'
 if ($metadata -notmatch '\$design-skillsquare-fuyao-ui') { throw 'Default prompt must mention the skill' }
-~~~
+```
 
 Expected: no output and exit code 0.
 
 - [ ] **Step 5: Commit the entrypoint**
 
-~~~powershell
+```powershell
 git add -- skills/design-skillsquare-fuyao-ui/SKILL.md skills/design-skillsquare-fuyao-ui/agents/openai.yaml
 git commit -m "feat: add fuyao ui skill entrypoint"
-~~~
+```
 
 ### Task 3: Add the framework-neutral design language
 
 **Files:**
+
 - Create: skills/design-skillsquare-fuyao-ui/references/design-language.md
 
 **Interfaces:**
+
 - Consumes: semantic roles named in SKILL.md.
 - Produces: exact default tokens and adaptation rules used by the CSS, TypeScript, example, and component guidance.
 
@@ -293,7 +299,7 @@ git commit -m "feat: add fuyao ui skill entrypoint"
 
 The file must include these sections and decisions:
 
-~~~markdown
+```markdown
 # Design language
 
 ## Character
@@ -309,22 +315,22 @@ Professional, lightweight, clear, and trustworthy, with restrained AI-product cu
 
 ## Default color roles
 
-| Role | Default | Usage |
-| --- | --- | --- |
-| Canvas start | #f2f7ff | Optional cool opening tint |
-| Canvas | #fbfcff | Main light background |
-| Surface | #ffffff | Cards, filters, work areas |
-| Heading | #07172f | Highest text emphasis |
-| Text | #52647d | Body and descriptions |
-| Muted | #94a3b8 | Hints, placeholders, disabled context |
-| Line | #e2e8f0 | Structural boundaries |
-| Primary | #2f7df6 | Actions, selection, focus |
-| Primary strong | #2563eb | Hover and high-emphasis blue |
-| Accent | #7552ff | Restrained gradient or intelligent feature cue |
-| Accent secondary | #2ecdd3 | Restrained gradient support |
-| Success | #16a34a | Completed and positive state |
-| Warning | #f59e0b | Attention and pending state |
-| Danger | #dc2626 | Destructive and failed state |
+| Role             | Default | Usage                                          |
+| ---------------- | ------- | ---------------------------------------------- |
+| Canvas start     | #f2f7ff | Optional cool opening tint                     |
+| Canvas           | #fbfcff | Main light background                          |
+| Surface          | #ffffff | Cards, filters, work areas                     |
+| Heading          | #07172f | Highest text emphasis                          |
+| Text             | #52647d | Body and descriptions                          |
+| Muted            | #94a3b8 | Hints, placeholders, disabled context          |
+| Line             | #e2e8f0 | Structural boundaries                          |
+| Primary          | #2f7df6 | Actions, selection, focus                      |
+| Primary strong   | #2563eb | Hover and high-emphasis blue                   |
+| Accent           | #7552ff | Restrained gradient or intelligent feature cue |
+| Accent secondary | #2ecdd3 | Restrained gradient support                    |
+| Success          | #16a34a | Completed and positive state                   |
+| Warning          | #f59e0b | Attention and pending state                    |
+| Danger           | #dc2626 | Destructive and failed state                   |
 
 Use blue-purple or blue-cyan gradients only for a hero phrase, compact icon tile, intelligent-feature cue, or primary action that needs product identity. Do not apply gradients to every card, table row, or status.
 
@@ -336,11 +342,11 @@ Use the target font first. Without one, use a system Chinese sans-serif stack. S
 
 Compose from 4, 6, 8, 10, 12, 14, 16, 18, 24, 28, and 32px.
 
-| Density | Controls | Content gap | Use |
-| --- | --- | --- | --- |
-| Relaxed | 44–58px | 16–24px | Discovery and prominent search |
-| Standard | 38–44px | 12–18px | Detail and ordinary forms |
-| Compact | 32–38px | 8–14px | Tables, filters, batch workflows |
+| Density  | Controls | Content gap | Use                              |
+| -------- | -------- | ----------- | -------------------------------- |
+| Relaxed  | 44–58px  | 16–24px     | Discovery and prominent search   |
+| Standard | 38–44px  | 12–18px     | Detail and ordinary forms        |
+| Compact  | 32–38px  | 8–14px      | Tables, filters, batch workflows |
 
 ## Shape and elevation
 
@@ -370,34 +376,36 @@ If a target theme already exposes brand.primary, text.secondary, divider, backgr
 - Coloring every tag and status at high saturation.
 - Increasing every gap instead of separating information groups.
 - Shrinking dense interfaces without protecting scroll and actions.
-~~~
+```
 
 - [ ] **Step 2: Verify design-language invariants**
 
-~~~powershell
+```powershell
 $path = 'skills/design-skillsquare-fuyao-ui/references/design-language.md'
 $text = Get-Content -Raw -Encoding UTF8 $path
 @('Adaptation order', 'Default color roles', 'Typography', 'Spacing and density', 'Responsive priority', 'Common mistakes') |
   ForEach-Object { if (-not $text.Contains($_)) { throw "Missing section: $_" } }
 if ($text -notmatch '#2f7df6') { throw 'Primary default is missing' }
 if ($text -notmatch '(?s)Relaxed.*Standard.*Compact') { throw 'Density modes are incomplete' }
-~~~
+```
 
 Expected: no output and exit code 0.
 
 - [ ] **Step 3: Commit the design language**
 
-~~~powershell
+```powershell
 git add -- skills/design-skillsquare-fuyao-ui/references/design-language.md
 git commit -m "docs: define fuyao ui design language"
-~~~
+```
 
 ### Task 4: Add task-based page patterns
 
 **Files:**
+
 - Create: skills/design-skillsquare-fuyao-ui/references/page-patterns.md
 
 **Interfaces:**
+
 - Consumes: relaxed, standard, and compact density modes from design-language.md.
 - Produces: six business-neutral page archetypes selected by observable user task.
 
@@ -405,21 +413,21 @@ git commit -m "docs: define fuyao ui design language"
 
 Use the following contract:
 
-~~~markdown
+```markdown
 # Page patterns
 
 Select by the user's primary task, not by industry or source-page name.
 
 ## Quick reference
 
-| Task | Pattern | Density | First-screen priority |
-| --- | --- | --- | --- |
-| Browse and compare | Content discovery | Relaxed | Purpose, search, filters, first results |
-| Understand one item | Detail reading | Standard | Identity, status, actions, readable content |
-| Scan and operate on many rows | Data management | Compact | Filters, result state, table, bulk/row actions |
-| Compare evidence and decide | Decision support | Standard/compact | Current subject, evidence, dimensions, input, final action |
-| Complete staged setup or planning | Workflow orchestration | Standard/compact | Current step, scope, validation, progress, actions |
-| Understand and change relationships | Configuration/relationships | Standard | Structure, selection, dependencies, safe change |
+| Task                                | Pattern                     | Density          | First-screen priority                                      |
+| ----------------------------------- | --------------------------- | ---------------- | ---------------------------------------------------------- |
+| Browse and compare                  | Content discovery           | Relaxed          | Purpose, search, filters, first results                    |
+| Understand one item                 | Detail reading              | Standard         | Identity, status, actions, readable content                |
+| Scan and operate on many rows       | Data management             | Compact          | Filters, result state, table, bulk/row actions             |
+| Compare evidence and decide         | Decision support            | Standard/compact | Current subject, evidence, dimensions, input, final action |
+| Complete staged setup or planning   | Workflow orchestration      | Standard/compact | Current step, scope, validation, progress, actions         |
+| Understand and change relationships | Configuration/relationships | Standard         | Structure, selection, dependencies, safe change            |
 
 ## Content discovery
 
@@ -461,34 +469,36 @@ Protect context and actions before decorative content. Collapse card columns gra
 - Detaching bulk actions from selection state.
 - Hiding evidence, validation, or final actions at narrow widths.
 - Copying source labels when only the layout relationship is reusable.
-~~~
+```
 
 - [ ] **Step 2: Verify all six patterns are present and business-neutral**
 
-~~~powershell
+```powershell
 $path = 'skills/design-skillsquare-fuyao-ui/references/page-patterns.md'
 $text = Get-Content -Raw -Encoding UTF8 $path
 @('Content discovery', 'Detail reading', 'Data management', 'Decision support', 'Workflow orchestration', 'Configuration and relationships') |
   ForEach-Object { if (-not $text.Contains($_)) { throw "Missing page pattern: $_" } }
 @('Skill 评审', 'Skill 规划', 'Harness 管理', '评审中心') |
   ForEach-Object { if ($text.Contains($_)) { throw "Business term found: $_" } }
-~~~
+```
 
 Expected: no output and exit code 0.
 
 - [ ] **Step 3: Commit the page patterns**
 
-~~~powershell
+```powershell
 git add -- skills/design-skillsquare-fuyao-ui/references/page-patterns.md
 git commit -m "docs: add business-neutral page patterns"
-~~~
+```
 
 ### Task 5: Add reusable component contracts
 
 **Files:**
+
 - Create: skills/design-skillsquare-fuyao-ui/references/component-patterns.md
 
 **Interfaces:**
+
 - Consumes: semantic roles and density modes from design-language.md plus page relationships from page-patterns.md.
 - Produces: framework-neutral implementation decisions for common interface components.
 
@@ -496,24 +506,24 @@ git commit -m "docs: add business-neutral page patterns"
 
 Start with this quick-reference table:
 
-~~~markdown
+```markdown
 ## Quick reference
 
-| Component | Hierarchy rule | Default geometry | Required states |
-| --- | --- | --- | --- |
-| Navigation | Product context, sections, then utility actions | 56–66px bar; 44–48px targets | default, hover, active, focus, scrolled |
-| Stepper | Completed/current/future status before detail | 32–44px step targets | completed, current, blocked, future |
-| Master-detail | Selection context remains visible beside detail | flexible list + minmax detail | empty, selected, loading, narrow |
-| Metric card | Label and value dominate the icon | 18–22px radius; 44–48px icon tile | default, loading, unavailable |
-| Button | One primary action per local task region | 38–44px standard; 32–38px compact | hover, focus, disabled, loading |
-| Form control | Label, input, help/error in reading order | 38–44px standard; 32–38px compact | focus, filled, error, disabled |
-| Content card | Title, purpose, provenance, signal, action | 8–12px ordinary radius | hover, focus, loading, long text |
-| Table | Scope, result state, data, actions | 12–13px text; sticky header as needed | sort, filter, select, empty, overflow |
-| Tag/status | Semantics stay stable and subordinate | 22–28px height; pill or 4–6px radius | default, selected, disabled |
-| Dialog | Title, impact, content, actions | 8–12px radius; bounded viewport | open, busy, error, destructive |
-| Feedback | Explain state and next step | inline first; toast for transient results | loading, success, warning, error |
-| Empty state | Reason before optional action | restrained panel or table row | no data, no match, unauthorized |
-~~~
+| Component     | Hierarchy rule                                  | Default geometry                          | Required states                         |
+| ------------- | ----------------------------------------------- | ----------------------------------------- | --------------------------------------- |
+| Navigation    | Product context, sections, then utility actions | 56–66px bar; 44–48px targets              | default, hover, active, focus, scrolled |
+| Stepper       | Completed/current/future status before detail   | 32–44px step targets                      | completed, current, blocked, future     |
+| Master-detail | Selection context remains visible beside detail | flexible list + minmax detail             | empty, selected, loading, narrow        |
+| Metric card   | Label and value dominate the icon               | 18–22px radius; 44–48px icon tile         | default, loading, unavailable           |
+| Button        | One primary action per local task region        | 38–44px standard; 32–38px compact         | hover, focus, disabled, loading         |
+| Form control  | Label, input, help/error in reading order       | 38–44px standard; 32–38px compact         | focus, filled, error, disabled          |
+| Content card  | Title, purpose, provenance, signal, action      | 8–12px ordinary radius                    | hover, focus, loading, long text        |
+| Table         | Scope, result state, data, actions              | 12–13px text; sticky header as needed     | sort, filter, select, empty, overflow   |
+| Tag/status    | Semantics stay stable and subordinate           | 22–28px height; pill or 4–6px radius      | default, selected, disabled             |
+| Dialog        | Title, impact, content, actions                 | 8–12px radius; bounded viewport           | open, busy, error, destructive          |
+| Feedback      | Explain state and next step                     | inline first; toast for transient results | loading, success, warning, error        |
+| Empty state   | Reason before optional action                   | restrained panel or table row             | no data, no match, unauthorized         |
+```
 
 Then include these exact behavioral contracts:
 
@@ -534,32 +544,34 @@ Finish with a state checklist covering default, hover, active/selected, focus-vi
 
 - [ ] **Step 2: Verify component coverage**
 
-~~~powershell
+```powershell
 $path = 'skills/design-skillsquare-fuyao-ui/references/component-patterns.md'
 $text = Get-Content -Raw -Encoding UTF8 $path
 @('Navigation', 'Stepper', 'Master-detail', 'Metric', 'Button', 'Form', 'Card', 'Table', 'Tag', 'Dialog', 'Feedback', 'Empty') |
   ForEach-Object { if ($text -notmatch [regex]::Escape($_)) { throw "Missing component contract: $_" } }
 @('focus-visible', 'reduced-motion', 'overflow', 'narrow') |
   ForEach-Object { if ($text -notmatch [regex]::Escape($_)) { throw "Missing state guidance: $_" } }
-~~~
+```
 
 Expected: no output and exit code 0.
 
 - [ ] **Step 3: Commit the component contracts**
 
-~~~powershell
+```powershell
 git add -- skills/design-skillsquare-fuyao-ui/references/component-patterns.md
 git commit -m "docs: add fuyao ui component contracts"
-~~~
+```
 
 ### Task 6: Add optional CSS, TypeScript, and HTML assets
 
 **Files:**
+
 - Create: skills/design-skillsquare-fuyao-ui/assets/fuyao-theme.css
 - Create: skills/design-skillsquare-fuyao-ui/assets/fuyao-theme.ts
 - Create: skills/design-skillsquare-fuyao-ui/assets/example.html
 
 **Interfaces:**
+
 - Consumes: token names and values from design-language.md.
 - Produces: optional --fy-* CSS variables, a matching fuyaoTheme TypeScript object, and one framework-neutral composition example.
 
@@ -578,7 +590,7 @@ Define these token groups with exact defaults:
 
 Use this implementation shape; keep every selector scoped under .fy-ui except :root:
 
-~~~css
+```css
 :root {
   --fy-color-canvas-start: #f2f7ff;
   --fy-color-canvas: #fbfcff;
@@ -594,8 +606,9 @@ Use this implementation shape; keep every selector scoped under .fy-ui except :r
   --fy-color-success: #16a34a;
   --fy-color-warning: #f59e0b;
   --fy-color-danger: #dc2626;
-  --fy-font-sans: 'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC',
-    'Microsoft YaHei UI', system-ui, sans-serif;
+  --fy-font-sans:
+    'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI', system-ui,
+    sans-serif;
   --fy-font-size-xs: 10px;
   --fy-font-size-sm: 12px;
   --fy-font-size-compact: 13px;
@@ -705,7 +718,12 @@ Use this implementation shape; keep every selector scoped under .fy-ui except :r
 
 .fy-ui .fy-gradient-text {
   color: transparent;
-  background: linear-gradient(105deg, var(--fy-color-primary), var(--fy-color-accent) 52%, var(--fy-color-accent-secondary));
+  background: linear-gradient(
+    105deg,
+    var(--fy-color-primary),
+    var(--fy-color-accent) 52%,
+    var(--fy-color-accent-secondary)
+  );
   background-clip: text;
   -webkit-background-clip: text;
 }
@@ -889,20 +907,34 @@ Use this implementation shape; keep every selector scoped under .fy-ui except :r
 }
 
 @media (max-width: 1320px) {
-  .fy-ui .fy-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fy-ui .fy-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1040px) {
-  .fy-ui .fy-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .fy-ui .fy-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fy-ui .fy-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fy-ui .fy-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
-  .fy-ui .fy-topbar { align-items: flex-start; flex-direction: column; padding-block: var(--fy-space-3); }
+  .fy-ui .fy-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-block: var(--fy-space-3);
+  }
   .fy-ui .fy-metric-grid,
   .fy-ui .fy-card-grid,
-  .fy-ui .fy-toolbar { grid-template-columns: 1fr; }
-  .fy-ui .fy-button { width: 100%; }
+  .fy-ui .fy-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .fy-ui .fy-button {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -915,13 +947,13 @@ Use this implementation shape; keep every selector scoped under .fy-ui except :r
     animation-iteration-count: 1 !important;
   }
 }
-~~~
+```
 
 - [ ] **Step 2: Create fuyao-theme.ts**
 
 Export a single dependency-free literal object whose groups and values mirror the CSS:
 
-~~~typescript
+```typescript
 export const fuyaoTheme = {
   color: {
     canvasStart: '#f2f7ff',
@@ -940,9 +972,18 @@ export const fuyaoTheme = {
     danger: '#dc2626',
   },
   font: {
-    sans:
-      "'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif",
-    size: { xs: 10, sm: 12, compact: 13, body: 15, title: 18, section: 24, page: 34, display: 42, hero: 52 },
+    sans: "'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI', system-ui, sans-serif",
+    size: {
+      xs: 10,
+      sm: 12,
+      compact: 13,
+      body: 15,
+      title: 18,
+      section: 24,
+      page: 34,
+      display: 42,
+      hero: 52,
+    },
   },
   space: [0, 4, 6, 8, 10, 12, 14, 16, 18, 24, 28, 32],
   radius: { control: 6, comfortable: 8, panel: 12, feature: 20, pill: 999 },
@@ -960,7 +1001,7 @@ export const fuyaoTheme = {
 export type FuyaoTheme = typeof fuyaoTheme;
 export type FuyaoColorToken = keyof typeof fuyaoTheme.color;
 export type FuyaoDensity = 'relaxed' | 'standard' | 'compact';
-~~~
+```
 
 - [ ] **Step 3: Create example.html**
 
@@ -978,7 +1019,7 @@ The page title must be Fuyao UI composition example. Use English generic copy so
 
 Use this complete document:
 
-~~~html
+```html
 <!doctype html>
 <html lang="en">
   <head>
@@ -1004,8 +1045,8 @@ Use this complete document:
             Find reliable <span class="fy-gradient-text">shared resources</span> faster
           </h1>
           <p>
-            A framework-neutral composition showing clear hierarchy, restrained product
-            identity, and adaptable enterprise density.
+            A framework-neutral composition showing clear hierarchy, restrained product identity,
+            and adaptable enterprise density.
           </p>
         </section>
 
@@ -1047,21 +1088,27 @@ Use this complete document:
               <h2>Release checklist</h2>
               <p>Owner: Platform team</p>
               <p>A concise, reusable checklist for coordinating production releases.</p>
-              <div class="fy-tags"><span class="fy-tag">Ready</span><span class="fy-tag">Operations</span></div>
+              <div class="fy-tags">
+                <span class="fy-tag">Ready</span><span class="fy-tag">Operations</span>
+              </div>
               <p><a class="fy-button" href="#">View details</a></p>
             </article>
             <article class="fy-card">
               <h2>Research brief</h2>
               <p>Owner: Insights team</p>
               <p>A structured starting point for documenting findings and open questions.</p>
-              <div class="fy-tags"><span class="fy-tag">Updated</span><span class="fy-tag">Research</span></div>
+              <div class="fy-tags">
+                <span class="fy-tag">Updated</span><span class="fy-tag">Research</span>
+              </div>
               <p><a class="fy-button" href="#">View details</a></p>
             </article>
             <article class="fy-card">
               <h2>Service map</h2>
               <p>Owner: Architecture group</p>
               <p>A maintained overview of service relationships and operational ownership.</p>
-              <div class="fy-tags"><span class="fy-tag">Verified</span><span class="fy-tag">Architecture</span></div>
+              <div class="fy-tags">
+                <span class="fy-tag">Verified</span><span class="fy-tag">Architecture</span>
+              </div>
               <p><a class="fy-button" href="#">View details</a></p>
             </article>
           </div>
@@ -1069,15 +1116,43 @@ Use this complete document:
 
         <section aria-labelledby="activity-heading">
           <h2 id="activity-heading" class="fy-section-title">Recent activity</h2>
-          <div class="fy-table-wrap" tabindex="0" aria-label="Recent activity, horizontally scrollable">
+          <div
+            class="fy-table-wrap"
+            tabindex="0"
+            aria-label="Recent activity, horizontally scrollable"
+          >
             <table class="fy-table">
               <thead>
-                <tr><th>Resource</th><th>Owner</th><th>Change</th><th>Status</th><th>Updated</th></tr>
+                <tr>
+                  <th>Resource</th>
+                  <th>Owner</th>
+                  <th>Change</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                </tr>
               </thead>
               <tbody>
-                <tr><td>Release checklist</td><td>Platform team</td><td>Version updated</td><td>Ready</td><td>Today</td></tr>
-                <tr><td>Research brief</td><td>Insights team</td><td>New evidence</td><td>Updated</td><td>Yesterday</td></tr>
-                <tr><td>Service map</td><td>Architecture group</td><td>Ownership confirmed</td><td>Verified</td><td>2 days ago</td></tr>
+                <tr>
+                  <td>Release checklist</td>
+                  <td>Platform team</td>
+                  <td>Version updated</td>
+                  <td>Ready</td>
+                  <td>Today</td>
+                </tr>
+                <tr>
+                  <td>Research brief</td>
+                  <td>Insights team</td>
+                  <td>New evidence</td>
+                  <td>Updated</td>
+                  <td>Yesterday</td>
+                </tr>
+                <tr>
+                  <td>Service map</td>
+                  <td>Architecture group</td>
+                  <td>Ownership confirmed</td>
+                  <td>Verified</td>
+                  <td>2 days ago</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1086,14 +1161,14 @@ Use this complete document:
     </div>
   </body>
 </html>
-~~~
+```
 
 - [ ] **Step 4: Run the artifact test and TypeScript check**
 
-~~~powershell
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/design-skillsquare-fuyao-ui.tests.ps1
 node_modules\.bin\tsc.cmd --pretty false --noEmit --target ES2020 --module ESNext --skipLibCheck skills/design-skillsquare-fuyao-ui/assets/fuyao-theme.ts
-~~~
+```
 
 Expected: artifact contract PASS and TypeScript exit code 0.
 
@@ -1101,22 +1176,23 @@ Expected: artifact contract PASS and TypeScript exit code 0.
 
 Run:
 
-~~~powershell
+```powershell
 node --input-type=module -e "import { chromium } from 'playwright'; import { pathToFileURL } from 'node:url'; import path from 'node:path'; const browser=await chromium.launch({channel:'chrome'}); const page=await browser.newPage({viewport:{width:1440,height:1000},colorScheme:'light'}); await page.goto(pathToFileURL(path.resolve('skills/design-skillsquare-fuyao-ui/assets/example.html')).href); await page.screenshot({path:path.join(process.env.TEMP,'design-skillsquare-fuyao-ui-example.png'),fullPage:true}); process.exit(0);"
-~~~
+```
 
 Inspect the screenshot. Expected: readable first screen, restrained blue-purple identity, no clipped text, clear action hierarchy, three equal cards at 1440px, and a table whose overflow container does not widen the page.
 
 - [ ] **Step 6: Commit the optional assets**
 
-~~~powershell
+```powershell
 git add -- skills/design-skillsquare-fuyao-ui/assets/fuyao-theme.css skills/design-skillsquare-fuyao-ui/assets/fuyao-theme.ts skills/design-skillsquare-fuyao-ui/assets/example.html
 git commit -m "feat: add framework-neutral fuyao ui assets"
-~~~
+```
 
 ### Task 7: Run GREEN application tests and close observed gaps
 
 **Files:**
+
 - Modify: docs/superpowers/skill-tests/2026-08-28-design-skillsquare-fuyao-ui.md
 - Modify only if evidence requires it: skills/design-skillsquare-fuyao-ui/SKILL.md
 - Modify only if evidence requires it: skills/design-skillsquare-fuyao-ui/references/design-language.md
@@ -1124,6 +1200,7 @@ git commit -m "feat: add framework-neutral fuyao ui assets"
 - Modify only if evidence requires it: skills/design-skillsquare-fuyao-ui/references/component-patterns.md
 
 **Interfaces:**
+
 - Consumes: the exact four prompts and rubric from Task 1 plus the complete skill.
 - Produces: verbatim GREEN evidence, scores, and the smallest evidence-backed guidance corrections.
 
@@ -1131,29 +1208,29 @@ git commit -m "feat: add framework-neutral fuyao ui assets"
 
 Dispatch four fresh-context evaluators using these complete prompts:
 
-~~~text
+```text
 Use $design-skillsquare-fuyao-ui at skills/design-skillsquare-fuyao-ui to complete this request.
 
 You are designing a new TypeScript frontend for browsing reusable internal resources. No framework or component library has been chosen. Create an implementation-ready visual direction covering layout, tokens, cards, search, filters, responsive behavior, and interaction states. Keep it professional and inviting without becoming a technology-showcase dashboard.
-~~~
+```
 
-~~~text
+```text
 Use $design-skillsquare-fuyao-ui at skills/design-skillsquare-fuyao-ui to complete this request.
 
 An established TypeScript product uses React, Material UI, and an existing green brand palette with spacing and typography tokens. Restyle its administrative overview so it feels lighter, clearer, and more trustworthy. Do not replace Material UI, introduce global class overrides, or change the brand color. Explain the mapping to the existing theme.
-~~~
+```
 
-~~~text
+```text
 Use $design-skillsquare-fuyao-ui at skills/design-skillsquare-fuyao-ui to complete this request.
 
 Design a TypeScript management screen containing advanced filters, a wide sortable table, bulk actions, inline validation, status labels, pagination, and a sticky operation column. It must remain scannable at 1440px and usable on narrow screens. Provide concrete sizing, state, overflow, and accessibility guidance.
-~~~
+```
 
-~~~text
+```text
 Use $design-skillsquare-fuyao-ui at skills/design-skillsquare-fuyao-ui to complete this request.
 
 A source interface contains a selectable task queue, evidence summary, several comparison dimensions, an opinion editor, final actions, and history. Adapt that structure for an equipment-maintenance triage product. Reuse useful layout and interaction relationships, but do not retain the source product's entities, labels, role model, or workflow assumptions.
-~~~
+```
 
 Provide only the relevant raw target context when a scenario calls for an existing theme. Do not provide the intended answer, rubric, RED observations, or proposed fixes.
 
@@ -1170,13 +1247,13 @@ Copy responses verbatim into GREEN verification and score all seven items. The r
 
 For each failed criterion, make the smallest change:
 
-| Failure | File to adjust |
-| --- | --- |
-| Wrong trigger or skipped skill | SKILL.md description |
-| Framework, brand, or component replacement | SKILL.md Adapt before applying |
-| Missing tokens, density, background, motion, or responsive rule | references/design-language.md |
-| Wrong page structure or copied business workflow | references/page-patterns.md |
-| Missing states, overflow, focus, or action hierarchy | references/component-patterns.md |
+| Failure                                                         | File to adjust                   |
+| --------------------------------------------------------------- | -------------------------------- |
+| Wrong trigger or skipped skill                                  | SKILL.md description             |
+| Framework, brand, or component replacement                      | SKILL.md Adapt before applying   |
+| Missing tokens, density, background, motion, or responsive rule | references/design-language.md    |
+| Wrong page structure or copied business workflow                | references/page-patterns.md      |
+| Missing states, overflow, focus, or action hierarchy            | references/component-patterns.md |
 
 Do not add rationalization tables or pressure-language prohibitions; this is a pattern/reference skill. State the desired output shape positively.
 
@@ -1186,28 +1263,30 @@ Expected: all four scenarios meet the threshold and scenario-specific requiremen
 
 - [ ] **Step 5: Commit behavioral verification**
 
-~~~powershell
+```powershell
 git add -- docs/superpowers/skill-tests/2026-08-28-design-skillsquare-fuyao-ui.md skills/design-skillsquare-fuyao-ui
 git commit -m "test: verify fuyao ui skill transfer"
-~~~
+```
 
 ### Task 8: Validate the finished skill and repository
 
 **Files:**
+
 - Verify: skills/design-skillsquare-fuyao-ui/**
 - Verify: tests/design-skillsquare-fuyao-ui.tests.ps1
 - Verify: docs/superpowers/skill-tests/2026-08-28-design-skillsquare-fuyao-ui.md
 
 **Interfaces:**
+
 - Consumes: all prior deliverables.
 - Produces: validator output, clean build evidence, and a scoped final diff.
 
 - [ ] **Step 1: Run the artifact and TypeScript checks**
 
-~~~powershell
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/design-skillsquare-fuyao-ui.tests.ps1
 node_modules\.bin\tsc.cmd --pretty false --noEmit --target ES2020 --module ESNext --skipLibCheck skills/design-skillsquare-fuyao-ui/assets/fuyao-theme.ts
-~~~
+```
 
 Expected: PASS and exit code 0.
 
@@ -1215,28 +1294,28 @@ Expected: PASS and exit code 0.
 
 The current system Python lacks PyYAML. Install only the validator dependency into a task-specific temporary directory, leaving the project and global Python unchanged:
 
-~~~powershell
+```powershell
 $validatorDeps = Join-Path $env:TEMP 'design-skillsquare-validator-pydeps'
 python -m pip install --disable-pip-version-check --target $validatorDeps 'PyYAML==6.0.2'
 $env:PYTHONPATH = $validatorDeps
 python 'D:\Codex\home\skills\.system\skill-creator\scripts\quick_validate.py' 'skills/design-skillsquare-fuyao-ui'
-~~~
+```
 
 If pip needs network access, request approval for that exact installation. Expected validator output: Skill is valid!
 
 - [ ] **Step 3: Run project verification**
 
-~~~powershell
+```powershell
 npm.cmd run build
 git diff --check
 git status --short
-~~~
+```
 
 Expected: Vite build exits 0; diff check is silent; status contains only intended plan/skill/test artifacts or is clean after commits.
 
 - [ ] **Step 4: Audit business and framework coupling**
 
-~~~powershell
+```powershell
 $skillRoot = 'skills/design-skillsquare-fuyao-ui'
 $text = Get-ChildItem -LiteralPath $skillRoot -Recurse -File |
   ForEach-Object { Get-Content -Raw -Encoding UTF8 $_.FullName } |
@@ -1245,16 +1324,16 @@ $text = Get-ChildItem -LiteralPath $skillRoot -Recurse -File |
   ForEach-Object { if ($text.Contains($_)) { throw "Forbidden coupling: $_" } }
 @('must use React', 'must use Vue', 'requires Tailwind', 'requires Sass') |
   ForEach-Object { if ($text.Contains($_)) { throw "Framework coupling: $_" } }
-~~~
+```
 
 Expected: no output and exit code 0.
 
 - [ ] **Step 5: Review the final commit range**
 
-~~~powershell
+```powershell
 git log --oneline --decorate -10
 git diff --stat 5991db9..HEAD
 git diff --check 5991db9..HEAD
-~~~
+```
 
 Confirm that current application files under src are untouched and every acceptance criterion in the spec maps to a verified artifact or behavior result.

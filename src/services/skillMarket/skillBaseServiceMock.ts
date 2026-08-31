@@ -2311,8 +2311,7 @@ function handleSkillRequest(
     const target = mockSkillMasterManagementRecords[index];
     const referenceCount = mockSkillPlanningSupplementRecords.filter(
       (planning) =>
-        planning.skillId === id ||
-        (!planning.skillId && planning.skillName === target?.skillName),
+        planning.skillId === id || (!planning.skillId && planning.skillName === target?.skillName),
     ).length;
     if (referenceCount > 0) {
       return fail(`Skill 已关联 ${referenceCount} 个规划项，不能删除`, null);
@@ -2343,7 +2342,10 @@ function handleSkillRequest(
         ),
     );
     if (referenced.length > 0) {
-      return fail(`${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`, null);
+      return fail(
+        `${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`,
+        null,
+      );
     }
     const before = mockSkillMasterManagementRecords.length;
     for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {

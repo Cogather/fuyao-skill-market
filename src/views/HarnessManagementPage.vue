@@ -101,10 +101,7 @@ const departmentTree = computed(() => {
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
 const departmentTreeUnavailable = computed(
-  () =>
-    transportIsHttp &&
-    permissionContextReady.value &&
-    departmentTree.value.length === 0,
+  () => transportIsHttp && permissionContextReady.value && departmentTree.value.length === 0,
 );
 
 function departmentLevelByPath(path: string[]): number {
