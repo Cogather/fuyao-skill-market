@@ -2177,7 +2177,7 @@ onBeforeUnmount(() => {
                 <div class="name-cell">
                   <i>{{ record.name.slice(0, 1) }}</i
                   ><span
-                    ><strong>{{ record.name }}</strong>
+                    ><strong :title="record.name">{{ record.name }}</strong>
                     <em
                       v-if="record.skillSource === 'imported'"
                       class="skill-source-badge is-imported"
@@ -2186,7 +2186,9 @@ onBeforeUnmount(() => {
                   >
                 </div>
               </td>
-              <td>{{ record.description || '无' }}</td>
+              <td class="description-cell">
+                <span :title="record.description || '无'">{{ record.description || '无' }}</span>
+              </td>
               <!-- <td>
                 <span class="badge level">{{ record.level }}</span>
               </td> -->
@@ -3630,6 +3632,17 @@ onBeforeUnmount(() => {
   font-weight: 650;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.table-wrap td.description-cell > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 .name-cell {
   display: flex;

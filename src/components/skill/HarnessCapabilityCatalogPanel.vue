@@ -1107,10 +1107,12 @@ onMounted(async () => {
               </td>
               <td>
                 <div class="capability-name-cell">
-                  <strong class="capability-name">{{ record.name }}</strong>
+                  <strong class="capability-name" :title="record.name">{{ record.name }}</strong>
                 </div>
               </td>
-              <td class="is-description">{{ record.description }}</td>
+              <td class="is-description">
+                <span :title="record.description || '—'">{{ record.description || '—' }}</span>
+              </td>
               <td>{{ record.owner }}</td>
               <td>{{ record.developOwner }}</td>
               <td>{{ record.plannedCompleteDate || '—' }}</td>
@@ -1646,6 +1648,17 @@ onMounted(async () => {
 td.is-description {
   color: #334155;
 }
+td.is-description > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
 .is-check {
   text-align: center;
 }
@@ -1653,10 +1666,16 @@ td.is-description {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  min-width: 0;
 }
 .capability-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: #10243e;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .capability-status {
   display: inline-flex;

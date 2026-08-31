@@ -3952,10 +3952,12 @@ onBeforeUnmount(() => {
                     <td>{{ row.activityNodeName }}</td>
                     <td>{{ row.subActivityNodeName }}</td>
                     <td>
-                      <strong class="skill-name">{{ row.name }}</strong>
+                      <strong class="skill-name" :title="row.name">{{ row.name }}</strong>
                     </td>
                     <td class="desc-col">
-                      <span :title="row.description">{{ row.description }}</span>
+                      <span class="planning-description" :title="row.description">{{
+                        row.description
+                      }}</span>
                     </td>
                     <td>{{ row.owner }}</td>
                     <td>{{ row.developOwner }}</td>
@@ -5761,8 +5763,25 @@ onBeforeUnmount(() => {
 }
 
 .skill-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: #10243e;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-description {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .status-pill {
