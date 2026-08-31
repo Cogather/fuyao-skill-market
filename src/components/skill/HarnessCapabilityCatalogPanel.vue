@@ -597,6 +597,26 @@ function resetEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function ensurePlannedCompleteDate(): boolean {
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return false;
+  }
+  if (editor.plannedCompleteDate < currentLocalDate()) {
+    editor.error = '计划完成时间不能早于当前日期';
+    return false;
+  }
+  return true;
+}
+
 function ensureProductCapabilityNamePrefix(): boolean {
   const prefix = requiredCapabilityNamePrefix.value;
   if (!prefix) return true;
@@ -716,10 +736,7 @@ async function submitEditor(): Promise<void> {
     editor.error = '请选择开发责任人，不能只输入文本';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
   try {
     editor.submitting = true;
     const scope = requireCatalogScope();
@@ -1330,7 +1347,11 @@ onMounted(async () => {
             </label>
             <label>
               <span>计划完成时间 *</span>
-              <input v-model="editor.plannedCompleteDate" type="date" />
+              <input
+                v-model="editor.plannedCompleteDate"
+                type="date"
+                :min="currentLocalDate()"
+              />
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>

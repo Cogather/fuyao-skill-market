@@ -2202,7 +2202,7 @@ function handleSkillRequest(
     }
     const rawSkillSource = String(payload.skillSource ?? '').trim();
     const skillSource: 'created' | 'imported' =
-      rawSkillSource === 'imported' ? 'imported' : 'created';
+      rawSkillSource === '引用' || rawSkillSource === 'imported' ? 'imported' : 'created';
     const stamp = nowLocalDateTimeArray();
     const record: MockSkillMasterManagementRecord = {
       id: nextMockSkillMasterManagementId(),

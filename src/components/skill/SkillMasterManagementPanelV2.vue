@@ -760,6 +760,26 @@ function resetEditor(): void {
   resetPersonPicker(developOwnerPicker);
 }
 
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function ensurePlannedCompleteDate(): boolean {
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return false;
+  }
+  if (editor.plannedCompleteDate < currentLocalDate()) {
+    editor.error = '计划完成时间不能早于当前日期';
+    return false;
+  }
+  return true;
+}
+
 function applyCurrentScopeToEditor(): void {
   editor.level = masterScopeForm.level;
   editor.product = masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '';
@@ -1088,7 +1108,8 @@ function resolvePersonForSubmit(
 }
 
 function normalizeSkillSource(value: unknown): SkillSourceValue {
-  return String(value ?? '').trim() === 'imported' ? 'imported' : 'created';
+  const source = String(value ?? '').trim();
+  return source === '引用' || source === 'imported' ? 'imported' : 'created';
 }
 
 function sourceLabel(source: unknown): string {
@@ -1335,10 +1356,7 @@ async function importFromSquare(): Promise<void> {
     editor.error = '开发责任人信息不完整，请清除后重新选择';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
 
   const params: CreateSkillMasterManagementParams = {
     userId: props.userId.trim(),
@@ -1354,7 +1372,7 @@ async function importFromSquare(): Promise<void> {
     developOwnerName: developOwnerValue.name,
     developOwnerId: developOwnerValue.id,
     planFinishDate: editor.plannedCompleteDate,
-    skillSource: 'imported',
+    skillSource: '引用',
   };
 
   importSubmitting.value = true;
@@ -1499,10 +1517,7 @@ async function submitEditor(): Promise<void> {
       editor.error = '开发责任人信息不完整，请清除后重新选择';
       return;
     }
-    if (!editor.plannedCompleteDate) {
-      editor.error = '请选择计划完成时间';
-      return;
-    }
+    if (!ensurePlannedCompleteDate()) return;
 
     const params: CreateSkillMasterManagementParams = {
       userId: props.userId.trim(),
@@ -1518,7 +1533,7 @@ async function submitEditor(): Promise<void> {
       developOwnerName: developOwnerValue.name,
       developOwnerId: developOwnerValue.id,
       planFinishDate: editor.plannedCompleteDate,
-      skillSource: 'created',
+      skillSource: '规划',
     };
 
     submitting.value = true;
@@ -1590,10 +1605,7 @@ async function submitEditor(): Promise<void> {
     editor.error = '开发责任人信息不完整，请清除后重新选择';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
 
   const updateParams: UpdateSkillMasterManagementParams = {
     userId: props.userId.trim(),
@@ -2505,7 +2517,10 @@ onBeforeUnmount(() => {
                 </div>
               </label>
               <label
-                ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
+                ><span>计划完成时间 *</span><input
+                  v-model="editor.plannedCompleteDate"
+                  type="date"
+                  :min="currentLocalDate()"
               /></label>
             </div>
 
@@ -2704,13 +2719,16 @@ onBeforeUnmount(() => {
                 </label>
                 <label
                   ><span>计划完成时间 *</span
-                  ><input v-model="editor.plannedCompleteDate" type="date"
+                  ><input
+                    v-model="editor.plannedCompleteDate"
+                    type="date"
+                    :min="currentLocalDate()"
                 /></label>
               </div>
             </div>
 
-            <p v-if="editor.error" class="error">{{ editor.error }}</p>
           </div>
+          <p v-if="editor.error" class="error">{{ editor.error }}</p>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
             <button
@@ -3819,12 +3837,13 @@ onBeforeUnmount(() => {
 .dialog.is-create-dialog {
   display: flex;
   flex-direction: column;
-  height: calc(68vh - 44px);
+  height: calc(100vh - 92px);
   max-height: calc(100vh - 92px);
   overflow: hidden;
 }
 .dialog.is-create-dialog > header,
 .dialog.is-create-dialog > .dialog-tabs,
+.dialog.is-create-dialog > .error,
 .dialog.is-create-dialog > footer {
   flex: 0 0 auto;
 }
@@ -3834,7 +3853,7 @@ onBeforeUnmount(() => {
 }
 .dialog.is-create-dialog > .dialog-scroll-body {
   flex: 1 1 auto;
-  overflow-y: auto;
+  overflow-y: visible;
 }
 .dialog > header {
   display: flex;
@@ -4037,6 +4056,7 @@ onBeforeUnmount(() => {
   color: #d94851;
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 .dialog > footer {
   display: flex;
