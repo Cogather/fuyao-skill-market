@@ -740,6 +740,8 @@ export type UpdateSkillMasterManagementBody = {
   developOwnerName?: string;
   developOwnerId?: string;
   planFinishDate?: string;
+  /** 来源标识：规划（直接新建）/ 引用（从 Skill 广场引入） */
+  skillSource?: SkillMasterSkillSource;
 };
 
 export type UpdateCommandMasterManagementBody = Omit<

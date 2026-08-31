@@ -2280,6 +2280,12 @@ function handleSkillRequest(
     if (!target) {
       return fail(`未找到 Skill: ${id}`, null);
     }
+    const rawSkillSource = String(payload.skillSource ?? '').trim();
+    const skillSource: 'created' | 'imported' = rawSkillSource
+      ? rawSkillSource === '引用' || rawSkillSource === 'imported'
+        ? 'imported'
+        : 'created'
+      : target.skillSource;
     Object.assign(target, {
       skillName: String(payload.skillName).trim(),
       skillDescription: String(payload.skillDescription).trim(),
@@ -2291,6 +2297,7 @@ function handleSkillRequest(
       developOwnerName: String(payload.developOwnerName).trim(),
       developOwnerId: String(payload.developOwnerId).trim(),
       planFinishDate: String(payload.planFinishDate).trim(),
+      skillSource,
       updatedAt: nowLocalDateTimeArray(),
     });
     return ok({

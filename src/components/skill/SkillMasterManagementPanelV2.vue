@@ -1574,8 +1574,7 @@ async function submitEditor(): Promise<void> {
       return;
     }
   }
-  // 广场引入的记录说明只读，不再要求非空
-  if (editor.skillSource !== 'imported' && !editor.description.trim()) {
+  if (!editor.description.trim()) {
     editor.error = '请填写 Skill 说明';
     return;
   }
@@ -1618,6 +1617,7 @@ async function submitEditor(): Promise<void> {
     developOwnerName: developOwnerValue.name,
     developOwnerId: developOwnerValue.id,
     planFinishDate: editor.plannedCompleteDate,
+    skillSource: editor.skillSource === 'imported' ? '引用' : '规划',
   };
 
   submitting.value = true;
@@ -2375,7 +2375,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="dialog-scroll-body">
             <div v-if="editor.mode === 'edit' && editor.skillSource === 'imported'" class="note">
-              <b>来源</b><span>广场引入，仅可修改责任 Owner、开发责任人和计划完成时间</span>
+              <b>来源</b
+              ><span>广场引入，名称不可修改；可修改 Skill 说明、责任 Owner、开发责任人和计划完成时间</span>
             </div>
             <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
               <label class="wide"
@@ -2400,14 +2401,8 @@ onBeforeUnmount(() => {
                   v-model.trim="editor.description"
                   maxlength="300"
                   rows="4"
-                  :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
                 ></textarea>
-                <small
-                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
-                  class="field-hint"
-                  >从 Skill 广场引入的 Skill 说明不可修改</small
-                ></label
-              >
+              </label>
               <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
                 <span>责任 Owner *</span>
                 <div class="person-search__control">
