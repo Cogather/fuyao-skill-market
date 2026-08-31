@@ -212,6 +212,15 @@ export const skillBaseService = {
     });
   },
 
+  // skill清单列表引入skill广场列表接口
+  querySkillmarketList: (params: any): any => {
+    return httpRequest.harnessSkill<any>({
+      url: '/management/market-skills',
+      method: 'get',
+      params,
+    });
+  },
+
   // 我的发布列表查询接口
   queryMySkills: (params: any): any => {
     return httpRequest.skill<any>({
