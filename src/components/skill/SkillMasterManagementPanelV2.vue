@@ -2372,10 +2372,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div class="dialog-scroll-body">
-            <div
-              v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
-              class="note"
-            >
+            <div v-if="editor.mode === 'edit' && editor.skillSource === 'imported'" class="note">
               <b>来源</b><span>广场引入，仅可修改责任 Owner、开发责任人和计划完成时间</span>
             </div>
             <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
@@ -2509,10 +2506,8 @@ onBeforeUnmount(() => {
                 </div>
               </label>
               <label
-                ><span>计划完成时间 *</span><input
-                  v-model="editor.plannedCompleteDate"
-                  type="date"
-                  :min="currentLocalDate()"
+                ><span>计划完成时间 *</span
+                ><input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()"
               /></label>
             </div>
 
@@ -2718,7 +2713,6 @@ onBeforeUnmount(() => {
                 /></label>
               </div>
             </div>
-
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
           <footer>
@@ -3829,10 +3823,12 @@ onBeforeUnmount(() => {
 .dialog.is-create-dialog {
   display: flex;
   flex-direction: column;
-  height: min(716px, calc(100vh - 92px));
-  height: min(716px, calc(100dvh - 92px));
-  max-height: min(716px, calc(100vh - 92px));
-  max-height: min(716px, calc(100dvh - 92px));
+  box-sizing: border-box;
+  width: min(804px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
   overflow: hidden;
 }
 .dialog.is-create-dialog > header,

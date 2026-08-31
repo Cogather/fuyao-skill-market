@@ -1347,11 +1347,7 @@ onMounted(async () => {
             </label>
             <label>
               <span>计划完成时间 *</span>
-              <input
-                v-model="editor.plannedCompleteDate"
-                type="date"
-                :min="currentLocalDate()"
-              />
+              <input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()" />
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>
