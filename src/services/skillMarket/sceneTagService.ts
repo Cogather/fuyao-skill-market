@@ -160,7 +160,7 @@ export async function listSceneTags(): Promise<SceneTag[]> {
     return defaultSceneTags.map((tag) => ({ ...tag }));
   }
 
-  const response = await skillBaseService.querySceneTags({});
+  const response = await skillBaseService.querySceneTags();
   return normalizeSceneTags(response);
 }
 
@@ -174,10 +174,7 @@ export async function getSceneTags(sceneKey: string, departmentName = ''): Promi
   }
 
   try {
-    const response = await skillBaseService.querySceneTags({
-      firstScene: sceneKey,
-      dimName: departmentName,
-    });
+    const response = await skillBaseService.querySceneTags();
     return normalizeSceneTags(response).map((tag) => tag.name);
   } catch {
     // 后端标签接口未就绪时按无标签处理，避免阻塞场景配置展示。
@@ -202,10 +199,9 @@ export async function saveSceneTags(
     return [...normalized];
   }
 
-  const response = await skillBaseService.saveSceneTags({
-    ...(dimContext ?? {}),
-    firstScene: sceneKey,
-    tags: normalized,
-  });
+  const response = await skillBaseService.saveSceneTags(
+    { bindings: [{  firstScene: sceneKey, tags: normalized,}]},
+    dimContext ?? {},
+  );
   return normalizeSceneTags(response).map((tag) => tag.name);
 }

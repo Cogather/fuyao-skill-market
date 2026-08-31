@@ -1038,9 +1038,10 @@ async function confirmTagDialog(): Promise<void> {
   tagSaving.value = true;
   tagError.value = '';
   try {
-    const dimContext: SceneTagDimContext | undefined = useHttpTaxonomySource
+    let dimContext: SceneTagDimContext | undefined = useHttpTaxonomySource
       ? httpDimContext(selectedDepartment.value, props.userId, scopeForm, departmentOptions.value)
       : undefined;
+    delete dimContext?.dimName;
     await saveSceneTags(
       sceneTagKey(record),
       tagSelected.value,
