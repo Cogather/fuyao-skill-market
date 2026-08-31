@@ -2817,11 +2817,14 @@ type AiEvolutionDecision = 'approve' | 'reject';
 const aiEvolutionConfirm = ref<{ row: AiEvolutionSkillRow; decision: AiEvolutionDecision } | null>(
   null,
 );
+// 拒绝原因（可选）
+const aiEvolutionRejectReason = ref('');
 
 function requestAiEvolutionDecision(row: AiEvolutionSkillRow, decision: AiEvolutionDecision): void {
   if (row.status !== 'pending' || processingAiEvolutionId.value) {
     return;
   }
+  aiEvolutionRejectReason.value = '';
   aiEvolutionConfirm.value = { row, decision };
 }
 
@@ -2857,7 +2860,10 @@ async function confirmAiEvolutionDecision(): Promise<void> {
     const res =
       decision === 'approve'
         ? await skillBaseService.approveSkillDraft(row.id, { userId: uid })
-        : await skillBaseService.rejectSkillDraft(row.id, { userId: uid });
+        : await skillBaseService.rejectSkillDraft(row.id, {
+            userId: uid,
+            reason: aiEvolutionRejectReason.value.trim(),
+          });
     if (!serviceSucceeded(res)) {
       showToast(serviceMessage(res, failFallback));
       return;
@@ -5352,6 +5358,27 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </template>
             <template v-else> 的本次自进化候选版本将被丢弃，是否确认拒绝？ </template>
           </p>
+          <label
+            v-if="aiEvolutionConfirm.decision === 'reject'"
+            class="admin-field ai-evo-reject-reason"
+          >
+            <span class="ai-evo-reject-reason-label">
+              拒绝原因<span class="ai-evo-reject-reason-optional">（可选）</span>
+            </span>
+            <textarea
+              v-model="aiEvolutionRejectReason"
+              class="admin-textarea"
+              rows="3"
+              maxlength="500"
+              placeholder="简要说明原因，帮助自进化系统优化"
+            />
+            <span
+              class="ai-evo-reject-reason-count"
+              :class="{ 'is-near-limit': aiEvolutionRejectReason.length >= 450 }"
+            >
+              {{ aiEvolutionRejectReason.length }}/500
+            </span>
+          </label>
           <div class="v-actions">
             <button
               type="button"
