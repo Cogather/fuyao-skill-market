@@ -196,6 +196,7 @@ const editor = reactive({
 });
 const initialOwnerValue = reactive(createEmptyPersonSubmitValue());
 const initialDevelopOwnerValue = reactive(createEmptyPersonSubmitValue());
+const initialPlannedCompleteDate = ref('');
 const associationEditor = reactive({
   open: false,
   skillId: '',
@@ -756,6 +757,7 @@ function resetEditor(): void {
   });
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -773,7 +775,9 @@ function ensurePlannedCompleteDate(): boolean {
     editor.error = '请选择计划完成时间';
     return false;
   }
-  if (editor.plannedCompleteDate < currentLocalDate()) {
+  const plannedCompleteDateChanged =
+    editor.mode === 'create' || editor.plannedCompleteDate !== initialPlannedCompleteDate.value;
+  if (plannedCompleteDateChanged && editor.plannedCompleteDate < currentLocalDate()) {
     editor.error = '计划完成时间不能早于当前日期';
     return false;
   }
@@ -1434,6 +1438,7 @@ function openEdit(record: SkillMasterRecord): void {
   });
   Object.assign(initialOwnerValue, parsePersonSubmitValue(nextOwnerLabel));
   Object.assign(initialDevelopOwnerValue, parsePersonSubmitValue(nextDevelopOwnerLabel));
+  initialPlannedCompleteDate.value = record.plannedCompleteDate;
   hydratePickerFromValue(ownerPicker, nextOwnerLabel, editor.department);
   hydratePickerFromValue(developOwnerPicker, nextDevelopOwnerLabel, editor.developOwnerDepartment);
   applyCurrentScopeToEditor();
@@ -1444,6 +1449,7 @@ function closeEditor(): void {
   editor.error = '';
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -2504,7 +2510,10 @@ onBeforeUnmount(() => {
               </label>
               <label
                 ><span>计划完成时间 *</span
-                ><input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()"
+                ><input
+                  v-model="editor.plannedCompleteDate"
+                  type="date"
+                  :min="currentLocalDate()"
               /></label>
             </div>
 
@@ -2723,7 +2732,15 @@ onBeforeUnmount(() => {
             >
               {{ importSubmitting ? '引入中…' : '引入' }}
             </button>
-            <button v-else class="primary" type="submit" :disabled="submitting">保存</button>
+            <button
+              v-else
+              class="primary"
+              type="submit"
+              formnovalidate
+              :disabled="submitting"
+            >
+              保存
+            </button>
           </footer>
         </form>
       </div>

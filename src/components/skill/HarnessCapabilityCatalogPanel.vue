@@ -106,6 +106,7 @@ const exporting = ref(false);
 let productLoadSequence = 0;
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const initialPlannedCompleteDate = ref('');
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
 let ownerSearchSequence = 0;
@@ -593,6 +594,7 @@ function resetEditor(): void {
     error: '',
     submitting: false,
   });
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -610,7 +612,9 @@ function ensurePlannedCompleteDate(): boolean {
     editor.error = '请选择计划完成时间';
     return false;
   }
-  if (editor.plannedCompleteDate < currentLocalDate()) {
+  const plannedCompleteDateChanged =
+    editor.mode === 'create' || editor.plannedCompleteDate !== initialPlannedCompleteDate.value;
+  if (plannedCompleteDateChanged && editor.plannedCompleteDate < currentLocalDate()) {
     editor.error = '计划完成时间不能早于当前日期';
     return false;
   }
@@ -669,6 +673,7 @@ function openEdit(record: SkillMasterRecord): void {
     error: '',
     submitting: false,
   });
+  initialPlannedCompleteDate.value = record.plannedCompleteDate;
   hydratePersonPicker(ownerPicker, record.owner, record.department);
   hydratePersonPicker(developOwnerPicker, record.developOwner, record.developOwnerDepartment);
 }
@@ -677,6 +682,7 @@ function closeEditor(): void {
   if (editor.submitting) return;
   editor.open = false;
   editor.error = '';
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -1349,13 +1355,22 @@ onMounted(async () => {
             </label>
             <label>
               <span>计划完成时间 *</span>
-              <input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()" />
+              <input
+                v-model="editor.plannedCompleteDate"
+                type="date"
+                :min="currentLocalDate()"
+              />
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
-            <button type="submit" class="is-primary" :disabled="editor.submitting">
+            <button
+              type="submit"
+              class="is-primary"
+              formnovalidate
+              :disabled="editor.submitting"
+            >
               {{ editor.submitting ? '保存中...' : '保存' }}
             </button>
           </footer>
