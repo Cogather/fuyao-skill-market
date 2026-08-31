@@ -1112,10 +1112,6 @@ function normalizeSkillSource(value: unknown): SkillSourceValue {
   return source === '引用' || source === 'imported' ? 'imported' : 'created';
 }
 
-function sourceLabel(source: unknown): string {
-  return normalizeSkillSource(source) === 'imported' ? '广场引入' : '新建';
-}
-
 function splitSkillTags(value: unknown): string[] {
   const source = Array.isArray(value)
     ? value
@@ -2183,9 +2179,9 @@ onBeforeUnmount(() => {
                   ><span
                     ><strong>{{ record.name }}</strong>
                     <em
-                      class="skill-source-badge"
-                      :class="{ 'is-imported': record.skillSource === 'imported' }"
-                      >{{ sourceLabel(record.skillSource) }}</em
+                      v-if="record.skillSource === 'imported'"
+                      class="skill-source-badge is-imported"
+                      >广场引入</em
                     ></span
                   >
                 </div>
@@ -2337,10 +2333,9 @@ onBeforeUnmount(() => {
               ><strong>
                 {{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}
                 <em
-                  v-if="editor.mode === 'edit'"
-                  class="dialog-source-badge"
-                  :class="{ 'is-imported': editor.skillSource === 'imported' }"
-                  >{{ sourceLabel(editor.skillSource) }}</em
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="dialog-source-badge is-imported"
+                  >广场引入</em
                 >
               </strong>
               <p>
@@ -2377,14 +2372,11 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div class="dialog-scroll-body">
-            <div v-if="editor.mode === 'edit'" class="note">
-              <b>来源</b
-              ><span>
-                {{ sourceLabel(editor.skillSource)
-                }}<template v-if="editor.skillSource === 'imported'"
-                  >，仅可修改责任 Owner、开发责任人和计划完成时间</template
-                ></span
-              >
+            <div
+              v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+              class="note"
+            >
+              <b>来源</b><span>广场引入，仅可修改责任 Owner、开发责任人和计划完成时间</span>
             </div>
             <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
               <label class="wide"
@@ -3268,8 +3260,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  /* 固定为默认每页 5 条时的高度：切换每页条数只影响是否出现滚动条，高度与行高都保持不变 */
-  height: 305px;
+  height: clamp(132px, 19vh, 180px);
+  height: clamp(132px, 19dvh, 180px);
   padding: 3px 2px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -3837,8 +3829,10 @@ onBeforeUnmount(() => {
 .dialog.is-create-dialog {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 92px);
-  max-height: calc(100vh - 92px);
+  height: min(716px, calc(100vh - 92px));
+  height: min(716px, calc(100dvh - 92px));
+  max-height: min(716px, calc(100vh - 92px));
+  max-height: min(716px, calc(100dvh - 92px));
   overflow: hidden;
 }
 .dialog.is-create-dialog > header,
@@ -4191,6 +4185,57 @@ onBeforeUnmount(() => {
   color: #fff;
   font-size: 12px;
   font-weight: 800;
+}
+@media (max-height: 760px) {
+  .dialog.is-create-dialog {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    padding: 18px 22px;
+  }
+  .dialog.is-create-dialog > header {
+    margin-bottom: 12px;
+  }
+  .dialog.is-create-dialog > .dialog-tabs {
+    margin-bottom: 10px;
+  }
+  .dialog.is-create-dialog .form-grid {
+    gap: 10px 13px;
+  }
+  .dialog.is-create-dialog .import-panel {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .dialog.is-create-dialog .import-list {
+    height: clamp(110px, 18vh, 140px);
+    height: clamp(110px, 18dvh, 140px);
+  }
+  .dialog.is-create-dialog > .error {
+    margin-top: 10px;
+    padding: 7px 10px;
+  }
+  .dialog.is-create-dialog > footer {
+    margin-top: 12px;
+  }
+}
+@media (max-height: 680px) {
+  .dialog.is-create-dialog .form-grid textarea {
+    height: 64px;
+  }
+  .dialog.is-create-dialog .import-selected {
+    padding: 8px 10px;
+  }
+  .dialog.is-create-dialog .import-selected > header {
+    margin-bottom: 4px;
+  }
+  .dialog.is-create-dialog .import-selected__tags {
+    display: none;
+  }
+  .dialog.is-create-dialog .import-selected > p {
+    margin-top: 4px;
+    -webkit-line-clamp: 1;
+  }
 }
 @media (max-width: 1100px) {
   .master-hero {
