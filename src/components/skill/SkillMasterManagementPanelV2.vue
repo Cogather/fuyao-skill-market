@@ -1223,7 +1223,7 @@ async function loadSquareSkills(): Promise<void> {
   const requestSequence = ++importQuerySequence;
   importLoading.value = true;
   try {
-    const response = await skillBaseService.querySkillList({
+    const response = await skillBaseService.querySkillmarketList({
       keyword: importKeyword.value.trim(),
       pageNo: importPageNum.value,
       pageSize: importPageSize.value,
@@ -1449,7 +1449,7 @@ function closeEditor(): void {
 }
 
 function onEditorFormSubmit(event: SubmitEvent): void {
-  if (createTab.value === 'import') {
+  if (editor.mode === 'create' && createTab.value === 'import') {
     return;
   }
   if (event.submitter instanceof HTMLButtonElement) {
