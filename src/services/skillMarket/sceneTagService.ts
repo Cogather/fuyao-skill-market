@@ -200,7 +200,7 @@ export async function saveSceneTags(
   }
 
   const response = await skillBaseService.saveSceneTags(
-    { bindings: [{  firstScene: sceneKey, tags: normalized,}]},
+    { bindings: [{ firstScene: sceneKey, tags: normalized }] },
     dimContext ?? {},
   );
   return normalizeSceneTags(response).map((tag) => tag.name);
