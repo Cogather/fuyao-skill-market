@@ -81,6 +81,7 @@ const versionUpgrade = ref<VersionUpgradeMeta | null>(null);
 const parsing = ref(false);
 const uploading = ref(false);
 const parseError = ref('');
+const isDraggingArchive = ref(false);
 const selectedBusinessDimensionName = ref('');
 const selectedBusinessCategoryParam = ref('');
 const duplicateChecking = ref(false);
@@ -89,6 +90,7 @@ const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
 const skillGuideOpen = ref(false);
 const skillGuideCopied = ref(false);
 let skillGuideCopyTimer: number | undefined;
+let archiveDragDepth = 0;
 
 const skillFrontMatterExample = `---
 name: skill-name
@@ -151,6 +153,8 @@ function reset(): void {
   parsing.value = false;
   uploading.value = false;
   parseError.value = '';
+  isDraggingArchive.value = false;
+  archiveDragDepth = 0;
   selectedBusinessDimensionName.value = '';
   selectedBusinessCategoryParam.value = '';
   duplicateChecking.value = false;
@@ -324,9 +328,7 @@ function buildStorageFileDir(meta: ParsedSkillMeta): string {
   ].join('/');
 }
 
-async function onFileChange(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement;
-  file.value = input.files?.[0] ?? null;
+function clearParsedArchive(): void {
   parseError.value = '';
   parseWarnings.value = [];
   versionUpgrade.value = null;
@@ -334,13 +336,27 @@ async function onFileChange(event: Event): Promise<void> {
   parseState.value = 'idle';
   duplicateCheckMessage.value = '';
   duplicateCheckStatus.value = 'idle';
-  if (!file.value) {
+}
+
+function isZipArchive(uploadFile: File): boolean {
+  return uploadFile.name.toLowerCase().endsWith('.zip');
+}
+
+async function selectArchive(uploadFile: File | null): Promise<void> {
+  clearParsedArchive();
+  file.value = uploadFile;
+  if (!uploadFile) {
+    return;
+  }
+  if (!isZipArchive(uploadFile)) {
+    file.value = null;
+    parseError.value = '仅支持 .zip 文件，请重新选择。';
     return;
   }
   if (props.parseSkillArchive) {
     parsing.value = true;
     try {
-      const r = await props.parseSkillArchive(file.value);
+      const r = await props.parseSkillArchive(uploadFile);
       const warnings = r.warnings ?? [];
       if (warnings.length > 0) {
         parseWarnings.value = warnings;
@@ -361,6 +377,56 @@ async function onFileChange(event: Event): Promise<void> {
     }
     return;
   }
+}
+
+async function onFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  await selectArchive(input.files?.[0] ?? null);
+  input.value = '';
+}
+
+function dragContainsFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+}
+
+function onArchiveDragEnter(event: DragEvent): void {
+  if (parsing.value || uploading.value || !dragContainsFiles(event)) {
+    return;
+  }
+  archiveDragDepth += 1;
+  isDraggingArchive.value = true;
+}
+
+function onArchiveDragOver(event: DragEvent): void {
+  if (event.dataTransfer && !parsing.value && !uploading.value) {
+    event.dataTransfer.dropEffect = 'copy';
+  }
+}
+
+function onArchiveDragLeave(): void {
+  archiveDragDepth = Math.max(0, archiveDragDepth - 1);
+  if (archiveDragDepth === 0) {
+    isDraggingArchive.value = false;
+  }
+}
+
+async function onArchiveDrop(event: DragEvent): Promise<void> {
+  archiveDragDepth = 0;
+  isDraggingArchive.value = false;
+  if (parsing.value || uploading.value) {
+    return;
+  }
+  const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+  if (droppedFiles.length === 0) {
+    return;
+  }
+  if (droppedFiles.length > 1) {
+    clearParsedArchive();
+    file.value = null;
+    parseError.value = '一次只能上传一个 .zip 文件。';
+    return;
+  }
+  await selectArchive(droppedFiles[0] ?? null);
 }
 
 const onSubmit = async (): Promise<void> => {
@@ -427,15 +493,33 @@ const onSubmit = async (): Promise<void> => {
           <code>SKILL.md</code> 自动带出。
         </div>
 
-        <label class="upload-zone" :class="{ disabled: parsing }" for="sk-file">
+        <label
+          class="upload-zone"
+          :class="{
+            disabled: parsing || uploading,
+            'is-dragging': isDraggingArchive,
+          }"
+          for="sk-file"
+          :aria-busy="parsing"
+          @dragenter.prevent="onArchiveDragEnter"
+          @dragover.prevent="onArchiveDragOver"
+          @dragleave.prevent="onArchiveDragLeave"
+          @drop.prevent="onArchiveDrop"
+        >
           <span class="upload-icon" aria-hidden="true">↑</span>
-          <strong>上传 Skill 压缩包</strong>
-          <span>支持 .zip 文件。选择后自动解析并回显基础信息。</span>
+          <strong>{{ isDraggingArchive ? '松开以上传压缩包' : '上传 Skill 压缩包' }}</strong>
+          <span>
+            {{
+              isDraggingArchive
+                ? '仅支持单个 .zip 文件'
+                : '点击选择或拖拽 .zip 文件到此处，自动解析并回显基础信息。'
+            }}
+          </span>
           <input
             id="sk-file"
             type="file"
             accept=".zip,application/zip"
-            :disabled="parsing"
+            :disabled="parsing || uploading"
             @change="onFileChange"
           />
         </label>
@@ -693,6 +777,17 @@ const onSubmit = async (): Promise<void> => {
   transform: translateY(-1px);
 }
 
+.upload-zone.is-dragging {
+  border-color: #2563eb;
+  background: #dbeafe;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.upload-zone.is-dragging .upload-icon {
+  transform: translateY(-2px) scale(1.06);
+}
+
 .upload-zone.disabled {
   cursor: not-allowed;
   opacity: 0.65;
@@ -718,6 +813,7 @@ const onSubmit = async (): Promise<void> => {
   color: #fff;
   font-size: 20px;
   font-weight: 900;
+  transition: transform 0.16s ease;
 }
 
 .upload-zone strong {

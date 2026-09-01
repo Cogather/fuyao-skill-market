@@ -1,5 +1,5 @@
 import request from '@/services/skillMarket/request';
-const dataengineerApiHost = import.meta.env.VITE_APP_CORE_MLOPS_URL + '/dataengineering';
+const dataengineerApiHost = import.meta.env.VITE_SKILL_CORE_MLOPS_URL + '/dataengineering';
 /* 获取用户信息 */
 export const managerUserService = {
   // 获取登录用户信息

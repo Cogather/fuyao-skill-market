@@ -3103,6 +3103,11 @@
   padding: 16px;
 }
 
+/* DeptSkillReviewPanel overlay 降低层级 */
+.dept-review-content .overlay {
+  z-index: 1000;
+}
+
 .v-dialog {
   width: 100%;
   max-width: 420px;
@@ -4156,6 +4161,11 @@
 
 .my-release-panel .col-dl {
   min-width: 92px;
+}
+
+.my-release-panel .col-comments {
+  min-width: 70px;
+  text-align: center;
 }
 
 .my-release-panel .col-action {

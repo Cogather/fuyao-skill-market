@@ -67,10 +67,22 @@ export interface DeptSkillRow {
   publishTaskId: string | null;
   /** 该 Skill 的评审意见 / 一键发布申请列表 */
   comments: DeptSkillCommentItem[];
+  /** 评审意见数量（来自 opinionSummary） */
+  commentsCount: number;
 }
 
 /** Skill 评审意见 / 一键发布申请的状态 */
 export type DeptCommentStatus = 'processing' | 'closed' | 'rejected';
+
+/** 单条回复 */
+export interface DeptSkillReply {
+  id: string;
+  replier: string;
+  replierName?: string;
+  content: string;
+  createdAt: string;
+  canDelete: boolean;
+}
 
 /** Skill 评审意见 / 一键发布申请条目 */
 export interface DeptSkillCommentItem {
@@ -81,15 +93,25 @@ export interface DeptSkillCommentItem {
   submitter: string;
   /** 提交人工号 */
   submitterId: string;
+  /** 提交人姓名 */
+  submitterName?: string;
   /** 意见 / 申请内容 */
   content: string;
-  status: DeptCommentStatus;
+  status: DeptCommentStatus | string;
   /** 提交时间 */
-  createdAt: string;
+  createdAt: string | number;
   /** 是否为当前管理员提交 */
   isMine: boolean;
+  /** 当前用户是否可以关闭/删除此意见（Owner 或提出人） */
+  canOperate: boolean;
   /** 关联的发布任务 ID（publish 类型适用） */
   publishTaskId?: string;
+  /** 关闭时间 */
+  closedAt?: string | number;
+  /** Skill 版本 */
+  skillVersion?: string;
+  /** 回复列表 */
+  replies: DeptSkillReply[];
 }
 
 /** 发布任务中的单条 Skill 快照 */
@@ -98,6 +120,10 @@ export interface PublishTaskSkill {
   name: string;
   version: string;
   author: string;
+  authorName?: string;
+  deptPath?: string;
+  status?: string;
+  errorMessage?: string | null;
 }
 
 /** 发布任务状态 */
@@ -118,15 +144,27 @@ export interface PublishTask {
   /** 组织 owner（用于通知） */
   orgOwner: string;
   /** 任务状态 */
-  status: PublishTaskStatus;
+  status: PublishTaskStatus | string;
   /** 涉及的 Skill 快照列表 */
   skills: PublishTaskSkill[];
+  /** Skill 总数 */
+  totalSkills?: number;
+  /** 成功数 */
+  successCount?: number;
+  /** 失败数 */
+  failedCount?: number;
   /** 创建时间 */
   createdAt: string;
   /** 完成时间（已确认 / 已驳回时填写） */
   completedAt: string | null;
   /** 发起人 */
   creator: string;
+  /** 发起人姓名 */
+  creatorName?: string;
+  /** 实际操作人工号（审批人/驳回人，非预提交状态时返回） */
+  publisher?: string;
+  /** 实际操作人姓名 */
+  publisherName?: string;
   /** 审批意见（owner 填写） */
   approvalComment: string | null;
 }
