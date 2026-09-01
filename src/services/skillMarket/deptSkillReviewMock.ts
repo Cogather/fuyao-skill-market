@@ -68,7 +68,7 @@ export interface DeptSkillRow {
   /** 该 Skill 的评审意见 / 一键发布申请列表 */
   comments: DeptSkillCommentItem[];
   /** 评审意见数量（来自 opinionSummary） */
-  commentCount: number;
+  commentCount?: number;
 }
 
 /** Skill 评审意见 / 一键发布申请的状态 */
