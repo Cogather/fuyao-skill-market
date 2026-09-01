@@ -35,15 +35,6 @@ const props = withDefaults(
   },
 );
 
-// const emit = defineEmits<{
-//   close: [];
-//   trySkill: [];
-//   download: [];
-//   deleteClick: [evt: MouseEvent];
-//   versionManage: [];
-//   updateSkillData: [id: string, currentVersion: string];
-// }>();
-
 const emit = defineEmits([
   'close',
   'trySkill',
@@ -884,8 +875,6 @@ const goToDebugPage = (skill) => {
   });
 };
 const updateSkill = async (skill: any) => {
-  console.log('updateSkill called with skill:', skill);
-  console.log('showTrySkill:', props.showTrySkill, 'previewOnly:', props.previewOnly);
   try {
     await new Promise<void>((resolve, reject) => {
       emit(

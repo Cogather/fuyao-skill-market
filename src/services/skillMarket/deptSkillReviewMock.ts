@@ -68,7 +68,7 @@ export interface DeptSkillRow {
   /** 该 Skill 的评审意见 / 一键发布申请列表 */
   comments: DeptSkillCommentItem[];
   /** 评审意见数量（来自 opinionSummary） */
-  commentsCount: number;
+  commentCount: number;
 }
 
 /** Skill 评审意见 / 一键发布申请的状态 */
@@ -80,7 +80,7 @@ export interface DeptSkillReply {
   replier: string;
   replierName?: string;
   content: string;
-  createdAt: string;
+  createdAt: string | number;
   canDelete: boolean;
 }
 
@@ -107,7 +107,7 @@ export interface DeptSkillCommentItem {
   /** 关联的发布任务 ID（publish 类型适用） */
   publishTaskId?: string;
   /** 关闭时间 */
-  closedAt?: string | number;
+  closedAt?: string | null;
   /** Skill 版本 */
   skillVersion?: string;
   /** 回复列表 */
@@ -148,11 +148,11 @@ export interface PublishTask {
   /** 涉及的 Skill 快照列表 */
   skills: PublishTaskSkill[];
   /** Skill 总数 */
-  totalSkills?: number;
+  totalCount?: number;
   /** 成功数 */
   successCount?: number;
   /** 失败数 */
-  failedCount?: number;
+  failCount?: number;
   /** 创建时间 */
   createdAt: string;
   /** 完成时间（已确认 / 已驳回时填写） */
@@ -160,7 +160,7 @@ export interface PublishTask {
   /** 发起人 */
   creator: string;
   /** 发起人姓名 */
-  creatorName?: string;
+  operatorName?: string;
   /** 实际操作人工号（审批人/驳回人，非预提交状态时返回） */
   publisher?: string;
   /** 实际操作人姓名 */
