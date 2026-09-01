@@ -157,9 +157,7 @@ function adaptMockPlanningTask(
           id: task.id.replace(/^skill-task-/, `${capabilityType}-task-`),
           name: `${task.name.replace(/\s+Skill$/i, '')} ${planningTaskCapabilityLabel(capabilityType)}`,
         };
-  return mockEmptyVersionTaskIds.has(task.id)
-    ? { ...adaptedTask, versions: [] }
-    : adaptedTask;
+  return mockEmptyVersionTaskIds.has(task.id) ? { ...adaptedTask, versions: [] } : adaptedTask;
 }
 
 const defaultAssociations: SkillTaskAssociation[] = [

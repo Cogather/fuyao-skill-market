@@ -18,9 +18,7 @@ test.describe('技能市场冒烟', { tag: '@smoke' }, () => {
 
     await expect(marketPage.tabHot).toBeVisible();
     await expect(marketPage.publishButton).toBeVisible();
-    await expect(
-      marketPage.page.getByRole('heading', { name: /发现高价值/ }),
-    ).toBeVisible();
+    await expect(marketPage.page.getByRole('heading', { name: /发现高价值/ })).toBeVisible();
   });
 
   test('切换到全部技能并搜索', async () => {

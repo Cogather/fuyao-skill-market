@@ -29,6 +29,8 @@ export interface SkillMasterRecord {
   versions?: SkillMasterVersion[];
   /** Number of planning records that currently reference this catalog item. */
   referenceCount?: number;
+  /** 来源：created 直接新建 / imported 从 Skill 广场引入 */
+  skillSource?: 'created' | 'imported';
   createdAt: string;
   updatedAt: string;
 }

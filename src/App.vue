@@ -62,9 +62,7 @@ function readCachedParentContext(): Record<string, unknown> | undefined {
     const raw = window.sessionStorage.getItem(PARENT_CONTEXT_STORAGE_KEY);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, unknown>)
-      : undefined;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : undefined;
   } catch {
     return undefined;
   }
@@ -102,8 +100,7 @@ function applyParentContext(p: Record<string, unknown>, source: 'message' | 'buf
     const list =
       typeof departmentSource === 'string' ? JSON.parse(departmentSource) : departmentSource;
     if (Array.isArray(list)) {
-      const keepExistingTree =
-        list.length === 0 && skillMarketStore.departmentList.length > 0;
+      const keepExistingTree = list.length === 0 && skillMarketStore.departmentList.length > 0;
       if (!keepExistingTree) {
         skillMarketStore.updateDept(list);
         contextUpdated = true;

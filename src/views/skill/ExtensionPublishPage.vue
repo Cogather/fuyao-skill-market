@@ -405,10 +405,10 @@ async function loadHttpProducts(
     if (requestSequence !== productLoadSequence) return false;
     products.value = nextProducts;
     const restoredProduct = preferredScope
-      ? nextProducts.find(
+      ? (nextProducts.find(
           (product) =>
             Boolean(preferredScope.offeringId) && product.id === preferredScope.offeringId,
-        ) ?? nextProducts.find((product) => product.name === preferredScope.offeringName)
+        ) ?? nextProducts.find((product) => product.name === preferredScope.offeringName))
       : undefined;
     draftProductId.value = restoredProduct?.id ?? nextProducts[0]?.id ?? '';
     return true;
@@ -513,8 +513,8 @@ function emitScopeSnapshot(): void {
   emit('scope-change', {
     level: draftLevel.value,
     departmentPath: [...normalizedPath(draftDepartmentPath.value)],
-    offeringId: draftLevel.value === '产品级' ? product?.id ?? '' : '',
-    offeringName: draftLevel.value === '产品级' ? product?.name ?? '' : '',
+    offeringId: draftLevel.value === '产品级' ? (product?.id ?? '') : '',
+    offeringName: draftLevel.value === '产品级' ? (product?.name ?? '') : '',
   });
 }
 
@@ -981,8 +981,7 @@ onMounted(() => {
   if (restoredScope) {
     const restoredProduct =
       products.value.find(
-        (product) =>
-          Boolean(restoredScope.offeringId) && product.id === restoredScope.offeringId,
+        (product) => Boolean(restoredScope.offeringId) && product.id === restoredScope.offeringId,
       ) ?? products.value.find((product) => product.name === restoredScope.offeringName);
     draftProductId.value = restoredProduct?.id ?? availableDraftProducts.value[0]?.id ?? '';
   }
@@ -1400,7 +1399,8 @@ onBeforeUnmount(() => {
             </ul>
           </div>
           <p class="extension-follow-publish-note">
-            列表中归属于当前所选产品的 skill, command, agent 实体会跟随 Extension 一起发布到 Agent Center 平台。
+            列表中归属于当前所选产品的 skill, command, agent 实体会跟随 Extension 一起发布到 Agent
+            Center 平台。
           </p>
           <label class="modal-field">
             <span>目标组织 <em>*</em></span>

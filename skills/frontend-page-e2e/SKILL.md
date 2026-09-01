@@ -71,12 +71,12 @@ e2e/
 
 ## 选择器优先级（从上到下）
 
-| 优先级 | 方式 | 示例 |
-| --- | --- | --- |
-| 1 | 角色 + 可见文本 | `getByRole('button', { name: '发布 Skill' })` |
-| 2 | placeholder / aria-label | `getByPlaceholder('搜索名称 / 描述 / 创建者工号')` |
-| 3 | data-testid（命名 `模块-语义`，组件开发时就应内嵌） | `getByTestId('skill-card-open-btn')` |
-| ❌ | class 定位、CSS 结构定位、深层 XPath | `.btn-primary`、`div > div:nth-child(3)` |
+| 优先级 | 方式                                                | 示例                                               |
+| ------ | --------------------------------------------------- | -------------------------------------------------- |
+| 1      | 角色 + 可见文本                                     | `getByRole('button', { name: '发布 Skill' })`      |
+| 2      | placeholder / aria-label                            | `getByPlaceholder('搜索名称 / 描述 / 创建者工号')` |
+| 3      | data-testid（命名 `模块-语义`，组件开发时就应内嵌） | `getByTestId('skill-card-open-btn')`               |
+| ❌     | class 定位、CSS 结构定位、深层 XPath                | `.btn-primary`、`div > div:nth-child(3)`           |
 
 同页文本重复时用 `exact: true`；动态文本用正则（如 `/订单.*已提交/`）。
 
@@ -126,16 +126,16 @@ e2e/
 1. `npm install -D @playwright/test` + `npx playwright install chromium`
 2. `playwright.config.ts` 关键项：
 
-| 配置 | 建议值 | 理由 |
-| --- | --- | --- |
-| testDir / outputDir | `./e2e/specs` / `./test-results` | 用例与页面对象分离，失败留痕 gitignore |
-| timeout / expect.timeout | 30s / 5s | 宁可快速失败 |
-| workers / fullyParallel | 1 / false | 稳定优先，规模大了再开 |
-| retries | 本地 0，CI 1 | 本地红灯是真问题 |
-| trace / screenshot | on-first-retry / only-on-failure | 失败可定位 |
-| video | off | 需额外 ffmpeg，trace+截图足够 |
-| webServer | `npm run dev -- --port <port> --strictPort` | 自动起服务，防串端口 |
-| channel | `PW_CHANNEL` 环境变量可选 | 受限环境切 msedge |
+| 配置                     | 建议值                                      | 理由                                   |
+| ------------------------ | ------------------------------------------- | -------------------------------------- |
+| testDir / outputDir      | `./e2e/specs` / `./test-results`            | 用例与页面对象分离，失败留痕 gitignore |
+| timeout / expect.timeout | 30s / 5s                                    | 宁可快速失败                           |
+| workers / fullyParallel  | 1 / false                                   | 稳定优先，规模大了再开                 |
+| retries                  | 本地 0，CI 1                                | 本地红灯是真问题                       |
+| trace / screenshot       | on-first-retry / only-on-failure            | 失败可定位                             |
+| video                    | off                                         | 需额外 ffmpeg，trace+截图足够          |
+| webServer                | `npm run dev -- --port <port> --strictPort` | 自动起服务，防串端口                   |
+| channel                  | `PW_CHANNEL` 环境变量可选                   | 受限环境切 msedge                      |
 
 3. `package.json` 加 scripts：`test:e2e` / `test:e2e:smoke` / `test:e2e:ui` / `test:e2e:report`
 4. CI：缓存浏览器目录、归档 `test-results/`、先用冒烟集做门禁

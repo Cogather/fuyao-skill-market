@@ -39,6 +39,7 @@ export interface SceneOptionGroupRow {
   deptName: string;
   firstScene: string;
   secondScene: string;
+  tags: string[];
   sort: number;
   referenceCount: number;
 }
@@ -55,8 +56,7 @@ export interface ActivityOptionGroupRow {
 }
 
 export type ActivityOptionGroupsResponse =
-  | ApiEnvelope<ActivityOptionGroupRow[]>
-  | ActivityOptionGroupRow[];
+  ApiEnvelope<ActivityOptionGroupRow[]> | ActivityOptionGroupRow[];
 
 export interface RefreshTaxonomyItem {
   firstScene?: string;
@@ -207,6 +207,15 @@ export const skillBaseService = {
   querySkillList: (params: any): any => {
     return httpRequest.skill<any>({
       url: '',
+      method: 'get',
+      params,
+    });
+  },
+
+  // skill清单列表引入skill广场列表接口
+  querySkillmarketList: (params: any): any => {
+    return httpRequest.harnessSkill<any>({
+      url: '/management/market-skills',
       method: 'get',
       params,
     });
@@ -1010,6 +1019,24 @@ export const skillBaseService = {
       method: 'post',
       params,
       data: body,
+    });
+  },
+
+  // 查询场景可选标签列表（后端契约待对齐，暂定 GET /scene-activity/scene/tags）
+  querySceneTags: (): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scene-tag/tags',
+      method: 'get',
+    });
+  },
+
+  // 保存一级场景标签绑定（后端契约待对齐，暂定 POST /scene-activity/scene/tags）
+  saveSceneTags: (body: any, params: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scene-tag/bindings/refresh',
+      method: 'post',
+      data: body,
+      params,
     });
   },
 

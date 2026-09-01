@@ -44,8 +44,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(harnessPage.extensionFollowPublishNote).toHaveCSS('padding-right', '0px');
 
     const noteBox = await harnessPage.extensionFollowPublishNote.boundingBox();
-    const targetOrganizationBox =
-      await harnessPage.extensionTargetOrganizationField.boundingBox();
+    const targetOrganizationBox = await harnessPage.extensionTargetOrganizationField.boundingBox();
 
     expect(noteBox).not.toBeNull();
     expect(targetOrganizationBox).not.toBeNull();

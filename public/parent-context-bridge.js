@@ -43,7 +43,9 @@
     // 父页面在 iframe 重载初期可能先发空数组；不能覆盖同一标签页内已经收到的有效树。
     if (
       departmentList !== undefined &&
-      (departmentList.length > 0 || !Array.isArray(next.departmentList) || next.departmentList.length === 0)
+      (departmentList.length > 0 ||
+        !Array.isArray(next.departmentList) ||
+        next.departmentList.length === 0)
     ) {
       next.departmentList = departmentList;
     }

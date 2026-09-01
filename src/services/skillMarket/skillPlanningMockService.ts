@@ -534,8 +534,7 @@ const mockSkillMasterIdByPlanningItemId: Record<string, string> = {
 let skillPlanningItems: SkillPlanningItem[] = initialSkillPlanningItems.map((item) => ({
   ...item,
   skillId:
-    mockSkillMasterIdByPlanningItemId[item.id] ??
-    `skill-master-${item.id.slice('plan-'.length)}`,
+    mockSkillMasterIdByPlanningItemId[item.id] ?? `skill-master-${item.id.slice('plan-'.length)}`,
   level: item.level === '部门级' ? '部门级' : '产品级',
   ...(item.id === 'plan-1001'
     ? {

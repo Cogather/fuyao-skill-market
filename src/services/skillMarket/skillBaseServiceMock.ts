@@ -1,4 +1,4 @@
-﻿import PizZip from 'pizzip';
+import PizZip from 'pizzip';
 import type { AxiosRequestConfig } from 'axios';
 import type { Skill, SkillVersionEntry } from '../../types/skill';
 import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
@@ -151,6 +151,8 @@ type MockSkillMasterManagementRecord = {
   updatedAt: number[];
   skillMatchId: string | null;
   skillMatchLevel: string | null;
+  /** created 直接新建 / imported 从 Skill 广场引入 */
+  skillSource: 'created' | 'imported';
   versions?: Array<{
     version: string;
     uploadedAt: string;
@@ -251,6 +253,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 8, 18, 18, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
     versions: [
       { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
       { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
@@ -273,6 +276,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 8, 25, 19, 39, 59, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'imported',
     versions: [
       { version: '1.9.0', uploadedAt: '2026-08-20 10:00:00' },
       { version: '1.10.0', uploadedAt: '2026-08-25 19:39:59' },
@@ -295,6 +299,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 8, 24, 15, 30, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
     versions: [
       { version: '0.0.1', uploadedAt: '2026-08-15 10:00:00' },
       { version: '0.0.2', uploadedAt: '2026-08-24 15:30:00' },
@@ -317,6 +322,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 8, 20, 11, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
     versions: [],
   },
   {
@@ -336,6 +342,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 6, 26, 18, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
     versions: [
       { version: '0.0.2', uploadedAt: '2026-06-20 18:00:00' },
       { version: '0.0.3', uploadedAt: '2026-06-26 18:00:00' },
@@ -358,6 +365,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 7, 20, 11, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'imported',
     versions: [
       { version: '1.9.0', uploadedAt: '2026-07-18 11:00:00' },
       { version: '1.10.0', uploadedAt: '2026-07-20 11:00:00' },
@@ -380,6 +388,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 7, 10, 8, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
     versions: [],
   },
 ];
@@ -2191,6 +2200,9 @@ function handleSkillRequest(
     if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
       return fail('status 不应传入', null);
     }
+    const rawSkillSource = String(payload.skillSource ?? '').trim();
+    const skillSource: 'created' | 'imported' =
+      rawSkillSource === '引用' || rawSkillSource === 'imported' ? 'imported' : 'created';
     const stamp = nowLocalDateTimeArray();
     const record: MockSkillMasterManagementRecord = {
       id: nextMockSkillMasterManagementId(),
@@ -2209,6 +2221,7 @@ function handleSkillRequest(
       updatedAt: stamp,
       skillMatchId: null,
       skillMatchLevel: null,
+      skillSource,
       versions: [],
     };
     if (
@@ -2267,6 +2280,12 @@ function handleSkillRequest(
     if (!target) {
       return fail(`未找到 Skill: ${id}`, null);
     }
+    const rawSkillSource = String(payload.skillSource ?? '').trim();
+    const skillSource: 'created' | 'imported' = rawSkillSource
+      ? rawSkillSource === '引用' || rawSkillSource === 'imported'
+        ? 'imported'
+        : 'created'
+      : target.skillSource;
     Object.assign(target, {
       skillName: String(payload.skillName).trim(),
       skillDescription: String(payload.skillDescription).trim(),
@@ -2278,6 +2297,7 @@ function handleSkillRequest(
       developOwnerName: String(payload.developOwnerName).trim(),
       developOwnerId: String(payload.developOwnerId).trim(),
       planFinishDate: String(payload.planFinishDate).trim(),
+      skillSource,
       updatedAt: nowLocalDateTimeArray(),
     });
     return ok({
@@ -2298,8 +2318,7 @@ function handleSkillRequest(
     const target = mockSkillMasterManagementRecords[index];
     const referenceCount = mockSkillPlanningSupplementRecords.filter(
       (planning) =>
-        planning.skillId === id ||
-        (!planning.skillId && planning.skillName === target?.skillName),
+        planning.skillId === id || (!planning.skillId && planning.skillName === target?.skillName),
     ).length;
     if (referenceCount > 0) {
       return fail(`Skill 已关联 ${referenceCount} 个规划项，不能删除`, null);
@@ -2330,7 +2349,10 @@ function handleSkillRequest(
         ),
     );
     if (referenced.length > 0) {
-      return fail(`${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`, null);
+      return fail(
+        `${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`,
+        null,
+      );
     }
     const before = mockSkillMasterManagementRecords.length;
     for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {

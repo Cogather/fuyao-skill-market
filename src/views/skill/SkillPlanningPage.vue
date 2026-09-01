@@ -48,11 +48,7 @@ type PlanningDepartmentTreeNode = {
   children?: PlanningDepartmentTreeNode[];
 };
 type PlanningHeaderFilterKey =
-  | 'firstScene'
-  | 'secondScene'
-  | 'activityNodeName'
-  | 'subActivityNodeName'
-  | 'level';
+  'firstScene' | 'secondScene' | 'activityNodeName' | 'subActivityNodeName' | 'level';
 type PlanningHeaderFilterSelections = Record<PlanningHeaderFilterKey, string[]>;
 type PlanningBatchField = keyof SkillPlanningBatchPatch;
 type PlanningBatchForm = Record<PlanningBatchField, string>;
@@ -92,8 +88,12 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  'scope-change': [change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot }];
-  'catalog-scope-change': [change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot }];
+  'scope-change': [
+    change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot },
+  ];
+  'catalog-scope-change': [
+    change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot },
+  ];
 }>();
 
 const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
@@ -1011,11 +1011,10 @@ async function loadFilterProducts(preferredScope?: HarnessScopeSnapshot): Promis
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
     const restoredOption = preferredScope
-      ? options.find(
+      ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
-        ) ??
-        options.find((item) => item.offeringName === preferredScope.offeringName)
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
     const firstOption = restoredOption ?? options[0];
     if (firstOption) {
@@ -1753,7 +1752,7 @@ function emitPlanningScopeSnapshot(): void {
     snapshot: {
       level: filterForm.level as PlanningLevel,
       departmentPath: [...planningDepartmentSegments.value],
-      offeringId: filterForm.level === '产品级' ? selectedProduct?.offeringId ?? '' : '',
+      offeringId: filterForm.level === '产品级' ? (selectedProduct?.offeringId ?? '') : '',
       offeringName: filterForm.level === '产品级' ? filterForm.offeringName.trim() : '',
     },
   });
@@ -3953,10 +3952,12 @@ onBeforeUnmount(() => {
                     <td>{{ row.activityNodeName }}</td>
                     <td>{{ row.subActivityNodeName }}</td>
                     <td>
-                      <strong class="skill-name">{{ row.name }}</strong>
+                      <strong class="skill-name" :title="row.name">{{ row.name }}</strong>
                     </td>
                     <td class="desc-col">
-                      <span :title="row.description">{{ row.description }}</span>
+                      <span class="planning-description" :title="row.description">{{
+                        row.description
+                      }}</span>
                     </td>
                     <td>{{ row.owner }}</td>
                     <td>{{ row.developOwner }}</td>
@@ -5762,8 +5763,25 @@ onBeforeUnmount(() => {
 }
 
 .skill-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: #10243e;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-description {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .status-pill {

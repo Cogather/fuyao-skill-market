@@ -106,6 +106,7 @@ const exporting = ref(false);
 let productLoadSequence = 0;
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const initialPlannedCompleteDate = ref('');
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
 let ownerSearchSequence = 0;
@@ -245,11 +246,10 @@ async function loadProductOptions(preferredScope?: HarnessScopeSnapshot): Promis
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
     const restoredOption = preferredScope
-      ? options.find(
+      ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
-        ) ??
-        options.find((item) => item.offeringName === preferredScope.offeringName)
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
     const firstOption = restoredOption ?? options[0];
     if (firstOption) {
@@ -284,7 +284,7 @@ function emitScopeSnapshot(): void {
   emit('scope-change', {
     level: filterForm.level as HarnessScopeSnapshot['level'],
     departmentPath: [...departmentSegments.value],
-    offeringId: filterForm.level === '产品级' ? selectedProduct.value?.offeringId ?? '' : '',
+    offeringId: filterForm.level === '产品级' ? (selectedProduct.value?.offeringId ?? '') : '',
     offeringName: filterForm.level === '产品级' ? filterForm.product.trim() : '',
   });
 }
@@ -594,8 +594,31 @@ function resetEditor(): void {
     error: '',
     submitting: false,
   });
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+}
+
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function ensurePlannedCompleteDate(): boolean {
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return false;
+  }
+  const plannedCompleteDateChanged =
+    editor.mode === 'create' || editor.plannedCompleteDate !== initialPlannedCompleteDate.value;
+  if (plannedCompleteDateChanged && editor.plannedCompleteDate < currentLocalDate()) {
+    editor.error = '计划完成时间不能早于当前日期';
+    return false;
+  }
+  return true;
 }
 
 function ensureProductCapabilityNamePrefix(): boolean {
@@ -650,6 +673,7 @@ function openEdit(record: SkillMasterRecord): void {
     error: '',
     submitting: false,
   });
+  initialPlannedCompleteDate.value = record.plannedCompleteDate;
   hydratePersonPicker(ownerPicker, record.owner, record.department);
   hydratePersonPicker(developOwnerPicker, record.developOwner, record.developOwnerDepartment);
 }
@@ -658,6 +682,7 @@ function closeEditor(): void {
   if (editor.submitting) return;
   editor.open = false;
   editor.error = '';
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
@@ -717,10 +742,7 @@ async function submitEditor(): Promise<void> {
     editor.error = '请选择开发责任人，不能只输入文本';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
   try {
     editor.submitting = true;
     const scope = requireCatalogScope();
@@ -758,8 +780,7 @@ async function requestBatchCatalogDelete(): Promise<void> {
     (record) => selectedIds.value.includes(record.id) && (record.referenceCount ?? 0) > 0,
   );
   if (referencedRecords.length) {
-    const names = referencedRecords
-      .map((record) => `“${record.name}”`);
+    const names = referencedRecords.map((record) => `“${record.name}”`);
     showToast(`${names.join('、')}已关联规划项，不能删除`, 5000);
     return;
   }
@@ -843,19 +864,16 @@ function goPage(next: number): void {
   pageNum.value = Math.max(1, Math.min(totalPages.value, next));
 }
 
-watch(
-  requiredCapabilityNamePrefix,
-  (nextPrefix, previousPrefix) => {
-    if (!editor.open || editor.mode !== 'create') return;
-    if (!editor.name || editor.name === previousPrefix) {
-      editor.name = nextPrefix;
-      return;
-    }
-    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
-      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
-    }
-  },
-);
+watch(requiredCapabilityNamePrefix, (nextPrefix, previousPrefix) => {
+  if (!editor.open || editor.mode !== 'create') return;
+  if (!editor.name || editor.name === previousPrefix) {
+    editor.name = nextPrefix;
+    return;
+  }
+  if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+    editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  }
+});
 
 watch(
   () => props.capabilityType,
@@ -1095,10 +1113,12 @@ onMounted(async () => {
               </td>
               <td>
                 <div class="capability-name-cell">
-                  <strong class="capability-name">{{ record.name }}</strong>
+                  <strong class="capability-name" :title="record.name">{{ record.name }}</strong>
                 </div>
               </td>
-              <td class="is-description">{{ record.description }}</td>
+              <td class="is-description">
+                <span :title="record.description || '—'">{{ record.description || '—' }}</span>
+              </td>
               <td>{{ record.owner }}</td>
               <td>{{ record.developOwner }}</td>
               <td>{{ record.plannedCompleteDate || '—' }}</td>
@@ -1335,13 +1355,22 @@ onMounted(async () => {
             </label>
             <label>
               <span>计划完成时间 *</span>
-              <input v-model="editor.plannedCompleteDate" type="date" />
+              <input
+                v-model="editor.plannedCompleteDate"
+                type="date"
+                :min="currentLocalDate()"
+              />
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
-            <button type="submit" class="is-primary" :disabled="editor.submitting">
+            <button
+              type="submit"
+              class="is-primary"
+              formnovalidate
+              :disabled="editor.submitting"
+            >
               {{ editor.submitting ? '保存中...' : '保存' }}
             </button>
           </footer>
@@ -1634,6 +1663,17 @@ onMounted(async () => {
 td.is-description {
   color: #334155;
 }
+td.is-description > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
 .is-check {
   text-align: center;
 }
@@ -1641,10 +1681,16 @@ td.is-description {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  min-width: 0;
 }
 .capability-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: #10243e;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .capability-status {
   display: inline-flex;

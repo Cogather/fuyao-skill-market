@@ -44,9 +44,7 @@ export function planningTaskDetailVersions(
   if (Array.isArray(task.versions) && task.versions.length === 0) return [];
 
   const versions = sortedPlanningTaskVersions({
-    versions: tasks
-      .filter((item) => item.name === task.name)
-    .flatMap((item) => item.versions),
+    versions: tasks.filter((item) => item.name === task.name).flatMap((item) => item.versions),
   })
     .map((item) => item.version)
     .map(exactVersion)

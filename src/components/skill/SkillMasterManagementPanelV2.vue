@@ -51,6 +51,21 @@ import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
 type TaxonomyOption = { id: string; label: string };
+type CreateSkillTab = 'direct' | 'import';
+type SkillSourceValue = 'created' | 'imported';
+
+interface SkillSquareOption {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  category: string;
+  version: string;
+  /** 发布人（姓名 + 工号） */
+  publisher: string;
+  /** 发布人部门 */
+  department: string;
+}
 type PersonPickerState = {
   keyword: string;
   open: boolean;
@@ -176,10 +191,12 @@ const editor = reactive({
   developOwnerDepartment: '',
   plannedCompleteDate: '',
   status: '未开始' as SkillMasterStatus,
+  skillSource: 'created' as SkillSourceValue,
   error: '',
 });
 const initialOwnerValue = reactive(createEmptyPersonSubmitValue());
 const initialDevelopOwnerValue = reactive(createEmptyPersonSubmitValue());
+const initialPlannedCompleteDate = ref('');
 const associationEditor = reactive({
   open: false,
   skillId: '',
@@ -191,6 +208,18 @@ const associationEditor = reactive({
 const departmentPath = ref<string[]>([]);
 const deleteDialog = reactive({ open: false, id: '', name: '' });
 const submitting = ref(false);
+const createTab = ref<CreateSkillTab>('direct');
+const importKeyword = ref('');
+const importLoading = ref(false);
+const importSubmitting = ref(false);
+const importRows = ref<SkillSquareOption[]>([]);
+const importTotal = ref(0);
+const importPageNum = ref(1);
+const importPageSize = ref(5);
+const importPageSizeOptions = [5, 10, 20, 100];
+const importSelectedId = ref('');
+let importQuerySequence = 0;
+let importSearchTimer: number | null = null;
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 const masterScopeForm = reactive({
   level: '产品级' as PlanningLevel,
@@ -471,6 +500,7 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
         item.relatedPlanningCount ??
         0,
     ),
+    skillSource: normalizeSkillSource(item.skillSource),
     createdAt: now,
     updatedAt: now,
   };
@@ -509,11 +539,10 @@ async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promis
     if (requestSeq !== masterProductLoadSequence) return;
     masterProductOptions.value = options;
     const restoredOption = preferredScope
-      ? options.find(
+      ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
-        ) ??
-        options.find((item) => item.offeringName === preferredScope.offeringName)
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
     const firstOption = restoredOption ?? options[0];
     if (firstOption) {
@@ -537,7 +566,7 @@ function emitMasterScopeSnapshot(): void {
     departmentPath: [...masterDepartmentSegments.value],
     offeringId:
       masterScopeForm.level === '产品级'
-        ? selectedMasterProduct.value?.offeringId ?? masterScopeForm.offeringId
+        ? (selectedMasterProduct.value?.offeringId ?? masterScopeForm.offeringId)
         : '',
     offeringName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
   });
@@ -723,12 +752,36 @@ function resetEditor(): void {
     developOwnerDepartment: '',
     plannedCompleteDate: '',
     status: '未开始',
+    skillSource: 'created',
     error: '',
   });
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+}
+
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function ensurePlannedCompleteDate(): boolean {
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return false;
+  }
+  const plannedCompleteDateChanged =
+    editor.mode === 'create' || editor.plannedCompleteDate !== initialPlannedCompleteDate.value;
+  if (plannedCompleteDateChanged && editor.plannedCompleteDate < currentLocalDate()) {
+    editor.error = '计划完成时间不能早于当前日期';
+    return false;
+  }
+  return true;
 }
 
 function applyCurrentScopeToEditor(): void {
@@ -737,6 +790,9 @@ function applyCurrentScopeToEditor(): void {
 }
 
 function ensureProductSkillNamePrefix(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   const prefix = requiredSkillNamePrefix.value;
   if (!prefix) {
     return true;
@@ -753,6 +809,9 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 function ensureSkillNameFormat(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   if (isCatalogItemNameValid(editor.name.trim())) return true;
   editor.error =
     'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
@@ -1052,6 +1111,288 @@ function resolvePersonForSubmit(
   return null;
 }
 
+function normalizeSkillSource(value: unknown): SkillSourceValue {
+  const source = String(value ?? '').trim();
+  return source === '引用' || source === 'imported' ? 'imported' : 'created';
+}
+
+function splitSkillTags(value: unknown): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? '')
+        .split(/[,，;；、\s]+/)
+        .filter(Boolean);
+  return [...new Set(source.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+/** 发布人「姓名 工号」：优先 owner_list / ownerName+ownerUser，回退 publisher/author/createdBy。 */
+function publisherLabelOf(row: Record<string, unknown>): string {
+  const rawOwnerList = row.ownerList ?? row.owner_list;
+  if (typeof rawOwnerList === 'string' && rawOwnerList.trim()) {
+    try {
+      const parsed = JSON.parse(rawOwnerList) as unknown;
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed[0] &&
+        typeof parsed[0] === 'object'
+      ) {
+        const ownerRecord = parsed[0] as Record<string, unknown>;
+        const name = String(
+          ownerRecord.lastName ??
+            ownerRecord.name ??
+            ownerRecord.chName ??
+            ownerRecord.userName ??
+            '',
+        ).trim();
+        const id = String(
+          ownerRecord.Account ?? ownerRecord.account ?? ownerRecord.userId ?? ownerRecord.id ?? '',
+        ).trim();
+        if (name || id) return [name, id].filter(Boolean).join(' ');
+      }
+    } catch {
+      // owner_list 非 JSON 时按纯文本使用
+      return rawOwnerList.trim();
+    }
+  }
+  const ownerName = String(row.ownerName ?? row.owner_name ?? '').trim();
+  const ownerId = String(row.ownerUser ?? row.ownerId ?? row.owner_id ?? '').trim();
+  if (ownerName || ownerId) return [ownerName, ownerId].filter(Boolean).join(' ');
+  return String(
+    row.publisher ?? row.author ?? row.createdBy ?? row.publish_name ?? row.publishName ?? '',
+  ).trim();
+}
+
+/** 发布人部门：优先 dept_name 的最小层级，回退 departmentL1~L6 的最小非空层级 / orgName。 */
+function publisherDepartmentOf(row: Record<string, unknown>): string {
+  const deptPath = String(row.dept_name ?? row.deptName ?? '').trim();
+  if (deptPath) {
+    const segments = deptPath
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const deepest = segments[segments.length - 1];
+    if (deepest) return deepest;
+  }
+  const levels = [
+    'departmentL1',
+    'departmentL2',
+    'departmentL3',
+    'departmentL4',
+    'departmentL5',
+    'departmentL6',
+  ]
+    .map((key) => String(row[key] ?? '').trim())
+    .filter(Boolean);
+  const deepestLevel = levels[levels.length - 1];
+  if (deepestLevel) return deepestLevel;
+  return String(row.orgName ?? row.ownerDepartment ?? row.publishDeptName ?? '').trim();
+}
+
+function normalizeSquareSkillRows(response: unknown): {
+  rows: SkillSquareOption[];
+  total: number;
+} {
+  const record =
+    response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
+  const data = record.data ?? response;
+  const dataRecord = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const rawRows = Array.isArray(data)
+    ? data
+    : (['records', 'list', 'items', 'rows']
+        .map((key) => dataRecord[key])
+        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+  const meta =
+    record.meta && typeof record.meta === 'object' ? (record.meta as Record<string, unknown>) : {};
+  const total = Number(dataRecord.total ?? meta.number ?? meta.total ?? rawRows.length);
+  const rows = rawRows.map((item, index) => {
+    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const id = String(row.id ?? row.skillId ?? row.skill_id ?? index).trim();
+    return {
+      id,
+      name: String(row.name ?? row.skillName ?? '').trim(),
+      description: String(row.description ?? row.skillDescription ?? '').trim(),
+      tags: splitSkillTags(row.tags),
+      category:
+        String(row.categoryGroupName ?? row.tagFunctional ?? row.category ?? '').trim() || '公共',
+      version: String(row.currentVersion ?? row.version ?? '').trim(),
+      publisher: publisherLabelOf(row),
+      department: publisherDepartmentOf(row),
+    };
+  });
+  return { rows, total: Number.isFinite(total) && total >= 0 ? total : rows.length };
+}
+
+async function loadSquareSkills(): Promise<void> {
+  const requestSequence = ++importQuerySequence;
+  importLoading.value = true;
+  try {
+    const response = await skillBaseService.querySkillmarketList({
+      keyword: importKeyword.value.trim(),
+      pageNo: importPageNum.value,
+      pageSize: importPageSize.value,
+    });
+    if (requestSequence !== importQuerySequence) return;
+    const { rows, total } = normalizeSquareSkillRows(response);
+    importRows.value = rows;
+    importTotal.value = total;
+    importSelectedId.value = rows.some((row) => row.id === importSelectedId.value)
+      ? importSelectedId.value
+      : '';
+  } catch (error) {
+    if (requestSequence !== importQuerySequence) return;
+    importRows.value = [];
+    importTotal.value = 0;
+    importSelectedId.value = '';
+    editor.error = error instanceof Error ? error.message : 'Skill 广场列表加载失败';
+  } finally {
+    if (requestSequence === importQuerySequence) {
+      importLoading.value = false;
+    }
+  }
+}
+
+async function searchSquareSkills(): Promise<void> {
+  importPageNum.value = 1;
+  await loadSquareSkills();
+}
+
+function clearImportSearchTimer(): void {
+  if (importSearchTimer !== null) {
+    window.clearTimeout(importSearchTimer);
+    importSearchTimer = null;
+  }
+}
+
+/** 搜索框输入实时触发：300ms 防抖，仅在引用页签打开时生效。 */
+function scheduleImportKeywordSearch(): void {
+  clearImportSearchTimer();
+  importSearchTimer = window.setTimeout(() => {
+    importSearchTimer = null;
+    if (editor.open && createTab.value === 'import') {
+      void searchSquareSkills();
+    }
+  }, 300);
+}
+
+/** 点击「搜索」按钮 / 回车：立即搜索，并取消未触发的防抖任务，避免重复请求。 */
+function triggerImportSearchNow(): void {
+  clearImportSearchTimer();
+  void searchSquareSkills();
+}
+
+async function goSquarePage(nextPage: number): Promise<void> {
+  importPageNum.value = Math.min(importTotalPages.value, Math.max(1, nextPage));
+  await loadSquareSkills();
+}
+
+async function changeImportPageSize(): Promise<void> {
+  importPageNum.value = 1;
+  await loadSquareSkills();
+}
+
+function selectSquareSkill(id: string): void {
+  importSelectedId.value = importSelectedId.value === id ? '' : id;
+  editor.error = '';
+}
+
+function switchCreateTab(tab: CreateSkillTab): void {
+  createTab.value = tab;
+  editor.error = '';
+  if (tab === 'import' && importRows.value.length === 0) {
+    void loadSquareSkills();
+  }
+}
+
+function resetImportTab(): void {
+  importQuerySequence += 1;
+  clearImportSearchTimer();
+  importKeyword.value = '';
+  importLoading.value = false;
+  importRows.value = [];
+  importTotal.value = 0;
+  importPageNum.value = 1;
+  importSelectedId.value = '';
+}
+
+const importTotalPages = computed(() =>
+  Math.max(1, Math.ceil(importTotal.value / importPageSize.value)),
+);
+const selectedSquareSkill = computed(
+  () => importRows.value.find((row) => row.id === importSelectedId.value) ?? null,
+);
+
+async function importFromSquare(): Promise<void> {
+  const skill = selectedSquareSkill.value;
+  if (!skill) {
+    editor.error = '请先从列表中选择要引入的 Skill';
+    return;
+  }
+  if (importSubmitting.value) return;
+  applyCurrentScopeToEditor();
+  editor.error = '';
+
+  const dim = resolveDimFields();
+  if (!dim) return;
+  if (!editor.owner.trim()) {
+    editor.error = '请选择责任 Owner';
+    return;
+  }
+  if (!editor.developOwner.trim()) {
+    editor.error = '请选择开发责任人';
+    return;
+  }
+  const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
+  if (!ownerValue?.id) {
+    editor.error = '责任 Owner 人员信息不完整，请清除后重新选择';
+    return;
+  }
+  const developOwnerValue = resolvePersonForSubmit(
+    developOwnerPicker,
+    initialDevelopOwnerValue,
+    'developOwner',
+  );
+  if (!developOwnerValue?.id) {
+    editor.error = '开发责任人信息不完整，请清除后重新选择';
+    return;
+  }
+  if (!ensurePlannedCompleteDate()) return;
+
+  const params: CreateSkillMasterManagementParams = {
+    userId: props.userId.trim(),
+    dimType: dim.dimType,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+  };
+  const body: CreateSkillMasterManagementBody = {
+    skillName: skill.name,
+    skillDescription: skill.description,
+    ownerName: ownerValue.name,
+    ownerId: ownerValue.id,
+    developOwnerName: developOwnerValue.name,
+    developOwnerId: developOwnerValue.id,
+    planFinishDate: editor.plannedCompleteDate,
+    skillSource: '引用',
+  };
+
+  importSubmitting.value = true;
+  try {
+    const response = await skillBaseService.createSkillMasterManagement(body, params);
+    if (response?.meta?.success !== true) {
+      editor.error = String(response?.meta?.message || response?.message || '引入失败，请稍后重试');
+      return;
+    }
+    closeEditor();
+    masterPageNum.value = 1;
+    await reload();
+    showToast('已从 Skill 广场引入“' + skill.name + '”');
+  } catch (error) {
+    editor.error = error instanceof Error ? error.message : '引入失败，请稍后重试';
+  } finally {
+    importSubmitting.value = false;
+  }
+}
+
 function openCreate(): void {
   if (!ensureMasterScopeSelection(true)) {
     return;
@@ -1060,6 +1401,8 @@ function openCreate(): void {
   editor.mode = 'create';
   applyCurrentScopeToEditor();
   editor.name = requiredSkillNamePrefix.value;
+  createTab.value = 'direct';
+  resetImportTab();
   editor.open = true;
 }
 
@@ -1090,10 +1433,12 @@ function openEdit(record: SkillMasterRecord): void {
     developOwnerDepartment: record.developOwnerDepartment || '',
     plannedCompleteDate: record.plannedCompleteDate,
     status: record.status,
+    skillSource: normalizeSkillSource(record.skillSource),
     error: '',
   });
   Object.assign(initialOwnerValue, parsePersonSubmitValue(nextOwnerLabel));
   Object.assign(initialDevelopOwnerValue, parsePersonSubmitValue(nextDevelopOwnerLabel));
+  initialPlannedCompleteDate.value = record.plannedCompleteDate;
   hydratePickerFromValue(ownerPicker, nextOwnerLabel, editor.department);
   hydratePickerFromValue(developOwnerPicker, nextDevelopOwnerLabel, editor.developOwnerDepartment);
   applyCurrentScopeToEditor();
@@ -1104,11 +1449,15 @@ function closeEditor(): void {
   editor.error = '';
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
 }
 
 function onEditorFormSubmit(event: SubmitEvent): void {
+  if (editor.mode === 'create' && createTab.value === 'import') {
+    return;
+  }
   if (event.submitter instanceof HTMLButtonElement) {
     void submitEditor();
   }
@@ -1170,10 +1519,7 @@ async function submitEditor(): Promise<void> {
       editor.error = '开发责任人信息不完整，请清除后重新选择';
       return;
     }
-    if (!editor.plannedCompleteDate) {
-      editor.error = '请选择计划完成时间';
-      return;
-    }
+    if (!ensurePlannedCompleteDate()) return;
 
     const params: CreateSkillMasterManagementParams = {
       userId: props.userId.trim(),
@@ -1189,6 +1535,7 @@ async function submitEditor(): Promise<void> {
       developOwnerName: developOwnerValue.name,
       developOwnerId: developOwnerValue.id,
       planFinishDate: editor.plannedCompleteDate,
+      skillSource: '规划',
     };
 
     submitting.value = true;
@@ -1224,11 +1571,14 @@ async function submitEditor(): Promise<void> {
     editor.error = '请填写 Skill 名称';
     return;
   }
-  if (!ensureSkillNameFormat()) {
-    return;
-  }
-  if (!ensureProductSkillNamePrefix()) {
-    return;
+  // 从 Skill 广场引入的记录名称与广场保持一致，不做格式/前缀校验
+  if (editor.skillSource !== 'imported') {
+    if (!ensureSkillNameFormat()) {
+      return;
+    }
+    if (!ensureProductSkillNamePrefix()) {
+      return;
+    }
   }
   if (!editor.description.trim()) {
     editor.error = '请填写 Skill 说明';
@@ -1256,10 +1606,7 @@ async function submitEditor(): Promise<void> {
     editor.error = '开发责任人信息不完整，请清除后重新选择';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
 
   const updateParams: UpdateSkillMasterManagementParams = {
     userId: props.userId.trim(),
@@ -1276,6 +1623,7 @@ async function submitEditor(): Promise<void> {
     developOwnerName: developOwnerValue.name,
     developOwnerId: developOwnerValue.id,
     planFinishDate: editor.plannedCompleteDate,
+    skillSource: editor.skillSource === 'imported' ? '引用' : '规划',
   };
 
   submitting.value = true;
@@ -1480,8 +1828,7 @@ async function requestBatchMasterDeleteConfirmation(): Promise<void> {
     (record) => ids.includes(record.id) && (record.referenceCount ?? 0) > 0,
   );
   if (referencedRecords.length) {
-    const names = referencedRecords
-      .map((record) => `“${record.name}”`);
+    const names = referencedRecords.map((record) => `“${record.name}”`);
     showToast(`${names.join('、')}已关联规划项，不能删除`);
     return;
   }
@@ -1580,19 +1927,18 @@ async function changeMasterPageSize(): Promise<void> {
   await reload();
 }
 
-watch(
-  requiredSkillNamePrefix,
-  (nextPrefix, previousPrefix) => {
-    if (!editor.open || editor.mode !== 'create') return;
-    if (!editor.name || editor.name === previousPrefix) {
-      editor.name = nextPrefix;
-      return;
-    }
-    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
-      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
-    }
-  },
-);
+watch(requiredSkillNamePrefix, (nextPrefix, previousPrefix) => {
+  if (!editor.open || editor.mode !== 'create') return;
+  if (!editor.name || editor.name === previousPrefix) {
+    editor.name = nextPrefix;
+    return;
+  }
+  if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+    editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  }
+});
+
+watch(importKeyword, scheduleImportKeywordSearch);
 
 watch(
   () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths, props.departmentTree],
@@ -1612,6 +1958,7 @@ onBeforeUnmount(() => {
   }
   clearOwnerSearchTimer();
   clearDevelopOwnerSearchTimer();
+  clearImportSearchTimer();
 });
 </script>
 
@@ -1836,11 +2183,18 @@ onBeforeUnmount(() => {
                 <div class="name-cell">
                   <i>{{ record.name.slice(0, 1) }}</i
                   ><span
-                    ><strong>{{ record.name }}</strong></span
+                    ><strong :title="record.name">{{ record.name }}</strong>
+                    <em
+                      v-if="record.skillSource === 'imported'"
+                      class="skill-source-badge is-imported"
+                      >广场引入</em
+                    ></span
                   >
                 </div>
               </td>
-              <td>{{ record.description || '无' }}</td>
+              <td class="description-cell">
+                <span :title="record.description || '无'">{{ record.description || '无' }}</span>
+              </td>
               <!-- <td>
                 <span class="badge level">{{ record.level }}</span>
               </td> -->
@@ -1966,15 +2320,15 @@ onBeforeUnmount(() => {
     />
 
     <Teleport to="body">
-      <div
-        v-if="editor.open"
-        class="overlay"
-        @click.stop
-        @pointerdown.stop
-        @pointerup.stop
-      >
+      <div v-if="editor.open" class="overlay" @click.stop @pointerdown.stop @pointerup.stop>
         <form
           class="dialog"
+          :class="{
+            'is-create-dialog': editor.mode === 'create',
+            'is-imported-edit':
+              (editor.mode === 'edit' && editor.skillSource === 'imported') ||
+              (editor.mode === 'create' && createTab === 'import'),
+          }"
           @click.stop
           @pointerdown.stop
           @pointerup.stop
@@ -1984,138 +2338,409 @@ onBeforeUnmount(() => {
           <header>
             <div>
               <small>SKILL MASTER</small
-              ><strong>{{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}</strong>
+              ><strong>
+                {{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}
+                <em
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="dialog-source-badge is-imported"
+                  >广场引入</em
+                >
+              </strong>
               <p>
                 这里只维护可复用的原子 Skill；场景、活动、层级和部门/产品请在 Skill 规划中配置。
               </p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
-          <div class="note">
-            <b>部门语义</b><span>Owner 所在部门是人员属性，不作为 Skill 的规划归属。</span>
-          </div>
-          <div class="form-grid">
-            <label class="wide"
-              ><span>Skill 名称 *</span
-              ><input
-                v-model.trim="editor.name"
-                maxlength="64"
-                :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
-              /><small v-if="requiredSkillNamePrefix" class="field-hint"
-                >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
-              ></label
+          <div
+            v-if="editor.mode === 'create'"
+            class="dialog-tabs"
+            role="tablist"
+            aria-label="新增 Skill 方式"
+          >
+            <button
+              type="button"
+              class="dialog-tab"
+              role="tab"
+              :class="{ 'is-active': createTab === 'direct' }"
+              :aria-selected="createTab === 'direct'"
+              @click="switchCreateTab('direct')"
             >
-            <label class="wide"
-              ><span>Skill 说明 *</span
-              ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
-            </label>
-            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
-              <span>责任 Owner *</span>
-              <div class="person-search__control">
-                <input
-                  :value="ownerPicker.keyword"
-                  type="text"
-                  autocomplete="off"
-                  :readonly="Boolean(editor.owner.trim())"
-                  placeholder="输入姓名或工号后选择"
-                  @focus="onOwnerPickerFocus"
-                  @input="onOwnerPickerInput"
+              直接新建
+            </button>
+            <button
+              type="button"
+              class="dialog-tab"
+              role="tab"
+              :class="{ 'is-active': createTab === 'import' }"
+              :aria-selected="createTab === 'import'"
+              @click="switchCreateTab('import')"
+            >
+              从 Skill 广场引入
+            </button>
+          </div>
+          <div class="dialog-scroll-body">
+            <div v-if="editor.mode === 'edit' && editor.skillSource === 'imported'" class="note">
+              <b>来源</b
+              ><span>广场引入，名称不可修改；可修改 Skill 说明、责任 Owner、开发责任人和计划完成时间</span>
+            </div>
+            <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
+              <label class="wide"
+                ><span>Skill 名称 *</span
+                ><input
+                  v-model.trim="editor.name"
+                  maxlength="64"
+                  :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
                 />
-                <button
-                  v-if="editor.owner.trim()"
-                  type="button"
-                  class="person-search__clear"
-                  title="清除责任 Owner"
-                  aria-label="清除责任 Owner"
-                  @mousedown.prevent
-                  @click.stop="clearOwnerSelection"
-                >
-                  ×
-                </button>
-              </div>
-              <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
-                <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
-                <template v-else>
+                <small
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="field-hint"
+                  >从 Skill 广场引入的 Skill 名称不可修改</small
+                ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
+                  >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
+                ></label
+              >
+              <label class="wide"
+                ><span>Skill 说明 *</span
+                ><textarea
+                  v-model.trim="editor.description"
+                  maxlength="300"
+                  rows="4"
+                ></textarea>
+              </label>
+              <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
+                <span>责任 Owner *</span>
+                <div class="person-search__control">
+                  <input
+                    :value="ownerPicker.keyword"
+                    type="text"
+                    autocomplete="off"
+                    :readonly="Boolean(editor.owner.trim())"
+                    placeholder="输入姓名或工号后选择"
+                    @focus="onOwnerPickerFocus"
+                    @input="onOwnerPickerInput"
+                  />
                   <button
-                    v-for="option in ownerPicker.options"
-                    :key="option.id || option.label"
+                    v-if="editor.owner.trim()"
                     type="button"
-                    @click="selectOwner(option)"
+                    class="person-search__clear"
+                    title="清除责任 Owner"
+                    aria-label="清除责任 Owner"
+                    @mousedown.prevent
+                    @click.stop="clearOwnerSelection"
                   >
-                    <span
-                      ><strong>{{ option.chName || option.label }}</strong
-                      ><small>{{ option.id }}</small></span
-                    >
-                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    ×
                   </button>
-                  <span v-if="ownerPicker.message" class="person-search__empty">{{
-                    ownerPicker.message
-                  }}</span>
-                </template>
-              </div>
-            </label>
-            <!-- <label
+                </div>
+                <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                  <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                  <template v-else>
+                    <button
+                      v-for="option in ownerPicker.options"
+                      :key="option.id || option.label"
+                      type="button"
+                      @click="selectOwner(option)"
+                    >
+                      <span
+                        ><strong>{{ option.chName || option.label }}</strong
+                        ><small>{{ option.id }}</small></span
+                      >
+                      <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    </button>
+                    <span v-if="ownerPicker.message" class="person-search__empty">{{
+                      ownerPicker.message
+                    }}</span>
+                  </template>
+                </div>
+              </label>
+              <!-- <label
               ><span>Owner 所在部门</span
               ><input v-model.trim="editor.department" placeholder="由 Owner 资料自动带出" readonly
             /></label> -->
-            <label
-              class="develop-owner-picker person-search"
-              @keydown.esc="closeDevelopOwnerPersonSearch"
-            >
-              <span>开发责任人 *</span>
-              <div class="person-search__control">
+              <label
+                class="develop-owner-picker person-search"
+                @keydown.esc="closeDevelopOwnerPersonSearch"
+              >
+                <span>开发责任人 *</span>
+                <div class="person-search__control">
+                  <input
+                    :value="developOwnerPicker.keyword"
+                    type="text"
+                    autocomplete="off"
+                    :readonly="Boolean(editor.developOwner.trim())"
+                    placeholder="输入姓名或工号后选择"
+                    @focus="onDevelopOwnerPickerFocus"
+                    @input="onDevelopOwnerPickerInput"
+                  />
+                  <button
+                    v-if="editor.developOwner.trim()"
+                    type="button"
+                    class="person-search__clear"
+                    title="清除开发责任人"
+                    aria-label="清除开发责任人"
+                    @mousedown.prevent
+                    @click.stop="clearDevelopOwnerSelection"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                  <span v-if="developOwnerPicker.loading" class="person-search__empty"
+                    >查询中...</span
+                  >
+                  <template v-else>
+                    <button
+                      v-for="option in developOwnerPicker.options"
+                      :key="option.id || option.label"
+                      type="button"
+                      @click="selectDevelopOwner(option)"
+                    >
+                      <span
+                        ><strong>{{ option.chName || option.label }}</strong
+                        ><small>{{ option.id }}</small></span
+                      >
+                      <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    </button>
+                    <span v-if="developOwnerPicker.message" class="person-search__empty">{{
+                      developOwnerPicker.message
+                    }}</span>
+                  </template>
+                </div>
+              </label>
+              <label
+                ><span>计划完成时间 *</span
+                ><input
+                  v-model="editor.plannedCompleteDate"
+                  type="date"
+                  :min="currentLocalDate()"
+              /></label>
+            </div>
+
+            <div v-if="editor.mode === 'create' && createTab === 'import'" class="import-panel">
+              <div class="import-search">
                 <input
-                  :value="developOwnerPicker.keyword"
-                  type="text"
-                  autocomplete="off"
-                  :readonly="Boolean(editor.developOwner.trim())"
-                  placeholder="输入姓名或工号后选择"
-                  @focus="onDevelopOwnerPickerFocus"
-                  @input="onDevelopOwnerPickerInput"
+                  v-model.trim="importKeyword"
+                  type="search"
+                  placeholder="输入关键词实时搜索 Skill 广场中的 Skill"
+                  @keydown.enter.prevent="triggerImportSearchNow"
                 />
                 <button
-                  v-if="editor.developOwner.trim()"
+                  class="primary"
                   type="button"
-                  class="person-search__clear"
-                  title="清除开发责任人"
-                  aria-label="清除开发责任人"
-                  @mousedown.prevent
-                  @click.stop="clearDevelopOwnerSelection"
+                  :disabled="importLoading"
+                  @click="triggerImportSearchNow"
                 >
-                  ×
+                  搜索
                 </button>
               </div>
-              <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
-                <span v-if="developOwnerPicker.loading" class="person-search__empty"
-                  >查询中...</span
-                >
+
+              <div class="import-list" :aria-busy="importLoading">
+                <div v-if="importLoading" class="import-empty">正在加载 Skill 广场列表…</div>
                 <template v-else>
                   <button
-                    v-for="option in developOwnerPicker.options"
-                    :key="option.id || option.label"
+                    v-for="row in importRows"
+                    :key="row.id"
                     type="button"
-                    @click="selectDevelopOwner(option)"
+                    class="import-row"
+                    :class="{ 'is-selected': importSelectedId === row.id }"
+                    @click="selectSquareSkill(row.id)"
                   >
-                    <span
-                      ><strong>{{ option.chName || option.label }}</strong
-                      ><small>{{ option.id }}</small></span
-                    >
-                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    <span class="import-row__radio" aria-hidden="true"></span>
+                    <span class="import-row__main">
+                      <strong :title="row.name">{{ row.name }}</strong>
+                      <small :title="row.description || '暂无描述'">{{
+                        row.description || '暂无描述'
+                      }}</small>
+                    </span>
+                    <span class="import-row__meta">
+                      <em v-if="row.version" class="is-version">v{{ row.version }}</em>
+                      <em v-if="row.publisher" :title="row.publisher">{{ row.publisher }}</em>
+                      <em v-if="row.department" :title="row.department">{{ row.department }}</em>
+                    </span>
                   </button>
-                  <span v-if="developOwnerPicker.message" class="person-search__empty">{{
-                    developOwnerPicker.message
-                  }}</span>
+                  <div v-if="!importRows.length" class="import-empty">
+                    未找到匹配的 Skill，请调整关键词后重试
+                  </div>
                 </template>
               </div>
-            </label>
-            <label
-              ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
-            /></label>
+
+              <div class="import-pagination">
+                <span>共 {{ importTotal }} 条</span>
+                <select
+                  v-model.number="importPageSize"
+                  :disabled="importLoading"
+                  aria-label="每页条数"
+                  @change="changeImportPageSize"
+                >
+                  <option v-for="size in importPageSizeOptions" :key="size" :value="size">
+                    {{ size }} 条/页
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  :disabled="importLoading || importPageNum <= 1"
+                  @click="goSquarePage(importPageNum - 1)"
+                >
+                  上一页
+                </button>
+                <strong>{{ importPageNum }} / {{ importTotalPages }}</strong>
+                <button
+                  type="button"
+                  :disabled="importLoading || importPageNum >= importTotalPages"
+                  @click="goSquarePage(importPageNum + 1)"
+                >
+                  下一页
+                </button>
+              </div>
+
+              <div v-if="selectedSquareSkill" class="import-selected">
+                <header>
+                  <strong>已选 Skill</strong>
+                  <span>名称与说明以 Skill 广场为准，不可修改</span>
+                </header>
+                <div class="import-selected__name" :title="selectedSquareSkill.name">
+                  {{ selectedSquareSkill.name }}
+                </div>
+                <div class="import-selected__tags">
+                  <em v-for="tag in selectedSquareSkill.tags.slice(0, 4)" :key="tag">
+                    {{ tag }}
+                  </em>
+                  <em>{{ selectedSquareSkill.category }}</em>
+                  <em v-if="selectedSquareSkill.version">v{{ selectedSquareSkill.version }}</em>
+                </div>
+                <p :title="selectedSquareSkill.description || '暂无描述'">
+                  {{ selectedSquareSkill.description || '暂无描述' }}
+                </p>
+              </div>
+
+              <div class="form-grid import-form-grid">
+                <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
+                  <span>责任 Owner *</span>
+                  <div class="person-search__control">
+                    <input
+                      :value="ownerPicker.keyword"
+                      type="text"
+                      autocomplete="off"
+                      :readonly="Boolean(editor.owner.trim())"
+                      placeholder="输入姓名或工号后选择"
+                      @focus="onOwnerPickerFocus"
+                      @input="onOwnerPickerInput"
+                    />
+                    <button
+                      v-if="editor.owner.trim()"
+                      type="button"
+                      class="person-search__clear"
+                      title="清除责任 Owner"
+                      aria-label="清除责任 Owner"
+                      @mousedown.prevent
+                      @click.stop="clearOwnerSelection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                    <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                    <template v-else>
+                      <button
+                        v-for="option in ownerPicker.options"
+                        :key="option.id || option.label"
+                        type="button"
+                        @click="selectOwner(option)"
+                      >
+                        <span
+                          ><strong>{{ option.chName || option.label }}</strong
+                          ><small>{{ option.id }}</small></span
+                        >
+                        <em>{{ option.deptName || '部门信息待补充' }}</em>
+                      </button>
+                      <span v-if="ownerPicker.message" class="person-search__empty">{{
+                        ownerPicker.message
+                      }}</span>
+                    </template>
+                  </div>
+                </label>
+                <label
+                  class="develop-owner-picker person-search"
+                  @keydown.esc="closeDevelopOwnerPersonSearch"
+                >
+                  <span>开发责任人 *</span>
+                  <div class="person-search__control">
+                    <input
+                      :value="developOwnerPicker.keyword"
+                      type="text"
+                      autocomplete="off"
+                      :readonly="Boolean(editor.developOwner.trim())"
+                      placeholder="输入姓名或工号后选择"
+                      @focus="onDevelopOwnerPickerFocus"
+                      @input="onDevelopOwnerPickerInput"
+                    />
+                    <button
+                      v-if="editor.developOwner.trim()"
+                      type="button"
+                      class="person-search__clear"
+                      title="清除开发责任人"
+                      aria-label="清除开发责任人"
+                      @mousedown.prevent
+                      @click.stop="clearDevelopOwnerSelection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                    <span v-if="developOwnerPicker.loading" class="person-search__empty"
+                      >查询中...</span
+                    >
+                    <template v-else>
+                      <button
+                        v-for="option in developOwnerPicker.options"
+                        :key="option.id || option.label"
+                        type="button"
+                        @click="selectDevelopOwner(option)"
+                      >
+                        <span
+                          ><strong>{{ option.chName || option.label }}</strong
+                          ><small>{{ option.id }}</small></span
+                        >
+                        <em>{{ option.deptName || '部门信息待补充' }}</em>
+                      </button>
+                      <span v-if="developOwnerPicker.message" class="person-search__empty">{{
+                        developOwnerPicker.message
+                      }}</span>
+                    </template>
+                  </div>
+                </label>
+                <label
+                  ><span>计划完成时间 *</span
+                  ><input
+                    v-model="editor.plannedCompleteDate"
+                    type="date"
+                    :min="currentLocalDate()"
+                /></label>
+              </div>
+            </div>
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
           <footer>
-            <button type="button" @click="closeEditor">取消</button
-            ><button class="primary" type="submit" :disabled="submitting">保存</button>
+            <button type="button" @click="closeEditor">取消</button>
+            <button
+              v-if="editor.mode === 'create' && createTab === 'import'"
+              class="primary"
+              type="button"
+              :disabled="importSubmitting"
+              @click="importFromSquare"
+            >
+              {{ importSubmitting ? '引入中…' : '引入' }}
+            </button>
+            <button
+              v-else
+              class="primary"
+              type="submit"
+              formnovalidate
+              :disabled="submitting"
+            >
+              保存
+            </button>
           </footer>
         </form>
       </div>
@@ -2530,6 +3155,358 @@ onBeforeUnmount(() => {
   background: #aebcf3 !important;
   cursor: not-allowed;
 }
+.dialog-tabs {
+  display: inline-flex;
+  gap: 28px;
+  margin-bottom: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.dialog-tab {
+  position: relative;
+  min-height: 34px;
+  padding: 0 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.dialog-tab:hover {
+  color: #3156b5;
+}
+.dialog-tab.is-active {
+  color: #3569e8;
+  box-shadow: none;
+}
+.dialog-tab.is-active::after {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: #3569e8;
+  content: '';
+}
+.dialog-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin-left: 10px;
+  padding: 0 9px;
+  border-radius: 99px;
+  background: #eef2f8;
+  color: #66758c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  vertical-align: middle;
+}
+.dialog-source-badge.is-imported {
+  background: #eef1ff;
+  color: #4c63c8;
+}
+.skill-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 20px;
+  margin-top: 3px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: #eef2f8;
+  color: #66758c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+}
+.skill-source-badge.is-imported {
+  background: #eef1ff;
+  color: #4c63c8;
+}
+.import-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 14px;
+}
+.import-panel > * {
+  min-width: 0;
+}
+.import-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  gap: 9px;
+}
+.import-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d7dfeb;
+  border-radius: 8px;
+  outline: 0;
+  color: #344159;
+  background: #fff;
+}
+.import-search input:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  height: clamp(132px, 19vh, 180px);
+  height: clamp(132px, 19dvh, 180px);
+  padding: 3px 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.import-list::-webkit-scrollbar {
+  width: 6px;
+}
+.import-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d3e8;
+}
+.import-list::-webkit-scrollbar-thumb:hover {
+  background: #aebadb;
+}
+.import-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 0 54px;
+  height: 54px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #e3e9f3;
+  border-radius: 9px;
+  background: #fbfcff;
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.import-row:hover {
+  border-color: #c3cdf5;
+  background: #f6f8ff;
+}
+.import-row.is-selected {
+  border-color: #9fb3f3;
+  background: #eef2ff;
+  box-shadow: inset 0 0 0 1px #d3dcff;
+}
+.import-row__radio {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #c6d0e4;
+  border-radius: 50%;
+  background: #fff;
+}
+.import-row.is-selected .import-row__radio {
+  border: 5px solid #3569e8;
+}
+.import-row__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  gap: 3px;
+}
+.import-row__main strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: #2c3950;
+  font-size: 13px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row__main small {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: #8c97a8;
+  font-size: 11px;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row__meta {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 45%;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+.import-row__meta em {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #f0f3f9;
+  color: #66758c;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row__meta em.is-version {
+  background: #e9eeff;
+  color: #4c63c8;
+}
+.import-empty {
+  padding: 30px 12px;
+  color: #98a2b1;
+  font-size: 12px;
+  text-align: center;
+}
+.import-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  min-width: 0;
+  color: #7c879a;
+  font-size: 11px;
+}
+.import-pagination select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #d7dfeb;
+  border-radius: 7px;
+  background: #fff;
+  color: #55617a;
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.import-pagination select:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.import-pagination select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.import-pagination button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d7dfeb;
+  border-radius: 7px;
+  background: #fff;
+  color: #55617a;
+  cursor: pointer;
+}
+.import-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.import-pagination strong {
+  color: #3c4a66;
+  font-size: 11px;
+}
+.import-selected {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #c9d8ff;
+  border-radius: 10px;
+  background: #f5f8ff;
+}
+.import-selected > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.import-selected > header strong {
+  color: #2c3950;
+  font-size: 13px;
+}
+.import-selected > header span {
+  color: #8c97a8;
+  font-size: 11px;
+}
+.import-selected__name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #23314f;
+  font-size: 15px;
+  font-weight: 850;
+}
+.import-selected__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.import-selected__tags em {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #e9eeff;
+  color: #4c63c8;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+.import-selected > p {
+  margin: 8px 0 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  color: #66758c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.import-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.import-form-grid > * {
+  min-width: 0;
+}
+.import-form-grid label:last-child {
+  grid-column: 1 / -1;
+}
 .table-wrap {
   flex: 1 1 auto;
   width: 100%;
@@ -2568,7 +3545,9 @@ onBeforeUnmount(() => {
 .table-wrap col.action-column {
   width: 11%;
 }
-.table-wrap .reference-cell { text-align: center; }
+.table-wrap .reference-cell {
+  text-align: center;
+}
 .planning-reference-count {
   display: inline-flex;
   min-width: 30px;
@@ -2665,6 +3644,17 @@ onBeforeUnmount(() => {
   font-weight: 650;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.table-wrap td.description-cell > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 .name-cell {
   display: flex;
@@ -2848,11 +3838,37 @@ onBeforeUnmount(() => {
 .dialog {
   width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 22px;
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
+}
+.dialog.is-create-dialog {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(804px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+.dialog.is-create-dialog > header,
+.dialog.is-create-dialog > .dialog-tabs,
+.dialog.is-create-dialog > .error,
+.dialog.is-create-dialog > footer {
+  flex: 0 0 auto;
+}
+.dialog-scroll-body {
+  min-height: 0;
+  overflow-x: hidden;
+}
+.dialog.is-create-dialog > .dialog-scroll-body {
+  flex: 1 1 auto;
+  overflow-y: visible;
 }
 .dialog > header {
   display: flex;
@@ -2926,6 +3942,23 @@ onBeforeUnmount(() => {
 .form-grid textarea {
   padding-top: 10px;
 }
+.form-grid input[readonly],
+.form-grid textarea[readonly] {
+  background: #f6f8fc;
+  color: #64748b;
+  cursor: default;
+}
+.form-grid input[readonly]:focus,
+.form-grid textarea[readonly]:focus {
+  border-color: #d7dfeb;
+  box-shadow: none;
+}
+/* 广场引入场景（新建引入 / 编辑引入记录）：人员选中后仍可清除重选，保持白底避免误读为禁用。 */
+.dialog.is-imported-edit .person-search__control > input[readonly] {
+  background: #ffffff;
+  color: #17233d;
+  font-size: 13px;
+}
 .person-search {
   position: relative;
   width: 100%;
@@ -2946,7 +3979,9 @@ onBeforeUnmount(() => {
 }
 .person-search__control > input[readonly] {
   padding-right: 38px;
-  background: #f8fbff;
+  background: #ffffff;
+  color: #17233d;
+  font-size: 13px;
   cursor: default;
 }
 .person-search__control > input:focus {
@@ -3036,6 +4071,7 @@ onBeforeUnmount(() => {
   color: #d94851;
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 .dialog > footer {
   display: flex;
@@ -3170,6 +4206,57 @@ onBeforeUnmount(() => {
   color: #fff;
   font-size: 12px;
   font-weight: 800;
+}
+@media (max-height: 760px) {
+  .dialog.is-create-dialog {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    padding: 18px 22px;
+  }
+  .dialog.is-create-dialog > header {
+    margin-bottom: 12px;
+  }
+  .dialog.is-create-dialog > .dialog-tabs {
+    margin-bottom: 10px;
+  }
+  .dialog.is-create-dialog .form-grid {
+    gap: 10px 13px;
+  }
+  .dialog.is-create-dialog .import-panel {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .dialog.is-create-dialog .import-list {
+    height: clamp(110px, 18vh, 140px);
+    height: clamp(110px, 18dvh, 140px);
+  }
+  .dialog.is-create-dialog > .error {
+    margin-top: 10px;
+    padding: 7px 10px;
+  }
+  .dialog.is-create-dialog > footer {
+    margin-top: 12px;
+  }
+}
+@media (max-height: 680px) {
+  .dialog.is-create-dialog .form-grid textarea {
+    height: 64px;
+  }
+  .dialog.is-create-dialog .import-selected {
+    padding: 8px 10px;
+  }
+  .dialog.is-create-dialog .import-selected > header {
+    margin-bottom: 4px;
+  }
+  .dialog.is-create-dialog .import-selected__tags {
+    display: none;
+  }
+  .dialog.is-create-dialog .import-selected > p {
+    margin-top: 4px;
+    -webkit-line-clamp: 1;
+  }
 }
 @media (max-width: 1100px) {
   .master-hero {

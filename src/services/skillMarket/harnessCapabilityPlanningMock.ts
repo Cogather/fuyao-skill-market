@@ -525,7 +525,9 @@ function planningItemFromBody(
     commandName?: string;
     agentName?: string;
   };
-  const capabilityName = text(body.skillName ?? capabilityBody.commandName ?? capabilityBody.agentName);
+  const capabilityName = text(
+    body.skillName ?? capabilityBody.commandName ?? capabilityBody.agentName,
+  );
   const record = state.catalog.find((item) => item.name === capabilityName);
   if (!record) {
     throw new Error(`请先在 ${type === 'command' ? 'Command' : 'Agent'} 清单中维护该能力`);
