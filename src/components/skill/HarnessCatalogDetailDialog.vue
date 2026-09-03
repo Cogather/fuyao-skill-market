@@ -24,16 +24,21 @@ type DetailFileState = {
 
 type DetailTab = 'detail' | 'evaluation';
 
-type EvaluationDimensionDefinition = {
-  id: string;
-  label: string;
-  maxScore: number;
-};
-
 type EvaluationDimensionScore = {
   id: string;
+  label: string;
   score: number;
-  description: string;
+  maxScore: number;
+  confidence: string;
+  confidenceLabel: string;
+  lowConfidence: boolean;
+  evidence: string;
+  rationale: string;
+  rawScore: number | null;
+  adjustedByPrecheck: boolean;
+  adjustmentReason: string;
+  derivationReason: string;
+  glossary: string;
 };
 
 type EvaluationIssueSeverity = 'high' | 'medium' | 'low' | 'suggestion';
@@ -48,22 +53,32 @@ type EvaluationIssue = {
   dimension: string;
 };
 
-type SkillEvaluation = {
-  model: string;
-  evaluatedAt: string;
-  score: number;
-  dimensions: EvaluationDimensionScore[];
-  advices: Record<string, string>;
-  issues: EvaluationIssue[];
+type EvaluationAdvice = {
+  key: string;
+  label: string;
+  value: string;
+  metaLabel: string;
 };
 
-const DEFAULT_EVALUATION_DIMENSIONS: EvaluationDimensionDefinition[] = [
-  { id: 'D1', label: '技能边界完整性', maxScore: 20 },
-  { id: 'D2', label: '接口规范完整性', maxScore: 20 },
-  { id: 'D3', label: '异常与边界处理', maxScore: 20 },
-  { id: 'D4', label: '规则一致性', maxScore: 20 },
-  { id: 'D5', label: '安全与权限约束', maxScore: 20 },
-];
+type SkillEvaluation = {
+  skillName: string;
+  version: string;
+  taskId: string;
+  state: string;
+  model: string;
+  evaluatedAt: string;
+  total: number;
+  maxScore: number;
+  percent: number;
+  grade: string;
+  pattern: string;
+  patternLabel: string;
+  knowledgeRatio: Record<'E' | 'A' | 'R', number | null>;
+  knowledgeRatioGlossary: string;
+  dimensions: EvaluationDimensionScore[];
+  advices: EvaluationAdvice[];
+  issues: EvaluationIssue[];
+};
 
 const EVALUATION_ADVICE_LABELS: Record<string, string> = {
   'SKILL.md': '主说明文档',
@@ -108,9 +123,6 @@ const expandedDetailFilePath = ref('');
 const detailCapabilityExpanded = ref(true);
 const activeTab = ref<DetailTab>('detail');
 const evaluation = ref<SkillEvaluation | null>(null);
-const evaluationDimensions = ref<EvaluationDimensionDefinition[]>([
-  ...DEFAULT_EVALUATION_DIMENSIONS,
-]);
 const evaluationLoading = ref(false);
 const evaluationError = ref('');
 const showAllEvaluationAdvices = ref(false);
@@ -123,28 +135,28 @@ const selectedVersionRecord = computed<SkillMasterVersion | null>(() => {
 });
 
 const evaluationGrade = computed(() => {
-  const score = evaluation.value?.score ?? 0;
-  if (score >= 90) return { grade: 'A', label: '优秀' };
-  if (score >= 80) return { grade: 'B', label: '良好' };
-  if (score >= 70) return { grade: 'C', label: '合格' };
-  return { grade: 'D', label: '待改进' };
+  const apiGrade = evaluation.value?.grade.trim().toUpperCase() ?? '';
+  const percent = evaluation.value?.percent ?? 0;
+  const grade = apiGrade || (percent >= 90 ? 'A' : percent >= 80 ? 'B' : percent >= 70 ? 'C' : 'D');
+  const labelMap: Record<string, string> = {
+    A: '优秀',
+    B: '良好',
+    C: '合格',
+    D: '待改进',
+  };
+  return { grade, label: labelMap[grade] ?? '已评估' };
 });
 
 const evaluationScoreRingStyle = computed(() => {
-  const score = Math.min(100, Math.max(0, evaluation.value?.score ?? 0));
+  const score = Math.min(100, Math.max(0, evaluation.value?.percent ?? 0));
   return {
     background: `conic-gradient(#6677f7 0 ${score}%, #e8ecf7 ${score}% 100%)`,
   };
 });
 
 const evaluationAdviceItems = computed(() => {
-  const entries = Object.entries(evaluation.value?.advices ?? {}).filter(([, value]) =>
-    Boolean(value.trim()),
-  );
-  return entries.map(([key, value], index) => ({
-    key,
-    label: EVALUATION_ADVICE_LABELS[key] ?? key,
-    value,
+  return (evaluation.value?.advices ?? []).map((item, index) => ({
+    ...item,
     rank: String(index + 1).padStart(2, '0'),
   }));
 });
@@ -156,15 +168,11 @@ const visibleEvaluationAdviceItems = computed(() => {
 });
 
 const evaluationDimensionRows = computed(() => {
-  const definitionMap = new Map(evaluationDimensions.value.map((item) => [item.id, item]));
-  return (evaluation.value?.dimensions ?? []).map((item, index) => {
-    const definition = definitionMap.get(item.id) ?? DEFAULT_EVALUATION_DIMENSIONS[index];
-    const maxScore = definition?.maxScore ?? 20;
+  return (evaluation.value?.dimensions ?? []).map((item) => {
+    const maxScore = item.maxScore;
     const ratio = maxScore > 0 ? Math.min(100, Math.max(0, (item.score / maxScore) * 100)) : 0;
     return {
       ...item,
-      label: definition?.label || item.id,
-      maxScore,
       ratio,
       tone: ratio >= 85 ? 'good' : ratio >= 70 ? 'medium' : 'risk',
     };
@@ -174,6 +182,40 @@ const evaluationDimensionRows = computed(() => {
 const visibleEvaluationIssues = computed(() => {
   const issues = evaluation.value?.issues ?? [];
   return showAllEvaluationIssues.value ? issues : issues.slice(0, 2);
+});
+
+const evaluationKnowledgeRatioItems = computed(() => {
+  const ratio = evaluation.value?.knowledgeRatio;
+  if (!ratio) return [];
+  const labels: Record<'E' | 'A' | 'R', string> = {
+    E: '独家知识',
+    A: '行动框架',
+    R: '通用套话',
+  };
+  return (['E', 'A', 'R'] as const)
+    .filter((key) => ratio[key] != null)
+    .map((key) => ({
+      key,
+      label: labels[key],
+      percent: Math.round((ratio[key] ?? 0) * 1000) / 10,
+    }));
+});
+
+const evaluationStateNotice = computed(() => {
+  const state = evaluation.value?.state.trim().toLowerCase() ?? '';
+  if (!state || ['completed', 'success', 'succeeded', 'done'].includes(state)) return null;
+  if (['failed', 'error', 'cancelled', 'canceled'].includes(state)) {
+    return {
+      tone: 'error',
+      title: '评估未完成',
+      detail: `当前任务状态：${evaluation.value?.state}`,
+    };
+  }
+  return {
+    tone: 'progress',
+    title: '评估进行中',
+    detail: `当前任务状态：${evaluation.value?.state}`,
+  };
 });
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -204,25 +246,85 @@ function readFiniteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeEvaluationDimensions(value: unknown): EvaluationDimensionDefinition[] {
-  if (!Array.isArray(value)) return [...DEFAULT_EVALUATION_DIMENSIONS];
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? '').trim()).filter(Boolean);
+  }
+  const text = String(value ?? '').trim();
+  return text ? [text] : [];
+}
 
-  const dimensions = value
+function normalizePatternLabel(value: unknown): string {
+  const pattern = String(value ?? '').trim();
+  const labelMap: Record<string, string> = {
+    process: '流程型',
+    thinking: '思维型',
+    navigation: '导航型',
+    philosophy: '理念型',
+    tool: '工具型',
+  };
+  return labelMap[pattern.toLowerCase()] ?? pattern;
+}
+
+function normalizeConfidence(
+  value: unknown,
+  lowConfidence: boolean,
+): {
+  confidence: string;
+  confidenceLabel: string;
+} {
+  const confidence = String(value ?? '')
+    .trim()
+    .toUpperCase();
+  const labelMap: Record<string, string> = { H: '高置信度', M: '中置信度', L: '低置信度' };
+  const effectiveConfidence = confidence || (lowConfidence ? 'L' : '');
+  return {
+    confidence: effectiveConfidence,
+    confidenceLabel:
+      labelMap[effectiveConfidence] ?? (effectiveConfidence ? `置信度 ${effectiveConfidence}` : ''),
+  };
+}
+
+function normalizeEvaluationDimensions(
+  value: unknown,
+  glossaryValue: unknown,
+): EvaluationDimensionScore[] {
+  if (!Array.isArray(value)) return [];
+  const glossary = readRecord(glossaryValue);
+
+  return value
     .map((item, index) => {
       const record = readRecord(item);
-      const fallback = DEFAULT_EVALUATION_DIMENSIONS[index];
-      const id = String(record.dimensionId ?? record.id ?? fallback?.id ?? `D${index + 1}`).trim();
-      const maxScore =
-        readFiniteNumber(record.maxScore ?? record.max_score) ?? fallback?.maxScore ?? 20;
+      const score = readFiniteNumber(record.score);
+      if (score == null) return null;
+      const id = String(record.id ?? record.dimensionId ?? `D${index + 1}`).trim();
+      const maxScore = readFiniteNumber(record.max ?? record.maxScore ?? record.max_score) ?? 0;
+      const lowConfidence = record.low_confidence === true || record.lowConfidence === true;
+      const confidence = normalizeConfidence(record.confidence, lowConfidence);
       return {
         id,
-        label: String(record.label ?? record.name ?? fallback?.label ?? id).trim(),
-        maxScore: maxScore > 0 ? maxScore : 20,
+        label: String(record.name ?? record.label ?? id).trim(),
+        score,
+        maxScore: maxScore > 0 ? maxScore : 1,
+        ...confidence,
+        lowConfidence: lowConfidence || confidence.confidence === 'L',
+        evidence: String(record.evidence ?? '').trim(),
+        rationale: String(
+          record.rationale ??
+            record.deductionBreakdown ??
+            record.description ??
+            record.reason ??
+            '',
+        ).trim(),
+        rawScore: readFiniteNumber(record.raw_score ?? record.rawScore),
+        adjustedByPrecheck:
+          record.adjusted_by_precheck === true || record.adjustedByPrecheck === true,
+        adjustmentReason: String(record.adjustment_reason ?? record.adjustmentReason ?? '').trim(),
+        derivationReason: String(record.derivation_reason ?? record.derivationReason ?? '').trim(),
+        glossary: String(glossary[id] ?? '').trim(),
       };
     })
-    .filter((item) => Boolean(item.id));
-
-  return dimensions.length ? dimensions : [...DEFAULT_EVALUATION_DIMENSIONS];
+    .filter((item): item is EvaluationDimensionScore => item !== null);
 }
 
 function normalizeIssueSeverity(value: unknown): {
@@ -243,27 +345,68 @@ function normalizeIssueSeverity(value: unknown): {
   return { severity: 'suggestion', severityLabel: '建议' };
 }
 
-function normalizeEvaluationIssues(value: unknown): EvaluationIssue[] {
+function normalizeEvaluationIssues(
+  value: unknown,
+  options: {
+    fallbackSeverity: EvaluationIssueSeverity;
+    forcedSeverity?: EvaluationIssueSeverity;
+    idPrefix: string;
+    dimensionLabels: Map<string, string>;
+  },
+): EvaluationIssue[] {
   if (!Array.isArray(value)) return [];
 
   return value
     .map((item, index) => {
+      if (typeof item === 'string') {
+        const title = item.trim();
+        if (!title) return null;
+        return {
+          id: `${options.idPrefix}-${index + 1}`,
+          ...normalizeIssueSeverity(options.forcedSeverity ?? options.fallbackSeverity),
+          title,
+          description: '',
+          evidence: '',
+          dimension: '',
+        };
+      }
+
       const record = readRecord(item);
       const title = String(
-        record.title ?? record.name ?? record.issueTitle ?? record.issue_title ?? '',
+        record.title ??
+          record.name ??
+          record.issueTitle ??
+          record.issue_title ??
+          record.message ??
+          '',
       ).trim();
       if (!title) return null;
-      const severity = normalizeIssueSeverity(
-        record.severity ??
-          record.riskLevel ??
-          record.risk_level ??
-          record.level ??
-          record.issueLevel ??
-          record.issue_level,
+      const severity = options.forcedSeverity
+        ? normalizeIssueSeverity(options.forcedSeverity)
+        : normalizeIssueSeverity(
+            record.severity ??
+              record.riskLevel ??
+              record.risk_level ??
+              record.level ??
+              record.issueLevel ??
+              record.issue_level ??
+              options.fallbackSeverity,
+          );
+      const dimensionIds = normalizeStringList(
+        record.dimensions ??
+          record.dimensionIds ??
+          record.dimension_ids ??
+          record.dimension ??
+          record.dimensionName ??
+          record.dimension_name,
       );
       return {
         id: String(
-          record.issueId ?? record.issue_id ?? record.code ?? record.id ?? `ISSUE-${index + 1}`,
+          record.issueId ??
+            record.issue_id ??
+            record.code ??
+            record.id ??
+            `${options.idPrefix}-${index + 1}`,
         ).trim(),
         ...severity,
         title,
@@ -283,78 +426,198 @@ function normalizeEvaluationIssues(value: unknown): EvaluationIssue[] {
             record.location ??
             '',
         ).trim(),
-        dimension: String(
-          record.dimension ??
-            record.dimensionName ??
-            record.dimension_name ??
-            record.category ??
-            record.tag ??
-            '',
-        ).trim(),
+        dimension: dimensionIds
+          .map((id) => options.dimensionLabels.get(id) ?? id)
+          .filter(Boolean)
+          .join('、'),
       };
     })
     .filter((item): item is EvaluationIssue => item !== null);
 }
 
+function normalizeAdviceText(value: string): string {
+  return value.replace(/\s+/g, '').toLowerCase();
+}
+
+function normalizeEvaluationAdvices(
+  source: Record<string, unknown>,
+  dimensions: EvaluationDimensionScore[],
+): EvaluationAdvice[] {
+  const dimensionLabels = new Map(dimensions.map((item) => [item.id, item.label]));
+  const improvements = Array.isArray(source.improvements)
+    ? source.improvements
+        .map((item, index) => {
+          const record = readRecord(item);
+          const value = String(record.action ?? '').trim();
+          if (!value) return null;
+          return {
+            key: `improvement-${index + 1}`,
+            value,
+            dimensionIds: normalizeStringList(record.linked_dimensions ?? record.linkedDimensions),
+            findingIds: normalizeStringList(record.linked_finding_ids ?? record.linkedFindingIds),
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+    : [];
+  const top3 = normalizeStringList(source.top3Improvements ?? source.top3_improvements);
+  const result: EvaluationAdvice[] = [];
+  const usedImprovementIndexes = new Set<number>();
+  const seenTexts = new Set<string>();
+
+  const appendAdvice = (
+    value: string,
+    dimensionIds: string[],
+    findingIds: string[],
+    key: string,
+    fallbackLabel: string,
+  ) => {
+    const normalizedText = normalizeAdviceText(value);
+    if (!normalizedText || seenTexts.has(normalizedText)) return;
+    seenTexts.add(normalizedText);
+    const labels = dimensionIds.map((id) => dimensionLabels.get(id) ?? id).filter(Boolean);
+    const metadata = [...dimensionIds, ...findingIds].filter(Boolean);
+    result.push({
+      key,
+      label: labels.join('、') || fallbackLabel,
+      value,
+      metaLabel: metadata.join(' · ') || fallbackLabel,
+    });
+  };
+
+  top3.forEach((value, index) => {
+    const normalizedTop = normalizeAdviceText(value);
+    const matchedIndex = improvements.findIndex(
+      (item, improvementIndex) =>
+        !usedImprovementIndexes.has(improvementIndex) &&
+        normalizeAdviceText(item.value) === normalizedTop,
+    );
+    const matched = matchedIndex >= 0 ? improvements[matchedIndex] : null;
+    if (matchedIndex >= 0) usedImprovementIndexes.add(matchedIndex);
+    appendAdvice(
+      value,
+      matched?.dimensionIds ?? [],
+      matched?.findingIds ?? [],
+      `top-${index + 1}`,
+      '优先改进',
+    );
+  });
+
+  improvements.forEach((item, index) => {
+    if (usedImprovementIndexes.has(index)) return;
+    appendAdvice(item.value, item.dimensionIds, item.findingIds, item.key, '改进建议');
+  });
+
+  if (result.length === 0) {
+    Object.entries(readRecord(source.advices)).forEach(([key, advice]) => {
+      const value = String(advice ?? '').trim();
+      if (!value) return;
+      appendAdvice(value, [], [], `legacy-${key}`, EVALUATION_ADVICE_LABELS[key] ?? key);
+    });
+  }
+
+  return result;
+}
+
 function normalizeSkillEvaluation(value: unknown): SkillEvaluation | null {
   const payload = readRecord(value);
   const source = readEvaluationSource(payload);
-  const dimensions = Array.isArray(source.dimensionScores)
-    ? source.dimensionScores
-        .map((item, index) => {
-          const record = readRecord(item);
-          const score = readFiniteNumber(record.score);
-          if (score == null) return null;
-          return {
-            id: String(record.dimensionId ?? record.id ?? `D${index + 1}`).trim(),
-            score,
-            description: String(
-              record.deductionBreakdown ?? record.description ?? record.reason ?? '',
-            ).trim(),
-          };
-        })
-        .filter((item): item is EvaluationDimensionScore => item !== null)
-    : [];
-  const advices = Object.entries(readRecord(source.advices)).reduce<Record<string, string>>(
-    (result, [key, advice]) => {
-      const text = String(advice ?? '').trim();
-      if (text) result[key] = text;
-      return result;
-    },
-    {},
+  const metricGlossary = readRecord(source.metricGlossary ?? source.metric_glossary);
+  const dimensions = normalizeEvaluationDimensions(
+    source.dimensions ?? source.dimensionScores,
+    metricGlossary.dimensions,
   );
-  const score = readFiniteNumber(source.aiScore ?? source.score);
-  const issues = normalizeEvaluationIssues(
-    source.securityIssues ??
-      source.security_issues ??
-      source.issues ??
-      source.issueList ??
-      source.issue_list ??
-      source.problemList ??
-      source.problem_list ??
-      source.problems ??
-      payload.securityIssues ??
-      payload.security_issues ??
-      payload.issues,
-  );
+  const dimensionLabels = new Map(dimensions.map((item) => [item.id, item.label]));
+  const hasNewIssueFields = Array.isArray(source.criticalIssues) || Array.isArray(source.findings);
+  const issues = hasNewIssueFields
+    ? [
+        ...normalizeEvaluationIssues(source.criticalIssues, {
+          fallbackSeverity: 'high',
+          forcedSeverity: 'high',
+          idPrefix: 'CRITICAL',
+          dimensionLabels,
+        }),
+        ...normalizeEvaluationIssues(source.findings, {
+          fallbackSeverity: 'low',
+          forcedSeverity: 'low',
+          idPrefix: 'FINDING',
+          dimensionLabels,
+        }),
+      ]
+    : normalizeEvaluationIssues(
+        source.securityIssues ??
+          source.security_issues ??
+          source.issues ??
+          source.issueList ??
+          source.issue_list ??
+          source.problemList ??
+          source.problem_list ??
+          source.problems ??
+          payload.securityIssues ??
+          payload.security_issues ??
+          payload.issues,
+        {
+          fallbackSeverity: 'suggestion',
+          idPrefix: 'ISSUE',
+          dimensionLabels,
+        },
+      );
+  const total =
+    readFiniteNumber(source.total ?? source.aiScore ?? source.score) ??
+    dimensions.reduce((sum, item) => sum + item.score, 0);
+  const maxScore =
+    readFiniteNumber(source.max ?? source.maxScore ?? source.max_score) ??
+    dimensions.reduce((sum, item) => sum + item.maxScore, 0);
+  const percent = readFiniteNumber(source.percent) ?? (maxScore > 0 ? (total / maxScore) * 100 : 0);
+  const knowledgeRatioSource = readRecord(source.knowledgeRatio ?? source.knowledge_ratio);
+  const state = String(source.state ?? '').trim();
+  const advices = normalizeEvaluationAdvices(source, dimensions);
 
   if (
-    score == null &&
+    !state &&
+    total === 0 &&
     dimensions.length === 0 &&
-    Object.keys(advices).length === 0 &&
+    advices.length === 0 &&
     issues.length === 0
   ) {
     return null;
   }
 
   return {
-    model: String(source.aiModel ?? source.model ?? '').trim(),
-    evaluatedAt: String(source.evaluateTime ?? source.evaluatedAt ?? source.updatedAt ?? '').trim(),
-    score: score ?? dimensions.reduce((sum, item) => sum + item.score, 0),
+    skillName: String(source.skillName ?? '').trim(),
+    version: String(source.version ?? '').trim(),
+    taskId: String(source.taskId ?? '').trim(),
+    state,
+    model: String(source.modelName ?? source.aiModel ?? source.model ?? '').trim(),
+    evaluatedAt: String(
+      source.updateTime ??
+        source.createTime ??
+        source.evaluateTime ??
+        source.evaluatedAt ??
+        source.updatedAt ??
+        '',
+    ).trim(),
+    total,
+    maxScore: maxScore > 0 ? maxScore : 100,
+    percent: Math.round(Math.max(0, percent) * 10) / 10,
+    grade: String(source.grade ?? '').trim(),
+    pattern: String(source.pattern ?? '').trim(),
+    patternLabel: normalizePatternLabel(source.pattern),
+    knowledgeRatio: {
+      E: readFiniteNumber(knowledgeRatioSource.E ?? knowledgeRatioSource.e),
+      A: readFiniteNumber(knowledgeRatioSource.A ?? knowledgeRatioSource.a),
+      R: readFiniteNumber(knowledgeRatioSource.R ?? knowledgeRatioSource.r),
+    },
+    knowledgeRatioGlossary: String(
+      metricGlossary.knowledge_ratio ?? metricGlossary.knowledgeRatio ?? '',
+    ).trim(),
     dimensions,
     advices,
     issues,
   };
+}
+
+function formatEvaluationNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
 }
 
 function formatUpdatedTime(value?: string): string {
@@ -388,7 +651,6 @@ function resetDetailContent(): void {
   detailCapabilityExpanded.value = true;
   activeTab.value = 'detail';
   evaluation.value = null;
-  evaluationDimensions.value = [...DEFAULT_EVALUATION_DIMENSIONS];
   evaluationLoading.value = false;
   evaluationError.value = '';
   showAllEvaluationAdvices.value = false;
@@ -469,14 +731,6 @@ async function loadEvaluation(): Promise<void> {
     }
 
     const payload = readRecord(detailResponse?.data);
-    const evaluationSource = readEvaluationSource(payload);
-    evaluationDimensions.value = normalizeEvaluationDimensions(
-      payload.dimensionDefinitions ??
-        payload.dimensions ??
-        payload.aiDimensions ??
-        evaluationSource.dimensionDefinitions ??
-        evaluationSource.aiDimensions,
-    );
     evaluation.value = normalizeSkillEvaluation(payload);
   } catch (error) {
     if (sequence !== evaluationLoadSequence) return;
@@ -716,19 +970,28 @@ onBeforeUnmount(() => {
             <strong>当前版本暂无评估结果</strong>
             <p>完成静态评估后，可在这里查看综合得分、改进建议、安全问题和各维度表现。</p>
           </div>
+          <div
+            v-else-if="evaluationStateNotice"
+            class="catalog-evaluation-empty"
+            :class="`is-${evaluationStateNotice.tone}`"
+          >
+            <span class="catalog-evaluation-empty__icon">i</span>
+            <strong>{{ evaluationStateNotice.title }}</strong>
+            <p>{{ evaluationStateNotice.detail }}</p>
+          </div>
 
           <template v-else>
             <div class="catalog-evaluation-summary">
               <article class="catalog-evaluation-score-card">
                 <div class="catalog-evaluation-score-ring" :style="evaluationScoreRingStyle">
                   <div>
-                    <strong>{{ evaluation.score }}</strong>
-                    <span>满分 100</span>
+                    <strong>{{ formatEvaluationNumber(evaluation.total) }}</strong>
+                    <span>/ {{ formatEvaluationNumber(evaluation.maxScore) }}</span>
                   </div>
                 </div>
                 <div>
                   <small>综合得分</small>
-                  <strong>得分率 {{ Math.round(evaluation.score) }}%</strong>
+                  <strong>得分率 {{ formatEvaluationNumber(evaluation.percent) }}%</strong>
                   <p>当前版本静态评估结果</p>
                 </div>
               </article>
@@ -748,8 +1011,34 @@ onBeforeUnmount(() => {
               <article class="catalog-evaluation-summary-card">
                 <small>评估时间</small>
                 <strong>{{ formatUpdatedTime(evaluation.evaluatedAt) }}</strong>
-                <p>对应版本 {{ selectedVersion }}</p>
+                <p>对应版本 {{ evaluation.version || selectedVersion }}</p>
               </article>
+            </div>
+
+            <div
+              v-if="evaluation.pattern || evaluationKnowledgeRatioItems.length"
+              class="catalog-evaluation-profile"
+            >
+              <div v-if="evaluation.pattern" class="catalog-evaluation-pattern">
+                <small>Skill 形态</small>
+                <strong>{{ evaluation.patternLabel || evaluation.pattern }}</strong>
+                <span>{{ evaluation.pattern }}</span>
+              </div>
+              <div
+                v-if="evaluationKnowledgeRatioItems.length"
+                class="catalog-evaluation-knowledge"
+                :title="evaluation.knowledgeRatioGlossary || undefined"
+              >
+                <small>内容构成</small>
+                <span
+                  v-for="item in evaluationKnowledgeRatioItems"
+                  :key="item.key"
+                  :class="`is-${item.key.toLowerCase()}`"
+                >
+                  <strong>{{ item.key }} {{ formatEvaluationNumber(item.percent) }}%</strong>
+                  {{ item.label }}
+                </span>
+              </div>
             </div>
 
             <section v-if="evaluationAdviceItems.length" class="catalog-evaluation-section">
@@ -780,7 +1069,7 @@ onBeforeUnmount(() => {
                     <strong>{{ item.label }}</strong>
                   </div>
                   <p>{{ item.value }}</p>
-                  <small>{{ item.key }}</small>
+                  <small>{{ item.metaLabel }}</small>
                 </article>
               </div>
             </section>
@@ -795,7 +1084,7 @@ onBeforeUnmount(() => {
                   <p>合并展示安全问题、批评问题和待整改项</p>
                 </div>
                 <button
-                  v-if="evaluation.issues.length > 5"
+                  v-if="evaluation.issues.length > 2"
                   type="button"
                   class="catalog-evaluation-section__action"
                   :aria-expanded="showAllEvaluationIssues"
@@ -820,7 +1109,7 @@ onBeforeUnmount(() => {
                     <strong>{{ issue.id }}</strong>
                   </div>
                   <h5>{{ issue.title }}</h5>
-                  <p>{{ issue.description || '暂无问题详情。' }}</p>
+                  <p v-if="issue.description">{{ issue.description }}</p>
                   <footer>
                     <span v-if="issue.evidence">证据：{{ issue.evidence }}</span>
                     <span v-else>暂无证据路径</span>
@@ -842,19 +1131,39 @@ onBeforeUnmount(() => {
                   v-for="(dimension, index) in evaluationDimensionRows"
                   :key="dimension.id"
                   :class="`is-${dimension.tone}`"
+                  :title="dimension.glossary || undefined"
                 >
                   <div class="catalog-evaluation-dimension-name">
                     <span>{{ index + 1 }}</span>
                     <div>
                       <strong>{{ dimension.label }}</strong>
-                      <small>{{ dimension.id }}</small>
+                      <small>
+                        {{ dimension.id }}
+                        <em
+                          v-if="dimension.confidenceLabel"
+                          :class="{ 'is-low': dimension.lowConfidence }"
+                        >
+                          {{ dimension.confidenceLabel }}
+                        </em>
+                      </small>
                     </div>
                   </div>
                   <div class="catalog-evaluation-dimension-score">
                     <div><span :style="{ width: `${dimension.ratio}%` }"></span></div>
                     <strong>{{ dimension.score }} / {{ dimension.maxScore }}</strong>
                   </div>
-                  <p>{{ dimension.description || '暂无该维度的详细说明。' }}</p>
+                  <div class="catalog-evaluation-dimension-detail">
+                    <p>{{ dimension.rationale || '暂无该维度的详细说明。' }}</p>
+                    <small v-if="dimension.evidence">证据：{{ dimension.evidence }}</small>
+                    <small v-if="dimension.derivationReason">{{
+                      dimension.derivationReason
+                    }}</small>
+                    <small v-if="dimension.adjustedByPrecheck" class="is-adjusted">
+                      原始分 {{ dimension.rawScore ?? '—' }}；预检调整：{{
+                        dimension.adjustmentReason || '未说明原因'
+                      }}
+                    </small>
+                  </div>
                 </article>
               </div>
               <p v-else class="catalog-detail-state">暂无维度评估明细</p>
@@ -1444,6 +1753,78 @@ onBeforeUnmount(() => {
   font-weight: 900;
 }
 
+.catalog-evaluation-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(170, 183, 220, 0.38);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 22px rgba(73, 87, 156, 0.06);
+}
+
+.catalog-evaluation-profile small {
+  color: #7a87a1;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.catalog-evaluation-pattern,
+.catalog-evaluation-knowledge {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.catalog-evaluation-pattern {
+  padding-right: 14px;
+  border-right: 1px solid #e4e8f2;
+}
+
+.catalog-evaluation-pattern strong {
+  color: #4959ca;
+  font-size: 12px;
+}
+
+.catalog-evaluation-pattern span {
+  color: #929bb0;
+  font-size: 9px;
+}
+
+.catalog-evaluation-knowledge {
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.catalog-evaluation-knowledge > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #ecf0ff;
+  color: #6471a4;
+  font-size: 9px;
+}
+
+.catalog-evaluation-knowledge > span.is-a {
+  background: #eaf9f2;
+  color: #278665;
+}
+
+.catalog-evaluation-knowledge > span.is-r {
+  background: #fff3e5;
+  color: #ad6a1f;
+}
+
+.catalog-evaluation-knowledge strong {
+  color: inherit;
+  font-size: 10px;
+}
+
 .catalog-evaluation-section {
   margin-top: 18px;
   padding: 20px;
@@ -1789,8 +2170,26 @@ onBeforeUnmount(() => {
 }
 
 .catalog-evaluation-dimension-name small {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: #8a95aa;
   font-size: 10px;
+}
+
+.catalog-evaluation-dimension-name em {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(var(--dimension-color), 0.1);
+  color: rgb(var(--dimension-color));
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.catalog-evaluation-dimension-name em.is-low {
+  background: #fff0e4;
+  color: #c86c21;
 }
 
 .catalog-evaluation-dimension-score {
@@ -1826,11 +2225,28 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.catalog-evaluation-dimensions article > p {
+.catalog-evaluation-dimension-detail {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.catalog-evaluation-dimension-detail p {
   margin: 0;
   color: #596680;
   font-size: 11px;
   line-height: 1.65;
+}
+
+.catalog-evaluation-dimension-detail small {
+  color: #8691a7;
+  font-size: 9px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.catalog-evaluation-dimension-detail small.is-adjusted {
+  color: #b36922;
 }
 
 .catalog-evaluation-note {
@@ -1873,6 +2289,16 @@ onBeforeUnmount(() => {
   font-size: 9px;
 }
 
+.catalog-evaluation-empty.is-progress .catalog-evaluation-empty__icon {
+  background: #eef5ff;
+  color: #397bc8;
+}
+
+.catalog-evaluation-empty.is-error .catalog-evaluation-empty__icon {
+  background: #fff0f1;
+  color: #d94b5e;
+}
+
 @media (max-width: 1120px) {
   .catalog-evaluation-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1911,6 +2337,16 @@ onBeforeUnmount(() => {
   .catalog-evaluation-dimensions article {
     grid-template-columns: 1fr;
     gap: 9px;
+  }
+
+  .catalog-evaluation-profile {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .catalog-evaluation-pattern {
+    padding-right: 0;
+    border-right: 0;
   }
 }
 

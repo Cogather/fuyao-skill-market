@@ -1,6 +1,7 @@
 import PizZip from 'pizzip';
 import type { AxiosRequestConfig } from 'axios';
 import type { Skill, SkillVersionEntry } from '../../types/skill';
+import type { SkillEvaluationDetailDto } from './apiTypes';
 import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
 import { stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
@@ -708,17 +709,6 @@ type MockAiReviewDetail = {
   issues: MockAiReviewIssue[];
 };
 
-type MockSkillEvaluationDetail = MockAiReviewDetail & {
-  skillId: string;
-  skillName: string;
-  version: string;
-  dimensionDefinitions: {
-    dimensionId: string;
-    maxScore: number;
-    label: string;
-  }[];
-};
-
 type MockCurrentUserReview = {
   reviewId: string;
   skillId: string;
@@ -1260,19 +1250,162 @@ function createMockAiReview(
   };
 }
 
+const MOCK_SKILL_EVALUATION_DIMENSIONS = [
+  { id: 'D1', name: '目标与边界清晰度', score: 17, max: 20, confidence: 'M' },
+  { id: 'D2', name: '输入规范完整性', score: 11, max: 12, confidence: 'M' },
+  { id: 'D3', name: '输出规范完整性', score: 11, max: 12, confidence: 'M' },
+  { id: 'D4', name: '流程与步骤可执行性', score: 15, max: 15, confidence: 'H' },
+  { id: 'D5', name: '异常与边界处理', score: 12, max: 12, confidence: 'H' },
+  { id: 'D6', name: '示例与验证充分性', score: 10, max: 10, confidence: 'M' },
+  { id: 'D7', name: '依赖与环境说明', score: 8, max: 8, confidence: 'H' },
+  { id: 'D8', name: '内容组织与可维护性', score: 13, max: 13, confidence: 'H' },
+  { id: 'D9', name: '安全与权限约束', score: 13, max: 13, confidence: 'H' },
+  { id: 'D10', name: '知识独特性', score: 5, max: 5, confidence: 'L' },
+] as const;
+
 function createMockSkillEvaluationDetail(
   skillName: string,
   params: Record<string, unknown> = {},
-): MockSkillEvaluationDetail {
+): SkillEvaluationDetailDto {
   const skill = findSkill(skillName);
-  const skillId = String(skill?.id ?? skillName);
   const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
+  const seed = mockSeedFromSkillId(String(skill?.id ?? skillName));
+  const createTime = `${mockReviewTime(seed, 1)}:34`;
+  const updateTime = `${mockReviewTime(seed, 2)}:44`;
+  const improvements = [
+    {
+      action: `${skillName} 的目标、输入输出和适用场景描述较完整，建议补充失败示例。`,
+      linked_finding_ids: ['F2'],
+      linked_dimensions: ['D1'],
+    },
+    {
+      action: '高风险操作执行前增加用户明确确认，并限制可操作目录范围。',
+      linked_finding_ids: ['SEC-003'],
+      linked_dimensions: ['D9'],
+    },
+    {
+      action: '补充参数校验、异常日志以及失败返回标准。',
+      linked_finding_ids: ['SEC-007'],
+      linked_dimensions: ['D5'],
+    },
+    {
+      action: '引用材料增加边界样例和反例说明。',
+      linked_finding_ids: ['F1'],
+      linked_dimensions: ['D6'],
+    },
+    {
+      action: '补充输出文件的命名、关键字段和格式要求。',
+      linked_finding_ids: ['F3'],
+      linked_dimensions: ['D3'],
+    },
+    {
+      action: '记录输入文件、处理结果、异常堆栈与执行耗时。',
+      linked_finding_ids: ['F4'],
+      linked_dimensions: ['D8'],
+    },
+    {
+      action: '声明运行时、依赖包版本和平台限制。',
+      linked_finding_ids: [],
+      linked_dimensions: ['D7'],
+    },
+    {
+      action: '统一文档中的术语、参数和字段命名。',
+      linked_finding_ids: ['F5'],
+      linked_dimensions: ['D4'],
+    },
+  ];
+
   return {
-    skillId,
     skillName,
     version,
-    dimensionDefinitions: MOCK_AI_REVIEW_DIMENSIONS.map((dimension) => ({ ...dimension })),
-    ...createMockAiReview(skillId, skill, skillName),
+    taskId: `mock-eval-${seed}`,
+    state: 'completed',
+    modelName: 'fuyao-DeepSeekV4-PD',
+    total: 115,
+    max: 120,
+    percent: 95.8,
+    grade: 'A',
+    pattern: 'Process',
+    knowledgeRatio: { E: 0.5, A: 0.35, R: 0.15 },
+    dimensions: MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => ({
+      ...dimension,
+      low_confidence: dimension.confidence === 'L',
+      evidence: `${skillName}/SKILL.md 中与 ${dimension.id} 相关的说明。`,
+      rationale: `${dimension.name}覆盖较完整，当前得分 ${dimension.score}/${dimension.max}。`,
+      raw_score: dimension.id === 'D1' ? 16 : dimension.score,
+      adjusted_by_precheck: dimension.id === 'D1',
+      adjustment_reason: dimension.id === 'D1' ? '根据内容构成预检结果上调 1 分。' : '',
+      derivation_reason:
+        dimension.id === 'D1' ? 'D1 分数由系统按 E+A 非冗余占比推导：E=0.5，A=0.35。' : '',
+    })),
+    criticalIssues: [
+      {
+        id: 'SEC-003',
+        severity: 'high',
+        dimensions: ['D9'],
+        evidence: 'scripts/clean.sh',
+        message: 'Skill 允许直接执行未经确认的删除命令。',
+      },
+      {
+        id: 'SEC-007',
+        severity: 'high',
+        dimensions: ['D5', 'D9'],
+        evidence: 'scripts/export.sh',
+        message: '未对输入文件类型与大小进行校验。',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'low',
+        dimensions: ['D6'],
+        evidence: 'references/usage.md',
+        message: '引用资料缺少边界场景和反例说明。',
+      },
+      {
+        id: 'F2',
+        severity: 'low',
+        dimensions: ['D1'],
+        evidence: 'SKILL.md L1-L7',
+        message: '版本号表明 Skill 可能仍处于早期开发阶段，需要补充实战验证说明。',
+      },
+      {
+        id: 'F3',
+        severity: 'low',
+        dimensions: ['D3'],
+        evidence: 'docs/output.md',
+        message: '输出文件关键字段和格式要求不够明确。',
+      },
+      {
+        id: 'F4',
+        severity: 'low',
+        dimensions: ['D8'],
+        evidence: 'scripts/main.py',
+        message: '部分关键操作没有记录日志。',
+      },
+      {
+        id: 'F5',
+        severity: 'low',
+        dimensions: ['D4'],
+        evidence: 'SKILL.md',
+        message: '文档中的少量术语和参数命名不一致。',
+      },
+    ],
+    improvements,
+    top3Improvements: improvements.slice(0, 3).map((item) => item.action),
+    metricGlossary: {
+      dimensions: Object.fromEntries(
+        MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => [
+          dimension.id,
+          `${dimension.name}：评估该维度的内容完整度与可执行性。`,
+        ]),
+      ),
+      knowledge_ratio: '内容构成 = 独家知识(E) : 行动框架(A) : 通用套话(R)，之和为 1.0。',
+      confidence: 'H=高 / M=中 / L=低；D10 强制为 L。',
+      pattern: '技能形态：思维型、导航型、理念型、流程型、工具型。',
+    },
+    createTime,
+    updateTime,
   };
 }
 
@@ -2498,12 +2631,6 @@ function handleSkillRequest(
     return ok(dimensions, dimensions.length);
   }
 
-  if (method === 'get' && path === '/v1/harness/plans/skill/eval') {
-    const skillName = String(params.skillName ?? '').trim();
-    if (!skillName) return fail('缺少必填参数：skillName', null);
-    return ok(createMockSkillEvaluationDetail(skillName, params));
-  }
-
   if (method === 'get' && path === '/review/badges') {
     return ok(MOCK_REVIEW_BADGES, MOCK_REVIEW_BADGES.length);
   }
@@ -2791,6 +2918,12 @@ function handleApiRequest(
   config: AxiosRequestConfig,
 ): MockEnvelope<unknown> | null {
   const params = readParams(config);
+  if (method === 'get' && path === '/v1/harness/plans/skill/eval') {
+    const skillName = String(params.skillName ?? '').trim();
+    if (!skillName) return fail('缺少必填参数：skillName', null);
+    return ok(createMockSkillEvaluationDetail(skillName, params));
+  }
+
   const reviewMatch = /^\/sync-applications\/([^/]+)\/review$/.exec(path);
   if (method === 'post' && reviewMatch) {
     const id = readNumber(reviewMatch[1], 0);

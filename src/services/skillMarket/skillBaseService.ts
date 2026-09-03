@@ -10,8 +10,8 @@ import type {
   CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
-  SkillEvaluationDetailDto,
   SkillEvaluationDetailParams,
+  SkillEvaluationDetailResponseDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
   QueryHarnessPermissionUsersParams,
@@ -1123,8 +1123,8 @@ export const skillBaseService = {
    */
   getSkillEvaluationDetail: (
     params: SkillEvaluationDetailParams,
-  ): Promise<ApiEnvelope<SkillEvaluationDetailDto>> => {
-    return httpRequest.skill<ApiEnvelope<SkillEvaluationDetailDto>>({
+  ): Promise<SkillEvaluationDetailResponseDto> => {
+    return httpRequest.api<SkillEvaluationDetailResponseDto>({
       url: '/v1/harness/plans/skill/eval',
       method: 'get',
       params,

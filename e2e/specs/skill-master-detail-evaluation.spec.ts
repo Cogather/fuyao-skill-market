@@ -22,6 +22,8 @@ test('Skill 清单详情支持在详情与评估页签间切换', async ({ page 
   const evaluationPanel = dialog.getByRole('tabpanel', { name: '评估' });
   await expect(evaluationPanel).toBeVisible();
   await expect(evaluationPanel.getByText('综合得分', { exact: true })).toBeVisible();
+  await expect(evaluationPanel.getByText('得分率 95.8%', { exact: true })).toBeVisible();
+  await expect(evaluationPanel.getByText('流程型', { exact: true })).toBeVisible();
   await expect(evaluationPanel.getByText('优先改进（Top 3）', { exact: true })).toBeVisible();
   const adviceCards = evaluationPanel.locator('.catalog-evaluation-advice-grid article');
   await expect(adviceCards).toHaveCount(3);
@@ -32,9 +34,12 @@ test('Skill 清单详情支持在详情与评估页签间切换', async ({ page 
   await expect(evaluationPanel.getByText('安全与主要问题', { exact: true })).toBeVisible();
   const issueCards = evaluationPanel.locator('.catalog-evaluation-issue-grid article');
   await expect(issueCards).toHaveCount(2);
+  await expect(issueCards.first().getByText('高风险', { exact: true })).toBeVisible();
+  await expect(issueCards.first().getByText('SEC-003', { exact: true })).toBeVisible();
   await evaluationPanel.getByRole('button', { name: '查看全部问题（7）→' }).click();
   await expect(issueCards).toHaveCount(7);
   await expect(evaluationPanel.getByText('各维度表现', { exact: true })).toBeVisible();
+  await expect(evaluationPanel.locator('.catalog-evaluation-dimensions article')).toHaveCount(10);
   await expect
     .poll(() => evaluationPanel.evaluate((element) => element.scrollWidth <= element.clientWidth))
     .toBe(true);

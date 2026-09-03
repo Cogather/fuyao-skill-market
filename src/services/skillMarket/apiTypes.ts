@@ -637,39 +637,85 @@ export type SkillEvaluationDetailParams = {
   version: string;
 };
 
-export type SkillEvaluationDimensionDefinitionDto = {
-  dimensionId: string;
-  label: string;
-  maxScore: number;
-};
-
-export type SkillEvaluationDimensionScoreDto = {
-  dimensionId: string;
+export type SkillEvaluationDimensionDto = {
+  id: string;
+  name: string;
   score: number;
-  deductionBreakdown?: string;
+  max: number;
+  confidence?: string;
+  low_confidence?: boolean;
+  evidence?: string;
+  rationale?: string;
+  raw_score?: number;
+  adjusted_by_precheck?: boolean;
+  adjustment_reason?: string;
+  derivation_reason?: string;
 };
 
-export type SkillEvaluationIssueDto = {
-  issueId: string;
-  severity: 'high' | 'medium' | 'low' | 'suggestion' | string;
-  title: string;
-  description?: string;
+export type SkillEvaluationFindingDto = {
+  id: string;
+  severity?: string;
+  dimensions?: string[];
   evidence?: string;
-  dimension?: string;
+  message: string;
+};
+
+export type SkillEvaluationImprovementDto = {
+  action: string;
+  linked_finding_ids?: string[];
+  linked_dimensions?: string[];
+};
+
+export type SkillEvaluationCriticalIssueDto =
+  | string
+  | {
+      id?: string;
+      severity?: string;
+      dimensions?: string[];
+      evidence?: string;
+      message?: string;
+      title?: string;
+      description?: string;
+    };
+
+export type SkillEvaluationMetricGlossaryDto = {
+  dimensions?: Record<string, string>;
+  knowledge_ratio?: string;
+  confidence?: string;
+  pattern?: string;
 };
 
 /** Skill 清单详情中的统一评估响应数据。 */
 export type SkillEvaluationDetailDto = {
-  skillId?: string | number;
-  skillName?: string;
-  version?: string;
-  aiModel?: string;
-  evaluateTime?: string;
-  aiScore?: number;
-  dimensionDefinitions?: SkillEvaluationDimensionDefinitionDto[];
-  dimensionScores?: SkillEvaluationDimensionScoreDto[];
-  advices?: Record<string, string>;
-  issues?: SkillEvaluationIssueDto[];
+  skillName: string;
+  version: string;
+  taskId?: string;
+  state?: string;
+  modelName?: string;
+  total?: number;
+  max?: number;
+  percent?: number;
+  grade?: string;
+  pattern?: string;
+  knowledgeRatio?: {
+    E?: number;
+    A?: number;
+    R?: number;
+  };
+  dimensions?: SkillEvaluationDimensionDto[];
+  findings?: SkillEvaluationFindingDto[];
+  improvements?: SkillEvaluationImprovementDto[];
+  criticalIssues?: SkillEvaluationCriticalIssueDto[];
+  top3Improvements?: string[];
+  metricGlossary?: SkillEvaluationMetricGlossaryDto;
+  createTime?: string;
+  updateTime?: string;
+};
+
+/** 评估接口不返回公共响应中的 code 字段，因此单独定义响应结构。 */
+export type SkillEvaluationDetailResponseDto = {
+  meta: ApiMeta;
+  data: SkillEvaluationDetailDto | null;
 };
 
 /** Skill 清单新增（POST /management/add） */
