@@ -1280,13 +1280,13 @@ function createMockSkillEvaluationDetail(
     },
     {
       action: '高风险操作执行前增加用户明确确认，并限制可操作目录范围。',
-      linked_finding_ids: ['SEC-003'],
+      linked_finding_ids: [],
       linked_dimensions: ['D9'],
     },
     {
       action: '补充参数校验、异常日志以及失败返回标准。',
       linked_finding_ids: ['SEC-007'],
-      linked_dimensions: ['D5'],
+      linked_dimensions: [],
     },
     {
       action: '引用材料增加边界样例和反例说明。',
@@ -1300,8 +1300,8 @@ function createMockSkillEvaluationDetail(
     },
     {
       action: '记录输入文件、处理结果、异常堆栈与执行耗时。',
-      linked_finding_ids: ['F4'],
-      linked_dimensions: ['D8'],
+      linked_finding_ids: [],
+      linked_dimensions: [],
     },
     {
       action: '声明运行时、依赖包版本和平台限制。',

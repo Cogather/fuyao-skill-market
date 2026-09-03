@@ -55,7 +55,6 @@ type EvaluationIssue = {
 
 type EvaluationAdvice = {
   key: string;
-  label: string;
   value: string;
   metaLabel: string;
 };
@@ -76,19 +75,9 @@ type SkillEvaluation = {
   knowledgeRatio: Record<'E' | 'A' | 'R', number | null>;
   knowledgeRatioGlossary: string;
   dimensions: EvaluationDimensionScore[];
-  advices: EvaluationAdvice[];
+  improvements: EvaluationAdvice[];
+  top3Improvements: string[];
   issues: EvaluationIssue[];
-};
-
-const EVALUATION_ADVICE_LABELS: Record<string, string> = {
-  'SKILL.md': '主说明文档',
-  references: '引用资料',
-  scripts: '执行脚本',
-  safety: '高风险操作确认',
-  output: '输出验收标准',
-  logging: '关键操作日志',
-  dependencies: '依赖与运行环境',
-  consistency: '术语与字段命名',
 };
 
 const props = withDefaults(
@@ -137,14 +126,7 @@ const selectedVersionRecord = computed<SkillMasterVersion | null>(() => {
 const evaluationGrade = computed(() => {
   const apiGrade = evaluation.value?.grade.trim().toUpperCase() ?? '';
   const percent = evaluation.value?.percent ?? 0;
-  const grade = apiGrade || (percent >= 90 ? 'A' : percent >= 80 ? 'B' : percent >= 70 ? 'C' : 'D');
-  const labelMap: Record<string, string> = {
-    A: '优秀',
-    B: '良好',
-    C: '合格',
-    D: '待改进',
-  };
-  return { grade, label: labelMap[grade] ?? '已评估' };
+  return apiGrade || (percent >= 90 ? 'A' : percent >= 80 ? 'B' : percent >= 70 ? 'C' : 'D');
 });
 
 const evaluationScoreRingStyle = computed(() => {
@@ -154,17 +136,23 @@ const evaluationScoreRingStyle = computed(() => {
   };
 });
 
-const evaluationAdviceItems = computed(() => {
-  return (evaluation.value?.advices ?? []).map((item, index) => ({
+const evaluationImprovementItems = computed(() => {
+  return (evaluation.value?.improvements ?? []).map((item, index) => ({
     ...item,
     rank: String(index + 1).padStart(2, '0'),
   }));
 });
 
-const visibleEvaluationAdviceItems = computed(() => {
-  return showAllEvaluationAdvices.value
-    ? evaluationAdviceItems.value
-    : evaluationAdviceItems.value.slice(0, 3);
+const evaluationTop3ImprovementItems = computed(() => {
+  return (evaluation.value?.top3Improvements ?? []).map((value, index) => ({
+    key: `top-${index + 1}`,
+    rank: index + 1,
+    value,
+  }));
+});
+
+const evaluationImprovementCount = computed(() => {
+  return evaluationImprovementItems.value.length || evaluationTop3ImprovementItems.value.length;
 });
 
 const evaluationDimensionRows = computed(() => {
@@ -184,21 +172,8 @@ const visibleEvaluationIssues = computed(() => {
   return showAllEvaluationIssues.value ? issues : issues.slice(0, 2);
 });
 
-const evaluationKnowledgeRatioItems = computed(() => {
-  const ratio = evaluation.value?.knowledgeRatio;
-  if (!ratio) return [];
-  const labels: Record<'E' | 'A' | 'R', string> = {
-    E: '独家知识',
-    A: '行动框架',
-    R: '通用套话',
-  };
-  return (['E', 'A', 'R'] as const)
-    .filter((key) => ratio[key] != null)
-    .map((key) => ({
-      key,
-      label: labels[key],
-      percent: Math.round((ratio[key] ?? 0) * 1000) / 10,
-    }));
+const evaluationHighRiskIssueCount = computed(() => {
+  return (evaluation.value?.issues ?? []).filter((item) => item.severity === 'high').length;
 });
 
 const evaluationStateNotice = computed(() => {
@@ -435,83 +410,49 @@ function normalizeEvaluationIssues(
     .filter((item): item is EvaluationIssue => item !== null);
 }
 
-function normalizeAdviceText(value: string): string {
-  return value.replace(/\s+/g, '').toLowerCase();
-}
-
-function normalizeEvaluationAdvices(
+function normalizeEvaluationImprovements(
   source: Record<string, unknown>,
   dimensions: EvaluationDimensionScore[],
+  issues: EvaluationIssue[],
 ): EvaluationAdvice[] {
   const dimensionLabels = new Map(dimensions.map((item) => [item.id, item.label]));
-  const improvements = Array.isArray(source.improvements)
+  const issueLabels = new Map(issues.map((item) => [item.id, item.title]));
+  const result = Array.isArray(source.improvements)
     ? source.improvements
         .map((item, index) => {
           const record = readRecord(item);
           const value = String(record.action ?? '').trim();
           if (!value) return null;
+          const dimensionIds = normalizeStringList(
+            record.linked_dimensions ?? record.linkedDimensions,
+          );
+          const findingIds = normalizeStringList(
+            record.linked_finding_ids ?? record.linkedFindingIds,
+          );
+          const linkedDimensionLabels = Array.from(
+            new Set(dimensionIds.flatMap((id) => dimensionLabels.get(id) || [])),
+          );
+          const linkedIssueLabels = Array.from(
+            new Set(findingIds.flatMap((id) => issueLabels.get(id) || [])),
+          );
+          const metadata = [
+            linkedDimensionLabels.length ? `关联维度：${linkedDimensionLabels.join('、')}` : '',
+            linkedIssueLabels.length ? `关联问题：${linkedIssueLabels.join('、')}` : '',
+          ].filter(Boolean);
           return {
             key: `improvement-${index + 1}`,
             value,
-            dimensionIds: normalizeStringList(record.linked_dimensions ?? record.linkedDimensions),
-            findingIds: normalizeStringList(record.linked_finding_ids ?? record.linkedFindingIds),
+            metaLabel: metadata.join('；'),
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
     : [];
-  const top3 = normalizeStringList(source.top3Improvements ?? source.top3_improvements);
-  const result: EvaluationAdvice[] = [];
-  const usedImprovementIndexes = new Set<number>();
-  const seenTexts = new Set<string>();
-
-  const appendAdvice = (
-    value: string,
-    dimensionIds: string[],
-    findingIds: string[],
-    key: string,
-    fallbackLabel: string,
-  ) => {
-    const normalizedText = normalizeAdviceText(value);
-    if (!normalizedText || seenTexts.has(normalizedText)) return;
-    seenTexts.add(normalizedText);
-    const labels = dimensionIds.map((id) => dimensionLabels.get(id) ?? id).filter(Boolean);
-    const metadata = [...dimensionIds, ...findingIds].filter(Boolean);
-    result.push({
-      key,
-      label: labels.join('、') || fallbackLabel,
-      value,
-      metaLabel: metadata.join(' · ') || fallbackLabel,
-    });
-  };
-
-  top3.forEach((value, index) => {
-    const normalizedTop = normalizeAdviceText(value);
-    const matchedIndex = improvements.findIndex(
-      (item, improvementIndex) =>
-        !usedImprovementIndexes.has(improvementIndex) &&
-        normalizeAdviceText(item.value) === normalizedTop,
-    );
-    const matched = matchedIndex >= 0 ? improvements[matchedIndex] : null;
-    if (matchedIndex >= 0) usedImprovementIndexes.add(matchedIndex);
-    appendAdvice(
-      value,
-      matched?.dimensionIds ?? [],
-      matched?.findingIds ?? [],
-      `top-${index + 1}`,
-      '优先改进',
-    );
-  });
-
-  improvements.forEach((item, index) => {
-    if (usedImprovementIndexes.has(index)) return;
-    appendAdvice(item.value, item.dimensionIds, item.findingIds, item.key, '改进建议');
-  });
 
   if (result.length === 0) {
     Object.entries(readRecord(source.advices)).forEach(([key, advice]) => {
       const value = String(advice ?? '').trim();
       if (!value) return;
-      appendAdvice(value, [], [], `legacy-${key}`, EVALUATION_ADVICE_LABELS[key] ?? key);
+      result.push({ key: `legacy-${key}`, value, metaLabel: '' });
     });
   }
 
@@ -570,13 +511,18 @@ function normalizeSkillEvaluation(value: unknown): SkillEvaluation | null {
   const percent = readFiniteNumber(source.percent) ?? (maxScore > 0 ? (total / maxScore) * 100 : 0);
   const knowledgeRatioSource = readRecord(source.knowledgeRatio ?? source.knowledge_ratio);
   const state = String(source.state ?? '').trim();
-  const advices = normalizeEvaluationAdvices(source, dimensions);
+  const improvements = normalizeEvaluationImprovements(source, dimensions, issues);
+  const top3FromResponse = normalizeStringList(source.top3Improvements ?? source.top3_improvements);
+  const top3Improvements = top3FromResponse.length
+    ? top3FromResponse
+    : improvements.slice(0, 3).map((item) => item.value);
 
   if (
     !state &&
     total === 0 &&
     dimensions.length === 0 &&
-    advices.length === 0 &&
+    improvements.length === 0 &&
+    top3Improvements.length === 0 &&
     issues.length === 0
   ) {
     return null;
@@ -611,7 +557,8 @@ function normalizeSkillEvaluation(value: unknown): SkillEvaluation | null {
       metricGlossary.knowledge_ratio ?? metricGlossary.knowledgeRatio ?? '',
     ).trim(),
     dimensions,
-    advices,
+    improvements,
+    top3Improvements,
     issues,
   };
 }
@@ -792,11 +739,25 @@ onBeforeUnmount(() => {
         <header class="catalog-detail-header">
           <div class="catalog-detail-heading">
             <small>{{ capabilityLabelUpper }} DETAIL</small>
-            <h3>{{ props.record.name }}</h3>
+            <div class="catalog-detail-heading-title">
+              <h3>{{ props.record.name }}</h3>
+              <span
+                class="status-badge"
+                :class="{
+                  'is-completed': props.record.status === '已完成',
+                  'is-progress': props.record.status === '进行中',
+                }"
+              >
+                {{ props.record.status || '未开始' }}
+              </span>
+            </div>
             <p>{{ props.record.description || `查看 ${capabilityLabel} 的版本与文件详情。` }}</p>
           </div>
 
-          <div class="catalog-detail-meta">
+          <div
+            class="catalog-detail-meta"
+            :class="{ 'is-skill': props.capabilityType === 'skill' }"
+          >
             <div>
               <small>规划部门或产品</small>
               <strong>{{
@@ -807,44 +768,29 @@ onBeforeUnmount(() => {
               <small>负责人</small>
               <strong>{{ props.record.owner || '—' }}</strong>
             </div>
+            <label v-if="detailVersions.length" class="catalog-detail-version-meta">
+              <span>
+                <small>版本</small>
+                <em>{{ formatUpdatedTime(selectedVersionRecord?.uploadedAt) }} 更新</em>
+              </span>
+              <select v-model="selectedVersion" aria-label="详情版本" @change="loadSelectedVersion">
+                <option v-for="item in detailVersions" :key="item.version" :value="item.version">
+                  {{ item.version }}
+                </option>
+              </select>
+            </label>
+            <div v-if="props.capabilityType === 'skill'" class="catalog-detail-evaluation-meta">
+              <small>评估模型</small>
+              <strong>{{ evaluation?.model || (evaluationLoading ? '加载中...' : '—') }}</strong>
+              <em>{{
+                evaluationLoading ? '加载中...' : formatUpdatedTime(evaluation?.evaluatedAt)
+              }}</em>
+            </div>
           </div>
-
-          <div class="catalog-detail-actions">
-            <span
-              class="status-badge"
-              :class="{
-                'is-completed': props.record.status === '已完成',
-                'is-progress': props.record.status === '进行中',
-              }"
-            >
-              {{ props.record.status || '未开始' }}
-            </span>
-            <button
-              type="button"
-              class="catalog-detail-close"
-              aria-label="关闭"
-              @click="closeDialog"
-            >
-              ×
-            </button>
-          </div>
+          <button type="button" class="catalog-detail-close" aria-label="关闭" @click="closeDialog">
+            ×
+          </button>
         </header>
-
-        <label v-if="detailVersions.length" class="catalog-detail-version-filter">
-          <span class="version-copy">
-            <strong>版本</strong>
-            <small>选择版本后展示对应的目录和文件内容</small>
-          </span>
-          <select v-model="selectedVersion" aria-label="详情版本" @change="loadSelectedVersion">
-            <option v-for="item in detailVersions" :key="item.version" :value="item.version">
-              {{ item.version }}
-            </option>
-          </select>
-          <span class="version-updated">
-            <small>更新时间</small>
-            <strong>{{ formatUpdatedTime(selectedVersionRecord?.uploadedAt) }}</strong>
-          </span>
-        </label>
 
         <div
           v-if="detailVersions.length && props.capabilityType === 'skill'"
@@ -968,7 +914,7 @@ onBeforeUnmount(() => {
           <div v-else-if="!evaluation" class="catalog-evaluation-empty">
             <span class="catalog-evaluation-empty__icon">i</span>
             <strong>当前版本暂无评估结果</strong>
-            <p>完成静态评估后，可在这里查看综合得分、改进建议、安全问题和各维度表现。</p>
+            <p>完成静态评估后，可在这里查看综合得分、改进建议、评估问题和各维度评分。</p>
           </div>
           <div
             v-else-if="evaluationStateNotice"
@@ -989,66 +935,56 @@ onBeforeUnmount(() => {
                     <span>/ {{ formatEvaluationNumber(evaluation.maxScore) }}</span>
                   </div>
                 </div>
-                <div>
+                <div class="catalog-evaluation-score-copy">
                   <small>综合得分</small>
                   <strong>得分率 {{ formatEvaluationNumber(evaluation.percent) }}%</strong>
                   <p>当前版本静态评估结果</p>
                 </div>
+                <div class="catalog-evaluation-grade-inline">
+                  <div class="catalog-evaluation-grade">{{ evaluationGrade }}</div>
+                </div>
               </article>
 
-              <article class="catalog-evaluation-summary-card">
-                <small>质量等级</small>
-                <div class="catalog-evaluation-grade">{{ evaluationGrade.grade }}</div>
-                <strong>{{ evaluationGrade.label }}</strong>
-              </article>
-
-              <article class="catalog-evaluation-summary-card">
-                <small>评估模型</small>
-                <strong>{{ evaluation.model || '—' }}</strong>
-                <p>覆盖 {{ evaluation.dimensions.length }} 个评估维度</p>
-              </article>
-
-              <article class="catalog-evaluation-summary-card">
-                <small>评估时间</small>
-                <strong>{{ formatUpdatedTime(evaluation.evaluatedAt) }}</strong>
-                <p>对应版本 {{ evaluation.version || selectedVersion }}</p>
-              </article>
-            </div>
-
-            <div
-              v-if="evaluation.pattern || evaluationKnowledgeRatioItems.length"
-              class="catalog-evaluation-profile"
-            >
-              <div v-if="evaluation.pattern" class="catalog-evaluation-pattern">
-                <small>Skill 形态</small>
-                <strong>{{ evaluation.patternLabel || evaluation.pattern }}</strong>
-                <span>{{ evaluation.pattern }}</span>
-              </div>
-              <div
-                v-if="evaluationKnowledgeRatioItems.length"
-                class="catalog-evaluation-knowledge"
-                :title="evaluation.knowledgeRatioGlossary || undefined"
+              <article
+                class="catalog-evaluation-summary-card catalog-evaluation-count-card is-risk"
               >
-                <small>内容构成</small>
-                <span
-                  v-for="item in evaluationKnowledgeRatioItems"
-                  :key="item.key"
-                  :class="`is-${item.key.toLowerCase()}`"
-                >
-                  <strong>{{ item.key }} {{ formatEvaluationNumber(item.percent) }}%</strong>
-                  {{ item.label }}
-                </span>
-              </div>
+                <small>风险问题数</small>
+                <div>
+                  <strong>{{ evaluation.issues.length }}</strong
+                  ><span>项</span>
+                </div>
+                <p>其中高风险 {{ evaluationHighRiskIssueCount }} 项</p>
+              </article>
+
+              <article
+                class="catalog-evaluation-summary-card catalog-evaluation-count-card is-advice"
+              >
+                <small>改进建议数</small>
+                <div>
+                  <strong>{{ evaluationImprovementCount }}</strong
+                  ><span>项</span>
+                </div>
+                <p>接口返回的改进建议总数</p>
+              </article>
             </div>
 
-            <section v-if="evaluationAdviceItems.length" class="catalog-evaluation-section">
+            <section
+              v-if="evaluationTop3ImprovementItems.length || evaluationImprovementItems.length"
+              class="catalog-evaluation-section"
+            >
               <header class="catalog-evaluation-section__header">
                 <div>
-                  <h4>{{ showAllEvaluationAdvices ? '优先改进' : '优先改进（Top 3）' }}</h4>
-                  <p>按内容区域整理的改进建议</p>
+                  <h4>{{ showAllEvaluationAdvices ? '改进建议' : '改进建议（Top 3）' }}</h4>
+                  <p>
+                    {{
+                      showAllEvaluationAdvices
+                        ? '查看全部建议内容及其关联信息'
+                        : '接口返回的优先改进建议'
+                    }}
+                  </p>
                 </div>
                 <button
-                  v-if="evaluationAdviceItems.length > 3"
+                  v-if="evaluationImprovementItems.length"
                   type="button"
                   class="catalog-evaluation-section__action"
                   :aria-expanded="showAllEvaluationAdvices"
@@ -1057,19 +993,31 @@ onBeforeUnmount(() => {
                   {{
                     showAllEvaluationAdvices
                       ? '收起改进建议 ↑'
-                      : `查看全部改进建议（${evaluationAdviceItems.length}）→`
+                      : `查看全部改进建议（${evaluationImprovementItems.length}）→`
                   }}
                 </button>
-                <span v-else>{{ evaluationAdviceItems.length }} 项</span>
+                <span v-else>{{ evaluationTop3ImprovementItems.length }} 项</span>
               </header>
-              <div class="catalog-evaluation-advice-grid">
-                <article v-for="item in visibleEvaluationAdviceItems" :key="item.key">
-                  <div>
+              <div v-if="!showAllEvaluationAdvices" class="catalog-evaluation-top-list">
+                <article v-for="item in evaluationTop3ImprovementItems" :key="item.key">
+                  <span>{{ item.rank }}</span>
+                  <p class="catalog-two-line-clamp" :title="item.value">{{ item.value }}</p>
+                </article>
+              </div>
+              <div v-else class="catalog-evaluation-advice-grid">
+                <article v-for="item in evaluationImprovementItems" :key="item.key">
+                  <div class="catalog-evaluation-advice-rank">
                     <span>{{ item.rank }}</span>
-                    <strong>{{ item.label }}</strong>
                   </div>
-                  <p>{{ item.value }}</p>
-                  <small>{{ item.metaLabel }}</small>
+                  <p class="catalog-two-line-clamp" :title="item.value">{{ item.value }}</p>
+                  <small
+                    class="catalog-two-line-clamp"
+                    :class="{ 'is-empty': !item.metaLabel }"
+                    :title="item.metaLabel || undefined"
+                    :aria-hidden="!item.metaLabel"
+                  >
+                    {{ item.metaLabel }}
+                  </small>
                 </article>
               </div>
             </section>
@@ -1080,8 +1028,8 @@ onBeforeUnmount(() => {
             >
               <header class="catalog-evaluation-section__header">
                 <div>
-                  <h4>安全与主要问题</h4>
-                  <p>合并展示安全问题、批评问题和待整改项</p>
+                  <h4>评估问题</h4>
+                  <p>汇总展示高风险问题与一般评估发现</p>
                 </div>
                 <button
                   v-if="evaluation.issues.length > 2"
@@ -1108,8 +1056,15 @@ onBeforeUnmount(() => {
                     <span>{{ issue.severityLabel }}</span>
                     <strong>{{ issue.id }}</strong>
                   </div>
-                  <h5>{{ issue.title }}</h5>
-                  <p v-if="issue.description">{{ issue.description }}</p>
+                  <h5 class="catalog-two-line-clamp" :title="issue.title">{{ issue.title }}</h5>
+                  <p
+                    class="catalog-two-line-clamp"
+                    :class="{ 'is-empty': !issue.description }"
+                    :title="issue.description || undefined"
+                    :aria-hidden="!issue.description"
+                  >
+                    {{ issue.description }}
+                  </p>
                   <footer>
                     <span v-if="issue.evidence">证据：{{ issue.evidence }}</span>
                     <span v-else>暂无证据路径</span>
@@ -1122,7 +1077,7 @@ onBeforeUnmount(() => {
             <section class="catalog-evaluation-section">
               <header class="catalog-evaluation-section__header">
                 <div>
-                  <h4>各维度表现</h4>
+                  <h4>各维度评分</h4>
                   <p>查看维度得分、得分率与评估说明</p>
                 </div>
               </header>
@@ -1137,12 +1092,8 @@ onBeforeUnmount(() => {
                     <span>{{ index + 1 }}</span>
                     <div>
                       <strong>{{ dimension.label }}</strong>
-                      <small>
-                        {{ dimension.id }}
-                        <em
-                          v-if="dimension.confidenceLabel"
-                          :class="{ 'is-low': dimension.lowConfidence }"
-                        >
+                      <small v-if="dimension.confidenceLabel">
+                        <em :class="{ 'is-low': dimension.lowConfidence }">
                           {{ dimension.confidenceLabel }}
                         </em>
                       </small>
@@ -1153,7 +1104,12 @@ onBeforeUnmount(() => {
                     <strong>{{ dimension.score }} / {{ dimension.maxScore }}</strong>
                   </div>
                   <div class="catalog-evaluation-dimension-detail">
-                    <p>{{ dimension.rationale || '暂无该维度的详细说明。' }}</p>
+                    <p
+                      class="catalog-two-line-clamp"
+                      :title="dimension.rationale || '暂无该维度的详细说明。'"
+                    >
+                      {{ dimension.rationale || '暂无该维度的详细说明。' }}
+                    </p>
                     <small v-if="dimension.evidence">证据：{{ dimension.evidence }}</small>
                     <small v-if="dimension.derivationReason">{{
                       dimension.derivationReason
@@ -1223,9 +1179,9 @@ onBeforeUnmount(() => {
 
 .catalog-detail-header {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(320px, 0.9fr) auto;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(600px, 1.35fr);
   align-items: center;
-  gap: 22px;
+  gap: 18px;
 }
 
 .catalog-detail-heading small {
@@ -1236,9 +1192,24 @@ onBeforeUnmount(() => {
 }
 
 .catalog-detail-heading h3 {
-  margin: 8px 0 4px;
+  margin: 0;
   font-size: 20px;
   line-height: 1.2;
+}
+
+.catalog-detail-heading-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+
+.catalog-detail-heading-title .status-badge {
+  min-height: 24px;
+  flex: 0 0 auto;
+  padding: 0 8px;
+  font-size: 10px;
 }
 
 .catalog-detail-heading p {
@@ -1250,33 +1221,86 @@ onBeforeUnmount(() => {
 
 .catalog-detail-meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  padding-right: 42px;
 }
 
-.catalog-detail-meta > div {
+.catalog-detail-meta.is-skill {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.catalog-detail-meta > div,
+.catalog-detail-meta > label {
   display: grid;
+  min-width: 0;
+  align-content: center;
   gap: 5px;
   padding-left: 14px;
   border-left: 2px solid #e4eaf6;
 }
 
 .catalog-detail-meta small,
-.version-updated small {
+.catalog-detail-version-meta em,
+.catalog-detail-evaluation-meta em {
   color: #8794ab;
   font-size: 9px;
 }
 
+.catalog-detail-meta small {
+  white-space: nowrap;
+}
+
 .catalog-detail-meta strong,
-.version-updated strong {
+.catalog-detail-version-meta select {
   color: #31405e;
   font-size: 11px;
 }
 
-.catalog-detail-actions {
+.catalog-detail-meta strong {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.catalog-detail-version-meta > span {
   display: flex;
+  min-width: 0;
   align-items: center;
-  padding-right: 58px;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.catalog-detail-version-meta em,
+.catalog-detail-evaluation-meta em {
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-detail-evaluation-meta strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-detail-version-meta select {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #cbd8ee;
+  border-radius: 7px;
+  outline: none;
+  background: #fff;
+  font-weight: 800;
+}
+
+.catalog-detail-version-meta select:focus {
+  border-color: #7184ec;
+  box-shadow: 0 0 0 3px rgba(92, 111, 232, 0.1);
 }
 
 .catalog-detail-close {
@@ -1331,53 +1355,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 12px rgba(70, 107, 220, 0.12);
 }
 
-.catalog-detail-version-filter {
-  display: grid;
-  grid-template-columns: minmax(190px, 0.7fr) minmax(280px, 1fr) minmax(210px, 0.55fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 62px;
-  margin-top: 20px;
-  padding: 8px 14px;
-  border: 1px solid #dbe4f3;
-  border-radius: 10px;
-  background: #f7f9fd;
-}
-
-.version-copy,
-.version-updated {
-  display: grid;
-  gap: 4px;
-}
-
-.version-copy strong {
-  color: #31405e;
-  font-size: 11px;
-}
-
-.version-copy small {
-  color: #8996ad;
-  font-size: 9px;
-}
-
-.catalog-detail-version-filter select {
-  width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid #cbd8ee;
-  border-radius: 8px;
-  outline: none;
-  background: #fff;
-  color: #33425f;
-  font-size: 11px;
-  font-weight: 800;
-}
-
 .catalog-detail-tabs {
   display: flex;
   flex: 0 0 auto;
   gap: 28px;
-  margin-top: 14px;
+  margin-top: 10px;
   padding: 0 12px;
   border-bottom: 1px solid #e2e8f3;
 }
@@ -1596,7 +1578,7 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-summary {
   display: grid;
-  grid-template-columns: 1.4fr 0.8fr 1.05fr 1.05fr;
+  grid-template-columns: minmax(380px, 1.55fr) repeat(2, minmax(130px, 0.55fr));
   gap: 12px;
 }
 
@@ -1604,7 +1586,7 @@ onBeforeUnmount(() => {
 .catalog-evaluation-summary-card {
   position: relative;
   min-width: 0;
-  min-height: 144px;
+  min-height: 122px;
   overflow: hidden;
   border: 1px solid rgba(170, 183, 220, 0.42);
   border-radius: 16px;
@@ -1615,7 +1597,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 22px;
+  padding: 16px 20px;
   background: linear-gradient(145deg, #f0f4ff 0%, #faf8ff 100%);
 }
 
@@ -1640,9 +1622,9 @@ onBeforeUnmount(() => {
 .catalog-evaluation-score-ring {
   position: relative;
   display: grid;
-  width: 100px;
-  height: 100px;
-  flex: 0 0 100px;
+  width: 86px;
+  height: 86px;
+  flex: 0 0 86px;
   place-items: center;
   border-radius: 50%;
   box-shadow: 0 10px 24px rgba(86, 105, 220, 0.22);
@@ -1650,8 +1632,8 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-score-ring::before {
   position: absolute;
-  width: 78px;
-  height: 78px;
+  width: 66px;
+  height: 66px;
   border-radius: 50%;
   background: #fff;
   box-shadow: inset 0 0 18px rgba(86, 105, 220, 0.08);
@@ -1667,7 +1649,7 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-score-ring strong {
   color: #202c4d;
-  font-size: 24px;
+  font-size: 21px;
   line-height: 1;
   letter-spacing: -0.6px;
 }
@@ -1685,15 +1667,24 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
-.catalog-evaluation-score-card > div:last-child {
+.catalog-evaluation-score-copy {
   display: grid;
   min-width: 0;
   gap: 9px;
 }
 
-.catalog-evaluation-score-card > div:last-child strong {
+.catalog-evaluation-score-copy > strong {
   color: #354365;
   font-size: 15px;
+}
+
+.catalog-evaluation-grade-inline {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  margin-left: auto;
+  padding-left: 20px;
+  border-left: 1px solid rgba(122, 132, 204, 0.18);
 }
 
 .catalog-evaluation-score-card p,
@@ -1711,26 +1702,6 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 20px;
   background: linear-gradient(145deg, #f7f3ff 0%, #fff 100%);
-}
-
-.catalog-evaluation-summary-card:nth-child(2)::after {
-  background: rgba(139, 92, 246, 0.13);
-}
-
-.catalog-evaluation-summary-card:nth-child(3) {
-  background: linear-gradient(145deg, #effaff 0%, #fff 100%);
-}
-
-.catalog-evaluation-summary-card:nth-child(3)::after {
-  background: rgba(56, 198, 242, 0.14);
-}
-
-.catalog-evaluation-summary-card:nth-child(4) {
-  background: linear-gradient(145deg, #fff8ed 0%, #fff 100%);
-}
-
-.catalog-evaluation-summary-card:nth-child(4)::after {
-  background: rgba(255, 159, 45, 0.14);
 }
 
 .catalog-evaluation-summary-card > strong {
@@ -1753,76 +1724,34 @@ onBeforeUnmount(() => {
   font-weight: 900;
 }
 
-.catalog-evaluation-profile {
+.catalog-evaluation-count-card {
+  --stat-color: 226, 82, 99;
+  background: linear-gradient(145deg, rgba(var(--stat-color), 0.08), #fff 72%);
+}
+
+.catalog-evaluation-count-card.is-advice {
+  --stat-color: 35, 166, 112;
+}
+
+.catalog-evaluation-count-card::after {
+  background: rgba(var(--stat-color), 0.12);
+}
+
+.catalog-evaluation-count-card > div {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 12px 16px;
-  border: 1px solid rgba(170, 183, 220, 0.38);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 8px 22px rgba(73, 87, 156, 0.06);
-}
-
-.catalog-evaluation-profile small {
-  color: #7a87a1;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.catalog-evaluation-pattern,
-.catalog-evaluation-knowledge {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.catalog-evaluation-pattern {
-  padding-right: 14px;
-  border-right: 1px solid #e4e8f2;
-}
-
-.catalog-evaluation-pattern strong {
-  color: #4959ca;
-  font-size: 12px;
-}
-
-.catalog-evaluation-pattern span {
-  color: #929bb0;
-  font-size: 9px;
-}
-
-.catalog-evaluation-knowledge {
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-}
-
-.catalog-evaluation-knowledge > span {
-  display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 5px;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: #ecf0ff;
-  color: #6471a4;
-  font-size: 9px;
+  color: rgb(var(--stat-color));
 }
 
-.catalog-evaluation-knowledge > span.is-a {
-  background: #eaf9f2;
-  color: #278665;
+.catalog-evaluation-count-card > div strong {
+  font-size: 34px;
+  line-height: 1;
 }
 
-.catalog-evaluation-knowledge > span.is-r {
-  background: #fff3e5;
-  color: #ad6a1f;
-}
-
-.catalog-evaluation-knowledge strong {
-  color: inherit;
-  font-size: 10px;
+.catalog-evaluation-count-card > div span {
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .catalog-evaluation-section {
@@ -1880,6 +1809,65 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
+.catalog-evaluation-top-list {
+  display: grid;
+  gap: 10px;
+}
+
+.catalog-evaluation-top-list article {
+  --top-color: 94, 113, 239;
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 11px 18px 11px 14px;
+  border: 1px solid rgba(var(--top-color), 0.2);
+  border-left: 4px solid rgb(var(--top-color));
+  border-radius: 13px;
+  background: linear-gradient(100deg, rgba(var(--top-color), 0.09), #fff 46%);
+  box-shadow: 0 7px 18px rgba(69, 82, 144, 0.06);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.catalog-evaluation-top-list article:nth-child(2) {
+  --top-color: 245, 151, 31;
+}
+
+.catalog-evaluation-top-list article:nth-child(3) {
+  --top-color: 116, 84, 232;
+}
+
+.catalog-evaluation-top-list article:hover {
+  transform: translateX(3px);
+  box-shadow: 0 10px 24px rgba(69, 82, 144, 0.11);
+}
+
+.catalog-evaluation-top-list article > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: rgb(var(--top-color));
+  box-shadow: 0 7px 15px rgba(var(--top-color), 0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.catalog-evaluation-top-list p {
+  height: 3.3em;
+  max-height: 3.3em;
+  margin: 0;
+  color: #46536f;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
 .catalog-evaluation-advice-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1935,13 +1923,12 @@ onBeforeUnmount(() => {
   z-index: 1;
 }
 
-.catalog-evaluation-advice-grid article > div {
+.catalog-evaluation-advice-rank {
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
-.catalog-evaluation-advice-grid article > div span {
+.catalog-evaluation-advice-rank span {
   display: grid;
   width: 32px;
   height: 32px;
@@ -1955,12 +1942,8 @@ onBeforeUnmount(() => {
   font-weight: 900;
 }
 
-.catalog-evaluation-advice-grid article > div strong {
-  color: #293653;
-  font-size: 13px;
-}
-
 .catalog-evaluation-advice-grid article p {
+  min-height: 3.5em;
   margin: 13px 0 12px;
   color: #596680;
   font-size: 11px;
@@ -1968,13 +1951,18 @@ onBeforeUnmount(() => {
 }
 
 .catalog-evaluation-advice-grid article small {
-  display: inline-flex;
+  display: block;
+  width: fit-content;
+  min-height: 3.1em;
+  max-width: 100%;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(var(--advice-color), 0.1);
   color: rgb(var(--advice-color));
   font-size: 9px;
   font-weight: 800;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .catalog-evaluation-section--issues {
@@ -1998,6 +1986,17 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-section__action:hover {
   color: #7d54df;
+}
+
+.catalog-two-line-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.catalog-two-line-clamp.is-empty {
+  visibility: hidden;
 }
 
 .catalog-evaluation-issue-grid {
@@ -2066,6 +2065,7 @@ onBeforeUnmount(() => {
 }
 
 .catalog-evaluation-issue-grid h5 {
+  min-height: 2.9em;
   margin: 13px 0 7px;
   color: #26324e;
   font-size: 13px;
@@ -2073,6 +2073,7 @@ onBeforeUnmount(() => {
 }
 
 .catalog-evaluation-issue-grid article > p {
+  min-height: 3.3em;
   margin: 0;
   color: #68748d;
   font-size: 11px;
@@ -2232,6 +2233,7 @@ onBeforeUnmount(() => {
 }
 
 .catalog-evaluation-dimension-detail p {
+  min-height: 3.3em;
   margin: 0;
   color: #596680;
   font-size: 11px;
@@ -2299,31 +2301,22 @@ onBeforeUnmount(() => {
   color: #d94b5e;
 }
 
-@media (max-width: 1120px) {
-  .catalog-evaluation-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 900px) {
+@media (max-width: 980px) {
   .catalog-detail-dialog {
     padding: 18px;
   }
 
   .catalog-detail-header {
     grid-template-columns: 1fr;
-    padding-right: 54px;
+    gap: 14px;
   }
 
-  .catalog-detail-actions {
-    position: absolute;
-    top: 58px;
-    right: 18px;
+  .catalog-detail-heading {
+    padding-right: 44px;
+  }
+
+  .catalog-detail-meta {
     padding-right: 0;
-  }
-
-  .catalog-detail-version-filter {
-    grid-template-columns: 1fr;
   }
 
   .catalog-evaluation-advice-grid {
@@ -2338,16 +2331,6 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
     gap: 9px;
   }
-
-  .catalog-evaluation-profile {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .catalog-evaluation-pattern {
-    padding-right: 0;
-    border-right: 0;
-  }
 }
 
 @media (max-width: 640px) {
@@ -2359,6 +2342,11 @@ onBeforeUnmount(() => {
     width: calc(100vw - 16px);
     height: calc(100vh - 16px);
     padding: 14px;
+  }
+
+  .catalog-detail-meta,
+  .catalog-detail-meta.is-skill {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .catalog-evaluation-panel {
