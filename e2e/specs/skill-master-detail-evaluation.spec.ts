@@ -112,16 +112,17 @@ test('Skill 清单详情支持在详情与评估页签间切换', async ({ page 
   await expect(topAdviceCards).toHaveCount(0);
   await expect(adviceCards).toHaveCount(8);
   await expect(adviceCards.locator('strong')).toHaveCount(0);
+  await expect(evaluationPanel.getByRole('button', { name: '仅显示Top3改进建议 ↑' })).toBeVisible();
   await expect(
     adviceCards
       .nth(0)
       .getByText(
-        '关联维度：目标与边界清晰度；关联问题：版本号表明 Skill 可能仍处于早期开发阶段，需要补充实战验证说明。',
+        '关联维度：目标清晰度：目标与边界清晰度；关联问题：版本号表明 Skill 可能仍处于早期开发阶段，需要补充实战验证说明。',
         { exact: true },
       ),
   ).toBeVisible();
   await expect(
-    adviceCards.nth(1).getByText('关联维度：安全与权限约束', { exact: true }),
+    adviceCards.nth(1).getByText('关联维度：安全约束：安全与权限约束', { exact: true }),
   ).toBeVisible();
   await expect(
     adviceCards.nth(2).getByText('关联问题：未对输入文件类型与大小进行校验。', { exact: true }),
@@ -163,10 +164,19 @@ test('Skill 清单详情支持在详情与评估页签间切换', async ({ page 
     .toBe(false);
 
   await expect(evaluationPanel.getByText('评估问题', { exact: true })).toBeVisible();
+  const issueGrid = evaluationPanel.locator('.catalog-evaluation-issue-grid');
   const issueCards = evaluationPanel.locator('.catalog-evaluation-issue-grid article');
-  await expect(issueCards).toHaveCount(2);
+  await expect(issueCards).toHaveCount(3);
   await expect(issueCards.first().getByText('高风险', { exact: true })).toBeVisible();
-  await expect(issueCards.first().getByText('SEC-003', { exact: true })).toBeVisible();
+  await expect(issueCards.getByText(/^(?:SEC-\d+|F\d+)$/, { exact: true })).toHaveCount(0);
+  await expect(issueCards.locator('footer small')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      issueGrid.evaluate(
+        (element) => getComputedStyle(element).gridTemplateColumns.split(' ').length,
+      ),
+    )
+    .toBe(3);
   await expect(issueCards.first().locator('h5')).toHaveAttribute(
     'title',
     'Skill 允许直接执行未经确认的删除命令。',
@@ -176,10 +186,59 @@ test('Skill 清单详情支持在详情与评估页签间切换', async ({ page 
   await expect(evaluationPanel.getByText('各维度评分', { exact: true })).toBeVisible();
   const dimensionCards = evaluationPanel.locator('.catalog-evaluation-dimensions article');
   await expect(dimensionCards).toHaveCount(10);
+  await expect
+    .poll(async () => {
+      const colors = await dimensionCards.evaluateAll((elements) =>
+        elements.map((element) => getComputedStyle(element).borderLeftColor),
+      );
+      return new Set(colors).size;
+    })
+    .toBe(10);
   await expect(dimensionCards.getByText(/^D\d+$/, { exact: true })).toHaveCount(0);
+  const firstDimensionCard = dimensionCards.first();
   await expect(
-    dimensionCards.first().locator('.catalog-evaluation-dimension-detail p'),
-  ).toHaveAttribute('title', '目标与边界清晰度覆盖较完整，当前得分 17/20。');
+    firstDimensionCard.getByText('目标清晰度：目标与边界清晰度', { exact: true }),
+  ).toBeVisible();
+  await expect(firstDimensionCard.locator('.catalog-evaluation-dimension-detail p')).toHaveCount(0);
+  await expect(
+    firstDimensionCard.getByText('目标与边界清晰度覆盖较完整，当前得分 17/20。', { exact: true }),
+  ).toHaveCount(0);
+  const firstDimensionDetail = firstDimensionCard.locator(
+    '.catalog-evaluation-dimension-detail small',
+  );
+  await expect(firstDimensionDetail).toHaveCount(1);
+  await expect(firstDimensionDetail).toHaveCSS('white-space', 'nowrap');
+  await expect(firstDimensionDetail).toHaveAttribute(
+    'title',
+    '发布风险扫描 Skill/SKILL.md 中与 D1 相关的说明。',
+  );
+  await expect(firstDimensionDetail).not.toContainText('证据：');
+  await expect(firstDimensionDetail).not.toContainText('预检调整');
+  await expect(firstDimensionDetail).not.toContainText('D1 分数由系统');
+  await expect(firstDimensionDetail).toHaveCSS('font-size', '11px');
+  await expect
+    .poll(() => firstDimensionCard.evaluate((element) => element.hasAttribute('title')))
+    .toBe(false);
+  await expect
+    .poll(async () => {
+      const positions = await Promise.all(
+        [
+          '.catalog-evaluation-dimension-name',
+          '.catalog-evaluation-dimension-score',
+          '.catalog-evaluation-dimension-detail',
+        ].map((selector) =>
+          firstDimensionCard.locator(selector).evaluate((element) => ({
+            top: Math.round(element.getBoundingClientRect().top),
+            width: Math.round(element.getBoundingClientRect().width),
+          })),
+        ),
+      );
+      return {
+        vertical: positions[0].top < positions[1].top && positions[1].top < positions[2].top,
+        fullWidth: positions[1].width === positions[2].width,
+      };
+    })
+    .toEqual({ vertical: true, fullWidth: true });
   await expect
     .poll(() => evaluationPanel.evaluate((element) => element.scrollWidth <= element.clientWidth))
     .toBe(true);

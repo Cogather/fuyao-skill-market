@@ -1263,6 +1263,19 @@ const MOCK_SKILL_EVALUATION_DIMENSIONS = [
   { id: 'D10', name: '知识独特性', score: 5, max: 5, confidence: 'L' },
 ] as const;
 
+const MOCK_SKILL_EVALUATION_DIMENSION_NAMES: Record<string, string> = {
+  D1: '目标清晰度',
+  D2: '输入规范',
+  D3: '输出规范',
+  D4: '流程可执行性',
+  D5: '边界处理',
+  D6: '示例验证',
+  D7: '环境依赖',
+  D8: '内容维护',
+  D9: '安全约束',
+  D10: '知识独特性',
+};
+
 function createMockSkillEvaluationDetail(
   skillName: string,
   params: Record<string, unknown> = {},
@@ -1397,7 +1410,7 @@ function createMockSkillEvaluationDetail(
       dimensions: Object.fromEntries(
         MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => [
           dimension.id,
-          `${dimension.name}：评估该维度的内容完整度与可执行性。`,
+          `${dimension.name}（${MOCK_SKILL_EVALUATION_DIMENSION_NAMES[dimension.id]}）：评估该维度的内容完整度与可执行性。`,
         ]),
       ),
       knowledge_ratio: '内容构成 = 独家知识(E) : 行动框架(A) : 通用套话(R)，之和为 1.0。',

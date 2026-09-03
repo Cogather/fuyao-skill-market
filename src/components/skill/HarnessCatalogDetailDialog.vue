@@ -162,6 +162,7 @@ const evaluationDimensionRows = computed(() => {
     return {
       ...item,
       ratio,
+      detailText: item.evidence,
       tone: ratio >= 85 ? 'good' : ratio >= 70 ? 'medium' : 'risk',
     };
   });
@@ -169,7 +170,12 @@ const evaluationDimensionRows = computed(() => {
 
 const visibleEvaluationIssues = computed(() => {
   const issues = evaluation.value?.issues ?? [];
-  return showAllEvaluationIssues.value ? issues : issues.slice(0, 2);
+  return showAllEvaluationIssues.value ? issues : issues.slice(0, 3);
+});
+
+const evaluationIssueGridStyle = computed(() => {
+  const issueCount = evaluation.value?.issues.length ?? 0;
+  return { '--evaluation-issue-columns': String(Math.max(1, Math.min(3, issueCount))) };
 });
 
 const evaluationHighRiskIssueCount = computed(() => {
@@ -260,6 +266,14 @@ function normalizeConfidence(
   };
 }
 
+function normalizeDimensionDisplayName(glossary: string, fallback: string): string {
+  const matched = glossary.match(/^\s*([^（(：:]+?)\s*[（(]\s*([^）)]+?)\s*[）)]/);
+  if (!matched) return fallback;
+  const chineseName = matched[1]?.trim();
+  const dimensionName = matched[2]?.trim();
+  return dimensionName && chineseName ? `${dimensionName}：${chineseName}` : fallback;
+}
+
 function normalizeEvaluationDimensions(
   value: unknown,
   glossaryValue: unknown,
@@ -276,9 +290,11 @@ function normalizeEvaluationDimensions(
       const maxScore = readFiniteNumber(record.max ?? record.maxScore ?? record.max_score) ?? 0;
       const lowConfidence = record.low_confidence === true || record.lowConfidence === true;
       const confidence = normalizeConfidence(record.confidence, lowConfidence);
+      const glossaryText = String(glossary[id] ?? '').trim();
+      const fallbackLabel = String(record.name ?? record.label ?? id).trim();
       return {
         id,
-        label: String(record.name ?? record.label ?? id).trim(),
+        label: normalizeDimensionDisplayName(glossaryText, fallbackLabel),
         score,
         maxScore: maxScore > 0 ? maxScore : 1,
         ...confidence,
@@ -296,7 +312,7 @@ function normalizeEvaluationDimensions(
           record.adjusted_by_precheck === true || record.adjustedByPrecheck === true,
         adjustmentReason: String(record.adjustment_reason ?? record.adjustmentReason ?? '').trim(),
         derivationReason: String(record.derivation_reason ?? record.derivationReason ?? '').trim(),
-        glossary: String(glossary[id] ?? '').trim(),
+        glossary: glossaryText,
       };
     })
     .filter((item): item is EvaluationDimensionScore => item !== null);
@@ -992,7 +1008,7 @@ onBeforeUnmount(() => {
                 >
                   {{
                     showAllEvaluationAdvices
-                      ? '收起改进建议 ↑'
+                      ? '仅显示Top3改进建议 ↑'
                       : `查看全部改进建议（${evaluationImprovementItems.length}）→`
                   }}
                 </button>
@@ -1032,7 +1048,7 @@ onBeforeUnmount(() => {
                   <p>汇总展示高风险问题与一般评估发现</p>
                 </div>
                 <button
-                  v-if="evaluation.issues.length > 2"
+                  v-if="evaluation.issues.length > 3"
                   type="button"
                   class="catalog-evaluation-section__action"
                   :aria-expanded="showAllEvaluationIssues"
@@ -1046,7 +1062,7 @@ onBeforeUnmount(() => {
                 </button>
               </header>
 
-              <div class="catalog-evaluation-issue-grid">
+              <div class="catalog-evaluation-issue-grid" :style="evaluationIssueGridStyle">
                 <article
                   v-for="issue in visibleEvaluationIssues"
                   :key="issue.id"
@@ -1054,7 +1070,6 @@ onBeforeUnmount(() => {
                 >
                   <div class="catalog-evaluation-issue-meta">
                     <span>{{ issue.severityLabel }}</span>
-                    <strong>{{ issue.id }}</strong>
                   </div>
                   <h5 class="catalog-two-line-clamp" :title="issue.title">{{ issue.title }}</h5>
                   <p
@@ -1068,7 +1083,6 @@ onBeforeUnmount(() => {
                   <footer>
                     <span v-if="issue.evidence">证据：{{ issue.evidence }}</span>
                     <span v-else>暂无证据路径</span>
-                    <small v-if="issue.dimension">{{ issue.dimension }}</small>
                   </footer>
                 </article>
               </div>
@@ -1086,7 +1100,6 @@ onBeforeUnmount(() => {
                   v-for="(dimension, index) in evaluationDimensionRows"
                   :key="dimension.id"
                   :class="`is-${dimension.tone}`"
-                  :title="dimension.glossary || undefined"
                 >
                   <div class="catalog-evaluation-dimension-name">
                     <span>{{ index + 1 }}</span>
@@ -1103,22 +1116,8 @@ onBeforeUnmount(() => {
                     <div><span :style="{ width: `${dimension.ratio}%` }"></span></div>
                     <strong>{{ dimension.score }} / {{ dimension.maxScore }}</strong>
                   </div>
-                  <div class="catalog-evaluation-dimension-detail">
-                    <p
-                      class="catalog-two-line-clamp"
-                      :title="dimension.rationale || '暂无该维度的详细说明。'"
-                    >
-                      {{ dimension.rationale || '暂无该维度的详细说明。' }}
-                    </p>
-                    <small v-if="dimension.evidence">证据：{{ dimension.evidence }}</small>
-                    <small v-if="dimension.derivationReason">{{
-                      dimension.derivationReason
-                    }}</small>
-                    <small v-if="dimension.adjustedByPrecheck" class="is-adjusted">
-                      原始分 {{ dimension.rawScore ?? '—' }}；预检调整：{{
-                        dimension.adjustmentReason || '未说明原因'
-                      }}
-                    </small>
+                  <div v-if="dimension.detailText" class="catalog-evaluation-dimension-detail">
+                    <small :title="dimension.detailText">{{ dimension.detailText }}</small>
                   </div>
                 </article>
               </div>
@@ -2001,7 +2000,7 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-issue-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--evaluation-issue-columns), minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -2059,11 +2058,6 @@ onBeforeUnmount(() => {
   font-weight: 900;
 }
 
-.catalog-evaluation-issue-meta strong {
-  color: #56617c;
-  font-size: 10px;
-}
-
 .catalog-evaluation-issue-grid h5 {
   min-height: 2.9em;
   margin: 13px 0 7px;
@@ -2096,16 +2090,6 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
-.catalog-evaluation-issue-grid footer small {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border-radius: 8px;
-  background: rgba(var(--issue-color), 0.09);
-  color: rgb(var(--issue-color));
-  font-size: 9px;
-  font-weight: 800;
-}
-
 .catalog-evaluation-dimensions {
   display: grid;
   gap: 10px;
@@ -2114,31 +2098,50 @@ onBeforeUnmount(() => {
 .catalog-evaluation-dimensions article {
   --dimension-color: 39, 180, 111;
   display: grid;
-  grid-template-columns: minmax(200px, 0.85fr) minmax(220px, 0.85fr) minmax(280px, 1.3fr);
-  align-items: center;
-  gap: 20px;
-  min-height: 78px;
-  padding: 13px 16px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 15px 18px;
   border: 1px solid rgba(var(--dimension-color), 0.18);
   border-left: 4px solid rgb(var(--dimension-color));
   border-radius: 13px;
   background: linear-gradient(90deg, rgba(var(--dimension-color), 0.08), #fff 24%);
 }
 
-.catalog-evaluation-dimensions article:nth-child(2) {
+.catalog-evaluation-dimensions article:nth-child(10n + 2) {
   --dimension-color: 56, 151, 235;
 }
 
-.catalog-evaluation-dimensions article:nth-child(3) {
+.catalog-evaluation-dimensions article:nth-child(10n + 3) {
   --dimension-color: 255, 159, 45;
 }
 
-.catalog-evaluation-dimensions article:nth-child(4) {
+.catalog-evaluation-dimensions article:nth-child(10n + 4) {
   --dimension-color: 139, 92, 246;
 }
 
-.catalog-evaluation-dimensions article:nth-child(5n) {
+.catalog-evaluation-dimensions article:nth-child(10n + 5) {
   --dimension-color: 241, 91, 107;
+}
+
+.catalog-evaluation-dimensions article:nth-child(10n + 6) {
+  --dimension-color: 20, 184, 166;
+}
+
+.catalog-evaluation-dimensions article:nth-child(10n + 7) {
+  --dimension-color: 91, 105, 230;
+}
+
+.catalog-evaluation-dimensions article:nth-child(10n + 8) {
+  --dimension-color: 234, 179, 8;
+}
+
+.catalog-evaluation-dimensions article:nth-child(10n + 9) {
+  --dimension-color: 219, 82, 181;
+}
+
+.catalog-evaluation-dimensions article:nth-child(10n) {
+  --dimension-color: 6, 182, 212;
 }
 
 .catalog-evaluation-dimension-name {
@@ -2162,6 +2165,7 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-dimension-name > div {
   display: grid;
+  min-width: 0;
   gap: 3px;
 }
 
@@ -2195,6 +2199,7 @@ onBeforeUnmount(() => {
 
 .catalog-evaluation-dimension-score {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 10px;
 }
@@ -2227,28 +2232,20 @@ onBeforeUnmount(() => {
 }
 
 .catalog-evaluation-dimension-detail {
-  display: grid;
-  gap: 5px;
+  display: block;
+  width: 100%;
   min-width: 0;
 }
 
-.catalog-evaluation-dimension-detail p {
-  min-height: 3.3em;
-  margin: 0;
-  color: #596680;
-  font-size: 11px;
-  line-height: 1.65;
-}
-
 .catalog-evaluation-dimension-detail small {
+  display: block;
+  width: 100%;
+  overflow: hidden;
   color: #8691a7;
-  font-size: 9px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
-.catalog-evaluation-dimension-detail small.is-adjusted {
-  color: #b36922;
+  font-size: 11px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .catalog-evaluation-note {
