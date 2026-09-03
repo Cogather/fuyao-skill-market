@@ -2037,6 +2037,7 @@ onBeforeUnmount(() => {
             v-model.trim="keyword"
             type="search"
             placeholder="搜索 Skill 或 Owner"
+            @input="applyMasterQuery"
             @keydown.enter.prevent="applyMasterQuery"
           />
         </label>

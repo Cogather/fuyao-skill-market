@@ -1028,6 +1028,7 @@ onMounted(async () => {
           v-model.trim="filterForm.keyword"
           type="search"
           :placeholder="`搜索 ${capabilityLabel} 或 Owner`"
+          @input="applyQuery"
           @keydown.enter.prevent="applyQuery"
         />
       </label>
