@@ -690,12 +690,32 @@ type MockAiReviewDimensionScore = {
   deductionBreakdown: string;
 };
 
+type MockAiReviewIssue = {
+  issueId: string;
+  severity: 'high' | 'medium' | 'low' | 'suggestion';
+  title: string;
+  description: string;
+  evidence: string;
+  dimension: string;
+};
+
 type MockAiReviewDetail = {
   aiModel: string;
   evaluateTime: string;
   aiScore: number;
   dimensionScores: MockAiReviewDimensionScore[];
-  advices: Record<'SKILL.md' | 'references' | 'scripts', string>;
+  advices: Record<string, string>;
+  issues: MockAiReviewIssue[];
+};
+
+type MockSkillEvaluationDetail = MockAiReviewDetail & {
+  skillId: string;
+  version: string;
+  dimensionDefinitions: {
+    dimensionId: string;
+    maxScore: number;
+    label: string;
+  }[];
 };
 
 type MockCurrentUserReview = {
@@ -1168,7 +1188,84 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
       'SKILL.md': `${skillName} 的目标、输入输出和适用场景描述较完整，可补充失败示例。`,
       references: '引用材料覆盖核心场景，建议增加边界样例和反例说明。',
       scripts: '脚本结构清晰，建议补充参数校验和异常日志。',
+      safety: '高风险操作执行前应增加用户明确确认，并限制可操作目录范围。',
+      output: '补充输出文件的命名、关键字段、格式要求和失败返回标准。',
+      logging: '记录输入文件、处理结果、异常堆栈与耗时，便于复盘和定位。',
+      dependencies: '声明运行时版本、依赖包版本和平台限制，降低环境差异。',
+      consistency: '统一文档中的术语、参数和字段命名，减少执行过程中的理解偏差。',
     },
+    issues: [
+      {
+        issueId: 'SEC-003',
+        severity: 'high',
+        title: 'Skill 允许直接执行未经确认的删除命令',
+        description: '脚本中包含递归删除动作，未要求用户确认。',
+        evidence: 'scripts/clean.sh',
+        dimension: '安全性',
+      },
+      {
+        issueId: 'SEC-007',
+        severity: 'medium',
+        title: '未对输入文件类型与大小进行校验',
+        description: '缺少文件类型验证与大小限制，存在覆盖风险。',
+        evidence: 'scripts/export.sh',
+        dimension: '安全性',
+      },
+      {
+        issueId: 'QLT-012',
+        severity: 'medium',
+        title: '脚本失败时缺少异常处理逻辑',
+        description: '未捕获异常，可能直接输出错误结果。',
+        evidence: 'docs/usage.md',
+        dimension: '任务可执行性',
+      },
+      {
+        issueId: 'QLT-017',
+        severity: 'low',
+        title: '缺少输出结果的验收标准',
+        description: '未说明输出文件关键字段和格式要求。',
+        evidence: 'docs/output.md',
+        dimension: '内容组织',
+      },
+      {
+        issueId: 'QLT-021',
+        severity: 'low',
+        title: '日志记录不完整',
+        description: '部分关键操作未记录日志，排查困难。',
+        evidence: 'scripts/main.py',
+        dimension: '可维护性',
+      },
+      {
+        issueId: 'QLT-026',
+        severity: 'suggestion',
+        title: '缺少正反示例支撑触发边界',
+        description: 'description 只描述了可用场景，未说明不该使用的近似场景。',
+        evidence: 'SKILL.md',
+        dimension: '指令完整性',
+      },
+      {
+        issueId: 'QLT-030',
+        severity: 'suggestion',
+        title: 'content_manifest 缺少资源用途说明',
+        description: '部分脚本与引用资料的用途关系不明确。',
+        evidence: 'content_manifest',
+        dimension: '评估范围',
+      },
+    ],
+  };
+}
+
+function createMockSkillEvaluationDetail(
+  skillId: string,
+  params: Record<string, unknown> = {},
+): MockSkillEvaluationDetail {
+  const skill = findSkill(skillId);
+  const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
+  return {
+    skillId,
+    version,
+    dimensionDefinitions: MOCK_AI_REVIEW_DIMENSIONS.map((dimension) => ({ ...dimension })),
+    ...createMockAiReview(skillId, skill),
   };
 }
 
@@ -2392,6 +2489,12 @@ function handleSkillRequest(
   if (method === 'get' && path === '/review/ai-dimensions') {
     const dimensions = MOCK_AI_REVIEW_DIMENSIONS.map((dimension) => ({ ...dimension }));
     return ok(dimensions, dimensions.length);
+  }
+
+  if (method === 'get' && path === '/evaluation/detail') {
+    const skillId = String(params.skillId ?? '').trim();
+    if (!skillId) return fail('缺少必填参数：skillId', null);
+    return ok(createMockSkillEvaluationDetail(skillId, params));
   }
 
   if (method === 'get' && path === '/review/badges') {

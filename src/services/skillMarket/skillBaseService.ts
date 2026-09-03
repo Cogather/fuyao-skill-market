@@ -10,6 +10,8 @@ import type {
   CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
+  SkillEvaluationDetailDto,
+  SkillEvaluationDetailParams,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
   QueryHarnessPermissionUsersParams,
@@ -1110,6 +1112,21 @@ export const skillBaseService = {
   getSkillReviewDetail: (skillId: string, params: any): any => {
     return httpRequest.skill<any>({
       url: `/review/${skillId}/detail`,
+      method: 'get',
+      params,
+    });
+  },
+
+  /**
+   * Skill 清单详情中的统一评估接口。
+   * TODO: 后端契约确认后，仅在这里调整 url、method 以及 params/data 映射。
+   * 当前 HTTP 占位地址：GET /api/skills/evaluation/detail
+   */
+  getSkillEvaluationDetail: (
+    params: SkillEvaluationDetailParams,
+  ): Promise<ApiEnvelope<SkillEvaluationDetailDto>> => {
+    return httpRequest.skill<ApiEnvelope<SkillEvaluationDetailDto>>({
+      url: '/evaluation/detail',
       method: 'get',
       params,
     });

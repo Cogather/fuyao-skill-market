@@ -631,6 +631,47 @@ export type ExpertReviewSubmitBody = {
   overallOpinion?: string;
 };
 
+/** Skill 清单详情中的统一评估查询参数；后端契约确认后可在 service 层集中调整。 */
+export type SkillEvaluationDetailParams = {
+  skillId: string | number;
+  userId?: string;
+  version: string;
+};
+
+export type SkillEvaluationDimensionDefinitionDto = {
+  dimensionId: string;
+  label: string;
+  maxScore: number;
+};
+
+export type SkillEvaluationDimensionScoreDto = {
+  dimensionId: string;
+  score: number;
+  deductionBreakdown?: string;
+};
+
+export type SkillEvaluationIssueDto = {
+  issueId: string;
+  severity: 'high' | 'medium' | 'low' | 'suggestion' | string;
+  title: string;
+  description?: string;
+  evidence?: string;
+  dimension?: string;
+};
+
+/** Skill 清单详情中的统一评估响应数据。 */
+export type SkillEvaluationDetailDto = {
+  skillId?: string | number;
+  version?: string;
+  aiModel?: string;
+  evaluateTime?: string;
+  aiScore?: number;
+  dimensionDefinitions?: SkillEvaluationDimensionDefinitionDto[];
+  dimensionScores?: SkillEvaluationDimensionScoreDto[];
+  advices?: Record<string, string>;
+  issues?: SkillEvaluationIssueDto[];
+};
+
 /** Skill 清单新增（POST /management/add） */
 export type CreateSkillMasterManagementParams = {
   userId: string;
