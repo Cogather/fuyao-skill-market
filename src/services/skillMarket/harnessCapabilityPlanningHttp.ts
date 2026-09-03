@@ -54,6 +54,10 @@ import {
 export type HarnessCapabilityCatalogHttpScope = SkillTransferParams;
 export type HarnessCapabilityCatalogHttpQuery = HarnessCapabilityCatalogQuery &
   Partial<SkillTransferParams>;
+export interface HarnessCapabilityCatalogHttpListResult {
+  list: SkillMasterRecord[];
+  total: number;
+}
 
 export const harnessCapabilityPlanningHttpEndpoints: Record<
   MockHarnessCapabilityType,
@@ -702,6 +706,16 @@ export async function queryHttpCapabilityCatalog(
     rows.push(...page.rows);
   }
   return rows;
+}
+
+export async function queryHttpCapabilityCatalogPage(
+  type: MockHarnessCapabilityType,
+  query: HarnessCapabilityCatalogHttpQuery & { pageNum?: number; pageSize?: number } = {},
+): Promise<HarnessCapabilityCatalogHttpListResult> {
+  const pageNum = Math.max(1, Number(query.pageNum ?? 1));
+  const pageSize = Math.max(1, Number(query.pageSize ?? 10));
+  const result = await queryCatalogPage(type, query, pageNum, pageSize);
+  return { list: result.rows, total: result.total };
 }
 
 function parsePerson(value: string, fieldLabel: string): { name: string; id: string } {
