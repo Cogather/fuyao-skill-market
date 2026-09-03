@@ -108,7 +108,7 @@ const selectedVersion = ref('');
 const detailFiles = ref<DetailFileState[]>([]);
 const detailLoading = ref(false);
 const detailError = ref('');
-const expandedDetailFilePath = ref('');
+const expandedDetailFilePaths = ref<string[]>([]);
 const detailCapabilityExpanded = ref(true);
 const activeTab = ref<DetailTab>('detail');
 const evaluation = ref<SkillEvaluation | null>(null);
@@ -610,7 +610,7 @@ function resetDetailContent(): void {
   detailFiles.value = [];
   detailLoading.value = false;
   detailError.value = '';
-  expandedDetailFilePath.value = '';
+  expandedDetailFilePaths.value = [];
   detailCapabilityExpanded.value = true;
   activeTab.value = 'detail';
   evaluation.value = null;
@@ -645,7 +645,7 @@ async function loadDetailVersion(): Promise<void> {
   detailLoading.value = true;
   detailError.value = '';
   detailFiles.value = [];
-  expandedDetailFilePath.value = '';
+  expandedDetailFilePaths.value = [];
   detailCapabilityExpanded.value = true;
 
   try {
@@ -662,7 +662,7 @@ async function loadDetailVersion(): Promise<void> {
 
     const firstFile = detailFiles.value[0];
     if (firstFile) {
-      expandedDetailFilePath.value = firstFile.path;
+      expandedDetailFilePaths.value = [firstFile.path];
       await loadDetailFile(firstFile);
     }
   } catch (error) {
@@ -711,11 +711,13 @@ async function loadSelectedVersion(): Promise<void> {
 }
 
 async function toggleDetailFile(file: DetailFileState): Promise<void> {
-  if (expandedDetailFilePath.value === file.path) {
-    expandedDetailFilePath.value = '';
+  if (expandedDetailFilePaths.value.includes(file.path)) {
+    expandedDetailFilePaths.value = expandedDetailFilePaths.value.filter(
+      (path) => path !== file.path,
+    );
     return;
   }
-  expandedDetailFilePath.value = file.path;
+  expandedDetailFilePaths.value = [...expandedDetailFilePaths.value, file.path];
   await loadDetailFile(file);
 }
 
@@ -744,7 +746,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="props.open && props.record" class="catalog-detail-overlay" @click.self="closeDialog">
+    <div v-if="props.open && props.record" class="catalog-detail-overlay">
       <div
         class="catalog-detail-dialog"
         :class="{ 'is-basic-only': detailVersions.length === 0 }"
@@ -877,19 +879,19 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="catalog-detail-file-row"
-                  :aria-expanded="expandedDetailFilePath === file.path"
+                  :aria-expanded="expandedDetailFilePaths.includes(file.path)"
                   @click="toggleDetailFile(file)"
                 >
                   <span
                     class="catalog-detail-file-caret"
-                    :class="{ 'is-open': expandedDetailFilePath === file.path }"
+                    :class="{ 'is-open': expandedDetailFilePaths.includes(file.path) }"
                     >›</span
                   >
                   <span class="catalog-detail-file-icon">▧</span>
                   <span>{{ file.path }}</span>
                 </button>
                 <div
-                  v-if="expandedDetailFilePath === file.path"
+                  v-if="expandedDetailFilePaths.includes(file.path)"
                   class="catalog-detail-file-content"
                 >
                   <p v-if="file.loading">正在加载文件内容...</p>
@@ -1129,10 +1131,6 @@ onBeforeUnmount(() => {
             </p>
           </template>
         </section>
-
-        <footer v-if="detailVersions.length" class="catalog-detail-footer">
-          <button type="button" @click="closeDialog">关闭</button>
-        </footer>
       </div>
     </div>
   </Teleport>
@@ -1541,24 +1539,6 @@ onBeforeUnmount(() => {
   padding: 16px;
   color: #7b89a1;
   font-size: 11px;
-}
-
-.catalog-detail-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 18px;
-}
-
-.catalog-detail-footer button {
-  min-width: 52px;
-  height: 34px;
-  border: 1px solid #d4deee;
-  border-radius: 7px;
-  background: #fff;
-  color: #31415f;
-  font-size: 11px;
-  font-weight: 800;
-  cursor: pointer;
 }
 
 .catalog-evaluation-panel {
