@@ -710,6 +710,7 @@ type MockAiReviewDetail = {
 
 type MockSkillEvaluationDetail = MockAiReviewDetail & {
   skillId: string;
+  skillName: string;
   version: string;
   dimensionDefinitions: {
     dimensionId: string;
@@ -1165,7 +1166,11 @@ function mockReviewTime(seed: number, dayOffset = 0): string {
   return `2026-05-${day} ${hour}:${minute}`;
 }
 
-function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiReviewDetail {
+function createMockAiReview(
+  skillId: string,
+  skill?: MockSkillRecord,
+  skillNameOverride?: string,
+): MockAiReviewDetail {
   const seed = mockSeedFromSkillId(skillId);
   const dimensionScores = MOCK_AI_REVIEW_DIMENSIONS.map((dimension, index) => {
     const ratio = 0.78 + ((seed + index * 9) % 16) / 100;
@@ -1177,7 +1182,7 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
     };
   });
   const aiScore = roundToTwo(dimensionScores.reduce((sum, item) => sum + item.score, 0));
-  const skillName = skill?.name ?? `Mock Skill ${skillId}`;
+  const skillName = skillNameOverride ?? skill?.name ?? `Mock Skill ${skillId}`;
 
   return {
     aiModel: 'mock-ai-review-v2',
@@ -1256,16 +1261,18 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
 }
 
 function createMockSkillEvaluationDetail(
-  skillId: string,
+  skillName: string,
   params: Record<string, unknown> = {},
 ): MockSkillEvaluationDetail {
-  const skill = findSkill(skillId);
+  const skill = findSkill(skillName);
+  const skillId = String(skill?.id ?? skillName);
   const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
   return {
     skillId,
+    skillName,
     version,
     dimensionDefinitions: MOCK_AI_REVIEW_DIMENSIONS.map((dimension) => ({ ...dimension })),
-    ...createMockAiReview(skillId, skill),
+    ...createMockAiReview(skillId, skill, skillName),
   };
 }
 
@@ -2491,10 +2498,10 @@ function handleSkillRequest(
     return ok(dimensions, dimensions.length);
   }
 
-  if (method === 'get' && path === '/evaluation/detail') {
-    const skillId = String(params.skillId ?? '').trim();
-    if (!skillId) return fail('缺少必填参数：skillId', null);
-    return ok(createMockSkillEvaluationDetail(skillId, params));
+  if (method === 'get' && path === '/v1/harness/plans/skill/eval') {
+    const skillName = String(params.skillName ?? '').trim();
+    if (!skillName) return fail('缺少必填参数：skillName', null);
+    return ok(createMockSkillEvaluationDetail(skillName, params));
   }
 
   if (method === 'get' && path === '/review/badges') {

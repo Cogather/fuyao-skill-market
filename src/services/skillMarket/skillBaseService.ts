@@ -1119,14 +1119,13 @@ export const skillBaseService = {
 
   /**
    * Skill 清单详情中的统一评估接口。
-   * TODO: 后端契约确认后，仅在这里调整 url、method 以及 params/data 映射。
-   * 当前 HTTP 占位地址：GET /api/skills/evaluation/detail
+   * 查询参数仅包含 skillName 和 version。
    */
   getSkillEvaluationDetail: (
     params: SkillEvaluationDetailParams,
   ): Promise<ApiEnvelope<SkillEvaluationDetailDto>> => {
     return httpRequest.skill<ApiEnvelope<SkillEvaluationDetailDto>>({
-      url: '/evaluation/detail',
+      url: '/v1/harness/plans/skill/eval',
       method: 'get',
       params,
     });

@@ -460,8 +460,7 @@ async function loadEvaluation(): Promise<void> {
 
   try {
     const detailResponse = await skillBaseService.getSkillEvaluationDetail({
-      skillId: props.record.id,
-      userId: props.userId || undefined,
+      skillName: props.record.name,
       version: selectedVersion.value,
     });
     if (sequence !== evaluationLoadSequence) return;

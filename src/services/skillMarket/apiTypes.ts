@@ -633,8 +633,7 @@ export type ExpertReviewSubmitBody = {
 
 /** Skill 清单详情中的统一评估查询参数；后端契约确认后可在 service 层集中调整。 */
 export type SkillEvaluationDetailParams = {
-  skillId: string | number;
-  userId?: string;
+  skillName: string;
   version: string;
 };
 
@@ -662,6 +661,7 @@ export type SkillEvaluationIssueDto = {
 /** Skill 清单详情中的统一评估响应数据。 */
 export type SkillEvaluationDetailDto = {
   skillId?: string | number;
+  skillName?: string;
   version?: string;
   aiModel?: string;
   evaluateTime?: string;
