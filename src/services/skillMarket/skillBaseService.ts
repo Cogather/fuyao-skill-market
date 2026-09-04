@@ -10,6 +10,8 @@ import type {
   CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
+  SkillEvaluationDetailParams,
+  SkillEvaluationDetailResponseDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
   QueryHarnessPermissionUsersParams,
@@ -1110,6 +1112,20 @@ export const skillBaseService = {
   getSkillReviewDetail: (skillId: string, params: any): any => {
     return httpRequest.skill<any>({
       url: `/review/${skillId}/detail`,
+      method: 'get',
+      params,
+    });
+  },
+
+  /**
+   * Skill 清单详情中的统一评估接口。
+   * 查询参数仅包含 skillName 和 version。
+   */
+  getSkillEvaluationDetail: (
+    params: SkillEvaluationDetailParams,
+  ): Promise<SkillEvaluationDetailResponseDto> => {
+    return httpRequest.api<SkillEvaluationDetailResponseDto>({
+      url: '/v1/harness/plans/skill/eval',
       method: 'get',
       params,
     });

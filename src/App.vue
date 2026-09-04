@@ -11,16 +11,6 @@ const router = useRouter();
 const PARENT_CONTEXT_STORAGE_KEY = '__skill_market_parent_context_v1__';
 
 // 当前项目的用户上下文由父应用注入，暂不调用 /users/validate。
-// onMounted(async () => {
-//   await profileStore.initUserInfo();
-//   startTokenCheck();
-// });
-//
-// const startTokenCheck = () => {
-//   setInterval(() => {
-//     profileStore.checkUserToken();
-//   }, 300 * 1000); // 每5分钟检查一次
-// };
 
 function firstString(value: unknown): string {
   const raw = Array.isArray(value) ? value[0] : value;

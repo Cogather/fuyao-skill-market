@@ -18,6 +18,7 @@ import {
   importHttpCapabilityCatalog,
   importHttpCapabilityPlanning,
   queryHttpCapabilityCatalog,
+  queryHttpCapabilityCatalogPage,
   queryHttpCapabilityPlanning,
   updateHttpCapabilityCatalogRecord,
   updateHttpCapabilityPlanning,
@@ -80,6 +81,13 @@ export interface HarnessCapabilityPlanningCatalogQuery extends HarnessCapability
   dimType?: string;
   dimCode?: string;
   dimName?: string;
+  pageNum?: number;
+  pageSize?: number;
+}
+
+export interface HarnessCapabilityCatalogListResult {
+  list: SkillMasterRecord[];
+  total: number;
 }
 
 export interface HarnessCapabilityPlanningApi {
@@ -122,6 +130,23 @@ export interface HarnessCapabilityPlanningApi {
 
 function useHttpTransport(): boolean {
   return String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
+}
+
+export async function queryHarnessCapabilityCatalogPage(
+  type: MockHarnessCapabilityType,
+  query: HarnessCapabilityPlanningCatalogQuery = {},
+): Promise<HarnessCapabilityCatalogListResult> {
+  if (useHttpTransport()) {
+    return queryHttpCapabilityCatalogPage(type, query);
+  }
+  const records = await queryMockCapabilityCatalog(type, query);
+  const pageNum = Math.max(1, Number(query.pageNum ?? 1));
+  const pageSize = Math.max(1, Number(query.pageSize ?? 10));
+  const start = (pageNum - 1) * pageSize;
+  return {
+    list: records.slice(start, start + pageSize),
+    total: records.length,
+  };
 }
 
 function capabilityLabel(type: HarnessCapabilityType): 'Skill' | 'Command' | 'Agent' {

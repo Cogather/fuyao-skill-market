@@ -5,6 +5,7 @@ import MarketDeptCascader from './MarketDeptCascader.vue';
 import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import {
   getHarnessCapabilityPlanningApi,
+  queryHarnessCapabilityCatalogPage,
   type HarnessCapabilityType,
 } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import type { SkillTransferParams } from '../../services/skillMarket/apiTypes';
@@ -92,6 +93,7 @@ const filterForm = reactive({
 const productOptions = ref<ProductPlanningOption[]>([]);
 const productsLoading = ref(false);
 const records = ref<SkillMasterRecord[]>([]);
+const total = ref(0);
 const detailRecord = ref<SkillMasterRecord | null>(null);
 const loading = ref(false);
 const selectedIds = ref<string[]>([]);
@@ -305,12 +307,8 @@ function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
   return { ...snapshot, departmentPath: [...path] };
 }
 
-const total = computed(() => records.value.length);
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-const pageRecords = computed(() => {
-  const start = (pageNum.value - 1) * pageSize.value;
-  return records.value.slice(start, start + pageSize.value);
-});
+const pageRecords = computed(() => records.value);
 const pageStart = computed(() => (total.value ? (pageNum.value - 1) * pageSize.value + 1 : 0));
 const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
 const allPageSelected = computed(
@@ -323,24 +321,40 @@ async function reload(): Promise<void> {
   const scope = currentCatalogScope.value;
   if (!scope) {
     records.value = [];
+    total.value = 0;
     selectedIds.value = [];
     return;
   }
   loading.value = true;
   try {
-    records.value = await api.value.queryCatalog({
+    let result = await queryHarnessCapabilityCatalogPage(props.capabilityType, {
       ...scope,
       keyword: filterForm.keyword,
       departmentName: filterForm.departmentName,
       level: filterForm.level,
       product: filterForm.product,
+      pageNum: pageNum.value,
+      pageSize: pageSize.value,
     });
-    if (pageNum.value > totalPages.value) pageNum.value = totalPages.value;
-    selectedIds.value = selectedIds.value.filter((id) =>
-      records.value.some((record) => record.id === id),
-    );
+    records.value = result.list;
+    total.value = result.total;
+    if (pageNum.value > totalPages.value) {
+      pageNum.value = totalPages.value;
+      result = await queryHarnessCapabilityCatalogPage(props.capabilityType, {
+        ...scope,
+        keyword: filterForm.keyword,
+        departmentName: filterForm.departmentName,
+        level: filterForm.level,
+        product: filterForm.product,
+        pageNum: pageNum.value,
+        pageSize: pageSize.value,
+      });
+      records.value = result.list;
+      total.value = result.total;
+    }
   } catch (error) {
     records.value = [];
+    total.value = 0;
     showToast(error instanceof Error ? error.message : '清单加载失败');
   } finally {
     loading.value = false;
@@ -351,14 +365,16 @@ async function onDepartmentDone(path: string[] = []): Promise<void> {
   departmentSegments.value = normalizePath(path);
   filterForm.departmentName = departmentSegments.value.at(-1) ?? '';
   filterForm.product = '';
-  await loadProductOptions();
   pageNum.value = 1;
+  selectedIds.value = [];
+  await loadProductOptions();
   await reload();
   emitScopeSnapshot();
 }
 
 async function applyQuery(): Promise<void> {
   pageNum.value = 1;
+  selectedIds.value = [];
   await reload();
 }
 
@@ -367,8 +383,9 @@ async function resetQuery(): Promise<void> {
   filterForm.product = '';
   filterForm.keyword = '';
   applyDefaultDepartment();
-  await loadProductOptions();
   pageNum.value = 1;
+  selectedIds.value = [];
+  await loadProductOptions();
   await reload();
   emitScopeSnapshot();
 }
@@ -376,6 +393,7 @@ async function resetQuery(): Promise<void> {
 async function onLevelChange(): Promise<void> {
   filterForm.product = '';
   pageNum.value = 1;
+  selectedIds.value = [];
   await loadProductOptions();
   await reload();
   emitScopeSnapshot();
@@ -383,6 +401,7 @@ async function onLevelChange(): Promise<void> {
 
 async function onProductChange(): Promise<void> {
   pageNum.value = 1;
+  selectedIds.value = [];
   await reload();
   emitScopeSnapshot();
 }
@@ -851,7 +870,17 @@ async function exportCurrent(): Promise<void> {
   try {
     exporting.value = true;
     const scope = requireCatalogScope();
-    await api.value.exportCatalog(records.value, scope);
+    const exportRecords =
+      total.value > records.value.length
+        ? await api.value.queryCatalog({
+            ...scope,
+            keyword: filterForm.keyword,
+            departmentName: filterForm.departmentName,
+            level: filterForm.level,
+            product: filterForm.product,
+          })
+        : records.value;
+    await api.value.exportCatalog(exportRecords, scope);
     showToast(`已开始导出 ${capabilityLabel.value} 清单`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '导出失败');
@@ -860,8 +889,15 @@ async function exportCurrent(): Promise<void> {
   }
 }
 
-function goPage(next: number): void {
+async function goPage(next: number): Promise<void> {
   pageNum.value = Math.max(1, Math.min(totalPages.value, next));
+  await reload();
+}
+
+async function changePageSize(): Promise<void> {
+  pageNum.value = 1;
+  selectedIds.value = [];
+  await reload();
 }
 
 watch(requiredCapabilityNamePrefix, (nextPrefix, previousPrefix) => {
@@ -888,6 +924,8 @@ watch(
 watch(
   () => props.userId,
   async () => {
+    pageNum.value = 1;
+    selectedIds.value = [];
     await reload();
   },
 );
@@ -899,6 +937,8 @@ watch(
     () => props.defaultDepartmentPath,
   ],
   async () => {
+    pageNum.value = 1;
+    selectedIds.value = [];
     if (!pathExists(props.departmentTree, departmentSegments.value)) {
       applyDefaultDepartment();
     }
@@ -988,6 +1028,7 @@ onMounted(async () => {
           v-model.trim="filterForm.keyword"
           type="search"
           :placeholder="`搜索 ${capabilityLabel} 或 Owner`"
+          @input="applyQuery"
           @keydown.enter.prevent="applyQuery"
         />
       </label>
@@ -1187,7 +1228,7 @@ onMounted(async () => {
       <footer class="capability-master-pagination">
         <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
         <div class="capability-master-pagination__controls">
-          <select v-model.number="pageSize" @change="pageNum = 1">
+          <select v-model.number="pageSize" @change="changePageSize">
             <option v-for="size in pageSizeOptions" :key="size" :value="size">
               {{ size }} 条/页
             </option>

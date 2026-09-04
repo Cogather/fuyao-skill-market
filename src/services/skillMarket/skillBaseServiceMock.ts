@@ -1,6 +1,7 @@
 import PizZip from 'pizzip';
 import type { AxiosRequestConfig } from 'axios';
 import type { Skill, SkillVersionEntry } from '../../types/skill';
+import type { SkillEvaluationDetailDto } from './apiTypes';
 import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
 import { stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
@@ -690,12 +691,22 @@ type MockAiReviewDimensionScore = {
   deductionBreakdown: string;
 };
 
+type MockAiReviewIssue = {
+  issueId: string;
+  severity: 'high' | 'medium' | 'low' | 'suggestion';
+  title: string;
+  description: string;
+  evidence: string;
+  dimension: string;
+};
+
 type MockAiReviewDetail = {
   aiModel: string;
   evaluateTime: string;
   aiScore: number;
   dimensionScores: MockAiReviewDimensionScore[];
-  advices: Record<'SKILL.md' | 'references' | 'scripts', string>;
+  advices: Record<string, string>;
+  issues: MockAiReviewIssue[];
 };
 
 type MockCurrentUserReview = {
@@ -1145,7 +1156,11 @@ function mockReviewTime(seed: number, dayOffset = 0): string {
   return `2026-05-${day} ${hour}:${minute}`;
 }
 
-function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiReviewDetail {
+function createMockAiReview(
+  skillId: string,
+  skill?: MockSkillRecord,
+  skillNameOverride?: string,
+): MockAiReviewDetail {
   const seed = mockSeedFromSkillId(skillId);
   const dimensionScores = MOCK_AI_REVIEW_DIMENSIONS.map((dimension, index) => {
     const ratio = 0.78 + ((seed + index * 9) % 16) / 100;
@@ -1157,7 +1172,7 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
     };
   });
   const aiScore = roundToTwo(dimensionScores.reduce((sum, item) => sum + item.score, 0));
-  const skillName = skill?.name ?? `Mock Skill ${skillId}`;
+  const skillName = skillNameOverride ?? skill?.name ?? `Mock Skill ${skillId}`;
 
   return {
     aiModel: 'mock-ai-review-v2',
@@ -1168,7 +1183,242 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
       'SKILL.md': `${skillName} 的目标、输入输出和适用场景描述较完整，可补充失败示例。`,
       references: '引用材料覆盖核心场景，建议增加边界样例和反例说明。',
       scripts: '脚本结构清晰，建议补充参数校验和异常日志。',
+      safety: '高风险操作执行前应增加用户明确确认，并限制可操作目录范围。',
+      output: '补充输出文件的命名、关键字段、格式要求和失败返回标准。',
+      logging: '记录输入文件、处理结果、异常堆栈与耗时，便于复盘和定位。',
+      dependencies: '声明运行时版本、依赖包版本和平台限制，降低环境差异。',
+      consistency: '统一文档中的术语、参数和字段命名，减少执行过程中的理解偏差。',
     },
+    issues: [
+      {
+        issueId: 'SEC-003',
+        severity: 'high',
+        title: 'Skill 允许直接执行未经确认的删除命令',
+        description: '脚本中包含递归删除动作，未要求用户确认。',
+        evidence: 'scripts/clean.sh',
+        dimension: '安全性',
+      },
+      {
+        issueId: 'SEC-007',
+        severity: 'medium',
+        title: '未对输入文件类型与大小进行校验',
+        description: '缺少文件类型验证与大小限制，存在覆盖风险。',
+        evidence: 'scripts/export.sh',
+        dimension: '安全性',
+      },
+      {
+        issueId: 'QLT-012',
+        severity: 'medium',
+        title: '脚本失败时缺少异常处理逻辑',
+        description: '未捕获异常，可能直接输出错误结果。',
+        evidence: 'docs/usage.md',
+        dimension: '任务可执行性',
+      },
+      {
+        issueId: 'QLT-017',
+        severity: 'low',
+        title: '缺少输出结果的验收标准',
+        description: '未说明输出文件关键字段和格式要求。',
+        evidence: 'docs/output.md',
+        dimension: '内容组织',
+      },
+      {
+        issueId: 'QLT-021',
+        severity: 'low',
+        title: '日志记录不完整',
+        description: '部分关键操作未记录日志，排查困难。',
+        evidence: 'scripts/main.py',
+        dimension: '可维护性',
+      },
+      {
+        issueId: 'QLT-026',
+        severity: 'suggestion',
+        title: '缺少正反示例支撑触发边界',
+        description: 'description 只描述了可用场景，未说明不该使用的近似场景。',
+        evidence: 'SKILL.md',
+        dimension: '指令完整性',
+      },
+      {
+        issueId: 'QLT-030',
+        severity: 'suggestion',
+        title: 'content_manifest 缺少资源用途说明',
+        description: '部分脚本与引用资料的用途关系不明确。',
+        evidence: 'content_manifest',
+        dimension: '评估范围',
+      },
+    ],
+  };
+}
+
+const MOCK_SKILL_EVALUATION_DIMENSIONS = [
+  { id: 'D1', name: '目标与边界清晰度', score: 17, max: 20, confidence: 'M' },
+  { id: 'D2', name: '输入规范完整性', score: 11, max: 12, confidence: 'M' },
+  { id: 'D3', name: '输出规范完整性', score: 11, max: 12, confidence: 'M' },
+  { id: 'D4', name: '流程与步骤可执行性', score: 15, max: 15, confidence: 'H' },
+  { id: 'D5', name: '异常与边界处理', score: 12, max: 12, confidence: 'H' },
+  { id: 'D6', name: '示例与验证充分性', score: 10, max: 10, confidence: 'M' },
+  { id: 'D7', name: '依赖与环境说明', score: 8, max: 8, confidence: 'H' },
+  { id: 'D8', name: '内容组织与可维护性', score: 13, max: 13, confidence: 'H' },
+  { id: 'D9', name: '安全与权限约束', score: 13, max: 13, confidence: 'H' },
+  { id: 'D10', name: '知识独特性', score: 5, max: 5, confidence: 'L' },
+] as const;
+
+const MOCK_SKILL_EVALUATION_DIMENSION_NAMES: Record<string, string> = {
+  D1: '目标清晰度',
+  D2: '输入规范',
+  D3: '输出规范',
+  D4: '流程可执行性',
+  D5: '边界处理',
+  D6: '示例验证',
+  D7: '环境依赖',
+  D8: '内容维护',
+  D9: '安全约束',
+  D10: '知识独特性',
+};
+
+function createMockSkillEvaluationDetail(
+  skillName: string,
+  params: Record<string, unknown> = {},
+): SkillEvaluationDetailDto {
+  const skill = findSkill(skillName);
+  const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
+  const seed = mockSeedFromSkillId(String(skill?.id ?? skillName));
+  const createTime = `${mockReviewTime(seed, 1)}:34`;
+  const updateTime = `${mockReviewTime(seed, 2)}:44`;
+  const improvements = [
+    {
+      action: `${skillName} 的目标、输入输出和适用场景描述较完整，建议补充失败示例。`,
+      linked_finding_ids: ['F2'],
+      linked_dimensions: ['D1'],
+    },
+    {
+      action: '高风险操作执行前增加用户明确确认，并限制可操作目录范围。',
+      linked_finding_ids: [],
+      linked_dimensions: ['D9'],
+    },
+    {
+      action: '补充参数校验、异常日志以及失败返回标准。',
+      linked_finding_ids: ['SEC-007'],
+      linked_dimensions: [],
+    },
+    {
+      action: '引用材料增加边界样例和反例说明。',
+      linked_finding_ids: ['F1'],
+      linked_dimensions: ['D6'],
+    },
+    {
+      action: '补充输出文件的命名、关键字段和格式要求。',
+      linked_finding_ids: ['F3'],
+      linked_dimensions: ['D3'],
+    },
+    {
+      action: '记录输入文件、处理结果、异常堆栈与执行耗时。',
+      linked_finding_ids: [],
+      linked_dimensions: [],
+    },
+    {
+      action: '声明运行时、依赖包版本和平台限制。',
+      linked_finding_ids: [],
+      linked_dimensions: ['D7'],
+    },
+    {
+      action: '统一文档中的术语、参数和字段命名。',
+      linked_finding_ids: ['F5'],
+      linked_dimensions: ['D4'],
+    },
+  ];
+
+  return {
+    skillName,
+    version,
+    taskId: `mock-eval-${seed}`,
+    state: 'completed',
+    modelName: 'fuyao-DeepSeekV4-PD',
+    total: 115,
+    max: 120,
+    percent: 95.8,
+    grade: 'A',
+    pattern: 'Process',
+    knowledgeRatio: { E: 0.5, A: 0.35, R: 0.15 },
+    dimensions: MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => ({
+      ...dimension,
+      low_confidence: dimension.confidence === 'L',
+      evidence: `${skillName}/SKILL.md 中与 ${dimension.id} 相关的说明。`,
+      rationale: `${dimension.name}覆盖较完整，当前得分 ${dimension.score}/${dimension.max}。`,
+      raw_score: dimension.id === 'D1' ? 16 : dimension.score,
+      adjusted_by_precheck: dimension.id === 'D1',
+      adjustment_reason: dimension.id === 'D1' ? '根据内容构成预检结果上调 1 分。' : '',
+      derivation_reason:
+        dimension.id === 'D1' ? 'D1 分数由系统按 E+A 非冗余占比推导：E=0.5，A=0.35。' : '',
+    })),
+    criticalIssues: [
+      {
+        id: 'SEC-003',
+        severity: 'high',
+        dimensions: ['D9'],
+        evidence: 'scripts/clean.sh',
+        message: 'Skill 允许直接执行未经确认的删除命令。',
+      },
+      {
+        id: 'SEC-007',
+        severity: 'high',
+        dimensions: ['D5', 'D9'],
+        evidence: 'scripts/export.sh',
+        message: '未对输入文件类型与大小进行校验。',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'low',
+        dimensions: ['D6'],
+        evidence: 'references/usage.md',
+        message: '引用资料缺少边界场景和反例说明。',
+      },
+      {
+        id: 'F2',
+        severity: 'low',
+        dimensions: ['D1'],
+        evidence: 'SKILL.md L1-L7',
+        message: '版本号表明 Skill 可能仍处于早期开发阶段，需要补充实战验证说明。',
+      },
+      {
+        id: 'F3',
+        severity: 'low',
+        dimensions: ['D3'],
+        evidence: 'docs/output.md',
+        message: '输出文件关键字段和格式要求不够明确。',
+      },
+      {
+        id: 'F4',
+        severity: 'low',
+        dimensions: ['D8'],
+        evidence: 'scripts/main.py',
+        message: '部分关键操作没有记录日志。',
+      },
+      {
+        id: 'F5',
+        severity: 'low',
+        dimensions: ['D4'],
+        evidence: 'SKILL.md',
+        message: '文档中的少量术语和参数命名不一致。',
+      },
+    ],
+    improvements,
+    top3Improvements: improvements.slice(0, 3).map((item) => item.action),
+    metricGlossary: {
+      dimensions: Object.fromEntries(
+        MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => [
+          dimension.id,
+          `${dimension.name}（${MOCK_SKILL_EVALUATION_DIMENSION_NAMES[dimension.id]}）：评估该维度的内容完整度与可执行性。`,
+        ]),
+      ),
+      knowledge_ratio: '内容构成 = 独家知识(E) : 行动框架(A) : 通用套话(R)，之和为 1.0。',
+      confidence: 'H=高 / M=中 / L=低；D10 强制为 L。',
+      pattern: '技能形态：思维型、导航型、理念型、流程型、工具型。',
+    },
+    createTime,
+    updateTime,
   };
 }
 
@@ -2681,6 +2931,12 @@ function handleApiRequest(
   config: AxiosRequestConfig,
 ): MockEnvelope<unknown> | null {
   const params = readParams(config);
+  if (method === 'get' && path === '/v1/harness/plans/skill/eval') {
+    const skillName = String(params.skillName ?? '').trim();
+    if (!skillName) return fail('缺少必填参数：skillName', null);
+    return ok(createMockSkillEvaluationDetail(skillName, params));
+  }
+
   const reviewMatch = /^\/sync-applications\/([^/]+)\/review$/.exec(path);
   if (method === 'post' && reviewMatch) {
     const id = readNumber(reviewMatch[1], 0);

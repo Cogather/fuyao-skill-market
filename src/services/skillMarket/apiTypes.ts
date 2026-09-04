@@ -631,6 +631,93 @@ export type ExpertReviewSubmitBody = {
   overallOpinion?: string;
 };
 
+/** Skill 清单详情中的统一评估查询参数；后端契约确认后可在 service 层集中调整。 */
+export type SkillEvaluationDetailParams = {
+  skillName: string;
+  version: string;
+};
+
+export type SkillEvaluationDimensionDto = {
+  id: string;
+  name: string;
+  score: number;
+  max: number;
+  confidence?: string;
+  low_confidence?: boolean;
+  evidence?: string;
+  rationale?: string;
+  raw_score?: number;
+  adjusted_by_precheck?: boolean;
+  adjustment_reason?: string;
+  derivation_reason?: string;
+};
+
+export type SkillEvaluationFindingDto = {
+  id: string;
+  severity?: string;
+  dimensions?: string[];
+  evidence?: string;
+  message: string;
+};
+
+export type SkillEvaluationImprovementDto = {
+  action: string;
+  linked_finding_ids?: string[];
+  linked_dimensions?: string[];
+};
+
+export type SkillEvaluationCriticalIssueDto =
+  | string
+  | {
+      id?: string;
+      severity?: string;
+      dimensions?: string[];
+      evidence?: string;
+      message?: string;
+      title?: string;
+      description?: string;
+    };
+
+export type SkillEvaluationMetricGlossaryDto = {
+  dimensions?: Record<string, string>;
+  knowledge_ratio?: string;
+  confidence?: string;
+  pattern?: string;
+};
+
+/** Skill 清单详情中的统一评估响应数据。 */
+export type SkillEvaluationDetailDto = {
+  skillName: string;
+  version: string;
+  taskId?: string;
+  state?: string;
+  modelName?: string;
+  total?: number;
+  max?: number;
+  percent?: number;
+  grade?: string;
+  pattern?: string;
+  knowledgeRatio?: {
+    E?: number;
+    A?: number;
+    R?: number;
+  };
+  dimensions?: SkillEvaluationDimensionDto[];
+  findings?: SkillEvaluationFindingDto[];
+  improvements?: SkillEvaluationImprovementDto[];
+  criticalIssues?: SkillEvaluationCriticalIssueDto[];
+  top3Improvements?: string[];
+  metricGlossary?: SkillEvaluationMetricGlossaryDto;
+  createTime?: string;
+  updateTime?: string;
+};
+
+/** 评估接口不返回公共响应中的 code 字段，因此单独定义响应结构。 */
+export type SkillEvaluationDetailResponseDto = {
+  meta: ApiMeta;
+  data: SkillEvaluationDetailDto | null;
+};
+
 /** Skill 清单新增（POST /management/add） */
 export type CreateSkillMasterManagementParams = {
   userId: string;

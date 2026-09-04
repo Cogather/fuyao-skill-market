@@ -3103,6 +3103,11 @@
   padding: 16px;
 }
 
+/* DeptSkillReviewPanel overlay 降低层级 */
+.dept-review-content .overlay {
+  z-index: 1000;
+}
+
 .v-dialog {
   width: 100%;
   max-width: 420px;
@@ -4156,6 +4161,11 @@
 
 .my-release-panel .col-dl {
   min-width: 92px;
+}
+
+.my-release-panel .col-comment {
+  min-width: 70px;
+  text-align: center;
 }
 
 .my-release-panel .col-action {
@@ -5764,33 +5774,6 @@
   color: #475569;
   font-size: 14px;
   line-height: 1.6;
-}
-
-.ai-evo-reject-reason {
-  margin-top: 8px;
-}
-
-.ai-evo-reject-reason-label {
-  font-weight: 600;
-}
-
-.ai-evo-reject-reason-optional {
-  font-weight: 400;
-  color: #94a3b8;
-}
-
-.ai-evo-reject-reason .admin-textarea {
-  font-weight: 400;
-}
-
-.ai-evo-reject-reason-count {
-  align-self: flex-end;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.ai-evo-reject-reason-count.is-near-limit {
-  color: #dc2626;
 }
 
 .btn.danger {
