@@ -12,6 +12,7 @@ const PARENT_CONTEXT_STORAGE_KEY = '__skill_market_parent_context_v1__';
 
 // 当前项目的用户上下文由父应用注入，暂不调用 /users/validate。
 
+  
 function firstString(value: unknown): string {
   const raw = Array.isArray(value) ? value[0] : value;
   return typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
