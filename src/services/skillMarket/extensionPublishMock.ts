@@ -1,3 +1,5 @@
+import { reactive } from 'vue';
+
 export type ExtensionCapabilityType = 'skill' | 'command' | 'agent';
 
 export type ExtensionCapabilityFile = {
@@ -845,4 +847,12 @@ const scenes: ExtensionScene[] = [
 
 export function createMockExtensionScenes(): ExtensionScene[] {
   return structuredClone(scenes);
+}
+
+let sharedMockExtensionScenes: ExtensionScene[] | undefined;
+
+/** Asset 聚合页与 Extension 发布页共用同一份运行时 Mock 状态。 */
+export function getSharedMockExtensionScenes(): ExtensionScene[] {
+  sharedMockExtensionScenes ??= reactive(createMockExtensionScenes()) as ExtensionScene[];
+  return sharedMockExtensionScenes;
 }

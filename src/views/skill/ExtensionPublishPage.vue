@@ -19,7 +19,7 @@ import {
 } from '../../services/skillMarket/extensionPublishHttp';
 import {
   MOCK_EXTENSION_PRODUCTS,
-  createMockExtensionScenes,
+  getSharedMockExtensionScenes,
   type ExtensionCapability,
   type ExtensionCapabilityType,
   type ExtensionProduct,
@@ -72,7 +72,7 @@ const emit = defineEmits<{
 }>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
-const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : createMockExtensionScenes());
+const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : getSharedMockExtensionScenes());
 const products = ref<ExtensionProduct[]>(transportIsHttp ? [] : MOCK_EXTENSION_PRODUCTS);
 const filterLevelOptions: ExtensionFilterLevel[] = ['产品级'];
 const organizations = ref<PublishableOrganization[]>(

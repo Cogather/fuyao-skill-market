@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
@@ -75,6 +75,7 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
 
 const activeHarnessTab = ref<HarnessTab>('planning');
 const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
+const planningPage = ref<InstanceType<typeof SkillPlanningPage> | null>(null);
 const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
@@ -332,6 +333,26 @@ function selectHarnessTab(tab: HarnessTab): void {
   activeHarnessTab.value = tab;
 }
 
+async function manageAssetCatalog(payload: {
+  assetType: 'Agent' | 'Skill' | 'Command';
+  action: 'create' | 'import';
+  scope: HarnessScopeSnapshot;
+}): Promise<void> {
+  const targetTab: PlanningMemoryKey =
+    payload.assetType === 'Skill'
+      ? 'planning'
+      : payload.assetType === 'Command'
+        ? 'command'
+        : 'agent';
+  catalogScopeSnapshots.value[targetTab] = {
+    ...payload.scope,
+    departmentPath: [...payload.scope.departmentPath],
+  };
+  activeHarnessTab.value = targetTab;
+  await nextTick();
+  await planningPage.value?.openCatalogAction(payload.action, payload.scope);
+}
+
 function updateConfigurationScopeSnapshot(
   key: 'scene' | 'activity',
   snapshot: HarnessScopeSnapshot,
@@ -428,7 +449,15 @@ onBeforeRouteLeave(() => {
       role="tabpanel"
       aria-labelledby="harness-tab-assets"
     >
-      <AgentSkillAssetsPage />
+      <AgentSkillAssetsPage
+        :user-id="userId"
+        :user-name="userName"
+        :department-tree="departmentTree"
+        :current-user-department-path="currentUserDepartmentPermission.path"
+        :allowed-department-paths="permissionDepartmentPaths"
+        :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        @manage-catalog="manageAssetCatalog"
+      />
     </section>
 
     <section
@@ -439,6 +468,7 @@ onBeforeRouteLeave(() => {
       :aria-labelledby="`harness-tab-${activeHarnessTab}`"
     >
       <SkillPlanningPage
+        ref="planningPage"
         :key="activeHarnessTab"
         :capability-type="
           activeHarnessTab === 'command'

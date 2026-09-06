@@ -246,18 +246,26 @@ async function loadProductOptions(preferredScope?: HarnessScopeSnapshot): Promis
       departmentCode,
     );
     if (requestSequence !== productLoadSequence) return;
-    productOptions.value = options;
     const restoredOption = preferredScope
       ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
         ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
-    const firstOption = restoredOption ?? options[0];
+    const externalOption =
+      !restoredOption && preferredScope?.offeringName
+        ? {
+            offeringId: preferredScope.offeringId,
+            offeringName: preferredScope.offeringName,
+            planningDeptName: filterForm.departmentName,
+          }
+        : undefined;
+    productOptions.value = externalOption ? [...options, externalOption] : options;
+    const firstOption = restoredOption ?? externalOption ?? options[0];
     if (firstOption) {
       filterForm.product = firstOption.offeringName;
     }
-    if (!options.some((item) => item.offeringName === filterForm.product)) {
+    if (!productOptions.value.some((item) => item.offeringName === filterForm.product)) {
       filterForm.product = '';
     }
   } catch (error) {
@@ -304,6 +312,7 @@ function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
   filterForm.level = snapshot.level;
   departmentSegments.value = path;
   filterForm.departmentName = path.at(-1) ?? '';
+  filterForm.product = snapshot.level === '产品级' ? snapshot.offeringName.trim() : '';
   return { ...snapshot, departmentPath: [...path] };
 }
 
@@ -842,6 +851,28 @@ async function confirmDelete(): Promise<void> {
 function triggerImport(): void {
   importInputRef.value?.click();
 }
+
+function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
+  const path = normalizePath(scope.departmentPath);
+  if (!['产品级', '部门级'].includes(scope.level) || !pathExists(props.departmentTree, path)) {
+    showToast('资产范围已失效，请重新选择部门和产品');
+    return false;
+  }
+  filterForm.level = scope.level;
+  departmentSegments.value = path;
+  filterForm.departmentName = path.at(-1) ?? '';
+  filterForm.product = scope.level === '产品级' ? scope.offeringName.trim() : '';
+  pageNum.value = 1;
+  selectedIds.value = [];
+  void (async () => {
+    await loadProductOptions(scope);
+    await reload();
+    emitScopeSnapshot();
+  })();
+  return true;
+}
+
+defineExpose({ openCreate, triggerImport, applyExternalScope });
 
 async function handleImport(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;

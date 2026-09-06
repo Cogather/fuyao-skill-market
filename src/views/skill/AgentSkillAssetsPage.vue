@@ -1,337 +1,211 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
-type AssetType = 'Agent' | 'Skill' | 'Command' | 'Extension';
-type AssetFilter = 'all' | AssetType;
+import { getHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
+import {
+  harnessAssetPublishVersion,
+  harnessAssetStatus,
+  hasInProgressCurrentRelease,
+  hasSuccessfulCurrentRelease,
+  type HarnessAsset,
+  type HarnessAssetDetail,
+  type HarnessAssetFilter,
+  type HarnessAssetOrganization,
+  type HarnessAssetProduct,
+  type HarnessAssetQualityReport,
+  type HarnessAssetRelease,
+  type HarnessAssetScope,
+  type HarnessAssetType,
+} from '../../services/skillMarket/assetManagementTypes';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+
 type PageView = 'list' | 'detail' | 'publish';
-
-type ReleaseNote = {
-  version: string;
-  date: string;
-  organization: string;
-  notes?: string;
-  publisher?: string;
-  status?: '已发布' | '发布失败';
-  extensionName?: string;
-};
-
-type Asset = {
-  id: string;
+type CatalogAction = 'create' | 'import';
+type DepartmentTreeNode = {
+  id?: string;
+  deptCode?: string;
   name: string;
-  description?: string;
-  assetType: AssetType;
-  version?: string;
-  owner?: string;
-  productId?: string;
-  auto?: boolean;
-  marketplace?: {
-    rating?: number;
-    downloads?: number;
-    calls?: number;
-  };
-  releaseNotes: ReleaseNote[];
+  children?: DepartmentTreeNode[];
 };
-
-type Department = {
+type DepartmentRow = {
   id: string;
+  code: string;
   name: string;
-  parentId?: string;
+  path: string[];
+  depth: number;
+  hasChildren: boolean;
+  selectable: boolean;
 };
 
-type DepartmentRow = Department & { depth: number; hasChildren: boolean };
+const props = withDefaults(
+  defineProps<{
+    userId?: string;
+    userName?: string;
+    departmentTree?: DepartmentTreeNode[];
+    currentUserDepartmentPath?: string[];
+    allowedDepartmentPaths?: string[][];
+    restrictToAllowedDepartments?: boolean;
+  }>(),
+  {
+    userId: '',
+    userName: '',
+    departmentTree: () => [],
+    currentUserDepartmentPath: () => [],
+    allowedDepartmentPaths: () => [],
+    restrictToAllowedDepartments: false,
+  },
+);
 
-const TYPE_FILTERS: Array<{ key: AssetFilter; label: string }> = [
+const emit = defineEmits<{
+  'manage-catalog': [
+    payload: {
+      assetType: Exclude<HarnessAssetType, 'Extension'>;
+      action: CatalogAction;
+      scope: HarnessScopeSnapshot;
+    },
+  ];
+}>();
+
+const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
   { key: 'all', label: '全部' },
   { key: 'Agent', label: 'Agent' },
   { key: 'Skill', label: 'Skill' },
   { key: 'Command', label: 'Command' },
   { key: 'Extension', label: 'Extension' },
 ];
+const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
+const api = getHarnessAssetApi();
 
-const DEPARTMENTS: Department[] = [
-  { id: 'cloud-core', name: '云核心网产品线' },
-  { id: 'cloud-core-rd', name: '云核心网研发管理部', parentId: 'cloud-core' },
-  { id: 'packet-core', name: '分组核心网产品部', parentId: 'cloud-core-rd' },
-  { id: 'packet-control', name: '分组控制开发部', parentId: 'packet-core' },
-  { id: 'packet-access', name: '分组移动接入开发部', parentId: 'packet-core' },
-  { id: 'packet-data', name: '分组融合数据开发部', parentId: 'packet-core' },
-];
-
-const PRODUCTS = [
-  { id: 'udm', name: 'UDM', departmentId: 'packet-control' },
-  { id: 'upcf', name: 'UPCF', departmentId: 'packet-data' },
-  { id: 'uscdb', name: 'USCDB', departmentId: 'packet-access' },
-];
-
-const ASSET_SEED: Asset[] = [
-  {
-    id: 'udm-design-skill',
-    name: 'udm-design-skill',
-    assetType: 'Skill',
-    version: '1.0.0',
-    owner: '李丹',
-    productId: 'udm',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'udm-dt-agent',
-    name: 'udm-dt-skill',
-    assetType: 'Agent',
-    version: '1.0.0',
-    owner: '李丹',
-    productId: 'udm',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'udm-coding-skill',
-    name: 'udm-coding-skill',
-    assetType: 'Skill',
-    version: '1.0.0',
-    owner: '李丹',
-    productId: 'udm',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'udm-coding-agent',
-    name: 'udm-coding-agent',
-    assetType: 'Agent',
-    version: '1.0.0',
-    owner: '李丹',
-    productId: 'udm',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'codec-agent',
-    name: '编解码生成 Agent',
-    description: '根据协议定义生成编解码实现代码',
-    assetType: 'Agent',
-    version: '1.0.0',
-    productId: 'udm',
-    marketplace: { rating: 4.8, downloads: 256, calls: 560 },
-    releaseNotes: [
-      {
-        version: '1.0.0',
-        date: '2026-09-03T13:21:33.846Z',
-        organization: '云核心网研发管理部',
-        notes: '发布到组织：云核心网研发管理部',
-      },
-    ],
-  },
-  {
-    id: 'protocol-parser-skill',
-    name: '协议解析Skill',
-    description: '解析协议字段定义与类型约束，输出结构化协议描述',
-    assetType: 'Skill',
-    version: '1.0.0',
-    owner: '李工',
-    productId: 'udm',
-    marketplace: { rating: 4.1, downloads: 42, calls: 95 },
-    releaseNotes: [],
-  },
-  {
-    id: 'udm-mml-e2e-extension',
-    name: 'udm-mml-e2e-extension',
-    description: '基于场景「MML开发」自动生成的 Extension',
-    assetType: 'Extension',
-    version: '1.0.0',
-    productId: 'udm',
-    auto: true,
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'analyze-command',
-    name: '/analyze',
-    description: '分析输入并输出结构化结论',
-    assetType: 'Command',
-    owner: '赵工',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'codec-generate-command',
-    name: '/codec-generate',
-    description: '根据协议定义生成编解码实现',
-    assetType: 'Command',
-    version: '1.0.0',
-    productId: 'udm',
-    owner: '张工',
-    marketplace: {},
-    releaseNotes: [
-      {
-        version: '1.0.0',
-        date: '2026-09-04T06:35:28.350Z',
-        organization: '云核心网研发管理部',
-        notes: '发布到组织：云核心网研发管理部',
-      },
-    ],
-  },
-  {
-    id: 'codec-validate-command',
-    name: '/codec-validate',
-    description: '校验编解码实现的协议兼容性',
-    assetType: 'Command',
-    version: '1.0.0',
-    productId: 'udm',
-    owner: '张工',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'deploy-command',
-    name: '/deploy',
-    description: '发布产物到目标环境',
-    assetType: 'Command',
-    owner: '王工',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'format-check-command',
-    name: '/format-check',
-    description: '检查代码格式规范',
-    assetType: 'Command',
-    owner: '王工',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'pr-review-command',
-    name: '/pr-review',
-    description: '对指定 PR 进行代码评审并输出建议',
-    assetType: 'Command',
-    version: '1.0.0',
-    productId: 'udm',
-    owner: '李工',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'summarize-command',
-    name: '/summarize',
-    description: '对输入文本生成结构化摘要',
-    assetType: 'Command',
-    version: '1.0.0',
-    productId: 'udm',
-    owner: '钱工',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'test-unpublished-command',
-    name: '/test-unpublished',
-    description: '用于测试的未发布 Command',
-    assetType: 'Command',
-    owner: '测试',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'udm-e2e-command',
-    name: '/udm-e2e-command',
-    assetType: 'Command',
-    owner: '李丹',
-    marketplace: {},
-    releaseNotes: [],
-  },
-  {
-    id: 'udm-test-command',
-    name: '/udm-test-command',
-    assetType: 'Command',
-    owner: '李丹',
-    marketplace: {},
-    releaseNotes: [],
-  },
-];
-
-const ASSET_CONTENT: Record<AssetType, { document?: string; skillMd?: string; script?: string }> = {
-  Agent: {
-    document:
-      'Agent 能力说明：接收输入文本，输出分类/识别结果。\n调用：HTTP API\n输入：{ text: string }\n输出：{ category: string }',
-  },
-  Skill: {
-    skillMd:
-      '# Skill 能力说明\n\n分析输入并输出结构化结论。\n\n## 输入\n{ input: string }\n\n## 输出\n{ result: object }',
-    script: '#!/bin/bash\necho "analyzing..."\nnode ./analyze.js "$1"',
-  },
-  Command: {
-    document: 'Command：在 Agent 中通过 /xxx 触发，参数与正文由流水线发布回填。',
-  },
-  Extension: {},
-};
-
-const QUALITY_REPORT = {
-  overallScore: 92,
-  summary: '该 Skill 已通过质量门禁，整体评分 92 分，建议发布。',
-  items: [
-    { name: '单元测试覆盖率', value: '88%', pass: true },
-    { name: '性能基准', value: '90 分', pass: true },
-    { name: '安全扫描', value: '95 分', pass: true },
-    { name: '可维护性', value: '89 分', pass: true },
-  ],
-};
-
-const ORGANIZATIONS = ['云核心网研发管理部', '客服中心', '运维部', '数据中台', '安全部'];
-
-const assets = ref<Asset[]>(structuredClone(ASSET_SEED));
 const view = ref<PageView>('list');
-const filter = ref<AssetFilter>('all');
+const filter = ref<HarnessAssetFilter>('all');
 const selectedDepartmentId = ref('');
 const selectedProductId = ref('');
-const selectedAssetId = ref('');
+const assets = ref<HarnessAsset[]>([]);
+const products = ref<HarnessAssetProduct[]>([]);
+const selectedAssetKey = ref('');
+const detail = ref<HarnessAssetDetail | null>(null);
+const selectedVersion = ref('');
+const qualityReport = ref<HarnessAssetQualityReport | null>(null);
+const organizations = ref<HarnessAssetOrganization[]>([]);
+const selectedOrganizationId = ref('');
 const detailTab = ref<'content' | 'report'>('content');
 const publishTab = ref<'publish' | 'history'>('publish');
-const selectedOrganization = ref('');
 const departmentOpen = ref(false);
-const expandedDepartments = ref(new Set<string>(['cloud-core', 'cloud-core-rd', 'packet-core']));
+const expandedDepartments = ref(new Set<string>());
+const actionMenu = ref<CatalogAction | null>(null);
+const listLoading = ref(false);
+const listError = ref('');
+const productError = ref('');
+const detailLoading = ref(false);
+const detailError = ref('');
+const qualityLoading = ref(false);
+const qualityError = ref('');
+const organizationLoading = ref(false);
+const organizationError = ref('');
+const historyLoading = ref(false);
+const historyError = ref('');
+const publishSubmitting = ref(false);
 const toastMessage = ref('');
+let listSequence = 0;
+let productSequence = 0;
+let detailSequence = 0;
+let qualitySequence = 0;
+let historySequence = 0;
 let toastTimer: number | undefined;
 
-const selectedAsset = computed(
-  () => assets.value.find((asset) => asset.id === selectedAssetId.value) ?? null,
+function normalizePath(path: string[]): string[] {
+  return path.map((segment) => segment.trim()).filter(Boolean);
+}
+
+function pathStartsWith(path: string[], prefix: string[]): boolean {
+  return prefix.length <= path.length && prefix.every((segment, index) => path[index] === segment);
+}
+
+const normalizedAllowedPaths = computed(() =>
+  props.allowedDepartmentPaths.map(normalizePath).filter((path) => path.length > 0),
 );
 
-const selectedDepartmentPath = computed(() => {
-  const path: string[] = [];
-  let current = DEPARTMENTS.find((department) => department.id === selectedDepartmentId.value);
-  while (current) {
-    path.unshift(current.name);
-    current = current.parentId
-      ? DEPARTMENTS.find((department) => department.id === current?.parentId)
-      : undefined;
-  }
-  return path;
-});
+function filterDepartmentTree(
+  nodes: DepartmentTreeNode[],
+  parentPath: string[] = [],
+): DepartmentTreeNode[] {
+  if (!props.restrictToAllowedDepartments) return nodes;
+  if (normalizedAllowedPaths.value.length === 0) return [];
+  return nodes.flatMap((node) => {
+    const path = [...parentPath, node.name];
+    const visible = normalizedAllowedPaths.value.some(
+      (allowed) => pathStartsWith(path, allowed) || pathStartsWith(allowed, path),
+    );
+    if (!visible) return [];
+    return [{ ...node, children: filterDepartmentTree(node.children ?? [], path) }];
+  });
+}
 
-const selectedDepartmentLabel = computed(() =>
-  selectedDepartmentPath.value.length > 0 ? selectedDepartmentPath.value.join(' / ') : '选部门…',
-);
-
-const visibleDepartmentRows = computed<DepartmentRow[]>(() => {
+const selectableDepartmentTree = computed(() => filterDepartmentTree(props.departmentTree));
+const allDepartmentRows = computed<DepartmentRow[]>(() => {
   const rows: DepartmentRow[] = [];
-  const append = (parentId: string | undefined, depth: number) => {
-    DEPARTMENTS.filter((department) => department.parentId === parentId).forEach((department) => {
-      const hasChildren = DEPARTMENTS.some((item) => item.parentId === department.id);
-      rows.push({ ...department, depth, hasChildren });
-      if (hasChildren && expandedDepartments.value.has(department.id)) {
-        append(department.id, depth + 1);
-      }
+  const append = (nodes: DepartmentTreeNode[], parentPath: string[], depth: number): void => {
+    nodes.forEach((node, index) => {
+      const path = [...parentPath, node.name];
+      rows.push({
+        id: String(node.id || node.deptCode || `${path.join('/')}-${index}`),
+        code: String(node.deptCode || node.id || ''),
+        name: node.name,
+        path,
+        depth,
+        hasChildren: Boolean(node.children?.length),
+        selectable:
+          !props.restrictToAllowedDepartments ||
+          normalizedAllowedPaths.value.some((allowed) => pathStartsWith(path, allowed)),
+      });
+      append(node.children ?? [], path, depth + 1);
     });
   };
-  append(undefined, 0);
+  append(selectableDepartmentTree.value, [], 0);
   return rows;
 });
 
-const departmentProducts = computed(() =>
-  selectedDepartmentId.value
-    ? PRODUCTS.filter((product) => product.departmentId === selectedDepartmentId.value)
-    : PRODUCTS,
+const selectedDepartment = computed(
+  () => allDepartmentRows.value.find((row) => row.id === selectedDepartmentId.value) ?? null,
 );
-
+const selectedDepartmentLabel = computed(() =>
+  selectedDepartment.value ? selectedDepartment.value.path.join(' / ') : '选部门…',
+);
+const visibleDepartmentRows = computed(() =>
+  allDepartmentRows.value.filter((row) =>
+    row.path.slice(0, -1).every((_, index) => {
+      const parentPath = row.path.slice(0, index + 1);
+      const parent = allDepartmentRows.value.find(
+        (candidate) => candidate.path.join('\u0001') === parentPath.join('\u0001'),
+      );
+      return parent ? expandedDepartments.value.has(parent.id) : true;
+    }),
+  ),
+);
+const selectedProduct = computed(
+  () => products.value.find((product) => product.id === selectedProductId.value) ?? undefined,
+);
+const currentScope = computed<HarnessAssetScope | null>(() => {
+  const department = selectedDepartment.value;
+  if (!department) return null;
+  return {
+    userId: props.userId.trim(),
+    userName: props.userName.trim(),
+    department: {
+      id: department.id,
+      code: department.code,
+      name: department.name,
+      path: [...department.path],
+    },
+    product: selectedProduct.value
+      ? { ...selectedProduct.value, departmentPath: [...selectedProduct.value.departmentPath] }
+      : undefined,
+    assetType: filter.value,
+  };
+});
+const selectedAsset = computed(() =>
+  assets.value.find((asset) => `${asset.assetType}:${asset.id}` === selectedAssetKey.value) ?? null,
+);
 const filteredAssets = computed(() =>
   assets.value.filter(
     (asset) =>
@@ -339,32 +213,24 @@ const filteredAssets = computed(() =>
       (!selectedProductId.value || asset.productId === selectedProductId.value),
   ),
 );
-
-const currentContent = computed(() =>
-  selectedAsset.value ? ASSET_CONTENT[selectedAsset.value.assetType] : ASSET_CONTENT.Agent,
+const selectedOrganization = computed(
+  () => organizations.value.find((organization) => organization.id === selectedOrganizationId.value),
+);
+const detailVersions = computed(() =>
+  detail.value?.versions.length ? detail.value.versions : (selectedAsset.value?.versions ?? []),
+);
+const publishVersion = computed(() =>
+  selectedAsset.value && harnessAssetPublishVersion(selectedAsset.value)
+    ? `v${harnessAssetPublishVersion(selectedAsset.value)}`
+    : '无版本（未开发）',
 );
 
-const nextVersion = computed(() => {
-  const asset = selectedAsset.value;
-  if (!asset) return '';
-  if (asset.auto) return `v1.0.${asset.releaseNotes.length + 1}`;
-  return asset.version ? `v${asset.version}` : '无版本（未开发）';
-});
-
-function isPublished(asset: Asset): boolean {
-  return Boolean(
-    asset.version && asset.releaseNotes.some((release) => release.version === asset.version),
-  );
+function canPublishAsset(asset: HarnessAsset): boolean {
+  return Boolean(asset.currentVersion && asset.publishable && !hasInProgressCurrentRelease(asset));
 }
 
-function statusLabel(asset: Asset): string {
-  if (!asset.version) return '未开发';
-  return isPublished(asset) ? '已发布' : '待发布';
-}
-
-function statusClass(asset: Asset): string {
-  if (!asset.version) return 'is-info';
-  return isPublished(asset) ? 'is-success' : 'is-warning';
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function showToast(message: string): void {
@@ -372,7 +238,7 @@ function showToast(message: string): void {
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toastMessage.value = '';
-  }, 2200);
+  }, 2600);
 }
 
 function toggleDepartment(id: string): void {
@@ -382,58 +248,343 @@ function toggleDepartment(id: string): void {
   expandedDepartments.value = next;
 }
 
-function selectDepartment(id: string): void {
-  selectedDepartmentId.value = id;
-  selectedProductId.value = '';
-  departmentOpen.value = false;
+function expandSelectedAncestors(path: string[]): void {
+  const next = new Set(expandedDepartments.value);
+  path.slice(0, -1).forEach((_, index) => {
+    const parentPath = path.slice(0, index + 1).join('\u0001');
+    const parent = allDepartmentRows.value.find((row) => row.path.join('\u0001') === parentPath);
+    if (parent) next.add(parent.id);
+  });
+  expandedDepartments.value = next;
 }
 
-function openDetail(asset: Asset): void {
-  selectedAssetId.value = asset.id;
-  detailTab.value = 'content';
-  view.value = 'detail';
+function defaultDepartmentRow(): DepartmentRow | null {
+  const preferredPaths = [
+    ...normalizedAllowedPaths.value,
+    normalizePath(props.currentUserDepartmentPath),
+  ].filter((path) => path.length > 0);
+  for (const path of preferredPaths) {
+    const match = allDepartmentRows.value.find(
+      (row) => row.selectable && row.path.join('\u0001') === path.join('\u0001'),
+    );
+    if (match) return match;
+  }
+  return (
+    [...allDepartmentRows.value].reverse().find((row) => row.selectable && !row.hasChildren) ??
+    allDepartmentRows.value.find((row) => row.selectable) ??
+    null
+  );
 }
 
-function openPublish(asset: Asset): void {
-  selectedAssetId.value = asset.id;
-  selectedOrganization.value = '';
-  publishTab.value = 'publish';
-  view.value = 'publish';
-}
-
-function confirmPublish(): void {
-  const asset = selectedAsset.value;
-  if (!asset) return;
-  if (!selectedOrganization.value) {
-    showToast('请先选择目标组织');
+async function reloadAssets(): Promise<void> {
+  const scope = currentScope.value;
+  if (!scope) {
+    assets.value = [];
+    listError.value = '暂无可用部门范围';
     return;
   }
+  const sequence = ++listSequence;
+  listLoading.value = true;
+  listError.value = '';
+  try {
+    const result = await api.queryAssets(scope);
+    if (sequence !== listSequence) return;
+    assets.value = result.list;
+  } catch (error) {
+    if (sequence !== listSequence) return;
+    assets.value = [];
+    listError.value = errorMessage(error, '资产清单加载失败');
+  } finally {
+    if (sequence === listSequence) listLoading.value = false;
+  }
+}
 
-  const version = nextVersion.value.replace(/^v/, '');
-  asset.version = version;
-  asset.releaseNotes.unshift({
-    version,
-    date: new Date().toISOString(),
-    organization: selectedOrganization.value,
-    notes: `发布到组织：${selectedOrganization.value}`,
-    publisher: '当前用户',
-    status: '已发布',
-    extensionName: asset.name,
-  });
-  publishTab.value = 'history';
-  showToast('发布成功（mock）');
+async function reloadProductsAndAssets(): Promise<void> {
+  const sequence = ++productSequence;
+  const scope = currentScope.value;
+  products.value = [];
+  selectedProductId.value = '';
+  productError.value = '';
+  if (!scope) {
+    await reloadAssets();
+    return;
+  }
+  listLoading.value = true;
+  listError.value = '';
+  try {
+    const nextProducts = await api.queryProducts(scope);
+    if (sequence !== productSequence) return;
+    products.value = nextProducts;
+  } catch (error) {
+    if (sequence !== productSequence) return;
+    productError.value = errorMessage(error, '产品列表加载失败');
+  }
+  if (sequence !== productSequence) return;
+  await reloadAssets();
+}
+
+async function selectDepartment(id: string): Promise<void> {
+  const target = allDepartmentRows.value.find((row) => row.id === id);
+  if (!target?.selectable) return;
+  selectedDepartmentId.value = id;
+  departmentOpen.value = false;
+  const row = selectedDepartment.value;
+  if (row) expandSelectedAncestors(row.path);
+  await reloadProductsAndAssets();
+}
+
+async function selectFilter(nextFilter: HarnessAssetFilter): Promise<void> {
+  filter.value = nextFilter;
+  await reloadAssets();
+}
+
+async function loadDetail(): Promise<void> {
+  const scope = currentScope.value;
+  const asset = selectedAsset.value;
+  if (!scope || !asset) return;
+  const sequence = ++detailSequence;
+  detailLoading.value = true;
+  detailError.value = '';
+  try {
+    const response = await api.queryDetail(scope, asset, selectedVersion.value);
+    if (sequence !== detailSequence) return;
+    detail.value = response;
+  } catch (error) {
+    if (sequence !== detailSequence) return;
+    detail.value = null;
+    detailError.value = errorMessage(error, '资产内容加载失败');
+  } finally {
+    if (sequence === detailSequence) detailLoading.value = false;
+  }
+}
+
+async function openDetail(asset: HarnessAsset): Promise<void> {
+  qualitySequence += 1;
+  historySequence += 1;
+  selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
+  selectedVersion.value = asset.currentVersion || asset.versions[0] || '';
+  detailTab.value = 'content';
+  qualityReport.value = null;
+  qualityLoading.value = false;
+  qualityError.value = '';
+  view.value = 'detail';
+  await loadDetail();
+}
+
+async function changeDetailVersion(): Promise<void> {
+  qualitySequence += 1;
+  qualityReport.value = null;
+  qualityLoading.value = false;
+  qualityError.value = '';
+  await loadDetail();
+  if (detailTab.value === 'report') await loadQualityReport();
+}
+
+async function loadQualityReport(): Promise<void> {
+  const scope = currentScope.value;
+  const asset = selectedAsset.value;
+  if (!scope || !asset || asset.assetType !== 'Skill' || !selectedVersion.value) return;
+  const sequence = ++qualitySequence;
+  const assetKey = `${asset.assetType}:${asset.id}`;
+  const version = selectedVersion.value;
+  qualityLoading.value = true;
+  qualityError.value = '';
+  try {
+    const response = await api.queryQualityReport(scope, asset, version);
+    if (
+      sequence !== qualitySequence ||
+      selectedAssetKey.value !== assetKey ||
+      selectedVersion.value !== version
+    ) {
+      return;
+    }
+    qualityReport.value = response;
+  } catch (error) {
+    if (sequence !== qualitySequence || selectedAssetKey.value !== assetKey) return;
+    qualityReport.value = null;
+    qualityError.value = errorMessage(error, '质量报告加载失败');
+  } finally {
+    if (sequence === qualitySequence) qualityLoading.value = false;
+  }
+}
+
+async function selectDetailTab(tab: 'content' | 'report'): Promise<void> {
+  detailTab.value = tab;
+  if (tab === 'report' && !qualityReport.value) await loadQualityReport();
+}
+
+function replaceAssetReleases(assetKey: string, releases: HarnessAssetRelease[]): void {
+  const asset = assets.value.find(
+    (candidate) => `${candidate.assetType}:${candidate.id}` === assetKey,
+  );
+  if (!asset) return;
+  asset.releases = releases.map((release) => ({
+    ...release,
+    organization: { ...release.organization },
+  }));
+}
+
+async function loadHistory(): Promise<void> {
+  const scope = currentScope.value;
+  const asset = selectedAsset.value;
+  if (!scope || !asset) return;
+  const sequence = ++historySequence;
+  const assetKey = `${asset.assetType}:${asset.id}`;
+  historyLoading.value = true;
+  historyError.value = '';
+  try {
+    const releases = await api.queryReleases(scope, asset);
+    if (sequence !== historySequence || selectedAssetKey.value !== assetKey) return;
+    replaceAssetReleases(assetKey, releases);
+  } catch (error) {
+    if (sequence !== historySequence || selectedAssetKey.value !== assetKey) return;
+    historyError.value = errorMessage(error, '发布历史加载失败');
+  } finally {
+    if (sequence === historySequence) historyLoading.value = false;
+  }
+}
+
+async function openPublish(asset: HarnessAsset): Promise<void> {
+  if (hasInProgressCurrentRelease(asset)) {
+    showToast('该版本正在发布中，请勿重复提交');
+    return;
+  }
+  if (!asset.currentVersion || !asset.publishable) {
+    showToast('该资产尚未生成可发布版本');
+    return;
+  }
+  selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
+  selectedVersion.value = harnessAssetPublishVersion(asset);
+  detail.value = null;
+  detailError.value = '';
+  qualitySequence += 1;
+  qualityReport.value = null;
+  qualityLoading.value = false;
+  selectedOrganizationId.value = '';
+  publishTab.value = 'publish';
+  organizationError.value = '';
+  historyError.value = '';
+  view.value = 'publish';
+  const scope = currentScope.value;
+  if (!scope) return;
+  organizationLoading.value = true;
+  try {
+    const [nextOrganizations] = await Promise.all([
+      api.queryOrganizations(scope),
+      loadHistory(),
+      loadDetail(),
+    ]);
+    organizations.value = nextOrganizations;
+    selectedOrganizationId.value = nextOrganizations[0]?.id ?? '';
+    if (!nextOrganizations.length) organizationError.value = '当前用户暂无可发布组织';
+  } catch (error) {
+    organizations.value = [];
+    organizationError.value = errorMessage(error, '可发布组织加载失败');
+  } finally {
+    organizationLoading.value = false;
+  }
+}
+
+async function selectPublishTab(tab: 'publish' | 'history'): Promise<void> {
+  publishTab.value = tab;
+  if (tab === 'history') await loadHistory();
+}
+
+async function confirmPublish(): Promise<void> {
+  const scope = currentScope.value;
+  const asset = selectedAsset.value;
+  const organization = selectedOrganization.value;
+  if (!scope || !asset) return;
+  if (hasInProgressCurrentRelease(asset)) {
+    organizationError.value = '该版本正在发布中，请勿重复提交';
+    return;
+  }
+  if (!organization) {
+    organizationError.value = '请先选择目标组织';
+    return;
+  }
+  publishSubmitting.value = true;
+  organizationError.value = '';
+  try {
+    await api.publish({ scope, asset, organization, channel: 'product' });
+    await loadHistory();
+    publishTab.value = 'history';
+    showToast('发布已提交');
+  } catch (error) {
+    organizationError.value = errorMessage(error, '发布失败，请稍后重试');
+  } finally {
+    publishSubmitting.value = false;
+  }
+}
+
+function statusLabel(asset: HarnessAsset): string {
+  return harnessAssetStatus(asset);
+}
+
+function statusClass(asset: HarnessAsset): string {
+  const status = harnessAssetStatus(asset);
+  if (status === '已发布') return 'is-success';
+  if (status === '待发布') return 'is-warning';
+  return 'is-info';
+}
+
+function releaseStatusClass(release: HarnessAssetRelease): string {
+  if (release.status === '成功') return 'is-success';
+  if (release.status === '失败') return 'is-warning';
+  return 'is-info';
 }
 
 function formatReleaseDate(value: string): string {
   if (!value) return '-';
+  const date = new Date(value.replace(' ', 'T'));
+  if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value));
+  }).format(date);
 }
+
+function openActionMenu(action: CatalogAction): void {
+  actionMenu.value = actionMenu.value === action ? null : action;
+}
+
+function manageCatalog(assetType: (typeof CATALOG_TYPES)[number], action: CatalogAction): void {
+  actionMenu.value = null;
+  const department = selectedDepartment.value;
+  const product = selectedProduct.value;
+  if (!department) {
+    showToast('请先选择部门');
+    return;
+  }
+  emit('manage-catalog', {
+    assetType,
+    action,
+    scope: {
+      level: product ? '产品级' : '部门级',
+      departmentPath: [...department.path],
+      offeringId: product?.id ?? '',
+      offeringName: product?.name ?? '',
+    },
+  });
+}
+
+onMounted(async () => {
+  const row = defaultDepartmentRow();
+  if (!row) {
+    listError.value = '暂无可用部门范围';
+    return;
+  }
+  selectedDepartmentId.value = row.id;
+  expandSelectedAncestors(row.path);
+  await reloadProductsAndAssets();
+});
+
+onBeforeUnmount(() => {
+  window.clearTimeout(toastTimer);
+});
 </script>
 
 <template>
@@ -448,17 +599,32 @@ function formatReleaseDate(value: string): string {
           <button
             type="button"
             class="asset-button is-secondary"
-            @click="showToast('批量导入（mock）')"
+            :aria-expanded="actionMenu === 'import'"
+            @click="openActionMenu('import')"
           >
             批量导入
           </button>
           <button
             type="button"
             class="asset-button is-primary"
-            @click="showToast('新建资产（mock）')"
+            :aria-expanded="actionMenu === 'create'"
+            @click="openActionMenu('create')"
           >
             + 新建资产
           </button>
+          <div v-if="actionMenu" class="asset-action-menu" role="menu">
+            <strong>{{ actionMenu === 'create' ? '新建哪类资产' : '导入哪类资产' }}</strong>
+            <button
+              v-for="assetType in CATALOG_TYPES"
+              :key="assetType"
+              type="button"
+              role="menuitem"
+              @click="manageCatalog(assetType, actionMenu)"
+            >
+              {{ assetType }}
+            </button>
+            <small>Extension 由场景及绑定能力自动生成</small>
+          </div>
         </div>
       </header>
 
@@ -492,7 +658,7 @@ function formatReleaseDate(value: string): string {
                 type="button"
                 class="asset-department__toggle"
                 :disabled="!department.hasChildren"
-                :aria-label="`${expandedDepartments.has(department.id) ? '收起' : '展开'}${department.name}`"
+                :aria-label="`${expandedDepartments.has(department.id) ? '收起' : '展开'}${department.path.join(' / ')}`"
                 @click="toggleDepartment(department.id)"
               >
                 {{
@@ -503,6 +669,9 @@ function formatReleaseDate(value: string): string {
                 type="button"
                 class="asset-department__name"
                 :class="{ 'is-selected': selectedDepartmentId === department.id }"
+                :aria-label="department.path.join(' / ')"
+                :disabled="!department.selectable"
+                :title="department.selectable ? '' : '仅用于展开授权范围，不能按该部门查询'"
                 @click="selectDepartment(department.id)"
               >
                 {{ department.name }}
@@ -512,17 +681,19 @@ function formatReleaseDate(value: string): string {
         </div>
 
         <select
-          v-if="departmentProducts.length > 0"
+          v-if="products.length > 0"
           v-model="selectedProductId"
           class="asset-select"
           aria-label="产品筛选"
+          @change="reloadAssets"
         >
           <option value="">全部产品</option>
-          <option v-for="product in departmentProducts" :key="product.id" :value="product.id">
+          <option v-for="product in products" :key="product.id" :value="product.id">
             {{ product.name }}
           </option>
         </select>
       </section>
+      <p v-if="productError" class="asset-scope-error" role="alert">{{ productError }}</p>
 
       <nav class="asset-filters" aria-label="资产类型">
         <button
@@ -530,17 +701,24 @@ function formatReleaseDate(value: string): string {
           :key="item.key"
           type="button"
           :class="{ 'is-active': filter === item.key }"
-          @click="filter = item.key"
+          @click="selectFilter(item.key)"
         >
           {{ item.label }}
         </button>
       </nav>
 
       <section class="asset-board">
-        <div v-if="filteredAssets.length > 0" class="asset-grid">
+        <div v-if="listLoading" class="asset-empty" role="status">正在加载资产…</div>
+        <div v-else-if="listError" class="asset-empty asset-empty--error" role="alert">
+          <span>{{ listError }}</span>
+          <button type="button" class="asset-button is-secondary" @click="reloadAssets">
+            重新加载
+          </button>
+        </div>
+        <div v-else-if="filteredAssets.length > 0" class="asset-grid">
           <article
             v-for="asset in filteredAssets"
-            :key="asset.id"
+            :key="`${asset.assetType}:${asset.id}`"
             class="asset-card"
             role="button"
             tabindex="0"
@@ -554,19 +732,19 @@ function formatReleaseDate(value: string): string {
             </div>
             <p>{{ asset.description || '暂无描述' }}</p>
             <div class="asset-card__meta">
-              <span>⭐ {{ (asset.marketplace?.rating ?? 0).toFixed(1) }}</span>
-              <span>📥 {{ asset.marketplace?.downloads ?? 0 }}</span>
-              <span>📞 {{ asset.marketplace?.calls ?? 0 }}</span>
-              <span>{{ asset.version ? `v${asset.version}` : '未开发' }}</span>
+              <span>⭐ {{ asset.marketplace.rating.toFixed(1) }}</span>
+              <span>📥 {{ asset.marketplace.downloads }}</span>
+              <span>📞 {{ asset.marketplace.calls }}</span>
+              <span>{{ asset.currentVersion ? `v${asset.currentVersion}` : '未开发' }}</span>
               <span class="asset-badge" :class="statusClass(asset)">{{ statusLabel(asset) }}</span>
             </div>
             <button
-              v-if="asset.version && !isPublished(asset)"
+              v-if="canPublishAsset(asset)"
               type="button"
               class="asset-button is-primary asset-card__publish"
               @click.stop="openPublish(asset)"
             >
-              发布
+              {{ hasSuccessfulCurrentRelease(asset) ? '继续发布' : '发布' }}
             </button>
           </article>
         </div>
@@ -589,8 +767,11 @@ function formatReleaseDate(value: string): string {
       <section class="asset-board asset-detail">
         <label class="asset-field asset-field--inline">
           <span>版本</span>
-          <select class="asset-select">
-            <option>v{{ selectedAsset.version || '1.0.0' }}</option>
+          <select v-model="selectedVersion" class="asset-select" @change="changeDetailVersion">
+            <option v-if="detailVersions.length === 0" value="">无可用版本</option>
+            <option v-for="version in detailVersions" :key="version" :value="version">
+              v{{ version }}
+            </option>
           </select>
         </label>
 
@@ -598,7 +779,7 @@ function formatReleaseDate(value: string): string {
           <button
             type="button"
             :class="{ 'is-active': detailTab === 'content' }"
-            @click="detailTab = 'content'"
+            @click="selectDetailTab('content')"
           >
             内容
           </button>
@@ -606,41 +787,44 @@ function formatReleaseDate(value: string): string {
             v-if="selectedAsset.assetType === 'Skill'"
             type="button"
             :class="{ 'is-active': detailTab === 'report' }"
-            @click="detailTab = 'report'"
+            @click="selectDetailTab('report')"
           >
             质量报告
           </button>
         </nav>
 
-        <div v-if="detailTab === 'content'" class="asset-file-tree">
-          <template v-if="selectedAsset.assetType === 'Skill'">
-            <strong>📁 {{ selectedAsset.name }}/</strong>
-            <div class="asset-file-tree__branch">
-              <span>📄 SKILL.md</span>
-              <pre>{{ currentContent.skillMd }}</pre>
-              <span>📄 run.sh</span>
-              <pre>{{ currentContent.script }}</pre>
-            </div>
-          </template>
-          <template v-else-if="selectedAsset.assetType === 'Extension'">
-            <strong>📁 {{ selectedAsset.name }}/</strong>
-            <div class="asset-file-tree__branch">
-              <strong>📁 commands/</strong><small>（从工作流加载）</small>
-              <strong>📁 agents/</strong><small>（从工作流加载）</small> <strong>📁 skills/</strong
-              ><small>（从工作流加载）</small>
-            </div>
-          </template>
-          <template v-else>
-            <span>📄 {{ selectedAsset.name }}.md</span>
-            <pre>{{ currentContent.document || '内容由流水线发布后回填' }}</pre>
-          </template>
+        <div v-if="detailTab === 'content' && detailLoading" class="asset-empty" role="status">
+          正在加载资产内容…
+        </div>
+        <div v-else-if="detailTab === 'content' && detailError" class="asset-empty asset-empty--error" role="alert">
+          <span>{{ detailError }}</span>
+          <button type="button" class="asset-button is-secondary" @click="loadDetail">
+            重新加载
+          </button>
+        </div>
+        <div v-else-if="detailTab === 'content'" class="asset-file-tree">
+          <strong>📁 {{ selectedAsset.name }}/</strong>
+          <div v-if="detail?.files.length" class="asset-file-tree__branch">
+            <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
+              <span>📄 {{ file.path }}</span>
+              <pre>{{ file.content || '暂无文件内容' }}</pre>
+            </template>
+          </div>
+          <div v-else class="asset-empty">该版本暂无文件</div>
         </div>
 
-        <div v-else class="asset-report">
+        <div v-else-if="qualityLoading" class="asset-empty" role="status">正在加载质量报告…</div>
+        <div v-else-if="qualityError" class="asset-empty asset-empty--error" role="alert">
+          <span>{{ qualityError }}</span>
+          <button type="button" class="asset-button is-secondary" @click="loadQualityReport">
+            重新加载
+          </button>
+        </div>
+        <div v-else-if="qualityReport" class="asset-report">
           <div class="asset-report__summary">
             <span>整体评分</span>
-            <strong>{{ QUALITY_REPORT.overallScore }}</strong>
-            <small>{{ QUALITY_REPORT.summary }}</small>
+            <strong>{{ qualityReport.overallScore }}</strong>
+            <small>{{ qualityReport.summary }}</small>
           </div>
           <table>
             <thead>
@@ -651,24 +835,27 @@ function formatReleaseDate(value: string): string {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in QUALITY_REPORT.items" :key="item.name">
+              <tr v-for="item in qualityReport.items" :key="item.name">
                 <td>{{ item.name }}</td>
                 <td>{{ item.value }}</td>
                 <td>
-                  <span class="asset-badge is-success">{{ item.pass ? '通过' : '未通过' }}</span>
+                  <span class="asset-badge" :class="item.pass ? 'is-success' : 'is-warning'">
+                    {{ item.pass ? '通过' : '未通过' }}
+                  </span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
+        <div v-else class="asset-empty">该版本暂无质量报告</div>
 
         <button
-          v-if="selectedAsset.version && !isPublished(selectedAsset)"
+          v-if="canPublishAsset(selectedAsset)"
           type="button"
           class="asset-button is-primary asset-detail__publish"
           @click="openPublish(selectedAsset)"
         >
-          发布
+          {{ hasSuccessfulCurrentRelease(selectedAsset) ? '继续发布' : '发布' }}
         </button>
       </section>
     </template>
@@ -686,14 +873,14 @@ function formatReleaseDate(value: string): string {
         <button
           type="button"
           :class="{ 'is-active': publishTab === 'publish' }"
-          @click="publishTab = 'publish'"
+          @click="selectPublishTab('publish')"
         >
           发布
         </button>
         <button
           type="button"
           :class="{ 'is-active': publishTab === 'history' }"
-          @click="publishTab = 'history'"
+          @click="selectPublishTab('history')"
         >
           发布历史
         </button>
@@ -701,55 +888,89 @@ function formatReleaseDate(value: string): string {
 
       <section v-if="publishTab === 'publish'" class="asset-board asset-publish">
         <label class="asset-field asset-field--inline">
-          <span>下一版本（自增）</span>
-          <input :value="nextVersion" disabled />
+          <span>发布版本</span>
+          <input :value="publishVersion" disabled />
         </label>
 
-        <div class="asset-file-tree">
-          <template v-if="selectedAsset.assetType === 'Skill'">
-            <strong>📁 {{ selectedAsset.name }}/</strong>
-            <div class="asset-file-tree__branch">
-              <span>📄 SKILL.md</span>
-              <pre>{{ currentContent.skillMd }}</pre>
-              <span>📄 run.sh</span>
-              <pre>{{ currentContent.script }}</pre>
-            </div>
-          </template>
-          <template v-else>
-            <span>📄 {{ selectedAsset.name }}.md</span>
-            <pre>{{ currentContent.document || '内容由流水线发布后回填' }}</pre>
-          </template>
+        <div v-if="detailLoading" class="asset-empty" role="status">
+          正在加载发布内容…
+        </div>
+        <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
+          <span>{{ detailError }}</span>
+          <button type="button" class="asset-button is-secondary" @click="loadDetail">
+            重新加载
+          </button>
+        </div>
+        <div v-else class="asset-file-tree">
+          <strong>📁 {{ selectedAsset.name }}/</strong>
+          <div v-if="detail?.files.length" class="asset-file-tree__branch">
+            <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
+              <span>📄 {{ file.path }}</span>
+              <pre>{{ file.content || '暂无文件内容' }}</pre>
+            </template>
+          </div>
+          <div v-else class="asset-empty">发布时将使用当前版本产物</div>
         </div>
 
         <label class="asset-field asset-field--inline asset-publish__organization">
           <span>目标组织</span>
-          <select v-model="selectedOrganization" class="asset-select">
+          <select
+            v-model="selectedOrganizationId"
+            class="asset-select"
+            aria-label="目标组织"
+            :disabled="organizationLoading"
+          >
             <option value="">选组织…</option>
-            <option v-for="organization in ORGANIZATIONS" :key="organization" :value="organization">
-              {{ organization }}
+            <option
+              v-for="organization in organizations"
+              :key="organization.id"
+              :value="organization.id"
+            >
+              {{ organization.name }}
             </option>
           </select>
         </label>
-        <button type="button" class="asset-button is-primary" @click="confirmPublish">
-          确认发布
+        <p v-if="organizationError" class="asset-form-error" role="alert">
+          {{ organizationError }}
+        </p>
+        <button
+          type="button"
+          class="asset-button is-primary"
+          :disabled="publishSubmitting || organizationLoading"
+          @click="confirmPublish"
+        >
+          {{ publishSubmitting ? '发布中…' : '确认发布' }}
         </button>
       </section>
 
       <section v-else class="asset-board asset-history">
-        <div v-if="selectedAsset.releaseNotes.length === 0" class="asset-empty">暂无发布记录</div>
+        <div v-if="historyLoading" class="asset-empty" role="status">正在加载发布历史…</div>
+        <div v-else-if="historyError" class="asset-empty asset-empty--error" role="alert">
+          <span>{{ historyError }}</span>
+          <button type="button" class="asset-button is-secondary" @click="loadHistory">
+            重新加载
+          </button>
+        </div>
+        <div v-else-if="selectedAsset.releases.length === 0" class="asset-empty">
+          暂无发布记录
+        </div>
         <article
-          v-for="release in selectedAsset.releaseNotes"
+          v-for="release in selectedAsset.releases"
           v-else
-          :key="`${release.version}-${release.date}`"
+          :key="release.id || `${release.version}-${release.publishedAt}-${release.organization.id}`"
           class="asset-history__item"
         >
           <div>
             <strong>{{ release.extensionName || selectedAsset.name }}</strong>
             <code>v{{ release.version }}</code>
-            <span class="asset-badge is-success">{{ release.status || '已发布' }}</span>
-            <time>{{ formatReleaseDate(release.date) }}</time>
+            <span class="asset-badge" :class="releaseStatusClass(release)">
+              {{ release.status }}
+            </span>
+            <time>{{ formatReleaseDate(release.publishedAt) }}</time>
           </div>
-          <p>发布人：{{ release.publisher || '—' }} · 组织：{{ release.organization || '—' }}</p>
+          <p>
+            发布人：{{ release.publisher || '—' }} · 组织：{{ release.organization.name || '—' }}
+          </p>
         </article>
       </section>
     </template>
@@ -816,9 +1037,56 @@ function formatReleaseDate(value: string): string {
 }
 
 .asset-page__actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6.4px;
+}
+
+.asset-action-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(70px, 1fr));
+  gap: 6.4px;
+  min-width: 282px;
+  padding: 9.6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.asset-action-menu strong,
+.asset-action-menu small {
+  grid-column: 1 / -1;
+}
+
+.asset-action-menu strong {
+  color: #374151;
+  font-size: 12.48px;
+}
+
+.asset-action-menu small {
+  color: #9ca3af;
+  font-size: 10.88px;
+}
+
+.asset-action-menu button {
+  padding: 5.6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.asset-action-menu button:hover {
+  border-color: #2563eb;
+  color: #2563eb;
 }
 
 .asset-page__tags {
@@ -851,6 +1119,11 @@ function formatReleaseDate(value: string): string {
 .asset-button.is-secondary {
   background: #e5e7eb;
   color: #1f2937;
+}
+
+.asset-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
 }
 
 .asset-scope {
@@ -968,6 +1241,11 @@ function formatReleaseDate(value: string): string {
   font-weight: 600;
 }
 
+.asset-department__name:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
 .asset-select,
 .asset-field input {
   width: 100%;
@@ -980,6 +1258,12 @@ function formatReleaseDate(value: string): string {
 .asset-scope > .asset-select {
   width: auto;
   min-width: 140px;
+}
+
+.asset-scope-error {
+  margin: -8px 0 12px;
+  color: #b91c1c;
+  font-size: 11.52px;
 }
 
 .asset-filters,
@@ -1118,6 +1402,14 @@ function formatReleaseDate(value: string): string {
   text-align: center;
 }
 
+.asset-empty--error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #b91c1c;
+}
+
 .asset-back {
   margin-bottom: 8px;
 }
@@ -1253,6 +1545,12 @@ function formatReleaseDate(value: string): string {
 
 .asset-publish__organization {
   margin-top: 16px;
+}
+
+.asset-form-error {
+  margin: -4px 0 10px;
+  color: #b91c1c;
+  font-size: 11.52px;
 }
 
 .asset-history {

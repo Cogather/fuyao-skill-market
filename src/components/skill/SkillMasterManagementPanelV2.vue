@@ -524,8 +524,8 @@ function applyDefaultMasterScopeSelection(): boolean {
 
 async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSeq = ++masterProductLoadSequence;
-  masterScopeForm.offeringId = '';
-  masterScopeForm.offeringName = '';
+  masterScopeForm.offeringId = preferredScope?.offeringId.trim() ?? '';
+  masterScopeForm.offeringName = preferredScope?.offeringName.trim() ?? '';
   masterProductOptions.value = [];
   masterProductsLoading.value = false;
   const departmentName = masterScopeForm.planningDeptName.trim();
@@ -537,14 +537,22 @@ async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promis
     const deptCode = getDepartmentNodeCode(departmentNode);
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
-    masterProductOptions.value = options;
     const restoredOption = preferredScope
       ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
         ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
-    const firstOption = restoredOption ?? options[0];
+    const externalOption =
+      !restoredOption && preferredScope?.offeringName
+        ? {
+            offeringId: preferredScope.offeringId,
+            offeringName: preferredScope.offeringName,
+            planningDeptName: masterScopeForm.planningDeptName,
+          }
+        : undefined;
+    masterProductOptions.value = externalOption ? [...options, externalOption] : options;
+    const firstOption = restoredOption ?? externalOption ?? options[0];
     if (firstOption) {
       masterScopeForm.offeringName = firstOption.offeringName;
       masterScopeForm.offeringId = firstOption.offeringId;
@@ -586,6 +594,8 @@ function restoreMasterScopeSnapshot(): HarnessScopeSnapshot | undefined {
   masterDepartmentSegments.value = normalizeDepartmentPath(snapshot.departmentPath).slice(0, 6);
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = true;
+  masterScopeForm.offeringId = snapshot.level === '产品级' ? snapshot.offeringId.trim() : '';
+  masterScopeForm.offeringName = snapshot.level === '产品级' ? snapshot.offeringName.trim() : '';
   return { ...snapshot, departmentPath: [...masterDepartmentSegments.value] };
 }
 const filteredRecords = computed(() => {
@@ -1738,6 +1748,38 @@ function triggerMasterImport(): void {
     masterImportInputRef.value.click();
   }
 }
+
+function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
+  const path = normalizeDepartmentPath(scope.departmentPath).slice(0, 6);
+  if (
+    !planningLevelOptions.includes(scope.level) ||
+    !findMasterDepartmentNode(path) ||
+    !isMasterDepartmentSelectionAllowed(path)
+  ) {
+    showToast('资产范围已失效，请重新选择部门和产品');
+    return false;
+  }
+  masterScopeForm.level = scope.level;
+  masterDepartmentSegments.value = path;
+  syncMasterDepartment(path);
+  masterScopeDepartmentCommitted.value = true;
+  masterScopeForm.offeringId = scope.level === '产品级' ? scope.offeringId.trim() : '';
+  masterScopeForm.offeringName = scope.level === '产品级' ? scope.offeringName.trim() : '';
+  masterPageNum.value = 1;
+  selectedMasterIds.value = [];
+  void (async () => {
+    await loadMasterProducts(scope);
+    await reload();
+    emitMasterScopeSnapshot();
+  })();
+  return true;
+}
+
+defineExpose({
+  openCreate,
+  triggerImport: triggerMasterImport,
+  applyExternalScope,
+});
 
 async function masterImportResponse(request: Promise<unknown>): Promise<unknown> {
   try {
