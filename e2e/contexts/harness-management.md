@@ -9,13 +9,14 @@
 - 组件：`src/views/HarnessManagementPage.vue`（内部按 tab 挂载 SkillPlanningPage / HarnessTaskManagementPage / HarnessConfigurationPage 等）
 - 数据模式：dev 走 mock（`VITE_SKILL_MARKET_TRANSPORT=mock`），无需后端
 - 登录：本地 mock 无需登录
-- 权限影响：`task-only` 权限下只显示「任务管理」一个 tab；其余权限显示全部 6 个 tab
+- 权限影响：`task-only` 权限下只显示「任务管理」一个 tab；其余权限显示全部 7 个 tab
 
 ## 稳定锚点（选择器素材）
 
 - 顶栏身份区：「Harness 管理」强文本（任何权限下都渲染）
 - tab 导航：`role=tablist`，aria-label「Harness 管理分区」
-- tabs（`role=tab`）：Command 规划 / Skill 规划 / Agent 规划 / Extension 发布 / 配置管理 / 任务管理
+- tabs（`role=tab`）：Agent / Skill 资产 / Command 规划 / Skill 规划 / Agent 规划 / Extension 发布 / 配置管理 / 任务管理
+- Agent / Skill 资产面板：`#harness-panel-assets`，包含统一资产类型筛选、详情、Skill 质量报告和 mock 发布流程
 - 任务管理面板：`#harness-panel-tasks`（`role=tabpanel`）
 
 ## 坑与约定
@@ -26,4 +27,5 @@
 
 ## 演进记录
 
+- 新增最左侧「Agent / Skill 资产」页签，原有页签顺序与默认选中状态保持不变
 - 首版：接入 E2E 冒烟 2 条（页面打开 / 切换到任务管理），全部绿色

@@ -1,0 +1,80 @@
+import { expect, test } from '../fixtures/base';
+import { APP_BASE_PATH } from '../helpers/constants';
+
+test('Agent / Skill 资产页签整合资产筛选、详情与发布流程', async ({ page }) => {
+  await page.goto(`${APP_BASE_PATH}/harness-management`);
+
+  const tabs = page.getByRole('tablist', { name: 'Harness 管理分区' }).getByRole('tab');
+  await expect(tabs.first()).toHaveText('Agent / Skill 资产');
+  await expect(page.getByRole('tab', { name: 'Skill 规划' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const planningLayout = await page.locator('.planning-pageNum').boundingBox();
+
+  await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
+  await expect(page.getByRole('heading', { name: '资产清单' })).toBeVisible();
+  const assetLayout = await page.locator('.asset-page').boundingBox();
+  expect(planningLayout).not.toBeNull();
+  expect(assetLayout).not.toBeNull();
+  expect(assetLayout!.x).toBeCloseTo(planningLayout!.x, 0);
+  expect(assetLayout!.y).toBeCloseTo(planningLayout!.y, 0);
+  expect(assetLayout!.width).toBeCloseTo(planningLayout!.width, 0);
+  await expect(page.getByLabel('产品筛选')).toBeVisible();
+
+  const primaryButtonStyle = await page
+    .getByRole('button', { name: '+ 新建资产' })
+    .evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return {
+        padding: `${style.paddingTop} ${style.paddingRight}`,
+        borderRadius: style.borderRadius,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        backgroundColor: style.backgroundColor,
+      };
+    });
+  expect(primaryButtonStyle).toEqual({
+    padding: '6.4px 13.6px',
+    borderRadius: '6px',
+    fontSize: '12.48px',
+    fontWeight: '500',
+    lineHeight: 'normal',
+    letterSpacing: 'normal',
+    backgroundColor: 'rgb(37, 99, 235)',
+  });
+
+  const cardStyle = await page
+    .locator('.asset-card')
+    .first()
+    .evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return {
+        gap: style.gap,
+        minHeight: style.minHeight,
+        padding: style.padding,
+        borderRadius: style.borderRadius,
+      };
+    });
+  expect(cardStyle).toEqual({
+    gap: '6.4px',
+    minHeight: 'auto',
+    padding: '16px',
+    borderRadius: '8px',
+  });
+  await page.getByRole('button', { name: 'Skill', exact: true }).click();
+  await expect(page.locator('.asset-card')).toHaveCount(3);
+
+  await page.locator('.asset-card').filter({ hasText: '协议解析Skill' }).click();
+  await page.getByRole('button', { name: '质量报告' }).click();
+  await expect(page.getByText('该 Skill 已通过质量门禁，整体评分 92 分，建议发布。')).toBeVisible();
+
+  await page.getByRole('button', { name: '发布', exact: true }).click();
+  await page.getByLabel('目标组织').selectOption('云核心网研发管理部');
+  await page.getByRole('button', { name: '确认发布' }).click();
+
+  await expect(page.getByRole('button', { name: '发布历史' })).toHaveClass(/is-active/);
+  await expect(page.getByText('发布人：当前用户 · 组织：云核心网研发管理部')).toBeVisible();
+});

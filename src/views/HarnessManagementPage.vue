@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
+import AgentSkillAssetsPage from './skill/AgentSkillAssetsPage.vue';
 import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
 import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
@@ -50,7 +51,7 @@ const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
 const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
   '未从父页面获取到部门树，请检查初始化参数后重新进入。';
 
-type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
+type HarnessTab = 'assets' | 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
 
 type PlanningMemoryKey = 'command' | 'planning' | 'agent';
 type PlanningScopeChange = {
@@ -59,6 +60,11 @@ type PlanningScopeChange = {
 };
 
 const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }> = [
+  {
+    key: 'assets',
+    label: 'Agent / Skill 资产',
+    description: '统一查看 Agent、Skill、Command 与 Extension 资产。',
+  },
   { key: 'command', label: 'Command 规划', description: '统一规划和管理 Command 能力。' },
   { key: 'planning', label: 'Skill 规划', description: '统一管理各部门规划建设中的 Skill。' },
   { key: 'agent', label: 'Agent 规划', description: '统一规划和管理 Agent 能力。' },
@@ -413,6 +419,16 @@ onBeforeRouteLeave(() => {
         <h1>正在加载权限</h1>
         <p>正在确认当前账号可管理的部门范围，请稍候。</p>
       </div>
+    </section>
+
+    <section
+      v-else-if="activeHarnessTab === 'assets'"
+      id="harness-panel-assets"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-assets"
+    >
+      <AgentSkillAssetsPage />
     </section>
 
     <section
