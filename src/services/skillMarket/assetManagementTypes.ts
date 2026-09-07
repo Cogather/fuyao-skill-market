@@ -92,6 +92,17 @@ export type HarnessAssetScope = {
   assetType?: HarnessAssetFilter;
 };
 
+export type HarnessAssetPageQuery = {
+  pageNum: number;
+  pageSize: number;
+};
+
+export type HarnessAssetPageResult = {
+  list: HarnessAsset[];
+  total: number;
+  hasMore: boolean;
+};
+
 export type PublishHarnessAssetInput = {
   scope: HarnessAssetScope;
   asset: HarnessAsset;
@@ -100,8 +111,13 @@ export type PublishHarnessAssetInput = {
 };
 
 export interface HarnessAssetApi {
-  queryProducts(scope: Omit<HarnessAssetScope, 'product' | 'assetType'>): Promise<HarnessAssetProduct[]>;
-  queryAssets(scope: HarnessAssetScope): Promise<{ list: HarnessAsset[]; total: number }>;
+  queryProducts(
+    scope: Omit<HarnessAssetScope, 'product' | 'assetType'>,
+  ): Promise<HarnessAssetProduct[]>;
+  queryAssets(
+    scope: HarnessAssetScope,
+    page: HarnessAssetPageQuery,
+  ): Promise<HarnessAssetPageResult>;
   queryDetail(
     scope: HarnessAssetScope,
     asset: HarnessAsset,
@@ -112,13 +128,18 @@ export interface HarnessAssetApi {
     asset: HarnessAsset,
     version: string,
   ): Promise<HarnessAssetQualityReport | null>;
-  queryOrganizations(scope: HarnessAssetScope): Promise<HarnessAssetOrganization[]>;
+  queryOrganizations(
+    scope: HarnessAssetScope,
+    asset: HarnessAsset,
+  ): Promise<HarnessAssetOrganization[]>;
   queryReleases(scope: HarnessAssetScope, asset: HarnessAsset): Promise<HarnessAssetRelease[]>;
   publish(input: PublishHarnessAssetInput): Promise<HarnessAssetRelease>;
 }
 
 export function normalizeHarnessAssetVersion(version: string): string {
-  return String(version ?? '').trim().replace(/^v(?=\d)/i, '');
+  return String(version ?? '')
+    .trim()
+    .replace(/^v(?=\d)/i, '');
 }
 
 export function harnessAssetPublishVersion(asset: HarnessAsset): string {
@@ -133,8 +154,7 @@ function hasCurrentReleaseWithStatus(
   if (!currentVersion) return false;
   return asset.releases.some(
     (release) =>
-      release.status === status &&
-      normalizeHarnessAssetVersion(release.version) === currentVersion,
+      release.status === status && normalizeHarnessAssetVersion(release.version) === currentVersion,
   );
 }
 
@@ -152,9 +172,7 @@ export function hasInProgressCurrentRelease(asset: HarnessAsset): boolean {
   );
 }
 
-export function harnessAssetStatus(
-  asset: HarnessAsset,
-): '未开发' | '待发布' | '发布中' | '已发布' {
+export function harnessAssetStatus(asset: HarnessAsset): '未开发' | '待发布' | '发布中' | '已发布' {
   if (!asset.currentVersion) return '未开发';
   if (hasInProgressCurrentRelease(asset)) return '发布中';
   return hasSuccessfulCurrentRelease(asset) ? '已发布' : '待发布';

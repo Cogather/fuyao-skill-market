@@ -88,6 +88,8 @@ export interface HarnessCapabilityPlanningCatalogQuery extends HarnessCapability
 export interface HarnessCapabilityCatalogListResult {
   list: SkillMasterRecord[];
   total: number;
+  totalKnown: boolean;
+  hasMore: boolean;
 }
 
 export interface HarnessCapabilityPlanningApi {
@@ -132,20 +134,48 @@ function useHttpTransport(): boolean {
   return String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
 }
 
+function responseCatalogTotal(response: unknown): number | undefined {
+  if (!response || typeof response !== 'object') return undefined;
+  const record = response as Record<string, unknown>;
+  const meta =
+    record.meta && typeof record.meta === 'object' ? (record.meta as Record<string, unknown>) : {};
+  const data =
+    record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {};
+  for (const value of [meta.number, meta.total, data.total, data.number, record.total]) {
+    if (value === null || value === undefined || value === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return undefined;
+}
+
 export async function queryHarnessCapabilityCatalogPage(
-  type: MockHarnessCapabilityType,
+  type: HarnessCapabilityType,
   query: HarnessCapabilityPlanningCatalogQuery = {},
 ): Promise<HarnessCapabilityCatalogListResult> {
+  const pageNum = Math.max(1, Math.floor(Number(query.pageNum ?? 1)));
+  const pageSize = Math.max(1, Math.floor(Number(query.pageSize ?? 10)));
+  if (type === 'skill') {
+    const result = await querySkillCatalogPage(query, pageNum, pageSize);
+    return {
+      list: result.rows,
+      total: result.total,
+      totalKnown: result.totalKnown,
+      hasMore: result.hasMore,
+    };
+  }
   if (useHttpTransport()) {
     return queryHttpCapabilityCatalogPage(type, query);
   }
   const records = await queryMockCapabilityCatalog(type, query);
-  const pageNum = Math.max(1, Number(query.pageNum ?? 1));
-  const pageSize = Math.max(1, Number(query.pageSize ?? 10));
   const start = (pageNum - 1) * pageSize;
   return {
     list: records.slice(start, start + pageSize),
     total: records.length,
+    totalKnown: true,
+    hasMore: start + pageSize < records.length,
   };
 }
 
@@ -215,25 +245,58 @@ function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRec
   };
 }
 
-async function querySkillCatalog(
-  query: HarnessCapabilityPlanningCatalogQuery = {},
-): Promise<SkillMasterRecord[]> {
+async function querySkillCatalogPage(
+  query: HarnessCapabilityPlanningCatalogQuery,
+  pageNum: number,
+  pageSize: number,
+): Promise<{ rows: SkillMasterRecord[]; total: number; totalKnown: boolean; hasMore: boolean }> {
+  const inferredDimType =
+    query.dimType || query.level || (query.product ? '产品级' : useHttpTransport() ? '部门级' : '');
+  const inferredDimName =
+    query.dimName ||
+    (inferredDimType ? (inferredDimType === '产品级' ? query.product : query.departmentName) : '');
   const body: QuerySkillMasterManagementBody = {
     userId: String(query.userId ?? '').trim(),
     sortBy: 'updatedAt',
     sortOrder: 'desc',
-    pageNum: 1,
-    pageSize: 100,
+    pageNum,
+    pageSize,
   };
   if (query.keyword) body.keyword = query.keyword;
-  if (query.dimType) body.dimType = query.dimType;
+  if (inferredDimType) body.dimType = inferredDimType;
   if (query.dimCode) body.dimCode = query.dimCode;
-  if (query.dimName) body.dimName = query.dimName;
+  if (inferredDimName) body.dimName = inferredDimName;
   const response = await skillBaseService.querySkillMasterManagement(body);
   if (response?.meta?.success !== true) {
     throw new Error(String(response?.meta?.message || response?.message || 'Skill 查询失败'));
   }
-  return (Array.isArray(response.data) ? response.data : []).map(mapSkillCatalogItem);
+  const rows = (Array.isArray(response.data) ? response.data : []).map(mapSkillCatalogItem);
+  const parsedTotal = responseCatalogTotal(response);
+  const totalKnown = parsedTotal !== undefined;
+  const total = parsedTotal ?? rows.length;
+  return {
+    rows,
+    total,
+    totalKnown,
+    hasMore: totalKnown ? pageNum * pageSize < total : rows.length === pageSize,
+  };
+}
+
+async function querySkillCatalog(
+  query: HarnessCapabilityPlanningCatalogQuery = {},
+): Promise<SkillMasterRecord[]> {
+  const pageSize = 200;
+  const first = await querySkillCatalogPage(query, 1, pageSize);
+  const rows = [...first.rows];
+  let hasMore = first.hasMore;
+  let pageNum = 2;
+  while (hasMore) {
+    const page = await querySkillCatalogPage(query, pageNum, pageSize);
+    rows.push(...page.rows);
+    hasMore = page.hasMore;
+    pageNum += 1;
+  }
+  return rows;
 }
 
 function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanningApi {
@@ -348,7 +411,7 @@ export async function findReferencedCapabilityCatalogIds(
   query: SkillPlanningQuery = {},
 ): Promise<string[]> {
   const counts = await getCapabilityCatalogReferenceCounts(type, ids, query);
-  return Object.keys(counts).filter((id) => counts[id] > 0);
+  return Object.keys(counts).filter((id) => (counts[id] ?? 0) > 0);
 }
 
 export async function getCapabilityCatalogReferenceCounts(

@@ -5,7 +5,7 @@ test('Agent / Skill 资产页签整合资产筛选、详情与发布流程', asy
   await page.goto(`${APP_BASE_PATH}/harness-management`);
 
   const tabs = page.getByRole('tablist', { name: 'Harness 管理分区' }).getByRole('tab');
-  await expect(tabs.first()).toHaveText('Agent / Skill 资产');
+  await expect(tabs.filter({ hasText: 'Agent / Skill 资产' })).toHaveCount(1);
   await expect(page.getByRole('tab', { name: 'Skill 规划' })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -64,5 +64,26 @@ test('Agent / Skill 资产页签整合资产筛选、详情与发布流程', asy
     padding: '16px',
     borderRadius: '8px',
   });
+  const assetBoard = page.locator('.asset-board');
+  await expect(assetBoard).toHaveCSS('overflow-y', 'auto');
+  expect(
+    await assetBoard.evaluate((element) => element.scrollHeight > element.clientHeight),
+  ).toBe(true);
+  const headerTop = await page.locator('.asset-page__header').evaluate((element) =>
+    element.getBoundingClientRect().top,
+  );
+  await assetBoard.evaluate((element) => element.scrollTo({ top: 320 }));
+  expect(await assetBoard.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect(
+    await page.locator('.asset-page__header').evaluate((element) =>
+      element.getBoundingClientRect().top,
+    ),
+  ).toBe(headerTop);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    ),
+  ).toBeLessThanOrEqual(1);
   await expect(page.locator('.asset-card').first()).toBeVisible();
 });

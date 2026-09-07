@@ -55,6 +55,12 @@ export type ExtensionProduct = {
   departmentPath: string[];
 };
 
+export const MOCK_EXTENSION_ORGANIZATIONS = [
+  { id: 'org-fuyao', name: '扶摇组织', deptId: '', deptName: '' },
+  { id: 'org-yunshan', name: '云山组织', deptId: '', deptName: '' },
+  { id: 'org-haichuan', name: '海川组织', deptId: '', deptName: '' },
+];
+
 export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
   {
     id: 'harness-pipeline',

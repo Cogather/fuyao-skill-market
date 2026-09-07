@@ -62,9 +62,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
 
-    const publishedSkill = assetCard(page, '\u6d41\u6c34\u7ebf\u5931\u8d25\u8bca\u65ad Skill');
-    await expect(publishedSkill).toBeVisible();
-    await expect(publishedSkill.getByText('\u5df2\u53d1\u5e03', { exact: true })).toBeVisible();
+    await expect(assetCard(page, '\u6d41\u6c34\u7ebf\u5931\u8d25\u8bca\u65ad Skill')).toBeVisible();
     await expect(assetCard(page, '\u65e5\u5fd7\u5f02\u5e38\u5b9a\u4f4d Skill')).toHaveCount(0);
 
     const productSelect = page.getByLabel('\u4ea7\u54c1\u7b5b\u9009');
@@ -103,7 +101,9 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       .toEqual(['Extension']);
   });
 
-  test('\u65b0\u5efa\u4e0e\u5bfc\u5165\u6cbf\u7528\u8d44\u4ea7\u9875\u8303\u56f4\u5e76\u8fdb\u5165\u5bf9\u5e94\u539f\u5b50\u80fd\u529b\u6e05\u5355', async ({ page }) => {
+  test('\u65b0\u5efa\u4e0e\u5bfc\u5165\u6cbf\u7528\u8d44\u4ea7\u9875\u8303\u56f4\u5e76\u8fdb\u5165\u5bf9\u5e94\u539f\u5b50\u80fd\u529b\u6e05\u5355', async ({
+    page,
+  }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await page
       .getByLabel('\u4ea7\u54c1\u7b5b\u9009')
@@ -118,9 +118,9 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     );
     const createDialog = page.locator('.capability-master-dialog');
     await expect(createDialog).toBeVisible();
-    await expect(createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0')).toHaveValue(
-      'harness-pipeline-pro-',
-    );
+    await expect(
+      createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
+    ).toHaveValue('harness-pipeline-pro-');
     await createDialog.locator('header button').click();
 
     await page.getByRole('tab', { name: 'Agent / Skill \u8d44\u4ea7' }).click();
@@ -173,13 +173,32 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     expect(await report.locator('tbody tr').count()).toBeGreaterThan(0);
   });
 
-  test('\u5f85\u53d1\u5e03\u8d44\u4ea7\u9009\u62e9\u76ee\u6807\u7ec4\u7ec7\u540e\u53d1\u5e03\uff0c\u5386\u53f2\u548c\u5217\u8868\u72b6\u6001\u540c\u6b65\u5237\u65b0', async ({
+  test('Extension \u5386\u53f2\u7248\u672c\u6309\u5f53\u65f6\u53d1\u5e03\u7684\u80fd\u529b\u7248\u672c\u52a0\u8f7d\u5185\u5bb9', async ({
     page,
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
-    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByLabel('\u4ea7\u54c1\u7b5b\u9009').selectOption({ label: 'harness-pipeline' });
+    await page.getByRole('button', { name: 'Extension', exact: true }).click();
+    await assetCard(page, 'MML\u5f00\u53d1 Extension').click();
 
-    const card = assetCard(page, '\u53d1\u5e03\u98ce\u9669\u626b\u63cf Skill');
+    const detail = page.locator('.asset-detail');
+    const versionSelect = detail.getByRole('combobox', { name: '\u7248\u672c' });
+    await versionSelect.selectOption('0.1.5');
+
+    await expect(detail.locator('.asset-file-tree')).toContainText('\u7248\u672c\uff1a1.0.1');
+    await expect(detail.locator('.asset-file-tree')).not.toContainText(
+      'agents/\u4ee3\u7801\u8bc4\u5ba1Agent',
+    );
+  });
+
+  test('Extension \u9009\u62e9\u76ee\u6807\u7ec4\u7ec7\u540e\u590d\u7528\u53d1\u5e03\u94fe\u8def\uff0c\u5386\u53f2\u548c\u5217\u8868\u72b6\u6001\u540c\u6b65\u5237\u65b0', async ({
+    page,
+  }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByLabel('\u4ea7\u54c1\u7b5b\u9009').selectOption({ label: 'harness-pipeline' });
+    await page.getByRole('button', { name: 'Extension', exact: true }).click();
+
+    const card = assetCard(page, '\u6784\u5efa\u8bca\u65ad Extension');
     await expect(card.getByText('\u5f85\u53d1\u5e03', { exact: true })).toBeVisible();
     await card.getByRole('button', { name: '\u53d1\u5e03', exact: true }).click();
 
@@ -194,12 +213,15 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(page.getByRole('button', { name: '\u53d1\u5e03\u5386\u53f2' })).toHaveClass(
       /is-active/,
     );
-    await expect(page.locator('.asset-history__item').first()).toContainText(selectedOrganization);
+    const latestHistory = page.locator('.asset-history__item').first();
+    await expect(latestHistory).toContainText(selectedOrganization);
+    const publishedName = (await latestHistory.locator('strong').textContent())?.trim() ?? '';
+    expect(publishedName).toMatch(/^[a-z0-9-]{1,64}$/);
 
     await page.locator('.asset-back').click();
     await page.locator('.asset-back').click();
-    const refreshedCard = assetCard(page, '\u53d1\u5e03\u98ce\u9669\u626b\u63cf Skill');
-    await expect(refreshedCard.getByText('\u5df2\u53d1\u5e03', { exact: true })).toBeVisible();
+    const refreshedCard = assetCard(page, publishedName);
+    await expect(refreshedCard.getByText('\u53d1\u5e03\u4e2d', { exact: true })).toBeVisible();
     await expect(
       refreshedCard.getByRole('button', { name: '\u53d1\u5e03', exact: true }),
     ).toHaveCount(0);
@@ -213,7 +235,9 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await page.getByRole('button', { name: 'Skill', exact: true }).click();
 
     const card = assetCard(page, '\u6d41\u6c34\u7ebf\u914d\u7f6e\u5de1\u68c0 Skill');
-    await expect(card.locator('.asset-badge').getByText('\u672a\u5f00\u53d1', { exact: true })).toBeVisible();
+    await expect(
+      card.locator('.asset-badge').getByText('\u672a\u5f00\u53d1', { exact: true }),
+    ).toBeVisible();
     await expect(card.getByRole('button', { name: '\u53d1\u5e03', exact: true })).toHaveCount(0);
 
     await card.click();

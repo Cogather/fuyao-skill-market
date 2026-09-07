@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
+import ScenarioActivityManagementPanel from '../../components/skill/ScenarioActivityManagementPanel.vue';
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
+import type { HarnessScenarioWorkspace } from '../../composables/useHarnessScenarioWorkspace';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import type {
   HarnessDepartmentSnapshot,
@@ -21,6 +22,7 @@ type DepartmentTreeNode = {
 
 const props = withDefaults(
   defineProps<{
+    workspace: HarnessScenarioWorkspace;
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
     canConfigureDepartmentPermissions?: boolean;
@@ -62,7 +64,7 @@ const emit = defineEmits<{
 
 const activeConfigurationTab = ref<ConfigurationTab>('scenes');
 const scenePanel = ref<InstanceType<typeof SceneSettingsPanel> | null>(null);
-const activityPanel = ref<InstanceType<typeof ActivityManagementPanel> | null>(null);
+const activityPanel = ref<InstanceType<typeof ScenarioActivityManagementPanel> | null>(null);
 const configurationTabs = computed(() => {
   const tabs: Array<{
     key: ConfigurationTab;
@@ -70,7 +72,7 @@ const configurationTabs = computed(() => {
     description: string;
   }> = [
     { key: 'scenes', label: '场景管理', description: '管理分类体系' },
-    { key: 'activities', label: '活动管理', description: '管理活动体系' },
+    { key: 'activities', label: '环节与节点', description: '维护场景工作流结构' },
   ];
 
   if (props.canConfigureDepartmentPermissions) {
@@ -115,10 +117,7 @@ defineExpose({ validateBeforeLeave });
   <div class="configuration-page">
     <header class="configuration-hero">
       <h2>配置管理</h2>
-      <p>
-        集中维护各项 Harness
-        规划能力共用的场景、活动体系及部门人员权限，保存后自动同步至相关规划页面。
-      </p>
+      <p>集中维护各项 Harness 规划能力共用的场景、场景工作流的环节与节点及部门人员权限。</p>
     </header>
 
     <nav
@@ -176,18 +175,9 @@ defineExpose({ validateBeforeLeave });
       role="tabpanel"
       aria-labelledby="configuration-tab-activities"
     >
-      <ActivityManagementPanel
+      <ScenarioActivityManagementPanel
         ref="activityPanel"
-        :department-tree="props.departmentTree"
-        :user-id="props.userId"
-        :department-permission-path="props.departmentPermissionPath"
-        :allowed-department-names="props.permissionDepartmentNames"
-        :allowed-department-paths="props.permissionDepartmentPaths"
-        :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
-        :manageable-departments="props.manageableDepartments"
-        :department-permissions-loading="props.departmentPermissionsLoading"
-        :department-permissions-error="props.departmentPermissionsError"
-        :initial-scope="props.activityInitialScope"
+        :workspace="props.workspace"
         @scope-change="emit('activity-scope-change', $event)"
       />
     </section>

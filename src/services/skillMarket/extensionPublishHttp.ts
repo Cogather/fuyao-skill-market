@@ -443,14 +443,19 @@ export async function queryHttpExtensionScenes(
   return mapSceneOptionGroups(groups, scope);
 }
 
-export async function queryHttpExtensionBindings(
+/**
+ * Load every Extension scene in the selected scope together with its bound
+ * capabilities and release history. Asset aggregation uses this bulk entry so
+ * bindings and history are fetched once per scope instead of once per scene.
+ */
+export async function queryHttpHydratedExtensionScenes(
   userId: string,
   scope: ExtensionScope,
-  scene: ExtensionScene,
-): Promise<ExtensionScene> {
+): Promise<ExtensionScene[]> {
+  const normalizedUserId = requiredText(userId, '尚未获取当前用户工号');
   const [bindingResponse, releases] = await Promise.all([
     skillBaseService.querySceneAndBindingPlanningItems(
-      { userId: requiredText(userId, '尚未获取当前用户工号') },
+      { userId: normalizedUserId },
       {
         dimType: scope.dimType,
         dimCode: scope.dimCode,
@@ -459,7 +464,15 @@ export async function queryHttpExtensionBindings(
     ),
     queryAllHistory(scope),
   ]);
-  const bindingScenes = mapBindingScenes(bindingResponse, scope, releases);
+  return mapBindingScenes(bindingResponse, scope, releases);
+}
+
+export async function queryHttpExtensionBindings(
+  userId: string,
+  scope: ExtensionScope,
+  scene: ExtensionScene,
+): Promise<ExtensionScene> {
+  const bindingScenes = await queryHttpHydratedExtensionScenes(userId, scope);
   return (
     bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ??
     scene

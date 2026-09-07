@@ -4,9 +4,12 @@ import { onBeforeRouteLeave } from 'vue-router';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
 import AgentSkillAssetsPage from './skill/AgentSkillAssetsPage.vue';
+import BusinessScenarioDesignPage from './skill/BusinessScenarioDesignPage.vue';
+import HarnessWorkflowsPage from './skill/HarnessWorkflowsPage.vue';
 import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
 import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
+import { createHarnessScenarioWorkspace } from '../composables/useHarnessScenarioWorkspace';
 import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
@@ -51,7 +54,16 @@ const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
 const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
   '未从父页面获取到部门树，请检查初始化参数后重新进入。';
 
-type HarnessTab = 'assets' | 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
+type HarnessTab =
+  | 'scenarios'
+  | 'workflows'
+  | 'assets'
+  | 'command'
+  | 'planning'
+  | 'tasks'
+  | 'agent'
+  | 'extension'
+  | 'settings';
 
 type PlanningMemoryKey = 'command' | 'planning' | 'agent';
 type PlanningScopeChange = {
@@ -60,6 +72,16 @@ type PlanningScopeChange = {
 };
 
 const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }> = [
+  {
+    key: 'scenarios',
+    label: '业务场景设计',
+    description: '按产品与场景逐层组织业务，并编排端到端 Workflow。',
+  },
+  {
+    key: 'workflows',
+    label: 'Harness 工作流',
+    description: '集中查看所选部门及各业务场景关联的 Harness 工作流。',
+  },
   {
     key: 'assets',
     label: 'Agent / Skill 资产',
@@ -87,7 +109,7 @@ const configurationDepartmentSnapshots = ref<
   Partial<Record<'permission', HarnessDepartmentSnapshot>>
 >({});
 const activeHarnessTabMeta = computed(
-  () => harnessTabs.find((tab) => tab.key === activeHarnessTab.value) ?? harnessTabs[1],
+  () => harnessTabs.find((tab) => tab.key === activeHarnessTab.value) ?? harnessTabs[0]!,
 );
 const topbarElevated = ref(false);
 
@@ -186,6 +208,31 @@ const permissionDepartmentPaths = computed(() =>
     ? manageableDepartments.value.map((department) => [...department.path])
     : [[...MOCK_HARNESS_DEPARTMENT_PATH]],
 );
+
+const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
+  ready: permissionContextReady.value && harnessPermissionLoadState.value === 'ready',
+  userId: userId.value,
+  departmentTree: departmentTree.value,
+  defaultDepartmentPath: currentUserDepartmentPermission.value.path,
+  allowedDepartmentPaths: permissionDepartmentPaths.value,
+  restrictToAllowedDepartments: restrictToPermissionDepartments.value,
+}));
+const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
+  const product = scenarioWorkspace.products.find(
+    (item) => item._id === scenarioWorkspace.productId.value,
+  );
+  const department = scenarioWorkspace.departments.find(
+    (item) => item._id === scenarioWorkspace.selectedDeptId.value,
+  );
+  return product && department
+    ? {
+        level: '产品级',
+        departmentPath: department.path,
+        offeringId: product.code,
+        offeringName: product.name,
+      }
+    : undefined;
+});
 
 function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment): string[] {
   const expectedPath = department.path.map((item) => item.trim()).filter(Boolean);
@@ -361,6 +408,7 @@ function updateConfigurationScopeSnapshot(
     ...snapshot,
     departmentPath: [...snapshot.departmentPath],
   };
+  if (key === 'scene') scenarioWorkspace.selectScope(snapshot);
 }
 
 function updateConfigurationDepartmentSnapshot(snapshot: HarnessDepartmentSnapshot): void {
@@ -392,7 +440,13 @@ onBeforeRouteLeave(() => {
 </script>
 
 <template>
-  <main class="harness-management-shell" :class="{ 'is-topbar-elevated': topbarElevated }">
+  <main
+    class="harness-management-shell"
+    :class="{
+      'is-topbar-elevated': topbarElevated,
+      'is-assets-tab': permissionContextReady && activeHarnessTab === 'assets',
+    }"
+  >
     <header class="harness-topbar">
       <nav class="harness-tabs" role="tablist" aria-label="Harness 管理分区">
         <button
@@ -443,7 +497,32 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'assets'"
+      v-if="permissionContextReady && harnessAccessLevel !== 'task-only'"
+      v-show="activeHarnessTab === 'scenarios'"
+      id="harness-panel-scenarios"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-scenarios"
+    >
+      <BusinessScenarioDesignPage :workspace="scenarioWorkspace" />
+    </section>
+
+    <section
+      v-if="permissionContextReady && harnessAccessLevel !== 'task-only'"
+      v-show="activeHarnessTab === 'workflows'"
+      id="harness-panel-workflows"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-workflows"
+    >
+      <HarnessWorkflowsPage
+        :workspace="scenarioWorkspace"
+        @open-scenarios="selectHarnessTab('scenarios')"
+      />
+    </section>
+
+    <section
+      v-if="permissionContextReady && activeHarnessTab === 'assets'"
       id="harness-panel-assets"
       class="harness-tab-panel"
       role="tabpanel"
@@ -461,7 +540,9 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-else-if="['command', 'planning', 'agent'].includes(activeHarnessTab)"
+      v-else-if="
+        permissionContextReady && ['command', 'planning', 'agent'].includes(activeHarnessTab)
+      "
       :id="`harness-panel-${activeHarnessTab}`"
       class="harness-tab-panel"
       role="tabpanel"
@@ -491,7 +572,7 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'tasks'"
+      v-else-if="permissionContextReady && activeHarnessTab === 'tasks'"
       id="harness-panel-tasks"
       class="harness-tab-panel"
       role="tabpanel"
@@ -501,13 +582,14 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'settings'"
+      v-else-if="permissionContextReady && activeHarnessTab === 'settings'"
       id="harness-panel-settings"
       class="harness-tab-panel"
       role="tabpanel"
       aria-labelledby="harness-tab-settings"
     >
       <HarnessConfigurationPage
+        :workspace="scenarioWorkspace"
         ref="configurationPage"
         :department-permission-path="currentUserDepartmentPermission.path"
         :department-tree="departmentTree"
@@ -520,7 +602,7 @@ onBeforeRouteLeave(() => {
         :restrict-to-permission-departments="restrictToPermissionDepartments"
         :department-permissions-loading="harnessPermissionLoadState === 'loading'"
         :department-permissions-error="harnessPermissionError"
-        :scene-initial-scope="configurationScopeSnapshots.scene"
+        :scene-initial-scope="scenarioScopeSnapshot || configurationScopeSnapshots.scene"
         :activity-initial-scope="configurationScopeSnapshots.activity"
         :permission-initial-scope="configurationDepartmentSnapshots.permission"
         @scene-scope-change="updateConfigurationScopeSnapshot('scene', $event)"
@@ -530,7 +612,12 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab !== 'extension'"
+      v-else-if="
+        permissionContextReady &&
+        activeHarnessTab !== 'extension' &&
+        activeHarnessTab !== 'scenarios' &&
+        activeHarnessTab !== 'workflows'
+      "
       :id="`harness-panel-${activeHarnessTab}`"
       class="harness-tab-panel harness-placeholder-panel"
       role="tabpanel"
@@ -594,6 +681,18 @@ onBeforeRouteLeave(() => {
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
+}
+
+.harness-management-shell.is-assets-tab {
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.harness-management-shell.is-assets-tab > .harness-tab-panel {
+  height: calc(100vh - var(--harness-topbar-height));
+  min-height: 0;
+  overflow: hidden;
 }
 
 .harness-management-shell::before {

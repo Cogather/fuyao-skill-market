@@ -18,6 +18,7 @@ import {
   type PublishableOrganization,
 } from '../../services/skillMarket/extensionPublishHttp';
 import {
+  MOCK_EXTENSION_ORGANIZATIONS,
   MOCK_EXTENSION_PRODUCTS,
   getSharedMockExtensionScenes,
   type ExtensionCapability,
@@ -76,13 +77,7 @@ const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : getSharedMockExtensi
 const products = ref<ExtensionProduct[]>(transportIsHttp ? [] : MOCK_EXTENSION_PRODUCTS);
 const filterLevelOptions: ExtensionFilterLevel[] = ['产品级'];
 const organizations = ref<PublishableOrganization[]>(
-  transportIsHttp
-    ? []
-    : [
-        { id: 'org-fuyao', name: '扶摇组织', deptId: '', deptName: '' },
-        { id: 'org-yunshan', name: '云山组织', deptId: '', deptName: '' },
-        { id: 'org-haichuan', name: '海川组织', deptId: '', deptName: '' },
-      ],
+  transportIsHttp ? [] : MOCK_EXTENSION_ORGANIZATIONS.map((organization) => ({ ...organization })),
 );
 const extensionAssetBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}extension/`;
 const extensionIconRevision = '20260814-1';

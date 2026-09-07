@@ -57,6 +57,8 @@ export type HarnessCapabilityCatalogHttpQuery = HarnessCapabilityCatalogQuery &
 export interface HarnessCapabilityCatalogHttpListResult {
   list: SkillMasterRecord[];
   total: number;
+  totalKnown: boolean;
+  hasMore: boolean;
 }
 
 export const harnessCapabilityPlanningHttpEndpoints: Record<
@@ -260,15 +262,20 @@ function responseRows(response: unknown): unknown[] {
   return [];
 }
 
-function responseTotal(response: unknown, fallback: number): number {
+function responseTotalValue(response: unknown): number | undefined {
   const responseRecord = asRecord(response);
   const meta = asRecord(responseRecord.meta);
   const data = asRecord(unwrapResponseData(response));
   for (const value of [meta.number, meta.total, data.total, data.number, responseRecord.total]) {
+    if (value === null || value === undefined || value === '') continue;
     const parsed = readNumber(value, -1);
     if (parsed >= 0) return parsed;
   }
-  return fallback;
+  return undefined;
+}
+
+function responseTotal(response: unknown, fallback: number): number {
+  return responseTotalValue(response) ?? fallback;
 }
 
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
@@ -624,7 +631,7 @@ function toCatalogQueryBody(
 
 function normalizeTimestamp(value: unknown): string {
   if (Array.isArray(value) && value.length >= 3) {
-    const [year, month, day, hour = 0, minute = 0, second = 0] = value.map(Number);
+    const [year = 1970, month = 1, day = 1, hour = 0, minute = 0, second = 0] = value.map(Number);
     const date = new Date(year, Math.max(0, month - 1), day, hour, minute, second);
     if (!Number.isNaN(date.getTime())) return date.toISOString();
   }
@@ -685,12 +692,20 @@ async function queryCatalogPage(
   query: HarnessCapabilityCatalogHttpQuery,
   pageNum: number,
   pageSize: number,
-): Promise<{ rows: SkillMasterRecord[]; total: number }> {
+): Promise<{ rows: SkillMasterRecord[]; total: number; totalKnown: boolean; hasMore: boolean }> {
   const params = { ...toCatalogQueryBody(query), pageNum, pageSize };
   const response = await capabilityHttpClients[type].queryCatalog(params);
   assertHttpSuccess(response, `${label(type)} 清单查询失败`);
   const rows = responseRows(response).map((item) => mapCapabilityCatalogItem(type, item, query));
-  return { rows, total: responseTotal(response, rows.length) };
+  const parsedTotal = responseTotalValue(response);
+  const totalKnown = parsedTotal !== undefined;
+  const total = parsedTotal ?? rows.length;
+  return {
+    rows,
+    total,
+    totalKnown,
+    hasMore: totalKnown ? pageNum * pageSize < total : rows.length === pageSize,
+  };
 }
 
 export async function queryHttpCapabilityCatalog(
@@ -700,10 +715,13 @@ export async function queryHttpCapabilityCatalog(
   const pageSize = 200;
   const first = await queryCatalogPage(type, query, 1, pageSize);
   const rows = [...first.rows];
-  const pageCount = Math.ceil(first.total / Math.max(1, first.rows.length || pageSize));
-  for (let pageNum = 2; pageNum <= pageCount; pageNum += 1) {
+  let hasMore = first.hasMore;
+  let pageNum = 2;
+  while (hasMore) {
     const page = await queryCatalogPage(type, query, pageNum, pageSize);
     rows.push(...page.rows);
+    hasMore = page.hasMore;
+    pageNum += 1;
   }
   return rows;
 }
@@ -715,7 +733,12 @@ export async function queryHttpCapabilityCatalogPage(
   const pageNum = Math.max(1, Number(query.pageNum ?? 1));
   const pageSize = Math.max(1, Number(query.pageSize ?? 10));
   const result = await queryCatalogPage(type, query, pageNum, pageSize);
-  return { list: result.rows, total: result.total };
+  return {
+    list: result.rows,
+    total: result.total,
+    totalKnown: result.totalKnown,
+    hasMore: result.hasMore,
+  };
 }
 
 function parsePerson(value: string, fieldLabel: string): { name: string; id: string } {

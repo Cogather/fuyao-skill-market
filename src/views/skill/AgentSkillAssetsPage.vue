@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { getHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
 import {
@@ -18,6 +18,7 @@ import {
   type HarnessAssetType,
 } from '../../services/skillMarket/assetManagementTypes';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { mergeUniquePage, shouldLoadNextPage } from '../../utils/infiniteScroll';
 
 type PageView = 'list' | 'detail' | 'publish';
 type CatalogAction = 'create' | 'import';
@@ -74,6 +75,9 @@ const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
   { key: 'Extension', label: 'Extension' },
 ];
 const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
+const ASSET_PAGE_SIZE = 24;
+const ASSET_SCROLL_THRESHOLD = 120;
+const MAX_EMPTY_PAGE_PROBES = 10;
 const api = getHarnessAssetApi();
 
 const view = ref<PageView>('list');
@@ -94,7 +98,12 @@ const departmentOpen = ref(false);
 const expandedDepartments = ref(new Set<string>());
 const actionMenu = ref<CatalogAction | null>(null);
 const listLoading = ref(false);
+const listLoadingMore = ref(false);
 const listError = ref('');
+const listAppendError = ref('');
+const assetPageNum = ref(0);
+const hasMoreAssets = ref(false);
+const assetBoardElement = ref<HTMLElement | null>(null);
 const productError = ref('');
 const detailLoading = ref(false);
 const detailError = ref('');
@@ -107,6 +116,10 @@ const historyError = ref('');
 const publishSubmitting = ref(false);
 const toastMessage = ref('');
 let listSequence = 0;
+let lastObservedAssetScrollTop = 0;
+let pendingAssetScrollPreviousTop = 0;
+let pendingAssetScrollTop = 0;
+let assetScrollFrame: number | undefined;
 let productSequence = 0;
 let detailSequence = 0;
 let qualitySequence = 0;
@@ -203,8 +216,10 @@ const currentScope = computed<HarnessAssetScope | null>(() => {
     assetType: filter.value,
   };
 });
-const selectedAsset = computed(() =>
-  assets.value.find((asset) => `${asset.assetType}:${asset.id}` === selectedAssetKey.value) ?? null,
+const selectedAsset = computed(
+  () =>
+    assets.value.find((asset) => `${asset.assetType}:${asset.id}` === selectedAssetKey.value) ??
+    null,
 );
 const filteredAssets = computed(() =>
   assets.value.filter(
@@ -213,8 +228,8 @@ const filteredAssets = computed(() =>
       (!selectedProductId.value || asset.productId === selectedProductId.value),
   ),
 );
-const selectedOrganization = computed(
-  () => organizations.value.find((organization) => organization.id === selectedOrganizationId.value),
+const selectedOrganization = computed(() =>
+  organizations.value.find((organization) => organization.id === selectedOrganizationId.value),
 );
 const detailVersions = computed(() =>
   detail.value?.versions.length ? detail.value.versions : (selectedAsset.value?.versions ?? []),
@@ -276,32 +291,127 @@ function defaultDepartmentRow(): DepartmentRow | null {
   );
 }
 
+function resetAssetScrollPosition(): void {
+  if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
+  assetScrollFrame = undefined;
+  lastObservedAssetScrollTop = 0;
+  pendingAssetScrollPreviousTop = 0;
+  pendingAssetScrollTop = 0;
+  if (assetBoardElement.value) assetBoardElement.value.scrollTop = 0;
+}
+
+function resetAssetListState(): number {
+  const sequence = ++listSequence;
+  assets.value = [];
+  assetPageNum.value = 0;
+  hasMoreAssets.value = false;
+  listError.value = '';
+  listAppendError.value = '';
+  listLoadingMore.value = false;
+  resetAssetScrollPosition();
+  return sequence;
+}
+
 async function reloadAssets(): Promise<void> {
   const scope = currentScope.value;
+  const sequence = resetAssetListState();
   if (!scope) {
-    assets.value = [];
     listError.value = '暂无可用部门范围';
+    listLoading.value = false;
     return;
   }
-  const sequence = ++listSequence;
   listLoading.value = true;
-  listError.value = '';
   try {
-    const result = await api.queryAssets(scope);
+    const result = await api.queryAssets(scope, { pageNum: 1, pageSize: ASSET_PAGE_SIZE });
     if (sequence !== listSequence) return;
-    assets.value = result.list;
+    assets.value = mergeUniquePage([], result.list, assetKey);
+    assetPageNum.value = 1;
+    hasMoreAssets.value = result.hasMore;
   } catch (error) {
     if (sequence !== listSequence) return;
-    assets.value = [];
     listError.value = errorMessage(error, '资产清单加载失败');
   } finally {
-    if (sequence === listSequence) listLoading.value = false;
+    if (sequence === listSequence) {
+      listLoading.value = false;
+    }
   }
+}
+
+function assetKey(asset: HarnessAsset): string {
+  return `${asset.assetType}:${asset.id}`;
+}
+
+async function loadNextAssetPage(): Promise<void> {
+  const scope = currentScope.value;
+  if (!scope || listLoading.value || listLoadingMore.value || !hasMoreAssets.value) {
+    return;
+  }
+  const sequence = listSequence;
+  listLoadingMore.value = true;
+  listAppendError.value = '';
+  try {
+    let nextPage = assetPageNum.value + 1;
+    for (let probe = 0; probe < MAX_EMPTY_PAGE_PROBES; probe += 1) {
+      const result = await api.queryAssets(scope, {
+        pageNum: nextPage,
+        pageSize: ASSET_PAGE_SIZE,
+      });
+      if (sequence !== listSequence) return;
+      const beforeLength = assets.value.length;
+      assets.value = mergeUniquePage(assets.value, result.list, assetKey);
+      assetPageNum.value = nextPage;
+      hasMoreAssets.value = result.hasMore;
+      if (assets.value.length > beforeLength || !result.hasMore) break;
+      nextPage += 1;
+      if (probe === MAX_EMPTY_PAGE_PROBES - 1) {
+        listAppendError.value = '连续分页未返回新资产，请重试';
+      }
+    }
+  } catch (error) {
+    if (sequence !== listSequence) return;
+    listAppendError.value = errorMessage(error, '下一页资产加载失败');
+  } finally {
+    if (sequence === listSequence) {
+      listLoadingMore.value = false;
+    }
+  }
+}
+
+function handleAssetScroll(event: Event): void {
+  const element = event.currentTarget as HTMLElement;
+  const observedScrollTop = Math.max(0, element.scrollTop);
+  if (observedScrollTop === lastObservedAssetScrollTop) return;
+  pendingAssetScrollPreviousTop = lastObservedAssetScrollTop;
+  pendingAssetScrollTop = observedScrollTop;
+  lastObservedAssetScrollTop = observedScrollTop;
+  if (assetScrollFrame !== undefined) return;
+  assetScrollFrame = window.requestAnimationFrame(() => {
+    assetScrollFrame = undefined;
+    const shouldLoad = shouldLoadNextPage({
+      previousScrollTop: pendingAssetScrollPreviousTop,
+      scrollTop: pendingAssetScrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      threshold: ASSET_SCROLL_THRESHOLD,
+      loading: listLoading.value || listLoadingMore.value,
+      hasMore: hasMoreAssets.value,
+    });
+    if (shouldLoad) void loadNextAssetPage();
+  });
+}
+
+function handleAssetWheel(event: WheelEvent): void {
+  if (event.deltaY <= 0) return;
+  const element = event.currentTarget as HTMLElement;
+  const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
+  if (remaining > ASSET_SCROLL_THRESHOLD) return;
+  void loadNextAssetPage();
 }
 
 async function reloadProductsAndAssets(): Promise<void> {
   const sequence = ++productSequence;
   const scope = currentScope.value;
+  resetAssetListState();
   products.value = [];
   selectedProductId.value = '';
   productError.value = '';
@@ -310,7 +420,6 @@ async function reloadProductsAndAssets(): Promise<void> {
     return;
   }
   listLoading.value = true;
-  listError.value = '';
   try {
     const nextProducts = await api.queryProducts(scope);
     if (sequence !== productSequence) return;
@@ -369,6 +478,12 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
   qualityError.value = '';
   view.value = 'detail';
   await loadDetail();
+}
+
+async function returnToAssetList(): Promise<void> {
+  view.value = 'list';
+  await nextTick();
+  resetAssetScrollPosition();
 }
 
 async function changeDetailVersion(): Promise<void> {
@@ -470,7 +585,7 @@ async function openPublish(asset: HarnessAsset): Promise<void> {
   organizationLoading.value = true;
   try {
     const [nextOrganizations] = await Promise.all([
-      api.queryOrganizations(scope),
+      api.queryOrganizations(scope, asset),
       loadHistory(),
       loadDetail(),
     ]);
@@ -583,6 +698,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  listSequence += 1;
+  if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
   window.clearTimeout(toastTimer);
 });
 </script>
@@ -707,7 +824,12 @@ onBeforeUnmount(() => {
         </button>
       </nav>
 
-      <section class="asset-board">
+      <section
+        ref="assetBoardElement"
+        class="asset-board asset-board--catalog"
+        @scroll.passive="handleAssetScroll"
+        @wheel.passive="handleAssetWheel"
+      >
         <div v-if="listLoading" class="asset-empty" role="status">正在加载资产…</div>
         <div v-else-if="listError" class="asset-empty asset-empty--error" role="alert">
           <span>{{ listError }}</span>
@@ -748,12 +870,29 @@ onBeforeUnmount(() => {
             </button>
           </article>
         </div>
+        <div v-else-if="hasMoreAssets" class="asset-empty" role="status">正在查找更多匹配资产…</div>
         <div v-else class="asset-empty">暂无资产</div>
+        <div
+          v-if="!listLoading && !listError && (filteredAssets.length > 0 || hasMoreAssets)"
+          class="asset-list-footer"
+          aria-live="polite"
+        >
+          <span v-if="listLoadingMore" class="asset-list-footer__loading" role="status">
+            <i class="asset-loading-spinner" aria-hidden="true" />
+            正在加载更多资产…
+          </span>
+          <span v-else-if="listAppendError" class="asset-list-footer__error" role="alert">
+            {{ listAppendError }}
+            <button type="button" @click="loadNextAssetPage">重试</button>
+          </span>
+          <span v-else-if="hasMoreAssets">继续向下滚动加载更多</span>
+          <span v-else>已加载全部 {{ filteredAssets.length }} 项</span>
+        </div>
       </section>
     </template>
 
     <template v-else-if="view === 'detail' && selectedAsset">
-      <button type="button" class="asset-button is-secondary asset-back" @click="view = 'list'">
+      <button type="button" class="asset-button is-secondary asset-back" @click="returnToAssetList">
         ← 返回
       </button>
       <header class="asset-page__header asset-page__header--detail">
@@ -796,7 +935,11 @@ onBeforeUnmount(() => {
         <div v-if="detailTab === 'content' && detailLoading" class="asset-empty" role="status">
           正在加载资产内容…
         </div>
-        <div v-else-if="detailTab === 'content' && detailError" class="asset-empty asset-empty--error" role="alert">
+        <div
+          v-else-if="detailTab === 'content' && detailError"
+          class="asset-empty asset-empty--error"
+          role="alert"
+        >
           <span>{{ detailError }}</span>
           <button type="button" class="asset-button is-secondary" @click="loadDetail">
             重新加载
@@ -892,9 +1035,7 @@ onBeforeUnmount(() => {
           <input :value="publishVersion" disabled />
         </label>
 
-        <div v-if="detailLoading" class="asset-empty" role="status">
-          正在加载发布内容…
-        </div>
+        <div v-if="detailLoading" class="asset-empty" role="status">正在加载发布内容…</div>
         <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
           <span>{{ detailError }}</span>
           <button type="button" class="asset-button is-secondary" @click="loadDetail">
@@ -951,13 +1092,13 @@ onBeforeUnmount(() => {
             重新加载
           </button>
         </div>
-        <div v-else-if="selectedAsset.releases.length === 0" class="asset-empty">
-          暂无发布记录
-        </div>
+        <div v-else-if="selectedAsset.releases.length === 0" class="asset-empty">暂无发布记录</div>
         <article
           v-for="release in selectedAsset.releases"
           v-else
-          :key="release.id || `${release.version}-${release.publishedAt}-${release.organization.id}`"
+          :key="
+            release.id || `${release.version}-${release.publishedAt}-${release.organization.id}`
+          "
           class="asset-history__item"
         >
           <div>
@@ -983,9 +1124,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .asset-page {
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
   width: 100%;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
   color: #111827;
   font-size: 14px;
   line-height: normal;
@@ -1311,10 +1457,46 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.asset-page > .asset-board {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.asset-board--catalog {
+  scroll-behavior: smooth;
+  overflow-anchor: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.asset-board--catalog::-webkit-scrollbar {
+  width: 9px;
+}
+
+.asset-board--catalog::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.asset-board--catalog::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #cbd5e1;
+  background-clip: padding-box;
+}
+
+.asset-board--catalog::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
 .asset-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
+  align-items: stretch;
 }
 
 .asset-card {
@@ -1327,7 +1509,12 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
-  transition: all 0.15s;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 170px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .asset-card:hover,
@@ -1335,6 +1522,67 @@ onBeforeUnmount(() => {
   border-color: #2563eb;
   outline: none;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.asset-list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 14px 12px 4px;
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+}
+
+.asset-list-footer__loading,
+.asset-list-footer__error {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.asset-list-footer__error {
+  color: #b45309;
+}
+
+.asset-list-footer__error button {
+  padding: 3px 9px;
+  border: 1px solid #f59e0b;
+  border-radius: 5px;
+  background: #fff;
+  color: #92400e;
+  font: inherit;
+  cursor: pointer;
+}
+
+.asset-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: asset-loading-spin 0.7s linear infinite;
+}
+
+@keyframes asset-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asset-board--catalog {
+    scroll-behavior: auto;
+  }
+
+  .asset-card,
+  .asset-loading-spinner {
+    transition: none;
+    animation: none;
+  }
 }
 
 .asset-card__title {
