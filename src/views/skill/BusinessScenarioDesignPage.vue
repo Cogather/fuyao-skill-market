@@ -1097,7 +1097,7 @@ function createAsset() {
             </div>
             <button
               v-if="currentScenario.level === 2 && !currentWorkflows.length"
-              class="primary"
+              class="primary start-workflow-button"
               @click="openWizard()"
             >
               + 开始设计 Workflow
@@ -2313,6 +2313,11 @@ select {
 .primary:hover {
   background: #1e40af !important;
   transform: translateY(-1px);
+}
+.start-workflow-button {
+  align-self: flex-start;
+  padding: 7px 14px !important;
+  line-height: 20px;
 }
 .empty {
   display: flex;

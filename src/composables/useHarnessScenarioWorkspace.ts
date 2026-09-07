@@ -1,6 +1,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { getProductPlanning } from '../services/skillMarket/skillPlanningService';
 import { seedMockWorkflowExperience } from '../services/skillMarket/mock/harnessWorkflowExperience';
+import { seedMockWorkflowInventory } from '../services/skillMarket/mock/harnessWorkflowInventory';
 import {
   loadScenarioRecords,
   saveScenarioRecords,
@@ -110,7 +111,21 @@ export type ScenarioWorkspaceContext = {
   restrictToAllowedDepartments: boolean;
 };
 type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'>;
-const uid = (prefix: string) => prefix + '-' + crypto.randomUUID();
+
+function randomUuid(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi.randomUUID === 'function') return cryptoApi.randomUUID();
+
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex
+    .slice(6, 8)
+    .join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
+
+const uid = (prefix: string) => `${prefix}-${randomUuid()}`;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 /** Configuration owns scenes; workflow designs and their scene metadata are browser-local drafts. */
@@ -121,6 +136,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   const workflows = reactive<Workflow[]>([]);
   const assets = reactive<Asset[]>([]);
   const commands = reactive<Command[]>([]);
+  const mockWorkflowSeededDepartments = reactive<string[]>([]);
   const details = reactive<Record<string, ScenarioDetails>>({});
   const selectedDeptId = ref('');
   const productId = ref('');
@@ -175,7 +191,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     try {
       window.localStorage.setItem(
         storageKey,
-        JSON.stringify({ workflows, assets, commands, details }),
+        JSON.stringify({ workflows, assets, commands, details, mockWorkflowSeededDepartments }),
       );
     } catch {
       error.value = '本地草稿保存失败，请检查浏览器存储空间；离开页面可能丢失本次修改。';
@@ -193,6 +209,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     workflows.splice(0);
     assets.splice(0);
     commands.splice(0);
+    mockWorkflowSeededDepartments.splice(0);
     Object.keys(details).forEach((key) => delete details[key]);
     try {
       const saved = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
@@ -216,6 +233,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       if (Array.isArray(saved.assets)) assets.push(...saved.assets);
       if (Array.isArray(saved.commands)) commands.push(...saved.commands);
       if (saved.details && typeof saved.details === 'object') Object.assign(details, saved.details);
+      if (Array.isArray(saved.mockWorkflowSeededDepartments))
+        mockWorkflowSeededDepartments.push(
+          ...saved.mockWorkflowSeededDepartments.filter(
+            (item: unknown) => typeof item === 'string',
+          ),
+        );
       seedMockWorkflowExperience(assets, commands);
     } catch {
       error.value = '无法读取本地工作流草稿，请检查浏览器存储数据。';
@@ -223,7 +246,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       loadingStorage = false;
     }
   }
-  watch([workflows, assets, commands, details], persist, { deep: true });
+  watch([workflows, assets, commands, details, mockWorkflowSeededDepartments], persist, {
+    deep: true,
+  });
 
   function applyRecords(product: Product, records: TaxonomyRecord[]) {
     const ids = new Set(records.map((item) => scopedId(product, item.id)));
@@ -500,6 +525,13 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
           ),
       );
       departments.splice(0, departments.length, ...allowed);
+      seedMockWorkflowInventory({
+        departments,
+        workflows,
+        assets,
+        commands,
+        seededDepartmentIds: mockWorkflowSeededDepartments,
+      });
       if (!allowed.some((item) => item._id === selectedDeptId.value)) {
         selectedDeptId.value =
           (

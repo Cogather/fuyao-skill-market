@@ -434,12 +434,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 }
 .workflow-entry-link {
   flex-shrink: 0;
-  padding: 0.55rem 1rem;
+  padding: 6px 14px;
   border: 1px solid var(--blue);
   border-radius: 6px;
   background: var(--blue);
   color: #fff;
   font-weight: 500;
+  line-height: 20px;
 }
 .workflow-entry-link:hover {
   border-color: #1d4ed8;

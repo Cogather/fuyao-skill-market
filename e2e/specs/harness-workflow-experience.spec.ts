@@ -73,15 +73,19 @@ test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', 
   await expect(wizard).toBeHidden();
   await expect(harness.workflowCard('接口开发体验工作流').getByText('✓ 设计完成')).toBeVisible();
   await harness.switchToWorkflows();
+  await harness.selectWorkflowProduct('harness-demo');
   await expect(harness.workflowInventoryRow('接口开发体验工作流')).toBeVisible();
 
   await page.reload();
   await openExperience(harness);
   await expect(harness.workflowCard('接口开发体验工作流').getByText('✓ 设计完成')).toBeVisible();
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), workspaceKey);
-  expect(saved.workflows).toHaveLength(1);
-  expect(saved.workflows[0].stages[0].steps[0].assets).toHaveLength(2);
-  expect(saved.workflows[0].stages[1].steps[0].assets).toHaveLength(1);
+  const experienceWorkflows = saved.workflows.filter(
+    (workflow: { name: string }) => workflow.name === '接口开发体验工作流',
+  );
+  expect(experienceWorkflows).toHaveLength(1);
+  expect(experienceWorkflows[0].stages[0].steps[0].assets).toHaveLength(2);
+  expect(experienceWorkflows[0].stages[1].steps[0].assets).toHaveLength(1);
 });
 
 test('体验数据追加到已有浏览器数据，保留草稿和资产修改且刷新不重复', async ({ page }) => {
@@ -152,9 +156,19 @@ test('体验数据追加到已有浏览器数据，保留草稿和资产修改�
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), workspaceKey);
   expect(saved.workflows.map((item: { _id: string }) => item._id)).toContain('existing-workflow');
   expect(saved.details['existing-scenario'].description).toBe('原有说明');
-  expect(saved.assets).toHaveLength(3);
-  expect(saved.commands).toHaveLength(2);
-  expect(saved.assets[0].description).toBe('用户已修改的说明');
+  const experienceAssets = saved.assets.filter((asset: { _id: string }) =>
+    asset._id.startsWith('mock-workflow-experience-'),
+  );
+  const experienceCommands = saved.commands.filter((command: { _id: string }) =>
+    command._id.startsWith('mock-workflow-experience-'),
+  );
+  expect(experienceAssets).toHaveLength(3);
+  expect(experienceCommands).toHaveLength(2);
+  expect(
+    experienceAssets.find(
+      (asset: { _id: string }) => asset._id === 'mock-workflow-experience-api-agent',
+    ).description,
+  ).toBe('用户已修改的说明');
   await expect(
     harness.scenariosPanel.getByRole('tree').getByText('接口开发体验', { exact: true }),
   ).toHaveCount(1);
