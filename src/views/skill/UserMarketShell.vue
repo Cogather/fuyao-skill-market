@@ -110,6 +110,8 @@ const innerTab = ref<UserInnerTab>(route?.query?.tab || 'hot');
 const uploadOpen = ref(false);
 const search = ref('');
 const hotSearch = ref('');
+/** 热榜检索模式：normal 普通检索（精确关键词，请求不带 searchMode）、smart 智能检索（语义理解，请求带 searchMode=smart） */
+const hotSearchMode = ref<'normal' | 'smart'>('normal');
 const hotSkills = ref<any[]>([]);
 const hotSkillsLoading = ref(false);
 /** Mock：组织展示名；HTTP：组织 id 字符串（对接 `orgId`） */
@@ -1390,13 +1392,17 @@ const loadHotSkillNums = async () => {
 async function loadHotSkillCards(): Promise<void> {
   hotSkillsLoading.value = true;
   try {
-    const res = await skillBaseService.querySkillList({
+    const params: Record<string, unknown> = {
       pageNum: 1,
       pageSize: 6,
       sortBy: 'downloads',
       sortOrder: 'desc',
       keyword: hotSearch.value,
-    });
+    };
+    if (hotSearchMode.value === 'smart') {
+      params.searchMode = 'smart';
+    }
+    const res = await skillBaseService.querySkillList(params);
     if (res?.meta?.success && res?.data) {
       hotSkills.value = [...res.data];
     }
@@ -1413,6 +1419,16 @@ const onSearchHot = async (e: Event | KeyboardEvent) => {
   const value = (e.target as HTMLInputElement).value;
   hotSearch.value = value;
   await loadHotSkillCards();
+};
+
+const setHotSearchMode = async (mode: 'normal' | 'smart') => {
+  if (hotSearchMode.value === mode) {
+    return;
+  }
+  hotSearchMode.value = mode;
+  if (hotSearch.value.trim()) {
+    await loadHotSkillCards();
+  }
 };
 
 const myReleasePageNumValue = ref<number>(1);
@@ -3734,6 +3750,44 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </section>
 
       <div class="hot-search-row" role="search">
+        <div class="hot-search-mode" role="radiogroup" aria-label="检索模式">
+          <button
+            type="button"
+            class="hot-search-mode-item"
+            :class="{ active: hotSearchMode === 'normal' }"
+            role="radio"
+            :aria-checked="hotSearchMode === 'normal'"
+            @click="setHotSearchMode('normal')"
+          >
+            <span class="hot-search-mode-label">普通检索</span>
+            <span
+              class="hot-search-mode-help"
+              tabindex="0"
+              aria-label="普通检索：适用于精确关键词匹配场景"
+            >
+              ?
+              <span class="hot-search-mode-tip" role="tooltip">适用于精确关键词匹配场景</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="hot-search-mode-item"
+            :class="{ active: hotSearchMode === 'smart' }"
+            role="radio"
+            :aria-checked="hotSearchMode === 'smart'"
+            @click="setHotSearchMode('smart')"
+          >
+            <span class="hot-search-mode-label">智能检索</span>
+            <span
+              class="hot-search-mode-help"
+              tabindex="0"
+              aria-label="智能检索：适用于语义理解匹配场景"
+            >
+              ?
+              <span class="hot-search-mode-tip" role="tooltip">适用于语义理解匹配场景</span>
+            </span>
+          </button>
+        </div>
         <label class="hot-search-box" aria-label="搜索热门 Skill">
           <span class="hot-search-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
