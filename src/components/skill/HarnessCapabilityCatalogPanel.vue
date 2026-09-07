@@ -1427,22 +1427,13 @@ onMounted(async () => {
             </label>
             <label>
               <span>计划完成时间 *</span>
-              <input
-                v-model="editor.plannedCompleteDate"
-                type="date"
-                :min="currentLocalDate()"
-              />
+              <input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()" />
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
-            <button
-              type="submit"
-              class="is-primary"
-              formnovalidate
-              :disabled="editor.submitting"
-            >
+            <button type="submit" class="is-primary" formnovalidate :disabled="editor.submitting">
               {{ editor.submitting ? '保存中...' : '保存' }}
             </button>
           </footer>
@@ -1485,12 +1476,17 @@ onMounted(async () => {
 
 <style scoped>
 .capability-master-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 16px;
   color: #17233d;
   font-size: 13px;
 }
 .capability-master-filter {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr) minmax(320px, 2fr) auto;
   gap: 14px;
@@ -1613,7 +1609,9 @@ onMounted(async () => {
   opacity: 0.45;
 }
 .capability-master-board {
-  height: clamp(520px, calc(100vh - 395px), 880px);
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2204,6 +2202,13 @@ td.is-description > span {
   font-weight: 700;
 }
 @media (max-width: 1100px) {
+  .capability-master-panel {
+    height: auto;
+    overflow: visible;
+  }
+  .capability-master-board {
+    flex: 0 0 auto;
+  }
   .capability-master-filter {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2214,5 +2219,27 @@ td.is-description > span {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+/* Keep Harness actions compact, including dialogs teleported to body. */
+:where(body:has(.harness-management-shell)) .capability-master-btn,
+:where(body:has(.harness-management-shell)) .capability-master-dialog > footer button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+:where(body:has(.harness-management-shell)) .capability-row-actions {
+  grid-template-columns: repeat(3, 28px);
+}
+
+:where(body:has(.harness-management-shell)) .capability-row-actions button,
+:where(body:has(.harness-management-shell)) .capability-row-actions button.is-view {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  align-self: center;
 }
 </style>

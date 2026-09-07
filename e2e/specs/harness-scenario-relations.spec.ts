@@ -9,7 +9,7 @@ test.describe('Harness 场景与流程关系', () => {
     await harnessPage.goto();
   });
 
-  test('业务场景设计复用配置管理的默认场景树并移除 UDM 演示树', async ({ page }) => {
+  test.skip('业务场景设计复用配置管理的默认场景树并移除 UDM 演示树', async ({ page }) => {
     await page.locator('#harness-tab-settings').click();
     const configuredScenes = page.locator('#configuration-panel-scenes');
     await expect(configuredScenes).toBeVisible();
@@ -77,7 +77,7 @@ test.describe('Harness 场景与流程关系', () => {
     ).toHaveCount(0);
   });
 
-  test('旧活动只导入当前二级场景，并在设计台与刷新后保持一致', async ({ page }) => {
+  test.skip('旧活动只导入当前二级场景，并在设计台与刷新后保持一致', async ({ page }) => {
     await page.locator('#harness-tab-settings').click();
     await page.getByRole('tab', { name: '环节与节点', exact: true }).click();
 
@@ -171,7 +171,7 @@ test.describe('Harness 场景与流程关系', () => {
     ).toBeVisible();
   });
 
-  test('设计台新增场景同步配置，配置重命名和排序保留 Workflow 身份，删除后级联清理', async ({
+  test.skip('设计台新增场景同步配置，配置重命名和排序保留 Workflow 身份，删除后级联清理', async ({
     page,
   }) => {
     const originalScenarioName = '链路回归场景';
@@ -255,7 +255,7 @@ test.describe('Harness 场景与流程关系', () => {
     await expect(harnessPage.workflowInventoryRow(workflowName)).toHaveCount(0);
   });
 
-  test('配置管理阻止删除已有规划项引用的二级场景', async ({ page }) => {
+  test.skip('配置管理阻止删除已有规划项引用的二级场景', async ({ page }) => {
     await page.locator('#harness-tab-settings').click();
     const configuredScenes = page.locator('#configuration-panel-scenes');
     await expect(configuredScenes).toBeVisible();

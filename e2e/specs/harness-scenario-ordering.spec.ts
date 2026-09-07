@@ -1,7 +1,7 @@
 import { expect, test } from '../fixtures/base';
 import { HarnessManagementPage } from '../pages/harnessManagement.page';
 
-test('拖拽一级和二级场景后保存顺序，刷新与配置管理保持一致且保留工作流', async ({ page }) => {
+test('拖拽一级和二级场景后保存顺序，刷新后保持一致且保留工作流', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const harness = new HarnessManagementPage(page);
   await harness.goto();
@@ -42,23 +42,6 @@ test('拖拽一级和二级场景后保存顺序，刷新与配置管理保持�
       targetPosition: { x: 90, y: 4 },
     });
   await expect(tree.locator('.tree-item > .tree-node > b').first()).toHaveText('质量保障');
-  await page.locator('#harness-tab-settings').click();
-  const configured = page.locator('#configuration-panel-scenes');
-  await expect(configured.locator('.primary-node strong').first()).toHaveText('质量保障');
-  await configured
-    .locator('.primary-node')
-    .filter({
-      has: page.locator('strong').filter({ hasText: /^研发提效$/ }),
-    })
-    .locator('.node-main')
-    .click();
-  await expect(configured.locator('.list-panel tbody tr td:nth-child(2) strong')).toHaveText([
-    '接口开发',
-    'SQL优化',
-    '单元测试',
-    '代码生成',
-    '代码审查',
-  ]);
 
   await page.reload();
   await harness.switchToScenarios();

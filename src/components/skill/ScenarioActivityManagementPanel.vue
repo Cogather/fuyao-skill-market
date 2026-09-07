@@ -925,4 +925,25 @@ defineExpose({ validateBeforeLeave });
     flex-direction: column;
   }
 }
+/* Scope compact actions to Harness without changing selectable content. */
+:where(body:has(.harness-management-shell)) .structure-heading > button,
+:where(body:has(.harness-management-shell)) .structure-editor .actions > button,
+:where(body:has(.harness-management-shell)) .legacy-controls > button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+:where(body:has(.harness-management-shell)) .stage-heading .actions > button,
+:where(body:has(.harness-management-shell)) .scenario-node-row .actions > button {
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+  align-self: center;
+  padding: 0 10px;
+  line-height: 1.4;
+}
 </style>

@@ -597,8 +597,12 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .task-dashboard {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: 100%;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
   gap: 18px;
   color: #17233d;
 }
@@ -723,6 +727,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
+  min-height: 0;
   gap: 16px;
   width: 100%;
 }
@@ -739,7 +744,11 @@ onBeforeUnmount(() => {
 }
 
 .task-board {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -788,9 +797,10 @@ onBeforeUnmount(() => {
 }
 
 .task-table-wrap {
+  flex: 1 1 auto;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
+  min-height: 0;
+  overflow: auto;
 }
 
 .task-table {
@@ -1090,6 +1100,7 @@ onBeforeUnmount(() => {
 }
 
 .task-pagination {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1656,6 +1667,15 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 820px) {
+  .task-dashboard {
+    height: auto;
+    overflow: visible;
+  }
+
+  .task-board {
+    height: auto;
+  }
+
   .dashboard-heading,
   .task-toolbar {
     align-items: stretch;
@@ -1767,5 +1787,19 @@ onBeforeUnmount(() => {
     height: clamp(28px, 1.8vw, 34px);
     padding-inline: clamp(7px, 0.5vw, 10px);
   }
+}
+/* Keep Harness actions compact, including dialogs teleported to body. */
+:where(body:has(.harness-management-shell)) .skill-detail-dialog footer button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+:where(body:has(.harness-management-shell)) .task-actions button {
+  height: 28px;
+  align-self: center;
 }
 </style>

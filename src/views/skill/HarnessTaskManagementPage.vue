@@ -40,10 +40,10 @@ const activeTaskTabMeta = computed(
 </script>
 
 <template>
-  <div class="task-management-page">
-    <header class="task-management-hero">
-      <h2>任务管理</h2>
-      <p>
+  <div class="task-management-page harness-viewport-page">
+    <header class="task-management-hero harness-page-heading">
+      <h2 class="harness-page-title">任务管理</h2>
+      <p class="harness-page-description">
         集中查看当前用户负责的 Harness 任务，持续跟踪 Command、Skill 与 Agent 建设状态及完成进度。
       </p>
     </header>
@@ -217,6 +217,32 @@ const activeTaskTabMeta = computed(
 @media (max-width: 640px) {
   .task-management-hero h2 {
     font-size: 34px;
+  }
+}
+.task-management-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-management-tabs {
+  flex-shrink: 0;
+}
+
+.task-management-content {
+  padding-top: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .task-management-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .task-management-content > :deep(*) {
+    flex: 1;
+    min-height: 0;
   }
 }
 </style>

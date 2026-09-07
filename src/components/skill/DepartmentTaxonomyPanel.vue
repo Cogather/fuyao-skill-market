@@ -2641,4 +2641,15 @@ td strong {
     font-size: clamp(10px, 0.625vw, 12px);
   }
 }
+/* Scope compact actions to Harness without changing taxonomy tree controls. */
+:where(body:has(.harness-management-shell)) .toolbar-controls button,
+:where(body:has(.harness-management-shell)) .add-button,
+:where(body:has(.harness-management-shell)) .modal-actions button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
 </style>

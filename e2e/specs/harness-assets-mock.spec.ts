@@ -112,10 +112,14 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await page.getByRole('button', { name: '+ \u65b0\u5efa\u8d44\u4ea7' }).click();
     await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Command' }).click();
 
-    await expect(page.getByRole('tab', { name: 'Command \u89c4\u5212' })).toHaveAttribute(
+    await expect(page.locator('#harness-tab-capabilities')).toHaveAttribute(
       'aria-selected',
       'true',
     );
+    const capabilityManagementPanel = page.locator('#harness-panel-capabilities');
+    await expect(
+      capabilityManagementPanel.getByRole('tab', { name: 'Command \u6e05\u5355', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
     const createDialog = page.locator('.capability-master-dialog');
     await expect(createDialog).toBeVisible();
     await expect(
@@ -134,13 +138,18 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Agent' }).click();
     await fileChooserPromise;
 
-    await expect(page.getByRole('tab', { name: 'Agent \u89c4\u5212' })).toHaveAttribute(
+    await expect(page.locator('#harness-tab-capabilities')).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    await expect(page.locator('.capability-master-field--product select')).toHaveValue(
-      '\u6d41\u6c34\u7ebf\u7ba1\u7406\u5e73\u53f0',
-    );
+    await expect(
+      capabilityManagementPanel.getByRole('tab', { name: 'Agent \u6e05\u5355', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await expect(
+      capabilityManagementPanel
+        .locator('#capability-management-panel-agent')
+        .locator('.capability-master-field--product select'),
+    ).toHaveValue('\u6d41\u6c34\u7ebf\u7ba1\u7406\u5e73\u53f0');
   });
 
   test('Skill \u8be6\u60c5\u4f7f\u7528\u771f\u5b9e\u7248\u672c\u5185\u5bb9\u5e76\u5c55\u793a\u8d28\u91cf\u62a5\u544a', async ({

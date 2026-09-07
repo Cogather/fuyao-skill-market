@@ -48,6 +48,14 @@ const sampleAssets: Asset[] = [
 
 const sampleCommands: Command[] = [
   {
+    _id: 'mock-harness-pipeline-command-e2e-codec',
+    name: '/harness-pipeline-e2e-codec',
+    description: 'Harness Pipeline 编解码开发流程主入口：从场景分析到代码开发与交付校验。',
+    owner: 'Harness Owner',
+    developer: '持续交付开发者',
+    version: '1.0',
+  },
+  {
     _id: 'mock-workflow-experience-e2e-api',
     name: '/harness-demo-e2e-api',
     description: '接口开发工作流主入口：从需求分析到代码生成、评审。',

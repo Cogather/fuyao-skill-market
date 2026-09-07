@@ -705,12 +705,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="asset-page" @keydown.esc="departmentOpen = false">
+  <div class="asset-page harness-viewport-page" @keydown.esc="departmentOpen = false">
     <template v-if="view === 'list'">
-      <header class="asset-page__header">
+      <header class="asset-page__header harness-page-heading">
         <div>
-          <h1>资产清单</h1>
-          <p>Extension 基于场景自动生成。</p>
+          <h1 class="harness-page-title">资产清单</h1>
+          <p class="harness-page-description">Extension 基于场景自动生成。</p>
         </div>
         <div class="asset-page__actions">
           <button
@@ -875,6 +875,9 @@ onBeforeUnmount(() => {
         <div
           v-if="!listLoading && !listError && (filteredAssets.length > 0 || hasMoreAssets)"
           class="asset-list-footer"
+          :class="{
+            'is-complete': !listLoadingMore && !listAppendError && !hasMoreAssets,
+          }"
           aria-live="polite"
         >
           <span v-if="listLoadingMore" class="asset-list-footer__loading" role="status">
@@ -1890,6 +1893,61 @@ onBeforeUnmount(() => {
   .asset-history__item time {
     width: 100%;
     margin-left: 0;
+  }
+}
+.asset-page__header,
+.asset-scope,
+.asset-filters,
+.asset-subtabs {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .asset-board--catalog {
+    padding: 12px;
+  }
+
+  .asset-grid {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+  }
+
+  .asset-card {
+    padding: 12px;
+  }
+
+  .asset-card h2,
+  .asset-card > p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .asset-card__publish {
+    margin-top: 0;
+  }
+
+  .asset-list-footer {
+    min-height: 24px;
+    padding: 4px 0 0;
+  }
+
+  .asset-list-footer.is-complete {
+    display: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .asset-page {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .asset-page > .asset-board {
+    flex: 0 0 auto;
+    max-height: 70dvh;
   }
 }
 </style>

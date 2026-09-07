@@ -193,12 +193,16 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 </script>
 
 <template>
-  <div class="workflows-page" @keydown.esc.stop.prevent="closeDepartmentPicker(true)">
-    <header class="workflows-page-header">
+  <div
+    class="workflows-page harness-viewport-page"
+    @keydown.esc.stop.prevent="closeDepartmentPicker(true)"
+  >
+    <header class="workflows-page-header harness-page-heading">
       <div>
-        <div class="page-eyebrow">WORKFLOWS</div>
-        <h1>Harness 工作流</h1>
-        <p>集中查看各业务场景的 Workflow；流程设计请从业务场景进入。</p>
+        <h1 class="harness-page-title">Harness 工作流</h1>
+        <p class="harness-page-description">
+          集中查看各业务场景的 Workflow；流程设计请从业务场景进入。
+        </p>
       </div>
       <button class="workflow-entry-link" type="button" @click="emit('open-scenarios')">
         前往场景设计 →
@@ -415,12 +419,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   gap: 2rem;
   margin-bottom: 1.5rem;
 }
-.page-eyebrow {
-  color: var(--blue);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
 .workflows-page-header h1 {
   margin: 0.25rem 0 0.4rem;
   font-size: 30px;
@@ -434,7 +432,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 }
 .workflow-entry-link {
   flex-shrink: 0;
-  padding: 6px 14px;
+  align-self: center;
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--blue);
   border-radius: 6px;
   background: var(--blue);
@@ -768,6 +768,37 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   .workflows-pagination {
     flex-wrap: wrap;
     gap: 0.75rem;
+  }
+}
+.workflows-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dept-product-selector {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .workflows-card {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .workflows-toolbar,
+  .workflows-pagination {
+    flex-shrink: 0;
+  }
+
+  .table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
   }
 }
 </style>

@@ -12,15 +12,57 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     harnessPage = new HarnessManagementPage(page);
   });
 
-  test('页面打开并渲染顶部工作台', async () => {
+  test('页面打开默认展示业务场景设计并隐藏四个旧规划入口', async () => {
     await harnessPage.goto();
 
     await expect(harnessPage.topbarIdentity).toBeVisible();
     await expect(harnessPage.tabList).toBeVisible();
+    await expect(harnessPage.tabScenarios).toHaveAttribute('aria-selected', 'true');
+    await expect(harnessPage.scenariosPanel).toBeVisible();
     const tabs = harnessPage.tabList.getByRole('tab');
     await expect(tabs.nth(0)).toHaveText('业务场景设计');
-    await expect(tabs.nth(1)).toHaveText('Harness 工作流');
+    await expect(tabs.nth(1)).toHaveText('资产清单');
+    await expect(tabs.nth(2)).toHaveText('Harness 工作流');
+    for (const name of ['Command 规划', 'Skill 规划', 'Agent 规划', 'Extension 发布']) {
+      await expect(harnessPage.tabList.getByRole('tab', { name, exact: true })).toHaveCount(0);
+    }
     await expect(harnessPage.tabTasks).toBeVisible();
+  });
+
+  test('资产清单聚合四个功能页并保留内部功能', async () => {
+    await harnessPage.goto();
+
+    for (const name of ['Command 规划', 'Skill 规划', 'Agent 规划', 'Extension 发布']) {
+      await expect(harnessPage.tabList.getByRole('tab', { name, exact: true })).toHaveCount(0);
+    }
+
+    await harnessPage.switchToCapabilityManagement();
+    const managementTabs = harnessPage.capabilityManagementTabList.getByRole('tab');
+    await expect(managementTabs).toHaveCount(4);
+    for (const name of ['Command 清单', 'Skill 清单', 'Agent 清单', 'Extension 发布'] as const) {
+      await expect(harnessPage.capabilityManagementTab(name)).toBeVisible();
+    }
+
+    await expect(harnessPage.capabilityManagementTab('Command 清单')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(
+      harnessPage.capabilitiesPanel.locator('[aria-label="Command 清单管理"]'),
+    ).toBeVisible();
+
+    await harnessPage.capabilityManagementTab('Skill 清单').click();
+    await expect(harnessPage.capabilitiesPanel.locator('[aria-label="Skill 管理"]')).toBeVisible();
+
+    await harnessPage.capabilityManagementTab('Agent 清单').click();
+    await expect(
+      harnessPage.capabilitiesPanel.locator('[aria-label="Agent 清单管理"]'),
+    ).toBeVisible();
+
+    await harnessPage.capabilityManagementTab('Extension 发布').click();
+    await expect(
+      harnessPage.capabilitiesPanel.getByRole('heading', { name: 'Extension 发布', exact: true }),
+    ).toBeVisible();
   });
 
   test('切换到业务场景设计台并可打开 Workflow 设计向导', async () => {
@@ -49,6 +91,67 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.page.keyboard.press('Escape');
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await expect(harnessPage.continueWorkflowDesignButton).toBeFocused();
+  });
+
+  test('harness-pipeline 提供可选且满足主入口规则的 Mock Command', async () => {
+    await harnessPage.goto();
+    await harnessPage.switchToScenarios();
+    await harnessPage.openScenarioDesign();
+
+    const wizard = harnessPage.workflowDesignDialog;
+    await wizard.getByLabel('场景编码 *').fill('harness-pipeline-code-generation');
+    await wizard.getByLabel('场景说明与目标 *').fill('生成流水线相关代码并完成交付校验。');
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+
+    await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
+    await wizard.getByPlaceholder('环节名称').fill('编码');
+    await wizard.getByRole('button', { name: '添加环节', exact: true }).click();
+    const stage = wizard.locator('.edit-stage').filter({ hasText: '编码' });
+    await stage.getByRole('button', { name: '+ 添加节点', exact: true }).click();
+    await stage.getByPlaceholder('节点名称').fill('代码开发');
+    await stage.getByRole('button', { name: '添加节点', exact: true }).click();
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+
+    await wizard.getByRole('button', { name: '+ 选择一个 Command 加入… ▾' }).click();
+    const commandOption = wizard.getByRole('button', { name: /\/harness-pipeline-e2e-codec/ });
+    await expect(commandOption).toBeVisible();
+    await commandOption.click();
+    await expect(wizard.locator('.command-row code')).toHaveText('/harness-pipeline-e2e-codec');
+
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+    await expect(wizard.getByRole('heading', { name: /^Workflow 资产池/ })).toBeVisible();
+    await expect(wizard.locator('.wizard-footer .error')).toBeEmpty();
+  });
+
+  test('业务场景设计台不再显示浏览器保存提示', async () => {
+    await harnessPage.goto();
+    await harnessPage.switchToScenarios();
+
+    await expect(
+      harnessPage.scenariosPanel.getByText(
+        '场景配置与配置管理同步；工作流设计及场景关联保存在当前浏览器。',
+        { exact: true },
+      ),
+    ).toHaveCount(0);
+  });
+
+  test('配置管理暂时仅显示不带序号的部门权限配置', async ({ page }) => {
+    await harnessPage.goto();
+    await page.locator('#harness-tab-settings').click();
+
+    const settingsPanel = page.locator('#harness-panel-settings');
+    const configurationTabs = settingsPanel.getByRole('tablist', { name: '配置管理分区' });
+    const permissionTab = configurationTabs.getByRole('tab', {
+      name: '部门权限配置',
+      exact: true,
+    });
+
+    await expect(configurationTabs.getByRole('tab')).toHaveCount(1);
+    await expect(permissionTab).toBeVisible();
+    await expect(permissionTab.locator('.configuration-tab__icon')).toHaveCount(0);
+    await expect(page.locator('#configuration-panel-permissions')).toBeVisible();
+    await expect(page.locator('#configuration-panel-scenes')).toHaveCount(0);
+    await expect(page.locator('#configuration-panel-activities')).toHaveCount(0);
   });
 
   test('开始设计 Workflow 按钮保持紧凑', async () => {
@@ -314,7 +417,8 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     expect(noteBox!.y).toBeLessThan(targetOrganizationBox!.y);
   });
 
-  test('Skill 规划说明随子页签切换', async () => {
+  // 顶部 Skill 规划入口暂时隐藏；保留用例，恢复入口后可直接重新启用。
+  test.skip('Skill 规划说明随子页签切换', async () => {
     await harnessPage.goto();
 
     await expect(harnessPage.applicationRelationTab).toBeVisible();

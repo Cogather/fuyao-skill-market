@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue';
+import WorkflowCapabilityPicker from '../../components/skill/WorkflowCapabilityPicker.vue';
+import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
+import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningService';
+import type { WorkflowCapabilityOption } from '../../services/skillMarket/workflowCapabilitySearchService';
 import { listScenarioTags } from '../../services/skillMarket/harnessScenarioTaxonomyService';
 import type {
   Asset,
@@ -43,8 +47,6 @@ type Wizard = {
   };
   nodeAssetsMap: Record<string, string[]>;
   poolIds: string[];
-  commandPickerOpen: boolean;
-  assetPickerOpen: boolean;
   assetTypeTab: AssetType;
   error: string;
   stageDraft: { id?: string; name: string; description: string } | null;
@@ -52,16 +54,16 @@ type Wizard = {
   commandDraft: {
     name: string;
     description: string;
-    developer: string;
-    owner: string;
+    developer: SkillPlanningUserOption | null;
+    owner: SkillPlanningUserOption | null;
     dueDate: string;
   } | null;
   assetDraft: {
     name: string;
     assetType: AssetType;
     description: string;
-    developer: string;
-    owner: string;
+    developer: SkillPlanningUserOption | null;
+    owner: SkillPlanningUserOption | null;
     dueDate: string;
   } | null;
 };
@@ -109,6 +111,29 @@ const scenarioError = ref('');
 const scenarioForm = reactive({ name: '', code: '', description: '', tags: [] as string[] });
 const uid = (prefix: string) => `${prefix}${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 const currentProduct = computed(() => products.find((item) => item._id === productId.value));
+function isLocalProductOption(item: { sourceId?: string; productId?: string; name: string }) {
+  if (item.sourceId) return false;
+  if (item.productId) return item.productId === productId.value;
+  const prefix = productPrefix();
+  return Boolean(prefix && item.name.replace(/^\//, '').startsWith(prefix));
+}
+const localCommandOptions = computed<WorkflowCapabilityOption[]>(() =>
+  commands.filter(isLocalProductOption).map((item) => ({ ...item, type: 'Command' })),
+);
+const localAssetOptions = computed<WorkflowCapabilityOption[]>(() =>
+  assets.filter(isLocalProductOption).map((item) => ({ ...item, type: item.assetType })),
+);
+function selectCapability(option: WorkflowCapabilityOption) {
+  if (option.type === 'Command') {
+    if (!commands.some((item) => item._id === option._id)) commands.push({ ...option });
+    addCommand(option._id);
+  } else {
+    if (!assets.some((item) => item._id === option._id)) {
+      assets.push({ ...option, assetType: option.type, status: option.status || 'active' });
+    }
+    if (!wizard.value?.poolIds.includes(option._id)) togglePool(option._id);
+  }
+}
 const currentScenario = computed(() =>
   scenarios.find((item) => item._id === selectedScenarioId.value),
 );
@@ -519,8 +544,6 @@ function openWizard(workflow?: Workflow, step = 0) {
     },
     nodeAssetsMap: map,
     poolIds: wf.assets.map((asset) => asset.assetId),
-    commandPickerOpen: false,
-    assetPickerOpen: false,
     assetTypeTab: 'Agent',
     error: '',
     stageDraft: null,
@@ -613,6 +636,14 @@ function closeWizard() {
 function handleWizardKeydown(event: KeyboardEvent) {
   handleModalKeydown(event, wizardDialogElement.value, closeWizard);
 }
+function showWizardPage() {
+  nextTick(() => {
+    const dialog = wizardDialogElement.value;
+    if (!dialog) return;
+    dialog.scrollTop = 0;
+    dialog.querySelector<HTMLElement>('.wizard-page')?.focus({ preventScroll: true });
+  });
+}
 function goNext() {
   const w = wizard.value;
   const scenario = currentScenario.value;
@@ -629,6 +660,7 @@ function goNext() {
       w.step = index;
       w.maxReached = Math.max(w.maxReached, index);
       w.error = `${wizardSteps[index]}：${error}`;
+      showWizardPage();
       return;
     }
   }
@@ -640,6 +672,7 @@ function goNext() {
   }
   w.step += 1;
   w.maxReached = Math.max(w.maxReached, w.step);
+  showWizardPage();
 }
 function goStep(step: number) {
   const w = wizard.value;
@@ -647,6 +680,7 @@ function goStep(step: number) {
     syncWizard();
     w.step = step;
     w.error = '';
+    showWizardPage();
   }
 }
 function saveStage() {
@@ -671,6 +705,7 @@ function saveStage() {
       steps: [],
     });
   w.stageDraft = null;
+  w.error = '';
   syncWizard();
 }
 function saveNode() {
@@ -695,6 +730,7 @@ function saveNode() {
       assets: [],
     });
   w.nodeDraft = null;
+  w.error = '';
   syncWizard();
 }
 function deleteStage(stageId: string) {
@@ -751,28 +787,80 @@ function addCommand(id: string) {
     description: command.description,
     owner: command.owner,
     developer: command.developer,
+    ownerId: command.ownerId,
+    developerId: command.developerId,
+    ownerDepartment: command.ownerDepartment,
+    developerDepartment: command.developerDepartment,
     version: command.version,
   });
-  w.commandPickerOpen = false;
   syncWizard();
+}
+function openCommandDraft() {
+  if (!wizard.value) return;
+  wizard.value.error = '';
+  wizard.value.commandDraft = {
+    name: '',
+    description: '',
+    developer: null,
+    owner: null,
+    dueDate: '',
+  };
+}
+function openAssetDraft(type: AssetType) {
+  const w = wizard.value;
+  if (!w) return;
+  w.error = '';
+  w.assetTypeTab = type;
+  w.assetDraft = {
+    name: '',
+    assetType: type,
+    description: '',
+    developer: null,
+    owner: null,
+    dueDate: '',
+  };
+}
+function selectDraftAssetType(type: AssetType) {
+  const w = wizard.value;
+  if (!w?.assetDraft) return;
+  w.assetDraft.assetType = type;
+  w.assetTypeTab = type;
+  w.error = '';
+}
+function personnelId(person: SkillPlanningUserOption | null) {
+  return person?.sAMAccountName || person?.id || '';
+}
+function personnelLabel(person: SkillPlanningUserOption) {
+  return [person.chName, personnelId(person)].filter(Boolean).join(' ') || person.label;
 }
 function createCommand() {
   const w = wizard.value;
   const d = w?.commandDraft;
   if (!w || !d) return;
   w.error = '';
-  if (!d.description.trim() || !d.developer.trim() || !d.owner.trim() || !d.dueDate) {
+  if (!d.developer || !d.owner || !personnelId(d.developer) || !personnelId(d.owner)) {
+    w.error = '请通过姓名或工号查询，并从结果中选择开发责任人和责任人';
+    return;
+  }
+  if (!d.description.trim() || !d.dueDate) {
     w.error = '请完整填写 Command 描述、开发责任人、责任人和完成时间';
     return;
   }
-  const error = validateName(d.name.replace(/^\//, ''));
+  const error = validateName(d.name.trim().replace(/^\//, ''));
   if (error) {
     w.error = `Command 名称不符合命名规则：${error}`;
     return;
   }
   const command: Command = {
     _id: uid('rc'),
+    productId: productId.value,
     ...d,
+    owner: personnelLabel(d.owner),
+    developer: personnelLabel(d.developer),
+    ownerId: personnelId(d.owner),
+    developerId: personnelId(d.developer),
+    ownerDepartment: d.owner.deptName,
+    developerDepartment: d.developer.deptName,
     name: d.name.trim().startsWith('/') ? d.name.trim() : `/${d.name.trim()}`,
     version: null,
   };
@@ -805,7 +893,11 @@ function createAsset() {
   const d = w?.assetDraft;
   if (!w || !d) return;
   w.error = '';
-  if (!d.description.trim() || !d.developer.trim() || !d.owner.trim() || !d.dueDate) {
+  if (!d.developer || !d.owner || !personnelId(d.developer) || !personnelId(d.owner)) {
+    w.error = '请通过姓名或工号查询，并从结果中选择开发责任人和责任人';
+    return;
+  }
+  if (!d.description.trim() || !d.dueDate) {
     w.error = '请完整填写资产描述、开发责任人、责任人和完成时间';
     return;
   }
@@ -814,7 +906,20 @@ function createAsset() {
     w.error = `资产名称不符合命名规则：${error}`;
     return;
   }
-  const asset: Asset = { _id: uid('a'), ...d, version: null, status: 'draft' };
+  const asset: Asset = {
+    _id: uid('a'),
+    productId: productId.value,
+    ...d,
+    name: d.name.trim(),
+    owner: personnelLabel(d.owner),
+    developer: personnelLabel(d.developer),
+    ownerId: personnelId(d.owner),
+    developerId: personnelId(d.developer),
+    ownerDepartment: d.owner.deptName,
+    developerDepartment: d.developer.deptName,
+    version: null,
+    status: 'draft',
+  };
   assets.push(asset);
   w.poolIds.push(asset._id);
   w.assetDraft = null;
@@ -825,15 +930,14 @@ function createAsset() {
 <template>
   <div
     ref="scenarioPageRoot"
-    class="scenario-page"
+    class="scenario-page harness-viewport-page"
     tabindex="-1"
     :inert="scenarioDialog || tagTarget || deleteTarget || wizard ? true : undefined"
     :aria-hidden="scenarioDialog || tagTarget || deleteTarget || wizard ? 'true' : undefined"
   >
-    <header class="page-header">
-      <span>SCENARIO DESIGN</span>
-      <h1>业务场景设计台</h1>
-      <p>
+    <header class="page-header harness-page-heading">
+      <h1 class="harness-page-title">业务场景设计台</h1>
+      <p class="harness-page-description">
         复用配置管理的一级、二级场景；每个二级场景可创建一个 Harness
         工作流，环节与节点归属于该工作流。
       </p>
@@ -882,7 +986,6 @@ function createAsset() {
       {{ workspaceError }} <button @click="props.workspace.reloadScenes()">重试加载</button>
     </p>
     <p v-if="loading" role="status">正在加载部门、产品与场景…</p>
-    <p class="hint">场景配置与配置管理同步；工作流设计及场景关联保存在当前浏览器。</p>
     <section
       class="workspace"
       :inert="!available || loading || saving ? true : undefined"
@@ -1146,8 +1249,8 @@ function createAsset() {
                   :class="progress(workflow).states[i]"
                   @click="openWizard(workflow, i)"
                 >
-                  <b>{{ i + 1 }}</b
-                  >{{ label }}
+                  <b>{{ i + 1 }}</b>
+                  <span>{{ label }}</span>
                 </button>
               </div>
               <div class="config-grid">
@@ -1523,6 +1626,8 @@ function createAsset() {
           ><i v-if="i" :class="{ reached: i <= wizard.maxReached }"></i
           ><button
             :class="{ current: i === wizard.step, done: i < wizard.step }"
+            :aria-current="i === wizard.step ? 'step' : undefined"
+            :disabled="i > wizard.maxReached"
             @click="goStep(i)"
           >
             <b>{{ i + 1 }}</b
@@ -1530,7 +1635,7 @@ function createAsset() {
           </button></template
         >
       </nav>
-      <section v-if="wizard.step === 0">
+      <section v-if="wizard.step === 0" class="wizard-page" aria-label="业务场景分析" tabindex="-1">
         <p class="hint">
           先对齐业务场景：明确场景目标、输入输出与业务边界，后续 Workflow 与资产都围绕它展开。带 *
           为必填项。
@@ -1544,7 +1649,9 @@ function createAsset() {
             v-model="wizard.form.code"
             :readonly="!!currentScenario?.releaseCount"
             :placeholder="`例如：${productPrefix()}mml-dev`"
-          /><small
+          /><small v-if="currentScenario?.releaseCount"
+            >该场景已发布过版本，编码已锁定不可修改。</small
+          ><small v-else
             >该编码将作为发布的 Extension 名称：以产品前缀
             {{ productPrefix() }} 开头、全部小写、仅用连字符分隔。</small
           ></label
@@ -1552,7 +1659,12 @@ function createAsset() {
           >场景说明与目标 *<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
         </label>
       </section>
-      <section v-else-if="wizard.step === 1">
+      <section
+        v-else-if="wizard.step === 1"
+        class="wizard-page"
+        aria-label="Workflow 规划"
+        tabindex="-1"
+      >
         <p class="hint">
           规划 Workflow 基本信息，并编排「环节 → 节点」：环节是逻辑分组，节点是绑定 Agent / Skill
           的原子执行单元。
@@ -1580,8 +1692,11 @@ function createAsset() {
           class="edit-stage"
         >
           <header>
-            <b>{{ stage.name }}</b
-            ><span
+            <div class="structure-info">
+              <b>{{ stage.name }}</b>
+              <small v-if="stage.description">{{ stage.description }}</small>
+            </div>
+            <span
               ><button @click="move(wizard.workflow.stages, stage.id, -1)">↑</button
               ><button @click="move(wizard.workflow.stages, stage.id, 1)">↓</button
               ><button
@@ -1598,57 +1713,61 @@ function createAsset() {
               ><button @click="deleteStage(stage.id)">删除</button></span
             >
           </header>
-          <div v-if="wizard.stageDraft?.id === stage.id" class="inline">
-            <input
-              v-model="wizard.stageDraft.name"
-              placeholder="环节名称"
-              @keyup.enter="saveStage"
-            /><input
-              v-model="wizard.stageDraft.description"
-              placeholder="环节说明（可选）"
-            /><button class="primary" @click="saveStage">保存环节</button
-            ><button @click="wizard.stageDraft = null">取消</button>
-          </div>
           <div class="nodes">
-            <div v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)" :key="node.id">
-              <b>{{ node.name }}</b
-              ><span
-                ><button @click="move(stage.steps, node.id, -1)">↑</button
-                ><button @click="move(stage.steps, node.id, 1)">↓</button
-                ><button
-                  @click="
-                    wizard.nodeDraft = {
-                      stageId: stage.id,
-                      id: node.id,
-                      name: node.name,
-                      description: node.description,
-                    };
-                    wizard.stageDraft = null;
-                  "
+            <div
+              v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)"
+              :key="node.id"
+              class="node-item"
+            >
+              <div class="node-row">
+                <div class="structure-info">
+                  <b>{{ node.name }}</b>
+                  <small v-if="node.description">{{ node.description }}</small>
+                </div>
+                <span
+                  ><button @click="move(stage.steps, node.id, -1)">↑</button
+                  ><button @click="move(stage.steps, node.id, 1)">↓</button
+                  ><button
+                    @click="
+                      wizard.nodeDraft = {
+                        stageId: stage.id,
+                        id: node.id,
+                        name: node.name,
+                        description: node.description,
+                      };
+                      wizard.stageDraft = null;
+                    "
+                  >
+                    编辑</button
+                  ><button @click="deleteNode(stage.id, node.id)">删除</button></span
                 >
-                  编辑</button
-                ><button @click="deleteNode(stage.id, node.id)">删除</button></span
-              >
-              <div v-if="wizard.nodeDraft?.id === node.id" class="inline">
+              </div>
+              <div v-if="wizard.nodeDraft?.id === node.id" class="inline structure-draft">
                 <input v-model="wizard.nodeDraft.name" placeholder="节点名称" /><input
                   v-model="wizard.nodeDraft.description"
                   placeholder="节点说明（可选）"
-                /><button class="primary" @click="saveNode">保存节点</button
-                ><button @click="wizard.nodeDraft = null">取消</button>
+                />
+                <div class="structure-draft-actions">
+                  <button class="primary" @click="saveNode">保存节点</button>
+                  <button @click="wizard.nodeDraft = null">取消</button>
+                </div>
               </div>
             </div>
             <div
               v-if="wizard.nodeDraft?.stageId === stage.id && !wizard.nodeDraft.id"
-              class="inline"
+              class="inline structure-draft"
             >
               <input v-model="wizard.nodeDraft.name" placeholder="节点名称" /><input
                 v-model="wizard.nodeDraft.description"
                 placeholder="节点说明（可选）"
-              /><button class="primary" @click="saveNode">添加节点</button
-              ><button @click="wizard.nodeDraft = null">取消</button>
+              />
+              <div class="structure-draft-actions">
+                <button class="primary" @click="saveNode">添加节点</button>
+                <button @click="wizard.nodeDraft = null">取消</button>
+              </div>
             </div>
             <button
-              v-else
+              v-if="wizard.nodeDraft?.stageId !== stage.id"
               @click="
                 wizard.nodeDraft = { stageId: stage.id, name: '', description: '' };
                 wizard.stageDraft = null;
@@ -1657,17 +1776,31 @@ function createAsset() {
               + 添加节点
             </button>
           </div>
+          <div v-if="wizard.stageDraft?.id === stage.id" class="inline structure-draft">
+            <input
+              v-model="wizard.stageDraft.name"
+              placeholder="环节名称"
+              @keyup.enter="saveStage"
+            /><input v-model="wizard.stageDraft.description" placeholder="环节说明（可选）" />
+            <div class="structure-draft-actions">
+              <button class="primary" @click="saveStage">保存环节</button>
+              <button @click="wizard.stageDraft = null">取消</button>
+            </div>
+          </div>
         </div>
-        <div v-if="wizard.stageDraft && !wizard.stageDraft.id" class="inline">
+        <div v-if="wizard.stageDraft && !wizard.stageDraft.id" class="inline structure-draft">
           <input v-model="wizard.stageDraft.name" placeholder="环节名称" /><input
             v-model="wizard.stageDraft.description"
             placeholder="环节说明（可选）"
-          /><button class="primary" @click="saveStage">添加环节</button
-          ><button @click="wizard.stageDraft = null">取消</button>
+          />
+          <div class="structure-draft-actions">
+            <button class="primary" @click="saveStage">添加环节</button>
+            <button @click="wizard.stageDraft = null">取消</button>
+          </div>
         </div>
         <button
-          v-else
-          class="primary"
+          v-if="!wizard.stageDraft"
+          class="primary add-stage-trigger"
           @click="
             wizard.stageDraft = { name: '', description: '' };
             wizard.nodeDraft = null;
@@ -1676,7 +1809,12 @@ function createAsset() {
           + 添加环节
         </button>
       </section>
-      <section v-else-if="wizard.step === 2">
+      <section
+        v-else-if="wizard.step === 2"
+        class="wizard-page"
+        aria-label="Command 入口"
+        tabindex="-1"
+      >
         <p class="hint">
           Command 在 Agent 中通过 / 触发；从资产清单中选择或新定义，参数与正文由流水线发布后回填。
         </p>
@@ -1684,6 +1822,7 @@ function createAsset() {
           <b>主入口要求：</b>必须至少有一个以 <code>e2e</code> 开头的 Command 作为流程主入口，例如
           <code>/{{ productPrefix() }}e2e-codec</code>。
         </p>
+        <p v-if="!wizard.workflow.commands.length" class="hint">尚未选择 Command 入口。</p>
         <div v-for="command in wizard.workflow.commands" :key="command.id" class="command-row">
           <div class="command-details">
             <code>{{ command.name }}</code>
@@ -1716,82 +1855,60 @@ function createAsset() {
             删除
           </button>
         </div>
-        <div class="picker command-picker">
-          <button
-            type="button"
-            class="command-picker-trigger"
-            aria-label="+ 选择一个 Command 加入… ▾"
-            :aria-expanded="wizard.commandPickerOpen"
-            aria-controls="workflow-command-options"
-            @click="wizard.commandPickerOpen = !wizard.commandPickerOpen"
-          >
-            <span>+ 选择一个 Command 加入…</span>
-            <svg
-              class="picker-chevron"
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="m6 8 4 4 4-4" />
-            </svg>
-          </button>
-          <div
-            v-if="wizard.commandPickerOpen"
-            class="picker-backdrop"
-            @click="wizard.commandPickerOpen = false"
-          ></div>
-          <div v-if="wizard.commandPickerOpen" id="workflow-command-options" class="picker-list">
-            <button
-              v-for="command in commands.filter(
-                (c) => !wizard!.workflow.commands.some((w) => w.commandId === c._id),
-              )"
-              :key="command._id"
-              type="button"
-              class="command-picker-option"
-              @click="addCommand(command._id)"
-            >
-              <span class="command-option-icon" aria-hidden="true">/</span>
-              <span class="command-option-content">
-                <code>{{ command.name }}</code>
-                <small>{{ command.description }}</small>
+        <h4>从资产清单中选择或新定义</h4>
+        <WorkflowCapabilityPicker
+          :key="`command-${productId}`"
+          :types="['Command']"
+          :local-options="localCommandOptions"
+          :selected-ids="wizard.workflow.commands.map((item) => item.commandId)"
+          :query="props.workspace.queryCapabilityOptions"
+          @select="selectCapability"
+        />
+        <div v-if="wizard.commandDraft" class="inline form capability-create-form">
+          <div class="capability-create-heading">自定义 Command</div>
+          <div class="capability-create-fields">
+            <label>
+              Command 名称 *
+              <input
+                v-model="wizard.commandDraft.name"
+                :placeholder="`/${productPrefix()}e2e-codec`"
+              />
+              <span class="capability-field-hint">
+                {{
+                  productPrefix() ? `以 ${productPrefix()} 开头，` : ''
+                }}仅使用小写字母、数字和连字符。
               </span>
-              <span class="command-option-action" aria-hidden="true">+ 添加</span>
+            </label>
+            <label>
+              描述 *
+              <textarea v-model="wizard.commandDraft.description" placeholder="描述 *" rows="3" />
+            </label>
+            <WorkflowPersonPicker v-model="wizard.commandDraft.developer" label="开发责任人 *" />
+            <WorkflowPersonPicker v-model="wizard.commandDraft.owner" label="责任人 *" />
+            <label>
+              计划完成时间 *
+              <input v-model="wizard.commandDraft.dueDate" type="date" />
+            </label>
+            <p class="capability-field-hint">参数与正文由流水线发布后回填。</p>
+          </div>
+          <p v-if="wizard.error" class="capability-create-error" role="alert">{{ wizard.error }}</p>
+          <div class="capability-create-actions">
+            <button class="primary" @click="createCommand">创建并加入资产清单</button>
+            <button
+              @click="
+                wizard.commandDraft = null;
+                wizard.error = '';
+              "
+            >
+              取消
             </button>
           </div>
         </div>
-        <div v-if="wizard.commandDraft" class="inline form">
-          <input
-            v-model="wizard.commandDraft.name"
-            :placeholder="`/${productPrefix()}e2e-codec`"
-          /><input v-model="wizard.commandDraft.description" placeholder="描述 *" /><input
-            v-model="wizard.commandDraft.developer"
-            placeholder="开发责任人 *"
-          /><input v-model="wizard.commandDraft.owner" placeholder="责任人 *" /><input
-            v-model="wizard.commandDraft.dueDate"
-            type="date"
-          /><button class="primary" @click="createCommand">创建并加入资产清单</button
-          ><button @click="wizard.commandDraft = null">取消</button>
-        </div>
-        <button
-          v-else
-          @click="
-            wizard.commandDraft = {
-              name: '',
-              description: '',
-              developer: '',
-              owner: '',
-              dueDate: '',
-            }
-          "
-        >
+        <button v-else class="create-command-trigger" @click="openCommandDraft">
           + 新定义 Command
         </button>
       </section>
-      <section v-else>
+      <section v-else class="wizard-page" aria-label="Skill / Agent 集成" tabindex="-1">
         <p class="hint">
           先圈定该 Workflow 可用的 Agent / Skill 资产池，再逐节点从池中分配执行资产。
         </p>
@@ -1806,82 +1923,103 @@ function createAsset() {
             }}<button @click="togglePool(id)">×</button></span
           >
         </div>
-        <div class="picker">
-          <button @click="wizard.assetPickerOpen = !wizard.assetPickerOpen">
-            + 从资产库添加 Agent / Skill… ▾
-          </button>
-          <div
-            v-if="wizard.assetPickerOpen"
-            class="picker-backdrop"
-            @click="wizard.assetPickerOpen = false"
-          ></div>
-          <div v-if="wizard.assetPickerOpen" class="picker-list">
-            <nav class="tabs">
-              <button
-                v-for="type in ['Agent', 'Skill'] as AssetType[]"
-                :key="type"
-                :class="{ active: wizard.assetTypeTab === type }"
-                @click="wizard.assetTypeTab = type"
-              >
-                {{ type }}
-              </button>
-            </nav>
-            <div
-              v-for="asset in assets.filter((a) => a.assetType === wizard!.assetTypeTab)"
-              :key="asset._id"
-              class="asset-option"
-            >
-              <span
-                ><b>{{ asset.name }}</b
-                ><small>{{ asset.developer }} · {{ asset.description }}</small></span
-              ><button
-                :disabled="wizard.poolIds.includes(asset._id)"
-                @click="togglePool(asset._id)"
-              >
-                {{ wizard.poolIds.includes(asset._id) ? '已在池中' : '+ 添加' }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div v-if="wizard.assetDraft" class="inline form">
-          <input
-            v-model="wizard.assetDraft.name"
-            :placeholder="`${productPrefix()}codec-generator`"
-          /><select v-model="wizard.assetDraft.assetType">
-            <option>Agent</option>
-            <option>Skill</option></select
-          ><input v-model="wizard.assetDraft.description" placeholder="描述 *" /><input
-            v-model="wizard.assetDraft.developer"
-            placeholder="开发责任人 *"
-          /><input v-model="wizard.assetDraft.owner" placeholder="责任人 *" /><input
-            v-model="wizard.assetDraft.dueDate"
-            type="date"
-          /><button class="primary" @click="createAsset">创建并加入资产清单</button
-          ><button @click="wizard.assetDraft = null">取消</button>
-        </div>
-        <button
-          v-else
-          @click="
-            wizard.assetDraft = {
-              name: '',
-              assetType: wizard.assetTypeTab,
-              description: '',
-              developer: '',
-              owner: '',
-              dueDate: '',
+        <WorkflowCapabilityPicker
+          :key="`asset-${productId}`"
+          :types="['Agent', 'Skill']"
+          :local-options="localAssetOptions"
+          :selected-ids="wizard.poolIds"
+          :query="props.workspace.queryCapabilityOptions"
+          @select="selectCapability"
+          @type-change="
+            (type) => {
+              if (type !== 'Command') wizard!.assetTypeTab = type;
             }
           "
-        >
-          + 快速创建 Agent / Skill
-        </button>
+        />
+        <div v-if="wizard.assetDraft" class="inline form capability-create-form">
+          <div class="capability-create-heading">自定义 Agent / Skill</div>
+          <div class="capability-create-fields">
+            <div class="capability-type-field">
+              <span>资产类型</span>
+              <div class="capability-type-picker" role="group" aria-label="资产类型">
+                <button
+                  v-for="type in ['Agent', 'Skill'] as const"
+                  :key="type"
+                  type="button"
+                  :aria-pressed="wizard.assetDraft.assetType === type"
+                  @click="selectDraftAssetType(type)"
+                >
+                  {{ type }}
+                </button>
+              </div>
+            </div>
+            <label>
+              {{ wizard.assetDraft.assetType }} 名称 *
+              <input
+                v-model="wizard.assetDraft.name"
+                :placeholder="`${productPrefix()}${wizard.assetDraft.assetType === 'Skill' ? 'codec-generator' : 'coding-agent'}`"
+              />
+              <span class="capability-field-hint">
+                {{
+                  productPrefix() ? `以 ${productPrefix()} 开头，` : ''
+                }}仅使用小写字母、数字和连字符。
+              </span>
+            </label>
+            <label>
+              描述 *
+              <textarea v-model="wizard.assetDraft.description" placeholder="描述 *" rows="3" />
+            </label>
+            <WorkflowPersonPicker
+              :key="`developer-${wizard.assetDraft.assetType}`"
+              v-model="wizard.assetDraft.developer"
+              label="开发责任人 *"
+            />
+            <WorkflowPersonPicker
+              :key="`owner-${wizard.assetDraft.assetType}`"
+              v-model="wizard.assetDraft.owner"
+              label="责任人 *"
+            />
+            <label>
+              计划完成时间 *
+              <input v-model="wizard.assetDraft.dueDate" type="date" />
+            </label>
+            <p class="capability-field-hint">资产内容由流水线发布后回填。</p>
+          </div>
+          <p v-if="wizard.error" class="capability-create-error" role="alert">{{ wizard.error }}</p>
+          <div class="capability-create-actions">
+            <button class="primary" @click="createAsset">创建并加入资产清单</button>
+            <button
+              @click="
+                wizard.assetDraft = null;
+                wizard.error = '';
+              "
+            >
+              取消
+            </button>
+          </div>
+        </div>
+        <div v-else class="capability-create-entry">
+          <button type="button" @click="openAssetDraft('Agent')">+ 自定义 Agent</button>
+          <button type="button" @click="openAssetDraft('Skill')">+ 自定义 Skill</button>
+        </div>
         <h4>节点资产分配 <small>候选来自上方资产池的勾选结果</small></h4>
         <p v-if="!wizard.workflow.stages.flatMap((s) => s.steps).length" class="hint">
           该 Workflow 尚未定义节点。
         </p>
-        <div v-for="stage in wizard.workflow.stages" :key="stage.id" class="assignment">
+        <div
+          v-for="stage in [...wizard.workflow.stages].sort((a, b) => a.order - b.order)"
+          :key="stage.id"
+          class="assignment"
+        >
           <b>{{ stage.name }}</b>
-          <div v-for="node in stage.steps" :key="node.id">
+          <small v-if="stage.description" class="assignment-description">{{
+            stage.description
+          }}</small>
+          <div v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)" :key="node.id">
             <strong>{{ node.name }}</strong>
+            <small v-if="node.description" class="assignment-description">{{
+              node.description
+            }}</small>
             <div class="chips">
               <span v-for="id in wizard.nodeAssetsMap[node.id] || []" :key="id"
                 ><b>{{ assets.find((a) => a._id === id)?.assetType }}</b
@@ -1890,12 +2028,14 @@ function createAsset() {
               >
             </div>
             <select
+              :aria-label="`为${node.name}分配资产`"
               v-if="
                 wizard.poolIds.some((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
               "
               @change="
                 ($event.target as HTMLSelectElement).value &&
-                toggleNodeAsset(node.id, ($event.target as HTMLSelectElement).value)
+                  toggleNodeAsset(node.id, ($event.target as HTMLSelectElement).value);
+                ($event.target as HTMLSelectElement).value = '';
               "
             >
               <option value="">+ 从资产池添加…</option>
@@ -1906,14 +2046,20 @@ function createAsset() {
                 :key="id"
                 :value="id"
               >
-                {{ assets.find((a) => a._id === id)?.name }}
+                {{ assets.find((a) => a._id === id)?.name }}（{{
+                  assets.find((a) => a._id === id)?.assetType
+                }}）
               </option></select
             ><small v-else-if="!(wizard.nodeAssetsMap[node.id] || []).length">未分配资产</small>
           </div>
         </div>
       </section>
       <footer class="wizard-footer">
-        <span class="error">{{ wizard.error }}</span
+        <span class="error">{{
+          (wizard.step === 2 && wizard.commandDraft) || (wizard.step === 3 && wizard.assetDraft)
+            ? ''
+            : wizard.error
+        }}</span
         ><span
           ><button :disabled="wizard.step === 0" @click="goStep(wizard.step - 1)">上一步</button
           ><button class="primary" @click="goNext">
@@ -1956,12 +2102,6 @@ function createAsset() {
 }
 .page-header {
   margin-bottom: 1.5rem;
-}
-.page-header > span {
-  color: var(--blue);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
 }
 .page-header h1 {
   margin: 0.25rem 0 0.4rem;
@@ -2298,13 +2438,22 @@ select {
   color: #6b7280;
 }
 .primary {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
   border: 0 !important;
   border-radius: 6px !important;
   background: #2563eb !important;
   color: #fff !important;
-  padding: 0.5rem 1rem !important;
+  padding: 0 12px !important;
   font: inherit;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background 0.16s ease,
@@ -2316,7 +2465,7 @@ select {
 }
 .start-workflow-button {
   align-self: flex-start;
-  padding: 7px 14px !important;
+  padding: 0 12px !important;
   line-height: 20px;
 }
 .empty {
@@ -2389,21 +2538,34 @@ select {
   margin: 16px 0;
 }
 .progress button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   border: 1px solid #e5e7eb;
   border-radius: 999px;
   padding: 5px 10px 5px 5px;
   background: #f3f4f6;
   color: #6b7280;
+  line-height: 18px;
 }
 .progress b {
   display: inline-grid;
+  flex: 0 0 18px;
   place-items: center;
   width: 18px;
   height: 18px;
-  margin-right: 5px;
+  margin: 0;
   border-radius: 50%;
   background: #e5e7eb;
   font-size: 10px;
+  line-height: 18px;
+}
+.progress button > span {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  line-height: 18px;
 }
 .progress .done {
   background: #d1fae5;
@@ -2593,11 +2755,22 @@ h4 small {
 .command-row button,
 .wizard > section > button,
 .inline button,
+.capability-create-entry button,
 .asset-option button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 32px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background: #fff;
-  padding: 7px 10px;
+  padding: 0 12px;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
 }
 .small {
@@ -2616,7 +2789,7 @@ h4 small {
 }
 .wizard {
   width: min(760px, 94vw);
-  padding: 28px 32px;
+  padding: 24px 32px;
   color: #334155;
   font:
     14px/1.6 -apple-system,
@@ -2657,6 +2830,13 @@ h4 small {
   min-height: 112px;
   resize: vertical;
 }
+.wizard input:focus-visible,
+.wizard textarea:focus-visible,
+.wizard select:focus-visible {
+  outline: none;
+  border-color: #9bbbf5;
+  box-shadow: 0 0 0 3px #eff4ff;
+}
 .wizard input[readonly] {
   background: #f8fafc;
   color: #64748b;
@@ -2680,7 +2860,7 @@ h4 small {
   font-size: 13px;
 }
 .wizard .primary {
-  padding: 6px 14px !important;
+  padding: 0 12px !important;
   font-size: 13px;
   line-height: 20px;
 }
@@ -2692,34 +2872,55 @@ h4 small {
   line-height: 1;
 }
 .wizard .two {
-  gap: 20px;
+  gap: 12px;
+}
+.wizard .two label {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.wizard-page:focus {
+  outline: none;
 }
 .wizard .inline {
+  align-items: center;
   gap: 10px;
 }
+.wizard .inline input,
+.wizard .inline select {
+  margin-top: 0;
+}
+.wizard .edit-stage > header button,
+.wizard .node-row > span > button,
+.wizard .nodes > button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
 .wizard .edit-stage > header > span,
-.wizard .nodes > div:not(.inline) > span {
+.wizard .node-row > span {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 .wizard .wizard-footer {
   align-items: center;
   gap: 16px;
-  margin-top: 28px;
+  margin-top: 20px;
   padding-top: 20px;
 }
 .wizard-footer > span:last-child {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 .wizard .wizard-footer button {
-  min-width: 74px;
-  height: 34px;
-  padding: 6px 14px;
+  min-width: 68px;
+  height: 32px;
+  padding: 0 12px;
   font-weight: 500;
   line-height: 20px;
 }
@@ -2764,6 +2965,14 @@ h4 small {
 .wizard > nav .current > b {
   background: #2563eb;
   color: #fff;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+.wizard > nav .current > span {
+  color: #2563eb;
+  font-weight: 600;
+}
+.wizard > nav button:disabled {
+  opacity: 1;
 }
 .wizard > nav .done > b {
   background: #d1fae5;
@@ -2789,8 +2998,15 @@ h4 small {
 }
 .wizard h4 {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  margin: 22px 0 10px;
+  gap: 12px;
+  margin: 24px 0 12px;
+}
+.wizard h4 small {
+  margin-top: 0;
+  font-weight: 400;
+  text-align: right;
 }
 .edit-stage,
 .assignment {
@@ -2801,17 +3017,51 @@ h4 small {
 }
 .edit-stage > header {
   display: flex;
+  align-items: center;
+  gap: 12px;
   justify-content: space-between;
-  padding: 10px;
+  padding: 12px 14px;
   background: #f9fafb;
 }
 .nodes {
-  padding: 8px 14px 12px;
+  padding: 8px 14px 12px 32px;
 }
-.nodes > div:not(.inline) {
+.node-row {
   display: flex;
+  align-items: center;
+  gap: 12px;
   justify-content: space-between;
   padding: 6px 0;
+}
+.structure-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.wizard .structure-info small,
+.wizard .assignment-description {
+  margin: 2px 0 0;
+  color: #7b8799;
+  font-weight: 400;
+}
+.wizard .structure-draft {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+.nodes .structure-draft {
+  margin: 8px 0;
+}
+.structure-draft-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.add-stage-trigger {
+  margin-top: 10px;
 }
 .inline {
   display: flex;
@@ -2831,13 +3081,133 @@ h4 small {
 .form input {
   min-width: 190px;
 }
+.wizard .capability-create-form {
+  display: block;
+  min-width: 0;
+  margin: 14px 0 18px;
+  padding: 0;
+  overflow: hidden;
+  border-color: #e3e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+.capability-create-heading {
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf0f5;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+.capability-create-entry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+.capability-create-entry button {
+  color: #475569;
+  border-color: #dce3ee;
+}
+.capability-create-entry button:hover {
+  color: #2563eb;
+  border-color: #a8c1f9;
+  background: #f5f8ff;
+}
+.capability-type-field {
+  display: grid;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+.capability-type-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e3e8f0;
+  border-radius: 7px;
+  background: #f5f7fa;
+}
+.wizard .capability-type-picker button {
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: #64748b;
+}
+.wizard .capability-type-picker button[aria-pressed='true'] {
+  border-color: #d6e2ff;
+  background: #fff;
+  color: #2563eb;
+  box-shadow: 0 1px 3px #0f172a0d;
+  font-weight: 600;
+}
+.capability-type-picker button:focus-visible,
+.capability-create-entry button:focus-visible {
+  outline: 2px solid #6397f5;
+  outline-offset: 2px;
+}
+.capability-field-hint {
+  margin: 0;
+  color: #8a96a8;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.capability-create-error {
+  margin: 0 16px 16px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: #fff1f2;
+  color: #be4354;
+  font-size: 12px;
+}
+.capability-create-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+.wizard .capability-create-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+.wizard .capability-create-fields input,
+.wizard .capability-create-fields textarea,
+.wizard .capability-create-fields select {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  background: #fff;
+}
+.wizard .capability-create-fields textarea {
+  min-height: 76px;
+}
+.capability-create-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #edf0f5;
+  background: #f8fafc;
+}
+.wizard {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
 .picker {
   position: relative;
   margin: 10px 0;
 }
 .picker > button,
-.wizard > section > button {
+.wizard .create-command-trigger {
   width: 100%;
+  justify-content: flex-start;
   text-align: left;
 }
 .picker-list {
@@ -3386,17 +3756,17 @@ h4 small {
   font-size: 12px;
 }
 .scenario-editor .editor-footer button {
-  min-width: 84px;
-  min-height: 38px;
-  padding: 8px 18px;
+  min-width: 68px;
+  min-height: 32px;
+  padding: 0 12px;
   border-color: #dce2eb;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #536178;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
 }
 .scenario-editor .editor-footer .primary {
-  border-radius: 8px !important;
+  border-radius: 6px !important;
 }
 .scenario-editor button:focus-visible {
   outline: 2px solid #6397f5;
@@ -3527,6 +3897,48 @@ h4 small {
   }
   .wizard .command-row > button {
     justify-self: end;
+  }
+}
+.scenario-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.selector {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .tree-panel {
+    position: static;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .tree-panel > header,
+  .tree-sort-hint {
+    flex-shrink: 0;
+  }
+
+  .tree-body {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .design-panel {
+    min-height: 0;
+    overflow: auto;
   }
 }
 </style>

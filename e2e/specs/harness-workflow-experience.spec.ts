@@ -62,13 +62,15 @@ test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', 
   }
   await wizard.locator('.picker-backdrop').click({ position: { x: 1, y: 1 } });
   const generation = wizard.locator('.assignment').filter({ hasText: '生成代码' });
-  await generation.locator('select').selectOption({ label: 'harness-demo-api-agent' });
-  await generation.locator('select').selectOption({ label: 'harness-demo-code-generator' });
+  await generation.locator('select').selectOption({ label: 'harness-demo-api-agent（Agent）' });
+  await generation
+    .locator('select')
+    .selectOption({ label: 'harness-demo-code-generator（Skill）' });
   await wizard
     .locator('.assignment')
     .filter({ hasText: '检查代码' })
     .locator('select')
-    .selectOption({ label: 'harness-demo-code-review' });
+    .selectOption({ label: 'harness-demo-code-review（Skill）' });
   await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
   await expect(wizard).toBeHidden();
   await expect(harness.workflowCard('接口开发体验工作流').getByText('✓ 设计完成')).toBeVisible();

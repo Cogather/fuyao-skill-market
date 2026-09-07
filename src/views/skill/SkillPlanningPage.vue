@@ -130,7 +130,9 @@ const batchReadonlyHeaders = computed(() => [
 
 const activePlanningTab = ref<'skills' | 'management'>('skills');
 const catalogActionScope = ref<HarnessScopeSnapshot>();
-const skillMasterManagementPanel = ref<InstanceType<typeof SkillMasterManagementPanel> | null>(null);
+const skillMasterManagementPanel = ref<InstanceType<typeof SkillMasterManagementPanel> | null>(
+  null,
+);
 const capabilityCatalogPanel = ref<InstanceType<typeof HarnessCapabilityCatalogPanel> | null>(null);
 const activePlanningDescription = computed(() =>
   activePlanningTab.value === 'management'
@@ -2674,11 +2676,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="planning-pageNum">
-    <header class="planning-hero">
+  <div class="planning-pageNum harness-viewport-page">
+    <header class="planning-hero harness-page-heading">
       <div>
-        <h2 class="panel-title">{{ capabilityPlanningLabel }}</h2>
-        <p class="all-desc">{{ activePlanningDescription }}</p>
+        <h2 class="panel-title harness-page-title">{{ capabilityPlanningLabel }}</h2>
+        <p class="all-desc harness-page-description">{{ activePlanningDescription }}</p>
       </div>
     </header>
 
@@ -6361,5 +6363,54 @@ onBeforeUnmount(() => {
   .import-dropzone__copy strong {
     white-space: normal;
   }
+}
+.planning-pageNum {
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-tabs,
+.planning-filter-card,
+.planning-toolbar,
+.planning-pagination {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .planning-pageNum > :deep(.master-panel),
+  .planning-pageNum > :deep(.capability-master-panel) {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+
+  .planning-tab-panel {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .planning-board {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+}
+/* Keep the Harness action scale on teleported dialogs as well. */
+:where(body:has(.harness-management-shell)) .planning-btn {
+  flex-shrink: 0;
+  align-self: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-weight: 600;
+}
+
+:where(body:has(.harness-management-shell)) .icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  align-self: center;
 }
 </style>

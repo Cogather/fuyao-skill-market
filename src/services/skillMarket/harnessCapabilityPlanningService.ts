@@ -250,8 +250,15 @@ async function querySkillCatalogPage(
   pageNum: number,
   pageSize: number,
 ): Promise<{ rows: SkillMasterRecord[]; total: number; totalKnown: boolean; hasMore: boolean }> {
+  const keyword = query.keyword?.trim();
   const inferredDimType =
-    query.dimType || query.level || (query.product ? '产品级' : useHttpTransport() ? '部门级' : '');
+    query.dimType ||
+    query.level ||
+    (query.product
+      ? '产品级'
+      : useHttpTransport() && (query.departmentName || !keyword)
+        ? '部门级'
+        : '');
   const inferredDimName =
     query.dimName ||
     (inferredDimType ? (inferredDimType === '产品级' ? query.product : query.departmentName) : '');
@@ -262,7 +269,7 @@ async function querySkillCatalogPage(
     pageNum,
     pageSize,
   };
-  if (query.keyword) body.keyword = query.keyword;
+  if (keyword) body.keyword = keyword;
   if (inferredDimType) body.dimType = inferredDimType;
   if (query.dimCode) body.dimCode = query.dimCode;
   if (inferredDimName) body.dimName = inferredDimName;

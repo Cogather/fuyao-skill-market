@@ -14,6 +14,9 @@ export class HarnessManagementPage {
   readonly topbarIdentity: Locator;
   readonly tabList: Locator;
   readonly tabScenarios: Locator;
+  readonly tabCapabilities: Locator;
+  readonly capabilitiesPanel: Locator;
+  readonly capabilityManagementTabList: Locator;
   readonly scenariosPanel: Locator;
   readonly scenariosHeading: Locator;
   readonly scenariosDepartmentTrigger: Locator;
@@ -49,6 +52,11 @@ export class HarnessManagementPage {
     this.topbarIdentity = page.getByText('Harness 管理', { exact: true }).first();
     this.tabList = page.getByRole('tablist', { name: 'Harness 管理分区' });
     this.tabScenarios = page.locator('#harness-tab-scenarios');
+    this.tabCapabilities = page.locator('#harness-tab-capabilities');
+    this.capabilitiesPanel = page.locator('#harness-panel-capabilities');
+    this.capabilityManagementTabList = this.capabilitiesPanel.getByRole('tablist', {
+      name: '资产清单分区',
+    });
     this.scenariosPanel = page.locator('#harness-panel-scenarios');
     this.scenariosHeading = this.scenariosPanel.getByRole('heading', { name: '业务场景设计台' });
     this.scenariosDepartmentTrigger = this.scenariosPanel.getByRole('button', {
@@ -99,7 +107,7 @@ export class HarnessManagementPage {
       exact: true,
     });
     this.tabTasks = page.getByRole('tab', { name: '任务管理' });
-    this.tabExtension = page.getByRole('tab', { name: 'Extension 发布' });
+    this.tabExtension = page.locator('#harness-tab-extension');
     this.applicationRelationTab = page.getByRole('button', {
       name: new RegExp('\\u573a\\u666f\\u5173\\u7cfb\\u914d\\u7f6e'),
     });
@@ -108,7 +116,7 @@ export class HarnessManagementPage {
     });
     this.planningHeroDescription = page.locator('.planning-hero .all-desc');
     this.tasksPanel = page.locator('#harness-panel-tasks');
-    this.extensionPanel = page.locator('#harness-panel-extension');
+    this.extensionPanel = this.capabilitiesPanel.locator('#capability-management-panel-extension');
     this.extensionReadySceneButton = this.extensionPanel.getByRole('button', {
       name: /构建诊断/,
     });
@@ -136,6 +144,16 @@ export class HarnessManagementPage {
   async switchToScenarios(): Promise<void> {
     await this.tabScenarios.click();
     await this.scenariosPanel.waitFor();
+  }
+
+  /** 切换到「资产清单」，并等待聚合管理面板渲染 */
+  async switchToCapabilityManagement(): Promise<void> {
+    await this.tabCapabilities.click();
+    await this.capabilitiesPanel.waitFor();
+  }
+
+  capabilityManagementTab(name: 'Command 清单' | 'Skill 清单' | 'Agent 清单' | 'Extension 发布') {
+    return this.capabilityManagementTabList.getByRole('tab', { name, exact: true });
   }
 
   /** 切换到只读的「Harness 工作流」清单，并等待面板渲染。 */
@@ -263,27 +281,35 @@ export class HarnessManagementPage {
     const commandEditor = this.workflowDesignDialog.locator('.inline.form');
     await commandEditor.getByPlaceholder(/e2e-codec$/).fill(options.commandName);
     await commandEditor.getByPlaceholder('描述 *').fill('端到端协议开发入口');
-    await commandEditor.getByPlaceholder('开发责任人 *').fill('e2e-developer');
-    await commandEditor.getByPlaceholder('责任人 *', { exact: true }).fill('e2e-owner');
+    await commandEditor
+      .getByRole('combobox', { name: '开发责任人 *', exact: true })
+      .fill('w30000001');
+    await commandEditor.getByRole('option', { name: /w30000001/ }).click();
+    await commandEditor.getByRole('combobox', { name: '责任人 *', exact: true }).fill('w30000002');
+    await commandEditor.getByRole('option', { name: /w30000002/ }).click();
     await commandEditor.locator('input[type="date"]').fill('2026-12-31');
     await commandEditor.getByRole('button', { name: '创建并加入资产清单', exact: true }).click();
     await this.workflowDesignDialog.getByRole('button', { name: '下一步', exact: true }).click();
 
     await this.workflowDesignDialog
-      .getByRole('button', { name: '+ 快速创建 Agent / Skill', exact: true })
+      .getByRole('button', { name: '+ 自定义 Agent', exact: true })
       .click();
     const assetEditor = this.workflowDesignDialog.locator('.inline.form');
-    await assetEditor.getByPlaceholder(/codec-generator$/).fill(options.assetName);
+    await assetEditor.getByPlaceholder(/coding-agent$/).fill(options.assetName);
     await assetEditor.getByPlaceholder('描述 *').fill('执行协议开发节点');
-    await assetEditor.getByPlaceholder('开发责任人 *').fill('e2e-developer');
-    await assetEditor.getByPlaceholder('责任人 *', { exact: true }).fill('e2e-owner');
+    await assetEditor
+      .getByRole('combobox', { name: '开发责任人 *', exact: true })
+      .fill('w30000001');
+    await assetEditor.getByRole('option', { name: /w30000001/ }).click();
+    await assetEditor.getByRole('combobox', { name: '责任人 *', exact: true }).fill('w30000002');
+    await assetEditor.getByRole('option', { name: /w30000002/ }).click();
     await assetEditor.locator('input[type="date"]').fill('2026-12-31');
     await assetEditor.getByRole('button', { name: '创建并加入资产清单', exact: true }).click();
 
     const assignment = this.workflowDesignDialog.locator('.assignment').filter({
       hasText: options.nodeName,
     });
-    await assignment.locator('select').selectOption({ label: options.assetName });
+    await assignment.locator('select').selectOption({ label: `${options.assetName}（Agent）` });
     await this.workflowDesignDialog.getByRole('button', { name: '完成设计', exact: true }).click();
     await this.workflowDesignDialog.waitFor({ state: 'hidden' });
   }
@@ -319,9 +345,10 @@ export class HarnessManagementPage {
     await this.tasksPanel.waitFor();
   }
 
-  /** 切换到「Extension 发布」，并等待发布内容渲染 */
+  /** 通过「资产清单」切换到「Extension 发布」，并等待发布内容渲染 */
   async switchToExtension(): Promise<void> {
-    await this.tabExtension.click();
+    await this.switchToCapabilityManagement();
+    await this.capabilityManagementTab('Extension 发布').click();
     await this.extensionPanel.waitFor();
   }
 

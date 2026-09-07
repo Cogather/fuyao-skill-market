@@ -1,4 +1,8 @@
 import { computed, reactive, ref, watch } from 'vue';
+import {
+  queryWorkflowCapabilityOptions,
+  type WorkflowCapabilityType,
+} from '../services/skillMarket/workflowCapabilitySearchService';
 import { getProductPlanning } from '../services/skillMarket/skillPlanningService';
 import { seedMockWorkflowExperience } from '../services/skillMarket/mock/harnessWorkflowExperience';
 import { seedMockWorkflowInventory } from '../services/skillMarket/mock/harnessWorkflowInventory';
@@ -41,7 +45,13 @@ export type Stage = {
   steps: Node[];
   sourceActivityId?: string;
 };
-export type CommandRef = {
+export type CapabilityPersonnel = {
+  ownerId?: string;
+  developerId?: string;
+  ownerDepartment?: string;
+  developerDepartment?: string;
+};
+export type CommandRef = CapabilityPersonnel & {
   id: string;
   commandId: string;
   name: string;
@@ -76,8 +86,10 @@ export type Workflow = {
   assets: AssetRef[];
   commands: CommandRef[];
 };
-export type Asset = {
+export type Asset = CapabilityPersonnel & {
   _id: string;
+  sourceId?: string;
+  productId?: string;
   name: string;
   assetType: AssetType;
   owner: string;
@@ -87,8 +99,10 @@ export type Asset = {
   status: string;
   dueDate?: string | null;
 };
-export type Command = {
+export type Command = CapabilityPersonnel & {
   _id: string;
+  sourceId?: string;
+  productId?: string;
   name: string;
   description: string;
   owner: string;
@@ -731,6 +745,20 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   async function loadLegacyActivities() {
     return loadLegacyActivityRecords(scopeFor(currentProduct()));
   }
+  function queryCapabilityOptions(type: WorkflowCapabilityType, keyword: string, pageNum = 1) {
+    const scope = scopeFor(currentProduct());
+    return queryWorkflowCapabilityOptions(
+      type,
+      {
+        userId: scope.userId,
+        productCode: scope.offeringId!,
+        productName: scope.offeringName!,
+        departmentName: scope.departmentName,
+      },
+      keyword,
+      pageNum,
+    );
+  }
   async function bindLegacyActivity(activityId: string) {
     const scenarioId = selectedScenarioId.value;
     const selectedProduct = productId.value;
@@ -796,6 +824,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     ensureWorkflow,
     loadLegacyActivities,
     bindLegacyActivity,
+    queryCapabilityOptions,
   };
 }
 export type HarnessScenarioWorkspace = ReturnType<typeof createHarnessScenarioWorkspace>;
