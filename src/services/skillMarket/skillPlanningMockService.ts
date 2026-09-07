@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { findActivityIdByNames, getActivitySortRank } from './activityManagementService';
 import { findSceneIdByNames, getSceneSortRank } from './sceneManagementService';
 import { listSkillMasterRecords } from './skillMasterManagementService';
+import { MOCK_WORKFLOW_EXPERIENCE_PRODUCT } from './mock/harnessWorkflowExperience';
 import {
   cloneSkillPlanningItem,
   exportSkillPlanningTemplateToExcel,
@@ -384,6 +385,7 @@ const initialSkillPlanningItems: Array<Omit<SkillPlanningItem, 'planningDeptName
 ];
 
 const mockProductPlanningOptions: ProductPlanningOption[] = [
+  MOCK_WORKFLOW_EXPERIENCE_PRODUCT,
   {
     offeringId: 'offering-harness-pipeline-valid',
     offeringName: 'harness-pipeline',

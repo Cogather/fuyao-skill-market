@@ -40,10 +40,10 @@ const activeTaskTabMeta = computed(
 </script>
 
 <template>
-  <div class="task-management-page">
-    <header class="task-management-hero">
-      <h2>任务管理</h2>
-      <p>
+  <div class="task-management-page harness-viewport-page">
+    <header class="task-management-hero harness-page-heading">
+      <h2 class="harness-page-title">任务管理</h2>
+      <p class="harness-page-description">
         集中查看当前用户负责的 Harness 任务，持续跟踪 Command、Skill 与 Agent 建设状态及完成进度。
       </p>
     </header>
@@ -121,55 +121,64 @@ const activeTaskTabMeta = computed(
 .task-management-tabs {
   display: inline-flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 6px;
+  box-sizing: border-box;
   width: fit-content;
-  padding: 4px;
+  max-width: 100%;
+  padding: 5px;
   border: 1px solid #dfe6f2;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 8px 24px rgba(35, 52, 84, 0.05);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 4px 16px rgba(35, 52, 84, 0.04);
 }
 
 .task-management-tab {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 168px;
-  height: 54px;
-  padding: 0 16px;
+  gap: 12px;
+  box-sizing: border-box;
+  min-width: 216px;
+  min-height: 64px;
+  padding: 10px 16px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 9px;
   background: transparent;
-  color: #7a879b;
+  color: #64748b;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: 160ms ease;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .task-management-tab:hover {
-  background: #f6f8fc;
-  color: #465570;
+  background: #f5f7ff;
+  color: #4054ce;
+}
+
+.task-management-tab:focus-visible {
+  outline: 3px solid rgba(80, 99, 216, 0.3);
+  outline-offset: 2px;
 }
 
 .task-management-tab.is-active {
   background: #eef2ff;
   color: #4054ce;
-  box-shadow: inset 0 0 0 1px #d6dcff;
+  box-shadow: inset 0 0 0 1px #cfd8ff, 0 3px 10px rgba(80, 99, 216, 0.08);
 }
 
 .task-management-tab__icon {
   display: grid;
   place-items: center;
-  width: 27px;
-  height: 27px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
-  border-radius: 8px;
-  background: #f0f2f6;
-  color: #7d899b;
-  font-size: 10px;
-  font-weight: 900;
+  border-radius: 9px;
+  background: #f0f3f9;
+  color: #73829b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .task-management-tab.is-active .task-management-tab__icon {
@@ -179,17 +188,26 @@ const activeTaskTabMeta = computed(
 
 .task-management-tab > span:last-child {
   display: grid;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .task-management-tab strong {
+  margin: 0;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
+  line-height: 20px;
 }
 
 .task-management-tab small {
-  color: #99a3b3;
-  font-size: 10px;
+  margin: 0;
+  color: #7b8aa2;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.task-management-tab.is-active small {
+  color: #6878aa;
 }
 
 .task-management-content {
@@ -217,6 +235,32 @@ const activeTaskTabMeta = computed(
 @media (max-width: 640px) {
   .task-management-hero h2 {
     font-size: 34px;
+  }
+}
+.task-management-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-management-tabs {
+  flex-shrink: 0;
+}
+
+.task-management-content {
+  padding-top: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .task-management-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .task-management-content > :deep(*) {
+    flex: 1;
+    min-height: 0;
   }
 }
 </style>

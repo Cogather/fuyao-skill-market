@@ -1,3 +1,5 @@
+import { reactive } from 'vue';
+
 export type ExtensionCapabilityType = 'skill' | 'command' | 'agent';
 
 export type ExtensionCapabilityFile = {
@@ -52,6 +54,12 @@ export type ExtensionProduct = {
   name: string;
   departmentPath: string[];
 };
+
+export const MOCK_EXTENSION_ORGANIZATIONS = [
+  { id: 'org-fuyao', name: '扶摇组织', deptId: '', deptName: '' },
+  { id: 'org-yunshan', name: '云山组织', deptId: '', deptName: '' },
+  { id: 'org-haichuan', name: '海川组织', deptId: '', deptName: '' },
+];
 
 export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
   {
@@ -845,4 +853,12 @@ const scenes: ExtensionScene[] = [
 
 export function createMockExtensionScenes(): ExtensionScene[] {
   return structuredClone(scenes);
+}
+
+let sharedMockExtensionScenes: ExtensionScene[] | undefined;
+
+/** Asset 聚合页与 Extension 发布页共用同一份运行时 Mock 状态。 */
+export function getSharedMockExtensionScenes(): ExtensionScene[] {
+  sharedMockExtensionScenes ??= reactive(createMockExtensionScenes()) as ExtensionScene[];
+  return sharedMockExtensionScenes;
 }

@@ -18,8 +18,9 @@ import {
   type PublishableOrganization,
 } from '../../services/skillMarket/extensionPublishHttp';
 import {
+  MOCK_EXTENSION_ORGANIZATIONS,
   MOCK_EXTENSION_PRODUCTS,
-  createMockExtensionScenes,
+  getSharedMockExtensionScenes,
   type ExtensionCapability,
   type ExtensionCapabilityType,
   type ExtensionProduct,
@@ -72,17 +73,11 @@ const emit = defineEmits<{
 }>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
-const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : createMockExtensionScenes());
+const scenes = ref<ExtensionScene[]>(transportIsHttp ? [] : getSharedMockExtensionScenes());
 const products = ref<ExtensionProduct[]>(transportIsHttp ? [] : MOCK_EXTENSION_PRODUCTS);
 const filterLevelOptions: ExtensionFilterLevel[] = ['产品级'];
 const organizations = ref<PublishableOrganization[]>(
-  transportIsHttp
-    ? []
-    : [
-        { id: 'org-fuyao', name: '扶摇组织', deptId: '', deptName: '' },
-        { id: 'org-yunshan', name: '云山组织', deptId: '', deptName: '' },
-        { id: 'org-haichuan', name: '海川组织', deptId: '', deptName: '' },
-      ],
+  transportIsHttp ? [] : MOCK_EXTENSION_ORGANIZATIONS.map((organization) => ({ ...organization })),
 );
 const extensionAssetBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}extension/`;
 const extensionIconRevision = '20260814-1';
@@ -993,10 +988,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="extension-page">
-    <header class="extension-hero">
-      <h2>Extension 发布</h2>
-      <p>用于统一管理各部门产品场景下的 Extension，支持内容查看、版本发布和历史追踪。</p>
+  <div class="extension-page harness-viewport-page">
+    <header class="extension-hero harness-page-heading">
+      <h2 class="harness-page-title">Extension 发布</h2>
+      <p class="harness-page-description">
+        用于统一管理各部门产品场景下的 Extension，支持内容查看、版本发布和历史追踪。
+      </p>
     </header>
 
     <section class="extension-filter-card" aria-label="Extension 发布查询">
@@ -3114,5 +3111,40 @@ onBeforeUnmount(() => {
   .modal-overlay {
     padding: 12px;
   }
+}
+.extension-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.extension-filter-card,
+.panel-card__header,
+.scene-header,
+.extension-load-alert,
+.warning-bar {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .extension-board {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+}
+:where(body:has(.harness-management-shell)) .extension-button {
+  flex-shrink: 0;
+  align-self: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-weight: 600;
+}
+
+:where(body:has(.harness-management-shell)) .extension-button--small,
+:where(body:has(.harness-management-shell)) .modal-footer .extension-button--modal-action {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
 }
 </style>

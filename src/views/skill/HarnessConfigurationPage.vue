@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import ActivityManagementPanel from '../../components/skill/ActivityManagementPanel.vue';
+import ScenarioActivityManagementPanel from '../../components/skill/ScenarioActivityManagementPanel.vue';
 import DepartmentPlanningPermissionPanel from '../../components/skill/DepartmentPlanningPermissionPanel.vue';
 import SceneSettingsPanel from '../../components/skill/SceneSettingsPanel.vue';
+import type { HarnessScenarioWorkspace } from '../../composables/useHarnessScenarioWorkspace';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import type {
   HarnessDepartmentSnapshot,
@@ -21,6 +22,7 @@ type DepartmentTreeNode = {
 
 const props = withDefaults(
   defineProps<{
+    workspace: HarnessScenarioWorkspace;
     departmentTree?: DepartmentTreeNode[];
     userId?: string;
     canConfigureDepartmentPermissions?: boolean;
@@ -60,9 +62,10 @@ const emit = defineEmits<{
   'permission-scope-change': [snapshot: HarnessDepartmentSnapshot];
 }>();
 
-const activeConfigurationTab = ref<ConfigurationTab>('scenes');
+const showScenarioStructureConfiguration = false;
+const activeConfigurationTab = ref<ConfigurationTab>('permissions');
 const scenePanel = ref<InstanceType<typeof SceneSettingsPanel> | null>(null);
-const activityPanel = ref<InstanceType<typeof ActivityManagementPanel> | null>(null);
+const activityPanel = ref<InstanceType<typeof ScenarioActivityManagementPanel> | null>(null);
 const configurationTabs = computed(() => {
   const tabs: Array<{
     key: ConfigurationTab;
@@ -70,7 +73,7 @@ const configurationTabs = computed(() => {
     description: string;
   }> = [
     { key: 'scenes', label: '场景管理', description: '管理分类体系' },
-    { key: 'activities', label: '活动管理', description: '管理活动体系' },
+    { key: 'activities', label: '环节与节点', description: '维护场景工作流结构' },
   ];
 
   if (props.canConfigureDepartmentPermissions) {
@@ -112,12 +115,11 @@ defineExpose({ validateBeforeLeave });
 </script>
 
 <template>
-  <div class="configuration-page">
-    <header class="configuration-hero">
-      <h2>配置管理</h2>
-      <p>
-        集中维护各项 Harness
-        规划能力共用的场景、活动体系及部门人员权限，保存后自动同步至相关规划页面。
+  <div class="configuration-page harness-viewport-page">
+    <header class="configuration-hero harness-page-heading">
+      <h2 class="harness-page-title">配置管理</h2>
+      <p class="harness-page-description">
+        集中维护各项 Harness 规划能力共用的场景、场景工作流的环节与节点及部门人员权限。
       </p>
     </header>
 
@@ -127,29 +129,30 @@ defineExpose({ validateBeforeLeave });
       role="tablist"
       aria-label="配置管理分区"
     >
-      <button
-        v-for="(tab, index) in configurationTabs"
-        :id="`configuration-tab-${tab.key}`"
-        :key="tab.key"
-        type="button"
-        class="configuration-tab"
-        role="tab"
-        :class="{ 'is-active': activeConfigurationTab === tab.key }"
-        :aria-selected="activeConfigurationTab === tab.key"
-        :aria-controls="`configuration-panel-${tab.key}`"
-        @click="selectConfigurationTab(tab.key)"
-      >
-        <span class="configuration-tab__icon" aria-hidden="true">
-          {{ String(index + 1).padStart(2, '0') }}
-        </span>
-        <span>
-          <strong>{{ tab.label }}</strong>
-        </span>
-      </button>
+      <template v-for="(tab, index) in configurationTabs" :key="tab.key">
+        <button
+          v-if="showScenarioStructureConfiguration || tab.key === 'permissions'"
+          :id="`configuration-tab-${tab.key}`"
+          type="button"
+          class="configuration-tab"
+          role="tab"
+          :class="{ 'is-active': activeConfigurationTab === tab.key }"
+          :aria-selected="activeConfigurationTab === tab.key"
+          :aria-controls="`configuration-panel-${tab.key}`"
+          @click="selectConfigurationTab(tab.key)"
+        >
+          <span v-if="tab.key !== 'permissions'" class="configuration-tab__icon" aria-hidden="true">
+            {{ String(index + 1).padStart(2, '0') }}
+          </span>
+          <span>
+            <strong>{{ tab.label }}</strong>
+          </span>
+        </button>
+      </template>
     </nav>
 
     <section
-      v-if="activeConfigurationTab === 'scenes'"
+      v-if="showScenarioStructureConfiguration && activeConfigurationTab === 'scenes'"
       id="configuration-panel-scenes"
       role="tabpanel"
       aria-labelledby="configuration-tab-scenes"
@@ -171,29 +174,20 @@ defineExpose({ validateBeforeLeave });
     </section>
 
     <section
-      v-else-if="activeConfigurationTab === 'activities'"
+      v-if="showScenarioStructureConfiguration && activeConfigurationTab === 'activities'"
       id="configuration-panel-activities"
       role="tabpanel"
       aria-labelledby="configuration-tab-activities"
     >
-      <ActivityManagementPanel
+      <ScenarioActivityManagementPanel
         ref="activityPanel"
-        :department-tree="props.departmentTree"
-        :user-id="props.userId"
-        :department-permission-path="props.departmentPermissionPath"
-        :allowed-department-names="props.permissionDepartmentNames"
-        :allowed-department-paths="props.permissionDepartmentPaths"
-        :restrict-to-allowed-departments="props.restrictToPermissionDepartments"
-        :manageable-departments="props.manageableDepartments"
-        :department-permissions-loading="props.departmentPermissionsLoading"
-        :department-permissions-error="props.departmentPermissionsError"
-        :initial-scope="props.activityInitialScope"
+        :workspace="props.workspace"
         @scope-change="emit('activity-scope-change', $event)"
       />
     </section>
 
     <section
-      v-else-if="props.canConfigureDepartmentPermissions"
+      v-if="props.canConfigureDepartmentPermissions"
       id="configuration-panel-permissions"
       role="tabpanel"
       aria-labelledby="configuration-tab-permissions"
@@ -319,9 +313,9 @@ defineExpose({ validateBeforeLeave });
 @media (max-width: 820px) {
   .configuration-tabs,
   .configuration-tabs.has-permission-tab {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
+    flex-wrap: wrap;
+    width: fit-content;
+    max-width: 100%;
     box-sizing: border-box;
   }
 
@@ -336,6 +330,28 @@ defineExpose({ validateBeforeLeave });
 
   .configuration-hero h2 {
     font-size: 32px;
+  }
+}
+.configuration-page {
+  display: flex;
+  flex-direction: column;
+}
+
+.configuration-tabs {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .configuration-page > section {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .configuration-page > section > :deep(*) {
+    flex: 1;
+    min-height: 0;
   }
 }
 </style>

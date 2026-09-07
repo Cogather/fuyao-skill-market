@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
@@ -129,11 +129,36 @@ const batchReadonlyHeaders = computed(() => [
 ]);
 
 const activePlanningTab = ref<'skills' | 'management'>('skills');
+const catalogActionScope = ref<HarnessScopeSnapshot>();
+const skillMasterManagementPanel = ref<InstanceType<typeof SkillMasterManagementPanel> | null>(
+  null,
+);
+const capabilityCatalogPanel = ref<InstanceType<typeof HarnessCapabilityCatalogPanel> | null>(null);
 const activePlanningDescription = computed(() =>
   activePlanningTab.value === 'management'
     ? '用于维护部门/产品范围内的原子能力及基础建设信息，作为场景关系配置的数据来源，支持查询、新增、导入、导出和批量维护。'
     : '用于配置原子能力在部门/产品下的场景关系，将能力关联到一级/二级场景及归属活动/子活动，形成可跟踪的能力规划关系。',
 );
+
+async function openCatalogAction(
+  action: 'create' | 'import',
+  scope?: HarnessScopeSnapshot,
+): Promise<void> {
+  catalogActionScope.value = scope
+    ? { ...scope, departmentPath: [...scope.departmentPath] }
+    : props.initialCatalogScope;
+  activePlanningTab.value = 'management';
+  await nextTick();
+  const panel =
+    props.capabilityType === 'skill'
+      ? skillMasterManagementPanel.value
+      : capabilityCatalogPanel.value;
+  if (scope && panel?.applyExternalScope(scope) === false) return;
+  if (action === 'create') panel?.openCreate();
+  else panel?.triggerImport();
+}
+
+defineExpose({ openCatalogAction });
 
 const emptyFilters = {
   planningDeptName: '',
@@ -2651,11 +2676,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="planning-pageNum">
-    <header class="planning-hero">
+  <div class="planning-pageNum harness-viewport-page">
+    <header class="planning-hero harness-page-heading">
       <div>
-        <h2 class="panel-title">{{ capabilityPlanningLabel }}</h2>
-        <p class="all-desc">{{ activePlanningDescription }}</p>
+        <h2 class="panel-title harness-page-title">{{ capabilityPlanningLabel }}</h2>
+        <p class="all-desc harness-page-description">{{ activePlanningDescription }}</p>
       </div>
     </header>
 
@@ -4025,23 +4050,25 @@ onBeforeUnmount(() => {
 
     <SkillMasterManagementPanel
       v-if="activePlanningTab === 'management' && props.capabilityType === 'skill'"
+      ref="skillMasterManagementPanel"
       :department-tree="planningDepartmentTree"
       :user-id="props.userId"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :allowed-department-names="props.allowedDepartmentNames"
       :allowed-department-paths="props.allowedDepartmentPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
-      :initial-scope="props.initialCatalogScope"
+      :initial-scope="catalogActionScope ?? props.initialCatalogScope"
       @scope-change="emitCatalogScopeSnapshot"
     />
     <HarnessCapabilityCatalogPanel
       v-else-if="activePlanningTab === 'management'"
+      ref="capabilityCatalogPanel"
       :capability-type="props.capabilityType === 'command' ? 'command' : 'agent'"
       :user-id="props.userId"
       :department-tree="planningDepartmentTree"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :default-department-path="defaultPlanningDepartmentPath"
-      :initial-scope="props.initialCatalogScope"
+      :initial-scope="catalogActionScope ?? props.initialCatalogScope"
       @scope-change="emitCatalogScopeSnapshot"
     />
 
@@ -6336,5 +6363,54 @@ onBeforeUnmount(() => {
   .import-dropzone__copy strong {
     white-space: normal;
   }
+}
+.planning-pageNum {
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-tabs,
+.planning-filter-card,
+.planning-toolbar,
+.planning-pagination {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .planning-pageNum > :deep(.master-panel),
+  .planning-pageNum > :deep(.capability-master-panel) {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+
+  .planning-tab-panel {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .planning-board {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+}
+/* Keep the Harness action scale on teleported dialogs as well. */
+:where(body:has(.harness-management-shell)) .planning-btn {
+  flex-shrink: 0;
+  align-self: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-weight: 600;
+}
+
+:where(body:has(.harness-management-shell)) .icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  align-self: center;
 }
 </style>

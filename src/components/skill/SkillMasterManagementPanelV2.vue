@@ -524,8 +524,8 @@ function applyDefaultMasterScopeSelection(): boolean {
 
 async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSeq = ++masterProductLoadSequence;
-  masterScopeForm.offeringId = '';
-  masterScopeForm.offeringName = '';
+  masterScopeForm.offeringId = preferredScope?.offeringId.trim() ?? '';
+  masterScopeForm.offeringName = preferredScope?.offeringName.trim() ?? '';
   masterProductOptions.value = [];
   masterProductsLoading.value = false;
   const departmentName = masterScopeForm.planningDeptName.trim();
@@ -537,14 +537,22 @@ async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promis
     const deptCode = getDepartmentNodeCode(departmentNode);
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
-    masterProductOptions.value = options;
     const restoredOption = preferredScope
       ? (options.find(
           (item) =>
             Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
         ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
       : undefined;
-    const firstOption = restoredOption ?? options[0];
+    const externalOption =
+      !restoredOption && preferredScope?.offeringName
+        ? {
+            offeringId: preferredScope.offeringId,
+            offeringName: preferredScope.offeringName,
+            planningDeptName: masterScopeForm.planningDeptName,
+          }
+        : undefined;
+    masterProductOptions.value = externalOption ? [...options, externalOption] : options;
+    const firstOption = restoredOption ?? externalOption ?? options[0];
     if (firstOption) {
       masterScopeForm.offeringName = firstOption.offeringName;
       masterScopeForm.offeringId = firstOption.offeringId;
@@ -586,6 +594,8 @@ function restoreMasterScopeSnapshot(): HarnessScopeSnapshot | undefined {
   masterDepartmentSegments.value = normalizeDepartmentPath(snapshot.departmentPath).slice(0, 6);
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = true;
+  masterScopeForm.offeringId = snapshot.level === '产品级' ? snapshot.offeringId.trim() : '';
+  masterScopeForm.offeringName = snapshot.level === '产品级' ? snapshot.offeringName.trim() : '';
   return { ...snapshot, departmentPath: [...masterDepartmentSegments.value] };
 }
 const filteredRecords = computed(() => {
@@ -1739,6 +1749,38 @@ function triggerMasterImport(): void {
   }
 }
 
+function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
+  const path = normalizeDepartmentPath(scope.departmentPath).slice(0, 6);
+  if (
+    !planningLevelOptions.includes(scope.level) ||
+    !findMasterDepartmentNode(path) ||
+    !isMasterDepartmentSelectionAllowed(path)
+  ) {
+    showToast('资产范围已失效，请重新选择部门和产品');
+    return false;
+  }
+  masterScopeForm.level = scope.level;
+  masterDepartmentSegments.value = path;
+  syncMasterDepartment(path);
+  masterScopeDepartmentCommitted.value = true;
+  masterScopeForm.offeringId = scope.level === '产品级' ? scope.offeringId.trim() : '';
+  masterScopeForm.offeringName = scope.level === '产品级' ? scope.offeringName.trim() : '';
+  masterPageNum.value = 1;
+  selectedMasterIds.value = [];
+  void (async () => {
+    await loadMasterProducts(scope);
+    await reload();
+    emitMasterScopeSnapshot();
+  })();
+  return true;
+}
+
+defineExpose({
+  openCreate,
+  triggerImport: triggerMasterImport,
+  applyExternalScope,
+});
+
 async function masterImportResponse(request: Promise<unknown>): Promise<unknown> {
   try {
     return await request;
@@ -2383,7 +2425,10 @@ onBeforeUnmount(() => {
           <div class="dialog-scroll-body">
             <div v-if="editor.mode === 'edit' && editor.skillSource === 'imported'" class="note">
               <b>来源</b
-              ><span>广场引入，名称不可修改；可修改 Skill 说明、责任 Owner、开发责任人和计划完成时间</span>
+              ><span
+                >广场引入，名称不可修改；可修改 Skill 说明、责任
+                Owner、开发责任人和计划完成时间</span
+              >
             </div>
             <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
               <label class="wide"
@@ -2404,11 +2449,7 @@ onBeforeUnmount(() => {
               >
               <label class="wide"
                 ><span>Skill 说明 *</span
-                ><textarea
-                  v-model.trim="editor.description"
-                  maxlength="300"
-                  rows="4"
-                ></textarea>
+                ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
               </label>
               <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
                 <span>责任 Owner *</span>
@@ -2511,10 +2552,7 @@ onBeforeUnmount(() => {
               </label>
               <label
                 ><span>计划完成时间 *</span
-                ><input
-                  v-model="editor.plannedCompleteDate"
-                  type="date"
-                  :min="currentLocalDate()"
+                ><input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()"
               /></label>
             </div>
 
@@ -2733,13 +2771,7 @@ onBeforeUnmount(() => {
             >
               {{ importSubmitting ? '引入中…' : '引入' }}
             </button>
-            <button
-              v-else
-              class="primary"
-              type="submit"
-              formnovalidate
-              :disabled="submitting"
-            >
+            <button v-else class="primary" type="submit" formnovalidate :disabled="submitting">
               保存
             </button>
           </footer>
@@ -2868,7 +2900,11 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .master-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 18px;
   color: #17233d;
 }
@@ -2978,10 +3014,13 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 28px rgba(35, 52, 84, 0.06);
 }
 .master-filter-card {
+  flex: 0 0 auto;
   padding: 18px;
 }
 .master-board {
-  min-height: clamp(500px, calc(100vh - 410px), 820px);
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4260,6 +4299,13 @@ onBeforeUnmount(() => {
   }
 }
 @media (max-width: 1100px) {
+  .master-panel {
+    height: auto;
+    overflow: visible;
+  }
+  .master-board {
+    flex: 0 0 auto;
+  }
   .master-hero {
     align-items: stretch;
     flex-direction: column;
@@ -4311,5 +4357,27 @@ onBeforeUnmount(() => {
   .toolbar-actions > * {
     flex: 1 1 150px;
   }
+}
+/* Keep Harness actions compact, including dialogs teleported to body. */
+:where(body:has(.harness-management-shell)) .master-btn,
+:where(body:has(.harness-management-shell)) .import-search > button.primary,
+:where(body:has(.harness-management-shell)) .dialog > footer button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+:where(body:has(.harness-management-shell)) .row-actions button {
+  height: 28px;
+  min-height: 28px;
+  align-self: center;
+}
+
+:where(body:has(.harness-management-shell)) .row-actions button.icon-action {
+  width: 28px;
+  min-height: 28px;
 }
 </style>

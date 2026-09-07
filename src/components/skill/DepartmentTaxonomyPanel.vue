@@ -10,18 +10,18 @@ import {
 import {
   getDefaultSceneRecords,
   getSceneOptionGroups,
-  listScenes,
-  replaceScenesForDepartment,
-  type SceneRecord,
 } from '../../services/skillMarket/sceneManagementService';
-import {
-  getSceneTags,
-  listSceneTags,
-  saveSceneTags,
-  type SceneTag,
-  type SceneTagDimContext,
-} from '../../services/skillMarket/sceneTagService';
+import { getSceneTags, type SceneTag } from '../../services/skillMarket/sceneTagService';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
+import {
+  loadLegacyActivityRecords,
+  loadScenarioRecords,
+  listScenarioTags,
+  saveScenarioRecords,
+  saveScenarioTagBindings,
+  type TaxonomyRecord,
+  type TaxonomyScope,
+} from '../../services/skillMarket/harnessScenarioTaxonomyService';
 import {
   skillBaseService,
   type RefreshTaxonomyItem,
@@ -38,7 +38,6 @@ import MarketDeptCascader from './MarketDeptCascader.vue';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type TaxonomyKind = 'scene' | 'activity';
-type TaxonomyRecord = (SceneRecord | ActivityRecord) & { tags?: string[] };
 type ConfigurationLevel = '产品级' | '部门级';
 
 interface DepartmentTreeNode {
@@ -254,9 +253,10 @@ const collapsedPrimaryIds = ref(new Set<string>());
 const notice = ref('');
 const toast = ref('');
 const loading = ref(false);
+const taxonomyLoaded = ref(false);
 let departmentLoadSequence = 0;
 let productLoadSequence = 0;
-let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
+let toastTimer: number | null = null;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
 
@@ -372,129 +372,30 @@ function readText(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 }
 
-interface HttpTaxonomyRow {
-  deptCode: string;
-  deptName: string;
-  primary: string;
-  secondary: string;
-  tags: string[];
-  sort: number;
-  referenceCount: number;
-}
-
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
-  if (!response?.meta?.success) {
-    throw new Error(readText(response?.meta?.message) || fallbackMessage);
+  const meta = asRecord(asRecord(response).meta);
+  if (meta.success !== true) {
+    throw new Error(readText(meta.message) || fallbackMessage);
   }
 }
 
-function responseRows(response: unknown): unknown[] {
-  const responseRecord = asRecord(response);
-  const data = responseRecord.data ?? response;
-  const dataRecord = asRecord(data);
-  return Array.isArray(data)
-    ? data
-    : (['list', 'records', 'items', 'rows']
-        .map((key) => dataRecord[key])
-        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
-}
-
-function normalizeTagNames(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-
-  const tags = value.map((item) => {
-    if (typeof item === 'string' || typeof item === 'number') return readText(item);
-    const record = asRecord(item);
-    return readText(record.tagName ?? record.name ?? record.label ?? record.tag);
-  });
-  return [...new Set(tags.filter(Boolean))];
-}
-
-function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
-  assertHttpSuccess(response, labels.value.item + '列表加载失败');
-  const primaryKey = props.kind === 'scene' ? 'firstScene' : 'activityNodeName';
-  const secondaryKey = props.kind === 'scene' ? 'secondScene' : 'subActivityNodeName';
-
-  return responseRows(response).flatMap((item, index) => {
-    const record = asRecord(item);
-    const primary = readText(record[primaryKey]);
-    if (!primary) return [];
-    const parsedSort = Number(record.sort);
-    const parsedReferenceCount = Number(record.referenceCount);
-    return [
-      {
-        deptCode: readText(record.deptCode),
-        deptName: readText(record.deptName),
-        primary,
-        secondary: readText(record[secondaryKey]),
-        tags: props.kind === 'scene' ? normalizeTagNames(record.tags) : [],
-        sort: Number.isFinite(parsedSort) ? parsedSort : index + 1,
-        referenceCount:
-          Number.isFinite(parsedReferenceCount) && parsedReferenceCount > 0
-            ? parsedReferenceCount
-            : 0,
-      },
-    ];
-  });
-}
-
-function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[] {
-  const groupedRows = new Map<string, Array<{ row: HttpTaxonomyRow; sourceIndex: number }>>();
-
-  rows.forEach((row, sourceIndex) => {
-    const group = groupedRows.get(row.primary) ?? [];
-    group.push({ row, sourceIndex });
-    groupedRows.set(row.primary, group);
-  });
-
-  const prefix = props.kind === 'scene' ? 'http-scene' : 'http-activity';
-  const records: TaxonomyRecord[] = [];
-  Array.from(groupedRows).forEach(([primary, children], primaryIndex) => {
-    const parentId = prefix + '-primary-' + (primaryIndex + 1);
-    const directReferenceCount = children.reduce(
-      (sum, { row }) => sum + (row.secondary ? 0 : row.referenceCount),
-      0,
-    );
-    records.push({
-      id: parentId,
-      parentId: null,
-      name: primary,
-      tags: [...new Set(children.flatMap(({ row }) => row.tags))],
-      sort: primaryIndex + 1,
-      status: 'enabled',
-      skillCount: directReferenceCount,
-    });
-
-    const seenChildren = new Set<string>();
-    children
-      .sort((left, right) => left.row.sort - right.row.sort || left.sourceIndex - right.sourceIndex)
-      .forEach(({ row }, childIndex) => {
-        if (!row.secondary || seenChildren.has(row.secondary)) return;
-        seenChildren.add(row.secondary);
-        records.push({
-          id: parentId + '-child-' + (childIndex + 1),
-          parentId,
-          name: row.secondary,
-          sort: row.sort,
-          status: 'enabled',
-          skillCount: row.referenceCount,
-        });
-      });
-  });
-
-  return records;
+function currentTaxonomyScope(departmentName: string): TaxonomyScope {
+  const department = departmentByPath(selectedDepartmentPath.value);
+  return {
+    departmentName,
+    deptCode: department?.deptCode ?? '',
+    userId: props.userId,
+    offeringId: scopeForm.level === '产品级' ? scopeForm.offeringId : '',
+    offeringName: scopeForm.level === '产品级' ? scopeForm.offeringName : '',
+  };
 }
 
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
-  const params = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
   if (props.kind === 'scene') {
-    tagOptions.value = await listSceneTags();
-    const response = await skillBaseService.getSceneOptionGroups(params);
-    return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
+    tagOptions.value = await listScenarioTags();
+    return loadScenarioRecords(currentTaxonomyScope(departmentName));
   }
-
-  const response = await skillBaseService.getActivityOptionGroups(params);
-  return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
+  return loadLegacyActivityRecords(currentTaxonomyScope(departmentName));
 }
 
 function toHttpTaxonomyItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
@@ -542,47 +443,46 @@ function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGr
 }
 
 async function saveHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
+  if (props.kind === 'scene') {
+    return saveScenarioRecords(currentTaxonomyScope(departmentName), draftRecords.value);
+  }
+
   const context = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
   const items = toHttpTaxonomyItems(draftRecords.value);
-  const response =
-    props.kind === 'scene'
-      ? await skillBaseService.refreshSceneOptionGroups(
-          {
-            scenes: items,
-          },
-          context,
-        )
-      : await skillBaseService.refreshActivityOptionGroups(
-          {
-            activities: items,
-          },
-          context,
-        );
+  const response = await skillBaseService.refreshActivityOptionGroups(
+    {
+      activities: items,
+    },
+    context,
+  );
   assertHttpSuccess(response, labels.value.item + '配置保存失败');
-  return fetchHttpTaxonomyRecords(departmentName);
+  return loadLegacyActivityRecords(currentTaxonomyScope(departmentName));
 }
 
 async function loadDepartment(departmentName: string): Promise<void> {
   const requestSequence = ++departmentLoadSequence;
   loading.value = true;
+  taxonomyLoaded.value = false;
   notice.value = '';
 
   try {
     const records = useHttpTaxonomySource
       ? await fetchHttpTaxonomyRecords(departmentName)
       : props.kind === 'scene'
-        ? listScenes(departmentName)
+        ? await loadScenarioRecords(currentTaxonomyScope(departmentName))
         : listActivities(departmentName);
     if (requestSequence !== departmentLoadSequence) return;
 
     draftRecords.value = cloneRecords(records);
     savedSnapshot.value = JSON.stringify(draftRecords.value);
+    taxonomyLoaded.value = true;
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
     collapsedPrimaryIds.value = new Set<string>();
     await refreshSceneTagBindings();
     if (requestSequence !== departmentLoadSequence) return;
   } catch (error) {
     if (requestSequence !== departmentLoadSequence) return;
+    taxonomyLoaded.value = false;
     draftRecords.value = [];
     savedSnapshot.value = '[]';
     selectedPrimaryId.value = '';
@@ -595,6 +495,7 @@ async function loadDepartment(departmentName: string): Promise<void> {
 }
 
 function resetProductScope(): void {
+  taxonomyLoaded.value = false;
   scopeForm.offeringId = '';
   scopeForm.offeringName = '';
   productOptions.value = [];
@@ -890,6 +791,10 @@ const editorName = ref('');
 const editorError = ref('');
 
 function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
+  if (!taxonomyLoaded.value || loading.value) {
+    showToast('请等待配置成功加载后再编辑');
+    return;
+  }
   if (record && blockReferencedAction(record, '编辑')) return;
 
   editorId.value = record?.id ?? '';
@@ -968,7 +873,9 @@ async function dropRecord(targetId: string): Promise<void> {
     .sort((left, right) => left.sort - right.sort);
   const fromIndex = siblings.findIndex((item) => item.id === source.id);
   const toIndex = siblings.findIndex((item) => item.id === target.id);
+  if (fromIndex < 0 || toIndex < 0) return;
   const [moved] = siblings.splice(fromIndex, 1);
+  if (!moved) return;
   siblings.splice(toIndex, 0, moved);
   siblings.forEach((item, index) => {
     item.sort = index + 1;
@@ -1034,7 +941,7 @@ async function openTagDialog(record: TaxonomyRecord): Promise<void> {
   if (useHttpTaxonomySource) return;
 
   try {
-    tagOptions.value = await listSceneTags();
+    tagOptions.value = await listScenarioTags();
   } catch (error) {
     tagError.value = error instanceof Error ? error.message : '标签列表加载失败';
     tagOptions.value = [];
@@ -1065,19 +972,14 @@ async function confirmTagDialog(): Promise<void> {
   tagSaving.value = true;
   tagError.value = '';
   try {
-    let dimContext: SceneTagDimContext | undefined = useHttpTaxonomySource
-      ? httpDimContext(selectedDepartment.value, props.userId, scopeForm, departmentOptions.value)
-      : undefined;
-    delete dimContext?.dimName;
-    await saveSceneTags(
-      sceneTagKey(record),
+    const savedTags = await saveScenarioTagBindings(
+      currentTaxonomyScope(selectedDepartment.value),
+      record,
       tagSelected.value,
-      selectedDepartment.value,
-      dimContext,
     );
     sceneTagBindings.value = {
       ...sceneTagBindings.value,
-      [record.id]: [...tagSelected.value],
+      [record.id]: [...savedTags],
     };
     tagDialogOpen.value = false;
     showToast(`已为“${record.name}”更新标签`);
@@ -1134,6 +1036,10 @@ async function resetToDefault(): Promise<void> {
 }
 
 async function saveAll(): Promise<boolean> {
+  if (!taxonomyLoaded.value) {
+    showToast('配置尚未成功加载，已阻止覆盖原有配置，请重试加载。');
+    return false;
+  }
   if (!hasCompleteScope.value || !selectedDepartment.value || loading.value) {
     if (scopeErrorMessage.value) showToast(scopeErrorMessage.value);
     return false;
@@ -1145,7 +1051,10 @@ async function saveAll(): Promise<boolean> {
     const records = useHttpTaxonomySource
       ? await saveHttpTaxonomyRecords(selectedDepartment.value)
       : props.kind === 'scene'
-        ? replaceScenesForDepartment(selectedDepartment.value, draftRecords.value as SceneRecord[])
+        ? await saveScenarioRecords(
+            currentTaxonomyScope(selectedDepartment.value),
+            draftRecords.value,
+          )
         : replaceActivitiesForDepartment(
             selectedDepartment.value,
             draftRecords.value as ActivityRecord[],
@@ -1161,7 +1070,7 @@ async function saveAll(): Promise<boolean> {
       : props.kind === 'scene'
         ? getSceneOptionGroups(selectedDepartment.value)
         : getActivityOptionGroups(selectedDepartment.value);
-    if (useHttpTaxonomySource) {
+    if (useHttpTaxonomySource && props.kind === 'activity') {
       notifyHarnessConfigurationChanged(props.kind, selectedDepartment.value);
     }
     emit('changed', groups, selectedDepartment.value);
@@ -1363,6 +1272,10 @@ function exportRecords(): void {
     </div>
     <div v-if="loading" class="empty-department">
       {{ '\u6b63\u5728\u52a0\u8f7d\u573a\u666f\u914d\u7f6e\u2026' }}
+    </div>
+    <div v-else-if="hasCompleteScope && !taxonomyLoaded" class="empty-department" role="alert">
+      {{ notice || '配置尚未成功加载，已禁用编辑。' }}
+      <button type="button" @click="loadDepartment(selectedDepartment)">重试加载</button>
     </div>
     <div v-else-if="hasCompleteScope" class="taxonomy-grid">
       <aside class="tree-panel">
@@ -1569,6 +1482,9 @@ function exportRecords(): void {
       <div class="modal-card delete-card">
         <h3>删除{{ labels.item }}“{{ deleteTarget.name }}”</h3>
         <p>该项暂无关联规划，确认后将自动更新配置。</p>
+        <p v-if="props.kind === 'scene'">
+          删除后，与该场景关联的 Harness 工作流及其环节、节点也会一并移除。
+        </p>
         <div class="modal-actions">
           <button type="button" @click="deleteOpen = false">取消</button>
           <button class="danger-button" type="button" @click="removeDraftRecord">确认删除</button>
@@ -2724,5 +2640,16 @@ td strong {
   .count-pill {
     font-size: clamp(10px, 0.625vw, 12px);
   }
+}
+/* Scope compact actions to Harness without changing taxonomy tree controls. */
+:where(body:has(.harness-management-shell)) .toolbar-controls button,
+:where(body:has(.harness-management-shell)) .add-button,
+:where(body:has(.harness-management-shell)) .modal-actions button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
 }
 </style>
