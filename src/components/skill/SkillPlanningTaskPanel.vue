@@ -310,19 +310,10 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="task-dashboard" :aria-label="`我的 ${capabilityLabel} 待办任务 Dashboard`">
-    <header class="dashboard-heading">
-      <div>
-        <span>MY {{ capabilityLabelUpper }} TODO CENTER</span>
-        <h3>我的 {{ capabilityLabel }} 待办中心</h3>
-        <p>聚焦当前登录用户负责的 {{ capabilityLabel }} 任务，完成启动、开发和进度跟踪。</p>
-      </div>
-    </header>
-
     <div class="metric-grid">
       <article v-for="item in statusCards" :key="item.status" class="metric-card">
         <span>{{ item.status }}</span>
         <strong>{{ item.count }}</strong>
-        <small>后端状态统计</small>
       </article>
     </div>
 
@@ -597,7 +588,7 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .task-dashboard {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -605,33 +596,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   gap: 18px;
   color: #17233d;
-}
-
-.dashboard-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.dashboard-heading > div:first-child > span {
-  color: #4266d5;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-}
-
-.dashboard-heading h3 {
-  margin: 5px 0 5px;
-  color: #101c34;
-  font-size: 23px;
-  font-weight: 900;
-}
-
-.dashboard-heading p {
-  margin: 0;
-  color: #718097;
-  font-size: 12px;
 }
 
 .status-flow {
@@ -671,8 +635,11 @@ onBeforeUnmount(() => {
   --metric-color: #6079df;
   position: relative;
   display: grid;
-  min-height: 118px;
-  padding: 18px 20px;
+  align-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 92px;
+  padding: 14px 18px;
   overflow: hidden;
   border: 1px solid #dfe6f2;
   border-radius: 12px;
@@ -689,9 +656,9 @@ onBeforeUnmount(() => {
 .metric-card::after {
   position: absolute;
   right: -18px;
-  bottom: -30px;
-  width: 94px;
-  height: 94px;
+  bottom: -24px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   background: var(--metric-color);
   content: '';
@@ -707,20 +674,14 @@ onBeforeUnmount(() => {
   color: #758197;
   font-size: 11px;
   font-weight: 800;
+  line-height: 16px;
 }
 
 .metric-card > strong {
-  margin-top: 5px;
+  margin-top: 0;
   color: var(--metric-color);
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1;
-}
-
-.metric-card > small {
-  align-self: end;
-  margin-top: 9px;
-  color: #9aa4b2;
-  font-size: 9px;
 }
 
 .dashboard-body {
@@ -1676,7 +1637,6 @@ onBeforeUnmount(() => {
     height: auto;
   }
 
-  .dashboard-heading,
   .task-toolbar {
     align-items: stretch;
     flex-direction: column;

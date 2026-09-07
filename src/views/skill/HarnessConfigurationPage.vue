@@ -313,9 +313,9 @@ defineExpose({ validateBeforeLeave });
 @media (max-width: 820px) {
   .configuration-tabs,
   .configuration-tabs.has-permission-tab {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
+    flex-wrap: wrap;
+    width: fit-content;
+    max-width: 100%;
     box-sizing: border-box;
   }
 

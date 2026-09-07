@@ -63,10 +63,10 @@ const managementTabs: Array<{
   label: string;
   summary: string;
 }> = [
-  { key: 'command', label: 'Command 清单', summary: '维护可用于场景关系配置的 Command。' },
-  { key: 'skill', label: 'Skill 清单', summary: '维护和引入可复用的原子 Skill。' },
-  { key: 'agent', label: 'Agent 清单', summary: '维护可用于场景关系配置的 Agent。' },
-  { key: 'extension', label: 'Extension 发布', summary: '按业务场景组织并发布 Extension。' },
+  { key: 'command', label: 'Command', summary: '维护可用于场景关系配置的 Command。' },
+  { key: 'skill', label: 'Skill', summary: '维护和引入可复用的原子 Skill。' },
+  { key: 'agent', label: 'Agent', summary: '维护可用于场景关系配置的 Agent。' },
+  { key: 'extension', label: 'Extension', summary: '按业务场景组织并发布 Extension。' },
 ];
 
 const activeManagementTab = ref<CapabilityManagementTab>('command');
@@ -289,7 +289,7 @@ defineExpose({ openCatalogAction });
         @click="selectManagementTab(tab.key)"
         @keydown="onManagementTabKeydown($event, index)"
       >
-        <span class="planning-tab__icon" aria-hidden="true">{{
+        <span v-if="false" class="planning-tab__icon" aria-hidden="true">{{
           String(index + 1).padStart(2, '0')
         }}</span>
         <span

@@ -485,8 +485,10 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              showLegacyPlanningTabs ||
-              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              ['workflows', 'assets'].includes(tab.key)
+                ? false
+                : showLegacyPlanningTabs ||
+                  !['command', 'planning', 'agent', 'extension'].includes(tab.key)
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -776,12 +778,20 @@ onBeforeRouteLeave(() => {
 }
 
 .harness-management-shell :deep(.planning-tab),
-.harness-management-shell :deep(.configuration-tab),
-.harness-management-shell :deep(.task-management-tab) {
+.harness-management-shell :deep(.configuration-tab) {
   min-width: 144px;
   height: 42px;
   min-height: 42px;
   padding: 0 12px;
+}
+
+.harness-management-shell :deep(.capability-management-page .planning-tab),
+.harness-management-shell :deep(#configuration-tab-permissions) {
+  flex: 0 0 auto;
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .harness-management-shell::before {
