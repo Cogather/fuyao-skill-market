@@ -157,6 +157,48 @@ try {
     calls.length = 0;
     return { workspace, scenario, workflow, calls, detail: () => detail };
   }
+  await test('creating a child scene sends its entered code and description in the initial scene refresh', async () => {
+    const f = await fixture();
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    const saved = await f.workspace.saveScenario({
+      _id: 'new-child',
+      name: '新增下级场景',
+      code: '  demo-child-extension  ',
+      description: '  下级场景说明  ',
+      parentId: root._id,
+      productId: root.productId,
+      level: 2,
+      tags: [],
+      status: 'draft',
+      releaseCount: 0,
+    });
+    const writes = f.calls.filter(([op]) => ['refresh', 'code'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['refresh', 'code'],
+    );
+    const rows = writes[0][1].scenes;
+    assert.equal(
+      rows.find((item) => item.secondScene === '新增下级场景').sceneExtensionCode,
+      'demo-child-extension',
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '新增下级场景').secondSceneDescription,
+      '下级场景说明',
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '代码生成').sceneExtensionCode,
+      'demo-old',
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '代码生成').secondSceneDescription,
+      '旧目标',
+    );
+    assert.equal(writes[1][1].sceneExtensionCode, 'demo-child-extension');
+    assert.equal(writes[1][1].secondSceneDescription, '下级场景说明');
+    assert.equal(saved.code.trim(), 'demo-child-extension');
+    assert.equal(saved.description.trim(), '下级场景说明');
+  });
   await test('renaming a scene refreshes its identity before updating code, description and flow metadata', async () => {
     const f = await fixture();
     await f.workspace.saveWorkflow(f.workflow, {

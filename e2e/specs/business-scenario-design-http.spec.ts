@@ -436,6 +436,12 @@ test.describe('业务场景设计 HTTP', () => {
           await wizard.getByRole('button', { name: '关闭 Workflow 设计', exact: true }).click();
         else if (closeWith === 'escape') await page.keyboard.press('Escape');
         else await panel.locator('.modal').click({ position: { x: 5, y: 5 } });
+        if (closeWith !== 'button') {
+          await expect(wizard).toBeVisible();
+          await expect(wizard.getByLabel(/^场景编码/)).toHaveValue('demo-unsaved');
+          expect(calls).toHaveLength(requestsBeforeClose);
+          await wizard.getByRole('button', { name: '关闭 Workflow 设计', exact: true }).click();
+        }
         await expect(wizard).toHaveCount(0);
         expect(calls).toHaveLength(requestsBeforeClose);
         expect(detail.sceneExtensionCode).toBe('demo-design');

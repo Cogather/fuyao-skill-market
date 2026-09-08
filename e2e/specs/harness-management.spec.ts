@@ -88,7 +88,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(
       harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }),
     ).toBeFocused();
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await expect(harnessPage.continueWorkflowDesignButton).toBeFocused();
   });
@@ -209,7 +209,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.openScenariosFromWorkflows();
     await expect(harnessPage.codeGenerationScenario).toBeVisible();
     await harnessPage.openScenarioDesign();
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await harnessPage.switchToWorkflows();
 
@@ -256,7 +256,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.goto();
     await harnessPage.switchToScenarios();
     await harnessPage.openScenarioDesign();
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await harnessPage.switchToWorkflows();
 
@@ -299,7 +299,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.goto();
     await harnessPage.switchToScenarios();
     await harnessPage.openScenarioDesign();
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
 
     for (let index = 1; index <= 10; index += 1) {
@@ -373,7 +373,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
       harnessPage.workflowDesignDialog.getByText(nodeName, { exact: true }),
     ).toBeVisible();
 
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await harnessPage.switchToWorkflows();
     await harnessPage.selectWorkflowProduct('harness-pipeline');

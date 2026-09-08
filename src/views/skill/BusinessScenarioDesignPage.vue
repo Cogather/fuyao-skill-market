@@ -374,10 +374,10 @@ function focusDialog(element: { value: HTMLElement | null }) {
 function restoreDialogFocus(opener: HTMLElement | null) {
   nextTick(() => (opener?.isConnected ? opener : scenarioPageRoot.value)?.focus());
 }
-function handleModalKeydown(event: KeyboardEvent, dialog: HTMLElement | null, close: () => void) {
+function handleModalKeydown(event: KeyboardEvent, dialog: HTMLElement | null) {
   if (event.key === 'Escape') {
     event.preventDefault();
-    close();
+    event.stopPropagation();
     return;
   }
   if (event.key !== 'Tab' || !dialog) return;
@@ -420,7 +420,7 @@ function closeScenarioDialog() {
   restoreDialogFocus(opener);
 }
 function handleScenarioDialogKeydown(event: KeyboardEvent) {
-  handleModalKeydown(event, scenarioDialogElement.value, closeScenarioDialog);
+  handleModalKeydown(event, scenarioDialogElement.value);
 }
 async function saveScenario() {
   if (saving.value) return;
@@ -474,7 +474,7 @@ function closeTagDialog() {
   restoreDialogFocus(opener);
 }
 function handleTagDialogKeydown(event: KeyboardEvent) {
-  handleModalKeydown(event, tagDialogElement.value, closeTagDialog);
+  handleModalKeydown(event, tagDialogElement.value);
 }
 async function toggleScenarioTag(tag: string) {
   const target = tagTarget.value;
@@ -505,7 +505,7 @@ function closeDeleteDialog() {
   restoreDialogFocus(opener);
 }
 function handleDeleteDialogKeydown(event: KeyboardEvent) {
-  handleModalKeydown(event, deleteDialogElement.value, closeDeleteDialog);
+  handleModalKeydown(event, deleteDialogElement.value);
 }
 async function deleteScenario() {
   const target = deleteTarget.value;
@@ -730,7 +730,7 @@ function closeWizard() {
   dismissWizard();
 }
 function handleWizardKeydown(event: KeyboardEvent) {
-  handleModalKeydown(event, wizardDialogElement.value, closeWizard);
+  handleModalKeydown(event, wizardDialogElement.value);
 }
 function showWizardPage() {
   nextTick(() => {
@@ -1497,7 +1497,7 @@ async function createAsset() {
     </section>
   </div>
 
-  <div v-if="scenarioDialog" class="modal scenario-modal" @click.self="closeScenarioDialog">
+  <div v-if="scenarioDialog" class="modal scenario-modal">
     <form
       ref="scenarioDialogElement"
       class="dialog scenario-editor"
@@ -1633,7 +1633,7 @@ async function createAsset() {
       </footer>
     </form>
   </div>
-  <div v-if="tagTarget" class="modal scenario-modal" @click.self="closeTagDialog">
+  <div v-if="tagTarget" class="modal scenario-modal">
     <section
       ref="tagDialogElement"
       class="dialog scenario-editor tag-editor"
@@ -1736,7 +1736,7 @@ async function createAsset() {
       </footer>
     </section>
   </div>
-  <div v-if="deleteTarget" class="modal" @click.self="closeDeleteDialog">
+  <div v-if="deleteTarget" class="modal">
     <section
       ref="deleteDialogElement"
       class="dialog small center"
@@ -1770,7 +1770,7 @@ async function createAsset() {
       >
     </section>
   </div>
-  <div v-if="wizard" class="modal" @click.self="closeWizard">
+  <div v-if="wizard" class="modal">
     <section
       ref="wizardDialogElement"
       class="dialog wizard"

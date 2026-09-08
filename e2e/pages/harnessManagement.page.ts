@@ -224,7 +224,7 @@ export class HarnessManagementPage {
     await scenarioDialog.waitFor({ state: 'hidden' });
   }
 
-  /** 新建二级场景，打开 Workflow 向导即落一条草稿，再通过 Escape 返回。 */
+  /** 新建二级场景，打开 Workflow 向导即落一条草稿，再通过关闭按钮返回。 */
   async createDraftScenarioWorkflow(options: {
     parentScenarioName: string;
     scenarioName: string;
@@ -236,7 +236,7 @@ export class HarnessManagementPage {
       .getByRole('button', { name: '+ 开始设计 Workflow', exact: true })
       .click();
     await this.workflowDesignDialog.waitFor();
-    await this.page.keyboard.press('Escape');
+    await this.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await this.workflowDesignDialog.waitFor({ state: 'hidden' });
   }
 

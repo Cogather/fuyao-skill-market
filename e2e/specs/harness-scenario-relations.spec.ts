@@ -43,7 +43,7 @@ test.describe('Harness 场景与流程关系', () => {
     await expect(harnessPage.workflowDesignDialog.locator('input[readonly]').first()).toHaveValue(
       '代码生成',
     );
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
 
     const codeGenerationWorkflow = harnessPage.workflowCard('代码生成作业流');
@@ -53,7 +53,7 @@ test.describe('Harness 场景与流程关系', () => {
 
     await codeGenerationWorkflow.getByRole('button', { name: '继续设计', exact: true }).click();
     await expect(harnessPage.workflowDesignDialog).toBeVisible();
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await expect(workflowCards).toHaveCount(1);
 
@@ -186,7 +186,7 @@ test.describe('Harness 场景与流程关系', () => {
       scenarioDescription: '验证配置场景与 Workflow 使用同一稳定身份。',
     });
     await harnessPage.openScenarioDesign();
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
 
     const originalWorkflow = harnessPage.workflowCard(workflowName);

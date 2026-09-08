@@ -988,8 +988,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         tags: scenario.tags,
         ...(isHttp && parentId
           ? {
-              sceneExtensionCode: null,
-              secondSceneDescription: '',
+              sceneExtensionCode: scenario.code.trim(),
+              secondSceneDescription: scenario.description.trim(),
               flowName: null,
               flowDescription: null,
             }

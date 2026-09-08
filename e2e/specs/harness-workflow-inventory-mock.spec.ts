@@ -96,7 +96,7 @@ test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新
   await expect(harness.workflowsPanel.getByText('共 15 条', { exact: true })).toBeVisible();
   await harness.openScenariosFromWorkflows();
   await harness.openScenarioDesign();
-  await page.keyboard.press('Escape');
+  await harness.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
   await expect(harness.workflowDesignDialog).toBeHidden();
 
   const expected = await page.evaluate((key) => {

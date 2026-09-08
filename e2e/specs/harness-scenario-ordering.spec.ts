@@ -7,7 +7,7 @@ test('拖拽一级和二级场景后保存顺序，刷新后保持一致且保�
   await harness.goto();
   await harness.switchToScenarios();
   await harness.openScenarioDesign();
-  await page.keyboard.press('Escape');
+  await harness.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
   const workflow = harness.workflowCard('代码生成作业流');
   const workflowId = await workflow.getAttribute('data-workflow-id');
   expect(workflowId).toBeTruthy();
