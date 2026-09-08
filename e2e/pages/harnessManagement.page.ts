@@ -165,7 +165,13 @@ export class HarnessManagementPage {
   /** 在 Harness 工作流清单中切换部门范围。 */
   async selectWorkflowDepartment(departmentName: string): Promise<void> {
     await this.workflowsDepartmentTrigger.click();
-    await this.workflowsPanel.getByRole('button', { name: departmentName, exact: true }).click();
+    const picker = this.page.getByRole('listbox');
+    await picker.getByRole('searchbox', { name: '搜索部门', exact: true }).fill(departmentName);
+    await picker
+      .getByRole('button')
+      .filter({ has: this.page.getByText(departmentName, { exact: true }) })
+      .click();
+    await picker.getByRole('button', { name: '完成', exact: true }).click();
   }
 
   /** 在 Harness 工作流清单中切换产品范围。 */

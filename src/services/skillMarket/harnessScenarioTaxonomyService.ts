@@ -493,6 +493,7 @@ export async function saveScenarioRecords(
   scope: TaxonomyScope,
   records: TaxonomyRecord[],
   client: ScenarioTaxonomyClient = skillBaseService,
+  onCommitted?: (records: TaxonomyRecord[]) => void,
 ): Promise<TaxonomyRecord[]> {
   validateScenarioRecords(scope, records);
   if (!transportIsHttp) {
@@ -526,6 +527,8 @@ export async function saveScenarioRecords(
   // The write is already committed when the refresh endpoint succeeds, so a failed readback
   // must not roll back the identity aliases needed to reconnect existing workflows.
   commitIdentityRecords('scene', scope, records);
+  rememberScenarioRecords(scope, records);
+  onCommitted?.(records);
   try {
     const savedRecords = await loadHttpTaxonomyRecords('scene', scope, client);
     rememberScenarioRecords(scope, savedRecords);

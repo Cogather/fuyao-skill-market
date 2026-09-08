@@ -498,7 +498,7 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('renaming a bound node unbinds old activity before refresh and binds the new one afterwards', async () => {
+  await test('bound node rename is blocked; after explicit unbinding refresh preserves other scenes', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
     mapped.workflow.stages[0].steps[0].name = '新节点';
     const operations = [];
@@ -534,22 +534,26 @@ try {
       return success(null);
     };
     api.querySceneAssetPool = async () => success(detail.assetPool);
-    const updatedBefore = await repository.prepareDesignActivityChanges(
-      context,
-      mapped.workflow,
-      detail,
+    await assert.rejects(
+      () => repository.prepareDesignActivityChanges(context, mapped.workflow, detail),
+      /已绑定资产/,
     );
-    await repository.saveDesignActivities(context, mapped.workflow, detail);
-    await repository.saveDesignAssets(context, mapped.workflow, mapped.assets, updatedBefore);
+    assert.deepEqual(operations, []);
+    const unbound = structuredClone(detail);
+    unbound.stages[0].steps[0].boundAssets = [];
+    mapped.workflow.stages[0].steps[0].assets = [];
+    await repository.prepareDesignActivityChanges(context, mapped.workflow, unbound);
+    await repository.saveDesignActivities(context, mapped.workflow, unbound);
     assert.deepEqual(
       operations.map((item) => item[0]),
-      ['unbind', 'activities', 'bind'],
+      ['activities'],
     );
-    assert.equal(operations[1][1].activities[0].secondScene, '保留场景');
-    assert.equal(operations[2][1].subActivityNodeName, '新节点');
+    assert.equal(operations[0][1].activities[0].secondScene, '保留场景');
+    assert.equal(operations[0][1].activities.at(-1).subActivityNodeName, '新节点');
   });
   await test('successful code writes are remembered even if the subsequent metadata request fails', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
+    mapped.workflow.name = '新流程名称';
     const remembered = {};
     api.updateSecondSceneCode = async () => success(null);
     api.updateSceneMetadata = async () => ({ meta: { success: false, message: '元数据拒绝' } });
@@ -565,7 +569,8 @@ try {
       /元数据拒绝/,
     );
     assert.equal(remembered.sceneExtensionCode, 'demo-new-code');
-    assert.equal(remembered.secondSceneDescription, undefined);
+    assert.equal(remembered.secondSceneDescription, '新目标');
+    assert.equal(remembered.flowName, undefined);
   });
 } finally {
   await server.close();

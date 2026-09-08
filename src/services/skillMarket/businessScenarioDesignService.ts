@@ -60,6 +60,7 @@ interface updateSecondSceneCodeBody {
   secondScene: string;
   firstScene: string;
   sceneExtensionCode: string;
+  secondSceneDescription?: string;
 }
 
 interface updateSceneMetadataBody {
@@ -152,7 +153,7 @@ export const harnessWorkflowService = {
   },
 
   /**
-   * 更新二级场景编码
+   * 更新二级场景编码与描述（场景改名时，须等待刷新场景完成后调用）
    * @param body
    * @param params
    * @returns

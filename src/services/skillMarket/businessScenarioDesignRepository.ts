@@ -198,19 +198,27 @@ export async function saveDesignMetadata(
   workflow: Workflow,
   before: WorkflowDetail,
   onSaved?: (values: Partial<WorkflowSceneRow>) => void,
+  forceSceneMetadata = false,
 ) {
   const params = dimension(scope);
-  if (scenario.code !== (before.sceneExtensionCode || '')) {
+  if (
+    forceSceneMetadata ||
+    scenario.code !== (before.sceneExtensionCode || '') ||
+    scenario.description !== (before.secondSceneDescription || '')
+  ) {
     designData(
       await api.updateSecondSceneCode(
-        { ...sceneKey(scope), sceneExtensionCode: scenario.code },
+        {
+          ...sceneKey(scope),
+          sceneExtensionCode: scenario.code,
+          secondSceneDescription: scenario.description,
+        },
         params,
       ),
     );
-    onSaved?.({ sceneExtensionCode: scenario.code });
+    onSaved?.({ sceneExtensionCode: scenario.code, secondSceneDescription: scenario.description });
   }
   if (
-    scenario.description !== (before.secondSceneDescription || '') ||
     workflow.name !== (before.flowName || '') ||
     workflow.description !== (before.flowDescription || '')
   ) {
@@ -218,7 +226,6 @@ export async function saveDesignMetadata(
       await api.updateSceneMetadata(
         {
           ...sceneKey(scope),
-          secondSceneDescription: scenario.description,
           flowName: workflow.name,
           flowDescription: workflow.description,
         },
@@ -381,9 +388,12 @@ async function unbind(
     designData(await remove(item.id, dimension(scope)));
   }
 }
-/** Release references to removed/renamed activities before the backend validates its full refresh. */
+export function hasDesignBindings(data: WorkflowDetail): boolean {
+  return data.commands.length > 0 || data.assetPool.length > 0 || detailBindings(data).length > 0;
+}
+/** Referenced activities must be explicitly unbound and saved before renaming or removing them. */
 export async function prepareDesignActivityChanges(
-  scope: WorkflowSceneContext,
+  _scope: WorkflowSceneContext,
   workflow: Workflow,
   before: WorkflowDetail,
 ): Promise<WorkflowDetail> {
@@ -395,20 +405,32 @@ export async function prepareDesignActivityChanges(
   const removals = detailBindings(before).filter(
     (binding) => !nodes.has(JSON.stringify([binding.stage, binding.node])),
   );
-  if (!removals.length) return before;
-  await unbind(scope, await bindingIds(scope, removals));
-  return {
-    ...before,
-    stages: before.stages.map((stage) => ({
-      ...stage,
-      steps: stage.steps.map((step) => ({
-        ...step,
-        boundAssets: nodes.has(JSON.stringify([stage.activityNodeName, step.subActivityNodeName]))
-          ? step.boundAssets
-          : [],
-      })),
-    })),
-  };
+  if (removals.length)
+    throw new Error(
+      `节点“${removals[0]!.stage} / ${removals[0]!.node}”已绑定资产，请先解除绑定并保存，再改名或删除`,
+    );
+  return before;
+}
+export async function attachDesignCapability(
+  scope: WorkflowSceneContext,
+  type: WorkflowCapabilityType,
+  item: Asset | Command,
+) {
+  if (type === 'Command') {
+    const before = await loadDesignDetail(scope);
+    const name = commandName(item.name);
+    if (!before.commands.some((entry) => commandName(entry.commandName) === name))
+      designData(
+        await api.commandBindScene({ ...sceneKey(scope), commandName: name }, dimension(scope)),
+      );
+    return;
+  }
+  const asset = { assetType: componentType(type), assetName: item.name };
+  const pool = designData<WorkflowPoolItem[]>(await api.querySceneAssetPool(scope));
+  if (!pool.some((entry) => poolKey(entry) === poolKey(asset))) {
+    const { userId, ...poolScope } = scope;
+    designData(await api.componentEnterPool({ ...poolScope, ...asset }));
+  }
 }
 export async function saveDesignCommands(
   scope: WorkflowSceneContext,
@@ -568,6 +590,7 @@ export async function createDesignCapability(
   const data = designData<unknown>(response);
   return {
     ...item,
+    _id: capabilityId(scope, type, item.name),
     sourceId: text(
       record(data).id ?? (typeof data === 'string' || typeof data === 'number' ? data : name),
     ),

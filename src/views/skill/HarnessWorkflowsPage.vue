@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import HarnessDepartmentPicker from '@/components/skill/HarnessDepartmentPicker.vue';
 import type { HarnessScenarioWorkspace, Workflow } from '@/composables/useHarnessScenarioWorkspace';
+import {
+  queryHarnessWorkflowPage,
+  type HarnessWorkflowListQuery,
+  type HarnessWorkflowListRow,
+} from '@/services/skillMarket/harnessWorkflowListService';
 
-const props = defineProps<{ workspace: HarnessScenarioWorkspace }>();
+const props = withDefaults(
+  defineProps<{ workspace: HarnessScenarioWorkspace; active?: boolean }>(),
+  { active: true },
+);
 const emit = defineEmits<{ (event: 'open-scenarios'): void }>();
 const {
+  isHttp,
+  workflowListScope,
   departments,
   products,
   scenarios,
@@ -15,23 +26,44 @@ const {
   loading,
   available,
   error: workspaceError,
-  deptPath,
   selectDepartment,
 } = props.workspace;
 
-const STATUS_OPTIONS = ['全部', '已发布', '设计中'] as const;
+const STATUS_OPTIONS = ['全部', '已发布', '待发布', '设计中'] as const;
 type StatusFilter = (typeof STATUS_OPTIONS)[number];
+const statusOptions = computed(() =>
+  isHttp ? STATUS_OPTIONS : STATUS_OPTIONS.filter((status) => status !== '待发布'),
+);
 const PAGE_SIZE = 10;
 const productFilter = ref('');
 const statusFilter = ref<StatusFilter>('全部');
 const page = ref(1);
-const deptOpen = ref(false);
-const departmentPicker = ref<HTMLElement | null>(null);
-const departmentTrigger = ref<HTMLButtonElement | null>(null);
-const departmentDropdown = ref<HTMLElement | null>(null);
 const inventoryLoading = ref(false);
 const inventoryError = ref('');
 let inventoryLoadSequence = 0;
+const httpRows = ref<HarnessWorkflowListRow[]>([]);
+const httpTotal = ref(0);
+const httpPageSize = ref(PAGE_SIZE);
+const httpQuery = computed<HarnessWorkflowListQuery | null>(() => {
+  if (!isHttp || !props.active || !workflowListScope.value) return null;
+  const product = productFilter.value
+    ? productOptions.value.find((item) => item._id === productFilter.value)
+    : undefined;
+  return {
+    ...workflowListScope.value,
+    ...(product?.code ? { productCode: product.code } : {}),
+    ...(statusFilter.value !== '全部' ? { status: statusFilter.value } : {}),
+    pageNo: page.value,
+    pageSize: httpPageSize.value,
+  };
+});
+const pageLoading = computed(() =>
+  isHttp ? inventoryLoading.value : loading.value || inventoryLoading.value,
+);
+const pageError = computed(() =>
+  isHttp ? inventoryError.value : inventoryError.value || workspaceError.value,
+);
+const pageAvailable = computed(() => (isHttp ? Boolean(workflowListScope.value) : available.value));
 
 const scenarioById = computed(() => new Map(scenarios.map((scenario) => [scenario._id, scenario])));
 const productById = computed(() => new Map(products.map((product) => [product._id, product])));
@@ -62,21 +94,39 @@ const statusCounts = computed(() => {
   const published = scopedWorkflows.value.filter(
     (workflow) => statusOf(workflow) === '已发布',
   ).length;
-  return { 全部: total, 已发布: published, 设计中: total - published };
+  return { 全部: total, 已发布: published, 待发布: 0, 设计中: total - published };
 });
 const filteredWorkflows = computed(() =>
   statusFilter.value === '全部'
     ? scopedWorkflows.value
     : scopedWorkflows.value.filter((workflow) => statusOf(workflow) === statusFilter.value),
 );
+const totalRows = computed(() => (isHttp ? httpTotal.value : filteredWorkflows.value.length));
 const totalPages = computed(() =>
-  Math.max(1, Math.ceil(filteredWorkflows.value.length / PAGE_SIZE)),
+  Math.max(1, Math.ceil(totalRows.value / (isHttp ? httpPageSize.value : PAGE_SIZE))),
 );
 const pageNumbers = computed(() =>
-  Array.from({ length: totalPages.value }, (_, index) => index + 1),
+  Array.from(
+    { length: Math.min(7, totalPages.value) },
+    (_, index) => Math.max(1, Math.min(page.value - 3, totalPages.value - 6)) + index,
+  ),
 );
-const visibleRows = computed(() =>
-  filteredWorkflows.value
+const visibleRows = computed(() => {
+  if (isHttp) {
+    return httpRows.value.map((row, index) => ({
+      id: JSON.stringify([row.dimType, row.dimCode, row.firstScene, row.secondScene, index]),
+      name: row.flowName || '未命名工作流',
+      description: row.flowDescription || '',
+      productName: row.dimType === '产品级' ? row.dimName || '-' : '-',
+      departmentName: '',
+      scenarioPath: [row.firstScene, row.secondScene].filter(Boolean).join(' / ') || '未关联场景',
+      scenarioDescription: row.secondSceneDescription || '',
+      commandCount:
+        Number.isSafeInteger(row.commandCount) && row.commandCount! >= 0 ? row.commandCount : null,
+      status: row.status || '-',
+    }));
+  }
+  return filteredWorkflows.value
     .slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE)
     .map((workflow) => {
       const scenario = scenarioById.value.get(workflow.scenarioId);
@@ -84,7 +134,11 @@ const visibleRows = computed(() =>
       const product = scenario ? productById.value.get(scenario.productId) : undefined;
       const department = product ? departmentById.value.get(product.departmentId) : undefined;
       return {
-        workflow,
+        id: workflow._id,
+        name: workflow.name,
+        description: workflow.description,
+        commandCount: workflow.commands?.length || 0,
+        scenarioDescription: scenario?.description || '',
         productName: product?.name || '-',
         departmentName: department?.name || '-',
         scenarioPath: scenario
@@ -94,20 +148,19 @@ const visibleRows = computed(() =>
           : workflow.businessScenario || '未关联场景',
         status: statusOf(workflow),
       };
-    }),
-);
+    });
+});
 
 watch(selectedDeptId, () => {
   productFilter.value = '';
   statusFilter.value = '全部';
   page.value = 1;
-  deptOpen.value = false;
 });
 watch([productFilter, statusFilter], () => {
   page.value = 1;
 });
 watch(totalPages, (lastPage) => {
-  page.value = Math.max(1, Math.min(page.value, lastPage));
+  if (!isHttp) page.value = Math.max(1, Math.min(page.value, lastPage));
 });
 watch(productOptions, (options) => {
   if (productFilter.value && !options.some((product) => product._id === productFilter.value)) {
@@ -116,15 +169,27 @@ watch(productOptions, (options) => {
 });
 
 async function refreshInventoryScope() {
-  if (loading.value || !available.value) return;
+  const query = httpQuery.value;
+  if (isHttp ? !query : loading.value || !available.value) return;
   const requestSequence = ++inventoryLoadSequence;
   inventoryLoading.value = true;
   inventoryError.value = '';
+  if (isHttp) httpRows.value = [];
   try {
-    await ensureInventoryScope();
+    if (isHttp && query) {
+      const result = await queryHarnessWorkflowPage(query);
+      if (requestSequence !== inventoryLoadSequence || httpQuery.value !== query) return;
+      httpRows.value = result.list;
+      httpTotal.value = result.total;
+      httpPageSize.value = result.pageSize;
+      page.value = Math.min(result.pageNo, Math.max(1, Math.ceil(result.total / result.pageSize)));
+    } else {
+      await ensureInventoryScope();
+    }
   } catch (caught) {
     if (requestSequence === inventoryLoadSequence) {
-      inventoryError.value = caught instanceof Error ? caught.message : '工作流范围加载失败';
+      inventoryError.value = caught instanceof Error ? caught.message : '工作流列表加载失败';
+      if (isHttp) httpTotal.value = 0;
     }
   } finally {
     if (requestSequence === inventoryLoadSequence) inventoryLoading.value = false;
@@ -134,6 +199,7 @@ async function refreshInventoryScope() {
 watch(
   [selectedDeptId, loading, available],
   () => {
+    if (isHttp) return;
     inventoryLoadSequence += 1;
     inventoryLoading.value = false;
     inventoryError.value = '';
@@ -142,61 +208,36 @@ watch(
   { immediate: true },
 );
 
-function closeDepartmentPicker(restoreFocus = false) {
-  deptOpen.value = false;
-  if (restoreFocus) departmentTrigger.value?.focus();
-}
+watch(
+  httpQuery,
+  (query) => {
+    if (!isHttp) return;
+    inventoryLoadSequence += 1;
+    inventoryLoading.value = false;
+    inventoryError.value = '';
+    if (query) void refreshInventoryScope();
+    else {
+      httpRows.value = [];
+      httpTotal.value = 0;
+    }
+  },
+  { immediate: true },
+);
 
 function selectDept(id: string) {
   selectDepartment(id);
   productFilter.value = '';
   statusFilter.value = '全部';
   page.value = 1;
-  closeDepartmentPicker(true);
 }
 
-async function focusDepartment() {
-  deptOpen.value = true;
-  await nextTick();
-  const options = departmentDropdown.value?.querySelectorAll<HTMLButtonElement>('button');
-  const selectedIndex = departments.findIndex(
-    (department) => department._id === selectedDeptId.value,
-  );
-  options?.[Math.max(0, selectedIndex)]?.focus();
-}
-
-function handleDepartmentKeydown(event: KeyboardEvent) {
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-  const options = Array.from(
-    departmentDropdown.value?.querySelectorAll<HTMLButtonElement>('button') || [],
-  );
-  if (!options.length) return;
-  event.preventDefault();
-  const currentIndex = options.findIndex((option) => option === document.activeElement);
-  const nextIndex =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? options.length - 1
-        : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-  options[nextIndex]?.focus();
-}
-
-function handleOutsidePointer(event: PointerEvent) {
-  if (event.target instanceof Node && !departmentPicker.value?.contains(event.target)) {
-    closeDepartmentPicker();
-  }
-}
-
-onMounted(() => document.addEventListener('pointerdown', handleOutsidePointer));
-onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsidePointer));
+onBeforeUnmount(() => {
+  inventoryLoadSequence += 1;
+});
 </script>
 
 <template>
-  <div
-    class="workflows-page harness-viewport-page"
-    @keydown.esc.stop.prevent="closeDepartmentPicker(true)"
-  >
+  <div class="workflows-page harness-viewport-page">
     <header class="workflows-page-header harness-page-heading">
       <div>
         <h1 class="harness-page-title">Harness 工作流</h1>
@@ -211,44 +252,13 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 
     <section class="dept-product-selector" aria-label="工作流范围筛选">
       <span class="selector-icon" aria-hidden="true">🏢</span>
-      <div ref="departmentPicker" class="dept-picker">
-        <button
-          ref="departmentTrigger"
-          class="select-trigger"
-          type="button"
-          aria-label="选择部门"
-          aria-controls="workflows-department-options"
-          :aria-expanded="deptOpen"
-          @click="deptOpen = !deptOpen"
-          @keydown.down.prevent="focusDepartment"
-        >
-          <span class="select-label">{{ deptPath(selectedDeptId) || '选部门…' }}</span>
-          <span class="select-arrow" aria-hidden="true">▾</span>
-        </button>
-        <div
-          v-if="deptOpen"
-          id="workflows-department-options"
-          ref="departmentDropdown"
-          class="department-dropdown"
-          role="group"
-          aria-label="部门选项"
-          @keydown="handleDepartmentKeydown"
-        >
-          <button
-            v-for="department in departments"
-            :key="department._id"
-            type="button"
-            :style="{
-              paddingLeft: `${0.65 + (deptPath(department._id).split(' / ').length - 1) * 0.9}rem`,
-            }"
-            :class="{ selected: selectedDeptId === department._id }"
-            :aria-pressed="selectedDeptId === department._id"
-            @click="selectDept(department._id)"
-          >
-            {{ department.name }}
-          </button>
-        </div>
-      </div>
+      <HarnessDepartmentPicker
+        class="dept-picker"
+        :active="props.active"
+        :model-value="selectedDeptId"
+        :departments="departments"
+        @update:model-value="selectDept"
+      />
       <template v-if="productOptions.length">
         <span class="selector-divider" aria-hidden="true">→</span>
         <select v-model="productFilter" class="product-select" aria-label="筛选产品">
@@ -260,25 +270,27 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
       </template>
     </section>
 
-    <p v-if="loading || inventoryLoading" class="inventory-feedback" role="status">
-      正在加载工作流所属场景…
+    <p v-if="pageLoading" class="inventory-feedback" role="status">
+      {{ isHttp ? '正在加载工作流…' : '正在加载工作流所属场景…' }}
     </p>
-    <p v-if="inventoryError || workspaceError" class="inventory-feedback error" role="alert">
-      {{ inventoryError || workspaceError }}
+    <p v-if="pageError" class="inventory-feedback error" role="alert">
+      {{ pageError }}
       <button
         type="button"
-        @click="workspaceError ? props.workspace.reloadScenes() : refreshInventoryScope()"
+        @click="
+          !isHttp && workspaceError ? props.workspace.reloadScenes() : refreshInventoryScope()
+        "
       >
         重试加载
       </button>
     </p>
 
-    <section
-      v-if="available && !loading && !inventoryLoading"
-      class="workflows-card"
-      aria-label="工作流清单"
-    >
-      <div v-if="!scopedWorkflows.length" class="empty-state" role="status">
+    <section v-if="pageAvailable" class="workflows-card" aria-label="工作流清单">
+      <div
+        v-if="!isHttp && !pageLoading && !scopedWorkflows.length"
+        class="empty-state"
+        role="status"
+      >
         <div class="empty-icon" aria-hidden="true">⚙️</div>
         <div class="empty-title">暂无工作流</div>
         <p class="empty-hint">点击右上角“前往场景设计”开始。</p>
@@ -287,7 +299,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
         <div class="workflows-toolbar">
           <div class="workflows-status-filter" role="group" aria-label="筛选工作流状态">
             <button
-              v-for="status in STATUS_OPTIONS"
+              v-for="status in statusOptions"
               :key="status"
               class="wf-status-chip"
               :class="{ active: statusFilter === status }"
@@ -296,17 +308,25 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
               @click="statusFilter = status"
             >
               {{ status }}
-              <span class="wf-status-count" aria-hidden="true">{{ statusCounts[status] }}</span>
+              <span v-if="!isHttp" class="wf-status-count" aria-hidden="true">{{
+                statusCounts[status]
+              }}</span>
             </button>
           </div>
         </div>
 
-        <div v-if="!filteredWorkflows.length" class="empty-state" role="status">
+        <div v-if="!pageLoading && !pageError && !totalRows" class="empty-state" role="status">
           <div class="empty-icon" aria-hidden="true">🔍</div>
-          <div class="empty-title">该状态下暂无工作流</div>
-          <p class="empty-hint">切换到其他状态看看。</p>
+          <div class="empty-title">
+            {{ statusFilter === '全部' ? '暂无工作流' : '该状态下暂无工作流' }}
+          </div>
+          <p class="empty-hint">
+            {{
+              statusFilter === '全部' ? '切换范围，或从业务场景开始设计。' : '切换到其他状态看看。'
+            }}
+          </p>
         </div>
-        <template v-else>
+        <template v-else-if="!pageLoading && !pageError && visibleRows.length">
           <div class="table-scroll" role="region" aria-label="工作流列表" tabindex="0">
             <table class="workflows-table">
               <caption class="sr-only">
@@ -316,37 +336,41 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
                 <tr>
                   <th scope="col">名称</th>
                   <th scope="col">产品</th>
-                  <th scope="col">部门</th>
+                  <th v-if="!isHttp" scope="col">部门</th>
                   <th scope="col">状态</th>
                   <th scope="col">所属业务场景</th>
                   <th scope="col">Command 入口</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in visibleRows" :key="row.workflow._id">
-                  <td class="wf-name">{{ row.workflow.name }}</td>
+                <tr v-for="row in visibleRows" :key="row.id">
+                  <td class="wf-name" :title="row.description">{{ row.name }}</td>
                   <td>{{ row.productName }}</td>
-                  <td>{{ row.departmentName }}</td>
+                  <td v-if="!isHttp">{{ row.departmentName }}</td>
                   <td>
                     <span
                       class="workflow-status-badge"
-                      :class="row.status === '已发布' ? 'published' : 'designing'"
+                      :class="{
+                        published: row.status === '已发布',
+                        pending: row.status === '待发布',
+                        designing: row.status === '设计中',
+                      }"
                     >
                       {{ row.status }}
                     </span>
                   </td>
-                  <td>{{ row.scenarioPath }}</td>
+                  <td :title="row.scenarioDescription">{{ row.scenarioPath }}</td>
                   <td>
-                    <span class="wf-count-pill">{{ row.workflow.commands?.length || 0 }} 个</span>
+                    <span class="wf-count-pill">{{
+                      row.commandCount === null ? '-' : `${row.commandCount} 个`
+                    }}</span>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
           <nav class="workflows-pagination" aria-label="工作流分页">
-            <span class="wf-page-total" aria-live="polite"
-              >共 {{ filteredWorkflows.length }} 条</span
-            >
+            <span class="wf-page-total" aria-live="polite">共 {{ totalRows }} 条</span>
             <div class="wf-page-controls">
               <button class="wf-page-btn" type="button" :disabled="page === 1" @click="page -= 1">
                 <span aria-hidden="true">← </span>上一页
@@ -475,7 +499,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   flex: 1;
   min-width: 0;
 }
-.select-trigger,
 .product-select {
   min-height: 36px;
   padding: 0.5rem 0.75rem;
@@ -485,25 +508,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
   color: #374151;
   text-align: left;
 }
-.select-trigger {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.select-trigger:hover,
 .product-select:hover {
   border-color: var(--blue);
-}
-.select-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.select-arrow {
-  color: #9ca3af;
-  font-size: 12px;
 }
 .selector-divider {
   flex-shrink: 0;
@@ -512,38 +518,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 .product-select {
   flex: 0 0 180px;
   width: 180px;
-}
-.department-dropdown {
-  position: absolute;
-  z-index: 5;
-  top: calc(100% + 4px);
-  right: 0;
-  left: 0;
-  max-height: 320px;
-  overflow: auto;
-  padding: 0.25rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 12px 32px #0f172a24;
-}
-.department-dropdown button {
-  display: block;
-  width: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #374151;
-  text-align: left;
-}
-.department-dropdown button:hover {
-  background: #f9fafb;
-}
-.department-dropdown button.selected {
-  background: #eff6ff;
-  color: var(--blue);
-  font-weight: 600;
 }
 .workflows-card {
   padding: 0.5rem 1.25rem 1rem;
@@ -660,6 +634,10 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', handleOutsideP
 .workflow-status-badge.designing {
   background: #fef3c7;
   color: #92400e;
+}
+.workflow-status-badge.pending {
+  background: #dbeafe;
+  color: #1e40af;
 }
 .wf-count-pill {
   background: #f3f4f6;

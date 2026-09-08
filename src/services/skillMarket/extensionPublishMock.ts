@@ -43,7 +43,7 @@ export type ExtensionScene = {
   primary: string;
   name: string;
   publishable: boolean;
-  extension: { name: string; description: string };
+  extension: { name: string; description: string; version?: string };
   capabilities: Record<ExtensionCapabilityType, ExtensionCapability[]>;
   releases: ExtensionRelease[];
   publishing: ExtensionRelease | null;

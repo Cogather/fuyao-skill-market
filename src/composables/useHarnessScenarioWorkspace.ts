@@ -3,6 +3,7 @@ import {
   harnessWorkflowService,
   type WorkflowProgressStep,
   type WorkflowSceneContext,
+  type WorkflowDetail,
 } from '../services/skillMarket/businessScenarioDesignService';
 import {
   businessScenarioTaxonomyClient,
@@ -18,7 +19,10 @@ import {
   queryDesignCapabilities,
   queryDesignUsers,
   createDesignCapability,
+  attachDesignCapability,
+  hasDesignBindings,
 } from '../services/skillMarket/businessScenarioDesignRepository';
+import { validateWorkflowCapabilityName } from '../utils/workflowCapabilityName';
 import {
   queryWorkflowCapabilityOptions,
   type WorkflowCapabilityType,
@@ -146,7 +150,7 @@ export type ScenarioWorkspaceContext = {
   allowedDepartmentPaths: string[][];
   restrictToAllowedDepartments: boolean;
 };
-type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'>;
+type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'> & { name?: string };
 
 function randomUuid(): string {
   const cryptoApi = globalThis.crypto;
@@ -206,6 +210,14 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   const inventoryProductOptions = computed(() =>
     products.filter((item) => departmentIsInScope(item.departmentId, selectedDeptId.value)),
   );
+  const workflowListScope = computed(() => {
+    const department = departments.find((item) => item._id === selectedDeptId.value);
+    if (!context().ready || !context().userId || !department) return null;
+    return {
+      userId: context().userId,
+      dimName: department.path.map((name) => name.trim()).join('/'),
+    };
+  });
   const scopedId = (product: Product, id: string) => JSON.stringify([product._id, id]);
 
   function scopeFor(product: Product): TaxonomyScope {
@@ -286,6 +298,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     workflowLoading.value = false;
     if (
       !isHttp ||
+      saving.value ||
       !available.value ||
       !scenarios.some((item) => item._id === selectedScenarioId.value && item.level === 2)
     )
@@ -313,13 +326,28 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   }
   watch([selectedScenarioId, available], loadSelectedWorkflow);
   async function saveWorkflow(workflow: Workflow, values: ScenarioDetails): Promise<Workflow> {
-    if (!isHttp) return workflow;
+    if (!isHttp) {
+      const scenario = scenarios.find((item) => item._id === workflow.scenarioId);
+      if (scenario && values.name?.trim() && scenario.name !== values.name.trim())
+        await saveScenario({ ...scenario, ...values, name: values.name.trim() });
+      return workflow;
+    }
     if (saving.value) throw new Error('正在保存，请稍候');
-    const scope = sceneContext(workflow.scenarioId);
+    const product = currentProduct();
+    assertScenarioCode(values.code, product);
+    let scope = sceneContext(workflow.scenarioId);
     const selectedProduct = productId.value;
-    const scenario = scenarios.find((item) => item._id === workflow.scenarioId)!;
+    let scenario = scenarios.find((item) => item._id === workflow.scenarioId)!;
     const draft = clone(workflow);
-    const scenarioDraft = { ...scenario, ...values };
+    const scenarioDraft = {
+      ...scenario,
+      ...values,
+      name: values.name?.trim() ?? scenario.name,
+      code: values.code.trim(),
+      description: values.description.trim(),
+    };
+    if (!scenarioDraft.name) throw new Error('请填写场景名称');
+    const renamed = scenario.name !== scenarioDraft.name;
     const assertScope = () => {
       if (
         !available.value ||
@@ -331,27 +359,48 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     };
     saving.value = true;
     try {
-      const before = await loadDesignDetail(scope);
+      let before = await loadDesignDetail(scope);
       assertScope();
-      await saveDesignMetadata(scope, scenarioDraft, draft, before, (metadata) => {
-        // Each successful write is already committed even if a later endpoint rejects the save.
-        const source = recordsByProduct
-          .get(selectedProduct)
-          ?.find((item) => item.id === scenario.sourceId);
-        if (source) Object.assign(source, metadata);
-        if (metadata.sceneExtensionCode !== undefined)
-          scenario.code = metadata.sceneExtensionCode || '';
-        if (metadata.secondSceneDescription !== undefined)
-          scenario.description = metadata.secondSceneDescription || '';
-      });
+      await prepareDesignActivityChanges(scope, draft, before);
+      if (renamed) {
+        await assertScenarioRenameAllowed(product, scenario, before);
+        assertScope();
+        const records = clone(recordsByProduct.get(product._id) || []);
+        const source = records.find((item) => item.id === scenario.sourceId);
+        if (!source) throw new Error('场景不存在，请刷新后重试');
+        source.name = scenarioDraft.name;
+        // Keep old metadata in the full refresh; write new values only after the new identity exists.
+        await commitRecords(product, records, true);
+        assertScope();
+        scenario = scenarios.find((item) => item._id === draft.scenarioId)!;
+        scope = sceneContext(draft.scenarioId);
+        before = await loadDesignDetail(scope);
+      }
       assertScope();
-      const unboundBefore = await prepareDesignActivityChanges(scope, draft, before);
+      await saveDesignMetadata(
+        scope,
+        scenarioDraft,
+        draft,
+        before,
+        (metadata) => {
+          // Each successful write is already committed even if a later endpoint rejects the save.
+          const source = recordsByProduct
+            .get(selectedProduct)
+            ?.find((item) => item.id === scenario.sourceId);
+          if (source) Object.assign(source, metadata);
+          if (metadata.sceneExtensionCode !== undefined)
+            scenario.code = metadata.sceneExtensionCode || '';
+          if (metadata.secondSceneDescription !== undefined)
+            scenario.description = metadata.secondSceneDescription || '';
+        },
+        renamed,
+      );
       assertScope();
       await saveDesignActivities(scope, draft, before);
       assertScope();
       await saveDesignCommands(scope, draft, before);
       assertScope();
-      await saveDesignAssets(scope, draft, assets, unboundBefore);
+      await saveDesignAssets(scope, draft, assets, before);
       assertScope();
       const saved = await loadDesignDetail(scope);
       assertScope();
@@ -360,8 +409,75 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       saving.value = false;
     }
   }
-  async function createCapability(type: WorkflowCapabilityType, item: Asset | Command) {
-    return isHttp ? createDesignCapability(type, item, dimensionFor(currentProduct())) : item;
+  async function attachCapability(type: WorkflowCapabilityType, item: Asset | Command) {
+    if (!isHttp) return;
+    if (saving.value) throw new Error('正在保存，请稍候');
+    const scope = sceneContext();
+    saving.value = true;
+    try {
+      await attachDesignCapability(scope, type, item);
+    } finally {
+      saving.value = false;
+    }
+  }
+  async function removePoolAsset(item: Asset) {
+    if (!isHttp) return;
+    if (saving.value) throw new Error('正在保存，请稍候');
+    const scope = sceneContext();
+    saving.value = true;
+    try {
+      designData(
+        await harnessWorkflowService.componentExitPool({
+          ...scope,
+          assetType: item.assetType === 'Skill' ? 'SKILL' : 'AGENT',
+          assetName: item.name,
+        }),
+      );
+    } finally {
+      saving.value = false;
+    }
+  }
+  async function createCapability(
+    type: WorkflowCapabilityType,
+    item: Asset | Command,
+    onCreated?: (saved: Asset | Command) => void,
+  ) {
+    const product = currentProduct();
+    const invalid = validateWorkflowCapabilityName(
+      type === 'Command' ? item.name.replace(/^\/+/, '') : item.name,
+      product.name,
+      product.code,
+    );
+    if (invalid) throw new Error(`${type} 名称不符合命名规则：${invalid}`);
+    if (!isHttp) {
+      onCreated?.(item);
+      return item;
+    }
+    if (saving.value) throw new Error('正在保存，请稍候');
+    const scope = sceneContext();
+    const scenarioId = selectedScenarioId.value;
+    saving.value = true;
+    try {
+      const created = await createDesignCapability(type, item, dimensionFor(product));
+      onCreated?.(created);
+      try {
+        if (
+          !available.value ||
+          productId.value !== product._id ||
+          selectedScenarioId.value !== scenarioId ||
+          context().userId !== scope.userId
+        )
+          throw new Error('场景范围已切换，请回到原场景重新选择');
+        await attachDesignCapability(scope, type, created);
+      } catch (cause) {
+        throw new Error(
+          `${type} 已创建，但${type === 'Command' ? '场景绑定' : '入池'}失败：${cause instanceof Error ? cause.message : '请求失败'}。请从资产清单重新选择，无需重复创建`,
+        );
+      }
+      return created;
+    } finally {
+      saving.value = false;
+    }
   }
   async function listDesignTags(): Promise<string[]> {
     if (!isHttp) {
@@ -594,7 +710,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
   }
   function selectDepartment(id: string) {
-    if (!departments.some((item) => item._id === id) || id === selectedDeptId.value) return;
+    if ((id && !departments.some((item) => item._id === id)) || id === selectedDeptId.value) return;
     selectedDeptId.value = id;
   }
   function selectScope(scope: {
@@ -751,8 +867,15 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     if (!ownSave && change?.kind === 'scene' && productOptions.value.length) void reloadScenes();
   });
 
-  async function commitRecords(product: Product, records: TaxonomyRecord[]) {
-    if (saving.value) throw new Error('正在保存场景，请稍候');
+  async function commitRecords(
+    product: Product,
+    records: TaxonomyRecord[],
+    withinSave = false,
+    onCommitted?: () => void,
+  ) {
+    if (saving.value && !withinSave) throw new Error('正在保存场景，请稍候');
+    const wasSaving = saving.value;
+    const wasOwnSave = ownSave;
     saving.value = true;
     ownSave = true;
     const userAtSave = contextUser;
@@ -761,22 +884,76 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         scopeFor(product),
         records,
         businessScenarioTaxonomyClient,
+        (committed) => {
+          if (contextUser === userAtSave && available.value) {
+            applyRecords(product, committed);
+            onCommitted?.();
+          }
+        },
       );
       if (contextUser !== userAtSave || !available.value)
         throw new Error('管理范围已切换，请刷新场景配置');
       applyRecords(product, saved);
+      onCommitted?.();
       if (import.meta.env.VITE_SKILL_MARKET_TRANSPORT !== 'http') {
         for (const other of productOptions.value)
           if (other._id !== product._id) applyRecords(other, saved);
       }
     } finally {
-      saving.value = false;
-      ownSave = false;
+      saving.value = wasSaving;
+      ownSave = wasOwnSave;
+    }
+  }
+  function assertScenarioCode(code: string, product: Product) {
+    if (!code.trim() && isHttp) return;
+    const invalid = validateWorkflowCapabilityName(code, product.name, product.code);
+    if (invalid) throw new Error(`场景编码不符合命名规则：${invalid}`);
+  }
+  async function assertScenarioRenameAllowed(
+    product: Product,
+    scenario: Scenario,
+    knownDetail?: WorkflowDetail,
+  ) {
+    const targets = scenarios.filter(
+      (item) =>
+        item.productId === product._id &&
+        (item._id === scenario._id || item.parentId === scenario._id),
+    );
+    if (targets.some((item) => (item.skillCount || 0) > 0))
+      throw new Error('场景已关联资产，请先解除绑定后再改名');
+    for (const target of targets.filter((item) => item.level === 2)) {
+      if (isHttp) {
+        const data =
+          target._id === scenario._id && knownDetail
+            ? knownDetail
+            : await loadDesignDetail(sceneContext(target._id));
+        if (hasDesignBindings(data))
+          throw new Error(`场景“${target.name}”已绑定资产，请先解除绑定后再改名`);
+      } else {
+        const workflow = workflows.find((item) => item.scenarioId === target._id);
+        if (
+          workflow &&
+          (workflow.commands.length ||
+            workflow.assets.length ||
+            workflow.stages.some((stage) => stage.steps.some((node) => node.assets.length)))
+        )
+          throw new Error(`场景“${target.name}”已绑定资产，请先解除绑定后再改名`);
+      }
     }
   }
   async function saveScenario(scenario: Scenario): Promise<Scenario> {
+    if (saving.value) throw new Error('正在保存场景，请稍候');
+    saving.value = true;
+    try {
+      return await saveScenarioDraft(scenario);
+    } finally {
+      saving.value = false;
+    }
+  }
+  async function saveScenarioDraft(scenario: Scenario): Promise<Scenario> {
     const product = currentProduct();
     if (scenario.productId !== product._id) throw new Error('场景不属于当前产品');
+    if (scenario.level === 2) assertScenarioCode(scenario.code, product);
     const records = clone(recordsByProduct.get(product._id) || []);
     const parent = scenario.parentId
       ? scenarios.find((item) => item._id === scenario.parentId && item.productId === product._id)
@@ -793,11 +970,13 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     )
       throw new Error('同一层级下已存在同名场景');
     const existing = records.find((item) => item.id === scenario.sourceId);
-    if (existing && existing.name !== name && existing.skillCount > 0)
-      throw new Error('场景已关联规划项，请先解除关联后再编辑');
+    if (existing && existing.name !== name)
+      await assertScenarioRenameAllowed(
+        product,
+        scenarios.find((item) => item.sourceId === existing.id && item.productId === product._id)!,
+      );
     if (existing) {
       existing.name = name;
-      if (isHttp && parentId) existing.secondSceneDescription = scenario.description;
     } else
       records.push({
         id: uid('scene'),
@@ -810,49 +989,85 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         ...(isHttp && parentId
           ? {
               sceneExtensionCode: null,
-              secondSceneDescription: scenario.description,
+              secondSceneDescription: '',
               flowName: null,
               flowDescription: null,
             }
           : {}),
       });
-    await commitRecords(product, records);
+    if (productId.value !== product._id || !available.value)
+      throw new Error('场景范围已切换，请重新加载');
+    await commitRecords(product, records, true, () => {
+      const committed = scenarios.find(
+        (item) =>
+          item.productId === product._id &&
+          item.name === name &&
+          item.parentId === scenario.parentId,
+      );
+      if (committed) {
+        scenario._id = committed._id;
+        scenario.sourceId = committed.sourceId;
+      }
+    });
     const saved = scenarios.find(
       (item) =>
         item.productId === product._id && item.name === name && item.parentId === scenario.parentId,
     );
     if (!saved) throw new Error('场景保存后未返回，请刷新重试');
-    if (isHttp && saved.level === 2 && saved.code !== scenario.code) {
+    // Expose committed identity to the caller even when a following metadata write fails.
+    scenario._id = saved._id;
+    scenario.sourceId = saved.sourceId;
+    if (isHttp && saved.level === 2) {
       try {
         const { firstScene, secondScene } = sceneContext(saved._id);
         designData(
           await harnessWorkflowService.updateSecondSceneCode(
-            { firstScene, secondScene, sceneExtensionCode: scenario.code },
+            {
+              firstScene,
+              secondScene,
+              sceneExtensionCode: scenario.code.trim(),
+              secondSceneDescription: scenario.description.trim(),
+            },
             dimensionFor(product),
           ),
         );
         saveScenarioDetails(saved._id, scenario);
+        if (existing && (existing.flowName || existing.flowDescription))
+          designData(
+            await harnessWorkflowService.updateSceneMetadata(
+              {
+                firstScene,
+                secondScene,
+                flowName: existing.flowName || '',
+                flowDescription: existing.flowDescription || '',
+              },
+              dimensionFor(product),
+            ),
+          );
       } catch (cause) {
-        error.value = `场景已保存，但编码保存失败：${cause instanceof Error ? cause.message : '请重新设置编码'}`;
+        error.value = `场景名称已保存，但编码或描述保存失败：${cause instanceof Error ? cause.message : '请重新设置'}`;
+        throw new Error(error.value);
       }
     } else saveScenarioDetails(saved._id, scenario);
     if (saved.level === 1 && scenario.tags.length) {
       try {
-        await setScenarioTags(saved._id, scenario.tags);
+        await setScenarioTags(saved._id, scenario.tags, true);
       } catch (cause) {
         error.value = cause instanceof Error ? cause.message : '场景已保存，但标签保存失败';
       }
     }
     return saved;
   }
-  async function setScenarioTags(id: string, tags: string[]) {
+  async function setScenarioTags(id: string, tags: string[], withinSave = false) {
     const product = currentProduct();
     const scenario = scenarios.find((item) => item._id === id && item.productId === product._id);
     const record = recordsByProduct
       .get(product._id)
       ?.find((item) => item.id === scenario?.sourceId);
     if (!scenario || !record || scenario.level !== 1) throw new Error('请选择一级场景');
-    if (saving.value) throw new Error('正在保存，请稍候');
+    if (saving.value && !withinSave) throw new Error('正在保存，请稍候');
+    const wasSaving = saving.value;
+    const wasOwnSave = ownSave;
     saving.value = true;
     ownSave = true;
     try {
@@ -871,8 +1086,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       scenario.tags = [...saved];
       record.tags = [...saved];
     } finally {
-      saving.value = false;
-      ownSave = false;
+      saving.value = wasSaving;
+      ownSave = wasOwnSave;
     }
   }
   function saveScenarioDetails(id: string, values: ScenarioDetails) {
@@ -1067,6 +1282,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     loadSelectedWorkflow,
     saveWorkflow,
     createCapability,
+    attachCapability,
+    removePoolAsset,
     listDesignTags,
     queryDesignUsers,
     departments,
@@ -1080,6 +1297,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     selectedScenarioId,
     productOptions,
     inventoryProductOptions,
+    workflowListScope,
     ensureInventoryScope,
     departmentIsInScope,
     deptPath,

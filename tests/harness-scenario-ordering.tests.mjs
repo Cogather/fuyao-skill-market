@@ -325,7 +325,7 @@ try {
     assert.equal(writes.length, 2);
   });
 
-  await test('a failed authoritative readback leaves the displayed order and workflow association intact', async () => {
+  await test('a failed readback retains the committed order and existing workflow association', async () => {
     const { workspace, scene, names, rejectReadback } = await fixture();
     const workflow = workspace.ensureWorkflow(scene('接口生成')._id);
     const savedWorkflow = clone(workflow);
@@ -334,7 +334,7 @@ try {
       () => workspace.reorderScenario(scene('交付发布')._id, scene('研发提效')._id, 'before'),
       /场景已保存，但刷新最新配置失败/,
     );
-    assert.deepEqual(names(), ['研发提效', '质量保障', '交付发布']);
+    assert.deepEqual(names(), ['交付发布', '研发提效', '质量保障']);
     assert.deepEqual(clone(workspace.workflows), [savedWorkflow]);
     assert.equal(workspace.saving.value, false);
     rejectReadback(false);

@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue';
+import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import WorkflowCapabilityPicker from '../../components/skill/WorkflowCapabilityPicker.vue';
 import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningService';
 import type { WorkflowCapabilityOption } from '../../services/skillMarket/workflowCapabilitySearchService';
+import {
+  workflowCapabilityPrefix,
+  validateWorkflowCapabilityName,
+} from '../../utils/workflowCapabilityName';
 import type {
   Asset,
   AssetType,
@@ -14,7 +19,10 @@ import type {
   Workflow,
 } from '../../composables/useHarnessScenarioWorkspace';
 
-const props = defineProps<{ workspace: HarnessScenarioWorkspace }>();
+const props = withDefaults(
+  defineProps<{ workspace: HarnessScenarioWorkspace; active?: boolean }>(),
+  { active: true },
+);
 const {
   departments,
   products,
@@ -26,7 +34,6 @@ const {
   productId,
   selectedScenarioId,
   productOptions,
-  deptPath,
   selectDepartment,
   loading,
   available,
@@ -95,13 +102,39 @@ const focusableSelector =
   'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 const wizardSteps = ['业务场景分析', 'Workflow 规划', 'Command 入口', 'Skill / Agent 集成'];
 const collapsed = reactive<Record<string, boolean>>({});
-const deptOpen = ref(false);
-const scenarioDialog = ref<{ parentId: string | null } | null>(null);
+const scenarioDialog = ref<{
+  parentId: string | null;
+  savedIdentity?: Pick<Scenario, '_id' | 'sourceId'>;
+} | null>(null);
 const deleteTarget = ref<Scenario | null>(null);
 const tagTarget = ref<Scenario | null>(null);
 const wizard = ref<Wizard | null>(null);
 const capabilitySaving = ref(false);
 const wizardBusy = computed(() => saving.value || capabilitySaving.value);
+const savedWizardSnapshot = ref('');
+const wizardSaveConfirmed = ref(false);
+function wizardSnapshot(w: Wizard): string {
+  return JSON.stringify({
+    form: w.form,
+    stages: w.workflow.stages,
+    commands: w.workflow.commands,
+    poolIds: w.poolIds,
+    nodeAssetsMap: w.nodeAssetsMap,
+  });
+}
+function hasWizardEditor(w: Wizard): boolean {
+  return Boolean(w.stageDraft || w.nodeDraft || w.commandDraft || w.assetDraft);
+}
+const wizardHasChanges = computed(() => {
+  const w = wizard.value;
+  return Boolean(w && (hasWizardEditor(w) || wizardSnapshot(w) !== savedWizardSnapshot.value));
+});
+const wizardSaveStatus = computed(() => {
+  if (wizardBusy.value) return '正在保存…';
+  if (wizard.value?.error) return '保存未完成，请检查提示';
+  if (wizardHasChanges.value) return '有未保存修改，关闭前请保存';
+  return wizardSaveConfirmed.value ? '已保存' : '关闭不会保存未提交的修改';
+});
 const draggedScenarioId = ref('');
 const scenarioDropTarget = ref<{ id: string; placement: 'before' | 'after' } | null>(null);
 const sortingMessage = ref('');
@@ -126,6 +159,7 @@ const localAssetOptions = computed<WorkflowCapabilityOption[]>(() =>
   assets.filter(isLocalProductOption).map((item) => ({ ...item, type: item.assetType })),
 );
 function selectCapability(option: WorkflowCapabilityOption) {
+  if (wizardBusy.value) return;
   if (option.type === 'Command') {
     if (!commands.some((item) => item._id === option._id)) commands.push({ ...option });
     addCommand(option._id);
@@ -161,28 +195,17 @@ watch([selectedDeptId, productId, available], () => {
   sortingFailed.value = false;
 });
 const productPrefix = (productName = currentProduct.value?.name ?? '') => {
-  if (!productName) return '';
-  const source = /^[a-z0-9-]+$/i.test(productName)
-    ? productName
-    : products.find((item) => item.name === productName)?.code || 'product';
-  const prefix =
-    source
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '') || 'product';
-  return `${prefix}-`;
+  return workflowCapabilityPrefix(
+    productName,
+    products.find((item) => item.name === productName)?.code,
+  );
 };
 function validateName(value: string, productName = currentProduct.value?.name ?? '') {
-  const name = value.trim();
-  const prefix = productPrefix(productName);
-  if (!name) return '请填写名称';
-  if (name.length > 64) return '名称长度不能超过 64 个字符';
-  if (name !== name.toLowerCase()) return '必须全部小写';
-  if (!/^[a-z0-9-]+$/.test(name)) return '只能包含小写字母、数字和连字符';
-  if (name.startsWith('-') || name.endsWith('-') || name.includes('--'))
-    return '连字符不能在开头/结尾，也不能连续出现';
-  if (prefix && !name.startsWith(prefix)) return `必须以产品名开头，例如：${prefix}xxx`;
-  return '';
+  return validateWorkflowCapabilityName(
+    value,
+    productName,
+    products.find((item) => item.name === productName)?.code,
+  );
 }
 function scenarioValidationError(
   scenario: Pick<Scenario, 'name' | 'description' | 'code' | 'releaseCount'>,
@@ -229,10 +252,6 @@ function assetIntegrationError(
     return '仍有节点未分配 Agent / Skill，请完成分配后再提交';
   }
   return '';
-}
-function selectDept(id: string) {
-  selectDepartment(id);
-  deptOpen.value = false;
 }
 function selectProduct(id: string) {
   productId.value = id;
@@ -404,6 +423,7 @@ function handleScenarioDialogKeydown(event: KeyboardEvent) {
   handleModalKeydown(event, scenarioDialogElement.value, closeScenarioDialog);
 }
 async function saveScenario() {
+  if (saving.value) return;
   scenarioError.value = '';
   if (!scenarioForm.name.trim()) {
     scenarioError.value = '请填写场景名称';
@@ -419,6 +439,7 @@ async function saveScenario() {
   }
   const scenario: Scenario = {
     _id: uid('s'),
+    ...scenarioDialog.value?.savedIdentity,
     name: scenarioForm.name.trim(),
     code: scenarioForm.code.trim(),
     description: scenarioForm.description.trim(),
@@ -434,6 +455,8 @@ async function saveScenario() {
     selectedScenarioId.value = saved._id;
     closeScenarioDialog();
   } catch (error) {
+    if (scenarioDialog.value && scenario.sourceId)
+      scenarioDialog.value.savedIdentity = { _id: scenario._id, sourceId: scenario.sourceId };
     scenarioError.value = error instanceof Error ? error.message : '场景保存失败';
   }
 }
@@ -578,6 +601,8 @@ async function openWizard(workflow?: Workflow, step = 0) {
     commandDraft: null,
     assetDraft: null,
   };
+  savedWizardSnapshot.value = wizardSnapshot(wizard.value);
+  wizardSaveConfirmed.value = false;
   focusDialog(wizardDialogElement);
 }
 function syncWizard() {
@@ -660,30 +685,49 @@ async function saveWizard(): Promise<boolean> {
   const w = wizard.value;
   if (!w || wizardBusy.value) return false;
   syncWizard();
-  if (!props.workspace.isHttp) return true;
   w.error = '';
+  if (w.form.code.trim()) {
+    const invalid = validateName(w.form.code);
+    if (invalid) {
+      w.error = `场景编码不符合命名规则：${invalid}`;
+      return false;
+    }
+  }
   try {
     const saved = await props.workspace.saveWorkflow(w.workflow, {
+      name: w.form.scenarioName,
       code: w.form.code,
       description: w.form.scenarioDesc,
       releaseCount: currentScenario.value?.releaseCount,
     });
     if (wizard.value !== w) return false;
-    w.workflow = JSON.parse(JSON.stringify(saved));
+    w.workflow = props.workspace.isHttp ? JSON.parse(JSON.stringify(saved)) : saved;
     w.poolIds = saved.assets.map((item) => item.assetId);
     w.nodeAssetsMap = Object.fromEntries(
       saved.stages.flatMap((stage) =>
         stage.steps.map((node) => [node.id, node.assets.map((asset) => asset.assetId)]),
       ),
     );
+    savedWizardSnapshot.value = wizardSnapshot(w);
+    wizardSaveConfirmed.value = true;
     return true;
   } catch (cause) {
     w.error = cause instanceof Error ? cause.message : 'Workflow 保存失败';
     return false;
   }
 }
-async function closeWizard() {
-  if (await saveWizard()) dismissWizard();
+async function saveCurrentDesign() {
+  const w = wizard.value;
+  if (!w || wizardBusy.value) return;
+  if (hasWizardEditor(w)) {
+    w.error = '请先完成或取消当前的环节、节点或能力编辑，再保存 Workflow';
+    return;
+  }
+  await saveWizard();
+}
+function closeWizard() {
+  if (wizardBusy.value) return;
+  dismissWizard();
 }
 function handleWizardKeydown(event: KeyboardEvent) {
   handleModalKeydown(event, wizardDialogElement.value, closeWizard);
@@ -692,8 +736,10 @@ function showWizardPage() {
   nextTick(() => {
     const dialog = wizardDialogElement.value;
     if (!dialog) return;
-    dialog.scrollTop = 0;
-    dialog.querySelector<HTMLElement>('.wizard-page')?.focus({ preventScroll: true });
+    const page = dialog.querySelector<HTMLElement>('.wizard-page');
+    if (!page) return;
+    page.scrollTop = 0;
+    page.focus({ preventScroll: true });
   });
 }
 async function goNext() {
@@ -800,7 +846,12 @@ function saveNode() {
 function deleteStage(stageId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
-  if (!w || !stage || !window.confirm('确认删除该环节？环节下的节点会一并删除。')) return;
+  if (!w || !stage || wizardBusy.value) return;
+  if (stage.steps.some((node) => node.assets.length)) {
+    w.error = '该环节下的节点已绑定资产，请先解除绑定并保存，再删除环节';
+    return;
+  }
+  if (!window.confirm('确认删除该环节？环节下的节点会一并删除。')) return;
   stage.steps.forEach((node) => delete w.nodeAssetsMap[node.id]);
   w.workflow.stages = w.workflow.stages.filter((item) => item.id !== stageId);
   [...w.workflow.stages]
@@ -815,7 +866,11 @@ function deleteStage(stageId: string) {
 function deleteNode(stageId: string, nodeId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
-  if (!w || !stage) return;
+  if (!w || !stage || wizardBusy.value) return;
+  if (stage.steps.find((node) => node.id === nodeId)?.assets.length) {
+    w.error = '该节点已绑定资产，请先解除绑定并保存，再删除节点';
+    return;
+  }
   stage.steps = stage.steps.filter((item) => item.id !== nodeId);
   [...stage.steps]
     .sort((a, b) => a.order - b.order)
@@ -840,9 +895,9 @@ function move<T extends { order: number }>(
   if (!currentItem || !nextItem) return;
   [currentItem.order, nextItem.order] = [nextItem.order, currentItem.order];
 }
-function addCommand(id: string) {
+function appendCommand(command: Command) {
   const w = wizard.value;
-  const command = commands.find((item) => item._id === id);
+  const id = command._id;
   if (!w || !command || w.workflow.commands.some((item) => item.commandId === id)) return;
   w.workflow.commands.push({
     id: uid('cmd'),
@@ -858,6 +913,27 @@ function addCommand(id: string) {
     version: command.version,
   });
   syncWizard();
+}
+async function addCommand(id: string) {
+  const w = wizard.value;
+  const command = commands.find((item) => item._id === id);
+  if (
+    !w ||
+    !command ||
+    wizardBusy.value ||
+    w.workflow.commands.some((item) => item.commandId === id)
+  )
+    return;
+  capabilitySaving.value = true;
+  w.error = '';
+  try {
+    await props.workspace.attachCapability('Command', command);
+    if (wizard.value === w) appendCommand(command);
+  } catch (cause) {
+    w.error = cause instanceof Error ? cause.message : 'Command 绑定失败';
+  } finally {
+    capabilitySaving.value = false;
+  }
 }
 function openCommandDraft() {
   if (!wizard.value) return;
@@ -930,27 +1006,42 @@ async function createCommand() {
   };
   capabilitySaving.value = true;
   try {
-    const saved = await props.workspace.createCapability('Command', command);
+    const saved = await props.workspace.createCapability('Command', command, (created) => {
+      if (wizard.value !== w) return;
+      if (!commands.some((item) => item._id === created._id)) commands.push(created as Command);
+      w.commandDraft = null;
+    });
     if (wizard.value !== w) return;
-    commands.push(saved as Command);
-    addCommand(saved._id);
-    w.commandDraft = null;
+    appendCommand(saved as Command);
   } catch (cause) {
     w.error = cause instanceof Error ? cause.message : 'Command 创建失败';
   } finally {
     capabilitySaving.value = false;
   }
 }
-function togglePool(id: string) {
+async function togglePool(id: string) {
   const w = wizard.value;
-  if (!w) return;
-  if (w.poolIds.includes(id)) {
-    w.poolIds = w.poolIds.filter((item) => item !== id);
-    Object.keys(w.nodeAssetsMap).forEach((key) => {
-      w.nodeAssetsMap[key] = (w.nodeAssetsMap[key] || []).filter((item) => item !== id);
-    });
-  } else w.poolIds.push(id);
-  syncWizard();
+  const asset = assets.find((item) => item._id === id);
+  if (!w || !asset || wizardBusy.value) return;
+  const removing = w.poolIds.includes(id);
+  capabilitySaving.value = true;
+  w.error = '';
+  try {
+    if (removing) await props.workspace.removePoolAsset(asset);
+    else await props.workspace.attachCapability(asset.assetType, asset);
+    if (wizard.value !== w) return;
+    if (w.poolIds.includes(id)) {
+      w.poolIds = w.poolIds.filter((item) => item !== id);
+      Object.keys(w.nodeAssetsMap).forEach((key) => {
+        w.nodeAssetsMap[key] = (w.nodeAssetsMap[key] || []).filter((item) => item !== id);
+      });
+    } else w.poolIds.push(id);
+    syncWizard();
+  } catch (cause) {
+    w.error = cause instanceof Error ? cause.message : '资产池保存失败';
+  } finally {
+    capabilitySaving.value = false;
+  }
 }
 function toggleNodeAsset(nodeId: string, assetId: string) {
   const w = wizard.value;
@@ -995,11 +1086,13 @@ async function createAsset() {
   };
   capabilitySaving.value = true;
   try {
-    const saved = await props.workspace.createCapability(d.assetType, asset);
+    const saved = await props.workspace.createCapability(d.assetType, asset, (created) => {
+      if (wizard.value !== w) return;
+      if (!assets.some((item) => item._id === created._id)) assets.push(created as Asset);
+      w.assetDraft = null;
+    });
     if (wizard.value !== w) return;
-    assets.push(saved as Asset);
     w.poolIds.push(saved._id);
-    w.assetDraft = null;
     syncWizard();
   } catch (cause) {
     w.error = cause instanceof Error ? cause.message : '资产创建失败';
@@ -1026,30 +1119,14 @@ async function createAsset() {
     </header>
     <section class="selector">
       <span class="selector-icon">🏢</span>
-      <div class="dept-picker">
-        <button
-          class="select-trigger"
-          type="button"
-          aria-label="选择部门"
-          :disabled="saving"
-          :aria-expanded="deptOpen"
-          @click="deptOpen = !deptOpen"
-        >
-          {{ deptPath(selectedDeptId) || '选部门…' }} <b>▾</b>
-        </button>
-        <div v-if="deptOpen" class="dropdown-backdrop" @click="deptOpen = false"></div>
-        <div v-if="deptOpen" class="dropdown">
-          <button
-            v-for="dept in departments"
-            :key="dept._id"
-            :style="{ paddingLeft: `${0.65 + deptPath(dept._id).split(' / ').length * 0.8}rem` }"
-            :class="{ selected: selectedDeptId === dept._id }"
-            @click="selectDept(dept._id)"
-          >
-            {{ dept.name }}
-          </button>
-        </div>
-      </div>
+      <HarnessDepartmentPicker
+        class="dept-picker"
+        :active="props.active"
+        :model-value="selectedDeptId"
+        :departments="departments"
+        :disabled="saving"
+        @update:model-value="selectDepartment"
+      />
       <span v-if="productOptions.length" class="divider">→</span
       ><select
         v-if="productOptions.length"
@@ -1484,6 +1561,7 @@ async function createAsset() {
           <span>场景编码{{ props.workspace.isHttp ? '' : ' *' }}</span>
           <input
             v-model="scenarioForm.code"
+            maxlength="64"
             required
             :placeholder="`例如：${productPrefix()}mml-dev`"
           />
@@ -1706,7 +1784,13 @@ async function createAsset() {
     >
       <header>
         <h2>Workflow 设计</h2>
-        <button class="close" type="button" aria-label="关闭 Workflow 设计" @click="closeWizard">
+        <button
+          class="close"
+          type="button"
+          aria-label="关闭 Workflow 设计"
+          :disabled="wizardBusy"
+          @click="closeWizard"
+        >
           ×
         </button>
       </header>
@@ -1738,13 +1822,14 @@ async function createAsset() {
           为必填项。
         </p>
         <label
-          >场景名称<input v-model="wizard.form.scenarioName" readonly /><small
-            >与配置管理的二级场景一致，名称在场景管理中统一维护。</small
+          >场景名称<input v-model="wizard.form.scenarioName" /><small
+            >与场景管理同步；已绑定资产的场景需先解除绑定才能改名。</small
           ></label
         ><label
           >场景编码{{ props.workspace.isHttp ? '' : ' *'
           }}<input
             v-model="wizard.form.code"
+            maxlength="64"
             :readonly="!!currentScenario?.releaseCount"
             :placeholder="`例如：${productPrefix()}mml-dev`"
           /><small v-if="currentScenario?.releaseCount"
@@ -2188,13 +2273,22 @@ async function createAsset() {
         >
           放弃未保存修改
         </button>
-        <span class="error">{{
-          (wizard.step === 2 && wizard.commandDraft) || (wizard.step === 3 && wizard.assetDraft)
-            ? ''
-            : wizard.error
-        }}</span
-        ><span
-          ><button :disabled="wizardBusy || wizard.step === 0" @click="goStep(wizard.step - 1)">
+        <div class="wizard-save-feedback">
+          <span class="error">{{
+            (wizard.step === 2 && wizard.commandDraft) || (wizard.step === 3 && wizard.assetDraft)
+              ? ''
+              : wizard.error
+          }}</span>
+          <span
+            class="wizard-save-status"
+            :class="{ pending: wizardHasChanges || wizard.error }"
+            role="status"
+            >{{ wizardSaveStatus }}</span
+          >
+        </div>
+        <span>
+          <button type="button" :disabled="wizardBusy" @click="saveCurrentDesign">保存</button>
+          <button :disabled="wizardBusy || wizard.step === 0" @click="goStep(wizard.step - 1)">
             上一步</button
           ><button class="primary" :disabled="wizardBusy" @click="goNext">
             {{ wizardBusy ? '正在保存…' : wizard.step === 3 ? '完成设计' : '下一步' }}
@@ -2278,7 +2372,6 @@ async function createAsset() {
   min-width: 180px;
   flex: 0 0 180px;
 }
-.select-trigger,
 select {
   width: 100%;
   border: 1px solid #d1d5db;
@@ -2287,10 +2380,6 @@ select {
   padding: 0.55rem 0.75rem;
   text-align: left;
 }
-.select-trigger b {
-  float: right;
-}
-.dropdown,
 .picker-list {
   position: absolute;
   z-index: 5;
@@ -2305,7 +2394,6 @@ select {
   border-radius: 8px;
   box-shadow: 0 12px 32px #0f172a24;
 }
-.dropdown-backdrop,
 .picker-backdrop {
   position: fixed;
   z-index: 4;
@@ -2317,7 +2405,6 @@ select {
 .picker-list {
   z-index: 6;
 }
-.dropdown button,
 .picker-list > button {
   display: block;
   width: 100%;
@@ -2325,11 +2412,6 @@ select {
   text-align: left;
   border: 0;
   background: transparent;
-}
-.dropdown button:hover,
-.dropdown .selected {
-  background: #f3f4f6;
-  color: var(--blue);
 }
 .divider {
   color: #9ca3af;
@@ -2922,7 +3004,12 @@ h4 small {
   color: #fff !important;
 }
 .wizard {
+  display: flex;
+  flex-direction: column;
   width: min(760px, 94vw);
+  height: min(720px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
   padding: 24px 32px;
   color: #334155;
   font:
@@ -2939,6 +3026,20 @@ h4 small {
   justify-content: space-between;
   border-bottom: 1px solid #f3f4f6;
   padding-bottom: 20px;
+}
+.wizard > header,
+.wizard > nav,
+.wizard > .wizard-footer {
+  flex-shrink: 0;
+}
+.wizard > .wizard-page {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
 }
 .wizard > header h2 {
   margin: 0;
@@ -3050,6 +3151,19 @@ h4 small {
   flex-shrink: 0;
   align-items: center;
   gap: 8px;
+}
+.wizard-save-feedback {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+.wizard-save-status {
+  color: #64748b;
+  font-size: 13px;
+}
+.wizard-save-status.pending {
+  color: #92400e;
 }
 .wizard .wizard-footer button {
   min-width: 68px;
@@ -3330,7 +3444,7 @@ h4 small {
   border-top: 1px solid #edf0f5;
   background: #f8fafc;
 }
-.wizard {
+.wizard > .wizard-page {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
 }

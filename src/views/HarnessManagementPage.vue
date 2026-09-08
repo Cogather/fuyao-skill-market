@@ -543,7 +543,10 @@ onBeforeRouteLeave(() => {
       role="tabpanel"
       aria-labelledby="harness-tab-scenarios"
     >
-      <BusinessScenarioDesignPage :workspace="scenarioWorkspace" />
+      <BusinessScenarioDesignPage
+        :workspace="scenarioWorkspace"
+        :active="activeHarnessTab === 'scenarios'"
+      />
     </section>
 
     <section
@@ -580,6 +583,7 @@ onBeforeRouteLeave(() => {
     >
       <HarnessWorkflowsPage
         :workspace="scenarioWorkspace"
+        :active="activeHarnessTab === 'workflows'"
         @open-scenarios="selectHarnessTab('scenarios')"
       />
     </section>
