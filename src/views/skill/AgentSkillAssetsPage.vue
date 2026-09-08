@@ -834,29 +834,56 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-else-if="view === 'detail' && selectedAsset">
-      <button type="button" class="asset-button is-secondary asset-back" @click="returnToAssetList">
-        ← 返回
+      <button type="button" class="asset-back asset-detail-back" @click="returnToAssetList">
+        <span aria-hidden="true">←</span> 返回列表
       </button>
-      <header class="asset-page__header asset-page__header--detail">
-        <h1>{{ selectedAsset.name }}</h1>
-        <div class="asset-page__tags">
-          <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
-          <span v-if="selectedAsset.auto" class="asset-badge is-type">自动生成</span>
-        </div>
-      </header>
 
-      <section class="asset-board asset-detail">
-        <label class="asset-field asset-field--inline">
-          <span>版本</span>
-          <select v-model="selectedVersion" class="asset-select" @change="changeDetailVersion">
-            <option v-if="detailVersions.length === 0" value="">无可用版本</option>
-            <option v-for="version in detailVersions" :key="version" :value="version">
-              v{{ version }}
-            </option>
-          </select>
-        </label>
+      <section class="asset-board asset-detail" aria-labelledby="asset-detail-title">
+        <header class="asset-detail__header">
+          <div class="asset-detail__identity">
+            <div class="asset-detail__title">
+              <h1 id="asset-detail-title">{{ selectedAsset.name }}</h1>
+              <div class="asset-detail__badges">
+                <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
+                <span class="asset-badge" :class="statusClass(selectedAsset)">
+                  {{ statusLabel(selectedAsset) }}
+                </span>
+                <span v-if="selectedAsset.auto" class="asset-badge is-type">自动生成</span>
+              </div>
+            </div>
+            <div class="asset-detail__meta">
+              <select
+                v-model="selectedVersion"
+                class="asset-detail__version"
+                aria-label="版本"
+                @change="changeDetailVersion"
+              >
+                <option v-if="detailVersions.length === 0" value="">无可用版本</option>
+                <option v-for="version in detailVersions" :key="version" :value="version">
+                  v{{ version }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div v-if="canPublishAsset(selectedAsset)" class="asset-detail__actions">
+            <button
+              type="button"
+              class="asset-button is-primary asset-detail__publish"
+              @click="openPublish(selectedAsset)"
+            >
+              {{ hasSuccessfulCurrentRelease(selectedAsset) ? '继续发布' : '发布' }}
+            </button>
+          </div>
+        </header>
 
-        <nav class="asset-subtabs" aria-label="资产详情分区">
+        <dl v-if="selectedAsset.owner" class="asset-detail__people">
+          <div class="asset-detail__person">
+            <dt>责任人</dt>
+            <dd>{{ selectedAsset.owner }}</dd>
+          </div>
+        </dl>
+
+        <nav class="asset-subtabs asset-detail__tabs" aria-label="资产详情分区">
           <button
             type="button"
             :class="{ 'is-active': detailTab === 'content' }"
@@ -933,15 +960,6 @@ onBeforeUnmount(() => {
           </table>
         </div>
         <div v-else class="asset-empty">该版本暂无质量报告</div>
-
-        <button
-          v-if="canPublishAsset(selectedAsset)"
-          type="button"
-          class="asset-button is-primary asset-detail__publish"
-          @click="openPublish(selectedAsset)"
-        >
-          {{ hasSuccessfulCurrentRelease(selectedAsset) ? '继续发布' : '发布' }}
-        </button>
       </section>
     </template>
 
@@ -1175,12 +1193,6 @@ onBeforeUnmount(() => {
 .asset-action-menu button:hover {
   border-color: #2563eb;
   color: #2563eb;
-}
-
-.asset-page__tags {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .asset-button {
@@ -1533,6 +1545,200 @@ onBeforeUnmount(() => {
   display: block;
 }
 
+.asset-detail-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.asset-detail-back:hover {
+  color: #2563eb;
+}
+
+.asset-detail {
+  padding: 24px;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+}
+
+.asset-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #f0f1f4;
+}
+
+.asset-detail__identity {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.asset-detail__title,
+.asset-detail__badges,
+.asset-detail__meta,
+.asset-detail__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.asset-detail__title {
+  gap: 8px 12px;
+}
+
+.asset-detail__title h1 {
+  min-width: 0;
+  margin: 0;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.asset-detail__badges {
+  gap: 8px;
+}
+
+.asset-detail__badges .asset-badge {
+  padding: 3px 10px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.asset-detail__meta {
+  gap: 8px;
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.asset-detail__version {
+  max-width: 100%;
+  margin-left: -4px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.asset-detail__version:hover {
+  border-color: #dbeafe;
+  background: #f8fafc;
+  color: #2563eb;
+}
+
+.asset-detail__actions {
+  flex-shrink: 0;
+  gap: 8px;
+  padding-top: 1px;
+}
+
+.asset-detail__actions .asset-button {
+  justify-content: center;
+  min-height: 32px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.asset-detail__people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.asset-detail__person {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.asset-detail__person dt {
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.asset-detail__person dd {
+  min-width: 0;
+  margin: 0;
+  color: #1f2937;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.asset-detail-back:focus-visible,
+.asset-detail__version:focus-visible,
+.asset-detail__actions button:focus-visible,
+.asset-detail__tabs button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.asset-detail .asset-detail__tabs {
+  gap: 4px;
+  margin: 16px 0 20px;
+  padding: 0;
+}
+
+.asset-detail__tabs button {
+  margin-bottom: -1px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 20px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.asset-detail__tabs button:hover {
+  border-color: transparent;
+  color: #2563eb;
+}
+
+.asset-detail__tabs button.is-active {
+  border-bottom-color: #2563eb;
+  background: transparent;
+  color: #2563eb;
+  font-weight: 600;
+}
+
 .asset-field {
   display: block;
   margin-bottom: 12.8px;
@@ -1653,10 +1859,6 @@ onBeforeUnmount(() => {
   background: #f3f4f6;
 }
 
-.asset-detail__publish {
-  margin-top: 16px;
-}
-
 .asset-publish__organization {
   margin-top: 16px;
 }
@@ -1735,6 +1937,14 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 700px) {
+  .asset-detail {
+    padding: 18px 16px;
+  }
+
+  .asset-detail__title h1 {
+    font-size: 20px;
+  }
+
   .asset-page__header,
   .asset-scope {
     align-items: stretch;
