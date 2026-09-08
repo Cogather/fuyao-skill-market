@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
+import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import { getHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
 import {
   harnessAssetPublishVersion,
@@ -33,7 +34,6 @@ type DepartmentRow = {
   code: string;
   name: string;
   path: string[];
-  depth: number;
   hasChildren: boolean;
   selectable: boolean;
 };
@@ -94,8 +94,6 @@ const organizations = ref<HarnessAssetOrganization[]>([]);
 const selectedOrganizationId = ref('');
 const detailTab = ref<'content' | 'report'>('content');
 const publishTab = ref<'publish' | 'history'>('publish');
-const departmentOpen = ref(false);
-const expandedDepartments = ref(new Set<string>());
 const actionMenu = ref<CatalogAction | null>(null);
 const listLoading = ref(false);
 const listLoadingMore = ref(false);
@@ -157,7 +155,7 @@ function filterDepartmentTree(
 const selectableDepartmentTree = computed(() => filterDepartmentTree(props.departmentTree));
 const allDepartmentRows = computed<DepartmentRow[]>(() => {
   const rows: DepartmentRow[] = [];
-  const append = (nodes: DepartmentTreeNode[], parentPath: string[], depth: number): void => {
+  const append = (nodes: DepartmentTreeNode[], parentPath: string[]): void => {
     nodes.forEach((node, index) => {
       const path = [...parentPath, node.name];
       rows.push({
@@ -165,35 +163,32 @@ const allDepartmentRows = computed<DepartmentRow[]>(() => {
         code: String(node.deptCode || node.id || ''),
         name: node.name,
         path,
-        depth,
         hasChildren: Boolean(node.children?.length),
         selectable:
           !props.restrictToAllowedDepartments ||
           normalizedAllowedPaths.value.some((allowed) => pathStartsWith(path, allowed)),
       });
-      append(node.children ?? [], path, depth + 1);
+      append(node.children ?? [], path);
     });
   };
-  append(selectableDepartmentTree.value, [], 0);
+  append(selectableDepartmentTree.value, []);
   return rows;
 });
 
+const pickerDepartments = computed(() =>
+  allDepartmentRows.value
+    .filter((row) => row.selectable)
+    .map((row) => ({
+      _id: row.id,
+      name: row.name,
+      deptCode: row.code,
+      parentId: null,
+      path: row.path,
+    })),
+);
+
 const selectedDepartment = computed(
   () => allDepartmentRows.value.find((row) => row.id === selectedDepartmentId.value) ?? null,
-);
-const selectedDepartmentLabel = computed(() =>
-  selectedDepartment.value ? selectedDepartment.value.path.join(' / ') : '选部门…',
-);
-const visibleDepartmentRows = computed(() =>
-  allDepartmentRows.value.filter((row) =>
-    row.path.slice(0, -1).every((_, index) => {
-      const parentPath = row.path.slice(0, index + 1);
-      const parent = allDepartmentRows.value.find(
-        (candidate) => candidate.path.join('\u0001') === parentPath.join('\u0001'),
-      );
-      return parent ? expandedDepartments.value.has(parent.id) : true;
-    }),
-  ),
 );
 const selectedProduct = computed(
   () => products.value.find((product) => product.id === selectedProductId.value) ?? undefined,
@@ -254,23 +249,6 @@ function showToast(message: string): void {
   toastTimer = window.setTimeout(() => {
     toastMessage.value = '';
   }, 2600);
-}
-
-function toggleDepartment(id: string): void {
-  const next = new Set(expandedDepartments.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  expandedDepartments.value = next;
-}
-
-function expandSelectedAncestors(path: string[]): void {
-  const next = new Set(expandedDepartments.value);
-  path.slice(0, -1).forEach((_, index) => {
-    const parentPath = path.slice(0, index + 1).join('\u0001');
-    const parent = allDepartmentRows.value.find((row) => row.path.join('\u0001') === parentPath);
-    if (parent) next.add(parent.id);
-  });
-  expandedDepartments.value = next;
 }
 
 function defaultDepartmentRow(): DepartmentRow | null {
@@ -434,11 +412,9 @@ async function reloadProductsAndAssets(): Promise<void> {
 
 async function selectDepartment(id: string): Promise<void> {
   const target = allDepartmentRows.value.find((row) => row.id === id);
-  if (!target?.selectable) return;
+  if (id && !target?.selectable) return;
+  if (selectedDepartmentId.value === id) return;
   selectedDepartmentId.value = id;
-  departmentOpen.value = false;
-  const row = selectedDepartment.value;
-  if (row) expandSelectedAncestors(row.path);
   await reloadProductsAndAssets();
 }
 
@@ -693,7 +669,6 @@ onMounted(async () => {
     return;
   }
   selectedDepartmentId.value = row.id;
-  expandSelectedAncestors(row.path);
   await reloadProductsAndAssets();
 });
 
@@ -705,7 +680,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="asset-page harness-viewport-page" @keydown.esc="departmentOpen = false">
+  <div class="asset-page harness-viewport-page">
     <template v-if="view === 'list'">
       <header class="asset-page__header harness-page-heading">
         <div>
@@ -746,56 +721,12 @@ onBeforeUnmount(() => {
       </header>
 
       <section class="asset-scope" aria-label="资产范围筛选">
-        <div class="asset-department">
-          <button
-            type="button"
-            class="asset-department__trigger"
-            :class="{ 'is-open': departmentOpen }"
-            :aria-expanded="departmentOpen"
-            @click="departmentOpen = !departmentOpen"
-          >
-            <span :title="selectedDepartmentLabel">{{ selectedDepartmentLabel }}</span>
-            <span aria-hidden="true">▾</span>
-          </button>
-          <button
-            v-if="departmentOpen"
-            type="button"
-            class="asset-department__backdrop"
-            aria-label="关闭部门选择"
-            @click="departmentOpen = false"
-          />
-          <div v-if="departmentOpen" class="asset-department__panel">
-            <div
-              v-for="department in visibleDepartmentRows"
-              :key="department.id"
-              class="asset-department__row"
-              :style="{ paddingLeft: `${4 + department.depth * 14}px` }"
-            >
-              <button
-                type="button"
-                class="asset-department__toggle"
-                :disabled="!department.hasChildren"
-                :aria-label="`${expandedDepartments.has(department.id) ? '收起' : '展开'}${department.path.join(' / ')}`"
-                @click="toggleDepartment(department.id)"
-              >
-                {{
-                  department.hasChildren ? (expandedDepartments.has(department.id) ? '▾' : '▸') : ''
-                }}
-              </button>
-              <button
-                type="button"
-                class="asset-department__name"
-                :class="{ 'is-selected': selectedDepartmentId === department.id }"
-                :aria-label="department.path.join(' / ')"
-                :disabled="!department.selectable"
-                :title="department.selectable ? '' : '仅用于展开授权范围，不能按该部门查询'"
-                @click="selectDepartment(department.id)"
-              >
-                {{ department.name }}
-              </button>
-            </div>
-          </div>
-        </div>
+        <HarnessDepartmentPicker
+          class="asset-department"
+          :model-value="selectedDepartmentId"
+          :departments="pickerDepartments"
+          @update:model-value="selectDepartment"
+        />
 
         <select
           v-if="products.length > 0"
@@ -1293,108 +1224,6 @@ onBeforeUnmount(() => {
   min-width: 280px;
 }
 
-.asset-department__trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 6.4px 9.6px;
-  overflow: hidden;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 13.12px;
-  cursor: pointer;
-}
-
-.asset-department__trigger > span:first-child {
-  flex: 1;
-  padding-right: 4.8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.asset-department__trigger > span:last-child {
-  color: #9ca3af;
-}
-
-.asset-department__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  border: 0;
-  background: transparent;
-}
-
-.asset-department__panel {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  left: 0;
-  z-index: 21;
-  max-height: 280px;
-  padding: 3.2px 0;
-  overflow-y: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-}
-
-.asset-department__row {
-  display: flex;
-  align-items: center;
-  gap: 4.8px;
-  padding: 4px 6.4px;
-}
-
-.asset-department__row:hover {
-  background: #f9fafb;
-}
-
-.asset-department__toggle,
-.asset-department__name {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.asset-department__toggle {
-  flex: 0 0 12px;
-  width: 12px;
-  padding: 0;
-  color: #9ca3af;
-  font-family: inherit;
-  font-size: 14px;
-  text-align: center;
-  user-select: none;
-}
-
-.asset-department__toggle:disabled {
-  cursor: default;
-}
-
-.asset-department__name {
-  flex: 1;
-  padding: 0;
-  color: #374151;
-  font-family: inherit;
-  font-size: 12.48px;
-  text-align: left;
-  user-select: none;
-}
-
-.asset-department__name.is-selected {
-  color: #2563eb;
-  font-weight: 600;
-}
-
-.asset-department__name:disabled {
-  color: #9ca3af;
-  cursor: not-allowed;
-}
-
 .asset-select,
 .asset-field input {
   width: 100%;
@@ -1497,23 +1326,25 @@ onBeforeUnmount(() => {
 
 .asset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
   align-items: stretch;
 }
 
 .asset-card {
   display: flex;
   flex-direction: column;
-  gap: 6.4px;
+  gap: 12px;
   box-sizing: border-box;
-  padding: 16px;
+  min-width: 0;
+  min-height: 184px;
+  padding: 20px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 12px;
   background: #fff;
   cursor: pointer;
   content-visibility: auto;
-  contain-intrinsic-size: auto 170px;
+  contain-intrinsic-size: auto 200px;
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,
@@ -1590,32 +1421,40 @@ onBeforeUnmount(() => {
 
 .asset-card__title {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .asset-card h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   color: inherit;
   font-family: inherit;
-  font-size: 14.08px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: normal;
+  line-height: 1.5;
   letter-spacing: normal;
+  overflow-wrap: anywhere;
 }
 
 .asset-card > p {
   flex: 1;
   margin: 0;
   color: #4b5563;
-  font-size: 12.48px;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .asset-card__meta {
   display: flex;
-  gap: 9.6px;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
   color: #6b7280;
-  font-size: 11.52px;
+  font-size: 12px;
 }
 
 .asset-card__publish {
@@ -1629,6 +1468,22 @@ onBeforeUnmount(() => {
   border-radius: 9999px;
   font-size: 10.88px;
   font-weight: 600;
+}
+
+.asset-card .asset-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.asset-card__title .asset-badge.is-type {
+  width: 80px;
 }
 
 .asset-badge.is-type,
@@ -1904,15 +1759,6 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1101px) and (min-height: 900px) {
   .asset-board--catalog {
-    padding: 12px;
-  }
-
-  .asset-grid {
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 12px;
-  }
-
-  .asset-card {
     padding: 12px;
   }
 

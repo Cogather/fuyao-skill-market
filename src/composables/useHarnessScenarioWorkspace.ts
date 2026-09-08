@@ -945,19 +945,21 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       }
     }
   }
-  async function saveScenario(scenario: Scenario): Promise<Scenario> {
+  async function saveScenario(
+    scenario: Scenario,
+    options: { nameOnly?: boolean } = {},
+  ): Promise<Scenario> {
     if (saving.value) throw new Error('正在保存场景，请稍候');
     saving.value = true;
     try {
-      return await saveScenarioDraft(scenario);
+      return await saveScenarioDraft(scenario, options.nameOnly === true);
     } finally {
       saving.value = false;
     }
   }
-  async function saveScenarioDraft(scenario: Scenario): Promise<Scenario> {
+  async function saveScenarioDraft(scenario: Scenario, nameOnly = false): Promise<Scenario> {
     const product = currentProduct();
     if (scenario.productId !== product._id) throw new Error('场景不属于当前产品');
-    if (scenario.level === 2) assertScenarioCode(scenario.code, product);
     const records = clone(recordsByProduct.get(product._id) || []);
     const parent = scenario.parentId
       ? scenarios.find((item) => item._id === scenario.parentId && item.productId === product._id)
@@ -974,6 +976,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     )
       throw new Error('同一层级下已存在同名场景');
     const existing = records.find((item) => item.id === scenario.sourceId);
+    // Existing scenes may predate Workflow design and have no extension code yet.
+    if (scenario.level === 2 && !(nameOnly && existing)) assertScenarioCode(scenario.code, product);
     if (existing && existing.name !== name)
       await assertScenarioRenameAllowed(
         product,

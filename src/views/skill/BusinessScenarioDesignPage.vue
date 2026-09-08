@@ -109,7 +109,9 @@ const scenarioDialog = ref<{
 } | null>(null);
 const scenarioDialogTitle = computed(() =>
   scenarioDialog.value?.editingScenario
-    ? '编辑一级场景'
+    ? scenarioDialog.value.editingScenario.level === 1
+      ? '编辑一级场景'
+      : '编辑二级场景'
     : scenarioDialog.value?.parentId
       ? '新建下级场景'
       : '新建一级场景',
@@ -423,7 +425,7 @@ function openScenario(parentId: string | null) {
   focusDialog(scenarioDialogElement);
 }
 function openEditScenario(scenario: Scenario) {
-  if (scenario.level !== 1 || saving.value || !available.value) return;
+  if (saving.value || !available.value) return;
   scenarioDialogOpener = activeElement();
   scenarioForm.name = scenario.name;
   scenarioForm.code = scenario.code;
@@ -431,7 +433,7 @@ function openEditScenario(scenario: Scenario) {
   scenarioForm.tags = [...scenario.tags];
   scenarioError.value = '';
   scenarioDialog.value = {
-    parentId: null,
+    parentId: scenario.parentId,
     editingScenario: { ...scenario, tags: [...scenario.tags] },
   };
   focusDialog(scenarioDialogElement);
@@ -454,7 +456,7 @@ async function saveScenario() {
   }
   const parentId = scenarioDialog.value?.parentId || null;
   const editingScenario = scenarioDialog.value?.editingScenario;
-  if (parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
+  if (!editingScenario && parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
     const error = validateName(scenarioForm.code);
     if (error) {
       scenarioError.value = `场景编码不符合命名规则：${error}`;
@@ -476,7 +478,7 @@ async function saveScenario() {
     releaseCount: editingScenario?.releaseCount || 0,
   };
   try {
-    const saved = await props.workspace.saveScenario(scenario);
+    const saved = await props.workspace.saveScenario(scenario, { nameOnly: !!editingScenario });
     if (!editingScenario) selectedScenarioId.value = saved._id;
     closeScenarioDialog();
   } catch (error) {
@@ -1369,8 +1371,29 @@ async function createAsset() {
                       <circle cx="9" cy="14" r="1.2" />
                     </svg>
                   </span>
-                  <i></i><b>{{ child.name }}</b
-                  ><span class="node-actions"
+                  <i></i><b>{{ child.name }}</b>
+                  <button
+                    class="scenario-edit"
+                    type="button"
+                    :aria-label="`编辑${child.name}`"
+                    :title="`编辑${child.name}`"
+                    :disabled="saving || !available"
+                    @click.stop="openEditScenario(child)"
+                    @keydown.stop
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
+                    </svg>
+                  </button>
+                  <span class="node-actions"
                     ><button
                       class="danger"
                       type="button"
@@ -1586,7 +1609,9 @@ async function createAsset() {
           <p>
             {{
               scenarioDialog.editingScenario
-                ? '修改一级场景名称，下级场景保持归属'
+                ? scenarioDialog.editingScenario.level === 1
+                  ? '修改一级场景名称，下级场景保持归属'
+                  : '修改二级场景名称，保留所属一级场景及工作流配置'
                 : scenarioDialog.parentId
                   ? '细化业务场景，为工作流设计做好准备'
                   : '定义业务场景，让团队的工作流有序展开'
@@ -1616,7 +1641,10 @@ async function createAsset() {
           <span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span>
           <input v-model="scenarioForm.name" required placeholder="例如：需求开发" />
         </label>
-        <label v-if="scenarioDialog.parentId" class="editor-field">
+        <label
+          v-if="scenarioDialog.parentId && !scenarioDialog.editingScenario"
+          class="editor-field"
+        >
           <span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span>
           <input
             v-model="scenarioForm.code"
