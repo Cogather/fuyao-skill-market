@@ -41,6 +41,44 @@ try {
     assert.equal(calls.at(-1).data.activityNodeName, null);
     assert.equal(calls.at(-1).data.subActivityNodeName, null);
   });
+  await test('scene refresh includes empty metadata for a new root and retains existing child metadata', async () => {
+    const root = { firstScene: '新建一级场景', secondScene: '', sort: 0 };
+    const child = {
+      ...scene,
+      sort: 1,
+      sceneExtensionCode: 'demo-code',
+      secondSceneDescription: '场景目标',
+      flowName: '代码作业流',
+      flowDescription: '流程说明',
+    };
+    const emptyChild = {
+      firstScene: '研发',
+      secondScene: '待设计场景',
+      sort: 2,
+      sceneExtensionCode: null,
+    };
+    const body = { scenes: [root, child, emptyChild] };
+    const original = structuredClone(body);
+    await api.refreshScene(scope, body);
+    assert.deepEqual(calls.at(-1).data.scenes, [
+      {
+        ...root,
+        sceneExtensionCode: '',
+        secondSceneDescription: '',
+        flowName: '',
+        flowDescription: '',
+      },
+      child,
+      {
+        ...emptyChild,
+        sceneExtensionCode: '',
+        secondSceneDescription: '',
+        flowName: '',
+        flowDescription: '',
+      },
+    ]);
+    assert.deepEqual(body, original, 'building the request must not mutate the scene cache');
+  });
   await test('documented routes preserve HTTP methods, query dimensions and request body placement', async () => {
     const context = { ...scope, ...scene };
     const meta = {
@@ -63,7 +101,18 @@ try {
         'POST',
         '/scene-activity/scene',
         scope,
-        { scenes: [{ ...scene, sort: 0, sceneExtensionCode: null }] },
+        {
+          scenes: [
+            {
+              ...scene,
+              sort: 0,
+              sceneExtensionCode: '',
+              secondSceneDescription: '',
+              flowName: '',
+              flowDescription: '',
+            },
+          ],
+        },
       ],
       [
         'updateSecondSceneCode',
@@ -225,6 +274,145 @@ try {
     assert.equal(mapped.workflow.commands[0].name, '/demo-start');
     assert.equal(mapped.workflow.stages[0].steps[0].assets[0].assetId, mapped.assets[0]._id);
     assert.equal(mapped.assets[0].packageReady, true);
+  });
+  await test('detail mapping tolerates null Command names and uses a nonempty name alias', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        commands: [
+          { commandName: null, description: null },
+          null,
+          { commandName: null, name: 'demo-start', description: '入口' },
+          { commandName: ' /demo-ready ', description: null },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.deepEqual(
+      mapped.commands.map((item) => item.name),
+      ['/demo-start', '/demo-ready'],
+    );
+    assert.equal(mapped.commands[1].description, '');
+  });
+  await test('malformed detail Command names are resolved from current scene bindings before saving', async () => {
+    api.queryHarnessWorkflowDetail = async () =>
+      success({ ...detail, commands: [{ commandName: null, description: null }] });
+    const queries = [];
+    api.queryConfigurationBindings = async (type, params) => {
+      queries.push({ type, params });
+      return success([
+        {
+          commandConfigEntity: {
+            id: 'other',
+            ...scene,
+            secondScene: '其他场景',
+            commandName: '/demo-other',
+            activityNodeName: null,
+            subActivityNodeName: null,
+          },
+        },
+        {
+          commandConfigEntity: {
+            id: 'other-product',
+            ...scene,
+            dimCode: 'P2',
+            commandName: '/demo-other-product',
+            activityNodeName: null,
+            subActivityNodeName: null,
+          },
+        },
+        {
+          commandConfigEntity: {
+            id: 'node-command',
+            ...scene,
+            commandName: '/demo-node',
+            activityNodeName: '编码',
+            subActivityNodeName: '生成',
+          },
+        },
+        {
+          commandConfigEntity: {
+            id: 'scene-command',
+            ...scene,
+            commandName: 'demo-start',
+            commandDescription: '入口',
+            activityNodeName: null,
+            subActivityNodeName: null,
+          },
+        },
+      ]);
+    };
+    const loaded = await repository.loadDesignDetail(context);
+    assert.deepEqual(loaded.commands, [{ commandName: '/demo-start', description: '入口' }]);
+    assert.equal(queries[0].type, 'COMMAND');
+    assert.equal(queries[0].params.dimCode, context.dimCode);
+    const mapped = repository.mapDesignDetail(context, loaded, 'scenario-id', 'product-id');
+    api.commandBindScene = async () => {
+      throw new Error('must not duplicate an existing binding');
+    };
+    api.commandUnbindScene = async () => {
+      throw new Error('must not remove a valid binding');
+    };
+    await repository.saveDesignCommands(context, mapped.workflow, loaded);
+    const removed = [];
+    mapped.workflow.commands = [];
+    api.commandUnbindScene = async (id) => {
+      removed.push(id);
+      return success(null);
+    };
+    await repository.saveDesignCommands(context, mapped.workflow, loaded);
+    assert.deepEqual(
+      removed,
+      ['scene-command'],
+      'with/without slash must resolve the same binding ID',
+    );
+  });
+  await test('valid and empty Command lists use the aggregate detail without extra binding queries', async () => {
+    api.queryConfigurationBindings = async () => {
+      throw new Error('valid detail needs no fallback');
+    };
+    for (const commands of [detail.commands, []]) {
+      api.queryHarnessWorkflowDetail = async () => success({ ...detail, commands });
+      const loaded = await repository.loadDesignDetail(context);
+      assert.deepEqual(loaded.commands, commands);
+    }
+  });
+  await test('unrecoverable Command names report a data error before any binding writes', async () => {
+    api.queryHarnessWorkflowDetail = async () =>
+      success({ ...detail, commands: [{ commandName: null }] });
+    api.queryConfigurationBindings = async () =>
+      success([{ ...scene, commandName: null, activityNodeName: null, subActivityNodeName: null }]);
+    await assert.rejects(() => repository.loadDesignDetail(context), /Command 名称为空/);
+    api.queryConfigurationBindings = async () => success([]);
+    await assert.rejects(() => repository.loadDesignDetail(context), /Command 名称为空/);
+  });
+  await test('Command name recovery respects paginated bindings and existing server progress', async () => {
+    api.queryHarnessWorkflowDetail = async () =>
+      success({ ...detail, commands: [{ commandName: null }] });
+    const pages = [];
+    api.queryConfigurationBindings = async (_type, params) => {
+      pages.push(params.pageNum);
+      return {
+        meta: { success: true, number: 2 },
+        data: [
+          {
+            id: `binding-${params.pageNum}`,
+            ...scene,
+            secondScene: params.pageNum === 1 ? '其他场景' : scene.secondScene,
+            commandName: params.pageNum === 1 ? '/other' : '/demo-start',
+            activityNodeName: null,
+            subActivityNodeName: null,
+          },
+        ],
+      };
+    };
+    const loaded = await repository.loadDesignDetail(context);
+    assert.deepEqual(loaded.commands, [{ commandName: '/demo-start', description: '' }]);
+    assert.deepEqual(pages, [1, 2]);
+    assert.deepEqual(loaded.steps, detail.steps);
+    assert.equal(loaded.nextStep, detail.nextStep);
   });
   await test('assets enter pool before node binding; unchanged entries are not added twice', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');

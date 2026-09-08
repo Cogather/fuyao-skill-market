@@ -726,14 +726,26 @@ async function goNext() {
   w.maxReached = Math.max(w.maxReached, w.step);
   showWizardPage();
 }
+function canGoStep(step: number): boolean {
+  const w = wizard.value;
+  if (!w || wizardBusy.value || !Number.isInteger(step) || step < 0 || step >= wizardSteps.length)
+    return false;
+  const currentProgress = progress(w.workflow);
+  return (
+    step <= w.maxReached ||
+    currentProgress.states[step] === 'done' ||
+    currentProgress.states[step] === 'partial' ||
+    step === currentProgress.next
+  );
+}
 async function goStep(step: number) {
   const w = wizard.value;
-  if (w && step <= w.maxReached) {
-    if (!(await saveWizard())) return;
-    w.step = step;
-    w.error = '';
-    showWizardPage();
-  }
+  if (!w || step === w.step || !canGoStep(step)) return;
+  if (!(await saveWizard())) return;
+  w.step = step;
+  w.maxReached = Math.max(w.maxReached, step);
+  w.error = '';
+  showWizardPage();
 }
 function saveStage() {
   const w = wizard.value;
@@ -1698,13 +1710,21 @@ async function createAsset() {
           ×
         </button>
       </header>
-      <nav>
+      <nav aria-label="Workflow 设计步骤">
         <template v-for="(label, i) in wizardSteps" :key="label"
-          ><i v-if="i" :class="{ reached: i <= wizard.maxReached }"></i
+          ><i
+            v-if="i"
+            :class="{
+              reached: i <= wizard.maxReached || progress(wizard.workflow).states[i - 1] === 'done',
+            }"
+          ></i
           ><button
-            :class="{ current: i === wizard.step, done: i < wizard.step }"
+            :class="{
+              current: i === wizard.step,
+              done: progress(wizard.workflow).states[i] === 'done',
+            }"
             :aria-current="i === wizard.step ? 'step' : undefined"
-            :disabled="wizardBusy || i > wizard.maxReached"
+            :disabled="!canGoStep(i)"
             @click="goStep(i)"
           >
             <b>{{ i + 1 }}</b

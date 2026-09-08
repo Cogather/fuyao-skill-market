@@ -138,7 +138,16 @@ export const harnessWorkflowService = {
       url: '/scene-activity/scene',
       method: 'POST',
       params: params,
-      data: body,
+      data: {
+        ...body,
+        scenes: body.scenes.map((scene) => ({
+          ...scene,
+          sceneExtensionCode: scene.secondScene ? (scene.sceneExtensionCode ?? '') : '',
+          secondSceneDescription: scene.secondScene ? (scene.secondSceneDescription ?? '') : '',
+          flowName: scene.secondScene ? (scene.flowName ?? '') : '',
+          flowDescription: scene.secondScene ? (scene.flowDescription ?? '') : '',
+        })),
+      },
     });
   },
 

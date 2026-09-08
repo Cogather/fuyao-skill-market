@@ -28,11 +28,39 @@ import type {
 
 export const businessScenarioTaxonomyClient: ScenarioTaxonomyClient = {
   getSceneOptionGroups: (scope) => api.querySceneList(scope),
-  refreshSceneOptionGroups: (body, scope) => api.refreshScene(scope, body),
+  refreshSceneOptionGroups: (body, scope) =>
+    api.refreshScene(scope, {
+      scenes: body.scenes.map((scene) => ({
+        ...scene,
+        firstScene: scene.firstScene ?? '',
+        secondScene: scene.secondScene ?? '',
+      })),
+    }),
 };
 const record = (value: unknown): Record<string, any> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
 const text = (value: unknown) => (value == null ? '' : String(value).trim());
+const commandName = (value: unknown) => {
+  const name = text(value).replace(/^\/+/, '');
+  return name ? `/${name}` : '';
+};
+const readCommandName = (value: unknown) => {
+  const item = record(value);
+  return commandName(text(item.commandName) || item.name);
+};
+function normalizeCommands(items: unknown[]): WorkflowDetail['commands'] {
+  const commands = new Map<string, WorkflowDetail['commands'][number]>();
+  for (const value of items) {
+    const name = readCommandName(value);
+    if (!name) continue;
+    const item = record(value);
+    commands.set(name, {
+      commandName: name,
+      description: text(item.description) || text(item.commandDescription),
+    });
+  }
+  return [...commands.values()];
+}
 export function designData<T>(response: unknown, message = '业务场景设计请求失败'): T {
   const envelope = record(response);
   const meta = record(envelope.meta);
@@ -63,7 +91,7 @@ const capabilityId = (scope: WorkflowDimension, type: string, name: string) =>
     scope.dimType,
     scope.dimCode,
     type.toUpperCase(),
-    type.toUpperCase() === 'COMMAND' ? name.replace(/^\/+/, '') : name,
+    type.toUpperCase() === 'COMMAND' ? text(name).replace(/^\/+/, '') : name,
   ]);
 const sceneKey = (scope: WorkflowSceneKey) => ({
   firstScene: scope.firstScene,
@@ -87,7 +115,17 @@ export async function loadDesignDetail(scope: WorkflowSceneContext): Promise<Wor
   ) {
     throw new Error('Workflow 详情格式不完整，请刷新后重试');
   }
-  return data;
+  let commands: unknown[] = data.commands;
+  if (commands.some((item) => !readCommandName(item))) {
+    // Recover server bindings before diffing; dropping unnamed entries could duplicate a saved Command.
+    commands = await sceneBindingRecords(scope, 'COMMAND');
+    if (!commands.length || commands.some((item) => !readCommandName(item))) {
+      throw new Error(
+        'Workflow 详情中的 Command 名称为空，无法从场景绑定记录恢复，请检查接口返回数据',
+      );
+    }
+  }
+  return { ...data, commands: normalizeCommands(commands) };
 }
 export function mapDesignDetail(
   scope: WorkflowSceneContext,
@@ -108,7 +146,7 @@ export function mapDesignDetail(
     version: null,
     status: 'active',
   }));
-  const commands: Command[] = data.commands.map((item) => ({
+  const commands: Command[] = normalizeCommands(data.commands).map((item) => ({
     _id: capabilityId(scope, 'COMMAND', item.commandName),
     sourceId: item.commandName,
     productId,
@@ -252,7 +290,13 @@ export async function saveDesignActivities(
 }
 
 type Binding = { type: WorkflowComponentType; name: string; stage: string; node: string };
-const bindingKey = (item: Binding) => JSON.stringify([item.type, item.name, item.stage, item.node]);
+const bindingKey = (item: Binding) =>
+  JSON.stringify([
+    item.type,
+    item.type === 'COMMAND' ? commandName(item.name) : item.name,
+    item.stage,
+    item.node,
+  ]);
 function detailBindings(data: WorkflowDetail): Binding[] {
   return data.stages.flatMap((stage) =>
     stage.steps.flatMap((step) =>
@@ -265,47 +309,56 @@ function detailBindings(data: WorkflowDetail): Binding[] {
     ),
   );
 }
+async function sceneBindingRecords(scope: WorkflowSceneContext, type: WorkflowComponentType) {
+  const matches: Record<string, any>[] = [];
+  let pageNum = 1;
+  let count = 0;
+  const seen = new Set<string>();
+  while (true) {
+    const response = await api.queryConfigurationBindings(type, {
+      ...dimension(scope),
+      pageNum,
+      pageSize: 200,
+    });
+    const page = rows(response);
+    if (!page.length) break;
+    let fresh = 0;
+    for (const value of page) {
+      const outer = record(value);
+      const row = { ...outer, ...record(outer[`${type.toLowerCase()}ConfigEntity`]) };
+      const id = text(row.id);
+      if (id && !seen.has(id)) {
+        fresh++;
+        seen.add(id);
+      }
+      if (row.firstScene !== scope.firstScene || row.secondScene !== scope.secondScene) continue;
+      if (row.dimCode != null && text(row.dimCode) !== scope.dimCode) continue;
+      if (row.dimType != null && text(row.dimType) !== scope.dimType) continue;
+      // Only NULL activity columns denote a scene-level Command; ignore legacy node commands.
+      if (type === 'COMMAND' && (row.activityNodeName != null || row.subActivityNodeName != null))
+        continue;
+      matches.push(row);
+    }
+    count += page.length;
+    const size = total(response);
+    if (size !== undefined ? count >= size : page.length < 200) break;
+    if (!fresh) throw new Error('绑定列表分页未前进，请刷新后重试');
+    pageNum++;
+  }
+  return matches;
+}
 async function bindingIds(scope: WorkflowSceneContext, removals: Binding[]) {
   const found = new Map<string, string[]>();
   for (const type of new Set(removals.map((item) => item.type))) {
-    let pageNum = 1;
-    let count = 0;
-    const seen = new Set<string>();
-    while (true) {
-      const response = await api.queryConfigurationBindings(type, {
-        ...dimension(scope),
-        pageNum,
-        pageSize: 200,
+    for (const row of await sceneBindingRecords(scope, type)) {
+      const id = text(row.id);
+      const key = bindingKey({
+        type,
+        name: text(row[`${type.toLowerCase()}Name`] ?? row.name),
+        stage: text(row.activityNodeName),
+        node: text(row.subActivityNodeName),
       });
-      const page = rows(response);
-      if (!page.length) break;
-      let fresh = 0;
-      for (const outer of page) {
-        const row = { ...outer, ...record(outer[`${type.toLowerCase()}ConfigEntity`]) };
-        const id = text(row.id);
-        if (id && !seen.has(id)) {
-          fresh++;
-          seen.add(id);
-        }
-        if (row.firstScene !== scope.firstScene || row.secondScene !== scope.secondScene) continue;
-        if (row.dimCode != null && text(row.dimCode) !== scope.dimCode) continue;
-        if (row.dimType != null && text(row.dimType) !== scope.dimType) continue;
-        // Only NULL activity columns denote a scene-level Command; ignore legacy node commands.
-        if (type === 'COMMAND' && (row.activityNodeName != null || row.subActivityNodeName != null))
-          continue;
-        const key = bindingKey({
-          type,
-          name: text(row[`${type.toLowerCase()}Name`] ?? row.name),
-          stage: text(row.activityNodeName),
-          node: text(row.subActivityNodeName),
-        });
-        if (id) found.set(key, [...new Set([...(found.get(key) || []), id])]);
-      }
-      count += page.length;
-      const size = total(response);
-      if (size !== undefined ? count >= size : page.length < 200) break;
-      if (!fresh) throw new Error('绑定列表分页未前进，请刷新后重试');
-      pageNum++;
+      if (id) found.set(key, [...new Set([...(found.get(key) || []), id])]);
     }
   }
   return removals.flatMap((item) => {
@@ -362,12 +415,14 @@ export async function saveDesignCommands(
   workflow: Workflow,
   before: WorkflowDetail,
 ) {
-  const names = new Set(workflow.commands.map((item) => item.name));
-  const removals: Binding[] = before.commands
+  const names = new Set(workflow.commands.map((item) => commandName(item.name)));
+  if (names.has('')) throw new Error('Command 名称不能为空，请重新选择入口');
+  const previous = normalizeCommands(before.commands);
+  const removals: Binding[] = previous
     .filter((item) => !names.has(item.commandName))
     .map((item) => ({ type: 'COMMAND', name: item.commandName, stage: '', node: '' }));
   await unbind(scope, await bindingIds(scope, removals));
-  const existing = new Set(before.commands.map((item) => item.commandName));
+  const existing = new Set(previous.map((item) => item.commandName));
   for (const commandName of names) {
     if (!existing.has(commandName))
       designData(await api.commandBindScene({ ...sceneKey(scope), commandName }, dimension(scope)));
