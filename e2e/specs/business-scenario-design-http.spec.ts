@@ -361,6 +361,10 @@ test.describe('业务场景设计 HTTP', () => {
       expect(binding).toBeGreaterThan(poolAdd);
       expect(calls[poolAdd]!.body.secondScene).toBe('代码生成新版');
       expect(calls[poolAdd]!.body.assetName).toBe(skillName);
+      for (const call of calls.filter((item) => item.path.endsWith('/asset-pool/add'))) {
+        expect(call.query.get('userId')).toBe('designer');
+        expect(call.body).not.toHaveProperty('userId');
+      }
       const sceneRefresh = calls.findIndex(
         (call) => call.path.endsWith('/scene-activity/scene') && call.method === 'POST',
       );

@@ -26,14 +26,16 @@ try {
   };
   const scope = { userId: 'tester', dimType: '产品级', dimCode: 'P1', dimName: 'demo' };
   const scene = { firstScene: '研发', secondScene: '代码生成' };
-  await test('pool add uses the documented route and full scene identity', async () => {
-    await api.componentEnterPool({
-      ...scope,
-      ...scene,
-      assetType: 'SKILL',
-      assetName: 'demo-code',
-    });
+  await test('pool add sends userId in query params and keeps scene identity in the body', async () => {
+    const { userId, ...dimension } = scope;
+    await api.componentEnterPool(
+      { ...dimension, ...scene, assetType: 'SKILL', assetName: 'demo-code' },
+      { userId },
+    );
     assert.equal(calls.at(-1).url, '/workflow/asset-pool/add');
+    assert.equal(calls.at(-1).method, 'POST');
+    assert.deepEqual(calls.at(-1).params, { userId });
+    assert.equal(Object.hasOwn(calls.at(-1).data, 'userId'), false);
     assert.equal(calls.at(-1).data.secondScene, '代码生成');
   });
   await test('Command is bound at scene level with explicit null activity columns', async () => {
@@ -418,7 +420,9 @@ try {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
     const operations = [];
     api.querySceneAssetPool = async () => success([]);
-    api.componentEnterPool = async (body) => {
+    api.componentEnterPool = async (body, params) => {
+      assert.deepEqual(params, { userId: scope.userId });
+      assert.equal(Object.hasOwn(body, 'userId'), false);
       operations.push(['pool', body]);
       return success(null);
     };

@@ -265,10 +265,12 @@ export const harnessWorkflowService = {
   componentEnterPool: (
     body: Omit<WorkflowDimension, 'userId'> &
       WorkflowSceneKey & { assetType: WorkflowAssetType; assetName: string },
+    params: { userId: string },
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/workflow/asset-pool/add',
       method: 'POST',
+      params,
       data: body,
     });
   },

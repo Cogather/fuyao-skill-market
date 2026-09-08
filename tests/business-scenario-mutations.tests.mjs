@@ -115,7 +115,9 @@ try {
       detail.commands.push({ commandName: body.commandName, description: '' });
       return success('binding');
     };
-    api.componentEnterPool = async (body) => {
+    api.componentEnterPool = async (body, params) => {
+      assert.deepEqual(params, { userId: 'designer' });
+      assert.equal(Object.hasOwn(body, 'userId'), false);
       calls.push(['pool-add', clone(body)]);
       detail.assetPool.push(clone(body));
       return success(null);

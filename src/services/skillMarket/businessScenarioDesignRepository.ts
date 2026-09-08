@@ -429,7 +429,7 @@ export async function attachDesignCapability(
   const pool = designData<WorkflowPoolItem[]>(await api.querySceneAssetPool(scope));
   if (!pool.some((entry) => poolKey(entry) === poolKey(asset))) {
     const { userId, ...poolScope } = scope;
-    designData(await api.componentEnterPool({ ...poolScope, ...asset }));
+    designData(await api.componentEnterPool({ ...poolScope, ...asset }, { userId }));
   }
 }
 export async function saveDesignCommands(
@@ -492,7 +492,8 @@ export async function saveDesignAssets(
   const ids = await bindingIds(scope, removals);
   const { userId, ...poolScope } = scope;
   for (const [key, item] of desiredPool) {
-    if (!existingPool.has(key)) designData(await api.componentEnterPool({ ...poolScope, ...item }));
+    if (!existingPool.has(key))
+      designData(await api.componentEnterPool({ ...poolScope, ...item }, { userId }));
   }
   await unbind(scope, ids);
   for (const [key, item] of existingPool) {
