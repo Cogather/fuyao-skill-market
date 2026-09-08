@@ -64,7 +64,8 @@ function normalizeCommands(items: unknown[]): WorkflowDetail['commands'] {
 export function designData<T>(response: unknown, message = '业务场景设计请求失败'): T {
   const envelope = record(response);
   const meta = record(envelope.meta);
-  if (meta.success !== true && !(meta.success == null && meta.message === 'OK')) {
+  const success = meta.success ?? meta.isSuccess;
+  if (success !== true && !(success == null && meta.message === 'OK')) {
     throw new Error(text(meta.message || envelope.message) || message);
   }
   return envelope.data as T;
@@ -198,11 +199,9 @@ export async function saveDesignMetadata(
   workflow: Workflow,
   before: WorkflowDetail,
   onSaved?: (values: Partial<WorkflowSceneRow>) => void,
-  forceSceneMetadata = false,
 ) {
   const params = dimension(scope);
   if (
-    forceSceneMetadata ||
     scenario.code !== (before.sceneExtensionCode || '') ||
     scenario.description !== (before.secondSceneDescription || '')
   ) {
@@ -388,28 +387,80 @@ async function unbind(
     designData(await remove(item.id, dimension(scope)));
   }
 }
-export function hasDesignBindings(data: WorkflowDetail): boolean {
-  return data.commands.length > 0 || data.assetPool.length > 0 || detailBindings(data).length > 0;
+function activityIdentity(id: string): string[] {
+  try {
+    const parsed = JSON.parse(id);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
-/** Referenced activities must be explicitly unbound and saved before renaming or removing them. */
+/** Rename/delete exact activity records before refresh can replace them, preserving their bindings. */
 export async function prepareDesignActivityChanges(
-  _scope: WorkflowSceneContext,
+  scope: WorkflowSceneContext,
   workflow: Workflow,
   before: WorkflowDetail,
 ): Promise<WorkflowDetail> {
-  const nodes = new Set(
-    workflow.stages.flatMap((stage) =>
-      stage.steps.map((node) => JSON.stringify([stage.name, node.name])),
-    ),
+  const previous = activityRows(
+    scope,
+    mapDesignDetail(scope, before, workflow.scenarioId, '').workflow.stages,
   );
-  const removals = detailBindings(before).filter(
-    (binding) => !nodes.has(JSON.stringify([binding.stage, binding.node])),
+  const desired = activityRows(scope, workflow.stages);
+  const key = (row: WorkflowActivityRow) =>
+    JSON.stringify([row.activityNodeName, row.subActivityNodeName || '']);
+  const desiredKeys = new Set(desired.map(key));
+  if (previous.every((row) => desiredKeys.has(key(row)))) return before;
+
+  // A displayed stage may be just a grouping of child rows. Only delete/rename a parent
+  // record when the activity query actually contains its NULL child key.
+  const actual = designData<WorkflowActivityRow[]>(await api.queryActivitiesByScene(scope));
+  const operations = actual.map((row) => {
+    const stage =
+      workflow.stages.find((item) => activityIdentity(item.id)[1] === row.activityNodeName) ??
+      workflow.stages.find((item) => item.name === row.activityNodeName);
+    const nodeName = row.subActivityNodeName || '';
+    const node =
+      nodeName && stage
+        ? (stage.steps.find((item) => activityIdentity(item.id)[2] === nodeName) ??
+          stage.steps.find((item) => item.name === nodeName))
+        : undefined;
+    return { row, stage, node, deleted: !stage || Boolean(nodeName && !node) };
+  });
+  // Delete children first. The parent endpoint explicitly does not cascade to its children.
+  operations.sort(
+    (a, b) =>
+      Number(Boolean(b.row.subActivityNodeName)) - Number(Boolean(a.row.subActivityNodeName)),
   );
-  if (removals.length)
-    throw new Error(
-      `节点“${removals[0]!.stage} / ${removals[0]!.node}”已绑定资产，请先解除绑定并保存，再改名或删除`,
-    );
-  return before;
+  let changed = false;
+  for (const { row, stage, node, deleted } of operations) {
+    const oldNode = row.subActivityNodeName || null;
+    if (deleted) {
+      designData(
+        await api.deleteActivity({
+          ...scope,
+          activityNodeName: row.activityNodeName,
+          ...(oldNode ? { subActivityNodeName: oldNode } : {}),
+        }),
+      );
+      changed = true;
+    } else if (stage!.name !== row.activityNodeName || (node?.name || null) !== oldNode) {
+      designData(
+        await api.renameActivity(
+          {
+            ...sceneKey(scope),
+            oldActivityNodeName: row.activityNodeName,
+            oldSubActivityNodeName: oldNode,
+            newActivityNodeName: stage!.name,
+            newSubActivityNodeName: node?.name || null,
+          },
+          dimension(scope),
+        ),
+      );
+      changed = true;
+    }
+  }
+  // Read migrated/deleted bindings back so the following diff does not unbind/rebind them.
+  return changed ? loadDesignDetail(scope) : before;
 }
 export async function attachDesignCapability(
   scope: WorkflowSceneContext,

@@ -69,7 +69,7 @@ try {
     };
     api.queryProducts = async () => success([{ offeringId: 'product-demo', offeringName: 'demo' }]);
     api.querySceneList = async () => {
-      if (failReadbackOnce && calls.some(([op]) => op === 'refresh')) {
+      if (failReadbackOnce && calls.some(([op]) => ['refresh', 'rename'].includes(op))) {
         failReadbackOnce = false;
         throw new Error('list readback outage');
       }
@@ -92,6 +92,53 @@ try {
         flowName: null,
         flowDescription: null,
       };
+      return success(null);
+    };
+    api.renameScene = async (body, params) => {
+      calls.push(['rename', clone(body), clone(params)]);
+      assert.equal(params.userId, 'designer');
+      for (const row of rows) {
+        if (
+          row.firstScene === body.oldFirstScene &&
+          (!body.oldSecondScene || row.secondScene === body.oldSecondScene)
+        ) {
+          row.firstScene = body.newFirstScene;
+          if (body.oldSecondScene) row.secondScene = body.newSecondScene;
+        }
+      }
+      detail.firstScene = body.newFirstScene;
+      if (body.oldSecondScene) detail.secondScene = body.newSecondScene;
+      return { meta: { isSuccess: true }, data: null };
+    };
+    api.deleteScene = async (params) => {
+      calls.push(['delete-scene', clone(params)]);
+      rows = rows.filter(
+        (row) =>
+          row.firstScene !== params.firstScene ||
+          (params.secondScene && row.secondScene !== params.secondScene),
+      );
+      return success(null);
+    };
+    api.queryActivitiesByScene = async () =>
+      success(
+        detail.stages.flatMap((stage) =>
+          (stage.steps.length ? stage.steps : [null]).map((node) => ({
+            firstScene: detail.firstScene,
+            secondScene: detail.secondScene,
+            activityNodeName: stage.activityNodeName,
+            subActivityNodeName: node?.subActivityNodeName || null,
+            sort: 0,
+          })),
+        ),
+      );
+    api.deleteActivity = async (params) => {
+      calls.push(['delete-activity', clone(params)]);
+      const stage = detail.stages.find((item) => item.activityNodeName === params.activityNodeName);
+      if (params.subActivityNodeName)
+        stage.steps = stage.steps.filter(
+          (node) => node.subActivityNodeName !== params.subActivityNodeName,
+        );
+      else detail.stages = detail.stages.filter((item) => item !== stage);
       return success(null);
     };
     api.updateSecondSceneCode = async (body) => {
@@ -178,7 +225,7 @@ try {
       description: '  发布目标\n输入输出与业务边界  ',
       tags: [],
     });
-    const writes = f.calls.filter(([op]) => ['refresh', 'code', 'meta'].includes(op));
+    const writes = f.calls.filter(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op));
     assert.deepEqual(
       writes.map(([op]) => op),
       ['refresh'],
@@ -265,20 +312,20 @@ try {
     assert.equal(saved.code.trim(), 'demo-child-extension');
     assert.equal(saved.description.trim(), '下级场景说明');
   });
-  await test('renaming a scene refreshes its identity before updating code, description and flow metadata', async () => {
+  await test('renaming a scene migrates its identity before updating changed code and description', async () => {
     const f = await fixture();
     await f.workspace.saveWorkflow(f.workflow, {
       name: '新场景',
       code: 'demo-new',
       description: '新目标',
     });
-    const writes = f.calls.filter(([op]) => ['refresh', 'code', 'meta'].includes(op));
+    const writes = f.calls.filter(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op));
     assert.deepEqual(
       writes.map(([op]) => op),
-      ['refresh', 'code', 'meta'],
+      ['rename', 'code'],
     );
-    assert.equal(writes[0][1].scenes[0].secondScene, '新场景');
-    assert.equal(writes[0][1].scenes[0].sceneExtensionCode, 'demo-old');
+    assert.equal(writes[0][1].oldSecondScene, '代码生成');
+    assert.equal(writes[0][1].newSecondScene, '新场景');
     assert.equal(writes[1][1].secondScene, '新场景');
     assert.equal(writes[1][1].secondSceneDescription, '新目标');
     assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
@@ -288,15 +335,13 @@ try {
     const renamed = { ...f.scenario, name: '新的二级场景' };
     await assert.rejects(() => f.workspace.saveScenario(renamed), /编码/);
     const saved = await f.workspace.saveScenario(renamed, { nameOnly: true });
-    const writes = f.calls.filter(([op]) => ['refresh', 'code', 'meta'].includes(op));
+    const writes = f.calls.filter(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op));
     assert.deepEqual(
       writes.map(([op]) => op),
-      ['refresh', 'code', 'meta'],
+      ['rename'],
     );
-    assert.equal(writes[0][1].scenes[0].secondScene, '新的二级场景');
-    assert.equal(writes[1][1].sceneExtensionCode, '');
-    assert.equal(writes[1][1].secondSceneDescription, '旧目标');
-    assert.equal(writes[2][1].flowName, '原流程');
+    assert.equal(writes[0][1].newSecondScene, '新的二级场景');
+    assert.equal(f.detail().flowName, '原流程');
     assert.equal(saved._id, f.scenario._id);
     assert.equal(saved.parentId, f.scenario.parentId);
     assert.equal(saved.code, '');
@@ -310,7 +355,7 @@ try {
     );
     assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
     await f.workspace.saveWorkflow(f.workflow, values);
-    assert.equal(f.calls.filter(([op]) => op === 'refresh').length, 1);
+    assert.equal(f.calls.filter(([op]) => op === 'rename').length, 1);
     assert.equal(f.detail().secondSceneDescription, '新目标');
     assert.equal(f.detail().sceneExtensionCode, 'demo-new');
   });
@@ -340,26 +385,98 @@ try {
       '刷新失败也要保留的一级说明',
     );
   });
-  await test('a bound child or its parent cannot be renamed and no mutation is issued', async () => {
+  await test('bound child and parent renames cascade without unbinding or refreshing scenes', async () => {
     const f = await fixture({ bound: true });
+    await f.workspace.saveWorkflow(f.workflow, {
+      name: '新场景',
+      code: 'demo-old',
+      description: '旧目标',
+    });
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    await f.workspace.saveScenario({ ...root, name: '新一级场景' }, { nameOnly: true });
+    const writes = f.calls.filter(([op]) =>
+      ['refresh', 'rename', 'code', 'meta', 'unbind'].includes(op),
+    );
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['rename', 'rename'],
+    );
+    assert.equal(writes[1][1].oldSecondScene, '');
+    assert.equal(writes[1][1].newSecondScene, '');
+    assert.equal(f.detail().firstScene, '新一级场景');
+    assert.equal(f.detail().commands[0].commandName, '/demo-entry');
+  });
+  await test('deleting a referenced child uses the scene DELETE and keeps unrelated assets', async () => {
+    const f = await fixture({ bound: true });
+    f.scenario.skillCount = 3;
+    await f.workspace.removeScenario(f.scenario);
+    assert.equal(f.calls.find(([op]) => op === 'delete-scene')[1].secondScene, '代码生成');
+    assert.equal(
+      f.calls.some(([op]) => ['refresh', 'unbind'].includes(op)),
+      false,
+    );
+    assert.equal(
+      f.workspace.scenarios.some((item) => item._id === f.scenario._id),
+      false,
+    );
+  });
+  await test('a published Extension rejection leaves the scene and workflow intact', async () => {
+    const f = await fixture({ bound: true });
+    api.deleteScene = async () => ({
+      meta: { isSuccess: false, message: '该场景下存在已发布的Extension，不允许删除' },
+      data: null,
+    });
+    await assert.rejects(() => f.workspace.removeScenario(f.scenario), /Extension/);
+    assert.ok(f.workspace.scenarios.some((item) => item._id === f.scenario._id));
+    assert.ok(f.workspace.workflows.some((item) => item.scenarioId === f.scenario._id));
+  });
+  await test('root deletion requires deleting children first and omits the second scene query key', async () => {
+    const f = await fixture();
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    await assert.rejects(() => f.workspace.removeScenario(root), /二级场景/);
+    assert.equal(
+      f.calls.some(([op]) => op === 'delete-scene'),
+      false,
+    );
+    // This fixture keeps an explicit empty root after the last child is deleted.
+    const query = api.querySceneList;
+    let keepRoot = true;
+    api.querySceneList = async () => {
+      const result = await query();
+      return keepRoot && result.data.length === 0
+        ? success([{ firstScene: root.name, secondScene: '', sort: 0 }])
+        : result;
+    };
+    await f.workspace.removeScenario(f.scenario);
+    keepRoot = false;
+    await f.workspace.removeScenario(root);
+    const deletes = f.calls.filter(([op]) => op === 'delete-scene');
+    assert.equal(deletes.length, 2);
+    assert.equal(Object.hasOwn(deletes[1][1], 'secondScene'), false);
+    assert.equal(deletes[1][1].firstScene, '研发');
+  });
+  await test('code lock failure preserves the already migrated scene name for retry', async () => {
+    const f = await fixture({ bound: true });
+    api.updateSecondSceneCode = async () => ({
+      meta: { isSuccess: false, message: 'Extension编码已锁定' },
+    });
     await assert.rejects(
       () =>
         f.workspace.saveWorkflow(f.workflow, {
           name: '新场景',
           code: 'demo-new',
-          description: '目标',
+          description: '旧目标',
         }),
-      /绑定|关联|引用/,
+      /锁定/,
     );
-    const root = f.workspace.scenarios.find((item) => item.level === 1);
-    await assert.rejects(
-      () => f.workspace.saveScenario({ ...root, name: '新一级场景' }),
-      /绑定|关联|引用/,
-    );
-    assert.equal(
-      f.calls.some(([op]) => ['refresh', 'code', 'meta'].includes(op)),
-      false,
-    );
+    assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
+    assert.equal(f.detail().sceneExtensionCode, 'demo-old');
+    await f.workspace.saveWorkflow(f.workflow, {
+      name: '新场景',
+      code: 'demo-old',
+      description: '旧目标',
+    });
+    assert.equal(f.calls.filter(([op]) => op === 'rename').length, 1);
   });
   await test('invalid extension names are rejected on every save before HTTP mutations', async () => {
     const f = await fixture();
@@ -378,7 +495,7 @@ try {
       );
     }
     assert.equal(
-      f.calls.some(([op]) => ['refresh', 'code', 'meta'].includes(op)),
+      f.calls.some(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op)),
       false,
     );
   });
@@ -440,16 +557,16 @@ try {
     );
     assert.equal(created.sourceId, 'created-id');
   });
-  await test('removing a bound node is blocked before metadata or automatic unbinding writes', async () => {
+  await test('removing a bound node uses cascade DELETE without explicit unbinding', async () => {
     const f = await fixture();
     f.detail().stages[0].steps[0].boundAssets.push({ assetType: 'Skill', assetName: 'demo-skill' });
     f.workflow.stages[0].steps = [];
-    await assert.rejects(
-      () => f.workspace.saveWorkflow(f.workflow, { code: 'demo-new', description: '新目标' }),
-      /绑定/,
-    );
+    await f.workspace.saveWorkflow(f.workflow, { code: 'demo-old', description: '旧目标' });
+    const deleted = f.calls.find(([op]) => op === 'delete-activity')[1];
+    assert.equal(deleted.activityNodeName, '编码');
+    assert.equal(deleted.subActivityNodeName, '生成');
     assert.equal(
-      f.calls.some(([op]) => ['code', 'meta', 'activities', 'unbind'].includes(op)),
+      f.calls.some(([op]) => op === 'unbind'),
       false,
     );
   });

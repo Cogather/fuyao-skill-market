@@ -79,17 +79,48 @@ test.describe('业务场景设计 HTTP', () => {
         else if (path.endsWith('/scene-activity/scene') && method === 'GET')
           data = [
             {
+              ...detail,
               firstScene: '研发',
               secondScene: currentSceneName,
               sort: 0,
-              ...detail,
               commands: undefined,
               assetPool: undefined,
               stages: undefined,
               steps: undefined,
             },
           ];
-        else if (path.endsWith('/scene-activity/scene') && method === 'POST') {
+        else if (path.endsWith('/scene/name')) {
+          expect(body.oldSecondScene).toBe(currentSceneName);
+          currentSceneName = body.newSecondScene;
+          data = null;
+        } else if (path.endsWith('/scene-activity/activity') && method === 'GET') {
+          data = detail.stages.flatMap((stage) =>
+            (stage.steps.length ? stage.steps : [null]).map((node) => ({
+              firstScene: '研发',
+              secondScene: currentSceneName,
+              activityNodeName: stage.activityNodeName,
+              subActivityNodeName: node?.subActivityNodeName || null,
+              sort: 0,
+            })),
+          );
+        } else if (path.endsWith('/activity/name')) {
+          const stage = detail.stages.find(
+            (item) => item.activityNodeName === body.oldActivityNodeName,
+          )!;
+          const node = stage.steps.find(
+            (item) => item.subActivityNodeName === body.oldSubActivityNodeName,
+          )!;
+          node.subActivityNodeName = body.newSubActivityNodeName;
+          data = null;
+        } else if (path.endsWith('/scene-activity/activity') && method === 'DELETE') {
+          const stage = detail.stages.find(
+            (item) => item.activityNodeName === url.searchParams.get('activityNodeName'),
+          )!;
+          stage.steps = stage.steps.filter(
+            (item) => item.subActivityNodeName !== url.searchParams.get('subActivityNodeName'),
+          );
+          data = null;
+        } else if (path.endsWith('/scene-activity/scene') && method === 'POST') {
           currentSceneName = body.scenes.find((scene: any) => scene.secondScene)?.secondScene;
           detail.sceneExtensionCode = null;
           detail.secondSceneDescription = null;
@@ -109,7 +140,7 @@ test.describe('业务场景设计 HTTP', () => {
             {
               key: 'assets',
               label: 'Skill / Agent 集成',
-              state: detail.stages[0]!.steps[0]!.boundAssets.length ? 'done' : 'todo',
+              state: detail.stages[0]?.steps[0]?.boundAssets.length ? 'done' : 'todo',
               reason: '',
             },
           ];
@@ -369,12 +400,15 @@ test.describe('业务场景设计 HTTP', () => {
         expect(call.query.get('userId')).toBe('designer');
         expect(call.body).not.toHaveProperty('userId');
       }
-      const sceneRefresh = calls.findIndex(
-        (call) => call.path.endsWith('/scene-activity/scene') && call.method === 'POST',
+      const sceneRename = calls.findIndex(
+        (call) => call.path.endsWith('/scene/name') && call.method === 'PUT',
       );
       const sceneCode = calls.findIndex((call) => call.path.endsWith('/scene/code'));
-      expect(sceneRefresh).toBeGreaterThan(-1);
-      expect(sceneCode).toBeGreaterThan(sceneRefresh);
+      expect(sceneRename).toBeGreaterThan(-1);
+      expect(sceneCode).toBeGreaterThan(sceneRename);
+      expect(
+        calls.some((call) => call.path.endsWith('/scene-activity/scene') && call.method === 'POST'),
+      ).toBe(false);
       expect(calls[sceneCode]!.body).toMatchObject({
         secondScene: '代码生成新版',
         sceneExtensionCode: 'demo-design',
@@ -421,6 +455,32 @@ test.describe('业务场景设计 HTTP', () => {
         missingCommandName,
       );
       await expect(wizard.getByLabel(/^场景编码/)).toHaveValue('demo-design');
+      // Saved assets no longer prevent renaming the scene or its bound activity.
+      await wizard.getByLabel(/^场景名称/).fill('已绑定资产的新版场景');
+      await wizard.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+      expect(currentSceneName).toBe('已绑定资产的新版场景');
+      const boundAssetsBeforeRename = structuredClone(detail.stages[0]!.steps[0]!.boundAssets);
+      await steps.nth(1).click();
+      await wizard.locator('.node-row').getByRole('button', { name: '编辑', exact: true }).click();
+      await wizard.getByPlaceholder('节点名称', { exact: true }).fill('代码实现');
+      await wizard.getByRole('button', { name: '保存节点', exact: true }).click();
+      await wizard.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+      expect(detail.stages[0]!.steps[0]!.subActivityNodeName).toBe('代码实现');
+      expect(detail.stages[0]!.steps[0]!.boundAssets).toEqual(boundAssetsBeforeRename);
+      page.once('dialog', (dialog) => dialog.accept());
+      await wizard.locator('.node-row').getByRole('button', { name: '删除', exact: true }).click();
+      await wizard.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+      expect(detail.stages[0]!.steps).toHaveLength(0);
+      expect(detail.assetPool.length).toBeGreaterThan(0);
+      const activityDelete = calls.find(
+        (call) => call.path.endsWith('/scene-activity/activity') && call.method === 'DELETE',
+      )!;
+      expect(activityDelete.query.get('subActivityNodeName')).toBe('代码实现');
+      expect(calls.some((call) => /config\/supplement\/delete/.test(call.path))).toBe(false);
+      await steps.nth(0).click();
       rejectCode = true;
       await wizard.getByLabel(/^场景编码/).fill('demo-rejected');
       await wizard.getByRole('button', { name: '保存', exact: true }).click();

@@ -102,6 +102,56 @@ try {
       skills: [{ name: 'demo-skill', version: '1.0.0' }],
     };
     const contracts = [
+      [
+        'renameScene',
+        [
+          { oldFirstScene: '研发', newFirstScene: '交付', oldSecondScene: '', newSecondScene: '' },
+          scope,
+        ],
+        'PUT',
+        '/scene-activity/scene/name',
+        scope,
+        { oldFirstScene: '研发', newFirstScene: '交付', oldSecondScene: '', newSecondScene: '' },
+      ],
+      [
+        'deleteScene',
+        [{ ...scope, ...scene }],
+        'DELETE',
+        '/scene-activity/scene',
+        { ...scope, ...scene },
+        undefined,
+      ],
+      [
+        'renameActivity',
+        [
+          {
+            ...scene,
+            oldActivityNodeName: '编码',
+            oldSubActivityNodeName: null,
+            newActivityNodeName: '实现',
+            newSubActivityNodeName: null,
+          },
+          scope,
+        ],
+        'PUT',
+        '/scene-activity/activity/name',
+        scope,
+        {
+          ...scene,
+          oldActivityNodeName: '编码',
+          oldSubActivityNodeName: null,
+          newActivityNodeName: '实现',
+          newSubActivityNodeName: null,
+        },
+      ],
+      [
+        'deleteActivity',
+        [{ ...context, activityNodeName: '编码' }],
+        'DELETE',
+        '/scene-activity/activity',
+        { ...context, activityNodeName: '编码' },
+        undefined,
+      ],
       ['querySceneList', [scope], 'GET', '/scene-activity/scene', scope, undefined],
       [
         'refreshScene',
@@ -508,58 +558,23 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('bound node rename is blocked; after explicit unbinding refresh preserves other scenes', async () => {
+  await test('activity refresh preserves other scenes when adding nodes', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
-    mapped.workflow.stages[0].steps[0].name = '新节点';
-    const operations = [];
-    api.queryConfigurationBindings = async () =>
-      success([
-        {
-          id: 'old-binding',
-          ...scene,
-          skillName: 'demo-code',
-          activityNodeName: '编码',
-          subActivityNodeName: '生成',
-        },
-      ]);
-    api.skillUnbindScene = async (id) => {
-      operations.push(['unbind', id]);
-      return success(null);
-    };
+    mapped.workflow.stages[0].steps.push({ id: 'new', name: '新节点', order: 1, assets: [] });
     api.querySceneList = async () =>
-      success([
-        { ...scene, sort: 0 },
-        { firstScene: '研发', secondScene: '保留场景', sort: 1 },
-      ]);
+      success([scene, { firstScene: '研发', secondScene: '保留场景' }]);
     api.queryActivitiesByScene = async (params) =>
       success([
-        { ...params, activityNodeName: '保留环节', subActivityNodeName: '保留节点', sort: 0 },
+        { ...params, activityNodeName: '其他环节', subActivityNodeName: '其他节点', sort: 0 },
       ]);
-    api.refreshActivities = async (params, body) => {
-      operations.push(['activities', body]);
+    let refreshed;
+    api.refreshActivities = async (_params, body) => {
+      refreshed = body;
       return success(null);
     };
-    api.skillBindActivity = async (body) => {
-      operations.push(['bind', body]);
-      return success(null);
-    };
-    api.querySceneAssetPool = async () => success(detail.assetPool);
-    await assert.rejects(
-      () => repository.prepareDesignActivityChanges(context, mapped.workflow, detail),
-      /已绑定资产/,
-    );
-    assert.deepEqual(operations, []);
-    const unbound = structuredClone(detail);
-    unbound.stages[0].steps[0].boundAssets = [];
-    mapped.workflow.stages[0].steps[0].assets = [];
-    await repository.prepareDesignActivityChanges(context, mapped.workflow, unbound);
-    await repository.saveDesignActivities(context, mapped.workflow, unbound);
-    assert.deepEqual(
-      operations.map((item) => item[0]),
-      ['activities'],
-    );
-    assert.equal(operations[0][1].activities[0].secondScene, '保留场景');
-    assert.equal(operations[0][1].activities.at(-1).subActivityNodeName, '新节点');
+    await repository.saveDesignActivities(context, mapped.workflow, detail);
+    assert.equal(refreshed.activities[0].secondScene, '保留场景');
+    assert.equal(refreshed.activities.at(-1).subActivityNodeName, '新节点');
   });
   await test('successful code writes are remembered even if the subsequent metadata request fails', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');

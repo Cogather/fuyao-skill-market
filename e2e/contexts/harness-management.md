@@ -5,6 +5,8 @@
 
 ## 基本信息
 
+- 业务场景设计 HTTP 改名通过 `/scene-activity/scene/name`、`/scene-activity/activity/name` 级联迁移关联资产名称；删除通过对应 `DELETE /scene`、`DELETE /activity` 清理绑定和规划，不要求手动解绑。删除环节先逐个删子节点，再删除实际存在的父记录；保留资产本身和 Workflow 资产池。场景删除会清理其资产池，已发布 Extension 的场景由后端拒绝；有二级场景的一级场景仍需先删除下级。
+
 - 路由：`/skill-market/harness-management`（带 `VITE_BASE=/skill-market` 前缀）
 - 组件：`src/views/HarnessManagementPage.vue`（内部按 tab 挂载 HarnessCapabilityManagementPage / SkillPlanningPage / HarnessTaskManagementPage / HarnessConfigurationPage 等）
 - 数据模式：dev 走 mock（`VITE_SKILL_MARKET_TRANSPORT=mock`），无需后端

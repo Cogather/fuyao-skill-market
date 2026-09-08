@@ -21,7 +21,7 @@ export interface WorkflowSceneRow extends WorkflowSceneKey {
 }
 export interface WorkflowActivityRow extends WorkflowSceneKey {
   activityNodeName: string;
-  subActivityNodeName?: string;
+  subActivityNodeName?: string | null;
   sort: number;
 }
 export interface WorkflowPoolItem {
@@ -154,7 +154,7 @@ export const harnessWorkflowService = {
   },
 
   /**
-   * 更新二级场景编码与描述（场景改名时，须等待刷新场景完成后调用）
+   * 更新二级场景编码与描述（场景改名时，须等待 renameScene 完成后调用）
    * @param body
    * @param params
    * @returns
@@ -201,6 +201,52 @@ export const harnessWorkflowService = {
       params: params,
     });
   },
+
+  /** 级联更新场景名称；一级改名时两个二级名称均传空。 */
+  renameScene: (
+    body: {
+      oldFirstScene: string;
+      oldSecondScene?: string | null;
+      newFirstScene: string;
+      newSecondScene?: string | null;
+    },
+    params: WorkflowDimension,
+  ): Promise<any> =>
+    httpRequest.harnessApi({
+      url: '/scene-activity/scene/name',
+      method: 'PUT',
+      params,
+      data: body,
+    }),
+
+  /** 级联删除场景关联数据；仅删一级时省略 secondScene。 */
+  deleteScene: (
+    params: WorkflowDimension & { firstScene: string; secondScene?: string },
+  ): Promise<any> =>
+    httpRequest.harnessApi({ url: '/scene-activity/scene', method: 'DELETE', params }),
+
+  /** 按活动与子活动精确改名，并迁移规划关系；父活动的子活动名传 null。 */
+  renameActivity: (
+    body: WorkflowSceneKey & {
+      oldActivityNodeName: string;
+      oldSubActivityNodeName: string | null;
+      newActivityNodeName: string;
+      newSubActivityNodeName: string | null;
+    },
+    params: WorkflowDimension,
+  ): Promise<any> =>
+    httpRequest.harnessApi({
+      url: '/scene-activity/activity/name',
+      method: 'PUT',
+      params,
+      data: body,
+    }),
+
+  /** 级联删除指定活动的规划；省略子活动名只删除父记录。 */
+  deleteActivity: (
+    params: WorkflowSceneContext & { activityNodeName: string; subActivityNodeName?: string },
+  ): Promise<any> =>
+    httpRequest.harnessApi({ url: '/scene-activity/activity', method: 'DELETE', params }),
 
   /**
    * 全量刷新活动

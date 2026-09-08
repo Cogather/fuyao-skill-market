@@ -910,11 +910,8 @@ function deleteStage(stageId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
   if (!w || !stage || wizardBusy.value) return;
-  if (stage.steps.some((node) => node.assets.length)) {
-    w.error = '该环节下的节点已绑定资产，请先解除绑定并保存，再删除环节';
+  if (!window.confirm('确认删除该环节？其下节点及相关资产绑定、规划记录会一并删除，资产本身保留。'))
     return;
-  }
-  if (!window.confirm('确认删除该环节？环节下的节点会一并删除。')) return;
   stage.steps.forEach((node) => delete w.nodeAssetsMap[node.id]);
   w.workflow.stages = w.workflow.stages.filter((item) => item.id !== stageId);
   [...w.workflow.stages]
@@ -930,10 +927,7 @@ function deleteNode(stageId: string, nodeId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
   if (!w || !stage || wizardBusy.value) return;
-  if (stage.steps.find((node) => node.id === nodeId)?.assets.length) {
-    w.error = '该节点已绑定资产，请先解除绑定并保存，再删除节点';
-    return;
-  }
+  if (!window.confirm('确认删除该节点？相关资产绑定和规划记录会一并删除，资产本身保留。')) return;
   stage.steps = stage.steps.filter((item) => item.id !== nodeId);
   [...stage.steps]
     .sort((a, b) => a.order - b.order)
@@ -1852,7 +1846,8 @@ async function createAsset() {
           确认删除场景「<b>{{ deleteTarget.name }}</b
           >」？<template v-if="workflows.some((item) => item.scenarioId === deleteTarget?._id)"
             >关联的 Workflow 也会一并删除，</template
-          >该操作不可恢复。
+          >场景下的资产绑定、资产池和规划记录会一并删除，资产本身保留。已发布 Extension
+          的场景需先处理 Extension。该操作不可恢复。
         </p>
         <footer>
           <button class="danger-btn" @click="deleteScenario">确认删除</button
@@ -1913,7 +1908,7 @@ async function createAsset() {
         <label
           ><span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span
           ><input v-model="wizard.form.scenarioName" required /><small
-            >与场景管理同步；已绑定资产的场景需先解除绑定才能改名。</small
+            >与场景管理同步；改名会同步更新关联资产的场景名称。</small
           ></label
         ><label
           ><span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span
