@@ -14,6 +14,8 @@ import type {
   SkillEvaluationDetailResponseDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
+  QueryHarnessAssetComponentsBody,
+  HarnessAssetComponentsResponse,
   QueryHarnessPermissionUsersParams,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
@@ -493,6 +495,17 @@ export const skillBaseService = {
       url: '/config/supplement/export',
       method: 'get',
       params,
+    });
+  },
+
+  /** Agent / Skill 资产页的统一筛选列表。 */
+  queryHarnessAssetComponents: (
+    body: QueryHarnessAssetComponentsBody,
+  ): Promise<HarnessAssetComponentsResponse> => {
+    return httpRequest.api<HarnessAssetComponentsResponse>({
+      url: '/v1/harness/plans/components/query',
+      method: 'post',
+      data: body,
     });
   },
 

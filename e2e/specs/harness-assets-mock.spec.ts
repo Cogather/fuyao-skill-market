@@ -104,6 +104,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
 
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
     await expect(assetCard(page, '\u6d41\u6c34\u7ebf\u5931\u8d25\u8bca\u65ad Skill')).toBeVisible();
     await expect(assetCard(page, '\u65e5\u5fd7\u5f02\u5e38\u5b9a\u4f4d Skill')).toHaveCount(0);
 

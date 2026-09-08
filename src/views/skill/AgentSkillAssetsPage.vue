@@ -2,7 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
-import { getHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
+import {
+  getHarnessAssetApi,
+  usesHttpHarnessAssetApi,
+} from '../../services/skillMarket/assetManagementService';
 import {
   harnessAssetPublishVersion,
   harnessAssetStatus,
@@ -68,20 +71,20 @@ const emit = defineEmits<{
 }>();
 
 const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
-  { key: 'all', label: '全部' },
   { key: 'Agent', label: 'Agent' },
   { key: 'Skill', label: 'Skill' },
   { key: 'Command', label: 'Command' },
   { key: 'Extension', label: 'Extension' },
 ];
 const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
-const ASSET_PAGE_SIZE = 24;
+const transportIsHttp = usesHttpHarnessAssetApi();
+const ASSET_PAGE_SIZE = transportIsHttp ? 30 : 24;
 const ASSET_SCROLL_THRESHOLD = 120;
 const MAX_EMPTY_PAGE_PROBES = 10;
 const api = getHarnessAssetApi();
 
 const view = ref<PageView>('list');
-const filter = ref<HarnessAssetFilter>('all');
+const filter = ref<HarnessAssetFilter>('Agent');
 const selectedDepartmentId = ref('');
 const selectedProductId = ref('');
 const assets = ref<HarnessAsset[]>([]);
@@ -195,15 +198,15 @@ const selectedProduct = computed(
 );
 const currentScope = computed<HarnessAssetScope | null>(() => {
   const department = selectedDepartment.value;
-  if (!department) return null;
+  if (!department && !transportIsHttp) return null;
   return {
     userId: props.userId.trim(),
     userName: props.userName.trim(),
     department: {
-      id: department.id,
-      code: department.code,
-      name: department.name,
-      path: [...department.path],
+      id: department?.id ?? '',
+      code: department?.code ?? '',
+      name: department?.name ?? '',
+      path: [...(department?.path ?? [])],
     },
     product: selectedProduct.value
       ? { ...selectedProduct.value, departmentPath: [...selectedProduct.value.departmentPath] }
@@ -217,11 +220,13 @@ const selectedAsset = computed(
     null,
 );
 const filteredAssets = computed(() =>
-  assets.value.filter(
-    (asset) =>
-      (filter.value === 'all' || asset.assetType === filter.value) &&
-      (!selectedProductId.value || asset.productId === selectedProductId.value),
-  ),
+  transportIsHttp
+    ? assets.value
+    : assets.value.filter(
+        (asset) =>
+          (filter.value === 'all' || asset.assetType === filter.value) &&
+          (!selectedProductId.value || asset.productId === selectedProductId.value),
+      ),
 );
 const selectedOrganization = computed(() =>
   organizations.value.find((organization) => organization.id === selectedOrganizationId.value),
@@ -615,7 +620,7 @@ function statusLabel(asset: HarnessAsset): string {
 function statusClass(asset: HarnessAsset): string {
   const status = harnessAssetStatus(asset);
   if (status === '已发布') return 'is-success';
-  if (status === '待发布') return 'is-warning';
+  if (status === '待发布' || status === '可发布') return 'is-warning';
   return 'is-info';
 }
 
@@ -785,10 +790,13 @@ onBeforeUnmount(() => {
             </div>
             <p>{{ asset.description || '暂无描述' }}</p>
             <div class="asset-card__meta">
-              <span>⭐ {{ asset.marketplace.rating.toFixed(1) }}</span>
-              <span>📥 {{ asset.marketplace.downloads }}</span>
-              <span>📞 {{ asset.marketplace.calls }}</span>
-              <span>{{ asset.currentVersion ? `v${asset.currentVersion}` : '未开发' }}</span>
+              <!-- 统计数据尚未接入，暂时隐藏。 -->
+              <template v-if="false">
+                <span>⭐ {{ asset.marketplace.rating.toFixed(1) }}</span>
+                <span>📥 {{ asset.marketplace.downloads }}</span>
+                <span>📞 {{ asset.marketplace.calls }}</span>
+              </template>
+              <span v-if="asset.currentVersion">v{{ asset.currentVersion }}</span>
               <span class="asset-badge" :class="statusClass(asset)">{{ statusLabel(asset) }}</span>
             </div>
             <button

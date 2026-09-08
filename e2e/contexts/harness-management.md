@@ -24,7 +24,10 @@
 - Harness 工作流表格固定六列：名称 / 产品 / 部门 / 状态 / 所属业务场景 / Command 入口；状态由发布次数决定（`releaseCount > 0` 为「已发布」，否则为「设计中」），不以四步设计是否完成决定
 - 默认部门「持续交付组」、产品 `harness-pipeline`；初始工作流清单为空。部门筛选包含已关联工作流的下级部门，产品筛选进一步收窄结果；状态按钮 accessible name 为「全部」「已发布」「设计中」。
 - Harness 工作流每页 10 条；切换部门、产品或状态会把页码重置为第一页，分页按钮 accessible name 为「上一页」「下一页」
-- Agent / Skill 资产面板：`#harness-panel-assets`，包含统一资产类型筛选、详情、Skill 质量报告和 mock 发布流程
+- Agent / Skill 资产面板：`#harness-panel-assets`，HTTP 和 Mock 均只显示 Agent / Skill / Command / Extension 四个类型，默认选中 Agent，无「全部」入口；包含详情、Skill 质量报告和发布流程。
+- HTTP 资产列表使用 `httpRequest.api` 的 `POST /v1/harness/plans/components/query`，body 包含 `userId`、可选 `deptCode` / `productCode`、大写 `type`、`sortBy: updatedAt`、`sortOrder: desc`、`pageNo`、`pageSize: 30`。未选部门或产品时省略对应编码；清空部门后仍可查询列表。
+- HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。列表只调用统一查询，进入 Extension 详情或发布时再加载场景上下文。
+- Mock 保留原资产聚合与每页 24 条的滚动加载。HTTP 切换部门、产品或类型时从第 1 页重载，晚返回的旧请求不能覆盖当前筛选。
 - 任务管理面板：`#harness-panel-tasks`（`role=tabpanel`）
 
 ## 坑与约定
