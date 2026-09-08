@@ -1,0 +1,120 @@
+import type { DepartmentTreeNodeDto } from './apiTypes';
+
+/** 与 `UserMarketShell` 内原 `MarketDeptNode` 一致，供接口树映射 */
+export type MarketDeptForestNode = {
+  id?: string;
+  deptCode?: string;
+  name: string;
+  path: string;
+  levelNo: number;
+  children: MarketDeptForestNode[];
+};
+
+type DepartmentCodeNode = {
+  id?: string | number | null;
+  deptCode?: string | number | null;
+};
+
+function normalizeDepartmentCode(value: unknown): string {
+  const code = String(value ?? '').trim();
+  return code && code !== 'undefined' && code !== 'null' ? code : '';
+}
+
+export function getDepartmentNodeCode(node: DepartmentCodeNode | null | undefined): string {
+  return normalizeDepartmentCode(node?.deptCode) || normalizeDepartmentCode(node?.id);
+}
+
+/**
+ * 将后端 / Mock 返回的 `DepartmentTreeNodeDto` 转为市场级联使用的森林（各级名称有序）。
+ */
+/**
+ * 将父页面 postMessage 等来源的未知结构尽量规整为 `DepartmentTreeNodeDto`，便于与市场级联共用映射逻辑。
+ */
+export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeNodeDto[] {
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    return [];
+  }
+  const out: DepartmentTreeNodeDto[] = [];
+  for (const item of nodes) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const o = item as Record<string, unknown>;
+    const namePart = o.deptName ?? o.name ?? o.label ?? o.departmentName ?? o.title;
+    const deptName = typeof namePart === 'string' ? namePart.trim() : String(namePart ?? '').trim();
+    const deptLevelValue = o.deptLevel ?? o.levelNo;
+    const parsedDeptLevel = Number(deptLevelValue);
+    const deptLevel = Number.isFinite(parsedDeptLevel) && parsedDeptLevel > 0 ? parsedDeptLevel : 0;
+    const deptCodePart =
+      o.deptCode ??
+      o.departmentCode ??
+      o.dept_code ??
+      o.department_code ??
+      o.orgCode ??
+      o.organizationCode ??
+      o.code;
+    const deptCode =
+      typeof deptCodePart === 'string' || typeof deptCodePart === 'number'
+        ? String(deptCodePart).trim()
+        : '';
+    const deptIdPart = o.deptId ?? o.departmentId ?? o.id ?? o.value ?? deptCodePart;
+    const deptId =
+      typeof deptIdPart === 'string' || typeof deptIdPart === 'number'
+        ? String(deptIdPart).trim()
+        : '';
+    const childRaw =
+      o.children ??
+      o.childrenList ??
+      o.childList ??
+      o.childDepartments ??
+      o.childDepartmentList ??
+      o.childDeptList ??
+      o.subDepartments;
+    const children =
+      Array.isArray(childRaw) && childRaw.length > 0
+        ? coerceDepartmentTreeFromUnknown(childRaw)
+        : [];
+    out.push({
+      ...(deptId ? { deptId } : {}),
+      ...(deptCode ? { deptCode } : {}),
+      deptName,
+      deptLevel,
+      ...(children.length > 0 ? { children } : {}),
+    });
+  }
+  return out;
+}
+
+export function mapDepartmentTreeDtoToForest(
+  nodes: DepartmentTreeNodeDto[] | undefined,
+): MarketDeptForestNode[] {
+  if (!nodes?.length) {
+    return [];
+  }
+  return nodes.map((n) => mapOneDepartmentTreeNode(n, ''));
+}
+
+function mapOneDepartmentTreeNode(
+  n: DepartmentTreeNodeDto,
+  parentPath: string,
+): MarketDeptForestNode {
+  const path = parentPath ? `${parentPath}/${n.deptName}` : n.deptName;
+  const levelNo =
+    n.deptLevel > 0
+      ? n.deptLevel
+      : parentPath
+        ? parentPath.split('/').filter(Boolean).length + 1
+        : 1;
+  const rawChildren = n.children ?? [];
+  const children = rawChildren.map((c) => mapOneDepartmentTreeNode(c, path));
+  return {
+    ...(n.deptId !== undefined && String(n.deptId).trim() ? { id: String(n.deptId).trim() } : {}),
+    ...(n.deptCode !== undefined && String(n.deptCode).trim()
+      ? { deptCode: String(n.deptCode).trim() }
+      : {}),
+    name: n.deptName,
+    path,
+    levelNo,
+    children,
+  };
+}

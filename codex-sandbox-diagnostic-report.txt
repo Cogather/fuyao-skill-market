@@ -1,0 +1,65 @@
+﻿Codex sandbox diagnostics (Read-only)
+Generated: 2026-08-13 19:39:02 +08:00
+
+=== Current identity ===
+User: p_v30315-kgy3m3\administrator
+
+=== Effective local user-rights policy ===
+SeBatchLogonRight = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-559
+
+=== Security event 4625 failures during last 1 day(s) ===
+2026-08-13 19:38:31 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 19:38:31 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 19:38:30 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 19:37:45 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 19:37:44 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 19:37:44 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 19:32:42 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 17:54:30 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 17:44:41 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 17:35:06 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 17:34:51 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 17:34:21 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:24:01 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:23:50 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:22:56 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:22:46 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:22:25 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:22:16 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:22:09 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:19:53 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:19:52 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:19:52 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:10:31 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 15:10:23 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:42:43 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:42:16 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:42:03 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:42:03 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:42:02 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:41:31 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:41:27 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:41:11 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:41:04 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:55 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:55 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:55 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:43 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:25 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:13 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:40:04 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:39:40 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:39:28 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:39:20 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:39:09 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:39:03 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:38:57 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:38:50 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:38:01 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:36:50 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+2026-08-13 11:36:50 | account=P_V30315-KGY3M3\CodexSandboxOffline | logonType=2 | status=0xc000015b | process=C:\Windows\System32\svchost.exe
+
+=== Interpretation ===
+Win32 error 1385 maps to STATUS_LOGON_TYPE_NOT_GRANTED (0xC000015B).
+If the report lists an account with logonType=4 and status=0xC000015B, grant that exact account or its required group 鈥淟og on as a batch job鈥? and ensure it is not listed in 鈥淒eny log on as a batch job鈥?
+Do not broadly add users or disable the denial policy without first identifying the failed account.
