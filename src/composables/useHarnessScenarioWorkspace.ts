@@ -599,7 +599,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
           skillCount: item.skillCount,
           tags: [...(item.tags || [])],
           code: (isHttp ? item.sceneExtensionCode : details[id]?.code) || '',
-          description: (isHttp ? item.secondSceneDescription : details[id]?.description) || '',
+          description:
+            (isHttp
+              ? item.parentId
+                ? item.secondSceneDescription
+                : item.firstSceneDescription
+              : details[id]?.description) || '',
           releaseCount: details[id]?.releaseCount || 0,
         };
       });
@@ -905,7 +910,6 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
   }
   function assertScenarioCode(code: string, product: Product) {
-    if (!code.trim() && isHttp) return;
     const invalid = validateWorkflowCapabilityName(code, product.name, product.code);
     if (invalid) throw new Error(`场景编码不符合命名规则：${invalid}`);
   }
@@ -977,6 +981,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       );
     if (existing) {
       existing.name = name;
+      if (isHttp && !parentId) existing.firstSceneDescription = scenario.description.trim();
     } else
       records.push({
         id: uid('scene'),
@@ -986,6 +991,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         status: 'enabled',
         skillCount: 0,
         tags: scenario.tags,
+        ...(isHttp && !parentId ? { firstSceneDescription: scenario.description.trim() } : {}),
         ...(isHttp && parentId
           ? {
               sceneExtensionCode: scenario.code.trim(),
@@ -1108,10 +1114,15 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         .get(scenario.productId)
         ?.find((item) => item.id === scenario.sourceId);
       if (record)
-        Object.assign(record, {
-          sceneExtensionCode: scenario.code,
-          secondSceneDescription: scenario.description,
-        });
+        Object.assign(
+          record,
+          scenario.level === 1
+            ? { firstSceneDescription: scenario.description.trim() }
+            : {
+                sceneExtensionCode: scenario.code,
+                secondSceneDescription: scenario.description,
+              },
+        );
     }
   }
   async function removeScenario(scenario: Scenario) {
@@ -1182,8 +1193,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     if (existing) return existing;
     const workflow = reactive<Workflow>({
       _id: uid('workflow'),
-      name: scenario.name + '作业流',
-      description: scenario.description,
+      name: '',
+      description: '',
       businessScenario: scenario.name,
       scenarioId,
       status: 'draft',

@@ -176,6 +176,7 @@ const currentScenario = computed(() =>
 const currentWorkflows = computed(() =>
   workflows.filter((item) => item.scenarioId === selectedScenarioId.value),
 );
+const assetById = computed(() => new Map(assets.map((item) => [item._id, item])));
 watch([selectedDeptId, productId, selectedScenarioId, available], () => {
   if (
     wizard.value &&
@@ -212,8 +213,8 @@ function scenarioValidationError(
   productName: string,
 ): string {
   if (!scenario.name.trim()) return '请填写场景名称';
-  if (!scenario.description.trim()) return '请填写场景说明与目标';
-  if (!scenario.releaseCount && (!props.workspace.isHttp || scenario.code.trim())) {
+  if (!scenario.code.trim()) return '请填写场景编码';
+  if (!scenario.releaseCount) {
     const error = validateName(scenario.code, productName);
     if (error) return `场景编码不符合命名规则：${error}`;
   }
@@ -406,7 +407,7 @@ function openScenario(parentId: string | null) {
   tagSearch.value = '';
   scenarioDialogOpener = activeElement();
   scenarioForm.name = '';
-  scenarioForm.code = '';
+  scenarioForm.code = parentId ? productPrefix() : '';
   scenarioForm.description = '';
   scenarioForm.tags = [];
   scenarioError.value = '';
@@ -588,7 +589,7 @@ async function openWizard(workflow?: Workflow, step = 0) {
     form: {
       name: wf.name,
       description: wf.description,
-      code: scenario.code,
+      code: scenario.code || (scenario.releaseCount ? '' : productPrefix()),
       scenarioName: scenario.name,
       scenarioDesc: scenario.description,
     },
@@ -684,15 +685,13 @@ function dismissWizard() {
 async function saveWizard(): Promise<boolean> {
   const w = wizard.value;
   if (!w || wizardBusy.value) return false;
-  syncWizard();
-  w.error = '';
-  if (w.form.code.trim()) {
-    const invalid = validateName(w.form.code);
-    if (invalid) {
-      w.error = `场景编码不符合命名规则：${invalid}`;
-      return false;
-    }
+  w.error = wizardStepError(w, 0);
+  if (w.error) {
+    w.step = 0;
+    showWizardPage();
+    return false;
   }
+  syncWizard();
   try {
     const saved = await props.workspace.saveWorkflow(w.workflow, {
       name: w.form.scenarioName,
@@ -939,7 +938,7 @@ function openCommandDraft() {
   if (!wizard.value) return;
   wizard.value.error = '';
   wizard.value.commandDraft = {
-    name: '',
+    name: productPrefix() ? `/${productPrefix()}` : '',
     description: '',
     developer: null,
     owner: null,
@@ -952,7 +951,7 @@ function openAssetDraft(type: AssetType) {
   w.error = '';
   w.assetTypeTab = type;
   w.assetDraft = {
-    name: '',
+    name: productPrefix(),
     assetType: type,
     description: '',
     developer: null,
@@ -1432,7 +1431,23 @@ async function createAsset() {
                   <div v-else class="chips">
                     <span v-for="item in workflow.assets" :key="item.assetId"
                       ><b>{{ item.type }}</b
-                      >{{ assets.find((a) => a._id === item.assetId)?.name || '未找到资产' }}</span
+                      >{{ assetById.get(item.assetId)?.name || '未找到资产' }}
+                      <i
+                        v-if="assetById.get(item.assetId)?.packageReady === true"
+                        class="asset-package-status ready"
+                        role="img"
+                        title="资源包已就绪"
+                        aria-label="资源包已就绪"
+                        >✓</i
+                      >
+                      <i
+                        v-else
+                        class="asset-package-status"
+                        role="img"
+                        title="资源包未就绪"
+                        aria-label="资源包未就绪"
+                        >○</i
+                      ></span
                     >
                   </div>
                 </section>
@@ -1558,7 +1573,7 @@ async function createAsset() {
           <input v-model="scenarioForm.name" required placeholder="例如：需求开发" />
         </label>
         <label v-if="scenarioDialog.parentId" class="editor-field">
-          <span>场景编码{{ props.workspace.isHttp ? '' : ' *' }}</span>
+          <span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span>
           <input
             v-model="scenarioForm.code"
             maxlength="64"
@@ -1822,13 +1837,15 @@ async function createAsset() {
           为必填项。
         </p>
         <label
-          >场景名称<input v-model="wizard.form.scenarioName" /><small
+          ><span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span
+          ><input v-model="wizard.form.scenarioName" required /><small
             >与场景管理同步；已绑定资产的场景需先解除绑定才能改名。</small
           ></label
         ><label
-          >场景编码{{ props.workspace.isHttp ? '' : ' *'
-          }}<input
+          ><span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
             v-model="wizard.form.code"
+            required
             maxlength="64"
             :readonly="!!currentScenario?.releaseCount"
             :placeholder="`例如：${productPrefix()}mml-dev`"
@@ -1839,7 +1856,7 @@ async function createAsset() {
             {{ productPrefix() }} 开头、全部小写、仅用连字符分隔。</small
           ></label
         ><label
-          >场景说明与目标 *<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
+          >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
         </label>
       </section>
       <section
@@ -2009,7 +2026,7 @@ async function createAsset() {
           Command 在 Agent 中通过 / 触发；从资产清单中选择或新定义，参数与正文由流水线发布后回填。
         </p>
         <p class="main-hint">
-          <b>主入口建议：</b>建议选择一个以 <code>e2e</code> 开头的 Command 作为流程主入口，例如
+          <b>主入口建议：</b>建议选择一个包含 <code>e2e</code> 的 Command 作为流程主入口，例如
           <code>/{{ productPrefix() }}e2e-codec</code>。
         </p>
         <p
@@ -2028,20 +2045,6 @@ async function createAsset() {
             <code>{{ command.name }}</code>
             <p>{{ command.description }}</p>
           </div>
-          <span class="command-owner" :title="`开发者：${command.developer || '未指定'}`">
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.4"
-              stroke-linecap="round"
-            >
-              <circle cx="10" cy="6" r="3" />
-              <path d="M4 17v-1a6 6 0 0 1 12 0v1" />
-            </svg>
-            <span>{{ command.developer || '未指定' }}</span>
-          </span>
           <button
             type="button"
             class="command-remove"
@@ -2653,6 +2656,17 @@ select {
   background: transparent;
   color: #6b7280;
 }
+.asset-package-status {
+  flex-shrink: 0;
+  color: #b45309;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+}
+.asset-package-status.ready {
+  color: #059669;
+}
 .primary {
   display: inline-flex;
   flex-shrink: 0;
@@ -3006,7 +3020,7 @@ h4 small {
 .wizard {
   display: flex;
   flex-direction: column;
-  width: min(760px, 94vw);
+  width: min(1040px, 94vw);
   height: min(720px, calc(100dvh - 48px));
   max-height: calc(100dvh - 48px);
   overflow: hidden;
@@ -3593,7 +3607,7 @@ h4 small {
 }
 .command-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px 40px;
+  grid-template-columns: minmax(0, 1fr) 40px;
   gap: 16px;
   align-items: center;
   margin: 10px 0;
@@ -3621,26 +3635,6 @@ h4 small {
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
-}
-.command-owner {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  max-width: 120px;
-  color: #8a94a5;
-  font-size: 12px;
-  line-height: 20px;
-}
-.command-owner svg {
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
-}
-.command-owner > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .wizard .command-remove {
   min-width: 40px;
@@ -4139,9 +4133,6 @@ h4 small {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px 12px;
     padding: 12px;
-  }
-  .wizard .command-details {
-    grid-column: 1 / -1;
   }
   .wizard .command-row > button {
     justify-self: end;

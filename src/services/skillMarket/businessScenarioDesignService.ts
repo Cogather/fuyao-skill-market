@@ -11,6 +11,7 @@ export type WorkflowAssetType = 'SKILL' | 'AGENT';
 export type WorkflowComponentType = WorkflowAssetType | 'COMMAND';
 export interface WorkflowSceneRow extends WorkflowSceneKey {
   sort: number;
+  firstSceneDescription?: string | null;
   sceneExtensionCode?: string | null;
   secondSceneDescription?: string | null;
   flowName?: string | null;

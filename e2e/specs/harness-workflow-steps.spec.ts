@@ -37,8 +37,7 @@ test('四步向导保留独立编辑行、说明和调序，并将节点顺序�
   const harness = new HarnessManagementPage(page);
   await harness.goto();
   await harness.switchToScenarios();
-  await harness.scenariosDepartmentTrigger.click();
-  await harness.scenariosPanel.getByRole('button', { name: '平台工具组', exact: true }).click();
+  await harness.selectScenarioDepartment('平台工具组');
   await harness.scenariosPanel
     .getByRole('combobox', { name: '选择产品', exact: true })
     .selectOption({ label: 'harness-demo' });
@@ -55,7 +54,7 @@ test('四步向导保留独立编辑行、说明和调序，并将节点顺序�
     stage.locator('.node-item').filter({ hasText: name });
 
   await wizard.getByLabel('场景编码 *').fill('harness-demo-workflow-step-order');
-  await wizard.getByLabel('场景说明与目标 *').fill('验证环节、节点的说明、编排顺序和资产绑定。');
+  await wizard.getByLabel('场景说明与目标').fill('验证环节、节点的说明、编排顺序和资产绑定。');
   await expect(previous).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath('workflow-step-1-scenario.png') });
   await next.click();
@@ -168,7 +167,7 @@ test('四步向导保留独立编辑行、说明和调序，并将节点顺序�
   await expectStepTwo();
   await previous.click();
   await expect(wizard.getByLabel('场景编码 *')).toHaveValue('harness-demo-workflow-step-order');
-  await expect(wizard.getByLabel('场景说明与目标 *')).toHaveValue(
+  await expect(wizard.getByLabel('场景说明与目标')).toHaveValue(
     '验证环节、节点的说明、编排顺序和资产绑定。',
   );
   await next.click();

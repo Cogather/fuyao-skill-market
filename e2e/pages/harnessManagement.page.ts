@@ -153,7 +153,10 @@ export class HarnessManagementPage {
   }
 
   capabilityManagementTab(name: 'Command 清单' | 'Skill 清单' | 'Agent 清单' | 'Extension 发布') {
-    return this.capabilityManagementTabList.getByRole('tab', { name, exact: true });
+    return this.capabilityManagementTabList.getByRole('tab', {
+      name: name.replace(/ (清单|发布)$/, ''),
+      exact: true,
+    });
   }
 
   /** 切换到只读的「Harness 工作流」清单，并等待面板渲染。 */
@@ -164,7 +167,16 @@ export class HarnessManagementPage {
 
   /** 在 Harness 工作流清单中切换部门范围。 */
   async selectWorkflowDepartment(departmentName: string): Promise<void> {
-    await this.workflowsDepartmentTrigger.click();
+    await this.selectDepartment(this.workflowsDepartmentTrigger, departmentName);
+  }
+
+  /** 在业务场景设计中搜索并确认部门。 */
+  async selectScenarioDepartment(departmentName: string): Promise<void> {
+    await this.selectDepartment(this.scenariosDepartmentTrigger, departmentName);
+  }
+
+  private async selectDepartment(trigger: Locator, departmentName: string): Promise<void> {
+    await trigger.click();
     const picker = this.page.getByRole('listbox');
     await picker.getByRole('searchbox', { name: '搜索部门', exact: true }).fill(departmentName);
     await picker
@@ -224,7 +236,7 @@ export class HarnessManagementPage {
     await scenarioDialog.waitFor({ state: 'hidden' });
   }
 
-  /** 新建二级场景，打开 Workflow 向导即落一条草稿，再通过关闭按钮返回。 */
+  /** 新建二级场景，填写流程名称并保存草稿，再通过关闭按钮返回。 */
   async createDraftScenarioWorkflow(options: {
     parentScenarioName: string;
     scenarioName: string;
@@ -236,6 +248,12 @@ export class HarnessManagementPage {
       .getByRole('button', { name: '+ 开始设计 Workflow', exact: true })
       .click();
     await this.workflowDesignDialog.waitFor();
+    await this.workflowDesignDialog.getByRole('button', { name: '下一步', exact: true }).click();
+    await this.workflowDesignDialog
+      .getByLabel('流程名称', { exact: true })
+      .fill(`${options.scenarioName}作业流`);
+    await this.workflowDesignDialog.getByRole('button', { name: '保存', exact: true }).click();
+    await this.workflowDesignDialog.getByText('已保存', { exact: true }).waitFor();
     await this.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await this.workflowDesignDialog.waitFor({ state: 'hidden' });
   }
@@ -264,6 +282,9 @@ export class HarnessManagementPage {
       .click();
     await this.workflowDesignDialog.waitFor();
     await this.workflowDesignDialog.getByRole('button', { name: '下一步', exact: true }).click();
+    await this.workflowDesignDialog
+      .getByLabel('流程名称', { exact: true })
+      .fill(`${options.scenarioName}作业流`);
 
     await this.workflowDesignDialog
       .getByRole('button', { name: '+ 添加环节', exact: true })

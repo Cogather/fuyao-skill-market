@@ -1,4 +1,26 @@
 import { expect, test } from '../fixtures/base';
+import { HarnessManagementPage } from '../pages/harnessManagement.page';
+
+test('缺失编码时从流程规划返回分析页修正，并保留未保存的流程信息', async ({ page }) => {
+  test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT === 'http', '需要 Mock 模式');
+  const harness = new HarnessManagementPage(page);
+  await harness.goto();
+  await harness.openScenarioDesign();
+  const wizard = harness.workflowDesignDialog;
+  await wizard.getByRole('button', { name: '关闭 Workflow 设计', exact: true }).click();
+  await harness.scenariosPanel
+    .locator('.workflow-card .progress')
+    .getByRole('button')
+    .nth(1)
+    .click();
+  await wizard.getByLabel('流程名称', { exact: true }).fill('待保存流程');
+  await wizard.getByRole('button', { name: '上一步', exact: true }).click();
+  await expect(wizard.getByLabel(/^场景编码/)).toBeVisible();
+  await expect(wizard.locator('.wizard-footer .error')).toContainText('场景编码不符合');
+  await wizard.getByLabel(/^场景编码/).fill('harness-pipeline-corrected');
+  await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+  await expect(wizard.getByLabel('流程名称', { exact: true })).toHaveValue('待保存流程');
+});
 
 test('Mock 向导四个步骤均显示保存，流程修改保存到本地', async ({ page }) => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT === 'http', '需要 Mock 模式');

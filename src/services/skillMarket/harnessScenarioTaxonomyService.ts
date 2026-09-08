@@ -7,6 +7,7 @@ import { httpDimContext } from './skillPlanningService';
 
 export type TaxonomyRecord = SceneRecord & {
   tags?: string[];
+  firstSceneDescription?: string | null;
   sceneExtensionCode?: string | null;
   secondSceneDescription?: string | null;
   flowName?: string | null;
@@ -32,6 +33,7 @@ export interface TaxonomyScope {
 type TaxonomyKind = 'scene' | 'activity';
 
 interface NormalizedTaxonomyRow {
+  firstSceneDescription?: string;
   metadata: Pick<
     TaxonomyRecord,
     'sceneExtensionCode' | 'secondSceneDescription' | 'flowName' | 'flowDescription'
@@ -301,6 +303,9 @@ function normalizeHttpRows(
     const parsedReferenceCount = Number(record.referenceCount);
     return [
       {
+        ...(kind === 'scene' && 'firstSceneDescription' in record
+          ? { firstSceneDescription: readText(record.firstSceneDescription) }
+          : {}),
         metadata:
           kind === 'scene'
             ? Object.fromEntries(
@@ -356,8 +361,12 @@ function mapHttpRowsToRecords(
       serverRecordId(kind, 'primary', primaryServerId) ||
       derivedPrimaryId(kind, primary);
     identities.primary[primary] = parentId;
+    const descriptionRow =
+      groupRows.find((row) => !row.secondary && row.firstSceneDescription !== undefined) ??
+      groupRows.find((row) => row.firstSceneDescription !== undefined);
 
     records.push({
+      ...(descriptionRow ? { firstSceneDescription: descriptionRow.firstSceneDescription } : {}),
       id: parentId,
       parentId: null,
       name: primary,
@@ -429,6 +438,9 @@ function toSceneItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
         .sort((left, right) => left.sort - right.sort);
       (children.length ? children : [null]).forEach((child) => {
         rows.push({
+          ...('firstSceneDescription' in parent
+            ? { firstSceneDescription: parent.firstSceneDescription ?? '' }
+            : {}),
           ...(child
             ? Object.fromEntries(
                 ['sceneExtensionCode', 'secondSceneDescription', 'flowName', 'flowDescription']

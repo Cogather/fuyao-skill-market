@@ -257,7 +257,7 @@ test.describe('业务场景设计 HTTP', () => {
         mutationsBeforeInvalidCode,
       );
       await wizard.getByLabel(/^场景编码/).fill('demo-design');
-      await wizard.getByLabel('场景说明与目标 *').fill('已保存的场景目标');
+      await wizard.getByLabel('场景说明与目标').fill('已保存的场景目标');
       await wizard.getByRole('button', { name: '下一步', exact: true }).click();
       await wizard.getByLabel('流程名称', { exact: true }).fill('服务端工作流');
       await expect(wizard.locator('.wizard-save-status')).toContainText('有未保存修改');
@@ -308,6 +308,7 @@ test.describe('业务场景设计 HTTP', () => {
       }
       if (missingCommandName) {
         await wizard.getByRole('button', { name: '+ 新定义 Command', exact: true }).click();
+        await expect(wizard.getByRole('textbox', { name: /^Command 名称/ })).toHaveValue('/demo-');
         await wizard.getByRole('textbox', { name: /^Command 名称/ }).fill(commandName);
         await fillCapabilityPeople();
         await wizard.getByRole('button', { name: '创建并加入资产清单', exact: true }).click();
@@ -327,6 +328,9 @@ test.describe('业务场景设计 HTTP', () => {
       if (missingCommandName) {
         for (const type of ['Skill', 'Agent']) {
           await wizard.getByRole('button', { name: `+ 自定义 ${type}`, exact: true }).click();
+          await expect(
+            wizard.getByRole('textbox', { name: new RegExp(`^${type} 名称`) }),
+          ).toHaveValue('demo-');
           await wizard
             .getByRole('textbox', { name: new RegExp(`^${type} 名称`) })
             .fill(`demo-created-${type.toLowerCase()}`);

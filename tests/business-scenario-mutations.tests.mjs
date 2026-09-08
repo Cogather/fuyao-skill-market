@@ -43,6 +43,7 @@ try {
     let rows = [
       {
         firstScene: '研发',
+        firstSceneDescription: '一级研发说明',
         secondScene: '代码生成',
         sort: 0,
         sceneExtensionCode: 'demo-old',
@@ -158,6 +159,66 @@ try {
     calls.length = 0;
     return { workspace, scenario, workflow, calls, detail: () => detail };
   }
+  await test('HTTP scene loading maps first and second scene descriptions to their respective levels', async () => {
+    const f = await fixture();
+    assert.equal(
+      f.workspace.scenarios.find((item) => item.level === 1).description,
+      '一级研发说明',
+    );
+    assert.equal(f.scenario.description, '旧目标');
+  });
+  await test('creating a root scene sends firstSceneDescription and restores it after reloading', async () => {
+    const f = await fixture();
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    const saved = await f.workspace.saveScenario({
+      ...root,
+      _id: 'new-root',
+      sourceId: undefined,
+      name: '交付发布',
+      description: '  发布目标\n输入输出与业务边界  ',
+      tags: [],
+    });
+    const writes = f.calls.filter(([op]) => ['refresh', 'code', 'meta'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['refresh'],
+    );
+    const created = writes[0][1].scenes.find((item) => item.firstScene === '交付发布');
+    assert.equal(created.secondScene, '');
+    assert.equal(created.firstSceneDescription, '发布目标\n输入输出与业务边界');
+    assert.equal(
+      writes[0][1].scenes.find((item) => item.firstScene === '研发').firstSceneDescription,
+      '一级研发说明',
+    );
+    await f.workspace.reloadScenes();
+    assert.equal(
+      f.workspace.scenarios.find((item) => item._id === saved._id).description,
+      '发布目标\n输入输出与业务边界',
+    );
+  });
+  await test('updating, renaming and clearing a root description persists firstSceneDescription without changing child metadata', async () => {
+    const f = await fixture();
+    const rootId = f.workspace.scenarios.find((item) => item.level === 1)._id;
+    for (const [name, description, expected] of [
+      ['研发', '  修改后的一级说明  ', '修改后的一级说明'],
+      ['研发设计', '改名后的一级说明', '改名后的一级说明'],
+      ['研发设计', '   ', ''],
+    ]) {
+      const root = f.workspace.scenarios.find((item) => item._id === rootId);
+      await f.workspace.saveScenario({ ...root, name, description });
+      const rows = f.calls.filter(([op]) => op === 'refresh').at(-1)[1].scenes;
+      assert.equal(rows[0].firstScene, name);
+      assert.equal(rows[0].firstSceneDescription, expected);
+      assert.equal(rows[0].secondSceneDescription, '旧目标');
+      assert.equal(rows[0].sceneExtensionCode, 'demo-old');
+      await f.workspace.reloadScenes();
+      assert.equal(f.workspace.scenarios.find((item) => item._id === rootId).description, expected);
+    }
+    assert.equal(
+      f.calls.some(([op]) => ['code', 'meta'].includes(op)),
+      false,
+    );
+  });
   await test('creating a child scene sends its entered code and description in the initial scene refresh', async () => {
     const f = await fixture();
     const root = f.workspace.scenarios.find((item) => item.level === 1);
@@ -179,6 +240,10 @@ try {
       ['refresh', 'code'],
     );
     const rows = writes[0][1].scenes;
+    assert.deepEqual(
+      rows.map((item) => item.firstSceneDescription),
+      ['一级研发说明', '一级研发说明'],
+    );
     assert.equal(
       rows.find((item) => item.secondScene === '新增下级场景').sceneExtensionCode,
       'demo-child-extension',
@@ -238,14 +303,24 @@ try {
       _id: 'draft-id',
       sourceId: undefined,
       name: '新一级场景',
+      description: '刷新失败也要保留的一级说明',
       tags: [],
     };
     await assert.rejects(() => f.workspace.saveScenario(scene), /list readback outage/);
     assert.ok(scene.sourceId);
     const committedId = scene._id;
+    assert.equal(
+      f.workspace.scenarios.find((item) => item._id === committedId).description,
+      '刷新失败也要保留的一级说明',
+    );
     await f.workspace.saveScenario(scene);
     assert.equal(scene._id, committedId);
     assert.equal(f.workspace.scenarios.filter((item) => item.name === scene.name).length, 1);
+    await f.workspace.reloadScenes();
+    assert.equal(
+      f.workspace.scenarios.find((item) => item._id === committedId).description,
+      '刷新失败也要保留的一级说明',
+    );
   });
   await test('a bound child or its parent cannot be renamed and no mutation is issued', async () => {
     const f = await fixture({ bound: true });
@@ -271,6 +346,8 @@ try {
   await test('invalid extension names are rejected on every save before HTTP mutations', async () => {
     const f = await fixture();
     for (const code of [
+      '',
+      'demo-',
       'Demo-name',
       'demo_name',
       'demo--name',

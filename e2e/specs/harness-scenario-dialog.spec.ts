@@ -52,9 +52,9 @@ test('从工作流页进入设计后，仅关闭按钮退出，误操作保留�
   await harness.openScenariosFromWorkflows();
   await harness.openScenarioDesign();
   const wizard = harness.workflowDesignDialog;
-  await wizard.getByLabel('场景说明与目标 *').fill('尚未保存的设计内容');
+  await wizard.getByLabel('场景说明与目标').fill('尚未保存的设计内容');
   await expectExplicitDismissalOnly(page, wizard);
-  await expect(wizard.getByLabel('场景说明与目标 *')).toHaveValue('尚未保存的设计内容');
+  await expect(wizard.getByLabel('场景说明与目标')).toHaveValue('尚未保存的设计内容');
   await wizard.getByRole('button', { name: '关闭 Workflow 设计', exact: true }).click();
   await expect(wizard).toBeHidden();
 });

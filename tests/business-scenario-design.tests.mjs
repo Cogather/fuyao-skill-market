@@ -43,10 +43,16 @@ try {
     assert.equal(calls.at(-1).data.activityNodeName, null);
     assert.equal(calls.at(-1).data.subActivityNodeName, null);
   });
-  await test('scene refresh includes empty metadata for a new root and retains existing child metadata', async () => {
-    const root = { firstScene: '新建一级场景', secondScene: '', sort: 0 };
+  await test('scene refresh sends firstSceneDescription and retains existing child metadata', async () => {
+    const root = {
+      firstScene: '新建一级场景',
+      firstSceneDescription: '一级场景目标',
+      secondScene: '',
+      sort: 0,
+    };
     const child = {
       ...scene,
+      firstSceneDescription: '研发说明',
       sort: 1,
       sceneExtensionCode: 'demo-code',
       secondSceneDescription: '场景目标',

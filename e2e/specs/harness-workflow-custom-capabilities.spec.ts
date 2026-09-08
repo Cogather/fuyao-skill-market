@@ -11,7 +11,7 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
   await harness.openScenarioDesign();
   const wizard = harness.workflowDesignDialog;
   await wizard.getByLabel('场景编码 *').fill('harness-pipeline-personnel');
-  await wizard.getByLabel('场景说明与目标 *').fill('执行研发任务并保留责任人信息');
+  await wizard.getByLabel('场景说明与目标').fill('执行研发任务并保留责任人信息');
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
   await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
   await wizard.getByPlaceholder('环节名称').fill('实现');
@@ -22,6 +22,7 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
   await wizard.getByRole('button', { name: '+ 新定义 Command', exact: true }).click();
   const form = wizard.locator('.capability-create-form');
+  await expect(form.getByPlaceholder(/e2e-codec$/)).toHaveValue('/harness-pipeline-');
   await form.getByPlaceholder(/e2e-codec$/).fill('  /harness-pipeline-e2e-people  ');
   await form.getByPlaceholder('描述 *').fill('研发入口');
   await form.locator('input[type="date"]').fill('2026-12-31');
@@ -45,6 +46,9 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
 
   for (const type of ['Skill', 'Agent'] as const) {
     await wizard.getByRole('button', { name: `+ 自定义 ${type}`, exact: true }).click();
+    await expect(form.getByRole('textbox', { name: new RegExp(`${type} 名称`) })).toHaveValue(
+      'harness-pipeline-',
+    );
     await expect(form.getByRole('button', { name: type, exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',

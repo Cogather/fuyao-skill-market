@@ -255,7 +255,9 @@ test('资产搜索栏和候选行铺满面板，添加按钮使用紧凑高度',
   await page.screenshot({ path: testInfo.outputPath('workflow-asset-search.png') });
 });
 
-test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保留资产快照', async ({ page }) => {
+test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保留资产快照', async ({
+  page,
+}, testInfo) => {
   test.skip(
     process.env.VITE_SKILL_MARKET_TRANSPORT === 'http',
     '使用本地 Mock 资产验证跨产品搜索和保存',
@@ -295,8 +297,7 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
   const harness = new HarnessManagementPage(page);
   await harness.goto();
   await harness.switchToScenarios();
-  await harness.scenariosDepartmentTrigger.click();
-  await harness.scenariosPanel.getByRole('button', { name: '平台工具组', exact: true }).click();
+  await harness.selectScenarioDepartment('平台工具组');
   await harness.scenariosPanel
     .getByRole('combobox', { name: '选择产品', exact: true })
     .selectOption({ label: 'harness-demo' });
@@ -307,7 +308,7 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
   await harness.openScenarioDesign();
   const wizard = harness.workflowDesignDialog;
   await wizard.getByLabel('场景编码 *').fill('harness-demo-remote-agent');
-  await wizard.getByLabel('场景说明与目标 *').fill('从其他产品搜索并复用代码评审 Agent。');
+  await wizard.getByLabel('场景说明与目标').fill('从其他产品搜索并复用代码评审 Agent。');
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
   await wizard.getByLabel('流程名称').fill('跨产品资产搜索工作流');
   await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
@@ -331,7 +332,7 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
   await remote.getByRole('button', { name: '+ 添加', exact: true }).click();
   await expect(remote.getByRole('button', { name: '已在池中', exact: true })).toBeDisabled();
   await page.screenshot({
-    path: 'D:/Codex/home/visualizations/2026/09/06/01a076cf-835a-7922-9f20-13a4606e2ff3/workflow-capability-picker.png',
+    path: testInfo.outputPath('workflow-capability-picker.png'),
   });
   await wizard.getByRole('button', { name: '清空搜索', exact: true }).click();
   await expect(

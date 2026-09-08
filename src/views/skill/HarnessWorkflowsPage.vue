@@ -135,7 +135,7 @@ const visibleRows = computed(() => {
       const department = product ? departmentById.value.get(product.departmentId) : undefined;
       return {
         id: workflow._id,
-        name: workflow.name,
+        name: workflow.name || '未命名 Workflow',
         description: workflow.description,
         commandCount: workflow.commands?.length || 0,
         scenarioDescription: scenario?.description || '',

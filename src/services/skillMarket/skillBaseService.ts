@@ -40,6 +40,7 @@ export interface SceneOptionGroupRow {
   deptCode: string;
   deptName: string;
   firstScene: string;
+  firstSceneDescription?: string | null;
   secondScene: string;
   tags: string[];
   sort: number;
@@ -62,6 +63,7 @@ export type ActivityOptionGroupsResponse =
 
 export interface RefreshTaxonomyItem {
   firstScene?: string;
+  firstSceneDescription?: string | null;
   secondScene?: string;
   activityNodeName?: string;
   subActivityNodeName?: string;
