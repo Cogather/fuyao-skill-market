@@ -251,7 +251,6 @@ onBeforeUnmount(() => {
     </header>
 
     <section class="dept-product-selector" aria-label="工作流范围筛选">
-      <span class="selector-icon" aria-hidden="true">🏢</span>
       <HarnessDepartmentPicker
         class="dept-picker"
         :active="props.active"
@@ -483,16 +482,6 @@ onBeforeUnmount(() => {
   gap: 0.6rem;
   padding: 0.85rem 1rem;
   margin-bottom: 1.5rem;
-}
-.selector-icon {
-  display: inline-grid;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  place-items: center;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #eff6ff, #e0e7ff);
-  font-size: 16px;
 }
 .dept-picker {
   position: relative;
