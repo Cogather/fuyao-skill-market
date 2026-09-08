@@ -40,6 +40,7 @@ const props = withDefaults(
     searchable?: boolean;
     searchPlaceholder?: string;
     disabled?: boolean;
+    matchTriggerWidth?: boolean;
   }>(),
   {
     maxLevel: 6,
@@ -52,6 +53,7 @@ const props = withDefaults(
     searchable: false,
     searchPlaceholder: '搜索部门',
     disabled: false,
+    matchTriggerWidth: false,
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
     clearText: '清空部门',
@@ -266,7 +268,7 @@ function updatePanelLayout(): void {
   panelLayout.value = {
     left: Math.floor(fromLeft),
     top: Math.floor(rect.bottom + 4),
-    maxWidth: Math.min(720, usable),
+    maxWidth: Math.min(props.matchTriggerWidth ? Math.floor(rect.width) : 720, usable),
   };
   if (panelLayout.value) panelLayout.value.top = nextTop;
   panelMaxHeight.value = maxHeight;
@@ -281,6 +283,7 @@ const panelStyle = computed((): CSSProperties => {
     position: 'fixed',
     left: `${layout.left}px`,
     top: `${layout.top}px`,
+    ...(props.matchTriggerWidth ? { width: `${layout.maxWidth}px` } : {}),
     maxWidth: `${layout.maxWidth}px`,
     maxHeight: `${panelMaxHeight.value}px`,
     zIndex: 2400,
@@ -421,6 +424,7 @@ onBeforeUnmount(() => {
       class="market-dept-cascader-trigger"
       :class="{ 'is-open': open }"
       :disabled="disabled"
+      :aria-label="ariaLabel"
       aria-haspopup="true"
       :aria-expanded="open"
       @click.stop="toggle"
@@ -436,6 +440,7 @@ onBeforeUnmount(() => {
         v-if="open"
         ref="panelRef"
         class="market-dept-cascader-panel"
+        :class="{ 'market-dept-cascader-panel--wide': matchTriggerWidth }"
         :style="panelStyle"
         role="listbox"
         @mousedown.stop
@@ -696,6 +701,11 @@ onBeforeUnmount(() => {
 
 .market-dept-cascader-col:last-of-type {
   border-right: 0;
+}
+
+.market-dept-cascader-panel--wide .market-dept-cascader-col {
+  flex: 1 0 140px;
+  max-width: none;
 }
 
 .market-dept-cascader-item {

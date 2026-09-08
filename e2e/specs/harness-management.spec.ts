@@ -21,8 +21,8 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(harnessPage.scenariosPanel).toBeVisible();
     const tabs = harnessPage.tabList.getByRole('tab');
     await expect(tabs.nth(0)).toHaveText('业务场景设计');
-    await expect(tabs.nth(1)).toHaveText('资产清单');
-    await expect(tabs.nth(2)).toHaveText('Harness 工作流');
+    await expect(tabs.nth(1)).toHaveText('Harness 工作流');
+    await expect(tabs.nth(2)).toHaveText('资产清单');
     for (const name of ['Command 规划', 'Skill 规划', 'Agent 规划', 'Extension 发布']) {
       await expect(harnessPage.tabList.getByRole('tab', { name, exact: true })).toHaveCount(0);
     }
@@ -88,7 +88,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(
       harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }),
     ).toBeFocused();
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await expect(harnessPage.continueWorkflowDesignButton).toBeFocused();
   });
@@ -100,7 +100,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
 
     const wizard = harnessPage.workflowDesignDialog;
     await wizard.getByLabel('场景编码 *').fill('harness-pipeline-code-generation');
-    await wizard.getByLabel('场景说明与目标 *').fill('生成流水线相关代码并完成交付校验。');
+    await wizard.getByLabel('场景说明与目标').fill('生成流水线相关代码并完成交付校验。');
     await wizard.getByRole('button', { name: '下一步', exact: true }).click();
 
     await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
@@ -209,7 +209,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.openScenariosFromWorkflows();
     await expect(harnessPage.codeGenerationScenario).toBeVisible();
     await harnessPage.openScenarioDesign();
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await harnessPage.switchToWorkflows();
 
@@ -225,9 +225,9 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(harnessPage.workflowStatusButton('已发布')).toHaveText(/已发布\s*0/);
     await expect(harnessPage.workflowStatusButton('设计中')).toHaveText(/设计中\s*1/);
 
-    const draftRow = harnessPage.workflowInventoryRow('代码生成作业流');
+    const draftRow = harnessPage.workflowInventoryRow('未命名 Workflow');
     await expect(draftRow.getByRole('cell')).toHaveText([
-      '代码生成作业流',
+      '未命名 Workflow',
       'harness-pipeline',
       '持续交付组',
       '设计中',
@@ -256,11 +256,11 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.goto();
     await harnessPage.switchToScenarios();
     await harnessPage.openScenarioDesign();
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await harnessPage.switchToWorkflows();
 
-    const draftRow = harnessPage.workflowInventoryRow('代码生成作业流');
+    const draftRow = harnessPage.workflowInventoryRow('未命名 Workflow');
     await harnessPage.selectWorkflowProduct('harness-pipeline');
     await expect(draftRow).toBeVisible();
 
@@ -299,7 +299,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.goto();
     await harnessPage.switchToScenarios();
     await harnessPage.openScenarioDesign();
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
 
     for (let index = 1; index <= 10; index += 1) {
@@ -316,19 +316,19 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await harnessPage.selectWorkflowProduct('harness-pipeline');
     await expect(harnessPage.workflowsPanel.getByText('共 11 条', { exact: true })).toBeVisible();
     await expect(harnessPage.workflowsTable.locator('tbody').getByRole('row')).toHaveCount(10);
-    await expect(harnessPage.workflowInventoryRow('代码生成作业流')).toBeVisible();
+    await expect(harnessPage.workflowInventoryRow('未命名 Workflow')).toBeVisible();
 
     await harnessPage.workflowsNextPageButton.click();
     await expect(harnessPage.workflowsTable.locator('tbody').getByRole('row')).toHaveCount(1);
     await expect(harnessPage.workflowInventoryRow('分页场景10作业流')).toBeVisible();
 
     await harnessPage.workflowsPreviousPageButton.click();
-    await expect(harnessPage.workflowInventoryRow('代码生成作业流')).toBeVisible();
+    await expect(harnessPage.workflowInventoryRow('未命名 Workflow')).toBeVisible();
 
     await harnessPage.workflowsNextPageButton.click();
     await expect(harnessPage.workflowInventoryRow('分页场景10作业流')).toBeVisible();
     await harnessPage.workflowStatusButton('设计中').click();
-    await expect(harnessPage.workflowInventoryRow('代码生成作业流')).toBeVisible();
+    await expect(harnessPage.workflowInventoryRow('未命名 Workflow')).toBeVisible();
     await expect(harnessPage.workflowInventoryRow('分页场景10作业流')).toHaveCount(0);
   });
 
@@ -373,7 +373,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
       harnessPage.workflowDesignDialog.getByText(nodeName, { exact: true }),
     ).toBeVisible();
 
-    await harnessPage.page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await harnessPage.switchToWorkflows();
     await harnessPage.selectWorkflowProduct('harness-pipeline');

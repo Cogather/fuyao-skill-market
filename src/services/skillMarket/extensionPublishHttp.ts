@@ -7,6 +7,7 @@ import type {
   ExtensionScene,
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
+import { harnessWorkflowService } from './businessScenarioDesignService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
 import {
@@ -269,10 +270,9 @@ function mapCapability(
       stableId([sceneKey, type, name || String(index)]),
     name,
     version,
-    publishDate: normalizeDate(record.uploadAt ?? record.updatedAt ?? record.publishedAt).slice(
-      0,
-      10,
-    ),
+    publishDate: normalizeDate(
+      record.uploadedAt ?? record.uploadAt ?? record.updatedAt ?? record.publishedAt,
+    ).slice(0, 10),
     ready: explicitReady ?? Boolean(name && version),
     files: directFilePath ? [{ name: directFilePath, content: '' }] : [],
   };
@@ -325,9 +325,11 @@ function mapBindingScenes(
         const publishing = sceneReleases.find((release) => release.status === '进行中') ?? null;
         const completedReleases = sceneReleases.filter((release) => release.status !== '进行中');
         const latestRelease = sceneReleases[0];
+        const publishedExtension = asRecord(secondRecord.publishedExtension);
         const capabilityList = Object.values(capabilities).flat();
         const explicitReady = normalizeReady(
-          secondRecord.publishable ??
+          secondRecord.readyStatus ??
+            secondRecord.publishable ??
             secondRecord.ready ??
             secondRecord.status ??
             secondRecord.subScenes,
@@ -341,8 +343,11 @@ function mapBindingScenes(
             explicitReady ??
             (capabilityList.length > 0 && capabilityList.every((capability) => capability.ready)),
           extension: {
-            name: latestRelease?.extensionName ?? '',
-            description: latestRelease?.description ?? '',
+            name:
+              readText(publishedExtension, ['extensionName']) || latestRelease?.extensionName || '',
+            description:
+              readText(publishedExtension, ['description']) || latestRelease?.description || '',
+            version: readText(publishedExtension, ['version']),
           },
           capabilities,
           releases: completedReleases,
@@ -472,11 +477,64 @@ export async function queryHttpExtensionBindings(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
-  const bindingScenes = await queryHttpHydratedExtensionScenes(userId, scope);
-  return (
-    bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ??
-    scene
+  const normalizedUserId = requiredText(userId, '尚未获取当前用户工号');
+  let selectedScene = scene;
+  let releases: HttpExtensionRelease[];
+  if (!normalizeText(scene.extension.name)) {
+    // The scene picker contains names only. Resolve its Extension identity once
+    // through the existing binding query before requesting the single detail.
+    const bindingScenes = await queryHttpHydratedExtensionScenes(normalizedUserId, scope);
+    selectedScene =
+      bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ??
+      scene;
+    releases = [
+      ...(selectedScene.publishing ? [selectedScene.publishing] : []),
+      ...selectedScene.releases,
+    ].map((release) => ({
+      ...release,
+      firstScene: selectedScene.primary,
+      secondScene: selectedScene.name,
+    }));
+  } else {
+    releases = await queryAllHistory(scope);
+  }
+
+  const extensionName = normalizeText(selectedScene.extension.name);
+  // A scene that has never been published can still use the existing publish flow.
+  if (!extensionName) return selectedScene;
+
+  const response = await harnessWorkflowService.queryExtensionSceneDetail(
+    { userId: normalizedUserId },
+    { dimType: scope.dimType, dimCode: scope.dimCode, dimName: scope.dimName, extensionName },
   );
+  assertHttpSuccess(response, 'Extension 详情加载失败');
+  const data = asRecord(unwrapResponseData(response));
+  const firstScene = requiredText(data.firstScene, 'Extension 详情缺少一级场景');
+  const secondScene = requiredText(data.secondScene, 'Extension 详情缺少二级场景');
+  const publishedExtension = asRecord(data.publishedExtension);
+  const summary = mapHistoryRelease({ ...publishedExtension, firstScene, secondScene });
+  if (summary.extensionName && summary.version) {
+    const previous = releases.find(
+      (release) =>
+        sameScene(release, firstScene, secondScene) && release.version === summary.version,
+    );
+    const current = previous
+      ? {
+          ...previous,
+          extensionName: summary.extensionName,
+          description: summary.description,
+          status: summary.status,
+        }
+      : summary;
+    releases = [current, ...releases.filter((release) => release !== previous)];
+  }
+  const detail = mapBindingScenes(
+    { data: [{ firstScene, secondScenes: [data] }] },
+    scope,
+    releases,
+  )[0]!;
+  detail.extension.name ||= extensionName;
+  return detail;
 }
 
 export async function queryHttpExtensionHistory(

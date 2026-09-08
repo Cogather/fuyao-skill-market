@@ -6,8 +6,7 @@ const workspaceKey = 'harness-scenario-workspace-v2:mock:w30000001';
 async function openExperience(harness: HarnessManagementPage) {
   await harness.goto();
   await harness.switchToScenarios();
-  await harness.scenariosDepartmentTrigger.click();
-  await harness.scenariosPanel.getByRole('button', { name: '平台工具组', exact: true }).click();
+  await harness.selectScenarioDepartment('平台工具组');
   const products = harness.scenariosPanel.getByRole('combobox', { name: '选择产品', exact: true });
   await expect(products).toBeVisible();
   await products.selectOption({ label: 'harness-demo' });
@@ -25,7 +24,7 @@ test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', 
   const wizard = harness.workflowDesignDialog;
   await wizard.getByLabel('场景编码 *').fill('harness-demo-api-development');
   await wizard
-    .getByLabel('场景说明与目标 *')
+    .getByLabel('场景说明与目标')
     .fill('根据接口需求生成实现代码，并输出代码评审结论。');
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
   await wizard.getByLabel('流程名称').fill('接口开发体验工作流');

@@ -80,14 +80,14 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
     description: '按产品与场景逐层组织业务，并编排端到端 Workflow。',
   },
   {
-    key: 'capabilities',
-    label: '资产清单',
-    description: '统一管理 Command、Skill、Agent 清单与 Extension 发布。',
-  },
-  {
     key: 'workflows',
     label: 'Harness 工作流',
     description: '集中查看所选部门及各业务场景关联的 Harness 工作流。',
+  },
+  {
+    key: 'capabilities',
+    label: '资产清单',
+    description: '统一管理 Command、Skill、Agent 清单与 Extension 发布。',
   },
   {
     key: 'assets',
@@ -485,10 +485,8 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              ['workflows', 'assets'].includes(tab.key)
-                ? false
-                : showLegacyPlanningTabs ||
-                  !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              showLegacyPlanningTabs ||
+              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -543,7 +541,10 @@ onBeforeRouteLeave(() => {
       role="tabpanel"
       aria-labelledby="harness-tab-scenarios"
     >
-      <BusinessScenarioDesignPage :workspace="scenarioWorkspace" />
+      <BusinessScenarioDesignPage
+        :workspace="scenarioWorkspace"
+        :active="activeHarnessTab === 'scenarios'"
+      />
     </section>
 
     <section
@@ -580,6 +581,7 @@ onBeforeRouteLeave(() => {
     >
       <HarnessWorkflowsPage
         :workspace="scenarioWorkspace"
+        :active="activeHarnessTab === 'workflows'"
         @open-scenarios="selectHarnessTab('scenarios')"
       />
     </section>

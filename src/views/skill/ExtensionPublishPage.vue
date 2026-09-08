@@ -632,6 +632,12 @@ function sortedReleases(scene: ExtensionScene): ExtensionRelease[] {
 }
 
 function latestSuccessfulRelease(scene: ExtensionScene): ExtensionRelease | null {
+  const publishedRelease = scene.extension.version
+    ? scene.releases.find(
+        (release) => release.version === scene.extension.version && release.status === '成功',
+      )
+    : undefined;
+  if (publishedRelease) return publishedRelease;
   return sortedReleases(scene).find((release) => release.status === '成功') ?? null;
 }
 

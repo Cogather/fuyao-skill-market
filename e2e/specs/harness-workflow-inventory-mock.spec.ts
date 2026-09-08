@@ -96,13 +96,13 @@ test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新
   await expect(harness.workflowsPanel.getByText('共 15 条', { exact: true })).toBeVisible();
   await harness.openScenariosFromWorkflows();
   await harness.openScenarioDesign();
-  await page.keyboard.press('Escape');
+  await harness.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
   await expect(harness.workflowDesignDialog).toBeHidden();
 
   const expected = await page.evaluate((key) => {
     const saved = JSON.parse(localStorage.getItem(key)!);
     const draft = saved.workflows.find(
-      (workflow: { name: string }) => workflow.name === '代码生成作业流',
+      (workflow: { name: string }) => workflow.name === '',
     );
     const samples = saved.workflows.filter(
       (workflow: { name: string }) => workflow.name !== draft.name,
@@ -126,7 +126,7 @@ test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新
     await page.reload();
     await harness.switchToWorkflows();
     await harness.selectWorkflowProduct('harness-pipeline');
-    await expect(harness.workflowInventoryRow('代码生成作业流')).toBeVisible();
+    await expect(harness.workflowInventoryRow('未命名 Workflow')).toBeVisible();
     const saved = await page.evaluate(
       (key) => JSON.parse(localStorage.getItem(key)!),
       workspaceKey,
@@ -134,7 +134,7 @@ test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新
     expect(saved.workflows).toHaveLength(expected.total);
     expect(
       saved.workflows.find((workflow: { _id: string }) => workflow._id === expected.draftId)?.name,
-    ).toBe('代码生成作业流');
+    ).toBe('');
     expect(
       saved.workflows.find((workflow: { _id: string }) => workflow._id === expected.editedId)?.name,
     ).toBe('用户保留的工作流名称');

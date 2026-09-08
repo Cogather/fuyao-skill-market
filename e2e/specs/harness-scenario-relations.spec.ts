@@ -40,20 +40,20 @@ test.describe('Harness 场景与流程关系', () => {
 
     await startWorkflow.click();
     await expect(harnessPage.workflowDesignDialog).toBeVisible();
-    await expect(harnessPage.workflowDesignDialog.locator('input[readonly]').first()).toHaveValue(
+    await expect(harnessPage.workflowDesignDialog.getByLabel(/^场景名称/)).toHaveValue(
       '代码生成',
     );
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
 
-    const codeGenerationWorkflow = harnessPage.workflowCard('代码生成作业流');
+    const codeGenerationWorkflow = harnessPage.workflowCard('未命名 Workflow');
     await expect(workflowCards).toHaveCount(1);
     await expect(codeGenerationWorkflow).toBeVisible();
     await expect(startWorkflow).toHaveCount(0);
 
     await codeGenerationWorkflow.getByRole('button', { name: '继续设计', exact: true }).click();
     await expect(harnessPage.workflowDesignDialog).toBeVisible();
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
     await expect(workflowCards).toHaveCount(1);
 
@@ -67,7 +67,7 @@ test.describe('Harness 场景与流程关系', () => {
     await page.reload();
     await harnessPage.tabList.waitFor();
     await harnessPage.switchToScenarios();
-    await expect(harnessPage.workflowCard('代码生成作业流')).toBeVisible();
+    await expect(harnessPage.workflowCard('未命名 Workflow')).toBeVisible();
     await expect(harnessPage.scenariosPanel.locator('.workflow-card')).toHaveCount(1);
     await expect(
       harnessPage.scenariosPanel.getByRole('button', {
@@ -143,7 +143,7 @@ test.describe('Harness 场景与流程关系', () => {
     await expect(importedStage).toBeVisible();
 
     await harnessPage.switchToScenarios();
-    const codeGenerationWorkflow = harnessPage.workflowCard('代码生成作业流');
+    const codeGenerationWorkflow = harnessPage.workflowCard('未命名 Workflow');
     await expect(codeGenerationWorkflow).toBeVisible();
     await expect(
       codeGenerationWorkflow.locator('.pipeline').getByText('需求研发', { exact: true }),
@@ -158,7 +158,7 @@ test.describe('Harness 场景与流程关系', () => {
     await page.reload();
     await harnessPage.tabList.waitFor();
     await harnessPage.switchToScenarios();
-    const restoredWorkflow = harnessPage.workflowCard('代码生成作业流');
+    const restoredWorkflow = harnessPage.workflowCard('未命名 Workflow');
     await expect(restoredWorkflow).toBeVisible();
     await expect(
       restoredWorkflow.locator('.pipeline').getByText('需求研发', { exact: true }),
@@ -186,7 +186,7 @@ test.describe('Harness 场景与流程关系', () => {
       scenarioDescription: '验证配置场景与 Workflow 使用同一稳定身份。',
     });
     await harnessPage.openScenarioDesign();
-    await page.keyboard.press('Escape');
+    await harnessPage.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
     await expect(harnessPage.workflowDesignDialog).toBeHidden();
 
     const originalWorkflow = harnessPage.workflowCard(workflowName);
