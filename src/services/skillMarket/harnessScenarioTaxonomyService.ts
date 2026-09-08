@@ -5,7 +5,20 @@ import { getSceneTags, listSceneTags, saveSceneTags, type SceneTag } from './sce
 import { skillBaseService, type RefreshTaxonomyItem } from './skillBaseService';
 import { httpDimContext } from './skillPlanningService';
 
-export type TaxonomyRecord = SceneRecord & { tags?: string[] };
+export type TaxonomyRecord = SceneRecord & {
+  tags?: string[];
+  sceneExtensionCode?: string | null;
+  secondSceneDescription?: string | null;
+  flowName?: string | null;
+  flowDescription?: string | null;
+};
+export interface ScenarioTaxonomyClient {
+  getSceneOptionGroups(context: ReturnType<typeof toHttpDimContext>): Promise<unknown>;
+  refreshSceneOptionGroups(
+    body: { scenes: RefreshTaxonomyItem[] },
+    context: ReturnType<typeof toHttpDimContext>,
+  ): Promise<unknown>;
+}
 export type { SceneTag } from './sceneTagService';
 
 export interface TaxonomyScope {
@@ -19,6 +32,10 @@ export interface TaxonomyScope {
 type TaxonomyKind = 'scene' | 'activity';
 
 interface NormalizedTaxonomyRow {
+  metadata: Pick<
+    TaxonomyRecord,
+    'sceneExtensionCode' | 'secondSceneDescription' | 'flowName' | 'flowDescription'
+  >;
   primary: string;
   secondary: string;
   primaryServerId: string;
@@ -284,6 +301,14 @@ function normalizeHttpRows(
     const parsedReferenceCount = Number(record.referenceCount);
     return [
       {
+        metadata:
+          kind === 'scene'
+            ? Object.fromEntries(
+                ['sceneExtensionCode', 'secondSceneDescription', 'flowName', 'flowDescription']
+                  .filter((key) => key in record)
+                  .map((key) => [key, record[key]]),
+              )
+            : {},
         primary,
         secondary,
         primaryServerId: firstText(record, primaryIdKeys),
@@ -355,6 +380,7 @@ function mapHttpRowsToRecords(
           derivedSecondaryId(kind, parentId, row.secondary);
         identities.secondary[identityKey] = childId;
         records.push({
+          ...row.metadata,
           id: childId,
           parentId,
           name: row.secondary,
@@ -403,6 +429,13 @@ function toSceneItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
         .sort((left, right) => left.sort - right.sort);
       (children.length ? children : [null]).forEach((child) => {
         rows.push({
+          ...(child
+            ? Object.fromEntries(
+                ['sceneExtensionCode', 'secondSceneDescription', 'flowName', 'flowDescription']
+                  .filter((key) => key in child)
+                  .map((key) => [key, child[key as keyof TaxonomyRecord]]),
+              )
+            : {}),
           firstScene: parent.name.trim(),
           secondScene: child?.name.trim() ?? '',
           sort: sort++,
@@ -415,11 +448,12 @@ function toSceneItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
 async function loadHttpTaxonomyRecords(
   kind: TaxonomyKind,
   scope: TaxonomyScope,
+  client: ScenarioTaxonomyClient = skillBaseService,
 ): Promise<TaxonomyRecord[]> {
   const context = toHttpDimContext(scope);
   const response =
     kind === 'scene'
-      ? await skillBaseService.getSceneOptionGroups(context)
+      ? await client.getSceneOptionGroups(context)
       : await skillBaseService.getActivityOptionGroups(context);
   const fallbackMessage = kind === 'scene' ? '场景列表加载失败' : '活动列表加载失败';
   return mapHttpRowsToRecords(normalizeHttpRows(response, kind, fallbackMessage), kind, scope);
@@ -444,10 +478,13 @@ async function withMockSceneTags(
   );
 }
 
-export async function loadScenarioRecords(scope: TaxonomyScope): Promise<TaxonomyRecord[]> {
+export async function loadScenarioRecords(
+  scope: TaxonomyScope,
+  client?: ScenarioTaxonomyClient,
+): Promise<TaxonomyRecord[]> {
   const records = !transportIsHttp
     ? await withMockSceneTags(scope, listScenes(scope.departmentName))
-    : await loadHttpTaxonomyRecords('scene', scope);
+    : await loadHttpTaxonomyRecords('scene', scope, client);
   rememberScenarioRecords(scope, records);
   return records;
 }
@@ -455,6 +492,7 @@ export async function loadScenarioRecords(scope: TaxonomyScope): Promise<Taxonom
 export async function saveScenarioRecords(
   scope: TaxonomyScope,
   records: TaxonomyRecord[],
+  client: ScenarioTaxonomyClient = skillBaseService,
 ): Promise<TaxonomyRecord[]> {
   validateScenarioRecords(scope, records);
   if (!transportIsHttp) {
@@ -479,7 +517,7 @@ export async function saveScenarioRecords(
     return savedRecords;
   }
 
-  const response = await skillBaseService.refreshSceneOptionGroups(
+  const response = await client.refreshSceneOptionGroups(
     { scenes: toSceneItems(records) },
     toHttpDimContext(scope),
   );
@@ -489,7 +527,7 @@ export async function saveScenarioRecords(
   // must not roll back the identity aliases needed to reconnect existing workflows.
   commitIdentityRecords('scene', scope, records);
   try {
-    const savedRecords = await loadHttpTaxonomyRecords('scene', scope);
+    const savedRecords = await loadHttpTaxonomyRecords('scene', scope, client);
     rememberScenarioRecords(scope, savedRecords);
     notifyHarnessConfigurationChanged('scene', scope.departmentName);
     return savedRecords;

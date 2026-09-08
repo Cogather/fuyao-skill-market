@@ -386,7 +386,7 @@ function toSkillTransferParams(query: SkillPlanningQuery): SkillTransferParams {
   });
 }
 
-function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
+export function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
   assertHttpSuccess(response, '产品列表加载失败');
   const data = unwrapResponseData<unknown>(response);
   const source = Array.isArray(data)
@@ -501,7 +501,7 @@ function readDeepestDepartment(record: Record<string, unknown>): string {
   return hwDepartment || readFirstText(record, userDepartmentKeys);
 }
 
-function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOption[] {
+export function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOption[] {
   const data = unwrapResponseData<unknown>(response);
   const source = Array.isArray(data)
     ? data

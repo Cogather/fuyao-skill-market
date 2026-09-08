@@ -42,8 +42,8 @@ try {
   const { createHarnessScenarioWorkspace } = await server.ssrLoadModule(
     '/src/composables/useHarnessScenarioWorkspace.ts',
   );
-  const { skillBaseService } = await server.ssrLoadModule(
-    '/src/services/skillMarket/skillBaseService.ts',
+  const { harnessWorkflowService: api } = await server.ssrLoadModule(
+    '/src/services/skillMarket/businessScenarioDesignService.ts',
   );
 
   async function fixture() {
@@ -71,6 +71,14 @@ try {
       tags: firstScene === '研发提效' ? ['研发'] : [],
       sort: index + 1,
       referenceCount: secondScene === '接口生成' ? 2 : 0,
+      ...(secondScene === '接口生成'
+        ? {
+            sceneExtensionCode: 'demo-api',
+            secondSceneDescription: '接口工作流',
+            flowName: '接口生成作业流',
+            flowDescription: '',
+          }
+        : {}),
     }));
     const rowsByProduct = new Map([
       ['ordering-product-a', clone(initial)],
@@ -80,14 +88,14 @@ try {
     let rejectWrite = false;
     let rejectReadback = false;
     let writeGate = null;
-    skillBaseService.queryHarnessDeptProducts = async () =>
+    api.queryProducts = async () =>
       success([
         { offeringId: 'ordering-product-a', offeringName: '产品甲' },
         { offeringId: 'ordering-product-b', offeringName: '产品乙' },
       ]);
-    skillBaseService.getSceneOptionGroups = async ({ dimCode }) =>
+    api.querySceneList = async ({ dimCode }) =>
       rejectReadback ? failure('读取失败') : success(clone(rowsByProduct.get(dimCode)));
-    skillBaseService.refreshSceneOptionGroups = async (body, requestContext) => {
+    api.refreshScene = async (requestContext, body) => {
       writes.push({ body: clone(body), context: clone(requestContext) });
       if (writeGate) await writeGate;
       if (rejectWrite) return failure('保存被拒绝');
@@ -103,6 +111,20 @@ try {
       );
       return success(null);
     };
+    api.queryHarnessWorkflowDetail = async ({ dimCode, firstScene, secondScene }) => {
+      const row = rowsByProduct
+        .get(dimCode)
+        .find((item) => item.firstScene === firstScene && item.secondScene === secondScene);
+      return success({
+        ...row,
+        commands: [],
+        assetPool: [],
+        stages: row.flowName ? [{ activityNodeName: '设计', sort: 0, steps: [] }] : [],
+        steps: [],
+        nextStep: 1,
+        allDone: false,
+      });
+    };
 
     async function open() {
       const scope = effectScope();
@@ -114,6 +136,7 @@ try {
       }
       assert.equal(workspace.error.value, '');
       assert.equal(workspace.available.value, true, 'fixture scenarios should finish loading');
+      await workspace.loadSelectedWorkflow();
       return workspace;
     }
 
@@ -150,13 +173,7 @@ try {
     const { workspace, scene, names, writes, open } = await fixture();
     const child = scene('接口生成');
     workspace.selectedScenarioId.value = child._id;
-    workspace.saveScenarioDetails(child._id, {
-      code: 'API',
-      description: '接口工作流',
-      releaseCount: 4,
-    });
     const workflow = workspace.ensureWorkflow(child._id);
-    workflow.stages.push({ id: 'stage-kept', name: '设计', description: '', order: 0, steps: [] });
     const before = clone(workspace.scenarios);
     const savedWorkflow = clone(workflow);
 
@@ -173,7 +190,15 @@ try {
     });
     assert.deepEqual(writes[0].body.scenes, [
       { firstScene: '交付发布', secondScene: '', sort: 0 },
-      { firstScene: '研发提效', secondScene: '接口生成', sort: 1 },
+      {
+        firstScene: '研发提效',
+        secondScene: '接口生成',
+        sort: 1,
+        sceneExtensionCode: 'demo-api',
+        secondSceneDescription: '接口工作流',
+        flowName: '接口生成作业流',
+        flowDescription: '',
+      },
       { firstScene: '研发提效', secondScene: '代码评审', sort: 2 },
       { firstScene: '研发提效', secondScene: '代码重构', sort: 3 },
       { firstScene: '质量保障', secondScene: '测试生成', sort: 4 },

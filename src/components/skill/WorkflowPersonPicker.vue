@@ -11,6 +11,7 @@ const props = withDefaults(
     modelValue: SkillPlanningUserOption | null;
     label: string;
     placeholder?: string;
+    queryUsers?: (keyword: string) => Promise<SkillPlanningUserOption[]>;
   }>(),
   { placeholder: '输入姓名或工号后选择' },
 );
@@ -71,7 +72,7 @@ function closePopup(): void {
 async function searchUsers(query: string, sequence: number): Promise<void> {
   if (sequence !== requestSequence) return;
   try {
-    const result = await querySkillPlanningUsers(query);
+    const result = await (props.queryUsers || querySkillPlanningUsers)(query);
     if (sequence !== requestSequence) return;
     options.value = result;
     searched.value = true;
