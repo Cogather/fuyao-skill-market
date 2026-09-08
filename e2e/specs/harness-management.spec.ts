@@ -21,8 +21,8 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(harnessPage.scenariosPanel).toBeVisible();
     const tabs = harnessPage.tabList.getByRole('tab');
     await expect(tabs.nth(0)).toHaveText('业务场景设计');
-    await expect(tabs.nth(1)).toHaveText('资产清单');
-    await expect(tabs.nth(2)).toHaveText('Harness 工作流');
+    await expect(tabs.nth(1)).toHaveText('Harness 工作流');
+    await expect(tabs.nth(2)).toHaveText('资产清单');
     for (const name of ['Command 规划', 'Skill 规划', 'Agent 规划', 'Extension 发布']) {
       await expect(harnessPage.tabList.getByRole('tab', { name, exact: true })).toHaveCount(0);
     }

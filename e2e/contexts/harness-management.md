@@ -9,13 +9,13 @@
 - 组件：`src/views/HarnessManagementPage.vue`（内部按 tab 挂载 HarnessCapabilityManagementPage / SkillPlanningPage / HarnessTaskManagementPage / HarnessConfigurationPage 等）
 - 数据模式：dev 走 mock（`VITE_SKILL_MARKET_TRANSPORT=mock`），无需后端
 - 登录：本地 mock 无需登录
-- 权限影响：`task-only` 权限下只显示「任务管理」一个 tab；其余权限显示全部 10 个 tab。「资产清单」紧跟在「业务场景设计」后，默认仍进入「Skill 规划」
+- 权限影响：`task-only` 权限下只显示「任务管理」；其余权限依次显示「业务场景设计」「Harness 工作流」「资产清单」「配置管理」「任务管理」，默认进入「业务场景设计」。
 
 ## 稳定锚点（选择器素材）
 
 - 顶栏身份区：「Harness 管理」强文本（任何权限下都渲染）
 - tab 导航：`role=tablist`，aria-label「Harness 管理分区」
-- tabs（`role=tab`）：业务场景设计 / 资产清单 / Harness 工作流 / Agent / Skill 资产 / Command 规划 / Skill 规划 / Agent 规划 / Extension 发布 / 配置管理 / 任务管理；前三个 tab 的 DOM id 分别为 `#harness-tab-scenarios`、`#harness-tab-capabilities`、`#harness-tab-workflows`
+- tabs（`role=tab`）：业务场景设计 / Harness 工作流 / 资产清单 / 配置管理 / 任务管理；前三个 tab 的 DOM id 分别为 `#harness-tab-scenarios`、`#harness-tab-workflows`、`#harness-tab-capabilities`。Agent / Skill 资产及四个旧规划入口暂时隐藏。
 - 资产清单面板：`#harness-panel-capabilities`；内部 `role=tablist` 的 aria-label 为「资产清单分区」，依次包含 Command 清单 / Skill 清单 / Agent 清单 / Extension 发布。默认打开 Command 清单，四个分区复用原业务组件并按首次访问懒挂载，切换后保活。
 - 业务场景面板：`#harness-panel-scenarios`，包含 heading「业务场景设计台」；场景树复用配置管理，mock 默认「研发提效 → 代码生成」，初始无 Workflow。「开始设计 Workflow」或「继续设计」打开设计 dialog。
 - Harness 工作流面板：`#harness-panel-workflows`，包含 heading「Harness 工作流」、aria-label「选择部门」按钮、aria-label「筛选产品」下拉框、accessible name「Harness 工作流清单」的只读表格，以及「前往场景设计 →」按钮
@@ -48,6 +48,7 @@
 
 ## 演进记录
 
+- 恢复「Harness 工作流」页签入口，放在「业务场景设计」和「资产清单」之间，沿用现有列表页面与权限控制。
 - 在「业务场景设计」后新增「资产清单」，聚合 Command、Skill、Agent 清单和 Extension 发布；迁移验证期间保留四个原顶层入口
 - 新增最左侧「Agent / Skill 资产」页签，原有页签顺序与默认选中状态保持不变
 - 新增最左侧「业务场景设计」页签；完整页签数更新为 8 个，原默认页签保持不变
