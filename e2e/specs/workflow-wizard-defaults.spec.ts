@@ -1,11 +1,15 @@
 import { expect, test } from '../fixtures/base';
+import type {
+  WorkflowActivityRow,
+  WorkflowDetail,
+} from '../../src/services/skillMarket/businessScenarioDesignService';
 
 test('新建 Workflow 使用产品前缀、可选目标和空流程信息，保存后回填原值', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const metadataWrites: { method: string; body: unknown }[] = [];
-  const detail = {
+  const detail: WorkflowDetail = {
     flowName: '',
     flowDescription: '',
     sceneExtensionCode: '',
@@ -26,6 +30,28 @@ test('新建 Workflow 使用产品前缀、可选目标和空流程信息，保�
       data = [{ firstScene: '研发提效', secondScene: '接口开发', sort: 0, ...detail }];
     } else if (path.endsWith('/workflow/detail')) {
       data = detail;
+    } else if (path.endsWith('/scene-activity/activity') && route.request().method() === 'POST') {
+      const { activities } = route.request().postDataJSON() as {
+        activities: WorkflowActivityRow[];
+      };
+      detail.stages = [];
+      for (const activity of activities) {
+        let stage = detail.stages.find(
+          (item) => item.activityNodeName === activity.activityNodeName,
+        );
+        if (!stage) {
+          stage = { activityNodeName: activity.activityNodeName, sort: activity.sort, steps: [] };
+          detail.stages.push(stage);
+        }
+        if (activity.subActivityNodeName) {
+          stage.steps.push({
+            subActivityNodeName: activity.subActivityNodeName,
+            sort: activity.sort,
+            boundAssets: [],
+          });
+        }
+      }
+      data = null;
     } else if (path.endsWith('/scene/code') || path.endsWith('/scene/workflow-meta')) {
       if (path.endsWith('/scene-activity/scene/workflow-meta')) {
         metadataWrites.push({
@@ -96,9 +122,25 @@ test('新建 Workflow 使用产品前缀、可选目标和空流程信息，保�
   await code.fill('harness-pipeline-api');
   await description.clear();
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
-  await expect(wizard.getByLabel('流程名称', { exact: true })).toHaveValue('');
+  const flowName = wizard.getByLabel('流程名称', { exact: true });
+  await expect(flowName).toHaveValue('');
+  await expect(flowName).toHaveAttribute('required', '');
+  await expect(flowName).toHaveAttribute('placeholder', '例如：接口开发工作流');
+  await expect(marks).toHaveCount(1);
+  await expect(marks).toHaveText('*');
+  await expect(marks).toHaveCSS('color', 'rgb(237, 100, 100)');
   await expect(wizard.getByLabel('流程说明', { exact: true })).toHaveValue('');
   await wizard.screenshot({ path: testInfo.outputPath('workflow-planning.png') });
+  const writesBeforeEmptyName = metadataWrites.length;
+  for (const value of ['', '   ']) {
+    await flowName.fill(value);
+    for (const action of ['保存', '下一步']) {
+      await wizard.getByRole('button', { name: action, exact: true }).click();
+      await expect(wizard.locator('.wizard-page')).toHaveAttribute('aria-label', 'Workflow 规划');
+      await expect(wizard.locator('.wizard-footer .error')).toHaveText('请填写流程名称');
+      expect(metadataWrites).toHaveLength(writesBeforeEmptyName);
+    }
+  }
   await wizard.getByLabel('流程名称', { exact: true }).fill('用户填写的流程');
   await wizard.getByLabel('流程说明', { exact: true }).fill('用户填写的说明');
   await wizard.getByRole('button', { name: '保存', exact: true }).click();
@@ -121,7 +163,39 @@ test('新建 Workflow 使用产品前缀、可选目标和空流程信息，保�
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
   await expect(wizard.getByLabel('流程名称', { exact: true })).toHaveValue('用户填写的流程');
   await expect(wizard.getByLabel('流程说明', { exact: true })).toHaveValue('用户填写的说明');
-  await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+  const next = wizard.getByRole('button', { name: '下一步', exact: true });
+  const planningPage = wizard.locator('.wizard-page');
+  const error = wizard.locator('.wizard-footer .error');
+  const writesBeforeInvalidPlanning = metadataWrites.length;
+  await next.click();
+  await expect(planningPage).toHaveAttribute('aria-label', 'Workflow 规划');
+  await expect(error).toHaveText('请至少定义一个 Workflow 环节');
+  for (const name of ['开发', '验证']) {
+    await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
+    await wizard.getByPlaceholder('环节名称', { exact: true }).fill(name);
+    await wizard.getByRole('button', { name: '添加环节', exact: true }).click();
+  }
+  for (const name of ['开发', '验证']) {
+    await next.click();
+    await expect(planningPage).toHaveAttribute('aria-label', 'Workflow 规划');
+    await expect(error).toHaveText('每个 Workflow 环节至少需要一个节点');
+    expect(metadataWrites).toHaveLength(writesBeforeInvalidPlanning);
+    const stage = wizard.locator('.edit-stage').filter({ hasText: name });
+    await stage.getByRole('button', { name: '+ 添加节点', exact: true }).click();
+    await stage.getByPlaceholder('节点名称', { exact: true }).fill(`${name}节点`);
+    await stage.getByRole('button', { name: '添加节点', exact: true }).click();
+  }
+  await next.click();
+  await expect(planningPage).toHaveAttribute('aria-label', 'Command 入口');
+  await expect(error).toBeEmpty();
+  await wizard.getByRole('button', { name: '上一步', exact: true }).click();
+  await flowName.clear();
+  await wizard.locator('nav > button').nth(2).click();
+  await expect(planningPage).toHaveAttribute('aria-label', 'Workflow 规划');
+  await expect(error).toHaveText('请填写流程名称');
+  await flowName.fill('用户填写的流程');
+  await next.click();
+  await expect(planningPage).toHaveAttribute('aria-label', 'Command 入口');
   await wizard.getByRole('button', { name: '+ 新定义 Command', exact: true }).click();
   await expect(wizard.getByPlaceholder(/e2e-codec$/)).toHaveValue('/harness-pipeline-');
   await page.setViewportSize({ width: 390, height: 844 });

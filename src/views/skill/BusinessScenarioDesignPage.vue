@@ -228,6 +228,9 @@ function scenarioValidationError(
   }
   return '';
 }
+function workflowNameError(name: string): string {
+  return name.trim() ? '' : '请填写流程名称';
+}
 function workflowPlanningError(workflow: Workflow): string {
   if (!workflow.stages.length) return '请至少定义一个 Workflow 环节';
   if (workflow.stages.some((stage) => !stage.steps.length))
@@ -276,9 +279,6 @@ function tree(parentId: string | null = null): Scenario[] {
 }
 function children(id: string) {
   return tree(id);
-}
-async function moveScenario(item: Scenario, direction: number) {
-  await saveScenarioOrder(() => props.workspace.moveScenario(item, direction), item._id);
 }
 async function saveScenarioOrder(save: () => Promise<void>, sourceId: string) {
   if (!canSortScenarios.value || sortingPending.value) return;
@@ -686,7 +686,7 @@ function wizardStepError(w: Wizard, step: number): string {
       productName,
     );
   }
-  if (step === 1) return workflowPlanningError(w.workflow);
+  if (step === 1) return workflowNameError(w.form.name) || workflowPlanningError(w.workflow);
   if (step === 2) return commandValidationError(w.workflow);
   return assetIntegrationError(w.workflow, w.poolIds, w.nodeAssetsMap);
 }
@@ -714,6 +714,14 @@ async function saveWizard(): Promise<boolean> {
     w.step = 0;
     showWizardPage();
     return false;
+  }
+  if (w.step > 0) {
+    w.error = workflowNameError(w.form.name);
+    if (w.error) {
+      w.step = 1;
+      showWizardPage();
+      return false;
+    }
   }
   syncWizard();
   try {
@@ -755,6 +763,36 @@ function closeWizard() {
 function handleWizardKeydown(event: KeyboardEvent) {
   handleModalKeydown(event, wizardDialogElement.value);
 }
+function handleWizardWheel(event: WheelEvent) {
+  if (event.defaultPrevented || event.ctrlKey || event.shiftKey || !event.deltaY) return;
+  const dialog = wizardDialogElement.value;
+  const page = dialog?.querySelector<HTMLElement>('.wizard-page');
+  if (!dialog || !page || wizardBusy.value) return;
+  const bounds = dialog.getBoundingClientRect();
+  // Picker backdrops extend outside the dialog; only handle the wheel inside its bounds.
+  if (
+    event.clientX < bounds.left ||
+    event.clientX > bounds.right ||
+    event.clientY < bounds.top ||
+    event.clientY > bounds.bottom
+  )
+    return;
+  let target = event.target instanceof Element ? event.target : null;
+  while (target && target !== page && target !== dialog) {
+    if (
+      target instanceof HTMLElement &&
+      /auto|scroll/.test(getComputedStyle(target).overflowY) &&
+      (event.deltaY < 0
+        ? target.scrollTop > 0
+        : target.scrollTop + target.clientHeight < target.scrollHeight)
+    )
+      return;
+    target = target.parentElement;
+  }
+  event.preventDefault();
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? page.clientHeight : 1;
+  page.scrollTop += event.deltaY * unit;
+}
 function showWizardPage() {
   nextTick(() => {
     const dialog = wizardDialogElement.value;
@@ -770,7 +808,7 @@ async function goNext() {
   const scenario = currentScenario.value;
   if (!w || !scenario || wizardBusy.value) return;
   w.error = '';
-  if (w.step === 0 || w.step === 2) {
+  if (w.step < 3) {
     w.error = wizardStepError(w, w.step);
     if (w.error) return;
   }
@@ -1141,7 +1179,6 @@ async function createAsset() {
       </p>
     </header>
     <section class="selector">
-      <span class="selector-icon">🏢</span>
       <HarnessDepartmentPicker
         class="dept-picker"
         :active="props.active"
@@ -1271,22 +1308,6 @@ async function createAsset() {
                 </button>
                 <span class="node-actions"
                   ><button
-                    :disabled="!canSortScenarios || tree(item.parentId)[0]?._id === item._id"
-                    type="button"
-                    :aria-label="`上移${item.name}`"
-                    :title="`上移${item.name}`"
-                    @click.stop="moveScenario(item, -1)"
-                  >
-                    ↑</button
-                  ><button
-                    :disabled="!canSortScenarios || tree(item.parentId).at(-1)?._id === item._id"
-                    type="button"
-                    :aria-label="`下移${item.name}`"
-                    :title="`下移${item.name}`"
-                    @click.stop="moveScenario(item, 1)"
-                  >
-                    ↓</button
-                  ><button
                     v-if="item.level === 1"
                     type="button"
                     :aria-label="`在${item.name}下新建场景`"
@@ -1350,22 +1371,6 @@ async function createAsset() {
                   </span>
                   <i></i><b>{{ child.name }}</b
                   ><span class="node-actions"
-                    ><button
-                      :disabled="!canSortScenarios || children(item._id)[0]?._id === child._id"
-                      type="button"
-                      :aria-label="`上移${child.name}`"
-                      :title="`上移${child.name}`"
-                      @click.stop="moveScenario(child, -1)"
-                    >
-                      ↑</button
-                    ><button
-                      :disabled="!canSortScenarios || children(item._id).at(-1)?._id === child._id"
-                      type="button"
-                      :aria-label="`下移${child.name}`"
-                      :title="`下移${child.name}`"
-                      @click.stop="moveScenario(child, 1)"
-                    >
-                      ↓</button
                     ><button
                       class="danger"
                       type="button"
@@ -1502,7 +1507,7 @@ async function createAsset() {
                   <div v-else class="commands">
                     <div v-for="command in workflow.commands" :key="command.id">
                       <code>{{ command.name }}</code
-                      ><span>{{ command.description || '无说明' }}</span>
+                      ><span v-if="command.description?.trim()">{{ command.description }}</span>
                     </div>
                   </div>
                 </section>
@@ -1839,6 +1844,7 @@ async function createAsset() {
       :aria-busy="wizardBusy"
       tabindex="-1"
       @keydown="handleWizardKeydown"
+      @wheel="handleWizardWheel"
     >
       <header>
         <h2>Workflow 设计</h2>
@@ -1911,9 +1917,12 @@ async function createAsset() {
         </p>
         <div class="two">
           <label
-            >流程名称<input
+            ><span>流程名称 <span class="required-mark" aria-hidden="true">*</span></span
+            ><input
               v-model="wizard.form.name"
-              placeholder="例如：编解码开发作业流程" /></label
+              aria-label="流程名称"
+              required
+              :placeholder="`例如：${wizard.form.scenarioName.trim()}工作流`" /></label
           ><label>流程说明<input v-model="wizard.form.description" /></label>
         </div>
         <h4>
@@ -2083,7 +2092,7 @@ async function createAsset() {
         <div v-for="command in wizard.workflow.commands" :key="command.id" class="command-row">
           <div class="command-details">
             <code>{{ command.name }}</code>
-            <p>{{ command.description }}</p>
+            <p v-if="command.description?.trim()">{{ command.description }}</p>
           </div>
           <button
             type="button"
@@ -2399,11 +2408,6 @@ async function createAsset() {
   gap: 0.6rem;
   padding: 0.85rem 1rem;
   margin-bottom: 1.25rem;
-}
-.selector-icon {
-  padding: 8px;
-  border-radius: 9px;
-  background: #eff6ff;
 }
 .dept-picker {
   position: relative;
