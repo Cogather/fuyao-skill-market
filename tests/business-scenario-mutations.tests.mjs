@@ -12,6 +12,7 @@ globalThis.window = {
     setItem: (key, value) => storage.set(key, String(value)),
   },
 };
+
 const server = await createServer({ appType: 'custom', server: { middlewareMode: true } });
 const success = (data) => ({ meta: { success: true }, data });
 const clone = (value) => structuredClone(value);
