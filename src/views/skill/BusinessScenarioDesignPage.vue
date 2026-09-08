@@ -104,8 +104,16 @@ const wizardSteps = ['业务场景分析', 'Workflow 规划', 'Command 入口', 
 const collapsed = reactive<Record<string, boolean>>({});
 const scenarioDialog = ref<{
   parentId: string | null;
+  editingScenario?: Scenario;
   savedIdentity?: Pick<Scenario, '_id' | 'sourceId'>;
 } | null>(null);
+const scenarioDialogTitle = computed(() =>
+  scenarioDialog.value?.editingScenario
+    ? '编辑一级场景'
+    : scenarioDialog.value?.parentId
+      ? '新建下级场景'
+      : '新建一级场景',
+);
 const deleteTarget = ref<Scenario | null>(null);
 const tagTarget = ref<Scenario | null>(null);
 const wizard = ref<Wizard | null>(null);
@@ -414,6 +422,20 @@ function openScenario(parentId: string | null) {
   scenarioDialog.value = { parentId };
   focusDialog(scenarioDialogElement);
 }
+function openEditScenario(scenario: Scenario) {
+  if (scenario.level !== 1 || saving.value || !available.value) return;
+  scenarioDialogOpener = activeElement();
+  scenarioForm.name = scenario.name;
+  scenarioForm.code = scenario.code;
+  scenarioForm.description = scenario.description;
+  scenarioForm.tags = [...scenario.tags];
+  scenarioError.value = '';
+  scenarioDialog.value = {
+    parentId: null,
+    editingScenario: { ...scenario, tags: [...scenario.tags] },
+  };
+  focusDialog(scenarioDialogElement);
+}
 function closeScenarioDialog() {
   scenarioDialog.value = null;
   const opener = scenarioDialogOpener;
@@ -431,6 +453,7 @@ async function saveScenario() {
     return;
   }
   const parentId = scenarioDialog.value?.parentId || null;
+  const editingScenario = scenarioDialog.value?.editingScenario;
   if (parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
     const error = validateName(scenarioForm.code);
     if (error) {
@@ -440,6 +463,7 @@ async function saveScenario() {
   }
   const scenario: Scenario = {
     _id: uid('s'),
+    ...editingScenario,
     ...scenarioDialog.value?.savedIdentity,
     name: scenarioForm.name.trim(),
     code: scenarioForm.code.trim(),
@@ -448,12 +472,12 @@ async function saveScenario() {
     level: parentId ? 2 : 1,
     productId: productId.value,
     tags: parentId ? [] : [...scenarioForm.tags],
-    status: 'draft',
-    releaseCount: 0,
+    status: editingScenario?.status || 'draft',
+    releaseCount: editingScenario?.releaseCount || 0,
   };
   try {
     const saved = await props.workspace.saveScenario(scenario);
-    selectedScenarioId.value = saved._id;
+    if (!editingScenario) selectedScenarioId.value = saved._id;
     closeScenarioDialog();
   } catch (error) {
     if (scenarioDialog.value && scenario.sourceId)
@@ -1223,8 +1247,29 @@ async function createAsset() {
                   @click.stop="collapsed[item._id] = !collapsed[item._id]"
                 >
                   ▾</button
-                ><b>{{ item.name }}</b
-                ><span class="node-actions"
+                ><b>{{ item.name }}</b>
+                <button
+                  class="scenario-edit"
+                  type="button"
+                  :aria-label="`编辑${item.name}`"
+                  :title="`编辑${item.name}`"
+                  :disabled="saving || !available"
+                  @click.stop="openEditScenario(item)"
+                  @keydown.stop
+                >
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
+                  </svg>
+                </button>
+                <span class="node-actions"
                   ><button
                     :disabled="!canSortScenarios || tree(item.parentId)[0]?._id === item._id"
                     type="button"
@@ -1434,19 +1479,11 @@ async function createAsset() {
                       >{{ assetById.get(item.assetId)?.name || '未找到资产' }}
                       <i
                         v-if="assetById.get(item.assetId)?.packageReady === true"
-                        class="asset-package-status ready"
+                        class="asset-package-status"
                         role="img"
                         title="资源包已就绪"
                         aria-label="资源包已就绪"
                         >✓</i
-                      >
-                      <i
-                        v-else
-                        class="asset-package-status"
-                        role="img"
-                        title="资源包未就绪"
-                        aria-label="资源包未就绪"
-                        >○</i
                       ></span
                     >
                   </div>
@@ -1518,7 +1555,7 @@ async function createAsset() {
       class="dialog scenario-editor"
       role="dialog"
       aria-modal="true"
-      :aria-label="scenarioDialog.parentId ? '新建下级场景' : '新建一级场景'"
+      :aria-label="scenarioDialogTitle"
       tabindex="-1"
       @submit.prevent="saveScenario"
       @keydown="handleScenarioDialogKeydown"
@@ -1540,19 +1577,21 @@ async function createAsset() {
           </svg>
         </span>
         <div class="editor-heading">
-          <h2>{{ scenarioDialog.parentId ? '新建下级场景' : '新建一级场景' }}</h2>
+          <h2>{{ scenarioDialogTitle }}</h2>
           <p>
             {{
-              scenarioDialog.parentId
-                ? '细化业务场景，为工作流设计做好准备'
-                : '定义业务场景，让团队的工作流有序展开'
+              scenarioDialog.editingScenario
+                ? '修改一级场景名称，下级场景保持归属'
+                : scenarioDialog.parentId
+                  ? '细化业务场景，为工作流设计做好准备'
+                  : '定义业务场景，让团队的工作流有序展开'
             }}
           </p>
         </div>
         <button
           class="editor-close"
           type="button"
-          aria-label="关闭新建场景"
+          :aria-label="scenarioDialog.editingScenario ? '关闭编辑场景' : '关闭新建场景'"
           @click="closeScenarioDialog"
         >
           <svg
@@ -1582,7 +1621,7 @@ async function createAsset() {
           />
           <small>该编码将作为发布的 Extension 名称：以产品名开头、全部小写、仅用连字符分隔。</small>
         </label>
-        <fieldset v-else class="editor-tags">
+        <fieldset v-else-if="!scenarioDialog.editingScenario" class="editor-tags">
           <legend>场景标签 <span>可多选</span></legend>
           <div class="tag-picker-meta">
             <span>选择标签，便于分类和查找场景</span>
@@ -1632,7 +1671,7 @@ async function createAsset() {
             </div>
           </div>
         </fieldset>
-        <label class="editor-field">
+        <label v-if="!scenarioDialog.editingScenario" class="editor-field">
           <span>场景说明 <span class="optional-mark">选填</span></span>
           <textarea
             v-model="scenarioForm.description"
@@ -1642,9 +1681,13 @@ async function createAsset() {
         </label>
       </div>
       <footer class="editor-footer">
-        <span class="editor-footer-note">创建后可继续完善场景配置</span>
+        <span class="editor-footer-note">{{
+          scenarioDialog.editingScenario ? '保存后更新场景名称' : '创建后可继续完善场景配置'
+        }}</span>
         <button type="button" @click="closeScenarioDialog">取消</button>
-        <button class="primary" type="submit" :disabled="saving">创建</button>
+        <button class="primary" type="submit" :disabled="saving">
+          {{ scenarioDialog.editingScenario ? '保存' : '创建' }}
+        </button>
       </footer>
     </form>
   </div>
@@ -1818,10 +1861,7 @@ async function createAsset() {
             }"
           ></i
           ><button
-            :class="{
-              current: i === wizard.step,
-              done: progress(wizard.workflow).states[i] === 'done',
-            }"
+            :class="{ current: i === wizard.step }"
             :aria-current="i === wizard.step ? 'step' : undefined"
             :disabled="!canGoStep(i)"
             @click="goStep(i)"
@@ -2561,11 +2601,39 @@ select {
   height: 62%;
 }
 .toggle,
+.scenario-edit,
 .node-actions button {
   border: 0;
   background: transparent;
   color: #6b7280;
   cursor: pointer;
+}
+.scenario-edit {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 5px;
+}
+.scenario-edit svg {
+  width: 16px;
+  height: 16px;
+}
+.scenario-edit:hover,
+.scenario-edit:focus-visible {
+  background: #e8efff;
+  color: #2563eb;
+}
+.scenario-edit:focus-visible {
+  outline: 2px solid #6397f5;
+  outline-offset: 1px;
+}
+.scenario-edit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .toggle.hidden {
   visibility: hidden;
@@ -2658,14 +2726,11 @@ select {
 }
 .asset-package-status {
   flex-shrink: 0;
-  color: #b45309;
+  color: #059669;
   font-size: 14px;
   font-style: normal;
   font-weight: 700;
   line-height: 1;
-}
-.asset-package-status.ready {
-  color: #059669;
 }
 .primary {
   display: inline-flex;
@@ -3215,6 +3280,7 @@ h4 small {
   background: transparent;
   color: #6b7280;
   font-size: 11px;
+  font-weight: 400;
 }
 .wizard > nav button > b {
   display: grid;
@@ -3231,14 +3297,10 @@ h4 small {
 }
 .wizard > nav .current > span {
   color: #2563eb;
-  font-weight: 600;
+  font-weight: 700;
 }
 .wizard > nav button:disabled {
   opacity: 1;
-}
-.wizard > nav .done > b {
-  background: #d1fae5;
-  color: #065f46;
 }
 .hint,
 .main-hint {
