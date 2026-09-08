@@ -37,7 +37,7 @@ try {
   const { harnessWorkflowService: api } = await server.ssrLoadModule(
     '/src/services/skillMarket/businessScenarioDesignService.ts',
   );
-  async function fixture({ bound = false, failReadbackOnce = false } = {}) {
+  async function fixture({ bound = false, failReadbackOnce = false, sceneCode = 'demo-old' } = {}) {
     storage.clear();
     const calls = [];
     let rows = [
@@ -46,7 +46,7 @@ try {
         firstSceneDescription: '一级研发说明',
         secondScene: '代码生成',
         sort: 0,
-        sceneExtensionCode: 'demo-old',
+        sceneExtensionCode: sceneCode,
         secondSceneDescription: '旧目标',
         flowName: '原流程',
         flowDescription: '',
@@ -282,6 +282,24 @@ try {
     assert.equal(writes[1][1].secondScene, '新场景');
     assert.equal(writes[1][1].secondSceneDescription, '新目标');
     assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
+  });
+  await test('renaming an undesigned child preserves an empty code without bypassing normal scene validation', async () => {
+    const f = await fixture({ sceneCode: null });
+    const renamed = { ...f.scenario, name: '新的二级场景' };
+    await assert.rejects(() => f.workspace.saveScenario(renamed), /编码/);
+    const saved = await f.workspace.saveScenario(renamed, { nameOnly: true });
+    const writes = f.calls.filter(([op]) => ['refresh', 'code', 'meta'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['refresh', 'code', 'meta'],
+    );
+    assert.equal(writes[0][1].scenes[0].secondScene, '新的二级场景');
+    assert.equal(writes[1][1].sceneExtensionCode, '');
+    assert.equal(writes[1][1].secondSceneDescription, '旧目标');
+    assert.equal(writes[2][1].flowName, '原流程');
+    assert.equal(saved._id, f.scenario._id);
+    assert.equal(saved.parentId, f.scenario.parentId);
+    assert.equal(saved.code, '');
   });
   await test('a committed rename survives failed list readback and retries with the new scene name', async () => {
     const f = await fixture({ failReadbackOnce: true });
