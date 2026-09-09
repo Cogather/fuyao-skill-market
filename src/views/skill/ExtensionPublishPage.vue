@@ -736,7 +736,6 @@ const historyLoading = ref(false);
 const historyError = ref('');
 const retryingReleaseId = ref('');
 const publishNameLocked = computed(() => Boolean(modalScene.value?.releases.length));
-const releaseFormInitialized = ref(false);
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
 const publishItems = computed(() => (modalScene.value ? capabilityItems(modalScene.value) : []));
 const historyLimit = ref(3);
@@ -780,20 +779,6 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   }
   publishForm.organizationId = organizations.value[0]?.id ?? '';
   publishError.value = organizationError.value;
-  releaseFormInitialized.value = true;
-}
-
-async function selectReleasePanel(panel: Exclude<ExtensionModal, null>): Promise<void> {
-  const scene = modalScene.value;
-  if (!scene || panel === activeModal.value || publishSubmitting.value || retryingReleaseId.value)
-    return;
-  if (panel === 'history') {
-    await openHistoryModal(scene);
-  } else if (releaseFormInitialized.value) {
-    activeModal.value = 'publish';
-  } else {
-    await openPublishModal(scene);
-  }
 }
 
 function finishPublish(): void {
@@ -1079,27 +1064,9 @@ onBeforeUnmount(() => {
         <span aria-hidden="true">←</span> 返回
       </button>
       <header class="extension-release__heading">
-        <h2>发布 · {{ modalScene?.extension.name || releaseContext.scene.extension.name }}</h2>
+        <h2>{{ activeModal === 'history' ? '发布历史' : '发布' }}</h2>
         <span class="extension-release__badge">Extension</span>
       </header>
-      <nav class="extension-release__tabs" role="tablist" aria-label="Extension 发布分区">
-        <button
-          v-for="panel in ['publish', 'history'] as const"
-          :key="panel"
-          type="button"
-          role="tab"
-          :aria-selected="activeModal === panel"
-          :class="{ 'is-active': activeModal === panel }"
-          :disabled="
-            publishSubmitting ||
-            Boolean(retryingReleaseId) ||
-            (panel === 'publish' && (!modalScene?.publishable || Boolean(modalScene?.publishing)))
-          "
-          @click="selectReleasePanel(panel)"
-        >
-          {{ panel === 'publish' ? '发布' : '发布历史' }}
-        </button>
-      </nav>
     </template>
     <template v-else>
       <header class="extension-hero harness-page-heading">
@@ -1736,18 +1703,32 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.extension-release__back {
+.extension-page .extension-release__back {
   display: inline-flex;
   align-self: flex-start;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  padding: 6px 12px;
+  margin-bottom: 2px;
+  padding: 3px 0;
   border: 0;
-  border-radius: 6px;
-  background: #e5e7eb;
-  color: #1f2937;
+  background: transparent;
+  color: #6b7280;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
   cursor: pointer;
+  transition: color 0.15s;
+}
+
+.extension-release__back:hover {
+  color: #2563eb;
+}
+
+.extension-release__back:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
 }
 
 .extension-release__heading {
@@ -1777,28 +1758,6 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 
-.extension-release__tabs {
-  display: flex;
-  flex-shrink: 0;
-  gap: 8px;
-}
-
-.extension-release__tabs button {
-  padding: 6px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #fff;
-  color: #111827;
-  cursor: pointer;
-}
-
-.extension-release__tabs button.is-active {
-  border-color: #3963ff;
-  background: #3963ff;
-  color: #fff;
-}
-
-.extension-release__tabs button:disabled,
 .extension-release__back:disabled {
   opacity: 0.55;
   cursor: not-allowed;

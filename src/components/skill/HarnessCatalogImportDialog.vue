@@ -2,11 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import { getHarnessCapabilityPlanningApi } from '../../services/skillMarket/harnessCapabilityPlanningService';
+import { usesHttpHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import {
   normalizeSkillImportResponse,
   normalizeSkillTransferParams,
+  openSkillExportResponse,
   skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
 import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
@@ -37,6 +39,8 @@ const file = ref<File | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const dialogRef = ref<HTMLElement | null>(null);
 const submitting = ref(false);
+const downloading = ref(false);
+const downloadMessage = ref('');
 const dragging = ref(false);
 const error = ref('');
 const result = ref<ImportResult | null>(null);
@@ -73,7 +77,9 @@ const scopeError = computed(() => {
   if (level.value === '产品级' && !selectedProduct.value?.offeringId) return '请选择产品';
   return '';
 });
-const locked = computed(() => submitting.value || Boolean(result.value));
+const busy = computed(() => submitting.value || downloading.value);
+const locked = computed(() => busy.value || Boolean(result.value));
+const canDownload = computed(() => !scopeError.value && !productsLoading.value && !busy.value);
 const canSubmit = computed(
   () => Boolean(file.value) && !scopeError.value && !productsLoading.value && !locked.value,
 );
@@ -104,8 +110,11 @@ async function loadProducts(preferredId = ''): Promise<void> {
 }
 
 watch([level, departmentPath], () => {
-  error.value = '';
   void loadProducts();
+});
+watch([level, departmentPath, productName], () => {
+  error.value = '';
+  downloadMessage.value = '';
 });
 
 function chooseFiles(files: FileList | null | undefined): void {
@@ -135,7 +144,7 @@ function onDrop(event: DragEvent): void {
 }
 
 function close(): void {
-  if (!submitting.value) emit('close');
+  if (!busy.value) emit('close');
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -162,23 +171,55 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
+function buildTransferParams() {
+  return normalizeSkillTransferParams({
+    userId: props.userId,
+    dimType: level.value,
+    dimCode:
+      level.value === '产品级'
+        ? selectedProduct.value!.offeringId
+        : getDepartmentNodeCode(selectedDepartment.value),
+    dimName:
+      level.value === '产品级'
+        ? selectedProduct.value!.offeringName
+        : selectedDepartment.value!.name,
+  });
+}
+
+async function downloadExistingData(): Promise<void> {
+  if (!canDownload.value) return;
+  downloading.value = true;
+  error.value = '';
+  downloadMessage.value = '';
+  try {
+    const scope = buildTransferParams();
+    if (props.assetType === 'Skill') {
+      openSkillExportResponse(await skillBaseService.exportSkillMasterManagement(scope));
+    } else {
+      const records = usesHttpHarnessAssetApi()
+        ? []
+        : await api.queryCatalog({
+            level: scope.dimType,
+            departmentName: scope.dimType === '部门级' ? scope.dimName : '',
+            product: scope.dimType === '产品级' ? scope.dimName : '',
+          });
+      await api.exportCatalog(records, scope);
+    }
+    downloadMessage.value = `已开始下载 ${props.assetType} 清单`;
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '下载已有数据失败，请重试';
+  } finally {
+    downloading.value = false;
+  }
+}
+
 async function submit(): Promise<void> {
   if (!canSubmit.value || !file.value) return;
   submitting.value = true;
   error.value = '';
+  downloadMessage.value = '';
   try {
-    const scope = normalizeSkillTransferParams({
-      userId: props.userId,
-      dimType: level.value,
-      dimCode:
-        level.value === '产品级'
-          ? selectedProduct.value!.offeringId
-          : getDepartmentNodeCode(selectedDepartment.value),
-      dimName:
-        level.value === '产品级'
-          ? selectedProduct.value!.offeringName
-          : selectedDepartment.value!.name,
-    });
+    const scope = buildTransferParams();
     if (props.assetType === 'Skill') {
       const formData = new FormData();
       formData.append('file', file.value);
@@ -220,24 +261,35 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         :aria-label="`导入 ${assetType}`"
-        :aria-busy="submitting"
+        :aria-busy="busy"
         tabindex="-1"
         @keydown="onKeydown"
       >
         <header>
           <div>
-            <span class="catalog-import-eyebrow">BATCH IMPORT</span>
+            <span class="catalog-import-eyebrow">IMPORT</span>
             <h2>导入 {{ assetType }}</h2>
           </div>
-          <button
-            type="button"
-            class="catalog-import-close"
-            aria-label="关闭导入窗口"
-            :disabled="submitting"
-            @click="close"
-          >
-            ×
-          </button>
+          <div class="catalog-import-header-actions">
+            <button
+              type="button"
+              class="catalog-import-button"
+              :disabled="!canDownload"
+              :title="scopeError || '下载当前归属下的已有数据'"
+              @click="downloadExistingData"
+            >
+              {{ downloading ? '下载中…' : '下载已有数据' }}
+            </button>
+            <button
+              type="button"
+              class="catalog-import-close"
+              aria-label="关闭导入窗口"
+              :disabled="busy"
+              @click="close"
+            >
+              ×
+            </button>
+          </div>
         </header>
         <p class="catalog-import-description">选择资产归属并上传 Excel 文件，确认后开始导入。</p>
         <div class="catalog-import-body">
@@ -293,6 +345,9 @@ onBeforeUnmount(() => {
           </div>
           <p v-if="scopeError" class="catalog-import-description">{{ scopeError }}</p>
           <p v-if="error" class="catalog-import-error" role="alert">{{ error }}</p>
+          <p v-if="downloadMessage" class="catalog-import-description" role="status">
+            {{ downloadMessage }}
+          </p>
           <div v-if="result" class="catalog-import-result">
             <p role="status">
               导入完成：成功 {{ result.successCount }} 条，失败 {{ result.failCount }} 条
@@ -307,7 +362,7 @@ onBeforeUnmount(() => {
             v-if="!result"
             type="button"
             class="catalog-import-button"
-            :disabled="submitting"
+            :disabled="busy"
             @click="close"
           >
             取消
@@ -321,7 +376,13 @@ onBeforeUnmount(() => {
           >
             {{ submitting ? '导入中…' : '开始导入' }}
           </button>
-          <button v-else type="button" class="catalog-import-button is-primary" @click="close">
+          <button
+            v-else
+            type="button"
+            class="catalog-import-button is-primary"
+            :disabled="busy"
+            @click="close"
+          >
             完成
           </button>
         </footer>
@@ -362,6 +423,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 16px;
+}
+.catalog-import-header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 12px;
 }
 .catalog-import-dialog h2 {
   margin: 10px 0 0;
