@@ -144,7 +144,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       .toEqual(['Extension']);
   });
 
-  test('新建和批量导入资产均在当前页签选择独立归属', async ({ page }) => {
+  test('新建和导入资产均在当前页签选择独立归属', async ({ page }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await page
       .getByLabel('\u4ea7\u54c1\u7b5b\u9009')
@@ -176,7 +176,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       .getByLabel('\u4ea7\u54c1\u7b5b\u9009')
       .selectOption({ label: '\u6d41\u6c34\u7ebf\u7ba1\u7406\u5e73\u53f0' });
 
-    await page.getByRole('button', { name: '\u6279\u91cf\u5bfc\u5165' }).click();
+    await page.getByRole('button', { name: '导入', exact: true }).click();
     await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Agent' }).click();
     const importDialog = page.getByRole('dialog', { name: '导入 Agent', exact: true });
     await expect(importDialog).toBeVisible();

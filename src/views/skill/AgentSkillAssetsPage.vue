@@ -661,7 +661,7 @@ onBeforeUnmount(() => {
             :aria-expanded="actionMenu === 'import'"
             @click="openActionMenu('import')"
           >
-            批量导入
+            导入
           </button>
           <button
             type="button"

@@ -6,9 +6,16 @@ const envelope = (data: unknown) => ({ meta: { success: true }, data });
 
 async function prepareAssets(page: Page) {
   const imports: Request[] = [];
+  const exports: Request[] = [];
   const lists: Request[] = [];
   const catalogQueries: Request[] = [];
   await page.addInitScript(() => {
+    const openedUrls: string[] = [];
+    Object.assign(window, { __assetDownloadUrls: openedUrls });
+    window.open = (url) => {
+      openedUrls.push(String(url));
+      return null;
+    };
     sessionStorage.setItem(
       '__skill_market_parent_context_v1__',
       JSON.stringify({
@@ -56,6 +63,9 @@ async function prepareAssets(page: Page) {
     } else if (url.pathname.endsWith('/management/import')) {
       imports.push(request);
       data = { successCount: 2, failCount: 0 };
+    } else if (url.pathname.endsWith('/management/export')) {
+      exports.push(request);
+      data = `https://downloads.example.test${url.pathname}.xlsx`;
     } else if (url.pathname.endsWith('/management/query')) {
       catalogQueries.push(request);
     }
@@ -65,11 +75,11 @@ async function prepareAssets(page: Page) {
   await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
   await page.getByLabel('产品筛选').selectOption('list-product');
   await expect(page.locator('.asset-card')).toHaveCount(1);
-  return { imports, lists, catalogQueries };
+  return { imports, exports, lists, catalogQueries };
 }
 
 async function openImport(page: Page, type: string) {
-  await page.getByRole('button', { name: '批量导入', exact: true }).click();
+  await page.getByRole('button', { name: '导入', exact: true }).click();
   await page.getByRole('menuitem', { name: type, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: `导入 ${type}`, exact: true });
   await expect(dialog).toBeVisible();
@@ -100,6 +110,52 @@ test.describe('资产页导入弹窗 HTTP', () => {
 
   for (const type of ['Agent', 'Skill', 'Command']) {
     for (const level of ['产品级', '部门级']) {
+      test(`${type} ${level} 下载已有数据使用弹窗归属，不要求上传文件`, async ({
+        page,
+      }, testInfo) => {
+        const { exports, imports, lists, catalogQueries } = await prepareAssets(page);
+        const originalQuery = lists.at(-1)!.postDataJSON();
+        const dialog = await openImport(page, type);
+        await dialog.getByLabel('层级').selectOption(level);
+        await selectTargetDepartment(page, dialog);
+        if (level === '产品级') {
+          await dialog.getByLabel('产品', { exact: true }).selectOption('target-product');
+        }
+        const download = dialog
+          .locator('header')
+          .getByRole('button', { name: '下载已有数据', exact: true });
+        await expect(download).toBeEnabled();
+        await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
+        if (type === 'Skill' && level === '产品级') {
+          await dialog.screenshot({ path: testInfo.outputPath('import-download-data.png') });
+        }
+        await download.click();
+        await expect.poll(() => exports.length).toBe(1);
+        const request = exports[0]!;
+        const path = `/api/harness/${type.toLowerCase()}s/management/export`;
+        expect(request.method()).toBe('GET');
+        expect(new URL(request.url()).pathname).toBe(path);
+        expect(Object.fromEntries(new URL(request.url()).searchParams)).toEqual({
+          userId: 'import-user',
+          dimType: level,
+          dimCode: level === '产品级' ? 'b-target' : 'dept-b',
+          dimName: level === '产品级' ? 'target-product' : '团队B',
+        });
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () => (window as unknown as { __assetDownloadUrls: string[] }).__assetDownloadUrls,
+            ),
+          )
+          .toEqual([`https://downloads.example.test${path}.xlsx`]);
+        expect(imports).toHaveLength(0);
+        expect(catalogQueries).toHaveLength(0);
+        expect(lists.at(-1)!.postDataJSON()).toEqual(originalQuery);
+        await expect(page.getByLabel('产品筛选')).toHaveValue('list-product');
+        await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
+        await expect(dialog).toBeVisible();
+      });
+
       test(`${type} ${level} 在当前页确认导入，dim 取弹窗选择`, async ({ page }, testInfo) => {
         const { imports, lists, catalogQueries } = await prepareAssets(page);
         const originalQuery = lists.at(-1)!.postDataJSON();
@@ -182,13 +238,11 @@ test.describe('资产页导入弹窗 HTTP', () => {
     dialog = await openImport(page, 'Skill');
     await expect(dialog.getByText('bad.txt', { exact: true })).toHaveCount(0);
     await dialog.getByLabel('层级').selectOption('部门级');
-    await dialog
-      .locator('input[type=file]')
-      .setInputFiles({
-        name: 'retry.xlsx',
-        mimeType: 'application/octet-stream',
-        buffer: Buffer.from('workbook'),
-      });
+    await dialog.locator('input[type=file]').setInputFiles({
+      name: 'retry.xlsx',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('workbook'),
+    });
     let attempts = 0;
     await page.route('**/skills/management/import**', async (route) => {
       attempts++;
@@ -210,5 +264,58 @@ test.describe('资产页导入弹窗 HTTP', () => {
     await expect(dialog.getByRole('status')).toContainText('成功 1 条，失败 1 条');
     await expect(dialog.getByText('第 3 行：名称重复', { exact: true })).toBeVisible();
     expect(attempts).toBe(2);
+  });
+
+  test('下载需完整归属，失败保留文件可重试，处理中阻止重复提交', async ({ page }) => {
+    const { imports } = await prepareAssets(page);
+    const dialog = await openImport(page, 'Skill');
+    const download = dialog.getByRole('button', { name: '下载已有数据', exact: true });
+    await dialog.getByLabel('产品', { exact: true }).selectOption('');
+    await expect(download).toBeDisabled();
+    await dialog.getByLabel('产品', { exact: true }).selectOption('list-product');
+    await dialog.locator('input[type=file]').setInputFiles({
+      name: 'keep.xlsx',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('workbook'),
+    });
+    let attempts = 0;
+    let releaseResponse!: () => void;
+    const responseGate = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    await page.route('**/skills/management/export**', async (route) => {
+      attempts++;
+      if (attempts === 1) await responseGate;
+      await route.fulfill({
+        json:
+          attempts === 1
+            ? { meta: { success: false, message: '导出服务暂不可用' } }
+            : attempts === 2
+              ? envelope('')
+              : envelope('https://downloads.example.test/retry.xlsx'),
+      });
+    });
+    await download.click();
+    await expect.poll(() => attempts).toBe(1);
+    await expect(dialog.getByRole('button', { name: '下载中…', exact: true })).toBeDisabled();
+    await expect(dialog.getByLabel('层级')).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
+    releaseResponse();
+    await expect(dialog.getByRole('alert')).toContainText('导出服务暂不可用');
+    await expect(dialog.getByText('keep.xlsx', { exact: true })).toBeVisible();
+    await download.click();
+    await expect(dialog.getByRole('alert')).toContainText('未获取到下载链接');
+    await download.click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as { __assetDownloadUrls: string[] }).__assetDownloadUrls,
+        ),
+      )
+      .toEqual(['https://downloads.example.test/retry.xlsx']);
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    await expect(dialog.getByText('keep.xlsx', { exact: true })).toBeVisible();
+    expect(attempts).toBe(3);
+    expect(imports).toHaveLength(0);
   });
 });
