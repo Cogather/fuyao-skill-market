@@ -57,7 +57,7 @@ try {
     name: 'pipeline-check',
     description: '检查流水线',
     latestVersion: '0.0.1',
-    status: '可发布',
+    status: '待发布',
     category: '产品级/流水线',
     updatedAt: '2026-03-24 10:00:00',
   };
@@ -104,7 +104,8 @@ try {
     assert.equal(asset.assetType, assetType);
     assert.equal(asset.currentVersion, '0.0.1');
     assert.deepEqual(asset.versions, ['0.0.1']);
-    assert.equal(harnessAssetStatus(asset), '可发布');
+    assert.equal(harnessAssetStatus(asset), '待发布');
+    assert.equal(asset.publishable, assetType === 'Extension');
     assert.equal(asset.category, row.category);
     assert.equal(asset.updatedAt, row.updatedAt);
     assert.ok(asset.id, 'records without a backend id still need a stable list key');

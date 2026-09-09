@@ -774,6 +774,8 @@ export type HarnessAssetComponentDto = {
   description: string;
   latestVersion: string;
   status: string;
+  owner?: string | null;
+  developer?: string | null;
   category: string;
   updatedAt: string;
 };

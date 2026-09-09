@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import { listScenes, type SceneRecord } from '../../services/skillMarket/sceneManagementService';
 import {
@@ -95,6 +96,7 @@ const props = withDefaults(
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
     initialScope?: HarnessScopeSnapshot;
+    createOnly?: boolean;
   }>(),
   {
     departmentTree: () => [],
@@ -104,10 +106,13 @@ const props = withDefaults(
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
     initialScope: undefined,
+    createOnly: false,
   },
 );
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  created: [];
 }>();
 const records = ref<SkillMasterRecord[]>([]);
 const detailRecord = ref<SkillMasterRecord | null>(null);
@@ -133,6 +138,7 @@ const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
 const personDisplayLabels = ref<Record<string, string>>({});
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -673,6 +679,7 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
 }
 
 async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
+  if (props.createOnly) return;
   const requestSequence = ++masterQuerySequence;
   const validationMessage = masterQueryValidationMessage();
   if (validationMessage) {
@@ -882,6 +889,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function applyOwnerSelection(option: SkillPlanningUserOption): void {
@@ -1392,6 +1413,10 @@ async function importFromSquare(): Promise<void> {
       editor.error = String(response?.meta?.message || response?.message || '引入失败，请稍后重试');
       return;
     }
+    if (props.createOnly) {
+      emit('created');
+      return;
+    }
     closeEditor();
     masterPageNum.value = 1;
     await reload();
@@ -1404,7 +1429,7 @@ async function importFromSquare(): Promise<void> {
 }
 
 function openCreate(): void {
-  if (!ensureMasterScopeSelection(true)) {
+  if (!props.createOnly && !ensureMasterScopeSelection(true)) {
     return;
   }
   resetEditor();
@@ -1462,6 +1487,7 @@ function closeEditor(): void {
   initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+  if (props.createOnly) emit('close');
 }
 
 function onEditorFormSubmit(event: SubmitEvent): void {
@@ -1555,6 +1581,10 @@ async function submitEditor(): Promise<void> {
         editor.error = String(
           response?.meta?.message || response?.message || '新增失败，请稍后重试',
         );
+        return;
+      }
+      if (props.createOnly) {
+        emit('created');
         return;
       }
       closeEditor();
@@ -1977,6 +2007,13 @@ watch(requiredSkillNamePrefix, (nextPrefix, previousPrefix) => {
   }
   if (previousPrefix && editor.name.startsWith(previousPrefix)) {
     editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  } else if (
+    props.createOnly &&
+    nextPrefix &&
+    !previousPrefix &&
+    !editor.name.startsWith(nextPrefix)
+  ) {
+    editor.name = nextPrefix + editor.name;
   }
 });
 
@@ -1995,6 +2032,8 @@ watch(
   { immediate: true, deep: true },
 );
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
+  masterProductLoadSequence += 1;
   if (toastTimer !== null) {
     window.clearTimeout(toastTimer);
   }
@@ -2002,11 +2041,20 @@ onBeforeUnmount(() => {
   clearDevelopOwnerSearchTimer();
   clearImportSearchTimer();
 });
+onMounted(() => {
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
+  if (props.createOnly) openCreate();
+});
 </script>
 
 <template>
-  <section class="master-panel" aria-label="Skill 管理">
-    <section class="master-filter-card" aria-label="Skill 清单查询">
+  <section
+    class="master-panel"
+    :class="{ 'is-create-only': props.createOnly }"
+    aria-label="Skill 管理"
+  >
+    <section v-if="!props.createOnly" class="master-filter-card" aria-label="Skill 清单查询">
       <div
         class="master-scope-controls"
         :class="{ 'is-department-level': masterScopeForm.level === '部门级' }"
@@ -2094,7 +2142,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div class="master-board">
+    <div v-if="!props.createOnly" class="master-board">
       <header class="master-toolbar">
         <div class="master-toolbar__title">
           <small
@@ -2365,7 +2413,11 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div v-if="editor.open" class="overlay" @click.stop @pointerdown.stop @pointerup.stop>
         <form
+          ref="editorFormRef"
           class="dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="editor.mode === 'create' ? '添加 Skill' : '编辑 Skill'"
           :class="{
             'is-create-dialog': editor.mode === 'create',
             'is-imported-edit':
@@ -2389,12 +2441,35 @@ onBeforeUnmount(() => {
                   >广场引入</em
                 >
               </strong>
-              <p>
+              <p v-if="props.createOnly">选择资产归属并填写基本信息，也可从 Skill 广场引入。</p>
+              <p v-else>
                 这里只维护可复用的原子 Skill；场景、活动、层级和部门/产品请在 Skill 规划中配置。
               </p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
+          <HarnessCatalogCreateScope
+            v-if="props.createOnly"
+            :level="masterScopeForm.level"
+            :department-path="masterDepartmentSegments"
+            :department-tree="masterDepartmentTree"
+            :product-name="masterScopeForm.offeringName"
+            :products="masterProductOptions"
+            :products-loading="masterProductsLoading"
+            :disabled="submitting || importSubmitting"
+            :permission-path="legacyMasterPermissionPath"
+            :allowed-department-paths="normalizedAllowedDepartmentPaths"
+            :before-department-done="guardMasterDepartmentSelection"
+            @level-change="
+              masterScopeForm.level = $event;
+              onMasterScopeLevelChange();
+            "
+            @department-change="onMasterDepartmentDone"
+            @product-change="
+              masterScopeForm.offeringName = $event;
+              onMasterProductChange();
+            "
+          />
           <div
             v-if="editor.mode === 'create'"
             class="dialog-tabs"
@@ -2899,6 +2974,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+.master-panel.is-create-only {
+  display: contents;
+}
+
 .master-panel {
   display: flex;
   flex-direction: column;
@@ -3897,6 +3976,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .dialog.is-create-dialog > header,
+.dialog.is-create-dialog > .catalog-create-scope,
 .dialog.is-create-dialog > .dialog-tabs,
 .dialog.is-create-dialog > .error,
 .dialog.is-create-dialog > footer {
@@ -3908,7 +3988,7 @@ onBeforeUnmount(() => {
 }
 .dialog.is-create-dialog > .dialog-scroll-body {
   flex: 1 1 auto;
-  overflow-y: visible;
+  overflow-y: auto;
 }
 .dialog > header {
   display: flex;

@@ -105,6 +105,7 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     const historyRequests: Request[] = [];
     const extensionPublishRequests: Request[] = [];
     let extensionPublishing = false;
+    let failNextScriptRequest = true;
 
     await page.route('**/api/harness/permission/user-depts**', (route) =>
       route.fulfill({
@@ -151,7 +152,7 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
               name: names[body.type],
               description: '统一组件列表返回的资产',
               latestVersion: body.type === 'SKILL' ? '1.10.0' : '0.1',
-              status: '可发布',
+              status: '待发布',
               category: '产品级/harness-pipeline',
               updatedAt: '2026-03-24 10:00:00',
             },
@@ -171,6 +172,12 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.route('**/api/harness/packages/file**', (route) => {
       fileRequests.push(route.request());
       const query = new URL(route.request().url()).searchParams;
+      if (query.get('filePath') === 'scripts/run.sh' && failNextScriptRequest) {
+        failNextScriptRequest = false;
+        return route.fulfill({
+          json: { meta: { success: false, message: '脚本内容加载失败' }, data: null },
+        });
+      }
       return route.fulfill({
         json: envelope({
           content: `# ${HTTP_SKILL_NAME}\n\ncurrent version: ${query.get('componentVersion')}`,
@@ -234,6 +241,21 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.route('**/api/harness/extensions**', (route) => {
       const request = route.request();
       const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith('/extensions/detail') && request.method() === 'POST') {
+        return route.fulfill({
+          json: envelope({
+            firstScene: '开发',
+            secondScene: '构建诊断',
+            readyStatus: '就绪',
+            publishedExtension: { extensionName: 'harness-pipeline-build-extension' },
+            components: {
+              skills: [{ name: 'HTTP 构建诊断 Skill', version: '1.0.0', ready: true }],
+              commands: [],
+              agents: [],
+            },
+          }),
+        });
+      }
       if (pathname.endsWith('/extensions/orgs') && request.method() === 'GET') {
         organizationRequests.push(request);
         return route.fulfill({
@@ -297,8 +319,27 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await skillCard.click();
 
     await expect(page.locator('.asset-detail')).toContainText('current version: 1.10.0');
-    await page.getByRole('button', { name: '质量报告' }).click();
-    await expect(page.locator('.asset-report')).toContainText('94');
+    expect(fileRequests).toHaveLength(1);
+    const runScript = page.locator('.asset-detail').getByRole('button', { name: 'scripts/run.sh' });
+    await expect(runScript).toHaveAttribute('aria-expanded', 'false');
+    await runScript.click();
+    await expect(runScript).toHaveAttribute('aria-expanded', 'true');
+    const scriptContent = page.locator('.catalog-detail-file-content').nth(1);
+    await expect(scriptContent).toContainText('脚本内容加载失败');
+    expect(fileRequests).toHaveLength(2);
+    expect(new URL(fileRequests[1]!.url()).searchParams.get('filePath')).toBe('scripts/run.sh');
+    await scriptContent.getByRole('button', { name: '重试', exact: true }).click();
+    await expect(scriptContent.locator('pre')).toContainText('current version: 1.10.0');
+    expect(fileRequests).toHaveLength(3);
+    await runScript.click();
+    await runScript.click();
+    expect(fileRequests).toHaveLength(3);
+
+    await page.getByRole('tab', { name: '质量报告' }).click();
+    const report = page.getByRole('tabpanel', { name: '质量报告' });
+    await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText('94');
+    await expect(report.locator('.catalog-evaluation-dimensions article')).toHaveCount(2);
+    await expect(report).toContainText('安全扫描');
 
     expect(productRequests.length).toBeGreaterThan(0);
     expect(componentRequests.every((request) => request.method() === 'POST')).toBe(true);
@@ -341,13 +382,18 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await expect(extensionCard.first()).toBeVisible();
     await extensionCard.first().getByRole('button', { name: '发布', exact: true }).click();
 
+    const publishDialog = page.getByRole('region', { name: /发布 Extension/ });
+    await publishDialog.getByLabel(/Extension 名称/).fill('harness-pipeline-build-extension');
+    await publishDialog.getByLabel(/Extension 描述/).fill('HTTP Extension 发布记录');
+    await publishDialog.getByLabel(/发布通道/).selectOption('product');
     const organizationSelect = page.getByRole('combobox', { name: '目标组织' });
     await expect(organizationSelect.getByRole('option', { name: 'HTTP 目标组织' })).toBeAttached();
     await organizationSelect.selectOption('org-http-target');
     await page.getByRole('button', { name: '确认发布' }).click();
 
-    await expect(page.getByRole('button', { name: '发布历史' })).toHaveClass(/is-active/);
-    await expect(page.locator('.asset-history__item').first()).toContainText('HTTP 目标组织');
+    await expect(publishDialog).toBeHidden();
+    const historyDialog = page.getByRole('region', { name: /发布历史/ });
+    await expect(historyDialog.locator('.timeline-item').first()).toContainText('HTTP 目标组织');
 
     expect(organizationRequests.length).toBeGreaterThan(0);
     expect(historyRequests.length).toBeGreaterThan(0);

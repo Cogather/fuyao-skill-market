@@ -864,6 +864,20 @@ export async function updateMockCapabilityCatalogRecord(
   return cloneRecord(record);
 }
 
+export function updateMockCapabilityCatalogPerson(
+  type: MockHarnessCapabilityType,
+  id: string,
+  field: 'owner' | 'developOwner',
+  label: string,
+): void {
+  const state = readState(type);
+  const record = state.catalog.find((item) => item.id === id);
+  if (!record) throw new Error(`未找到该 ${capabilityLabel(type)}`);
+  record[field] = label;
+  record.updatedAt = new Date().toISOString();
+  persistState(type, state);
+}
+
 export async function deleteMockCapabilityCatalogRecord(
   type: MockHarnessCapabilityType,
   id: string,

@@ -1,5 +1,6 @@
 import {
   publishHttpExtension,
+  queryHttpExtensionBindings,
   queryHttpExtensionHistory,
   queryHttpHydratedExtensionScenes,
   queryHttpPublishableOrganizations,
@@ -45,6 +46,7 @@ import type {
 } from './assetManagementTypes';
 import { normalizeHarnessAssetVersion } from './assetManagementTypes';
 import { queryHttpHarnessAssetPage } from './assetManagementHttp';
+import { updateHarnessAssetPerson } from './assetPersonManagementService';
 
 type AssetTransport = 'http' | 'mock';
 
@@ -196,6 +198,7 @@ function atomicAsset(
     currentVersion,
     versions,
     owner: record.owner,
+    developer: record.developOwner,
     departmentName: record.department || scope.department.name,
     departmentPath: product ? [...product.departmentPath] : [...scope.department.path],
     productId: product?.id ?? '',
@@ -334,6 +337,7 @@ function extensionAsset(scene: ExtensionScene, product: HarnessAssetProduct): Ha
     nextPublishVersion,
     versions,
     owner: '',
+    developer: '',
     departmentName: product.departmentPath.at(-1) ?? '',
     departmentPath: [...product.departmentPath],
     productId: product.id,
@@ -856,6 +860,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
 
   return {
     queryProducts: loadProducts,
+    updatePerson: (input) => updateHarnessAssetPerson(input, transport),
 
     async queryAssets(scope, requestedPage): Promise<HarnessAssetPageResult> {
       const page = normalizedPage(requestedPage);
@@ -926,6 +931,26 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
       const refreshed = await refreshHttpScene(assetScope(scope, asset), scene);
       sceneByAssetId.set(asset.id, refreshed);
       return syncExtensionAsset(asset, refreshed);
+    },
+
+    async queryExtensionReleaseContext(scope, asset) {
+      const scene = await ensureExtensionScene(scope, asset);
+      if (!scene || asset.assetType !== 'Extension') throw new Error('未找到该 Extension 对应场景');
+      const queryScope = assetScope(scope, asset);
+      const products = await productsForScope(queryScope);
+      const product = productForScene(scene, products, queryScope, transport);
+      if (asset.productName && !product?.id)
+        throw new Error('未找到该 Extension 所属产品，请刷新后重试');
+      // In the all-products view, publish with the card's product rather than the list filter.
+      const extensionScope = dimensionScope({
+        ...queryScope,
+        product: product?.id ? product : undefined,
+      });
+      if (transport === 'http') {
+        const hydrated = await queryHttpExtensionBindings(scope.userId, extensionScope, scene);
+        Object.assign(scene, hydrated, { id: scene.id });
+      }
+      return { scene, scope: extensionScope, productName: product?.id ? product.name : '' };
     },
 
     async publish(input: PublishHarnessAssetInput) {

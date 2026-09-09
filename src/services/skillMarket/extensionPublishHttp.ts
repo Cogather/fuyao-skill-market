@@ -32,6 +32,12 @@ export type PublishableOrganization = {
 
 export type ExtensionPublishChannel = 'beta' | 'product';
 
+export type ExtensionReleaseContext = {
+  scope: ExtensionScope;
+  scene: ExtensionScene;
+  productName: string;
+};
+
 export type PublishExtensionInput = {
   userId: string;
   operatorName: string;
