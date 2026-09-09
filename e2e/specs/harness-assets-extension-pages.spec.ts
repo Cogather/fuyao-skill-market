@@ -1,0 +1,88 @@
+import { expect, test } from '../fixtures/base';
+import { APP_BASE_PATH } from '../helpers/constants';
+
+test.describe('资产卡片 Extension 发布页面', () => {
+  test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT === 'http', '使用 Mock 场景');
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`${APP_BASE_PATH}/harness-management`);
+    await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
+    await page.getByLabel('产品筛选').selectOption('harness-pipeline');
+    await page.getByRole('button', { name: 'Extension', exact: true }).click();
+  });
+
+  test('发布页面保留表单与页签，提交后显示历史，返回刷新卡片', async ({ page }, testInfo) => {
+    const card = page
+      .locator('.asset-card')
+      .filter({ has: page.getByRole('heading', { name: '构建诊断 Extension', exact: true }) });
+    await card.getByRole('button', { name: '发布', exact: true }).click();
+    const dialog = page.getByRole('region', { name: /发布 Extension/ });
+    await expect(dialog).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.asset-grid')).toHaveCount(0);
+    await expect(dialog.getByLabel(/发布通道/)).toHaveValue('beta');
+    await expect(dialog.locator('.publish-summary li')).toHaveCount(2);
+    await dialog.getByLabel(/Extension 名称/).fill('INVALID NAME');
+    await dialog.getByRole('button', { name: '确认发布' }).click();
+    await expect(dialog.locator('.modal-error')).toContainText('仅允许小写字母');
+    await dialog.getByLabel(/Extension 名称/).fill('harness-pipeline-dialog-test');
+    await dialog.getByLabel(/Extension 描述/).fill('从资产卡片发起的发布');
+    await dialog.getByLabel(/发布通道/).selectOption('product');
+    await dialog.getByLabel(/目标组织/).selectOption('org-yunshan');
+    const tabs = page.getByRole('tablist', { name: 'Extension 发布分区' });
+    await tabs.getByRole('tab', { name: '发布历史', exact: true }).click();
+    await expect(page.getByRole('region', { name: /发布历史/ })).toContainText('暂无发布记录');
+    await tabs.getByRole('tab', { name: '发布', exact: true }).click();
+    await expect(dialog.getByLabel(/Extension 名称/)).toHaveValue('harness-pipeline-dialog-test');
+    await expect(dialog.getByLabel(/目标组织/)).toHaveValue('org-yunshan');
+    await page
+      .locator('.extension-page--embedded')
+      .screenshot({ path: testInfo.outputPath('extension-publish-page.png') });
+    await dialog.getByRole('button', { name: '确认发布' }).click();
+    await expect(dialog).toBeHidden();
+    const publishedCard = page.locator('.asset-card').filter({
+      has: page.getByRole('heading', { name: 'harness-pipeline-dialog-test', exact: true }),
+    });
+    const history = page.getByRole('region', { name: /发布历史/ });
+    await expect(tabs.getByRole('tab', { name: '发布历史' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(history.locator('.timeline-item')).toHaveCount(1);
+    await expect(history.locator('.timeline-item')).toContainText('Product');
+    await expect(history.locator('.timeline-item')).toContainText('云山组织');
+    await expect(history.locator('.timeline-item')).toContainText('从资产卡片发起的发布');
+    await expect(history.locator('.history-structure > span')).toHaveCount(2);
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(history).toBeHidden();
+    await expect(publishedCard.locator('.asset-card__meta')).toContainText('发布中');
+    await expect(publishedCard.getByRole('button', { name: '发布', exact: true })).toHaveCount(0);
+  });
+
+  test('发布历史显示失败原因、能力版本及更多记录，从详情进入可返回详情', async ({
+    page,
+  }, testInfo) => {
+    const card = page
+      .locator('.asset-card')
+      .filter({ has: page.getByRole('heading', { name: 'MML开发 Extension', exact: true }) });
+    await card.getByRole('button', { name: '发布历史', exact: true }).click();
+    const history = page.getByRole('region', { name: /发布历史/ });
+    await expect(history.locator('.timeline-item')).toHaveCount(3);
+    await history.getByRole('button', { name: /加载更多/ }).click();
+    await expect(history.locator('.timeline-item')).toHaveCount(6);
+    await expect(history.locator('.failure-reason').first()).toContainText('失败原因');
+    await expect(history.getByRole('button', { name: /重试发布/ }).first()).toBeVisible();
+    await page
+      .locator('.extension-page--embedded')
+      .screenshot({ path: testInfo.outputPath('extension-history-page.png') });
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await card.click();
+    await page.locator('.asset-detail__actions').getByRole('button', { name: '发布历史' }).click();
+    await expect(history).toBeVisible();
+    await expect(page.locator('.asset-detail')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(page.locator('.asset-detail')).toBeVisible();
+  });
+});

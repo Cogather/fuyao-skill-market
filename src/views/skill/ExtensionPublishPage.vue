@@ -14,6 +14,7 @@ import {
   queryHttpPublishableOrganizations,
   retryHttpExtension,
   type ExtensionPublishChannel,
+  type ExtensionReleaseContext,
   type ExtensionScope,
   type PublishableOrganization,
 } from '../../services/skillMarket/extensionPublishHttp';
@@ -54,6 +55,8 @@ const props = withDefaults(
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
     initialScope?: HarnessScopeSnapshot;
+    releaseContext?: ExtensionReleaseContext;
+    initialPanel?: Exclude<ExtensionModal, null>;
   }>(),
   {
     userId: '',
@@ -63,6 +66,8 @@ const props = withDefaults(
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
     initialScope: undefined,
+    releaseContext: undefined,
+    initialPanel: 'publish',
   },
 );
 
@@ -70,6 +75,9 @@ const currentUserName = computed(() => String(props.userName ?? '').trim());
 
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  released: [];
+  notify: [message: string];
 }>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
@@ -418,6 +426,13 @@ async function loadHttpProducts(
 async function refreshHttpScenes(preferredSceneId = '', showBoardLoading = true): Promise<void> {
   const scope = appliedHttpScope.value;
   if (!scope) return;
+  if (props.releaseContext) {
+    const scene = props.releaseContext.scene;
+    const refreshed = await queryHttpExtensionHistory(scope, scene);
+    Object.assign(scene, refreshed);
+    scenes.value = [scene];
+    return;
+  }
   const requestSequence = ++sceneListLoadSequence;
   bindingLoadSequence += 1;
   bindingsLoading.value = false;
@@ -694,6 +709,9 @@ function formatNow(): string {
 }
 
 const activeModal = ref<ExtensionModal>(null);
+watch(activeModal, (modal, previous) => {
+  if (props.releaseContext && previous && !modal) emit('close');
+});
 const modalSceneId = ref('');
 const modalScene = computed(
   () => scenes.value.find((scene) => scene.id === modalSceneId.value) ?? null,
@@ -718,6 +736,7 @@ const historyLoading = ref(false);
 const historyError = ref('');
 const retryingReleaseId = ref('');
 const publishNameLocked = computed(() => Boolean(modalScene.value?.releases.length));
+const releaseFormInitialized = ref(false);
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
 const publishItems = computed(() => (modalScene.value ? capabilityItems(modalScene.value) : []));
 const historyLimit = ref(3);
@@ -761,6 +780,31 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   }
   publishForm.organizationId = organizations.value[0]?.id ?? '';
   publishError.value = organizationError.value;
+  releaseFormInitialized.value = true;
+}
+
+async function selectReleasePanel(panel: Exclude<ExtensionModal, null>): Promise<void> {
+  const scene = modalScene.value;
+  if (!scene || panel === activeModal.value || publishSubmitting.value || retryingReleaseId.value)
+    return;
+  if (panel === 'history') {
+    await openHistoryModal(scene);
+  } else if (releaseFormInitialized.value) {
+    activeModal.value = 'publish';
+  } else {
+    await openPublishModal(scene);
+  }
+}
+
+function finishPublish(): void {
+  emit('released');
+  if (props.releaseContext) {
+    historyLimit.value = 3;
+    historyError.value = '';
+    activeModal.value = 'history';
+  } else {
+    activeModal.value = null;
+  }
 }
 
 async function openHistoryModal(scene: ExtensionScene): Promise<void> {
@@ -845,7 +889,7 @@ async function confirmPublish(): Promise<void> {
       });
       const sceneId = scene.id;
       await refreshHttpScenes(sceneId, false);
-      activeModal.value = null;
+      finishPublish();
       showToast(`已提交 ${publishForm.channel} 发布 → ${organization.name}，后台处理中`);
     } catch (error) {
       publishError.value = errorMessage(error, 'Extension 发布失败');
@@ -868,7 +912,7 @@ async function confirmPublish(): Promise<void> {
     organization: organization.name,
     items: publishItems.value,
   };
-  activeModal.value = null;
+  finishPublish();
   showToast(
     `已提交 ${scene.publishing.channel} 发布 v${scene.publishing.version} → ${organization.name}，后台处理中`,
   );
@@ -887,6 +931,7 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     try {
       await retryHttpExtension(release.id ?? '', props.userId.trim(), currentUserName.value);
       await refreshHttpScenes(scene.id, false);
+      emit('released');
       showToast(
         `已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`,
       );
@@ -904,6 +949,7 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
     status: '进行中',
     items: release.items.map((item) => ({ ...item })),
   };
+  emit('released');
   showToast(`已重新提交 v${displayVersion(release.version)} → ${release.organization}，后台处理中`);
 }
 
@@ -945,7 +991,8 @@ async function initializeHttpPage(preferredScope?: HarnessScopeSnapshot): Promis
 watch(
   [() => defaultDepartmentPath.value.join('\u0001'), () => selectableDepartmentTree.value],
   () => {
-    if (!transportIsHttp || findDepartmentNode(draftDepartmentPath.value)) return;
+    if (props.releaseContext || !transportIsHttp || findDepartmentNode(draftDepartmentPath.value))
+      return;
     draftDepartmentPath.value = [...defaultDepartmentPath.value];
     void (async () => {
       scopeError.value = '';
@@ -965,6 +1012,10 @@ const toastMessage = ref('');
 let toastTimer: number | null = null;
 
 function showToast(message: string): void {
+  if (props.releaseContext) {
+    emit('notify', message);
+    return;
+  }
   toastMessage.value = message;
   if (toastTimer) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
@@ -974,6 +1025,23 @@ function showToast(message: string): void {
 }
 
 onMounted(() => {
+  if (props.releaseContext) {
+    const context = props.releaseContext;
+    scenes.value = [context.scene];
+    products.value = context.productName
+      ? [
+          {
+            id: context.scene.productId,
+            name: context.productName,
+            departmentPath: [...context.scope.departmentPath],
+          },
+        ]
+      : [];
+    appliedHttpScope.value = context.scope;
+    if (props.initialPanel === 'history') void openHistoryModal(context.scene);
+    else void openPublishModal(context.scene);
+    return;
+  }
   const restoredScope = restoreScopeSnapshot();
   if (transportIsHttp) {
     void initializeHttpPage(restoredScope);
@@ -994,349 +1062,403 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="extension-page harness-viewport-page">
-    <header class="extension-hero harness-page-heading">
-      <h2 class="harness-page-title">Extension 发布</h2>
-      <p class="harness-page-description">
-        用于统一管理各部门产品场景下的 Extension，支持内容查看、版本发布和历史追踪。
-      </p>
-    </header>
+  <div
+    class="extension-page"
+    :class="{
+      'harness-viewport-page': !releaseContext,
+      'extension-page--embedded': Boolean(releaseContext),
+    }"
+  >
+    <template v-if="releaseContext">
+      <button
+        type="button"
+        class="extension-release__back"
+        :disabled="publishSubmitting || Boolean(retryingReleaseId)"
+        @click="closeModal"
+      >
+        <span aria-hidden="true">←</span> 返回
+      </button>
+      <header class="extension-release__heading">
+        <h2>发布 · {{ modalScene?.extension.name || releaseContext.scene.extension.name }}</h2>
+        <span class="extension-release__badge">Extension</span>
+      </header>
+      <nav class="extension-release__tabs" role="tablist" aria-label="Extension 发布分区">
+        <button
+          v-for="panel in ['publish', 'history'] as const"
+          :key="panel"
+          type="button"
+          role="tab"
+          :aria-selected="activeModal === panel"
+          :class="{ 'is-active': activeModal === panel }"
+          :disabled="
+            publishSubmitting ||
+            Boolean(retryingReleaseId) ||
+            (panel === 'publish' && (!modalScene?.publishable || Boolean(modalScene?.publishing)))
+          "
+          @click="selectReleasePanel(panel)"
+        >
+          {{ panel === 'publish' ? '发布' : '发布历史' }}
+        </button>
+      </nav>
+    </template>
+    <template v-else>
+      <header class="extension-hero harness-page-heading">
+        <h2 class="harness-page-title">Extension 发布</h2>
+        <p class="harness-page-description">
+          用于统一管理各部门产品场景下的 Extension，支持内容查看、版本发布和历史追踪。
+        </p>
+      </header>
 
-    <section class="extension-filter-card" aria-label="Extension 发布查询">
-      <div class="filter-grid" :class="{ 'is-department-level': draftLevel === '部门级' }">
-        <label v-if="false" class="filter-field filter-field--level">
-          <span>层级 <em>*</em></span>
-          <div
-            v-if="filterLevelOptions.length === 1 && filterLevelOptions[0] === '产品级'"
-            class="single-level-value"
-            aria-label="当前层级：产品级"
-          >
-            产品级
+      <section class="extension-filter-card" aria-label="Extension 发布查询">
+        <div class="filter-grid" :class="{ 'is-department-level': draftLevel === '部门级' }">
+          <label v-if="false" class="filter-field filter-field--level">
+            <span>层级 <em>*</em></span>
+            <div
+              v-if="filterLevelOptions.length === 1 && filterLevelOptions[0] === '产品级'"
+              class="single-level-value"
+              aria-label="当前层级：产品级"
+            >
+              产品级
+            </div>
+            <select v-else v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
+              <option v-for="level in filterLevelOptions" :key="level" :value="level">
+                {{ level }}
+              </option>
+            </select>
+          </label>
+
+          <div class="filter-field filter-field--department">
+            <span>{{ draftLevel === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
+            <MarketDeptCascader
+              v-model="draftDepartmentPath"
+              class="extension-dept-cascader"
+              :tree="selectableDepartmentTree"
+              :max-level="6"
+              :all-label="'请选择部门'"
+              clear-behavior="reset"
+              :clear-value="defaultDepartmentPath"
+              clear-text="恢复默认选择"
+              selection-mode="confirm"
+              :permission-mode="restrictToAllowedDepartments ? 'review-center' : 'none'"
+              :permission-path="currentUserDepartmentPath"
+              :allowed-paths="restrictToAllowedDepartments ? allowedDepartmentPaths : []"
+              :before-done="guardDepartmentSelection"
+              :disabled="scopeLoading || productsLoading"
+              searchable
+              aria-label="按部门筛选 Extension"
+              @clear="onDepartmentCommitted"
+              @done="onDepartmentCommitted"
+            />
           </div>
-          <select v-else v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
-            <option v-for="level in filterLevelOptions" :key="level" :value="level">
-              {{ level }}
-            </option>
-          </select>
-        </label>
 
-        <div class="filter-field filter-field--department">
-          <span>{{ draftLevel === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
-          <MarketDeptCascader
-            v-model="draftDepartmentPath"
-            class="extension-dept-cascader"
-            :tree="selectableDepartmentTree"
-            :max-level="6"
-            :all-label="'请选择部门'"
-            clear-behavior="reset"
-            :clear-value="defaultDepartmentPath"
-            clear-text="恢复默认选择"
-            selection-mode="confirm"
-            :permission-mode="restrictToAllowedDepartments ? 'review-center' : 'none'"
-            :permission-path="currentUserDepartmentPath"
-            :allowed-paths="restrictToAllowedDepartments ? allowedDepartmentPaths : []"
-            :before-done="guardDepartmentSelection"
-            :disabled="scopeLoading || productsLoading"
-            searchable
-            aria-label="按部门筛选 Extension"
-            @clear="onDepartmentCommitted"
-            @done="onDepartmentCommitted"
-          />
+          <label v-if="draftLevel === '产品级'" class="filter-field">
+            <span>产品 <em>*</em></span>
+            <select
+              v-model="draftProductId"
+              :disabled="scopeLoading || productsLoading || availableDraftProducts.length === 0"
+              @change="applyFilters"
+            >
+              <option v-if="productsLoading" value="">产品加载中...</option>
+              <option v-else-if="availableDraftProducts.length === 0" value="">暂无产品</option>
+              <option
+                v-for="product in availableDraftProducts"
+                :key="product.id"
+                :value="product.id"
+              >
+                {{ product.name }}
+              </option>
+            </select>
+          </label>
         </div>
+      </section>
 
-        <label v-if="draftLevel === '产品级'" class="filter-field">
-          <span>产品 <em>*</em></span>
-          <select
-            v-model="draftProductId"
-            :disabled="scopeLoading || productsLoading || availableDraftProducts.length === 0"
-            @change="applyFilters"
-          >
-            <option v-if="productsLoading" value="">产品加载中...</option>
-            <option v-else-if="availableDraftProducts.length === 0" value="">暂无产品</option>
-            <option v-for="product in availableDraftProducts" :key="product.id" :value="product.id">
-              {{ product.name }}
-            </option>
-          </select>
-        </label>
+      <div v-if="scopeError" class="extension-load-alert" role="alert">
+        <span aria-hidden="true">!</span>{{ scopeError }}
       </div>
-    </section>
 
-    <div v-if="scopeError" class="extension-load-alert" role="alert">
-      <span aria-hidden="true">!</span>{{ scopeError }}
-    </div>
-
-    <section
-      class="extension-board"
-      aria-label="Extension 发布内容"
-      :aria-busy="scopeLoading || bindingsLoading"
-    >
-      <aside class="panel-card scene-tree-card">
-        <header class="panel-card__header">
-          <h3>场景树</h3>
-          <span>{{ visibleScenes.length }} 个二级</span>
-        </header>
-        <div class="scene-tree-body">
-          <div v-for="group in sceneGroups" :key="group.name" class="scene-group">
-            <button
-              type="button"
-              class="scene-group__trigger"
-              @click="toggleSceneGroup(group.name)"
-            >
-              <span class="tree-caret" :class="{ 'is-open': isSceneGroupOpen(group.name) }">›</span>
-              <strong>{{ group.name }}</strong>
-              <span class="scene-count">{{ group.scenes.length }}</span>
-            </button>
-            <ul v-show="isSceneGroupOpen(group.name)" class="scene-list">
-              <li v-for="scene in group.scenes" :key="scene.id">
-                <button
-                  type="button"
-                  class="scene-button"
-                  :class="{ 'is-active': selectedSceneId === scene.id }"
-                  :disabled="bindingsLoading && selectedSceneId === scene.id"
-                  @click="selectScene(scene.id)"
-                >
-                  <span class="primary-tag">{{ scene.primary }}</span>
-                  <span class="scene-button__name">{{ scene.name }}</span>
-                  <span class="tree-status" :class="sceneStatus(scene).className">
-                    <i aria-hidden="true"></i>{{ treeStatusLabel(scene) }}
-                  </span>
-                </button>
-              </li>
-            </ul>
-          </div>
-          <div v-if="scopeLoading" class="empty-state empty-state--tree">正在加载场景…</div>
-          <div v-else-if="sceneGroups.length === 0" class="empty-state empty-state--tree">
-            {{ scopeError ? '场景加载失败' : '暂无符合条件的场景' }}
-          </div>
-        </div>
-      </aside>
-
-      <article class="panel-card detail-card">
-        <template v-if="currentScene">
-          <header class="scene-header">
-            <div class="scene-header__main">
-              <div class="scene-title-row">
-                <span class="scene-status" :class="sceneStatus(currentScene).className">
-                  {{ sceneStatus(currentScene).label }}
-                </span>
-                <h3>{{ currentScene.primary }} / {{ currentScene.name }}</h3>
-                <span v-if="currentScopeLabel" class="department-chip">{{
-                  currentScopeLabel
-                }}</span>
-              </div>
-              <div class="extension-meta">
-                <template v-if="currentScene.extension.name">
-                  <span class="package-mark" aria-hidden="true">◆</span>
-                  <span class="extension-identity">
-                    <strong class="extension-name">{{ currentScene.extension.name }}</strong>
-                    <span v-if="currentScene.extension.description" class="extension-description">{{
-                      currentScene.extension.description
-                    }}</span>
-                  </span>
-                </template>
-                <span v-else class="extension-undefined">
-                  ◆ 未定义 Extension（点击“发布”填写名称与描述）
-                </span>
-                <template v-if="latestSuccessfulRelease(currentScene)">
-                  <span class="meta-divider">·</span>
-                  <span class="release-meta-group">
-                    <span class="release-meta-label">最新</span>
-                    <b class="version-text"
-                      >v{{
-                        displayVersion(latestSuccessfulRelease(currentScene)?.version ?? '')
-                      }}</b
-                    >
-                    <time>{{ latestSuccessfulRelease(currentScene)?.publishedAt }}</time>
-                  </span>
-                </template>
-                <template v-if="currentScene.publishing">
-                  <span class="meta-divider">·</span>
-                  <span class="release-meta-group release-meta-group--publishing">
-                    <span class="release-meta-label">发布中</span>
-                    <b class="publishing-text"
-                      >v{{ displayVersion(currentScene.publishing.version) }}</b
-                    >
-                    <time>{{ currentScene.publishing.publishedAt }}</time>
-                  </span>
-                </template>
-              </div>
-            </div>
-            <div class="scene-header__actions">
-              <button
-                type="button"
-                class="extension-button extension-button--ghost extension-button--small"
-                @click="openHistoryModal(currentScene)"
-              >
-                发布历史
-              </button>
-              <button
-                type="button"
-                class="extension-button extension-button--publish extension-button--small"
-                :disabled="!currentScene.publishable || Boolean(currentScene.publishing)"
-                @click="openPublishModal(currentScene)"
-              >
-                {{ currentScene.publishing ? '发布中…' : '发布' }}
-              </button>
-            </div>
+      <section
+        class="extension-board"
+        aria-label="Extension 发布内容"
+        :aria-busy="scopeLoading || bindingsLoading"
+      >
+        <aside class="panel-card scene-tree-card">
+          <header class="panel-card__header">
+            <h3>场景树</h3>
+            <span>{{ visibleScenes.length }} 个二级</span>
           </header>
-
-          <div v-if="!currentScene.publishable" class="warning-bar">
-            <span aria-hidden="true">!</span>
-            该场景不完备（部分 Skill 或 Agent 未开发完成），暂不具备发布能力。
-          </div>
-
-          <div class="scene-content">
-            <section
-              v-for="section in capabilitySections"
-              :key="section.type"
-              class="capability-folder"
-            >
+          <div class="scene-tree-body">
+            <div v-for="group in sceneGroups" :key="group.name" class="scene-group">
               <button
                 type="button"
-                class="folder-heading"
-                :aria-expanded="isFolderExpanded(section.type)"
-                @click="toggleFolder(section.type)"
+                class="scene-group__trigger"
+                @click="toggleSceneGroup(group.name)"
               >
-                <span class="folder-caret" :class="{ 'is-open': isFolderExpanded(section.type) }"
+                <span class="tree-caret" :class="{ 'is-open': isSceneGroupOpen(group.name) }"
                   >›</span
                 >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" />
-                </svg>
-                <strong>{{ section.folder }}/</strong>
-                <span class="folder-count">{{
-                  currentScene.capabilities[section.type].length
-                }}</span>
+                <strong>{{ group.name }}</strong>
+                <span class="scene-count">{{ group.scenes.length }}</span>
               </button>
-
-              <ul
-                v-if="currentScene.capabilities[section.type].length"
-                v-show="isFolderExpanded(section.type)"
-                class="capability-list"
-              >
-                <li
-                  v-for="capability in currentScene.capabilities[section.type]"
-                  :key="capability.id"
-                  class="capability-item"
-                >
+              <ul v-show="isSceneGroupOpen(group.name)" class="scene-list">
+                <li v-for="scene in group.scenes" :key="scene.id">
                   <button
                     type="button"
-                    class="capability-row"
-                    :class="{
-                      'is-open': expandedCapabilities.has(capabilityKey(currentScene, capability)),
-                      'is-disabled': !capability.ready,
-                    }"
-                    @click="toggleCapability(currentScene, capability, section.type)"
+                    class="scene-button"
+                    :class="{ 'is-active': selectedSceneId === scene.id }"
+                    :disabled="bindingsLoading && selectedSceneId === scene.id"
+                    @click="selectScene(scene.id)"
                   >
-                    <span class="capability-caret">{{ capability.ready ? '›' : '•' }}</span>
-                    <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
-                    <span
-                      class="capability-type-tag"
-                      :class="`capability-type-tag--${section.type}`"
-                    >
-                      {{ section.label }}
+                    <span class="primary-tag">{{ scene.primary }}</span>
+                    <span class="scene-button__name">{{ scene.name }}</span>
+                    <span class="tree-status" :class="sceneStatus(scene).className">
+                      <i aria-hidden="true"></i>{{ treeStatusLabel(scene) }}
                     </span>
-                    <span class="capability-name">{{ capability.name }}</span>
-                    <template v-if="capability.ready">
-                      <span class="capability-release-meta">
-                        <span class="capability-version"
-                          >v{{ displayVersion(capability.version) }}</span
-                        >
-                        <time v-if="capability.publishDate">{{ capability.publishDate }}</time>
-                      </span>
-                    </template>
-                    <span v-else class="unready-tag">未就绪</span>
                   </button>
-
-                  <ul
-                    v-if="
-                      capability.ready &&
-                      expandedCapabilities.has(capabilityKey(currentScene, capability))
-                    "
-                    class="file-list"
-                  >
-                    <li
-                      v-if="loadingCapabilities.has(capabilityKey(currentScene, capability))"
-                      class="folder-empty"
-                    >
-                      正在加载目录…
-                    </li>
-                    <li
-                      v-else-if="capabilityErrors[capabilityKey(currentScene, capability)]"
-                      class="folder-empty folder-empty--error"
-                    >
-                      {{ capabilityErrors[capabilityKey(currentScene, capability)] }}
-                    </li>
-                    <template v-else-if="section.type === 'skill'">
-                      <li v-for="file in capability.files" :key="file.name">
-                        <button
-                          type="button"
-                          class="file-row"
-                          :class="{
-                            'is-open': expandedFiles.has(
-                              fileKey(currentScene, capability, file.name),
-                            ),
-                          }"
-                          @click="toggleFile(currentScene, capability, section.type, file.name)"
-                        >
-                          <span class="file-caret">›</span>
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M6 3.5h8l4 4V20H6V3.5Z" />
-                            <path d="M14 3.5v4h4" />
-                          </svg>
-                          <p style="font-size: 10px">{{ file.name }}</p>
-                        </button>
-                        <pre
-                          v-if="expandedFiles.has(fileKey(currentScene, capability, file.name))"
-                          class="file-content"
-                          >{{
-                            loadingFiles.has(fileKey(currentScene, capability, file.name))
-                              ? '正在加载…'
-                              : fileErrors[fileKey(currentScene, capability, file.name)] ||
-                                file.content ||
-                                '(空)'
-                          }}</pre>
-                      </li>
-                      <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
-                    </template>
-                    <li v-else-if="capability.files[0]">
-                      <pre class="file-content file-content--direct">{{
-                        loadingFiles.has(
-                          fileKey(currentScene, capability, capability.files[0].name),
-                        )
-                          ? '正在加载…'
-                          : fileErrors[
-                              fileKey(currentScene, capability, capability.files[0].name)
-                            ] ||
-                            capability.files[0].content ||
-                            '(空)'
-                      }}</pre>
-                    </li>
-                    <li v-else class="folder-empty">暂无文件</li>
-                  </ul>
                 </li>
               </ul>
-              <div v-else v-show="isFolderExpanded(section.type)" class="folder-empty">无</div>
-            </section>
+            </div>
+            <div v-if="scopeLoading" class="empty-state empty-state--tree">正在加载场景…</div>
+            <div v-else-if="sceneGroups.length === 0" class="empty-state empty-state--tree">
+              {{ scopeError ? '场景加载失败' : '暂无符合条件的场景' }}
+            </div>
           </div>
-        </template>
-        <div v-else class="empty-state">
-          {{ scopeLoading ? '正在加载 Extension 内容…' : '选择左侧二级场景查看关联内容' }}
-        </div>
-      </article>
-    </section>
+        </aside>
 
-    <div v-if="activeModal" class="modal-overlay">
+        <article class="panel-card detail-card">
+          <template v-if="currentScene">
+            <header class="scene-header">
+              <div class="scene-header__main">
+                <div class="scene-title-row">
+                  <span class="scene-status" :class="sceneStatus(currentScene).className">
+                    {{ sceneStatus(currentScene).label }}
+                  </span>
+                  <h3>{{ currentScene.primary }} / {{ currentScene.name }}</h3>
+                  <span v-if="currentScopeLabel" class="department-chip">{{
+                    currentScopeLabel
+                  }}</span>
+                </div>
+                <div class="extension-meta">
+                  <template v-if="currentScene.extension.name">
+                    <span class="package-mark" aria-hidden="true">◆</span>
+                    <span class="extension-identity">
+                      <strong class="extension-name">{{ currentScene.extension.name }}</strong>
+                      <span
+                        v-if="currentScene.extension.description"
+                        class="extension-description"
+                        >{{ currentScene.extension.description }}</span
+                      >
+                    </span>
+                  </template>
+                  <span v-else class="extension-undefined">
+                    ◆ 未定义 Extension（点击“发布”填写名称与描述）
+                  </span>
+                  <template v-if="latestSuccessfulRelease(currentScene)">
+                    <span class="meta-divider">·</span>
+                    <span class="release-meta-group">
+                      <span class="release-meta-label">最新</span>
+                      <b class="version-text"
+                        >v{{
+                          displayVersion(latestSuccessfulRelease(currentScene)?.version ?? '')
+                        }}</b
+                      >
+                      <time>{{ latestSuccessfulRelease(currentScene)?.publishedAt }}</time>
+                    </span>
+                  </template>
+                  <template v-if="currentScene.publishing">
+                    <span class="meta-divider">·</span>
+                    <span class="release-meta-group release-meta-group--publishing">
+                      <span class="release-meta-label">发布中</span>
+                      <b class="publishing-text"
+                        >v{{ displayVersion(currentScene.publishing.version) }}</b
+                      >
+                      <time>{{ currentScene.publishing.publishedAt }}</time>
+                    </span>
+                  </template>
+                </div>
+              </div>
+              <div class="scene-header__actions">
+                <button
+                  type="button"
+                  class="extension-button extension-button--ghost extension-button--small"
+                  @click="openHistoryModal(currentScene)"
+                >
+                  发布历史
+                </button>
+                <button
+                  type="button"
+                  class="extension-button extension-button--publish extension-button--small"
+                  :disabled="!currentScene.publishable || Boolean(currentScene.publishing)"
+                  @click="openPublishModal(currentScene)"
+                >
+                  {{ currentScene.publishing ? '发布中…' : '发布' }}
+                </button>
+              </div>
+            </header>
+
+            <div v-if="!currentScene.publishable" class="warning-bar">
+              <span aria-hidden="true">!</span>
+              该场景不完备（部分 Skill 或 Agent 未开发完成），暂不具备发布能力。
+            </div>
+
+            <div class="scene-content">
+              <section
+                v-for="section in capabilitySections"
+                :key="section.type"
+                class="capability-folder"
+              >
+                <button
+                  type="button"
+                  class="folder-heading"
+                  :aria-expanded="isFolderExpanded(section.type)"
+                  @click="toggleFolder(section.type)"
+                >
+                  <span class="folder-caret" :class="{ 'is-open': isFolderExpanded(section.type) }"
+                    >›</span
+                  >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" />
+                  </svg>
+                  <strong>{{ section.folder }}/</strong>
+                  <span class="folder-count">{{
+                    currentScene.capabilities[section.type].length
+                  }}</span>
+                </button>
+
+                <ul
+                  v-if="currentScene.capabilities[section.type].length"
+                  v-show="isFolderExpanded(section.type)"
+                  class="capability-list"
+                >
+                  <li
+                    v-for="capability in currentScene.capabilities[section.type]"
+                    :key="capability.id"
+                    class="capability-item"
+                  >
+                    <button
+                      type="button"
+                      class="capability-row"
+                      :class="{
+                        'is-open': expandedCapabilities.has(
+                          capabilityKey(currentScene, capability),
+                        ),
+                        'is-disabled': !capability.ready,
+                      }"
+                      @click="toggleCapability(currentScene, capability, section.type)"
+                    >
+                      <span class="capability-caret">{{ capability.ready ? '›' : '•' }}</span>
+                      <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
+                      <span
+                        class="capability-type-tag"
+                        :class="`capability-type-tag--${section.type}`"
+                      >
+                        {{ section.label }}
+                      </span>
+                      <span class="capability-name">{{ capability.name }}</span>
+                      <template v-if="capability.ready">
+                        <span class="capability-release-meta">
+                          <span class="capability-version"
+                            >v{{ displayVersion(capability.version) }}</span
+                          >
+                          <time v-if="capability.publishDate">{{ capability.publishDate }}</time>
+                        </span>
+                      </template>
+                      <span v-else class="unready-tag">未就绪</span>
+                    </button>
+
+                    <ul
+                      v-if="
+                        capability.ready &&
+                        expandedCapabilities.has(capabilityKey(currentScene, capability))
+                      "
+                      class="file-list"
+                    >
+                      <li
+                        v-if="loadingCapabilities.has(capabilityKey(currentScene, capability))"
+                        class="folder-empty"
+                      >
+                        正在加载目录…
+                      </li>
+                      <li
+                        v-else-if="capabilityErrors[capabilityKey(currentScene, capability)]"
+                        class="folder-empty folder-empty--error"
+                      >
+                        {{ capabilityErrors[capabilityKey(currentScene, capability)] }}
+                      </li>
+                      <template v-else-if="section.type === 'skill'">
+                        <li v-for="file in capability.files" :key="file.name">
+                          <button
+                            type="button"
+                            class="file-row"
+                            :class="{
+                              'is-open': expandedFiles.has(
+                                fileKey(currentScene, capability, file.name),
+                              ),
+                            }"
+                            @click="toggleFile(currentScene, capability, section.type, file.name)"
+                          >
+                            <span class="file-caret">›</span>
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <path d="M6 3.5h8l4 4V20H6V3.5Z" />
+                              <path d="M14 3.5v4h4" />
+                            </svg>
+                            <p style="font-size: 10px">{{ file.name }}</p>
+                          </button>
+                          <pre
+                            v-if="expandedFiles.has(fileKey(currentScene, capability, file.name))"
+                            class="file-content"
+                            >{{
+                              loadingFiles.has(fileKey(currentScene, capability, file.name))
+                                ? '正在加载…'
+                                : fileErrors[fileKey(currentScene, capability, file.name)] ||
+                                  file.content ||
+                                  '(空)'
+                            }}</pre>
+                        </li>
+                        <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
+                      </template>
+                      <li v-else-if="capability.files[0]">
+                        <pre class="file-content file-content--direct">{{
+                          loadingFiles.has(
+                            fileKey(currentScene, capability, capability.files[0].name),
+                          )
+                            ? '正在加载…'
+                            : fileErrors[
+                                fileKey(currentScene, capability, capability.files[0].name)
+                              ] ||
+                              capability.files[0].content ||
+                              '(空)'
+                        }}</pre>
+                      </li>
+                      <li v-else class="folder-empty">暂无文件</li>
+                    </ul>
+                  </li>
+                </ul>
+                <div v-else v-show="isFolderExpanded(section.type)" class="folder-empty">无</div>
+              </section>
+            </div>
+          </template>
+          <div v-else class="empty-state">
+            {{ scopeLoading ? '正在加载 Extension 内容…' : '选择左侧二级场景查看关联内容' }}
+          </div>
+        </article>
+      </section>
+    </template>
+    <div
+      v-if="activeModal"
+      :class="releaseContext ? 'extension-release__content' : 'modal-overlay'"
+    >
       <section
         v-if="activeModal === 'publish' && modalScene"
         class="extension-modal"
-        role="dialog"
-        aria-modal="true"
+        :class="{ 'extension-panel': Boolean(releaseContext) }"
+        :role="releaseContext ? 'region' : 'dialog'"
+        :aria-modal="releaseContext ? undefined : true"
         aria-labelledby="publish-modal-title"
       >
         <header class="modal-header">
           <h3 id="publish-modal-title">发布 Extension · {{ modalScene.name }}</h3>
           <button
+            v-if="!releaseContext"
             type="button"
             class="modal-close"
             aria-label="关闭"
@@ -1447,8 +1569,9 @@ onBeforeUnmount(() => {
       <section
         v-else-if="activeModal === 'history' && modalScene"
         class="extension-modal extension-modal--history"
-        role="dialog"
-        aria-modal="true"
+        :class="{ 'extension-panel': Boolean(releaseContext) }"
+        :role="releaseContext ? 'region' : 'dialog'"
+        :aria-modal="releaseContext ? undefined : true"
         aria-labelledby="history-modal-title"
       >
         <header class="modal-header">
@@ -1457,6 +1580,7 @@ onBeforeUnmount(() => {
             <small>共 {{ modalHistory.length }} 条</small>
           </h3>
           <button
+            v-if="!releaseContext"
             type="button"
             class="modal-close"
             aria-label="关闭"
@@ -1561,7 +1685,7 @@ onBeforeUnmount(() => {
             已全部加载 · 共 {{ modalHistory.length }} 条
           </p>
         </div>
-        <footer class="modal-footer">
+        <footer v-if="!releaseContext" class="modal-footer">
           <button
             type="button"
             class="extension-button extension-button--ghost"
@@ -1601,6 +1725,103 @@ onBeforeUnmount(() => {
     'Segoe UI',
     'Microsoft YaHei',
     sans-serif;
+}
+
+.extension-page.extension-page--embedded {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.extension-release__back {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: #e5e7eb;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.extension-release__heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extension-release__heading h2 {
+  min-width: 0;
+  margin: 0;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.extension-release__badge {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 11px;
+}
+
+.extension-release__tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.extension-release__tabs button {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.extension-release__tabs button.is-active {
+  border-color: #3963ff;
+  background: #3963ff;
+  color: #fff;
+}
+
+.extension-release__tabs button:disabled,
+.extension-release__back:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.extension-release__content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.extension-release__content .extension-panel {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  max-height: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.extension-release__content .modal-body {
+  min-height: 0;
 }
 
 .extension-page button,

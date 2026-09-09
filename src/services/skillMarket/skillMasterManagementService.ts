@@ -368,6 +368,19 @@ export function updateSkillMasterRecord(
   return cloneRecord(record);
 }
 
+export function updateSkillMasterPerson(
+  id: string,
+  field: 'owner' | 'developOwner',
+  label: string,
+): void {
+  const records = readRecords();
+  const record = records.find((item) => item.id === id);
+  if (!record) throw new Error('未找到该 Skill');
+  record[field] = label;
+  record.updatedAt = new Date().toISOString();
+  persist(records);
+}
+
 export function deleteSkillMasterRecord(id: string): void {
   persist(readRecords().filter((item) => item.id !== id));
 }

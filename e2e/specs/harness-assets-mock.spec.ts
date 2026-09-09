@@ -304,6 +304,9 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(card.getByText('\u5f85\u53d1\u5e03', { exact: true })).toBeVisible();
     await card.getByRole('button', { name: '\u53d1\u5e03', exact: true }).click();
 
+    const publishDialog = page.getByRole('region', { name: /发布 Extension/ });
+    const publishedName = 'harness-pipeline-build-published';
+    await publishDialog.getByLabel(/Extension 名称/).fill(publishedName);
     const organizationSelect = page.getByRole('combobox', { name: '\u76ee\u6807\u7ec4\u7ec7' });
     await expect(organizationSelect).toBeVisible();
     const organizationOptions = await organizationSelect.locator('option').allTextContents();
@@ -312,21 +315,23 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await organizationSelect.selectOption({ index: 1 });
     await page.getByRole('button', { name: '\u786e\u8ba4\u53d1\u5e03' }).click();
 
-    await expect(page.getByRole('button', { name: '\u53d1\u5e03\u5386\u53f2' })).toHaveClass(
-      /is-active/,
+    await expect(publishDialog).toBeHidden();
+    const historyDialog = page.getByRole('region', { name: /发布历史/ });
+    await expect(historyDialog.locator('.timeline-item').first()).toContainText(
+      selectedOrganization,
     );
-    const latestHistory = page.locator('.asset-history__item').first();
-    await expect(latestHistory).toContainText(selectedOrganization);
-    const publishedName = (await latestHistory.locator('strong').textContent())?.trim() ?? '';
-    expect(publishedName).toMatch(/^[a-z0-9-]{1,64}$/);
-
-    await page.locator('.asset-back').click();
-    await page.locator('.asset-back').click();
+    await page.getByRole('button', { name: '返回', exact: true }).click();
     const refreshedCard = assetCard(page, publishedName);
     await expect(refreshedCard.getByText('\u53d1\u5e03\u4e2d', { exact: true })).toBeVisible();
     await expect(
       refreshedCard.getByRole('button', { name: '\u53d1\u5e03', exact: true }),
     ).toHaveCount(0);
+    await refreshedCard.getByRole('button', { name: '发布历史' }).click();
+    await expect(historyDialog.locator('.timeline-item').first()).toContainText(
+      selectedOrganization,
+    );
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(refreshedCard).toBeVisible();
   });
 
   test('\u6ca1\u6709\u53ef\u53d1\u5e03\u7248\u672c\u7684\u8d44\u4ea7\u6807\u8bb0\u4e3a\u672a\u5f00\u53d1\u4e14\u4e0d\u63d0\u4f9b\u53d1\u5e03\u5165\u53e3', async ({

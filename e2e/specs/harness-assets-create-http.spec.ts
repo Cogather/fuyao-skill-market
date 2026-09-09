@@ -112,6 +112,78 @@ test.describe('资产页新建 HTTP 归属', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
   for (const type of ['Agent', 'Skill', 'Command']) {
+    test(`${type} 人员搜索面板仅在点击自身区域外时独立收起`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await prepareAssets(page);
+      await page.getByRole('button', { name: '+ 新建资产' }).click();
+      await page.getByRole('menuitem', { name: type, exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: `添加 ${type}` });
+      const pickers = dialog.locator('.person-search:visible');
+      const owner = pickers.nth(0);
+      const developer = pickers.nth(1);
+      const ownerPanel = owner.locator('.person-search__panel');
+      const developerPanel = developer.locator('.person-search__panel');
+
+      await owner.locator('input').click();
+      await expect(ownerPanel).toBeVisible();
+      await ownerPanel.getByText('请输入人员信息').click();
+      await expect(ownerPanel).toBeVisible();
+      await page.mouse.move(5, 5);
+      await expect(ownerPanel).toBeVisible();
+      await dialog.locator('header strong').click();
+      await expect(ownerPanel).toBeHidden();
+
+      await owner.locator('input').click();
+      await developer.locator('input').click();
+      await expect(ownerPanel).toBeHidden();
+      await expect(developerPanel).toBeVisible();
+      await owner.locator('input').click();
+      await expect(developerPanel).toBeHidden();
+      await expect(ownerPanel).toBeVisible();
+
+      await owner.locator('input').fill('u1');
+      await ownerPanel.getByRole('button').first().click();
+      await expect(owner.locator('input')).toHaveValue('张三 u1');
+      await expect(ownerPanel).toBeHidden();
+
+      let releaseSearch!: () => void;
+      const searchGate = new Promise<void>((resolve) => {
+        releaseSearch = resolve;
+      });
+      await page.route('**/dataengineering/config-center/hw-userinfo**', async (route) => {
+        await searchGate;
+        await route.fallback();
+      });
+      const searchRequest = page.waitForRequest('**/dataengineering/config-center/hw-userinfo**');
+      await developer.locator('input').fill('u1');
+      await searchRequest;
+      await expect(developerPanel).toBeVisible();
+      await page.mouse.click(5, 5);
+      await expect(developerPanel).toBeHidden();
+      const searchResponse = page.waitForResponse('**/dataengineering/config-center/hw-userinfo**');
+      releaseSearch();
+      await searchResponse;
+      await expect(developerPanel).toBeHidden();
+      await expect(dialog).toBeVisible();
+      await developer.locator('input').click();
+      await developerPanel.getByRole('button').first().click();
+      await expect(developer.locator('input')).toHaveValue('张三 u1');
+      await expect(developerPanel).toBeHidden();
+
+      if (type === 'Skill') {
+        await dialog.getByRole('tab', { name: '从 Skill 广场引入', exact: true }).click();
+        await owner.getByRole('button', { name: '清除责任 Owner' }).click();
+        await developer.getByRole('button', { name: '清除开发责任人' }).click();
+        await owner.locator('input').click();
+        await expect(ownerPanel).toBeVisible();
+        await developer.locator('input').click();
+        await expect(ownerPanel).toBeHidden();
+        await expect(developerPanel).toBeVisible();
+        await dialog.locator('header strong').first().click();
+        await expect(developerPanel).toBeHidden();
+      }
+    });
+
     test(`${type} 在当前页签新建，产品级和部门级 dim 均取弹窗选择`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 1440, height: 1000 });
       const { creates, listRequests, catalogQueries } = await prepareAssets(page);

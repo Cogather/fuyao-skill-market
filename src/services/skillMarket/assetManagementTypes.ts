@@ -1,6 +1,17 @@
+import type { ExtensionReleaseContext } from './extensionPublishHttp';
+import type { SkillPlanningUserOption } from './skillPlanningShared';
+
 export type HarnessAssetType = 'Agent' | 'Skill' | 'Command' | 'Extension';
 export type HarnessAssetFilter = 'all' | HarnessAssetType;
 export type HarnessAtomicAssetType = Exclude<HarnessAssetType, 'Extension'>;
+export type HarnessAssetPersonField = 'owner' | 'developer';
+
+export type UpdateHarnessAssetPersonInput = {
+  asset: HarnessAsset;
+  field: HarnessAssetPersonField;
+  person: SkillPlanningUserOption;
+  userId: string;
+};
 
 export type HarnessAssetDepartment = {
   id: string;
@@ -48,6 +59,7 @@ export type HarnessAsset = {
   nextPublishVersion?: string;
   versions: string[];
   owner: string;
+  developer: string;
   departmentName: string;
   departmentPath: string[];
   productId: string;
@@ -114,6 +126,7 @@ export type PublishHarnessAssetInput = {
 };
 
 export interface HarnessAssetApi {
+  updatePerson(input: UpdateHarnessAssetPersonInput): Promise<string>;
   queryProducts(
     scope: Omit<HarnessAssetScope, 'product' | 'assetType'>,
   ): Promise<HarnessAssetProduct[]>;
@@ -136,6 +149,10 @@ export interface HarnessAssetApi {
     asset: HarnessAsset,
   ): Promise<HarnessAssetOrganization[]>;
   queryReleases(scope: HarnessAssetScope, asset: HarnessAsset): Promise<HarnessAssetRelease[]>;
+  queryExtensionReleaseContext(
+    scope: HarnessAssetScope,
+    asset: HarnessAsset,
+  ): Promise<ExtensionReleaseContext>;
   publish(input: PublishHarnessAssetInput): Promise<HarnessAssetRelease>;
 }
 

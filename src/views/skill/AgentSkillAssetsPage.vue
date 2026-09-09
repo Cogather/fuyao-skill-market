@@ -2,29 +2,30 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
+import HarnessAssetPersonEditDialog from '../../components/skill/HarnessAssetPersonEditDialog.vue';
 import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
+import ExtensionPublishPage from './ExtensionPublishPage.vue';
+import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
 import {
   getHarnessAssetApi,
   usesHttpHarnessAssetApi,
 } from '../../services/skillMarket/assetManagementService';
 import {
-  harnessAssetPublishVersion,
   harnessAssetStatus,
   hasInProgressCurrentRelease,
-  hasSuccessfulCurrentRelease,
   type HarnessAsset,
   type HarnessAssetDetail,
   type HarnessAssetFilter,
-  type HarnessAssetOrganization,
+  type HarnessAssetPersonField,
   type HarnessAssetProduct,
-  type HarnessAssetRelease,
   type HarnessAssetScope,
   type HarnessAssetType,
 } from '../../services/skillMarket/assetManagementTypes';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
 import { mergeUniquePage, shouldLoadNextPage } from '../../utils/infiniteScroll';
 
 type PageView = 'list' | 'detail' | 'publish';
@@ -70,6 +71,10 @@ const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
   { key: 'Extension', label: 'Extension' },
 ];
 const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
+const PERSON_FIELDS = [
+  { field: 'owner', label: '责任人' },
+  { field: 'developer', label: '开发责任人' },
+] as const;
 const transportIsHttp = usesHttpHarnessAssetApi();
 const ASSET_PAGE_SIZE = transportIsHttp ? 30 : 24;
 const ASSET_SCROLL_THRESHOLD = 120;
@@ -85,14 +90,28 @@ const products = ref<HarnessAssetProduct[]>([]);
 const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
-const organizations = ref<HarnessAssetOrganization[]>([]);
-const selectedOrganizationId = ref('');
 const detailTab = ref<'content' | 'report'>('content');
-const publishTab = ref<'publish' | 'history'>('publish');
+const personEditor = ref<{
+  asset: HarnessAsset;
+  field: HarnessAssetPersonField;
+  label: string;
+  userId: string;
+} | null>(null);
+const extensionRelease = ref<{
+  context: ExtensionReleaseContext;
+  mode: 'publish' | 'history';
+} | null>(null);
+const extensionReleaseLoading = ref(false);
+const extensionReturnView = ref<'list' | 'detail'>('list');
 const actionMenu = ref<CatalogAction | null>(null);
 const createAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
 const importAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
-const importScope = ref<HarnessScopeSnapshot>({ level: '产品级', departmentPath: [], offeringId: '', offeringName: '' });
+const importScope = ref<HarnessScopeSnapshot>({
+  level: '产品级',
+  departmentPath: [],
+  offeringId: '',
+  offeringName: '',
+});
 const listLoading = ref(false);
 const listLoadingMore = ref(false);
 const listError = ref('');
@@ -103,11 +122,6 @@ const assetBoardElement = ref<HTMLElement | null>(null);
 const productError = ref('');
 const detailLoading = ref(false);
 const detailError = ref('');
-const organizationLoading = ref(false);
-const organizationError = ref('');
-const historyLoading = ref(false);
-const historyError = ref('');
-const publishSubmitting = ref(false);
 const toastMessage = ref('');
 let listSequence = 0;
 let lastObservedAssetScrollTop = 0;
@@ -116,8 +130,26 @@ let pendingAssetScrollTop = 0;
 let assetScrollFrame: number | undefined;
 let productSequence = 0;
 let detailSequence = 0;
-let historySequence = 0;
+let extensionReleaseSequence = 0;
 let toastTimer: number | undefined;
+
+function openPersonEditor(field: HarnessAssetPersonField, label: string): void {
+  if (!selectedAsset.value || selectedAsset.value.assetType === 'Extension') return;
+  personEditor.value = { asset: selectedAsset.value, field, label, userId: props.userId };
+}
+
+async function savePerson(person: SkillPlanningUserOption): Promise<string> {
+  const editor = personEditor.value;
+  if (!editor) throw new Error('请重新打开人员编辑窗口');
+  const label = await api.updatePerson({ ...editor, person });
+  editor.asset[editor.field] = label;
+  return label;
+}
+
+function onPersonSaved(): void {
+  showToast(`${personEditor.value?.label || '人员'}已更新`);
+  personEditor.value = null;
+}
 
 function normalizePath(path: string[]): string[] {
   return path.map((segment) => segment.trim()).filter(Boolean);
@@ -220,9 +252,6 @@ const filteredAssets = computed(() =>
           (!selectedProductId.value || asset.productId === selectedProductId.value),
       ),
 );
-const selectedOrganization = computed(() =>
-  organizations.value.find((organization) => organization.id === selectedOrganizationId.value),
-);
 const detailVersions = computed(() =>
   detail.value?.versions.length ? detail.value.versions : (selectedAsset.value?.versions ?? []),
 );
@@ -239,14 +268,19 @@ const catalogCapabilityType = computed(() => {
   if (selectedAsset.value?.assetType === 'Command') return 'command';
   return 'skill';
 });
-const publishVersion = computed(() =>
-  selectedAsset.value && harnessAssetPublishVersion(selectedAsset.value)
-    ? `v${harnessAssetPublishVersion(selectedAsset.value)}`
-    : '无版本（未开发）',
-);
 
 function canPublishAsset(asset: HarnessAsset): boolean {
-  return Boolean(asset.currentVersion && asset.publishable && !hasInProgressCurrentRelease(asset));
+  if (transportIsHttp) return asset.status === '待发布';
+  return Boolean(
+    asset.currentVersion &&
+    asset.publishable &&
+    !hasInProgressCurrentRelease(asset) &&
+    statusLabel(asset) !== '已发布',
+  );
+}
+
+function canViewAssetHistory(asset: HarnessAsset): boolean {
+  return ['待发布', '已发布', '发布中'].includes(statusLabel(asset));
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -456,7 +490,6 @@ async function loadDetail(): Promise<void> {
 
 async function openDetail(asset: HarnessAsset): Promise<void> {
   detailSequence += 1;
-  historySequence += 1;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
   selectedVersion.value = asset.currentVersion || asset.versions[0] || '';
   detailTab.value = 'content';
@@ -477,136 +510,57 @@ async function changeDetailVersion(): Promise<void> {
   await loadDetail();
 }
 
-function replaceAssetReleases(assetKey: string, releases: HarnessAssetRelease[]): void {
-  const asset = assets.value.find(
-    (candidate) => `${candidate.assetType}:${candidate.id}` === assetKey,
-  );
-  if (!asset) return;
-  asset.releases = releases.map((release) => ({
-    ...release,
-    organization: { ...release.organization },
-  }));
-}
-
-async function loadHistory(): Promise<void> {
-  const scope = currentScope.value;
-  const asset = selectedAsset.value;
-  if (!scope || !asset) return;
-  const sequence = ++historySequence;
-  const assetKey = `${asset.assetType}:${asset.id}`;
-  historyLoading.value = true;
-  historyError.value = '';
-  try {
-    const releases = await api.queryReleases(scope, asset);
-    if (sequence !== historySequence || selectedAssetKey.value !== assetKey) return;
-    replaceAssetReleases(assetKey, releases);
-  } catch (error) {
-    if (sequence !== historySequence || selectedAssetKey.value !== assetKey) return;
-    historyError.value = errorMessage(error, '发布历史加载失败');
-  } finally {
-    if (sequence === historySequence) historyLoading.value = false;
-  }
-}
-
-async function openPublish(asset: HarnessAsset): Promise<void> {
-  if (hasInProgressCurrentRelease(asset)) {
-    showToast('该版本正在发布中，请勿重复提交');
-    return;
-  }
-  if (!asset.currentVersion || !asset.publishable) {
-    showToast('该资产尚未生成可发布版本');
-    return;
-  }
-  selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
-  selectedVersion.value = harnessAssetPublishVersion(asset);
-  detail.value = null;
-  detailError.value = '';
-  detailTab.value = 'content';
-  selectedOrganizationId.value = '';
-  publishTab.value = 'publish';
-  organizationError.value = '';
-  historyError.value = '';
-  view.value = 'publish';
-  const scope = currentScope.value;
-  if (!scope) return;
-  organizationLoading.value = true;
-  try {
-    const [nextOrganizations] = await Promise.all([
-      api.queryOrganizations(scope, asset),
-      loadHistory(),
-      loadDetail(),
-    ]);
-    organizations.value = nextOrganizations;
-    selectedOrganizationId.value = nextOrganizations[0]?.id ?? '';
-    if (!nextOrganizations.length) organizationError.value = '当前用户暂无可发布组织';
-  } catch (error) {
-    organizations.value = [];
-    organizationError.value = errorMessage(error, '可发布组织加载失败');
-  } finally {
-    organizationLoading.value = false;
-  }
-}
-
-async function selectPublishTab(tab: 'publish' | 'history'): Promise<void> {
-  publishTab.value = tab;
-  if (tab === 'history') await loadHistory();
-}
-
-async function confirmPublish(): Promise<void> {
-  const scope = currentScope.value;
-  const asset = selectedAsset.value;
-  const organization = selectedOrganization.value;
-  if (!scope || !asset) return;
-  if (hasInProgressCurrentRelease(asset)) {
-    organizationError.value = '该版本正在发布中，请勿重复提交';
-    return;
-  }
-  if (!organization) {
-    organizationError.value = '请先选择目标组织';
-    return;
-  }
-  publishSubmitting.value = true;
-  organizationError.value = '';
-  try {
-    await api.publish({ scope, asset, organization, channel: 'product' });
-    await loadHistory();
-    publishTab.value = 'history';
-    showToast('发布已提交');
-  } catch (error) {
-    organizationError.value = errorMessage(error, '发布失败，请稍后重试');
-  } finally {
-    publishSubmitting.value = false;
-  }
-}
-
 function statusLabel(asset: HarnessAsset): string {
-  return harnessAssetStatus(asset);
+  return transportIsHttp ? (asset.status ?? '') : harnessAssetStatus(asset);
+}
+
+async function openExtensionRelease(
+  asset: HarnessAsset,
+  mode: 'publish' | 'history',
+): Promise<void> {
+  const scope = currentScope.value;
+  if (!scope || asset.assetType !== 'Extension' || extensionReleaseLoading.value) return;
+  const sequence = ++extensionReleaseSequence;
+  const currentListSequence = listSequence;
+  const originView = view.value;
+  extensionReleaseLoading.value = true;
+  try {
+    const context = await api.queryExtensionReleaseContext(scope, asset);
+    if (
+      sequence !== extensionReleaseSequence ||
+      currentListSequence !== listSequence ||
+      view.value !== originView
+    )
+      return;
+    if (mode === 'publish' && (!context.scene.publishable || context.scene.publishing)) {
+      showToast(context.scene.publishing ? '当前已有发布进行中' : '场景不完备，无法发布');
+      return;
+    }
+    extensionRelease.value = { context, mode };
+    extensionReturnView.value = originView === 'detail' ? 'detail' : 'list';
+    view.value = 'publish';
+  } catch (error) {
+    if (sequence === extensionReleaseSequence)
+      showToast(errorMessage(error, 'Extension 发布信息加载失败'));
+  } finally {
+    if (sequence === extensionReleaseSequence) extensionReleaseLoading.value = false;
+  }
+}
+
+async function onExtensionReleased(): Promise<void> {
+  await reloadAssets();
+}
+
+function returnFromExtensionRelease(): void {
+  view.value = extensionReturnView.value === 'detail' && selectedAsset.value ? 'detail' : 'list';
+  extensionRelease.value = null;
 }
 
 function statusClass(asset: HarnessAsset): string {
-  const status = harnessAssetStatus(asset);
+  const status = statusLabel(asset);
   if (status === '已发布') return 'is-success';
-  if (status === '待发布' || status === '可发布') return 'is-warning';
+  if (status === '待发布') return 'is-warning';
   return 'is-info';
-}
-
-function releaseStatusClass(release: HarnessAssetRelease): string {
-  if (release.status === '成功') return 'is-success';
-  if (release.status === '失败') return 'is-warning';
-  return 'is-info';
-}
-
-function formatReleaseDate(value: string): string {
-  if (!value) return '-';
-  const date = new Date(value.replace(' ', 'T'));
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
 }
 
 function openActionMenu(action: CatalogAction): void {
@@ -648,6 +602,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   listSequence += 1;
+  extensionReleaseSequence += 1;
   if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
   window.clearTimeout(toastTimer);
 });
@@ -655,6 +610,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="asset-page harness-viewport-page">
+    <div v-if="extensionReleaseLoading" class="asset-toast" role="status">
+      正在加载 Extension 发布信息…
+    </div>
     <HarnessCatalogImportDialog
       v-if="importAssetType"
       :asset-type="importAssetType"
@@ -785,14 +743,14 @@ onBeforeUnmount(() => {
             role="button"
             tabindex="0"
             @click="openDetail(asset)"
-            @keydown.enter.prevent="openDetail(asset)"
-            @keydown.space.prevent="openDetail(asset)"
+            @keydown.enter.self.prevent="openDetail(asset)"
+            @keydown.space.self.prevent="openDetail(asset)"
           >
             <div class="asset-card__title">
-              <h2>{{ asset.name }}</h2>
+              <h2 :title="asset.name">{{ asset.name }}</h2>
               <span class="asset-badge is-type">{{ asset.assetType }}</span>
             </div>
-            <p>{{ asset.description || '暂无描述' }}</p>
+            <p :title="asset.description || '暂无描述'">{{ asset.description || '暂无描述' }}</p>
             <div class="asset-card__meta">
               <!-- 统计数据尚未接入，暂时隐藏。 -->
               <template v-if="false">
@@ -801,16 +759,30 @@ onBeforeUnmount(() => {
                 <span>📞 {{ asset.marketplace.calls }}</span>
               </template>
               <span v-if="asset.currentVersion">v{{ asset.currentVersion }}</span>
-              <span class="asset-badge" :class="statusClass(asset)">{{ statusLabel(asset) }}</span>
+              <span v-if="statusLabel(asset)" class="asset-badge" :class="statusClass(asset)">
+                {{ statusLabel(asset) }}
+              </span>
             </div>
-            <button
-              v-if="canPublishAsset(asset)"
-              type="button"
-              class="asset-button is-primary asset-card__publish"
-              @click.stop="openPublish(asset)"
-            >
-              {{ hasSuccessfulCurrentRelease(asset) ? '继续发布' : '发布' }}
-            </button>
+            <div v-if="asset.assetType === 'Extension'" class="asset-card__actions">
+              <button
+                v-if="canPublishAsset(asset)"
+                type="button"
+                class="asset-button is-primary asset-card__publish"
+                :disabled="extensionReleaseLoading"
+                @click.stop="openExtensionRelease(asset, 'publish')"
+              >
+                发布
+              </button>
+              <button
+                v-if="canViewAssetHistory(asset)"
+                type="button"
+                class="asset-button is-secondary asset-card__publish"
+                :disabled="extensionReleaseLoading"
+                @click.stop="openExtensionRelease(asset, 'history')"
+              >
+                发布历史
+              </button>
+            </div>
           </article>
         </div>
         <div v-else-if="hasMoreAssets" class="asset-empty" role="status">正在查找更多匹配资产…</div>
@@ -849,7 +821,11 @@ onBeforeUnmount(() => {
               <h1 id="asset-detail-title">{{ selectedAsset.name }}</h1>
               <div class="asset-detail__badges">
                 <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
-                <span class="asset-badge" :class="statusClass(selectedAsset)">
+                <span
+                  v-if="statusLabel(selectedAsset)"
+                  class="asset-badge"
+                  :class="statusClass(selectedAsset)"
+                >
                   {{ statusLabel(selectedAsset) }}
                 </span>
                 <span v-if="selectedAsset.auto" class="asset-badge is-type">自动生成</span>
@@ -869,21 +845,54 @@ onBeforeUnmount(() => {
               </select>
             </div>
           </div>
-          <div v-if="canPublishAsset(selectedAsset)" class="asset-detail__actions">
+          <div v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__actions">
             <button
+              v-if="canPublishAsset(selectedAsset)"
               type="button"
               class="asset-button is-primary asset-detail__publish"
-              @click="openPublish(selectedAsset)"
+              :disabled="extensionReleaseLoading"
+              @click="openExtensionRelease(selectedAsset, 'publish')"
             >
-              {{ hasSuccessfulCurrentRelease(selectedAsset) ? '继续发布' : '发布' }}
+              发布
+            </button>
+            <button
+              v-if="canViewAssetHistory(selectedAsset)"
+              type="button"
+              class="asset-button is-secondary"
+              :disabled="extensionReleaseLoading"
+              @click="openExtensionRelease(selectedAsset, 'history')"
+            >
+              发布历史
             </button>
           </div>
         </header>
 
-        <dl v-if="selectedAsset.owner" class="asset-detail__people">
-          <div class="asset-detail__person">
-            <dt>责任人</dt>
-            <dd>{{ selectedAsset.owner }}</dd>
+        <dl class="asset-detail__people">
+          <div v-for="{ field, label } in PERSON_FIELDS" :key="field" class="asset-detail__person">
+            <dt>{{ label }}</dt>
+            <dd>{{ selectedAsset[field] || '—' }}</dd>
+            <button
+              v-if="selectedAsset.assetType !== 'Extension'"
+              type="button"
+              class="asset-detail__person-edit"
+              :aria-label="`修改${label}`"
+              :title="`修改${label}`"
+              @click="openPersonEditor(field, label)"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m16 3 5 5M3 21l5-1L21 7a2.1 2.1 0 0 0-5-5L3 15z" />
+              </svg>
+            </button>
           </div>
         </dl>
 
@@ -943,118 +952,25 @@ onBeforeUnmount(() => {
       </section>
     </template>
 
-    <template v-else-if="view === 'publish' && selectedAsset">
-      <button type="button" class="asset-button is-secondary asset-back" @click="view = 'detail'">
-        ← 返回
-      </button>
-      <header class="asset-page__header asset-page__header--detail">
-        <h1>发布 · {{ selectedAsset.name }}</h1>
-        <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
-      </header>
+    <ExtensionPublishPage
+      v-else-if="view === 'publish' && extensionRelease"
+      :release-context="extensionRelease.context"
+      :initial-panel="extensionRelease.mode"
+      :user-id="props.userId"
+      :user-name="props.userName"
+      @close="returnFromExtensionRelease"
+      @released="onExtensionReleased"
+      @notify="showToast"
+    />
 
-      <nav class="asset-subtabs asset-subtabs--outside" aria-label="发布分区">
-        <button
-          type="button"
-          :class="{ 'is-active': publishTab === 'publish' }"
-          @click="selectPublishTab('publish')"
-        >
-          发布
-        </button>
-        <button
-          type="button"
-          :class="{ 'is-active': publishTab === 'history' }"
-          @click="selectPublishTab('history')"
-        >
-          发布历史
-        </button>
-      </nav>
-
-      <section v-if="publishTab === 'publish'" class="asset-board asset-publish">
-        <label class="asset-field asset-field--inline">
-          <span>发布版本</span>
-          <input :value="publishVersion" disabled />
-        </label>
-
-        <div v-if="detailLoading" class="asset-empty" role="status">正在加载发布内容…</div>
-        <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
-          <span>{{ detailError }}</span>
-          <button type="button" class="asset-button is-secondary" @click="loadDetail">
-            重新加载
-          </button>
-        </div>
-        <div v-else class="asset-file-tree">
-          <strong>📁 {{ selectedAsset.name }}/</strong>
-          <div v-if="detail?.files.length" class="asset-file-tree__branch">
-            <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
-              <span>📄 {{ file.path }}</span>
-              <pre>{{ file.content || '暂无文件内容' }}</pre>
-            </template>
-          </div>
-          <div v-else class="asset-empty">发布时将使用当前版本产物</div>
-        </div>
-
-        <label class="asset-field asset-field--inline asset-publish__organization">
-          <span>目标组织</span>
-          <select
-            v-model="selectedOrganizationId"
-            class="asset-select"
-            aria-label="目标组织"
-            :disabled="organizationLoading"
-          >
-            <option value="">选组织…</option>
-            <option
-              v-for="organization in organizations"
-              :key="organization.id"
-              :value="organization.id"
-            >
-              {{ organization.name }}
-            </option>
-          </select>
-        </label>
-        <p v-if="organizationError" class="asset-form-error" role="alert">
-          {{ organizationError }}
-        </p>
-        <button
-          type="button"
-          class="asset-button is-primary"
-          :disabled="publishSubmitting || organizationLoading"
-          @click="confirmPublish"
-        >
-          {{ publishSubmitting ? '发布中…' : '确认发布' }}
-        </button>
-      </section>
-
-      <section v-else class="asset-board asset-history">
-        <div v-if="historyLoading" class="asset-empty" role="status">正在加载发布历史…</div>
-        <div v-else-if="historyError" class="asset-empty asset-empty--error" role="alert">
-          <span>{{ historyError }}</span>
-          <button type="button" class="asset-button is-secondary" @click="loadHistory">
-            重新加载
-          </button>
-        </div>
-        <div v-else-if="selectedAsset.releases.length === 0" class="asset-empty">暂无发布记录</div>
-        <article
-          v-for="release in selectedAsset.releases"
-          v-else
-          :key="
-            release.id || `${release.version}-${release.publishedAt}-${release.organization.id}`
-          "
-          class="asset-history__item"
-        >
-          <div>
-            <strong>{{ release.extensionName || selectedAsset.name }}</strong>
-            <code>v{{ release.version }}</code>
-            <span class="asset-badge" :class="releaseStatusClass(release)">
-              {{ release.status }}
-            </span>
-            <time>{{ formatReleaseDate(release.publishedAt) }}</time>
-          </div>
-          <p>
-            发布人：{{ release.publisher || '—' }} · 组织：{{ release.organization.name || '—' }}
-          </p>
-        </article>
-      </section>
-    </template>
+    <HarnessAssetPersonEditDialog
+      v-if="personEditor"
+      :label="personEditor.label"
+      :current-value="personEditor.asset[personEditor.field]"
+      :save-person="savePerson"
+      @close="personEditor = null"
+      @saved="onPersonSaved"
+    />
 
     <Transition name="asset-toast">
       <div v-if="toastMessage" class="asset-toast" role="status">{{ toastMessage }}</div>
@@ -1436,12 +1352,19 @@ onBeforeUnmount(() => {
   font-weight: 700;
   line-height: 1.5;
   letter-spacing: normal;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .asset-card > p {
-  flex: 1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  flex-shrink: 0;
+  max-height: 3.2em;
   margin: 0;
+  overflow: hidden;
   color: #4b5563;
   font-size: 14px;
   line-height: 1.6;
@@ -1450,6 +1373,7 @@ onBeforeUnmount(() => {
 
 .asset-card__meta {
   display: flex;
+  margin-top: auto;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
@@ -1457,9 +1381,16 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.asset-card__publish {
-  align-self: flex-start;
+.asset-card__actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 32px;
   margin-top: 6.4px;
+}
+
+.asset-card__publish {
+  min-height: 32px;
 }
 
 .asset-badge {
@@ -1520,8 +1451,7 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 
-.asset-detail,
-.asset-publish {
+.asset-detail {
   display: block;
 }
 
@@ -1657,12 +1587,20 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail__person {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
   font-size: 13px;
   line-height: 20px;
+}
+
+.asset-detail__person + .asset-detail__person::before {
+  content: '';
+  flex: 0 0 1px;
+  height: 16px;
+  margin-right: 17px;
+  background: #d1d5db;
 }
 
 .asset-detail__person dt {
@@ -1678,6 +1616,27 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
+.asset-detail__person-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: #7d8da8;
+  background: transparent;
+  cursor: pointer;
+}
+
+.asset-detail__person-edit:hover {
+  color: #4569ff;
+  background: #edf2ff;
+}
+
+.asset-detail__person-edit:focus-visible,
 .asset-detail-back:focus-visible,
 .asset-detail__version:focus-visible,
 .asset-detail__actions button:focus-visible,
@@ -1793,58 +1752,6 @@ onBeforeUnmount(() => {
   word-break: break-all;
 }
 
-.asset-publish__organization {
-  margin-top: 16px;
-}
-
-.asset-form-error {
-  margin: -4px 0 10px;
-  color: #b91c1c;
-  font-size: 11.52px;
-}
-
-.asset-history {
-  display: block;
-}
-
-.asset-history__item {
-  padding: 11.2px 12.8px;
-  margin-bottom: 9.6px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-}
-
-.asset-history__item > div {
-  display: flex;
-  align-items: center;
-  gap: 6.4px;
-  flex-wrap: wrap;
-  margin-bottom: 4.8px;
-}
-
-.asset-history__item code {
-  display: inline-block;
-  padding: 1.6px 6.4px;
-  border-radius: 4px;
-  background: #f3f4f6;
-  color: #6b7280;
-  font-family: monospace;
-  font-size: 11.52px;
-  line-height: normal;
-}
-
-.asset-history__item time {
-  margin-left: auto;
-  color: #6b7280;
-  font-size: 11.52px;
-}
-
-.asset-history__item p {
-  margin: 0;
-  color: #6b7280;
-  font-size: 11.52px;
-}
-
 .asset-toast {
   position: fixed;
   right: 24px;
@@ -1871,6 +1778,16 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 700px) {
+  .asset-detail__people {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .asset-detail__person + .asset-detail__person::before {
+    display: none;
+  }
+
   .asset-detail {
     padding: 18px 16px;
   }
@@ -1896,11 +1813,6 @@ onBeforeUnmount(() => {
   .asset-select {
     width: 100%;
   }
-
-  .asset-history__item time {
-    width: 100%;
-    margin-left: 0;
-  }
 }
 .asset-page__header,
 .asset-scope,
@@ -1914,15 +1826,7 @@ onBeforeUnmount(() => {
     padding: 12px;
   }
 
-  .asset-card h2,
-  .asset-card > p {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    overflow: hidden;
-  }
-
-  .asset-card__publish {
+  .asset-card__actions {
     margin-top: 0;
   }
 

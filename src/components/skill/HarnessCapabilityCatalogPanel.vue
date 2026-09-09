@@ -115,6 +115,7 @@ const exporting = ref(false);
 let productLoadSequence = 0;
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
 const initialPlannedCompleteDate = ref('');
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -462,6 +463,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function resetPersonPicker(picker: PersonPickerState): void {
@@ -1001,6 +1016,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
   productLoadSequence += 1;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   clearOwnerSearchTimer();
@@ -1010,6 +1026,8 @@ onBeforeUnmount(() => {
 });
 
 onMounted(async () => {
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
   const restoredScope = restoreScopeSnapshot();
   if (!restoredScope) applyDefaultDepartment();
   if (props.createOnly) openCreate();
@@ -1319,6 +1337,7 @@ onMounted(async () => {
         @pointerup.stop
       >
         <form
+          ref="editorFormRef"
           class="capability-master-dialog"
           :class="{ 'is-create-dialog': props.createOnly }"
           role="dialog"
@@ -1386,7 +1405,7 @@ onMounted(async () => {
               <span>{{ capabilityLabel }} 说明 *</span>
               <textarea v-model.trim="editor.description" rows="4" maxlength="300" />
             </label>
-            <label class="person-search" @keydown.esc="closeOwnerPersonSearch">
+            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
               <div class="person-search__control">
                 <input
@@ -1431,7 +1450,10 @@ onMounted(async () => {
                 </template>
               </div>
             </label>
-            <label class="person-search" @keydown.esc="closeDevelopOwnerPersonSearch">
+            <label
+              class="develop-owner-picker person-search"
+              @keydown.esc="closeDevelopOwnerPersonSearch"
+            >
               <span>开发责任人 *</span>
               <div class="person-search__control">
                 <input

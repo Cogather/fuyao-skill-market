@@ -138,6 +138,7 @@ const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
 const personDisplayLabels = ref<Record<string, string>>({});
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -888,6 +889,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function applyOwnerSelection(option: SkillPlanningUserOption): void {
@@ -2017,6 +2032,7 @@ watch(
   { immediate: true, deep: true },
 );
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
   masterProductLoadSequence += 1;
   if (toastTimer !== null) {
     window.clearTimeout(toastTimer);
@@ -2026,6 +2042,8 @@ onBeforeUnmount(() => {
   clearImportSearchTimer();
 });
 onMounted(() => {
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
   if (props.createOnly) openCreate();
 });
 </script>
@@ -2395,6 +2413,7 @@ onMounted(() => {
     <Teleport to="body">
       <div v-if="editor.open" class="overlay" @click.stop @pointerdown.stop @pointerup.stop>
         <form
+          ref="editorFormRef"
           class="dialog"
           role="dialog"
           aria-modal="true"
