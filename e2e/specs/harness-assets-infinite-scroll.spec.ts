@@ -7,21 +7,22 @@ const DEPARTMENT_PATH = ['部门1', '平台产品线', '平台工具组', 'DevOp
 const MOCK_AGENT_STORAGE = 'skill-market-harness-capability-planning-v4-agent';
 
 async function selectDepartmentPath(page: Page, path: string[]): Promise<void> {
-  await page.locator('.asset-department__trigger').click();
-  const panel = page.locator('.asset-department__panel');
+  await page
+    .locator('.asset-department')
+    .getByRole('button', { name: '选择部门', exact: true })
+    .click();
+  const panel = page.getByRole('listbox');
+  await expect(panel).toBeVisible();
   for (let index = 0; index < path.length; index += 1) {
-    const accessiblePath = path.slice(0, index + 1).join(' / ');
-    const nameButton = panel.getByRole('button', { name: accessiblePath, exact: true });
-    await expect(nameButton).toBeVisible();
-    if (index === path.length - 1) {
-      await nameButton.click();
-      return;
-    }
-    const toggle = nameButton.locator('xpath=..').locator('.asset-department__toggle');
-    if (((await toggle.getAttribute('aria-label')) ?? '').startsWith('展开')) {
-      await toggle.click();
-    }
+    await panel
+      .locator('.market-dept-cascader-col')
+      .nth(index)
+      .getByRole('option')
+      .filter({ has: page.getByText(path[index]!, { exact: true }) })
+      .click();
   }
+  await panel.getByRole('button', { name: '完成', exact: true }).click();
+  await expect(panel).toBeHidden();
 }
 
 async function scrollAssetBoard(page: Page, position: 'top' | 'bottom'): Promise<void> {

@@ -17,32 +17,31 @@ function assetCard(page: Page, name: string): Locator {
 }
 
 async function selectDepartmentPath(page: Page, path: string[]): Promise<void> {
-  await page.locator('.asset-department__trigger').click();
-  const panel = page.locator('.asset-department__panel');
+  await page
+    .locator('.asset-department')
+    .getByRole('button', { name: '选择部门', exact: true })
+    .click();
+  const panel = page.getByRole('listbox');
   await expect(panel).toBeVisible();
-
   for (let index = 0; index < path.length; index += 1) {
-    const accessiblePath = path.slice(0, index + 1).join(' / ');
-    const nameButton = panel.getByRole('button', { name: accessiblePath, exact: true });
-    await expect(nameButton).toBeVisible();
-    if (index === path.length - 1) {
-      await nameButton.click();
-      break;
-    }
-    const toggle = nameButton.locator('xpath=..').locator('.asset-department__toggle');
-    if (((await toggle.getAttribute('aria-label')) ?? '').startsWith('展开')) {
-      await toggle.click();
-    }
+    await panel
+      .locator('.market-dept-cascader-col')
+      .nth(index)
+      .getByRole('option')
+      .filter({ has: page.getByText(path[index]!, { exact: true }) })
+      .click();
   }
+  await panel.getByRole('button', { name: '完成', exact: true }).click();
+  await expect(panel).toBeHidden();
 }
 
-test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
+test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
   test.skip(
     process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http',
     '仅在 VITE_SKILL_MARKET_TRANSPORT=http 时验证真实请求分支',
   );
 
-  test('复用原子能力清单、规划件详情、Skill 评估与 Extension 发布接口', async ({ page }) => {
+  test('统一组件列表支持筛选，并保留详情、Skill 评估与 Extension 发布', async ({ page }) => {
     await page.addInitScript(
       ({ departmentPath }) => {
         window.sessionStorage.setItem(
@@ -97,9 +96,7 @@ test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
       { departmentPath: DEPARTMENT_PATH },
     );
 
-    const skillCatalogRequests: Request[] = [];
-    const commandCatalogRequests: Request[] = [];
-    const agentCatalogRequests: Request[] = [];
+    const componentRequests: Request[] = [];
     const productRequests: Request[] = [];
     const treeRequests: Request[] = [];
     const fileRequests: Request[] = [];
@@ -138,75 +135,31 @@ test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
       });
     });
 
-    await page.route('**/api/harness/skills/management/query**', (route) => {
-      skillCatalogRequests.push(route.request());
+    await page.route('**/api/v1/harness/plans/components/query', (route) => {
+      componentRequests.push(route.request());
+      const body = route.request().postDataJSON();
+      const names: Record<string, string> = {
+        AGENT: 'HTTP 发布风险 Agent',
+        SKILL: HTTP_SKILL_NAME,
+        COMMAND: 'HTTP 接口契约检查 Command',
+        EXTENSION: 'harness-pipeline-build-extension',
+      };
       return route.fulfill({
-        json: envelope([
-          {
-            id: 'http-skill-pending',
-            skillName: HTTP_SKILL_NAME,
-            skillDescription: '从 Skill 清单接口聚合的待发布资产',
-            dimType: '产品级',
-            dimCode: 'http-product',
-            dimName: 'harness-pipeline',
-            ownerName: 'HTTP 开发者',
-            ownerId: 'http-user-001',
-            developOwnerName: 'HTTP 责任人',
-            developOwnerId: 'http-user-002',
-            status: '进行中',
-            planFinishDate: '2026-09-20',
-            versions: [
-              { version: '1.10.0', uploadedAt: '2026-09-06 08:00:00' },
-              { version: '1.9.0', uploadedAt: '2026-08-30 08:00:00' },
-            ],
-          },
-        ]),
-      });
-    });
-
-    await page.route('**/api/harness/commands/management/query**', (route) => {
-      commandCatalogRequests.push(route.request());
-      return route.fulfill({
-        json: envelope([
-          {
-            id: 'http-command-001',
-            commandName: 'HTTP 接口契约检查 Command',
-            commandDescription: '从 Command 清单接口聚合',
-            dimType: '产品级',
-            dimCode: 'http-product',
-            dimName: 'harness-pipeline',
-            ownerName: 'HTTP 开发者',
-            ownerId: 'http-user-001',
-            developOwnerName: 'HTTP 责任人',
-            developOwnerId: 'http-user-002',
-            status: '已完成',
-            planFinishDate: '2026-09-18',
-            versions: [{ version: '1.0.0', uploadedAt: '2026-09-01 08:00:00' }],
-          },
-        ]),
-      });
-    });
-
-    await page.route('**/api/harness/agents/management/query**', (route) => {
-      agentCatalogRequests.push(route.request());
-      return route.fulfill({
-        json: envelope([
-          {
-            id: 'http-agent-001',
-            agentName: 'HTTP 发布风险 Agent',
-            agentDescription: '从 Agent 清单接口聚合',
-            dimType: '产品级',
-            dimCode: 'http-product',
-            dimName: 'harness-pipeline',
-            ownerName: 'HTTP 开发者',
-            ownerId: 'http-user-001',
-            developOwnerName: 'HTTP 责任人',
-            developOwnerId: 'http-user-002',
-            status: '已完成',
-            planFinishDate: '2026-09-19',
-            versions: [{ version: '1.0.0', uploadedAt: '2026-09-02 08:00:00' }],
-          },
-        ]),
+        json: envelope({
+          records: [
+            {
+              name: names[body.type],
+              description: '统一组件列表返回的资产',
+              latestVersion: body.type === 'SKILL' ? '1.10.0' : '0.1',
+              status: '可发布',
+              category: '产品级/harness-pipeline',
+              updatedAt: '2026-03-24 10:00:00',
+            },
+          ],
+          total: 1,
+          pageNo: body.pageNo,
+          pageSize: body.pageSize,
+        }),
       });
     });
 
@@ -258,6 +211,7 @@ test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
               {
                 secondScene: '构建诊断',
                 publishable: true,
+                publishedExtension: { extensionName: 'harness-pipeline-build-extension' },
                 components: {
                   skills: [
                     {
@@ -300,7 +254,7 @@ test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
               {
                 id: 'http-extension-release-001',
                 version: '0.1',
-                extensionName: 'harness-pipeline-构建诊断-extension',
+                extensionName: 'harness-pipeline-build-extension',
                 description: 'HTTP Extension 发布记录',
                 releaseType: 'product',
                 operatorId: 'http-user-001',
@@ -327,6 +281,10 @@ test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
     await page.goto(`${APP_BASE_PATH}/harness-management`);
     await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
     await expect(page.getByRole('heading', { name: '资产清单' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '资产类型' }).getByRole('button')).toHaveText(
+      ['Agent', 'Skill', 'Command', 'Extension'],
+    );
+    await expect(assetCard(page, 'HTTP 发布风险 Agent')).toBeVisible();
     await selectDepartmentPath(page, DEPARTMENT_PATH);
 
     const productSelect = page.getByLabel('产品筛选');
@@ -343,21 +301,26 @@ test.describe('Agent / Skill 资产 HTTP 既有接口聚合', () => {
     await expect(page.locator('.asset-report')).toContainText('94');
 
     expect(productRequests.length).toBeGreaterThan(0);
-    expect(commandCatalogRequests.length).toBeGreaterThan(0);
-    expect(agentCatalogRequests.length).toBeGreaterThan(0);
-    await expect
-      .poll(() =>
-        skillCatalogRequests.some((request) => {
-          const query = new URL(request.url()).searchParams;
-          return (
-            query.get('userId') === 'http-user-001' &&
-            query.get('dimType') === '产品级' &&
-            query.get('dimCode') === 'http-product' &&
-            query.get('dimName') === 'harness-pipeline'
-          );
-        }),
-      )
-      .toBe(true);
+    expect(componentRequests.every((request) => request.method() === 'POST')).toBe(true);
+    expect(componentRequests[0]!.postDataJSON()).toEqual({
+      userId: 'http-user-001',
+      deptCode: 'dept-continuous',
+      type: 'AGENT',
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+      pageNo: 1,
+      pageSize: 30,
+    });
+    expect(componentRequests.at(-1)!.postDataJSON()).toEqual({
+      userId: 'http-user-001',
+      deptCode: 'dept-continuous',
+      productCode: 'http-product',
+      type: 'SKILL',
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+      pageNo: 1,
+      pageSize: 30,
+    });
     expect(treeRequests).toHaveLength(1);
     expect(fileRequests.length).toBeGreaterThan(0);
     expect(evaluationRequests).toHaveLength(1);

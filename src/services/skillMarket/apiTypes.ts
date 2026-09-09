@@ -757,6 +757,37 @@ export type CreateAgentMasterManagementBody = Omit<
   agentDescription: string;
 };
 
+/** Agent / Skill 资产筛选列表（POST /v1/harness/plans/components/query）。 */
+export type QueryHarnessAssetComponentsBody = {
+  userId: string;
+  deptCode?: string;
+  productCode?: string;
+  type: 'AGENT' | 'SKILL' | 'COMMAND' | 'EXTENSION';
+  sortBy: 'updatedAt';
+  sortOrder: 'desc';
+  pageNo: number;
+  pageSize: number;
+};
+
+export type HarnessAssetComponentDto = {
+  name: string;
+  description: string;
+  latestVersion: string;
+  status: string;
+  category: string;
+  updatedAt: string;
+};
+
+export type HarnessAssetComponentsResponse = {
+  meta: ApiMeta;
+  data: {
+    records: HarnessAssetComponentDto[];
+    total: number;
+    pageNo: number;
+    pageSize: number;
+  };
+};
+
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
 export type QuerySkillMasterManagementBody = {
   userId: string;

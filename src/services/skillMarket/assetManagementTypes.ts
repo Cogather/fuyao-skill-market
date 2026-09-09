@@ -56,6 +56,9 @@ export type HarnessAsset = {
   marketplace: HarnessAssetMarketplace;
   releases: HarnessAssetRelease[];
   publishable: boolean;
+  status?: string;
+  category?: string;
+  updatedAt?: string;
 };
 
 export type HarnessAssetFileCategory = 'root' | 'skill' | 'command' | 'agent';
@@ -172,7 +175,8 @@ export function hasInProgressCurrentRelease(asset: HarnessAsset): boolean {
   );
 }
 
-export function harnessAssetStatus(asset: HarnessAsset): '未开发' | '待发布' | '发布中' | '已发布' {
+export function harnessAssetStatus(asset: HarnessAsset): string {
+  if (asset.status) return asset.status;
   if (!asset.currentVersion) return '未开发';
   if (hasInProgressCurrentRelease(asset)) return '发布中';
   return hasSuccessfulCurrentRelease(asset) ? '已发布' : '待发布';

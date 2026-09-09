@@ -109,7 +109,9 @@ const scenarioDialog = ref<{
 } | null>(null);
 const scenarioDialogTitle = computed(() =>
   scenarioDialog.value?.editingScenario
-    ? '编辑一级场景'
+    ? scenarioDialog.value.editingScenario.level === 1
+      ? '编辑一级场景'
+      : '编辑二级场景'
     : scenarioDialog.value?.parentId
       ? '新建下级场景'
       : '新建一级场景',
@@ -423,7 +425,7 @@ function openScenario(parentId: string | null) {
   focusDialog(scenarioDialogElement);
 }
 function openEditScenario(scenario: Scenario) {
-  if (scenario.level !== 1 || saving.value || !available.value) return;
+  if (saving.value || !available.value) return;
   scenarioDialogOpener = activeElement();
   scenarioForm.name = scenario.name;
   scenarioForm.code = scenario.code;
@@ -431,7 +433,7 @@ function openEditScenario(scenario: Scenario) {
   scenarioForm.tags = [...scenario.tags];
   scenarioError.value = '';
   scenarioDialog.value = {
-    parentId: null,
+    parentId: scenario.parentId,
     editingScenario: { ...scenario, tags: [...scenario.tags] },
   };
   focusDialog(scenarioDialogElement);
@@ -454,7 +456,7 @@ async function saveScenario() {
   }
   const parentId = scenarioDialog.value?.parentId || null;
   const editingScenario = scenarioDialog.value?.editingScenario;
-  if (parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
+  if (!editingScenario && parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
     const error = validateName(scenarioForm.code);
     if (error) {
       scenarioError.value = `场景编码不符合命名规则：${error}`;
@@ -476,7 +478,7 @@ async function saveScenario() {
     releaseCount: editingScenario?.releaseCount || 0,
   };
   try {
-    const saved = await props.workspace.saveScenario(scenario);
+    const saved = await props.workspace.saveScenario(scenario, { nameOnly: !!editingScenario });
     if (!editingScenario) selectedScenarioId.value = saved._id;
     closeScenarioDialog();
   } catch (error) {
@@ -908,11 +910,8 @@ function deleteStage(stageId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
   if (!w || !stage || wizardBusy.value) return;
-  if (stage.steps.some((node) => node.assets.length)) {
-    w.error = '该环节下的节点已绑定资产，请先解除绑定并保存，再删除环节';
+  if (!window.confirm('确认删除该环节？其下节点及相关资产绑定、规划记录会一并删除，资产本身保留。'))
     return;
-  }
-  if (!window.confirm('确认删除该环节？环节下的节点会一并删除。')) return;
   stage.steps.forEach((node) => delete w.nodeAssetsMap[node.id]);
   w.workflow.stages = w.workflow.stages.filter((item) => item.id !== stageId);
   [...w.workflow.stages]
@@ -928,10 +927,7 @@ function deleteNode(stageId: string, nodeId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
   if (!w || !stage || wizardBusy.value) return;
-  if (stage.steps.find((node) => node.id === nodeId)?.assets.length) {
-    w.error = '该节点已绑定资产，请先解除绑定并保存，再删除节点';
-    return;
-  }
+  if (!window.confirm('确认删除该节点？相关资产绑定和规划记录会一并删除，资产本身保留。')) return;
   stage.steps = stage.steps.filter((item) => item.id !== nodeId);
   [...stage.steps]
     .sort((a, b) => a.order - b.order)
@@ -1369,8 +1365,29 @@ async function createAsset() {
                       <circle cx="9" cy="14" r="1.2" />
                     </svg>
                   </span>
-                  <i></i><b>{{ child.name }}</b
-                  ><span class="node-actions"
+                  <i></i><b>{{ child.name }}</b>
+                  <button
+                    class="scenario-edit"
+                    type="button"
+                    :aria-label="`编辑${child.name}`"
+                    :title="`编辑${child.name}`"
+                    :disabled="saving || !available"
+                    @click.stop="openEditScenario(child)"
+                    @keydown.stop
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
+                    </svg>
+                  </button>
+                  <span class="node-actions"
                     ><button
                       class="danger"
                       type="button"
@@ -1586,7 +1603,9 @@ async function createAsset() {
           <p>
             {{
               scenarioDialog.editingScenario
-                ? '修改一级场景名称，下级场景保持归属'
+                ? scenarioDialog.editingScenario.level === 1
+                  ? '修改一级场景名称，下级场景保持归属'
+                  : '修改二级场景名称，保留所属一级场景及工作流配置'
                 : scenarioDialog.parentId
                   ? '细化业务场景，为工作流设计做好准备'
                   : '定义业务场景，让团队的工作流有序展开'
@@ -1616,7 +1635,10 @@ async function createAsset() {
           <span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span>
           <input v-model="scenarioForm.name" required placeholder="例如：需求开发" />
         </label>
-        <label v-if="scenarioDialog.parentId" class="editor-field">
+        <label
+          v-if="scenarioDialog.parentId && !scenarioDialog.editingScenario"
+          class="editor-field"
+        >
           <span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span>
           <input
             v-model="scenarioForm.code"
@@ -1824,7 +1846,8 @@ async function createAsset() {
           确认删除场景「<b>{{ deleteTarget.name }}</b
           >」？<template v-if="workflows.some((item) => item.scenarioId === deleteTarget?._id)"
             >关联的 Workflow 也会一并删除，</template
-          >该操作不可恢复。
+          >场景下的资产绑定、资产池和规划记录会一并删除，资产本身保留。已发布 Extension
+          的场景需先处理 Extension。该操作不可恢复。
         </p>
         <footer>
           <button class="danger-btn" @click="deleteScenario">确认删除</button
@@ -1885,7 +1908,7 @@ async function createAsset() {
         <label
           ><span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span
           ><input v-model="wizard.form.scenarioName" required /><small
-            >与场景管理同步；已绑定资产的场景需先解除绑定才能改名。</small
+            >与场景管理同步；改名会同步更新关联资产的场景名称。</small
           ></label
         ><label
           ><span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span

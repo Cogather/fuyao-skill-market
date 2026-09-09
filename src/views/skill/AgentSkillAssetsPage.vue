@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
-import { getHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
+import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
+import {
+  getHarnessAssetApi,
+  usesHttpHarnessAssetApi,
+} from '../../services/skillMarket/assetManagementService';
 import {
   harnessAssetPublishVersion,
   harnessAssetStatus,
@@ -33,7 +37,6 @@ type DepartmentRow = {
   code: string;
   name: string;
   path: string[];
-  depth: number;
   hasChildren: boolean;
   selectable: boolean;
 };
@@ -68,20 +71,20 @@ const emit = defineEmits<{
 }>();
 
 const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
-  { key: 'all', label: '全部' },
   { key: 'Agent', label: 'Agent' },
   { key: 'Skill', label: 'Skill' },
   { key: 'Command', label: 'Command' },
   { key: 'Extension', label: 'Extension' },
 ];
 const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
-const ASSET_PAGE_SIZE = 24;
+const transportIsHttp = usesHttpHarnessAssetApi();
+const ASSET_PAGE_SIZE = transportIsHttp ? 30 : 24;
 const ASSET_SCROLL_THRESHOLD = 120;
 const MAX_EMPTY_PAGE_PROBES = 10;
 const api = getHarnessAssetApi();
 
 const view = ref<PageView>('list');
-const filter = ref<HarnessAssetFilter>('all');
+const filter = ref<HarnessAssetFilter>('Agent');
 const selectedDepartmentId = ref('');
 const selectedProductId = ref('');
 const assets = ref<HarnessAsset[]>([]);
@@ -94,8 +97,6 @@ const organizations = ref<HarnessAssetOrganization[]>([]);
 const selectedOrganizationId = ref('');
 const detailTab = ref<'content' | 'report'>('content');
 const publishTab = ref<'publish' | 'history'>('publish');
-const departmentOpen = ref(false);
-const expandedDepartments = ref(new Set<string>());
 const actionMenu = ref<CatalogAction | null>(null);
 const listLoading = ref(false);
 const listLoadingMore = ref(false);
@@ -157,7 +158,7 @@ function filterDepartmentTree(
 const selectableDepartmentTree = computed(() => filterDepartmentTree(props.departmentTree));
 const allDepartmentRows = computed<DepartmentRow[]>(() => {
   const rows: DepartmentRow[] = [];
-  const append = (nodes: DepartmentTreeNode[], parentPath: string[], depth: number): void => {
+  const append = (nodes: DepartmentTreeNode[], parentPath: string[]): void => {
     nodes.forEach((node, index) => {
       const path = [...parentPath, node.name];
       rows.push({
@@ -165,50 +166,47 @@ const allDepartmentRows = computed<DepartmentRow[]>(() => {
         code: String(node.deptCode || node.id || ''),
         name: node.name,
         path,
-        depth,
         hasChildren: Boolean(node.children?.length),
         selectable:
           !props.restrictToAllowedDepartments ||
           normalizedAllowedPaths.value.some((allowed) => pathStartsWith(path, allowed)),
       });
-      append(node.children ?? [], path, depth + 1);
+      append(node.children ?? [], path);
     });
   };
-  append(selectableDepartmentTree.value, [], 0);
+  append(selectableDepartmentTree.value, []);
   return rows;
 });
 
+const pickerDepartments = computed(() =>
+  allDepartmentRows.value
+    .filter((row) => row.selectable)
+    .map((row) => ({
+      _id: row.id,
+      name: row.name,
+      deptCode: row.code,
+      parentId: null,
+      path: row.path,
+    })),
+);
+
 const selectedDepartment = computed(
   () => allDepartmentRows.value.find((row) => row.id === selectedDepartmentId.value) ?? null,
-);
-const selectedDepartmentLabel = computed(() =>
-  selectedDepartment.value ? selectedDepartment.value.path.join(' / ') : '选部门…',
-);
-const visibleDepartmentRows = computed(() =>
-  allDepartmentRows.value.filter((row) =>
-    row.path.slice(0, -1).every((_, index) => {
-      const parentPath = row.path.slice(0, index + 1);
-      const parent = allDepartmentRows.value.find(
-        (candidate) => candidate.path.join('\u0001') === parentPath.join('\u0001'),
-      );
-      return parent ? expandedDepartments.value.has(parent.id) : true;
-    }),
-  ),
 );
 const selectedProduct = computed(
   () => products.value.find((product) => product.id === selectedProductId.value) ?? undefined,
 );
 const currentScope = computed<HarnessAssetScope | null>(() => {
   const department = selectedDepartment.value;
-  if (!department) return null;
+  if (!department && !transportIsHttp) return null;
   return {
     userId: props.userId.trim(),
     userName: props.userName.trim(),
     department: {
-      id: department.id,
-      code: department.code,
-      name: department.name,
-      path: [...department.path],
+      id: department?.id ?? '',
+      code: department?.code ?? '',
+      name: department?.name ?? '',
+      path: [...(department?.path ?? [])],
     },
     product: selectedProduct.value
       ? { ...selectedProduct.value, departmentPath: [...selectedProduct.value.departmentPath] }
@@ -222,11 +220,13 @@ const selectedAsset = computed(
     null,
 );
 const filteredAssets = computed(() =>
-  assets.value.filter(
-    (asset) =>
-      (filter.value === 'all' || asset.assetType === filter.value) &&
-      (!selectedProductId.value || asset.productId === selectedProductId.value),
-  ),
+  transportIsHttp
+    ? assets.value
+    : assets.value.filter(
+        (asset) =>
+          (filter.value === 'all' || asset.assetType === filter.value) &&
+          (!selectedProductId.value || asset.productId === selectedProductId.value),
+      ),
 );
 const selectedOrganization = computed(() =>
   organizations.value.find((organization) => organization.id === selectedOrganizationId.value),
@@ -254,23 +254,6 @@ function showToast(message: string): void {
   toastTimer = window.setTimeout(() => {
     toastMessage.value = '';
   }, 2600);
-}
-
-function toggleDepartment(id: string): void {
-  const next = new Set(expandedDepartments.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  expandedDepartments.value = next;
-}
-
-function expandSelectedAncestors(path: string[]): void {
-  const next = new Set(expandedDepartments.value);
-  path.slice(0, -1).forEach((_, index) => {
-    const parentPath = path.slice(0, index + 1).join('\u0001');
-    const parent = allDepartmentRows.value.find((row) => row.path.join('\u0001') === parentPath);
-    if (parent) next.add(parent.id);
-  });
-  expandedDepartments.value = next;
 }
 
 function defaultDepartmentRow(): DepartmentRow | null {
@@ -434,11 +417,9 @@ async function reloadProductsAndAssets(): Promise<void> {
 
 async function selectDepartment(id: string): Promise<void> {
   const target = allDepartmentRows.value.find((row) => row.id === id);
-  if (!target?.selectable) return;
+  if (id && !target?.selectable) return;
+  if (selectedDepartmentId.value === id) return;
   selectedDepartmentId.value = id;
-  departmentOpen.value = false;
-  const row = selectedDepartment.value;
-  if (row) expandSelectedAncestors(row.path);
   await reloadProductsAndAssets();
 }
 
@@ -639,7 +620,7 @@ function statusLabel(asset: HarnessAsset): string {
 function statusClass(asset: HarnessAsset): string {
   const status = harnessAssetStatus(asset);
   if (status === '已发布') return 'is-success';
-  if (status === '待发布') return 'is-warning';
+  if (status === '待发布' || status === '可发布') return 'is-warning';
   return 'is-info';
 }
 
@@ -693,7 +674,6 @@ onMounted(async () => {
     return;
   }
   selectedDepartmentId.value = row.id;
-  expandSelectedAncestors(row.path);
   await reloadProductsAndAssets();
 });
 
@@ -705,7 +685,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="asset-page harness-viewport-page" @keydown.esc="departmentOpen = false">
+  <div class="asset-page harness-viewport-page">
     <template v-if="view === 'list'">
       <header class="asset-page__header harness-page-heading">
         <div>
@@ -746,56 +726,12 @@ onBeforeUnmount(() => {
       </header>
 
       <section class="asset-scope" aria-label="资产范围筛选">
-        <div class="asset-department">
-          <button
-            type="button"
-            class="asset-department__trigger"
-            :class="{ 'is-open': departmentOpen }"
-            :aria-expanded="departmentOpen"
-            @click="departmentOpen = !departmentOpen"
-          >
-            <span :title="selectedDepartmentLabel">{{ selectedDepartmentLabel }}</span>
-            <span aria-hidden="true">▾</span>
-          </button>
-          <button
-            v-if="departmentOpen"
-            type="button"
-            class="asset-department__backdrop"
-            aria-label="关闭部门选择"
-            @click="departmentOpen = false"
-          />
-          <div v-if="departmentOpen" class="asset-department__panel">
-            <div
-              v-for="department in visibleDepartmentRows"
-              :key="department.id"
-              class="asset-department__row"
-              :style="{ paddingLeft: `${4 + department.depth * 14}px` }"
-            >
-              <button
-                type="button"
-                class="asset-department__toggle"
-                :disabled="!department.hasChildren"
-                :aria-label="`${expandedDepartments.has(department.id) ? '收起' : '展开'}${department.path.join(' / ')}`"
-                @click="toggleDepartment(department.id)"
-              >
-                {{
-                  department.hasChildren ? (expandedDepartments.has(department.id) ? '▾' : '▸') : ''
-                }}
-              </button>
-              <button
-                type="button"
-                class="asset-department__name"
-                :class="{ 'is-selected': selectedDepartmentId === department.id }"
-                :aria-label="department.path.join(' / ')"
-                :disabled="!department.selectable"
-                :title="department.selectable ? '' : '仅用于展开授权范围，不能按该部门查询'"
-                @click="selectDepartment(department.id)"
-              >
-                {{ department.name }}
-              </button>
-            </div>
-          </div>
-        </div>
+        <HarnessDepartmentPicker
+          class="asset-department"
+          :model-value="selectedDepartmentId"
+          :departments="pickerDepartments"
+          @update:model-value="selectDepartment"
+        />
 
         <select
           v-if="products.length > 0"
@@ -854,10 +790,13 @@ onBeforeUnmount(() => {
             </div>
             <p>{{ asset.description || '暂无描述' }}</p>
             <div class="asset-card__meta">
-              <span>⭐ {{ asset.marketplace.rating.toFixed(1) }}</span>
-              <span>📥 {{ asset.marketplace.downloads }}</span>
-              <span>📞 {{ asset.marketplace.calls }}</span>
-              <span>{{ asset.currentVersion ? `v${asset.currentVersion}` : '未开发' }}</span>
+              <!-- 统计数据尚未接入，暂时隐藏。 -->
+              <template v-if="false">
+                <span>⭐ {{ asset.marketplace.rating.toFixed(1) }}</span>
+                <span>📥 {{ asset.marketplace.downloads }}</span>
+                <span>📞 {{ asset.marketplace.calls }}</span>
+              </template>
+              <span v-if="asset.currentVersion">v{{ asset.currentVersion }}</span>
               <span class="asset-badge" :class="statusClass(asset)">{{ statusLabel(asset) }}</span>
             </div>
             <button
@@ -895,29 +834,56 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-else-if="view === 'detail' && selectedAsset">
-      <button type="button" class="asset-button is-secondary asset-back" @click="returnToAssetList">
-        ← 返回
+      <button type="button" class="asset-back asset-detail-back" @click="returnToAssetList">
+        <span aria-hidden="true">←</span> 返回列表
       </button>
-      <header class="asset-page__header asset-page__header--detail">
-        <h1>{{ selectedAsset.name }}</h1>
-        <div class="asset-page__tags">
-          <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
-          <span v-if="selectedAsset.auto" class="asset-badge is-type">自动生成</span>
-        </div>
-      </header>
 
-      <section class="asset-board asset-detail">
-        <label class="asset-field asset-field--inline">
-          <span>版本</span>
-          <select v-model="selectedVersion" class="asset-select" @change="changeDetailVersion">
-            <option v-if="detailVersions.length === 0" value="">无可用版本</option>
-            <option v-for="version in detailVersions" :key="version" :value="version">
-              v{{ version }}
-            </option>
-          </select>
-        </label>
+      <section class="asset-board asset-detail" aria-labelledby="asset-detail-title">
+        <header class="asset-detail__header">
+          <div class="asset-detail__identity">
+            <div class="asset-detail__title">
+              <h1 id="asset-detail-title">{{ selectedAsset.name }}</h1>
+              <div class="asset-detail__badges">
+                <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
+                <span class="asset-badge" :class="statusClass(selectedAsset)">
+                  {{ statusLabel(selectedAsset) }}
+                </span>
+                <span v-if="selectedAsset.auto" class="asset-badge is-type">自动生成</span>
+              </div>
+            </div>
+            <div class="asset-detail__meta">
+              <select
+                v-model="selectedVersion"
+                class="asset-detail__version"
+                aria-label="版本"
+                @change="changeDetailVersion"
+              >
+                <option v-if="detailVersions.length === 0" value="">无可用版本</option>
+                <option v-for="version in detailVersions" :key="version" :value="version">
+                  v{{ version }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div v-if="canPublishAsset(selectedAsset)" class="asset-detail__actions">
+            <button
+              type="button"
+              class="asset-button is-primary asset-detail__publish"
+              @click="openPublish(selectedAsset)"
+            >
+              {{ hasSuccessfulCurrentRelease(selectedAsset) ? '继续发布' : '发布' }}
+            </button>
+          </div>
+        </header>
 
-        <nav class="asset-subtabs" aria-label="资产详情分区">
+        <dl v-if="selectedAsset.owner" class="asset-detail__people">
+          <div class="asset-detail__person">
+            <dt>责任人</dt>
+            <dd>{{ selectedAsset.owner }}</dd>
+          </div>
+        </dl>
+
+        <nav class="asset-subtabs asset-detail__tabs" aria-label="资产详情分区">
           <button
             type="button"
             :class="{ 'is-active': detailTab === 'content' }"
@@ -994,15 +960,6 @@ onBeforeUnmount(() => {
           </table>
         </div>
         <div v-else class="asset-empty">该版本暂无质量报告</div>
-
-        <button
-          v-if="canPublishAsset(selectedAsset)"
-          type="button"
-          class="asset-button is-primary asset-detail__publish"
-          @click="openPublish(selectedAsset)"
-        >
-          {{ hasSuccessfulCurrentRelease(selectedAsset) ? '继续发布' : '发布' }}
-        </button>
       </section>
     </template>
 
@@ -1238,12 +1195,6 @@ onBeforeUnmount(() => {
   color: #2563eb;
 }
 
-.asset-page__tags {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .asset-button {
   display: inline-flex;
   align-items: center;
@@ -1291,108 +1242,6 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 1;
   min-width: 280px;
-}
-
-.asset-department__trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 6.4px 9.6px;
-  overflow: hidden;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 13.12px;
-  cursor: pointer;
-}
-
-.asset-department__trigger > span:first-child {
-  flex: 1;
-  padding-right: 4.8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.asset-department__trigger > span:last-child {
-  color: #9ca3af;
-}
-
-.asset-department__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  border: 0;
-  background: transparent;
-}
-
-.asset-department__panel {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  left: 0;
-  z-index: 21;
-  max-height: 280px;
-  padding: 3.2px 0;
-  overflow-y: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-}
-
-.asset-department__row {
-  display: flex;
-  align-items: center;
-  gap: 4.8px;
-  padding: 4px 6.4px;
-}
-
-.asset-department__row:hover {
-  background: #f9fafb;
-}
-
-.asset-department__toggle,
-.asset-department__name {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.asset-department__toggle {
-  flex: 0 0 12px;
-  width: 12px;
-  padding: 0;
-  color: #9ca3af;
-  font-family: inherit;
-  font-size: 14px;
-  text-align: center;
-  user-select: none;
-}
-
-.asset-department__toggle:disabled {
-  cursor: default;
-}
-
-.asset-department__name {
-  flex: 1;
-  padding: 0;
-  color: #374151;
-  font-family: inherit;
-  font-size: 12.48px;
-  text-align: left;
-  user-select: none;
-}
-
-.asset-department__name.is-selected {
-  color: #2563eb;
-  font-weight: 600;
-}
-
-.asset-department__name:disabled {
-  color: #9ca3af;
-  cursor: not-allowed;
 }
 
 .asset-select,
@@ -1497,23 +1346,25 @@ onBeforeUnmount(() => {
 
 .asset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
   align-items: stretch;
 }
 
 .asset-card {
   display: flex;
   flex-direction: column;
-  gap: 6.4px;
+  gap: 12px;
   box-sizing: border-box;
-  padding: 16px;
+  min-width: 0;
+  min-height: 184px;
+  padding: 20px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 12px;
   background: #fff;
   cursor: pointer;
   content-visibility: auto;
-  contain-intrinsic-size: auto 170px;
+  contain-intrinsic-size: auto 200px;
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,
@@ -1590,32 +1441,40 @@ onBeforeUnmount(() => {
 
 .asset-card__title {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .asset-card h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   color: inherit;
   font-family: inherit;
-  font-size: 14.08px;
+  font-size: 16px;
   font-weight: 700;
-  line-height: normal;
+  line-height: 1.5;
   letter-spacing: normal;
+  overflow-wrap: anywhere;
 }
 
 .asset-card > p {
   flex: 1;
   margin: 0;
   color: #4b5563;
-  font-size: 12.48px;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .asset-card__meta {
   display: flex;
-  gap: 9.6px;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
   color: #6b7280;
-  font-size: 11.52px;
+  font-size: 12px;
 }
 
 .asset-card__publish {
@@ -1629,6 +1488,22 @@ onBeforeUnmount(() => {
   border-radius: 9999px;
   font-size: 10.88px;
   font-weight: 600;
+}
+
+.asset-card .asset-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.asset-card__title .asset-badge.is-type {
+  width: 80px;
 }
 
 .asset-badge.is-type,
@@ -1668,6 +1543,200 @@ onBeforeUnmount(() => {
 .asset-detail,
 .asset-publish {
   display: block;
+}
+
+.asset-detail-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.asset-detail-back:hover {
+  color: #2563eb;
+}
+
+.asset-detail {
+  padding: 24px;
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+}
+
+.asset-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #f0f1f4;
+}
+
+.asset-detail__identity {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.asset-detail__title,
+.asset-detail__badges,
+.asset-detail__meta,
+.asset-detail__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.asset-detail__title {
+  gap: 8px 12px;
+}
+
+.asset-detail__title h1 {
+  min-width: 0;
+  margin: 0;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.asset-detail__badges {
+  gap: 8px;
+}
+
+.asset-detail__badges .asset-badge {
+  padding: 3px 10px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.asset-detail__meta {
+  gap: 8px;
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.asset-detail__version {
+  max-width: 100%;
+  margin-left: -4px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.asset-detail__version:hover {
+  border-color: #dbeafe;
+  background: #f8fafc;
+  color: #2563eb;
+}
+
+.asset-detail__actions {
+  flex-shrink: 0;
+  gap: 8px;
+  padding-top: 1px;
+}
+
+.asset-detail__actions .asset-button {
+  justify-content: center;
+  min-height: 32px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.asset-detail__people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.asset-detail__person {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.asset-detail__person dt {
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.asset-detail__person dd {
+  min-width: 0;
+  margin: 0;
+  color: #1f2937;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.asset-detail-back:focus-visible,
+.asset-detail__version:focus-visible,
+.asset-detail__actions button:focus-visible,
+.asset-detail__tabs button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.asset-detail .asset-detail__tabs {
+  gap: 4px;
+  margin: 16px 0 20px;
+  padding: 0;
+}
+
+.asset-detail__tabs button {
+  margin-bottom: -1px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 20px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.asset-detail__tabs button:hover {
+  border-color: transparent;
+  color: #2563eb;
+}
+
+.asset-detail__tabs button.is-active {
+  border-bottom-color: #2563eb;
+  background: transparent;
+  color: #2563eb;
+  font-weight: 600;
 }
 
 .asset-field {
@@ -1790,10 +1859,6 @@ onBeforeUnmount(() => {
   background: #f3f4f6;
 }
 
-.asset-detail__publish {
-  margin-top: 16px;
-}
-
 .asset-publish__organization {
   margin-top: 16px;
 }
@@ -1872,6 +1937,14 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 700px) {
+  .asset-detail {
+    padding: 18px 16px;
+  }
+
+  .asset-detail__title h1 {
+    font-size: 20px;
+  }
+
   .asset-page__header,
   .asset-scope {
     align-items: stretch;
@@ -1904,15 +1977,6 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1101px) and (min-height: 900px) {
   .asset-board--catalog {
-    padding: 12px;
-  }
-
-  .asset-grid {
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 12px;
-  }
-
-  .asset-card {
     padding: 12px;
   }
 

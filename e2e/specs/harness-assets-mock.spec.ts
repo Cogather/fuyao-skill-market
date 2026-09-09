@@ -24,25 +24,21 @@ async function openAssets(page: Page): Promise<void> {
 }
 
 async function selectDepartmentPath(page: Page, path: string[]): Promise<void> {
-  await page.locator('.asset-department__trigger').click();
-  const panel = page.locator('.asset-department__panel');
+  await page
+    .locator('.asset-department')
+    .getByRole('button', { name: '选择部门', exact: true })
+    .click();
+  const panel = page.getByRole('listbox');
   await expect(panel).toBeVisible();
-
   for (let index = 0; index < path.length; index += 1) {
-    const accessiblePath = path.slice(0, index + 1).join(' / ');
-    const nameButton = panel.getByRole('button', { name: accessiblePath, exact: true });
-    await expect(nameButton).toBeVisible();
-
-    if (index === path.length - 1) {
-      await nameButton.click();
-      break;
-    }
-
-    const toggle = nameButton.locator('xpath=..').locator('.asset-department__toggle');
-    const toggleLabel = (await toggle.getAttribute('aria-label')) ?? '';
-    if (toggleLabel.startsWith('\u5c55\u5f00')) await toggle.click();
+    await panel
+      .locator('.market-dept-cascader-col')
+      .nth(index)
+      .getByRole('option')
+      .filter({ has: page.getByText(path[index]!, { exact: true }) })
+      .click();
   }
-
+  await panel.getByRole('button', { name: '完成', exact: true }).click();
   await expect(panel).toBeHidden();
 }
 
@@ -57,11 +53,58 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await openAssets(page);
   });
 
+  test('部门级联选择确认后才刷新产品范围，清空和切换页签正确收起面板', async ({
+    page,
+  }, testInfo) => {
+    const trigger = page
+      .locator('.asset-department')
+      .getByRole('button', { name: '选择部门', exact: true });
+    const product = page.getByLabel('产品筛选');
+    await product.selectOption({ label: 'harness-pipeline' });
+    const originalProduct = await product.inputValue();
+    await trigger.click();
+    const panel = page.getByRole('listbox');
+    await expect(panel.getByRole('searchbox', { name: '搜索部门', exact: true })).toBeVisible();
+    const triggerBox = (await trigger.boundingBox())!;
+    const panelBox = (await panel.boundingBox())!;
+    expect(panelBox.width).toBeCloseTo(triggerBox.width, 0);
+    expect(Math.abs(panelBox.x - triggerBox.x)).toBeLessThanOrEqual(1);
+    await panel.screenshot({ path: testInfo.outputPath('assets-department-cascader.png') });
+    await panel
+      .getByRole('option')
+      .filter({ hasText: /^平台工具组/ })
+      .click();
+    await expect(trigger).toContainText('持续交付组');
+    await expect(product).toHaveValue(originalProduct);
+    await panel.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(trigger).toHaveText(/部门1 \/ 平台产品线 \/ 平台工具组\s*▾/);
+    await expect(product).toHaveValue('');
+    await expect(product.getByRole('option', { name: 'harness-demo', exact: true })).toBeAttached();
+    await trigger.click();
+    const search = panel.getByRole('searchbox', { name: '搜索部门', exact: true });
+    await search.fill('持续交付组');
+    await panel
+      .getByRole('button')
+      .filter({ has: page.getByText('持续交付组', { exact: true }) })
+      .click();
+    await panel.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(trigger).toContainText('持续交付组');
+    await trigger.click();
+    await panel.getByRole('button', { name: '清空部门', exact: true }).click();
+    await expect(panel).toBeHidden();
+    await expect(trigger).toContainText('选部门');
+    await expect(page.locator('.asset-card')).toHaveCount(0);
+    await trigger.click();
+    await page.getByRole('tab', { name: '业务场景设计', exact: true }).click();
+    await expect(panel).toBeHidden();
+  });
+
   test('\u90e8\u95e8\u3001\u4ea7\u54c1\u548c\u8d44\u4ea7\u7c7b\u578b\u5171\u540c\u7ea6\u675f\u805a\u5408\u5217\u8868', async ({
     page,
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
 
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
     await expect(assetCard(page, '\u6d41\u6c34\u7ebf\u5931\u8d25\u8bca\u65ad Skill')).toBeVisible();
     await expect(assetCard(page, '\u65e5\u5fd7\u5f02\u5e38\u5b9a\u4f4d Skill')).toHaveCount(0);
 
@@ -118,7 +161,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     );
     const capabilityManagementPanel = page.locator('#harness-panel-capabilities');
     await expect(
-      capabilityManagementPanel.getByRole('tab', { name: 'Command \u6e05\u5355', exact: true }),
+      capabilityManagementPanel.getByRole('tab', { name: 'Command', exact: true }),
     ).toHaveAttribute('aria-selected', 'true');
     const createDialog = page.locator('.capability-master-dialog');
     await expect(createDialog).toBeVisible();
@@ -143,7 +186,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       'true',
     );
     await expect(
-      capabilityManagementPanel.getByRole('tab', { name: 'Agent \u6e05\u5355', exact: true }),
+      capabilityManagementPanel.getByRole('tab', { name: 'Agent', exact: true }),
     ).toHaveAttribute('aria-selected', 'true');
     await expect(
       capabilityManagementPanel
