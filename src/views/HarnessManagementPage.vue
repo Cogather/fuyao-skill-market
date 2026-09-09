@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
@@ -106,9 +106,6 @@ const showLegacyPlanningTabs = false;
 const activeHarnessTab = ref<HarnessTab>('scenarios');
 const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
 const planningPage = ref<InstanceType<typeof SkillPlanningPage> | null>(null);
-const capabilityManagementPage = ref<InstanceType<typeof HarnessCapabilityManagementPage> | null>(
-  null,
-);
 const capabilityManagementActivated = ref(false);
 const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
@@ -409,31 +406,6 @@ function selectHarnessTab(tab: HarnessTab): void {
   activeHarnessTab.value = tab;
 }
 
-async function manageAssetCatalog(payload: {
-  assetType: 'Agent' | 'Skill' | 'Command';
-  action: 'create' | 'import';
-  scope: HarnessScopeSnapshot;
-}): Promise<void> {
-  const targetTab: PlanningMemoryKey =
-    payload.assetType === 'Skill'
-      ? 'planning'
-      : payload.assetType === 'Command'
-        ? 'command'
-        : 'agent';
-  catalogScopeSnapshots.value[targetTab] = {
-    ...payload.scope,
-    departmentPath: [...payload.scope.departmentPath],
-  };
-  capabilityManagementActivated.value = true;
-  activeHarnessTab.value = 'capabilities';
-  await nextTick();
-  await capabilityManagementPage.value?.openCatalogAction(
-    payload.assetType,
-    payload.action,
-    payload.scope,
-  );
-}
-
 function updateConfigurationScopeSnapshot(
   key: 'scene' | 'activity',
   snapshot: HarnessScopeSnapshot,
@@ -556,7 +528,6 @@ onBeforeRouteLeave(() => {
       aria-labelledby="harness-tab-capabilities"
     >
       <HarnessCapabilityManagementPage
-        ref="capabilityManagementPage"
         :user-id="userId"
         :user-name="userName"
         :department-tree="departmentTree"
@@ -600,7 +571,6 @@ onBeforeRouteLeave(() => {
         :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
-        @manage-catalog="manageAssetCatalog"
       />
     </section>
 

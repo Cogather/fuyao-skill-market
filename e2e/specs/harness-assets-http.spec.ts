@@ -105,6 +105,7 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     const historyRequests: Request[] = [];
     const extensionPublishRequests: Request[] = [];
     let extensionPublishing = false;
+    let failNextScriptRequest = true;
 
     await page.route('**/api/harness/permission/user-depts**', (route) =>
       route.fulfill({
@@ -171,6 +172,12 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.route('**/api/harness/packages/file**', (route) => {
       fileRequests.push(route.request());
       const query = new URL(route.request().url()).searchParams;
+      if (query.get('filePath') === 'scripts/run.sh' && failNextScriptRequest) {
+        failNextScriptRequest = false;
+        return route.fulfill({
+          json: { meta: { success: false, message: '脚本内容加载失败' }, data: null },
+        });
+      }
       return route.fulfill({
         json: envelope({
           content: `# ${HTTP_SKILL_NAME}\n\ncurrent version: ${query.get('componentVersion')}`,
@@ -297,8 +304,27 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await skillCard.click();
 
     await expect(page.locator('.asset-detail')).toContainText('current version: 1.10.0');
-    await page.getByRole('button', { name: '质量报告' }).click();
-    await expect(page.locator('.asset-report')).toContainText('94');
+    expect(fileRequests).toHaveLength(1);
+    const runScript = page.locator('.asset-detail').getByRole('button', { name: 'scripts/run.sh' });
+    await expect(runScript).toHaveAttribute('aria-expanded', 'false');
+    await runScript.click();
+    await expect(runScript).toHaveAttribute('aria-expanded', 'true');
+    const scriptContent = page.locator('.catalog-detail-file-content').nth(1);
+    await expect(scriptContent).toContainText('脚本内容加载失败');
+    expect(fileRequests).toHaveLength(2);
+    expect(new URL(fileRequests[1]!.url()).searchParams.get('filePath')).toBe('scripts/run.sh');
+    await scriptContent.getByRole('button', { name: '重试', exact: true }).click();
+    await expect(scriptContent.locator('pre')).toContainText('current version: 1.10.0');
+    expect(fileRequests).toHaveLength(3);
+    await runScript.click();
+    await runScript.click();
+    expect(fileRequests).toHaveLength(3);
+
+    await page.getByRole('tab', { name: '质量报告' }).click();
+    const report = page.getByRole('tabpanel', { name: '质量报告' });
+    await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText('94');
+    await expect(report.locator('.catalog-evaluation-dimensions article')).toHaveCount(2);
+    await expect(report).toContainText('安全扫描');
 
     expect(productRequests.length).toBeGreaterThan(0);
     expect(componentRequests.every((request) => request.method() === 'POST')).toBe(true);

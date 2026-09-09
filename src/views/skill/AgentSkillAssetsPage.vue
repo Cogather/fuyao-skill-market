@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
+import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
+import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
+import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
+import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import {
   getHarnessAssetApi,
   usesHttpHarnessAssetApi,
@@ -16,7 +20,6 @@ import {
   type HarnessAssetFilter,
   type HarnessAssetOrganization,
   type HarnessAssetProduct,
-  type HarnessAssetQualityReport,
   type HarnessAssetRelease,
   type HarnessAssetScope,
   type HarnessAssetType,
@@ -60,16 +63,6 @@ const props = withDefaults(
   },
 );
 
-const emit = defineEmits<{
-  'manage-catalog': [
-    payload: {
-      assetType: Exclude<HarnessAssetType, 'Extension'>;
-      action: CatalogAction;
-      scope: HarnessScopeSnapshot;
-    },
-  ];
-}>();
-
 const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
   { key: 'Agent', label: 'Agent' },
   { key: 'Skill', label: 'Skill' },
@@ -92,12 +85,14 @@ const products = ref<HarnessAssetProduct[]>([]);
 const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
-const qualityReport = ref<HarnessAssetQualityReport | null>(null);
 const organizations = ref<HarnessAssetOrganization[]>([]);
 const selectedOrganizationId = ref('');
 const detailTab = ref<'content' | 'report'>('content');
 const publishTab = ref<'publish' | 'history'>('publish');
 const actionMenu = ref<CatalogAction | null>(null);
+const createAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
+const importAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
+const importScope = ref<HarnessScopeSnapshot>({ level: '产品级', departmentPath: [], offeringId: '', offeringName: '' });
 const listLoading = ref(false);
 const listLoadingMore = ref(false);
 const listError = ref('');
@@ -108,8 +103,6 @@ const assetBoardElement = ref<HTMLElement | null>(null);
 const productError = ref('');
 const detailLoading = ref(false);
 const detailError = ref('');
-const qualityLoading = ref(false);
-const qualityError = ref('');
 const organizationLoading = ref(false);
 const organizationError = ref('');
 const historyLoading = ref(false);
@@ -123,7 +116,6 @@ let pendingAssetScrollTop = 0;
 let assetScrollFrame: number | undefined;
 let productSequence = 0;
 let detailSequence = 0;
-let qualitySequence = 0;
 let historySequence = 0;
 let toastTimer: number | undefined;
 
@@ -234,6 +226,19 @@ const selectedOrganization = computed(() =>
 const detailVersions = computed(() =>
   detail.value?.versions.length ? detail.value.versions : (selectedAsset.value?.versions ?? []),
 );
+const catalogDetailRecord = computed(() => {
+  const asset = selectedAsset.value;
+  if (!asset || asset.assetType === 'Extension') return null;
+  return {
+    name: asset.name,
+    versions: asset.versions.map((version) => ({ version, uploadedAt: '' })),
+  };
+});
+const catalogCapabilityType = computed(() => {
+  if (selectedAsset.value?.assetType === 'Agent') return 'agent';
+  if (selectedAsset.value?.assetType === 'Command') return 'command';
+  return 'skill';
+});
 const publishVersion = computed(() =>
   selectedAsset.value && harnessAssetPublishVersion(selectedAsset.value)
     ? `v${harnessAssetPublishVersion(selectedAsset.value)}`
@@ -432,6 +437,7 @@ async function loadDetail(): Promise<void> {
   const scope = currentScope.value;
   const asset = selectedAsset.value;
   if (!scope || !asset) return;
+  if (view.value === 'detail' && asset.assetType !== 'Extension') return;
   const sequence = ++detailSequence;
   detailLoading.value = true;
   detailError.value = '';
@@ -449,14 +455,14 @@ async function loadDetail(): Promise<void> {
 }
 
 async function openDetail(asset: HarnessAsset): Promise<void> {
-  qualitySequence += 1;
+  detailSequence += 1;
   historySequence += 1;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
   selectedVersion.value = asset.currentVersion || asset.versions[0] || '';
   detailTab.value = 'content';
-  qualityReport.value = null;
-  qualityLoading.value = false;
-  qualityError.value = '';
+  detail.value = null;
+  detailLoading.value = false;
+  detailError.value = '';
   view.value = 'detail';
   await loadDetail();
 }
@@ -468,45 +474,7 @@ async function returnToAssetList(): Promise<void> {
 }
 
 async function changeDetailVersion(): Promise<void> {
-  qualitySequence += 1;
-  qualityReport.value = null;
-  qualityLoading.value = false;
-  qualityError.value = '';
   await loadDetail();
-  if (detailTab.value === 'report') await loadQualityReport();
-}
-
-async function loadQualityReport(): Promise<void> {
-  const scope = currentScope.value;
-  const asset = selectedAsset.value;
-  if (!scope || !asset || asset.assetType !== 'Skill' || !selectedVersion.value) return;
-  const sequence = ++qualitySequence;
-  const assetKey = `${asset.assetType}:${asset.id}`;
-  const version = selectedVersion.value;
-  qualityLoading.value = true;
-  qualityError.value = '';
-  try {
-    const response = await api.queryQualityReport(scope, asset, version);
-    if (
-      sequence !== qualitySequence ||
-      selectedAssetKey.value !== assetKey ||
-      selectedVersion.value !== version
-    ) {
-      return;
-    }
-    qualityReport.value = response;
-  } catch (error) {
-    if (sequence !== qualitySequence || selectedAssetKey.value !== assetKey) return;
-    qualityReport.value = null;
-    qualityError.value = errorMessage(error, '质量报告加载失败');
-  } finally {
-    if (sequence === qualitySequence) qualityLoading.value = false;
-  }
-}
-
-async function selectDetailTab(tab: 'content' | 'report'): Promise<void> {
-  detailTab.value = tab;
-  if (tab === 'report' && !qualityReport.value) await loadQualityReport();
 }
 
 function replaceAssetReleases(assetKey: string, releases: HarnessAssetRelease[]): void {
@@ -553,9 +521,7 @@ async function openPublish(asset: HarnessAsset): Promise<void> {
   selectedVersion.value = harnessAssetPublishVersion(asset);
   detail.value = null;
   detailError.value = '';
-  qualitySequence += 1;
-  qualityReport.value = null;
-  qualityLoading.value = false;
+  detailTab.value = 'content';
   selectedOrganizationId.value = '';
   publishTab.value = 'publish';
   organizationError.value = '';
@@ -649,22 +615,25 @@ function openActionMenu(action: CatalogAction): void {
 
 function manageCatalog(assetType: (typeof CATALOG_TYPES)[number], action: CatalogAction): void {
   actionMenu.value = null;
-  const department = selectedDepartment.value;
-  const product = selectedProduct.value;
-  if (!department) {
-    showToast('请先选择部门');
+  if (action === 'create') {
+    createAssetType.value = assetType;
     return;
   }
-  emit('manage-catalog', {
-    assetType,
-    action,
-    scope: {
-      level: product ? '产品级' : '部门级',
-      departmentPath: [...department.path],
-      offeringId: product?.id ?? '',
-      offeringName: product?.name ?? '',
-    },
-  });
+  const department = selectedDepartment.value;
+  const product = selectedProduct.value;
+  importScope.value = {
+    level: product ? '产品级' : '部门级',
+    departmentPath: [...(department?.path ?? [])],
+    offeringId: product?.id ?? '',
+    offeringName: product?.name ?? '',
+  };
+  importAssetType.value = assetType;
+}
+
+async function onAssetCreated(): Promise<void> {
+  createAssetType.value = null;
+  showToast('资产已新增');
+  await reloadAssets();
 }
 
 onMounted(async () => {
@@ -686,6 +655,41 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="asset-page harness-viewport-page">
+    <HarnessCatalogImportDialog
+      v-if="importAssetType"
+      :asset-type="importAssetType"
+      :user-id="props.userId"
+      :department-tree="selectableDepartmentTree"
+      :initial-scope="importScope"
+      :allowed-department-paths="normalizedAllowedPaths"
+      :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
+      @close="importAssetType = null"
+      @imported="reloadAssets"
+    />
+    <SkillMasterManagementPanel
+      v-if="createAssetType === 'Skill'"
+      create-only
+      :user-id="props.userId"
+      :department-tree="selectableDepartmentTree"
+      :current-user-department-path="props.currentUserDepartmentPath"
+      :allowed-department-paths="normalizedAllowedPaths"
+      :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
+      @close="createAssetType = null"
+      @created="onAssetCreated"
+    />
+    <HarnessCapabilityCatalogPanel
+      v-else-if="createAssetType"
+      :key="createAssetType"
+      create-only
+      :capability-type="createAssetType === 'Agent' ? 'agent' : 'command'"
+      :user-id="props.userId"
+      :department-tree="selectableDepartmentTree"
+      :current-user-department-path="props.currentUserDepartmentPath"
+      :default-department-path="normalizedAllowedPaths[0] ?? props.currentUserDepartmentPath"
+      :allowed-department-paths="normalizedAllowedPaths"
+      @close="createAssetType = null"
+      @created="onAssetCreated"
+    />
     <template v-if="view === 'list'">
       <header class="asset-page__header harness-page-heading">
         <div>
@@ -695,7 +699,7 @@ onBeforeUnmount(() => {
         <div class="asset-page__actions">
           <button
             type="button"
-            class="asset-button is-secondary"
+            class="asset-button is-primary"
             :aria-expanded="actionMenu === 'import'"
             @click="openActionMenu('import')"
           >
@@ -883,38 +887,50 @@ onBeforeUnmount(() => {
           </div>
         </dl>
 
-        <nav class="asset-subtabs asset-detail__tabs" aria-label="资产详情分区">
+        <nav class="asset-subtabs asset-detail__tabs" role="tablist" aria-label="资产详情分区">
           <button
+            id="asset-detail-tab-content"
             type="button"
+            role="tab"
             :class="{ 'is-active': detailTab === 'content' }"
-            @click="selectDetailTab('content')"
+            :aria-selected="detailTab === 'content'"
+            :aria-controls="catalogDetailRecord ? 'catalog-detail-panel-detail' : undefined"
+            @click="detailTab = 'content'"
           >
             内容
           </button>
           <button
             v-if="selectedAsset.assetType === 'Skill'"
+            id="asset-detail-tab-report"
             type="button"
+            role="tab"
             :class="{ 'is-active': detailTab === 'report' }"
-            @click="selectDetailTab('report')"
+            :aria-selected="detailTab === 'report'"
+            aria-controls="catalog-detail-panel-evaluation"
+            @click="detailTab = 'report'"
           >
             质量报告
           </button>
         </nav>
 
-        <div v-if="detailTab === 'content' && detailLoading" class="asset-empty" role="status">
-          正在加载资产内容…
-        </div>
-        <div
-          v-else-if="detailTab === 'content' && detailError"
-          class="asset-empty asset-empty--error"
-          role="alert"
-        >
+        <HarnessCatalogDetailDialog
+          v-if="catalogDetailRecord"
+          open
+          embedded
+          :record="catalogDetailRecord"
+          :user-id="props.userId"
+          :capability-type="catalogCapabilityType"
+          :version="selectedVersion"
+          :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
+        />
+        <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
+        <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
           <span>{{ detailError }}</span>
           <button type="button" class="asset-button is-secondary" @click="loadDetail">
             重新加载
           </button>
         </div>
-        <div v-else-if="detailTab === 'content'" class="asset-file-tree">
+        <div v-else class="asset-file-tree">
           <strong>📁 {{ selectedAsset.name }}/</strong>
           <div v-if="detail?.files.length" class="asset-file-tree__branch">
             <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
@@ -924,42 +940,6 @@ onBeforeUnmount(() => {
           </div>
           <div v-else class="asset-empty">该版本暂无文件</div>
         </div>
-
-        <div v-else-if="qualityLoading" class="asset-empty" role="status">正在加载质量报告…</div>
-        <div v-else-if="qualityError" class="asset-empty asset-empty--error" role="alert">
-          <span>{{ qualityError }}</span>
-          <button type="button" class="asset-button is-secondary" @click="loadQualityReport">
-            重新加载
-          </button>
-        </div>
-        <div v-else-if="qualityReport" class="asset-report">
-          <div class="asset-report__summary">
-            <span>整体评分</span>
-            <strong>{{ qualityReport.overallScore }}</strong>
-            <small>{{ qualityReport.summary }}</small>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>指标</th>
-                <th>结果</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in qualityReport.items" :key="item.name">
-                <td>{{ item.name }}</td>
-                <td>{{ item.value }}</td>
-                <td>
-                  <span class="asset-badge" :class="item.pass ? 'is-success' : 'is-warning'">
-                    {{ item.pass ? '通过' : '未通过' }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-else class="asset-empty">该版本暂无质量报告</div>
       </section>
     </template>
 
@@ -1811,52 +1791,6 @@ onBeforeUnmount(() => {
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;
-}
-
-.asset-report__summary {
-  margin-bottom: 12.8px;
-  padding: 16px;
-  border-left: 4px solid #10b981;
-  border-radius: 8px;
-  background: #f9fafb;
-}
-
-.asset-report__summary span {
-  display: block;
-  color: #6b7280;
-  font-size: 12.48px;
-}
-
-.asset-report__summary strong {
-  display: block;
-  font-size: 32px;
-  font-weight: 700;
-}
-
-.asset-report__summary small {
-  display: block;
-  color: #6b7280;
-  font-size: 11.52px;
-}
-
-.asset-report table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.48px;
-}
-
-.asset-report th,
-.asset-report td {
-  padding: 6.4px;
-  text-align: left;
-}
-
-.asset-report td {
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.asset-report th {
-  background: #f3f4f6;
 }
 
 .asset-publish__organization {

@@ -144,9 +144,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       .toEqual(['Extension']);
   });
 
-  test('\u65b0\u5efa\u4e0e\u5bfc\u5165\u6cbf\u7528\u8d44\u4ea7\u9875\u8303\u56f4\u5e76\u8fdb\u5165\u5bf9\u5e94\u539f\u5b50\u80fd\u529b\u6e05\u5355', async ({
-    page,
-  }) => {
+  test('新建和批量导入资产均在当前页签选择独立归属', async ({ page }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await page
       .getByLabel('\u4ea7\u54c1\u7b5b\u9009')
@@ -155,49 +153,49 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await page.getByRole('button', { name: '+ \u65b0\u5efa\u8d44\u4ea7' }).click();
     await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Command' }).click();
 
-    await expect(page.locator('#harness-tab-capabilities')).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    const capabilityManagementPanel = page.locator('#harness-panel-capabilities');
-    await expect(
-      capabilityManagementPanel.getByRole('tab', { name: 'Command', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
-    const createDialog = page.locator('.capability-master-dialog');
+    await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
+    const createDialog = page.getByRole('dialog', { name: '添加 Command' });
     await expect(createDialog).toBeVisible();
+    const scope = createDialog.getByRole('group', { name: '新增资产归属' });
+    await expect(scope.getByLabel('层级')).toHaveValue('产品级');
+    await scope.getByLabel('产品', { exact: true }).selectOption({ label: 'harness-pipeline' });
     await expect(
       createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
-    ).toHaveValue('harness-pipeline-pro-');
+    ).toHaveValue('harness-pipeline-');
+    await scope.getByLabel('层级').selectOption('部门级');
+    await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
     await createDialog.locator('header button').click();
-
-    await page.getByRole('tab', { name: 'Agent / Skill \u8d44\u4ea7' }).click();
+    await expect(page.getByLabel('产品筛选')).toHaveValue(
+      (await page
+        .getByLabel('产品筛选')
+        .locator('option', { hasText: 'Harness-Pipeline-Pro' })
+        .getAttribute('value')) ?? '',
+    );
     await expect(page.getByRole('heading', { name: '\u8d44\u4ea7\u6e05\u5355' })).toBeVisible();
     await page
       .getByLabel('\u4ea7\u54c1\u7b5b\u9009')
       .selectOption({ label: '\u6d41\u6c34\u7ebf\u7ba1\u7406\u5e73\u53f0' });
 
     await page.getByRole('button', { name: '\u6279\u91cf\u5bfc\u5165' }).click();
-    const fileChooserPromise = page.waitForEvent('filechooser');
     await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Agent' }).click();
+    const importDialog = page.getByRole('dialog', { name: '导入 Agent', exact: true });
+    await expect(importDialog).toBeVisible();
+    await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
+    // The legacy mock list product is absent from the catalog product options.
+    // Require an explicit choice instead of silently importing into another product.
+    await expect(importDialog.getByLabel('产品', { exact: true })).toHaveValue('');
+    await importDialog.getByLabel('产品', { exact: true }).selectOption('harness-pipeline');
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await importDialog.getByRole('button', { name: '选择文件', exact: true }).click();
     await fileChooserPromise;
-
-    await expect(page.locator('#harness-tab-capabilities')).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await expect(
-      capabilityManagementPanel.getByRole('tab', { name: 'Agent', exact: true }),
-    ).toHaveAttribute('aria-selected', 'true');
-    await expect(
-      capabilityManagementPanel
-        .locator('#capability-management-panel-agent')
-        .locator('.capability-master-field--product select'),
-    ).toHaveValue('\u6d41\u6c34\u7ebf\u7ba1\u7406\u5e73\u53f0');
+    await importDialog.getByRole('button', { name: '取消', exact: true }).click();
   });
 
   test('Skill \u8be6\u60c5\u4f7f\u7528\u771f\u5b9e\u7248\u672c\u5185\u5bb9\u5e76\u5c55\u793a\u8d28\u91cf\u62a5\u544a', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await page.getByRole('button', { name: 'Skill', exact: true }).click();
     await assetCard(page, '\u53d1\u5e03\u98ce\u9669\u626b\u63cf Skill').click();
@@ -209,7 +207,18 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     expect(await versionSelect.locator('option').count()).toBeGreaterThanOrEqual(2);
 
     await expect(detail.getByText(/SKILL\.md/)).toBeVisible();
-    const content = detail.locator('.asset-file-tree pre').first();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const fileRows = detail.locator('.catalog-detail-file-row');
+    await expect(fileRows).toHaveCount(4);
+    await expect(fileRows.first()).toHaveAttribute('aria-expanded', 'true');
+    await expect(fileRows.nth(1)).toHaveAttribute('aria-expanded', 'false');
+    const content = detail.locator('.catalog-detail-file-content pre').first();
+    await expect(detail.locator('.catalog-detail-file-content')).toHaveCount(1);
+    await detail.screenshot({ path: testInfo.outputPath('asset-skill-detail.png') });
+    await expect(detail.locator('.catalog-detail-file-content').first()).toHaveCSS(
+      'background-color',
+      'rgb(251, 252, 255)',
+    );
     await expect(content).toContainText('\u53d1\u5e03\u98ce\u9669\u626b\u63cf Skill');
     const initialContent = await content.textContent();
     const versions = await versionSelect
@@ -218,11 +227,52 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await versionSelect.selectOption(versions.at(-1)!);
     await expect(content).not.toHaveText(initialContent ?? '');
 
-    await detail.getByRole('button', { name: '\u8d28\u91cf\u62a5\u544a' }).click();
-    const report = detail.locator('.asset-report');
-    await expect(report.getByText('\u6574\u4f53\u8bc4\u5206', { exact: true })).toBeVisible();
-    await expect(report.locator('.asset-report__summary strong')).toHaveText(/^\d+(?:\.\d+)?$/);
-    expect(await report.locator('tbody tr').count()).toBeGreaterThan(0);
+    await fileRows.nth(1).click();
+    await expect(detail.locator('.catalog-detail-file-content')).toHaveCount(2);
+    await expect(detail.locator('.catalog-detail-file-content').nth(1)).toContainText(
+      `当前版本：${versions.at(-1)}`,
+    );
+
+    await detail.getByRole('tab', { name: '质量报告' }).click();
+    const report = detail.getByRole('tabpanel', { name: '质量报告' });
+    await expect(report.getByText('综合得分', { exact: true })).toBeVisible();
+    await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText(
+      /^\d+(?:\.\d+)?$/,
+    );
+    await expect(report.locator('.catalog-evaluation-top-list article')).toHaveCount(3);
+    expect(await report.locator('.catalog-evaluation-dimensions article').count()).toBeGreaterThan(
+      0,
+    );
+    await expect(report.getByText('评估问题', { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('asset-skill-quality-report.png') });
+    const lastDimension = report.locator('.catalog-evaluation-dimensions article').last();
+    await lastDimension.scrollIntoViewIfNeeded();
+    await expect(lastDimension).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath('asset-skill-quality-dimensions.png') });
+
+    await versionSelect.selectOption(versions[0]!);
+    await expect(report.getByText('综合得分', { exact: true })).toBeVisible();
+    await detail.getByRole('tab', { name: '内容', exact: true }).click();
+    await expect(content).toHaveText(initialContent ?? '');
+    await expect(detail.locator('.catalog-detail-file-content')).toHaveCount(1);
+  });
+
+  test('Agent 和 Command 详情复用清单中的正文展示', async ({ page }) => {
+    const detail = page.locator('.asset-detail');
+    for (const type of ['Agent', 'Command']) {
+      await page.getByRole('button', { name: type, exact: true }).click();
+      const card = page.locator('.asset-card').first();
+      const name = await card.getByRole('heading').innerText();
+      await card.click();
+      await expect(detail.locator('.catalog-detail-direct-content pre')).toContainText(name);
+      await expect(detail.locator('.catalog-detail-direct-content')).toHaveCSS(
+        'background-color',
+        'rgb(251, 252, 255)',
+      );
+      await expect(detail.getByRole('tab', { name: '质量报告' })).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await page.locator('.asset-back').click();
+    }
   });
 
   test('Extension \u5386\u53f2\u7248\u672c\u6309\u5f53\u65f6\u53d1\u5e03\u7684\u80fd\u529b\u7248\u672c\u52a0\u8f7d\u5185\u5bb9', async ({

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import {
   getHarnessCapabilityPlanningApi,
@@ -67,6 +68,8 @@ const props = withDefaults(
     currentUserDepartmentPath?: string[];
     defaultDepartmentPath?: string[];
     initialScope?: HarnessScopeSnapshot;
+    createOnly?: boolean;
+    allowedDepartmentPaths?: string[][];
   }>(),
   {
     departmentTree: () => [],
@@ -74,11 +77,15 @@ const props = withDefaults(
     currentUserDepartmentPath: () => [],
     defaultDepartmentPath: () => [],
     initialScope: undefined,
+    createOnly: false,
+    allowedDepartmentPaths: () => [],
   },
 );
 
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  created: [];
 }>();
 
 const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
@@ -327,6 +334,7 @@ const allPageSelected = computed(
 );
 
 async function reload(): Promise<void> {
+  if (props.createOnly) return;
   const scope = currentCatalogScope.value;
   if (!scope) {
     records.value = [];
@@ -713,6 +721,7 @@ function closeEditor(): void {
   initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+  if (props.createOnly) emit('close');
 }
 
 function onEditorFormEnter(event: KeyboardEvent): void {
@@ -776,6 +785,10 @@ async function submitEditor(): Promise<void> {
     const scope = requireCatalogScope();
     if (editor.mode === 'create') {
       await api.value.createCatalog(editorPayload(), scope);
+      if (props.createOnly) {
+        emit('created');
+        return;
+      }
       showToast(`已新增 ${capabilityLabel.value}`);
     } else {
       await api.value.updateCatalog(editor.id, editorPayload(), scope);
@@ -939,6 +952,13 @@ watch(requiredCapabilityNamePrefix, (nextPrefix, previousPrefix) => {
   }
   if (previousPrefix && editor.name.startsWith(previousPrefix)) {
     editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  } else if (
+    props.createOnly &&
+    nextPrefix &&
+    !previousPrefix &&
+    !editor.name.startsWith(nextPrefix)
+  ) {
+    editor.name = nextPrefix + editor.name;
   }
 });
 
@@ -981,6 +1001,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  productLoadSequence += 1;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   clearOwnerSearchTimer();
   clearDevelopOwnerSearchTimer();
@@ -991,6 +1012,7 @@ onBeforeUnmount(() => {
 onMounted(async () => {
   const restoredScope = restoreScopeSnapshot();
   if (!restoredScope) applyDefaultDepartment();
+  if (props.createOnly) openCreate();
   await loadProductOptions(restoredScope);
   await reload();
   emitScopeSnapshot();
@@ -998,8 +1020,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="capability-master-panel" :aria-label="`${capabilityLabel} 清单管理`">
+  <section
+    class="capability-master-panel"
+    :class="{ 'is-create-only': props.createOnly }"
+    :aria-label="`${capabilityLabel} 清单管理`"
+  >
     <section
+      v-if="!props.createOnly"
       class="capability-master-filter"
       :class="{ 'is-product-level': filterForm.level === '产品级' }"
       :aria-label="`${capabilityLabel} 清单查询`"
@@ -1077,7 +1104,7 @@ onMounted(async () => {
       </div>
     </section>
 
-    <section class="capability-master-board">
+    <section v-if="!props.createOnly" class="capability-master-board">
       <header class="capability-master-toolbar">
         <div class="capability-master-toolbar__summary">
           <small
@@ -1293,6 +1320,10 @@ onMounted(async () => {
       >
         <form
           class="capability-master-dialog"
+          :class="{ 'is-create-dialog': props.createOnly }"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`${editor.mode === 'create' ? '添加' : '编辑'} ${capabilityLabel}`"
           @click.stop
           @pointerdown.stop
           @pointerup.stop
@@ -1305,11 +1336,33 @@ onMounted(async () => {
               <strong>{{
                 editor.mode === 'create' ? `添加 ${capabilityLabel}` : `编辑 ${capabilityLabel}`
               }}</strong>
-              <p>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p>
+              <p v-if="props.createOnly">选择资产归属并填写基本信息。</p>
+              <p v-else>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
-          <div class="capability-master-note">
+          <HarnessCatalogCreateScope
+            v-if="props.createOnly"
+            :level="filterForm.level"
+            :department-path="departmentSegments"
+            :department-tree="props.departmentTree"
+            :product-name="filterForm.product"
+            :products="productOptions"
+            :products-loading="productsLoading"
+            :disabled="editor.submitting"
+            :permission-path="props.defaultDepartmentPath"
+            :allowed-department-paths="props.allowedDepartmentPaths"
+            @level-change="
+              filterForm.level = $event;
+              onLevelChange();
+            "
+            @department-change="onDepartmentDone"
+            @product-change="
+              filterForm.product = $event;
+              onProductChange();
+            "
+          />
+          <div v-if="!props.createOnly" class="capability-master-note">
             <b>部门语义</b>
             <span>Owner 所在部门是人员属性，不作为 {{ capabilityLabel }} 的规划归属。</span>
           </div>
@@ -1475,6 +1528,10 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.capability-master-panel.is-create-only {
+  display: contents;
+}
+
 .capability-master-panel {
   display: flex;
   flex-direction: column;
@@ -1923,6 +1980,29 @@ td.is-description > span {
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
 }
+.capability-master-dialog.is-create-dialog {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(804px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+.capability-master-dialog.is-create-dialog > header,
+.capability-master-dialog.is-create-dialog > .catalog-create-scope,
+.capability-master-dialog.is-create-dialog > .capability-master-error,
+.capability-master-dialog.is-create-dialog > footer {
+  flex: 0 0 auto;
+}
+.capability-master-dialog.is-create-dialog > .capability-master-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+}
 .capability-master-dialog > header {
   display: flex;
   align-items: start;
@@ -2200,6 +2280,21 @@ td.is-description > span {
   box-shadow: 0 14px 36px rgba(15, 23, 42, 0.25);
   font-size: 13px;
   font-weight: 700;
+}
+@media (max-height: 760px) {
+  .capability-master-dialog.is-create-dialog {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    padding: 18px 22px;
+  }
+  .capability-master-dialog.is-create-dialog > header {
+    margin-bottom: 12px;
+  }
+  .capability-master-dialog.is-create-dialog > footer {
+    margin-top: 12px;
+  }
 }
 @media (max-width: 1100px) {
   .capability-master-panel {
