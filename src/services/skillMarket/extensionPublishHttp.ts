@@ -148,7 +148,8 @@ function normalizeReady(value: unknown): boolean | null {
   if (typeof value === 'boolean') return value;
   const status = normalizeText(value).toLowerCase();
   if (!status) return null;
-  if (/不完备|未就绪|未完成|不可发布|incomplete|not.ready|unready/.test(status)) return false;
+  if (/未配置|不完备|未就绪|未完成|不可发布|incomplete|not.ready|unready/.test(status))
+    return false;
   if (/已就绪|就绪|已完成|可发布|ready|complete|publishable/.test(status)) return true;
   return null;
 }
@@ -483,40 +484,44 @@ export async function queryHttpExtensionBindings(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
-  const normalizedUserId = requiredText(userId, '尚未获取当前用户工号');
-  let selectedScene = scene;
-  let releases: HttpExtensionRelease[];
-  if (!normalizeText(scene.extension.name)) {
-    // The scene picker contains names only. Resolve its Extension identity once
-    // through the existing binding query before requesting the single detail.
-    const bindingScenes = await queryHttpHydratedExtensionScenes(normalizedUserId, scope);
-    selectedScene =
-      bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ??
-      scene;
-    releases = [
-      ...(selectedScene.publishing ? [selectedScene.publishing] : []),
-      ...selectedScene.releases,
-    ].map((release) => ({
-      ...release,
-      firstScene: selectedScene.primary,
-      secondScene: selectedScene.name,
-    }));
-  } else {
-    releases = await queryAllHistory(scope);
-  }
+  return queryHttpExtensionDetail(userId, scope, {
+    extensionName: scene.extension.name,
+    firstScene: scene.primary,
+    secondScene: scene.name,
+  });
+}
 
-  const extensionName = normalizeText(selectedScene.extension.name);
-  // A scene that has never been published can still use the existing publish flow.
-  if (!extensionName) return selectedScene;
-
+/** 发布准备查询：有编码优先按编码查，否则直接按一、二级场景名查。 */
+export async function queryHttpExtensionDetail(
+  userId: string,
+  scope: ExtensionScope,
+  identity: { extensionName?: string; firstScene?: string; secondScene?: string },
+): Promise<ExtensionScene> {
+  const extensionName = normalizeText(identity.extensionName);
+  const lookup = extensionName
+    ? {
+        extensionName,
+        ...(normalizeText(identity.firstScene) ? { firstScene: identity.firstScene } : {}),
+        ...(normalizeText(identity.secondScene) ? { secondScene: identity.secondScene } : {}),
+      }
+    : {
+        firstScene: requiredText(identity.firstScene, '请选择一级场景'),
+        secondScene: requiredText(identity.secondScene, '请选择二级场景'),
+      };
   const response = await harnessWorkflowService.queryExtensionSceneDetail(
-    { userId: normalizedUserId },
-    { dimType: scope.dimType, dimCode: scope.dimCode, dimName: scope.dimName, extensionName },
+    { userId: requiredText(userId, '尚未获取当前用户工号') },
+    { dimType: scope.dimType, dimCode: scope.dimCode, dimName: scope.dimName, ...lookup },
   );
-  assertHttpSuccess(response, 'Extension 详情加载失败');
+  assertHttpSuccess(response, 'Extension 发布详情加载失败');
   const data = asRecord(unwrapResponseData(response));
-  const firstScene = requiredText(data.firstScene, 'Extension 详情缺少一级场景');
-  const secondScene = requiredText(data.secondScene, 'Extension 详情缺少二级场景');
+  const unconfigured = normalizeText(data.readyStatus) === '未配置';
+  const firstScene = readText(data, ['firstScene']) || normalizeText(identity.firstScene);
+  const secondScene = readText(data, ['secondScene']) || normalizeText(identity.secondScene);
+  if (!unconfigured) {
+    requiredText(firstScene, 'Extension 详情缺少一级场景');
+    requiredText(secondScene, 'Extension 详情缺少二级场景');
+  }
+  let releases = unconfigured ? [] : await queryAllHistory(scope);
   const publishedExtension = asRecord(data.publishedExtension);
   const summary = mapHistoryRelease({ ...publishedExtension, firstScene, secondScene });
   if (summary.extensionName && summary.version) {
@@ -535,7 +540,7 @@ export async function queryHttpExtensionBindings(
     releases = [current, ...releases.filter((release) => release !== previous)];
   }
   const detail = mapBindingScenes(
-    { data: [{ firstScene, secondScenes: [data] }] },
+    { data: [{ firstScene, secondScenes: [{ ...data, secondScene }] }] },
     scope,
     releases,
   )[0]!;

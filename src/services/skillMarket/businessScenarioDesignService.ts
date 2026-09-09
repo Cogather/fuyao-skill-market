@@ -514,7 +514,10 @@ export const harnessWorkflowService = {
    */
   queryExtensionSceneDetail: (
     params: { userId: string },
-    body: { dimType: string; dimCode: string; dimName: string; extensionName: string },
+    body: { dimType: string; dimCode: string; dimName: string } & (
+      | { extensionName: string; firstScene?: string; secondScene?: string }
+      | { extensionName?: string; firstScene: string; secondScene: string }
+    ),
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/extensions/detail',

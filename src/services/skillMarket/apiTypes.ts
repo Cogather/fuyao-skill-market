@@ -778,6 +778,9 @@ export type HarnessAssetComponentDto = {
   developer?: string | null;
   category: string;
   updatedAt: string;
+  firstScene?: string | null;
+  secondScene?: string | null;
+  canPublish?: boolean;
 };
 
 export type HarnessAssetComponentsResponse = {
@@ -788,6 +791,27 @@ export type HarnessAssetComponentsResponse = {
     pageNo: number;
     pageSize: number;
   };
+};
+
+/** 点击资产卡片查询详情；Extension 的 name 为二级场景编码。 */
+export type QueryHarnessAssetComponentDetailParams = {
+  userId: string;
+  type: QueryHarnessAssetComponentsBody['type'];
+  name: string;
+};
+
+export type HarnessAssetComponentDetailDto = {
+  name: string;
+  description: string;
+  category: string;
+  ownerName: string | null;
+  ownerId: string | null;
+  developerName: string | null;
+  developerId: string | null;
+  type: QueryHarnessAssetComponentsBody['type'];
+  firstScene: string | null;
+  secondScene: string | null;
+  versions: Array<{ version: string; uploadedAt: string | null; uploadedBy: string }>;
 };
 
 /** Skill 清单查询（POST /management/query）；字段均可为空 */

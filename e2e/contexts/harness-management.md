@@ -26,7 +26,10 @@
 - Harness 工作流每页 10 条；切换部门、产品或状态会把页码重置为第一页，分页按钮 accessible name 为「上一页」「下一页」
 - Agent / Skill 资产面板：`#harness-panel-assets`，HTTP 和 Mock 均只显示 Agent / Skill / Command / Extension 四个类型，默认选中 Agent，无「全部」入口；包含详情、Skill 质量报告和发布流程。
 - HTTP 资产列表使用 `httpRequest.api` 的 `POST /v1/harness/plans/components/query`，body 包含 `userId`、可选 `deptCode` / `productCode`、大写 `type`、`sortBy: updatedAt`、`sortOrder: desc`、`pageNo`、`pageSize: 30`。未选部门或产品时省略对应编码；清空部门后仍可查询列表。
-- HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。列表只调用统一查询，进入 Extension 详情或发布时再加载场景上下文。
+- HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。
+- Agent、Skill、Command、Extension 四类卡片点击都调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写，Extension 的 `name` 为二级场景编码。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本按接口上传时间顺序展示，空数组显示无版本。原子资产继续按所选版本查询包文件；Extension 卡片显示所属场景和上传版本记录，不查询发布场景配置。
+- Extension 列表项的 `canPublish` 控制当前用户的发布权限，与场景是否就绪独立。值为 `false` 时卡片及详情页的「发布 / 继续发布」保持可见但置灰禁用，发布准备和提交方法均拒绝调用接口；历史刷新保留权限标志。
+- Extension 点击「发布」后调用 `POST /api/harness/extensions/detail` 获取当前场景组件、就绪状态和发布摘要；body 为维度信息加 `extensionName`，同时携带所点列表项返回的 `firstScene/secondScene`；无编码的场景选择入口直接传 `firstScene/secondScene`，不再先查询全部绑定。未配置、不完备或请求失败时禁用确认发布，重试重新加载发布配置。提交发布仍走原 `/api/harness/extensions` 接口。
 - Mock 保留原资产聚合与每页 24 条的滚动加载。HTTP 切换部门、产品或类型时从第 1 页重载，晚返回的旧请求不能覆盖当前筛选。
 - 任务管理面板：`#harness-panel-tasks`（`role=tabpanel`）
 
