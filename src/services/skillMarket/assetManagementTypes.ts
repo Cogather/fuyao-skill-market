@@ -1,3 +1,5 @@
+import type { HarnessAssetComponentDetailDto } from './apiTypes';
+
 export type HarnessAssetType = 'Agent' | 'Skill' | 'Command' | 'Extension';
 export type HarnessAssetFilter = 'all' | HarnessAssetType;
 export type HarnessAtomicAssetType = Exclude<HarnessAssetType, 'Extension'>;
@@ -44,6 +46,8 @@ export type HarnessAsset = {
   name: string;
   description: string;
   assetType: HarnessAssetType;
+  firstScene?: string | null;
+  secondScene?: string | null;
   currentVersion: string;
   nextPublishVersion?: string;
   versions: string[];
@@ -56,6 +60,8 @@ export type HarnessAsset = {
   marketplace: HarnessAssetMarketplace;
   releases: HarnessAssetRelease[];
   publishable: boolean;
+  /** 当前用户的发布权限，与资产是否已就绪分别判断。 */
+  canPublish?: boolean;
   status?: string;
   category?: string;
   updatedAt?: string;
@@ -72,6 +78,8 @@ export type HarnessAssetFile = {
 export type HarnessAssetDetail = {
   versions: string[];
   files: HarnessAssetFile[];
+  version?: string;
+  component?: HarnessAssetComponentDetailDto;
 };
 
 export type HarnessAssetQualityItem = {
@@ -131,6 +139,7 @@ export interface HarnessAssetApi {
     asset: HarnessAsset,
     version: string,
   ): Promise<HarnessAssetQualityReport | null>;
+  queryPublishDetail(scope: HarnessAssetScope, asset: HarnessAsset): Promise<HarnessAssetDetail>;
   queryOrganizations(
     scope: HarnessAssetScope,
     asset: HarnessAsset,

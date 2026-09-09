@@ -1,4 +1,4 @@
-import type { QueryHarnessAssetComponentsBody } from './apiTypes';
+import type { HarnessAssetComponentDetailDto, QueryHarnessAssetComponentsBody } from './apiTypes';
 import type {
   HarnessAsset,
   HarnessAssetPageQuery,
@@ -16,6 +16,25 @@ const API_TYPES: Record<HarnessAssetType, QueryHarnessAssetComponentsBody['type'
   Command: 'COMMAND',
   Extension: 'EXTENSION',
 };
+
+export async function queryHttpHarnessAssetComponentDetail(
+  scope: HarnessAssetScope,
+  asset: HarnessAsset,
+): Promise<HarnessAssetComponentDetailDto> {
+  const response = await skillBaseService.queryHarnessAssetComponentDetail({
+    userId: scope.userId.trim(),
+    type: API_TYPES[asset.assetType],
+    name: asset.name,
+  });
+  if (response?.meta?.success !== true) {
+    throw new Error(response?.meta?.message || '组件详情加载失败');
+  }
+  const data = response.data;
+  if (!data?.name || data.type !== API_TYPES[asset.assetType] || !Array.isArray(data.versions)) {
+    throw new Error('组件详情响应格式不正确');
+  }
+  return data;
+}
 
 export async function queryHttpHarnessAssetPage(
   scope: HarnessAssetScope,
@@ -65,6 +84,9 @@ export async function queryHttpHarnessAssetPage(
       name: record.name,
       description: record.description,
       assetType,
+      firstScene: record.firstScene ?? null,
+      secondScene: record.secondScene ?? null,
+      canPublish: record.canPublish,
       currentVersion,
       versions: currentVersion ? [currentVersion] : [],
       owner: '',

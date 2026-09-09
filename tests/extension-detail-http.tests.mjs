@@ -93,6 +93,8 @@ try {
       dimCode: '30222',
       dimName: 'Udm产品部',
       extensionName: 'udm-mml-e2e-extension',
+      firstScene: '应用开发',
+      secondScene: 'mml代码开发',
     },
   });
   assert.equal(bindingCalls, 0, 'known names do not reload the entire binding tree');
@@ -117,13 +119,16 @@ try {
   calls.length = 0;
   historyCalls = 0;
   const discovered = await queryHttpExtensionBindings('user-001', scope, emptyScene);
-  assert.equal(bindingCalls, 1);
-  assert.equal(
-    calls.length,
-    1,
-    'the initial scene selection discovers its Extension name, then loads detail',
-  );
+  assert.equal(bindingCalls, 0);
+  assert.equal(calls.length, 1, 'scene names directly load single detail without bulk discovery');
   assert.equal(historyCalls, 1, 'initial selection does not request release history twice');
+  assert.deepEqual(calls[0].data, {
+    dimType: scope.dimType,
+    dimCode: scope.dimCode,
+    dimName: scope.dimName,
+    firstScene: emptyScene.primary,
+    secondScene: emptyScene.name,
+  });
   assert.equal(discovered.capabilities.agent[0].name, 'udm-coding-agent');
 
   skillBaseService.queryPublishedHistoryList = async () =>
@@ -175,27 +180,13 @@ try {
   );
 
   calls.length = 0;
-  skillBaseService.querySceneAndBindingPlanningItems = async () =>
-    success([
-      {
-        firstScene: emptyScene.primary,
-        secondScenes: [
-          {
-            secondScene: emptyScene.name,
-            readyStatus: '已就绪',
-            publishedExtension: null,
-            components: detailData.components,
-          },
-        ],
-      },
-    ]);
+  detailResponse = success({ ...detailData, publishedExtension: null });
   const unpublished = await queryHttpExtensionBindings('user-001', scope, emptyScene);
-  assert.equal(
-    calls.length,
-    0,
-    'unpublished scenes without an Extension name still load legacy bindings',
-  );
+  assert.equal(calls.length, 1, 'unpublished scenes also load POST detail by scene names');
   assert.equal(unpublished.capabilities.agent[0].name, 'udm-coding-agent');
+  detailResponse = success({ ...detailData, readyStatus: '未配置', publishedExtension: null });
+  const unconfigured = await queryHttpExtensionBindings('user-001', scope, emptyScene);
+  assert.equal(unconfigured.publishable, false, '未配置 must block publication');
 
   let publishRequest;
   skillBaseService.saveExtension = async (params, body) => {
@@ -236,7 +227,7 @@ try {
     'publishing keeps the existing API payload, including extensionName',
   );
   console.log(
-    'PASS Extension detail request/mapping, initial name discovery, readiness, error handling, and legacy publishing',
+    'PASS Extension detail request/mapping, scene-name lookup, readiness, error handling, and legacy publishing',
   );
 } finally {
   await server.close();

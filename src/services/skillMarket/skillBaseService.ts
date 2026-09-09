@@ -16,6 +16,8 @@ import type {
   QuerySkillMasterManagementBody,
   QueryHarnessAssetComponentsBody,
   HarnessAssetComponentsResponse,
+  QueryHarnessAssetComponentDetailParams,
+  HarnessAssetComponentDetailDto,
   QueryHarnessPermissionUsersParams,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
@@ -506,6 +508,16 @@ export const skillBaseService = {
       url: '/v1/harness/plans/components/query',
       method: 'post',
       data: body,
+    });
+  },
+
+  queryHarnessAssetComponentDetail: (
+    params: QueryHarnessAssetComponentDetailParams,
+  ): Promise<ApiEnvelope<HarnessAssetComponentDetailDto>> => {
+    return httpRequest.api<ApiEnvelope<HarnessAssetComponentDetailDto>>({
+      url: '/v1/harness/plans/components/detail',
+      method: 'get',
+      params,
     });
   },
 

@@ -128,8 +128,10 @@ test.describe('资产清单 Extension 新详情与旧发布', () => {
       dimType: '产品级',
       dimCode: 'product-1',
       dimName: 'udm',
-      extensionName: 'udm-code-extension',
+      firstScene: '应用开发',
+      secondScene: '代码开发',
     });
+    expect(bindingRequests).toHaveLength(0);
 
     const initialBindings = bindingRequests.length;
     await panel.getByRole('button', { name: /应用开发 代码开发/ }).click();
