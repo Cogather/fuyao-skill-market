@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import type {
   WorkflowActivityRow,
@@ -91,9 +92,9 @@ test('新建 Workflow 使用产品前缀、可选目标和空流程信息，保�
       },
     }).mount('#test-host');
   });
-  await page
-    .getByRole('combobox', { name: '选择产品', exact: true })
-    .selectOption({ label: 'harness-pipeline' });
+  await selectHarnessOption(page.getByRole('combobox', { name: '选择产品', exact: true }), {
+    label: 'harness-pipeline',
+  });
   await page.getByRole('tree').getByText('接口开发', { exact: true }).click();
   await page.getByRole('button', { name: '+ 开始设计 Workflow', exact: true }).click();
   const wizard = page.getByRole('dialog', { name: 'Workflow 设计', exact: true });

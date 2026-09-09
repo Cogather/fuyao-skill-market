@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import type { Page } from '@playwright/test';
 
 import { expect, test } from '../fixtures/base';
@@ -298,9 +299,10 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
   await harness.goto();
   await harness.switchToScenarios();
   await harness.selectScenarioDepartment('平台工具组');
-  await harness.scenariosPanel
-    .getByRole('combobox', { name: '选择产品', exact: true })
-    .selectOption({ label: 'harness-demo' });
+  await selectHarnessOption(
+    harness.scenariosPanel.getByRole('combobox', { name: '选择产品', exact: true }),
+    { label: 'harness-demo' },
+  );
   await harness.scenariosPanel
     .getByRole('tree', { name: '业务场景地图' })
     .getByText('接口开发体验', { exact: true })
@@ -343,11 +345,10 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
   await expect(wizard.locator('.chips').filter({ hasText: 'external-review-agent' })).toHaveCount(
     1,
   );
-  await wizard
-    .locator('.assignment')
-    .filter({ hasText: '检查代码' })
-    .locator('select')
-    .selectOption({ label: 'external-review-agent（Agent）' });
+  await selectHarnessOption(
+    wizard.locator('.assignment').filter({ hasText: '检查代码' }).getByRole('combobox'),
+    { label: 'external-review-agent（Agent）' },
+  );
   await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
   await expect(wizard).toBeHidden();
   await expect(harness.workflowCard('跨产品资产搜索工作流')).toBeVisible();

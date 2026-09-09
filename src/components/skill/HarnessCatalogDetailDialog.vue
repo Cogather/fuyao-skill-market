@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from './HarnessSelect.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { PlanningTaskCapabilityType } from '../../services/skillMarket/skillPlanningTaskService';
 import {
@@ -811,11 +812,14 @@ onBeforeUnmount(() => {
                 <small>版本</small>
                 <em>{{ formatUpdatedTime(selectedVersionRecord?.uploadedAt) }} 更新</em>
               </span>
-              <select v-model="selectedVersion" aria-label="详情版本" @change="loadSelectedVersion">
-                <option v-for="item in detailVersions" :key="item.version" :value="item.version">
-                  {{ item.version }}
-                </option>
-              </select>
+              <HarnessSelect
+                v-model="selectedVersion"
+                aria-label="详情版本"
+                @change="loadSelectedVersion"
+                :options="[
+                  ...detailVersions.map((item) => ({ value: item.version, label: item.version })),
+                ]"
+              />
             </label>
             <div v-if="props.capabilityType === 'skill'" class="catalog-detail-evaluation-meta">
               <small>评估模型</small>
@@ -1304,7 +1308,7 @@ onBeforeUnmount(() => {
 }
 
 .catalog-detail-meta strong,
-.catalog-detail-version-meta select {
+.catalog-detail-version-meta :is(select, .harness-select) {
   color: #31405e;
   font-size: 11px;
 }
@@ -1338,7 +1342,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.catalog-detail-version-meta select {
+.catalog-detail-version-meta :is(select, .harness-select) {
   width: 100%;
   height: 30px;
   padding: 0 9px;
@@ -1349,7 +1353,7 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
-.catalog-detail-version-meta select:focus {
+.catalog-detail-version-meta :is(select, .harness-select):focus {
   border-color: #7184ec;
   box-shadow: 0 0 0 3px rgba(92, 111, 232, 0.1);
 }

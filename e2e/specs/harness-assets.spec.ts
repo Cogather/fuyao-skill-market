@@ -13,7 +13,7 @@ test('Agent / Skill 资产页签整合资产筛选、详情与发布流程', asy
   const planningLayout = await page.locator('.planning-pageNum').boundingBox();
 
   await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
-  await expect(page.getByRole('heading', { name: '资产清单' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Agent / Skill 资产' })).toBeVisible();
   const assetLayout = await page.locator('.asset-page').boundingBox();
   expect(planningLayout).not.toBeNull();
   expect(assetLayout).not.toBeNull();
@@ -37,11 +37,11 @@ test('Agent / Skill 资产页签整合资产筛选、详情与发布流程', asy
       };
     });
   expect(primaryButtonStyle).toEqual({
-    padding: '6.4px 13.6px',
+    padding: '0px 12px',
     borderRadius: '6px',
-    fontSize: '12.48px',
+    fontSize: '13px',
     fontWeight: '500',
-    lineHeight: 'normal',
+    lineHeight: '20px',
     letterSpacing: 'normal',
     backgroundColor: 'rgb(37, 99, 235)',
   });

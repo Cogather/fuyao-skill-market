@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import type { Locator, Page, Request } from '@playwright/test';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
@@ -72,8 +73,8 @@ async function prepareAssets(page: Page) {
     await route.fulfill({ json: envelope(data) });
   });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
-  await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
-  await page.getByLabel('产品筛选').selectOption('list-product');
+  await page.locator('#harness-tab-assets').click();
+  await selectHarnessOption(page.getByLabel('产品筛选'), 'list-product');
   await expect(page.locator('.asset-card')).toHaveCount(1);
   return { imports, exports, lists, catalogQueries };
 }
@@ -116,10 +117,10 @@ test.describe('资产页导入弹窗 HTTP', () => {
         const { exports, imports, lists, catalogQueries } = await prepareAssets(page);
         const originalQuery = lists.at(-1)!.postDataJSON();
         const dialog = await openImport(page, type);
-        await dialog.getByLabel('层级').selectOption(level);
+        await selectHarnessOption(dialog.getByLabel('层级'), level);
         await selectTargetDepartment(page, dialog);
         if (level === '产品级') {
-          await dialog.getByLabel('产品', { exact: true }).selectOption('target-product');
+          await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'target-product');
         }
         const download = dialog
           .locator('header')
@@ -151,7 +152,7 @@ test.describe('资产页导入弹窗 HTTP', () => {
         expect(imports).toHaveLength(0);
         expect(catalogQueries).toHaveLength(0);
         expect(lists.at(-1)!.postDataJSON()).toEqual(originalQuery);
-        await expect(page.getByLabel('产品筛选')).toHaveValue('list-product');
+        await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', 'list-product');
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(dialog).toBeVisible();
       });
@@ -166,10 +167,10 @@ test.describe('资产页导入弹窗 HTTP', () => {
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
         await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
-        await dialog.getByLabel('层级').selectOption(level);
+        await selectHarnessOption(dialog.getByLabel('层级'), level);
         await selectTargetDepartment(page, dialog);
         if (level === '产品级') {
-          await dialog.getByLabel('产品', { exact: true }).selectOption('target-product');
+          await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'target-product');
           const chooserPromise = page.waitForEvent('filechooser');
           await dialog.getByRole('button', { name: '选择文件', exact: true }).click();
           await (
@@ -217,7 +218,7 @@ test.describe('资产页导入弹窗 HTTP', () => {
         await expect.poll(() => lists.length).toBeGreaterThan(listCount);
         expect(lists.at(-1)!.postDataJSON()).toEqual(originalQuery);
         expect(catalogQueries).toHaveLength(0);
-        await expect(page.getByLabel('产品筛选')).toHaveValue('list-product');
+        await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', 'list-product');
         await dialog.getByRole('button', { name: '完成', exact: true }).click();
         await expect(dialog).toBeHidden();
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
@@ -237,7 +238,7 @@ test.describe('资产页导入弹窗 HTTP', () => {
     expect(imports).toHaveLength(0);
     dialog = await openImport(page, 'Skill');
     await expect(dialog.getByText('bad.txt', { exact: true })).toHaveCount(0);
-    await dialog.getByLabel('层级').selectOption('部门级');
+    await selectHarnessOption(dialog.getByLabel('层级'), '部门级');
     await dialog.locator('input[type=file]').setInputFiles({
       name: 'retry.xlsx',
       mimeType: 'application/octet-stream',
@@ -270,9 +271,9 @@ test.describe('资产页导入弹窗 HTTP', () => {
     const { imports } = await prepareAssets(page);
     const dialog = await openImport(page, 'Skill');
     const download = dialog.getByRole('button', { name: '下载已有数据', exact: true });
-    await dialog.getByLabel('产品', { exact: true }).selectOption('');
+    await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), '');
     await expect(download).toBeDisabled();
-    await dialog.getByLabel('产品', { exact: true }).selectOption('list-product');
+    await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'list-product');
     await dialog.locator('input[type=file]').setInputFiles({
       name: 'keep.xlsx',
       mimeType: 'application/octet-stream',

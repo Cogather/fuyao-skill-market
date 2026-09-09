@@ -1,3 +1,4 @@
+import { openHarnessSelect, selectHarnessOption } from '../helpers/selectHarnessOption';
 import type { Locator } from '@playwright/test';
 
 import { expect, test } from '../fixtures/base';
@@ -38,9 +39,10 @@ test('四步向导保留独立编辑行、说明和调序，并将节点顺序�
   await harness.goto();
   await harness.switchToScenarios();
   await harness.selectScenarioDepartment('平台工具组');
-  await harness.scenariosPanel
-    .getByRole('combobox', { name: '选择产品', exact: true })
-    .selectOption({ label: 'harness-demo' });
+  await selectHarnessOption(
+    harness.scenariosPanel.getByRole('combobox', { name: '选择产品', exact: true }),
+    { label: 'harness-demo' },
+  );
   await harness.scenariosPanel
     .getByRole('tree', { name: '业务场景地图' })
     .getByText('接口开发体验', { exact: true })
@@ -195,18 +197,19 @@ test('四步向导保留独立编辑行、说明和调序，并将节点顺序�
   await candidate.getByRole('button', { name: '+ 添加', exact: true }).click();
   await wizard.locator('.picker-backdrop').click({ position: { x: 1, y: 1 } });
   const deliveryAssignment = wizard.locator('.assignment').filter({ hasText: '实现交付' });
-  const assignmentSelect = deliveryAssignment.locator('select');
-  const assetOption = assignmentSelect.locator('option').nth(1);
-  const assetId = await assetOption.getAttribute('value');
+  const assignmentSelect = deliveryAssignment.getByRole('combobox');
+  const assetOption = (await openHarnessSelect(assignmentSelect)).getByRole('option').first();
+  const assetId = await assetOption.getAttribute('data-value');
   expect(assetId).toBeTruthy();
   await expect(assetOption).toHaveText(/.+（Agent）/);
-  await assignmentSelect.selectOption({ value: assetId! });
+  await selectHarnessOption(assignmentSelect, { value: assetId! });
   await expect(deliveryAssignment.locator('.chips > span')).toHaveCount(1);
   const assignedText = await deliveryAssignment.locator('.chips > span').innerText();
   for (const nodeName of ['结论输出', '资料复核']) {
-    await wizard
-      .getByRole('combobox', { name: `为${nodeName}分配资产`, exact: true })
-      .selectOption({ value: assetId! });
+    await selectHarnessOption(
+      wizard.getByRole('combobox', { name: `为${nodeName}分配资产`, exact: true }),
+      { value: assetId! },
+    );
   }
   await page.screenshot({ path: testInfo.outputPath('workflow-step-4-assignment.png') });
 

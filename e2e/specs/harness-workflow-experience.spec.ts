@@ -1,3 +1,4 @@
+import { openHarnessSelect, selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import { HarnessManagementPage } from '../pages/harnessManagement.page';
 
@@ -9,23 +10,22 @@ async function openExperience(harness: HarnessManagementPage) {
   await harness.selectScenarioDepartment('平台工具组');
   const products = harness.scenariosPanel.getByRole('combobox', { name: '选择产品', exact: true });
   await expect(products).toBeVisible();
-  await products.selectOption({ label: 'harness-demo' });
+  await selectHarnessOption(products, { label: 'harness-demo' });
   await harness.scenariosPanel
     .getByRole('tree', { name: '业务场景地图' })
     .getByText('接口开发体验', { exact: true })
     .click();
 }
 
-test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', async ({ page }) => {
+test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const harness = new HarnessManagementPage(page);
   await openExperience(harness);
   await expect(harness.scenariosPanel.locator('.workflow-card')).toHaveCount(0);
   await harness.openScenarioDesign();
   const wizard = harness.workflowDesignDialog;
   await wizard.getByLabel('场景编码 *').fill('harness-demo-api-development');
-  await wizard
-    .getByLabel('场景说明与目标')
-    .fill('根据接口需求生成实现代码，并输出代码评审结论。');
+  await wizard.getByLabel('场景说明与目标').fill('根据接口需求生成实现代码，并输出代码评审结论。');
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
   await wizard.getByLabel('流程名称').fill('接口开发体验工作流');
 
@@ -61,25 +61,47 @@ test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', 
   }
   await wizard.locator('.picker-backdrop').click({ position: { x: 1, y: 1 } });
   const generation = wizard.locator('.assignment').filter({ hasText: '生成代码' });
-  await generation.locator('select').selectOption({ label: 'harness-demo-api-agent（Agent）' });
-  await generation
-    .locator('select')
-    .selectOption({ label: 'harness-demo-code-generator（Skill）' });
-  await wizard
-    .locator('.assignment')
-    .filter({ hasText: '检查代码' })
-    .locator('select')
-    .selectOption({ label: 'harness-demo-code-review（Skill）' });
+  const assignmentTrigger = generation.getByRole('combobox');
+  await expect(assignmentTrigger).toHaveCSS('display', 'inline-flex');
+  const assignmentMenu = await openHarnessSelect(assignmentTrigger);
+  await expect(assignmentMenu.getByRole('option')).toHaveCount(3);
+  const panel = page.locator('.harness-select-panel');
+  const panelBox = (await panel.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(panelBox.y).toBeGreaterThanOrEqual(0);
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
+  await page.screenshot({ path: testInfo.outputPath('workflow-assignment-select.png') });
+  await page.getByRole('searchbox', { name: '搜索选项' }).press('Escape');
+  await expect(wizard).toBeVisible();
+  await expect(assignmentTrigger).toBeFocused();
+  await selectHarnessOption(generation.getByRole('combobox'), {
+    label: 'harness-demo-api-agent（Agent）',
+  });
+  await selectHarnessOption(generation.getByRole('combobox'), {
+    label: 'harness-demo-code-generator（Skill）',
+  });
+  await selectHarnessOption(
+    wizard.locator('.assignment').filter({ hasText: '检查代码' }).getByRole('combobox'),
+    { label: 'harness-demo-code-review（Skill）' },
+  );
   await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
   await expect(wizard).toBeHidden();
-  await expect(harness.workflowCard('接口开发体验工作流').getByText('✓ 设计完成')).toBeVisible();
+  await expect(
+    harness
+      .workflowCard('接口开发体验工作流')
+      .getByRole('button', { name: '查看设计', exact: true }),
+  ).toBeVisible();
   await harness.switchToWorkflows();
   await harness.selectWorkflowProduct('harness-demo');
   await expect(harness.workflowInventoryRow('接口开发体验工作流')).toBeVisible();
 
   await page.reload();
   await openExperience(harness);
-  await expect(harness.workflowCard('接口开发体验工作流').getByText('✓ 设计完成')).toBeVisible();
+  await expect(
+    harness
+      .workflowCard('接口开发体验工作流')
+      .getByRole('button', { name: '查看设计', exact: true }),
+  ).toBeVisible();
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), workspaceKey);
   const experienceWorkflows = saved.workflows.filter(
     (workflow: { name: string }) => workflow.name === '接口开发体验工作流',

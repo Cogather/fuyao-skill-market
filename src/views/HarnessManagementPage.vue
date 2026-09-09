@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
+import '../style/skill/HarnessWorkspace.scss';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
 import AgentSkillAssetsPage from './skill/AgentSkillAssetsPage.vue';
@@ -91,14 +92,14 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
   },
   {
     key: 'assets',
-    label: 'Agent / Skill 资产',
+    label: '资产清单',
     description: '统一查看 Agent、Skill、Command 与 Extension 资产。',
   },
   { key: 'command', label: 'Command 规划', description: '统一规划和管理 Command 能力。' },
   { key: 'planning', label: 'Skill 规划', description: '统一管理各部门规划建设中的 Skill。' },
   { key: 'agent', label: 'Agent 规划', description: '统一规划和管理 Agent 能力。' },
   { key: 'extension', label: 'Extension 发布', description: '集中管理 Extension 的发布流程。' },
-  { key: 'settings', label: '配置管理', description: '维护 Harness 管理相关的公共配置。' },
+  { key: 'settings', label: '权限配置管理', description: '维护 Harness 管理相关的公共配置。' },
   { key: 'tasks', label: '任务管理', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
 const showLegacyPlanningTabs = false;
@@ -238,9 +239,11 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   ready: permissionContextReady.value && harnessPermissionLoadState.value === 'ready',
   userId: userId.value,
   departmentTree: departmentTree.value,
-  defaultDepartmentPath: currentUserDepartmentPermission.value.path,
+  defaultDepartmentPath:
+    permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
   allowedDepartmentPaths: permissionDepartmentPaths.value,
-  restrictToAllowedDepartments: restrictToPermissionDepartments.value,
+  // 场景与工作流的部门选择仅用于筛选，使用父页面提供的完整部门树。
+  restrictToAllowedDepartments: false,
 }));
 const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
   const product = scenarioWorkspace.products.find(
@@ -457,8 +460,9 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              showLegacyPlanningTabs ||
-              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              tab.key !== 'capabilities' &&
+              (showLegacyPlanningTabs ||
+                !['command', 'planning', 'agent', 'extension'].includes(tab.key))
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -930,6 +934,10 @@ onBeforeRouteLeave(() => {
   min-height: 0;
   overflow-y: auto;
   padding: 14px 50px 34px;
+}
+
+#harness-panel-workflows {
+  overflow: hidden;
 }
 
 .harness-placeholder-panel {

@@ -27,9 +27,10 @@
 - Agent / Skill 资产面板：`#harness-panel-assets`，HTTP 和 Mock 均只显示 Agent / Skill / Command / Extension 四个类型，默认选中 Agent，无「全部」入口；包含详情、Skill 质量报告和发布流程。
 - HTTP 资产列表使用 `httpRequest.api` 的 `POST /v1/harness/plans/components/query`，body 包含 `userId`、可选 `deptCode` / `productCode`、大写 `type`、`sortBy: updatedAt`、`sortOrder: desc`、`pageNo`、`pageSize: 30`。未选部门或产品时省略对应编码；清空部门后仍可查询列表。
 - HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。
-- Agent、Skill、Command、Extension 四类卡片点击都调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写，Extension 的 `name` 为二级场景编码。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本按接口上传时间顺序展示，空数组显示无版本。原子资产继续按所选版本查询包文件；Extension 卡片显示所属场景和上传版本记录，不查询发布场景配置。
+- Agent、Skill、Command、Extension 四类卡片点击都调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写，Extension 的 `name` 为二级场景编码。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本按接口上传时间顺序展示，空数组显示无版本。原子资产继续按所选版本查询包文件。Extension 首次进入、切换版本及重试时刷新 `POST /api/harness/extensions/detail` 和 `/extensions/history`，按所选版本匹配发布快照，再按快照内的组件版本查询包文件；历史版本缺少快照时显示「该版本暂无文件」，当前未发布版本沿用场景绑定。只有元信息查询（`includeFiles: false`）不加载这些内容接口。
 - Extension 列表项的 `canPublish` 控制当前用户的发布权限，与场景是否就绪独立。值为 `false` 时卡片及详情页的「发布 / 继续发布」保持可见但置灰禁用，发布准备和提交方法均拒绝调用接口；历史刷新保留权限标志。
-- Extension 点击「发布」后调用 `POST /api/harness/extensions/detail` 获取当前场景组件、就绪状态和发布摘要；body 为维度信息加 `extensionName`，同时携带所点列表项返回的 `firstScene/secondScene`；无编码的场景选择入口直接传 `firstScene/secondScene`，不再先查询全部绑定。未配置、不完备或请求失败时禁用确认发布，重试重新加载发布配置。提交发布仍走原 `/api/harness/extensions` 接口。
+- Extension 点击「发布」后立即进入页面，再调用 `POST /api/harness/extensions/detail?userId=...` 获取当前场景组件、就绪状态和发布摘要；body 为维度信息加 `extensionName`，`firstScene/secondScene` 来自 `data.records` 中被点击的那条记录。产品维度按卡片所属产品解析，不借用不匹配的筛选产品；无编码的场景选择入口直接传 `firstScene/secondScene`。请求失败在页内显示原因并可重新加载，保留原记录参数；未配置、不完备或已有发布进行中时显示发布表单和原因，禁止确认发布。加载期间返回后，迟到响应不能重新打开页面。提交发布仍走原 `/api/harness/extensions` 接口。
+- Extension「发布历史」独立调用 `/api/harness/extensions/history`，不依赖当前场景的 `/extensions/detail`。场景字段完整时按一级、二级场景匹配历史，否则按 Extension 名称精确匹配；旧资产没有当前绑定也可查历史。历史查询失败支持重新加载；异常响应不能当作空历史，刷新和重试发布保持原资产身份与权限。
 - Mock 保留原资产聚合与每页 24 条的滚动加载。HTTP 切换部门、产品或类型时从第 1 页重载，晚返回的旧请求不能覆盖当前筛选。
 - 任务管理面板：`#harness-panel-tasks`（`role=tabpanel`）
 
@@ -57,6 +58,10 @@
 
 ## 演进记录
 
+- 2026-09-10：三个工作区及复用的资产创建、导入、详情、发布弹窗统一使用 `HarnessSelect` 替代原生下拉。浮层挂载到 body，自动避让视口并高于所在弹窗；支持搜索、键盘选择、Escape 和外部点击关闭。测试通过 `e2e/helpers/selectHarnessOption.ts` 的可见浮层交互选择，数值通过 `data-value` 检查；避免对自定义组件调用原生 `selectOption()`。资产工作区入口使用稳定 ID `#harness-tab-assets`，不依赖显示名称。
+
+- 2026-09-09：修复 HTTP 发布历史与当前发布准备耦合；发布按钮先进入页面再加载，错误及场景不完备可页内重试。回归覆盖逐条场景参数、所属产品、旧资产历史及请求失败恢复。
+- 2026-09-09：Extension 内容切换版本时刷新发布详情与历史，避免按资产 ID 复用旧快照；HTTP 回归覆盖切换时再次请求及新出现的版本快照显示，保留缺失快照和文件失败重试检查。
 - 恢复「Agent / Skill 资产」页签入口，位于「资产清单」之后，沿用原资产页面、默认页签与权限控制。
 - 恢复「Harness 工作流」页签入口，放在「业务场景设计」和「资产清单」之间，沿用现有列表页面与权限控制。
 - 在「业务场景设计」后新增「资产清单」，聚合 Command、Skill、Agent 清单和 Extension 发布；迁移验证期间保留四个原顶层入口

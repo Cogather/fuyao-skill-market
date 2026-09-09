@@ -209,7 +209,11 @@ function mapHistoryRelease(value: unknown): HttpExtensionRelease {
 function historyRows(response: unknown): unknown[] {
   const data = unwrapResponseData(response);
   if (Array.isArray(data)) return data;
-  return readArray(asRecord(data), ['list', 'records', 'items', 'rows', 'content']);
+  const record = asRecord(data);
+  for (const key of ['list', 'records', 'items', 'rows', 'content']) {
+    if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  throw new Error('发布历史响应格式不正确');
 }
 
 function historyTotal(response: unknown, fallback: number): number {
@@ -217,6 +221,7 @@ function historyTotal(response: unknown, fallback: number): number {
   const meta = asRecord(responseRecord.meta);
   const data = asRecord(unwrapResponseData(response));
   for (const value of [data.total, data.number, meta.number, responseRecord.total]) {
+    if (value == null || value === '') continue;
     const total = Number(value);
     if (Number.isFinite(total) && total >= 0) return total;
   }
@@ -552,13 +557,23 @@ export async function queryHttpExtensionHistory(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
+  const firstScene = normalizeText(scene.primary);
+  const secondScene = normalizeText(scene.name);
+  const extensionName = normalizeText(scene.extension.name);
+  const hasSceneIdentity = Boolean(firstScene && secondScene);
+  if (!hasSceneIdentity && !extensionName) {
+    throw new Error('缺少 Extension 名称或完整场景信息，无法查询发布历史');
+  }
   const sceneReleases = (await queryAllHistory(scope)).filter((release) =>
-    sameScene(release, scene.primary, scene.name),
+    hasSceneIdentity
+      ? sameScene(release, firstScene, secondScene)
+      : release.extensionName === extensionName,
   );
   const latestRelease = sceneReleases[0];
   return {
     ...scene,
     extension: {
+      ...scene.extension,
       name: latestRelease?.extensionName ?? scene.extension.name,
       description: latestRelease?.description ?? scene.extension.description,
     },

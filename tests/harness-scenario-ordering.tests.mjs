@@ -169,6 +169,39 @@ try {
     };
   }
 
+  await test('full department filters allow reading while scenario mutations retain management permissions', async () => {
+    const { workspace, context, scene, writes } = await fixture();
+    const child = scene('接口生成');
+    workspace.selectedScenarioId.value = child._id;
+    const workflow = workspace.ensureWorkflow(child._id);
+    context.restrictToAllowedDepartments = false;
+    context.allowedDepartmentPaths = [['其他部门']];
+    await nextTick();
+    await workspace.loadSelectedWorkflow();
+    assert.equal(workspace.available.value, true, 'unmanaged departments remain readable');
+    assert.equal(workspace.error.value, '');
+    const deniedMutations = [
+      () => workspace.reorderScenario(scene('交付发布')._id, scene('研发提效')._id, 'before'),
+      () => workspace.saveScenario({ ...child, name: '重命名场景' }),
+      () => workspace.removeScenario(child),
+      () => workspace.moveScenario(scene('交付发布'), -1),
+      () => workspace.setScenarioTags(scene('研发提效')._id, ['新标签']),
+      () =>
+        workspace.saveWorkflow(workflow, { code: 'demo-code', description: '', releaseCount: 0 }),
+      () => workspace.createCapability('Command', { name: 'demo-command' }),
+      () => workspace.attachCapability('Command', { name: 'demo-command' }),
+      () => workspace.removePoolAsset({ name: 'demo-asset', assetType: 'Skill' }),
+    ];
+    for (const mutate of deniedMutations) {
+      await assert.rejects(mutate, /管理权限/);
+    }
+    assert.equal(writes.length, 0);
+    context.allowedDepartmentPaths = [['研发部']];
+    await nextTick();
+    await workspace.reorderScenario(scene('交付发布')._id, scene('研发提效')._id, 'before');
+    assert.equal(writes.length, 1, 'authorized editing still works');
+  });
+
   await test('root reordering persists once and keeps IDs, hierarchy, metadata and workflows', async () => {
     const { workspace, scene, names, writes, open } = await fixture();
     const child = scene('接口生成');

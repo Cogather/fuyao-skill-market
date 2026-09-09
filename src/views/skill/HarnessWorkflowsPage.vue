@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import HarnessDepartmentPicker from '@/components/skill/HarnessDepartmentPicker.vue';
 import type { HarnessScenarioWorkspace, Workflow } from '@/composables/useHarnessScenarioWorkspace';
@@ -34,16 +35,17 @@ type StatusFilter = (typeof STATUS_OPTIONS)[number];
 const statusOptions = computed(() =>
   isHttp ? STATUS_OPTIONS : STATUS_OPTIONS.filter((status) => status !== '待发布'),
 );
-const PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const pageSize = ref(10);
 const productFilter = ref('');
 const statusFilter = ref<StatusFilter>('全部');
 const page = ref(1);
+const jumpPage = ref<string | number>('1');
 const inventoryLoading = ref(false);
 const inventoryError = ref('');
 let inventoryLoadSequence = 0;
 const httpRows = ref<HarnessWorkflowListRow[]>([]);
 const httpTotal = ref(0);
-const httpPageSize = ref(PAGE_SIZE);
 const httpQuery = computed<HarnessWorkflowListQuery | null>(() => {
   if (!isHttp || !props.active || !workflowListScope.value) return null;
   const product = productFilter.value
@@ -54,7 +56,7 @@ const httpQuery = computed<HarnessWorkflowListQuery | null>(() => {
     ...(product?.code ? { productCode: product.code } : {}),
     ...(statusFilter.value !== '全部' ? { status: statusFilter.value } : {}),
     pageNo: page.value,
-    pageSize: httpPageSize.value,
+    pageSize: pageSize.value,
   };
 });
 const pageLoading = computed(() =>
@@ -102,9 +104,7 @@ const filteredWorkflows = computed(() =>
     : scopedWorkflows.value.filter((workflow) => statusOf(workflow) === statusFilter.value),
 );
 const totalRows = computed(() => (isHttp ? httpTotal.value : filteredWorkflows.value.length));
-const totalPages = computed(() =>
-  Math.max(1, Math.ceil(totalRows.value / (isHttp ? httpPageSize.value : PAGE_SIZE))),
-);
+const totalPages = computed(() => Math.max(1, Math.ceil(totalRows.value / pageSize.value)));
 const pageNumbers = computed(() =>
   Array.from(
     { length: Math.min(7, totalPages.value) },
@@ -127,7 +127,7 @@ const visibleRows = computed(() => {
     }));
   }
   return filteredWorkflows.value
-    .slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE)
+    .slice((page.value - 1) * pageSize.value, page.value * pageSize.value)
     .map((workflow) => {
       const scenario = scenarioById.value.get(workflow.scenarioId);
       const parent = scenario?.parentId ? scenarioById.value.get(scenario.parentId) : undefined;
@@ -151,6 +151,23 @@ const visibleRows = computed(() => {
     });
 });
 
+function setPageSize(size: number) {
+  pageSize.value = size;
+  page.value = 1;
+  jumpPage.value = '1';
+}
+
+function goToPage() {
+  const requestedPage = Number(jumpPage.value);
+  if (String(jumpPage.value).trim() && Number.isFinite(requestedPage)) {
+    page.value = Math.max(1, Math.min(totalPages.value, Math.trunc(requestedPage)));
+  }
+  jumpPage.value = String(page.value);
+}
+
+watch(page, (currentPage) => {
+  jumpPage.value = String(currentPage);
+});
 watch(selectedDeptId, () => {
   productFilter.value = '';
   statusFilter.value = '全部';
@@ -181,7 +198,7 @@ async function refreshInventoryScope() {
       if (requestSequence !== inventoryLoadSequence || httpQuery.value !== query) return;
       httpRows.value = result.list;
       httpTotal.value = result.total;
-      httpPageSize.value = result.pageSize;
+      pageSize.value = result.pageSize;
       page.value = Math.min(result.pageNo, Math.max(1, Math.ceil(result.total / result.pageSize)));
     } else {
       await ensureInventoryScope();
@@ -242,7 +259,7 @@ onBeforeUnmount(() => {
       <div>
         <h1 class="harness-page-title">Harness 工作流</h1>
         <p class="harness-page-description">
-          集中查看各业务场景的 Workflow；流程设计请从业务场景进入。
+          按部门和产品查看工作流清单，掌握各流程的发布状态、所属业务场景和 Command 入口。
         </p>
       </div>
       <button class="workflow-entry-link" type="button" @click="emit('open-scenarios')">
@@ -260,12 +277,15 @@ onBeforeUnmount(() => {
       />
       <template v-if="productOptions.length">
         <span class="selector-divider" aria-hidden="true">→</span>
-        <select v-model="productFilter" class="product-select" aria-label="筛选产品">
-          <option value="">全部产品</option>
-          <option v-for="product in productOptions" :key="product._id" :value="product._id">
-            {{ product.name }}
-          </option>
-        </select>
+        <HarnessSelect
+          v-model="productFilter"
+          class="product-select"
+          aria-label="筛选产品"
+          :options="[
+            { value: '', label: '全部产品' },
+            ...productOptions.map((product) => ({ value: product._id, label: product.name })),
+          ]"
+        />
       </template>
     </section>
 
@@ -290,7 +310,23 @@ onBeforeUnmount(() => {
         class="empty-state"
         role="status"
       >
-        <div class="empty-icon" aria-hidden="true">⚙️</div>
+        <svg class="empty-icon" aria-hidden="true" viewBox="0 0 32 32" fill="none">
+          <path
+            d="M7 10h18M7 16h12M7 22h8"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <rect
+            x="2"
+            y="3"
+            width="28"
+            height="26"
+            rx="4"
+            stroke="currentColor"
+            stroke-width="1.5"
+          />
+        </svg>
         <div class="empty-title">暂无工作流</div>
         <p class="empty-hint">点击右上角“前往场景设计”开始。</p>
       </div>
@@ -315,7 +351,10 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="!pageLoading && !pageError && !totalRows" class="empty-state" role="status">
-          <div class="empty-icon" aria-hidden="true">🔍</div>
+          <svg class="empty-icon" aria-hidden="true" viewBox="0 0 32 32" fill="none">
+            <circle cx="14" cy="14" r="9" stroke="currentColor" stroke-width="1.5" />
+            <path d="m21 21 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
           <div class="empty-title">
             {{ statusFilter === '全部' ? '暂无工作流' : '该状态下暂无工作流' }}
           </div>
@@ -371,29 +410,81 @@ onBeforeUnmount(() => {
           <nav class="workflows-pagination" aria-label="工作流分页">
             <span class="wf-page-total" aria-live="polite">共 {{ totalRows }} 条</span>
             <div class="wf-page-controls">
-              <button class="wf-page-btn" type="button" :disabled="page === 1" @click="page -= 1">
-                <span aria-hidden="true">← </span>上一页
-              </button>
-              <button
-                v-for="pageNumber in pageNumbers"
-                :key="pageNumber"
-                class="wf-page-btn num"
-                :class="{ active: page === pageNumber }"
-                type="button"
-                :aria-label="`第 ${pageNumber} 页`"
-                :aria-current="page === pageNumber ? 'page' : undefined"
-                @click="page = pageNumber"
-              >
-                {{ pageNumber }}
-              </button>
-              <button
-                class="wf-page-btn"
-                type="button"
-                :disabled="page === totalPages"
-                @click="page += 1"
-              >
-                下一页<span aria-hidden="true"> →</span>
-              </button>
+              <HarnessSelect
+                class="wf-page-size"
+                aria-label="每页条数"
+                :model-value="pageSize"
+                @change="setPageSize(Number($event))"
+                :searchable="false"
+                :options="[
+                  ...PAGE_SIZE_OPTIONS.map((size) => ({ value: size, label: size + '条/页' })),
+                ]"
+              />
+              <div class="wf-page-navigation">
+                <button
+                  class="wf-page-btn icon"
+                  type="button"
+                  aria-label="上一页"
+                  title="上一页"
+                  :disabled="page === 1"
+                  @click="page -= 1"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="m14 6-6 6 6 6"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  v-for="pageNumber in pageNumbers"
+                  :key="pageNumber"
+                  class="wf-page-btn num"
+                  :class="{ active: page === pageNumber }"
+                  type="button"
+                  :aria-label="`第 ${pageNumber} 页`"
+                  :aria-current="page === pageNumber ? 'page' : undefined"
+                  @click="page = pageNumber"
+                >
+                  {{ pageNumber }}
+                </button>
+                <button
+                  class="wf-page-btn icon"
+                  type="button"
+                  aria-label="下一页"
+                  title="下一页"
+                  :disabled="page === totalPages"
+                  @click="page += 1"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="m10 6 6 6-6 6"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <label class="wf-page-jump">
+                前往
+                <input
+                  v-model="jumpPage"
+                  type="number"
+                  inputmode="numeric"
+                  min="1"
+                  :max="totalPages"
+                  step="1"
+                  aria-label="跳转页码"
+                  @keydown.enter.prevent="goToPage"
+                  @blur="goToPage"
+                />
+                页
+              </label>
             </div>
           </nav>
         </template>
@@ -411,8 +502,10 @@ onBeforeUnmount(() => {
   --blue: #2563eb;
   --line: #e5e7eb;
   --muted: #6b7280;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 0;
+  overflow: hidden;
   color: #111827;
   background: transparent;
   font:
@@ -422,15 +515,17 @@ onBeforeUnmount(() => {
     sans-serif;
 }
 .workflows-page button,
-.workflows-page select {
+.workflows-page :is(select, .harness-select),
+.workflows-page input {
   font: inherit;
 }
 .workflows-page button:not(:disabled),
-.workflows-page select {
+.workflows-page :is(select, .harness-select) {
   cursor: pointer;
 }
 .workflows-page button:focus-visible,
-.workflows-page select:focus-visible,
+.workflows-page :is(select, .harness-select):focus-visible,
+.workflows-page input:focus-visible,
 .table-scroll:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 3px;
@@ -651,9 +746,51 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
+  gap: 0.75rem;
+}
+.wf-page-navigation {
+  display: flex;
+  align-items: center;
   gap: 0.3rem;
 }
+.wf-page-size,
+.wf-page-jump input {
+  height: 32px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
+}
+.wf-page-size:hover,
+.wf-page-jump input:hover {
+  border-color: var(--blue);
+}
+.wf-page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.wf-page-jump input {
+  width: 52px;
+  text-align: center;
+  appearance: textfield;
+}
+.wf-page-jump input::-webkit-inner-spin-button,
+.wf-page-jump input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
 .workflows-page .wf-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
   padding: 0.3rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -670,9 +807,12 @@ onBeforeUnmount(() => {
   opacity: 0.4;
 }
 .wf-page-btn.num {
-  min-width: 1.9rem;
   padding: 0.3rem 0.4rem;
   text-align: center;
+}
+.wf-page-btn.icon {
+  width: 32px;
+  padding: 0;
 }
 .wf-page-btn.num.active {
   border-color: var(--blue);
@@ -736,6 +876,10 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
     gap: 0.75rem;
   }
+  .wf-page-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 .workflows-page {
   display: flex;
@@ -748,24 +892,22 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 
-@media (min-width: 1101px) and (min-height: 900px) {
-  .workflows-card {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-    overflow: hidden;
-  }
+.workflows-card {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  .workflows-toolbar,
-  .workflows-pagination {
-    flex-shrink: 0;
-  }
+.workflows-toolbar,
+.workflows-pagination {
+  flex-shrink: 0;
+}
 
-  .table-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-  }
+.table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 </style>

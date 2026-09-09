@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import type { Locator, Page, Request } from '@playwright/test';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
@@ -74,8 +75,8 @@ async function prepareAssets(page: Page) {
     await route.fulfill({ json: envelope(data) });
   });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
-  await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
-  await page.getByLabel('产品筛选').selectOption('list-product');
+  await page.locator('#harness-tab-assets').click();
+  await selectHarnessOption(page.getByLabel('产品筛选'), 'list-product');
   return { creates, listRequests, catalogQueries };
 }
 
@@ -198,13 +199,16 @@ test.describe('资产页新建 HTTP 归属', () => {
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
         const scope = dialog.getByRole('group', { name: '新增资产归属' });
-        await expect(scope.getByLabel('产品', { exact: true })).toHaveValue('default-product');
+        await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(
+          'data-value',
+          'default-product',
+        );
         const nameInput = dialog.locator('input[maxlength="64"]');
         await nameInput.fill('default-product-draft');
-        await scope.getByLabel('层级').selectOption(level);
+        await selectHarnessOption(scope.getByLabel('层级'), level);
         await selectTargetDepartment(page, dialog);
         if (level === '产品级') {
-          await scope.getByLabel('产品', { exact: true }).selectOption('target-product');
+          await selectHarnessOption(scope.getByLabel('产品', { exact: true }), 'target-product');
         } else {
           await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
         }
@@ -240,7 +244,7 @@ test.describe('资产页新建 HTTP 归属', () => {
         await expect.poll(() => listRequests.length).toBeGreaterThan(beforeListCount);
         expect(listRequests.at(-1)!.postDataJSON()).toEqual(originalListQuery);
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
-        await expect(page.getByLabel('产品筛选')).toHaveValue('list-product');
+        await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', 'list-product');
       }
       expect(creates).toHaveLength(2);
       expect(catalogQueries).toHaveLength(0);
@@ -261,14 +265,17 @@ test.describe('资产页新建 HTTP 归属', () => {
     await page.getByRole('menuitem', { name: 'Skill', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '添加 Skill' });
     const scope = dialog.getByRole('group', { name: '新增资产归属' });
-    await expect(scope.getByLabel('产品', { exact: true })).toHaveValue('default-product');
+    await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(
+      'data-value',
+      'default-product',
+    );
     await fillCreateForm(dialog, 'Skill', 'default-product-retry');
     const beforeListCount = listRequests.length;
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog.getByText('名称已存在', { exact: true })).toBeVisible();
     await expect(dialog.locator('input[maxlength="64"]')).toHaveValue('default-product-retry');
     expect(listRequests).toHaveLength(beforeListCount);
-    await scope.getByLabel('层级').selectOption('部门级');
+    await selectHarnessOption(scope.getByLabel('层级'), '部门级');
     await selectTargetDepartment(page, dialog);
     await expect(dialog.locator('input[maxlength="64"]')).toHaveValue('retry');
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
@@ -280,6 +287,6 @@ test.describe('资产页新建 HTTP 归属', () => {
       dimCode: 'dept-b',
       dimName: '团队B',
     });
-    await expect(page.getByLabel('产品筛选')).toHaveValue('list-product');
+    await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', 'list-product');
   });
 });

@@ -76,7 +76,8 @@ export async function queryHttpHarnessAssetPage(
     const categoryName = names.join('/');
     const product =
       level === '产品级'
-        ? (products.find((item) => item.name === categoryName) ?? scope.product)
+        ? (products.find((item) => item.name === categoryName) ??
+          (scope.product?.name === categoryName ? scope.product : undefined))
         : undefined;
     return {
       // 此接口不返回 id；类型、归属和名称在翻页、刷新及版本更新后保持一致。

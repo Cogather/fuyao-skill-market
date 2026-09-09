@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
 import HarnessAssetPersonEditDialog from '../../components/skill/HarnessAssetPersonEditDialog.vue';
+import HarnessAssetDeleteDialog from '../../components/skill/HarnessAssetDeleteDialog.vue';
 import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
+import HarnessVersionPicker from '../../components/skill/HarnessVersionPicker.vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
@@ -23,6 +26,7 @@ import {
   type HarnessAssetProduct,
   type HarnessAssetScope,
   type HarnessAssetType,
+  type DeleteHarnessAssetInput,
 } from '../../services/skillMarket/assetManagementTypes';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
@@ -42,7 +46,6 @@ type DepartmentRow = {
   name: string;
   path: string[];
   hasChildren: boolean;
-  selectable: boolean;
 };
 
 const props = withDefaults(
@@ -91,6 +94,8 @@ const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
 const detailTab = ref<'content' | 'report'>('content');
+const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
+const assetListHeading = ref<HTMLElement | null>(null);
 const personEditor = ref<{
   asset: HarnessAsset;
   field: HarnessAssetPersonField;
@@ -102,7 +107,14 @@ const extensionRelease = ref<{
   mode: 'publish' | 'history';
 } | null>(null);
 const extensionReleaseLoading = ref(false);
+const extensionReleaseLoadingMode = ref<'publish' | 'history'>('publish');
+const extensionReleaseError = ref('');
+const extensionReleaseAttempt = ref<{
+  asset: HarnessAsset;
+  mode: 'publish' | 'history';
+} | null>(null);
 const extensionReturnView = ref<'list' | 'detail'>('list');
+let extensionReturnNeedsDetail = false;
 const actionMenu = ref<CatalogAction | null>(null);
 const createAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
 const importAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
@@ -161,6 +173,36 @@ function onPersonSaved(): void {
   personEditor.value = null;
 }
 
+function requestAssetDelete(): void {
+  const asset = selectedAsset.value;
+  if (!asset || asset.assetType === 'Extension') return;
+  deleteTarget.value = {
+    asset: { ...asset },
+    userId: props.userId,
+  };
+}
+
+async function deleteCurrentAsset(): Promise<void> {
+  if (!deleteTarget.value) throw new Error('请重新打开删除确认窗口');
+  const detailCategory = detailComponent.value?.category?.trim();
+  if (detailCategory && detailCategory !== deleteTarget.value.asset.category?.trim()) {
+    throw new Error('资产详情与列表归属不一致，请返回列表刷新后重试');
+  }
+  await api.deleteAsset(deleteTarget.value);
+}
+
+async function onAssetDeleted(): Promise<void> {
+  deleteTarget.value = null;
+  detailSequence += 1;
+  detail.value = null;
+  selectedAssetKey.value = '';
+  view.value = 'list';
+  showToast('资产已删除');
+  await reloadAssets();
+  await nextTick();
+  assetListHeading.value?.focus();
+}
+
 function normalizePath(path: string[]): string[] {
   return path.map((segment) => segment.trim()).filter(Boolean);
 }
@@ -189,7 +231,7 @@ function filterDepartmentTree(
   });
 }
 
-const selectableDepartmentTree = computed(() => filterDepartmentTree(props.departmentTree));
+const manageableDepartmentTree = computed(() => filterDepartmentTree(props.departmentTree));
 const allDepartmentRows = computed<DepartmentRow[]>(() => {
   const rows: DepartmentRow[] = [];
   const append = (nodes: DepartmentTreeNode[], parentPath: string[]): void => {
@@ -201,27 +243,23 @@ const allDepartmentRows = computed<DepartmentRow[]>(() => {
         name: node.name,
         path,
         hasChildren: Boolean(node.children?.length),
-        selectable:
-          !props.restrictToAllowedDepartments ||
-          normalizedAllowedPaths.value.some((allowed) => pathStartsWith(path, allowed)),
       });
       append(node.children ?? [], path);
     });
   };
-  append(selectableDepartmentTree.value, []);
+  // 列表筛选使用完整部门树；新增与导入使用 manageableDepartmentTree。
+  append(props.departmentTree, []);
   return rows;
 });
 
 const pickerDepartments = computed(() =>
-  allDepartmentRows.value
-    .filter((row) => row.selectable)
-    .map((row) => ({
-      _id: row.id,
-      name: row.name,
-      deptCode: row.code,
-      parentId: null,
-      path: row.path,
-    })),
+  allDepartmentRows.value.map((row) => ({
+    _id: row.id,
+    name: row.name,
+    deptCode: row.code,
+    parentId: null,
+    path: row.path,
+  })),
 );
 
 const selectedDepartment = computed(
@@ -266,6 +304,12 @@ const detailVersions = computed(
   () => detail.value?.versions ?? selectedAsset.value?.versions ?? [],
 );
 const detailComponent = computed(() => detail.value?.component);
+const detailCategory = computed(
+  () => (detailComponent.value?.category ?? selectedAsset.value?.category) || '—',
+);
+const detailDescription = computed(
+  () => (detailComponent.value?.description ?? selectedAsset.value?.description) || '暂无描述',
+);
 const catalogDetailRecord = computed(() => {
   const asset = selectedAsset.value;
   if (!asset || asset.assetType === 'Extension') return null;
@@ -321,13 +365,13 @@ function defaultDepartmentRow(): DepartmentRow | null {
   ].filter((path) => path.length > 0);
   for (const path of preferredPaths) {
     const match = allDepartmentRows.value.find(
-      (row) => row.selectable && row.path.join('\u0001') === path.join('\u0001'),
+      (row) => row.path.join('\u0001') === path.join('\u0001'),
     );
     if (match) return match;
   }
   return (
-    [...allDepartmentRows.value].reverse().find((row) => row.selectable && !row.hasChildren) ??
-    allDepartmentRows.value.find((row) => row.selectable) ??
+    [...allDepartmentRows.value].reverse().find((row) => !row.hasChildren) ??
+    allDepartmentRows.value[0] ??
     null
   );
 }
@@ -475,7 +519,7 @@ async function reloadProductsAndAssets(): Promise<void> {
 
 async function selectDepartment(id: string): Promise<void> {
   const target = allDepartmentRows.value.find((row) => row.id === id);
-  if (id && !target?.selectable) return;
+  if (id && !target) return;
   if (selectedDepartmentId.value === id) return;
   selectedDepartmentId.value = id;
   await reloadProductsAndAssets();
@@ -497,7 +541,7 @@ async function loadDetail(): Promise<void> {
   detailError.value = '';
   try {
     const response = await api.queryDetail(scope, asset, selectedVersion.value, {
-      includeFiles: false,
+      includeFiles: asset.assetType === 'Extension',
     });
     if (sequence !== detailSequence || view.value !== requestedView) return;
     detail.value = response;
@@ -535,7 +579,7 @@ async function returnToAssetList(): Promise<void> {
 }
 
 async function changeDetailVersion(): Promise<void> {
-  if (detail.value?.component) return;
+  if (detail.value?.component && selectedAsset.value?.assetType !== 'Extension') return;
   await loadDetail();
 }
 
@@ -555,29 +599,41 @@ async function openExtensionRelease(
   }
   const sequence = ++extensionReleaseSequence;
   const currentListSequence = listSequence;
-  const originView = view.value;
+  if (view.value !== 'publish') {
+    extensionReturnView.value = view.value === 'detail' ? 'detail' : 'list';
+    extensionReturnNeedsDetail = view.value === 'detail' && detailLoading.value;
+  }
+  // 保留点击记录的名称和场景字段，重试时仍查询同一个 Extension。
+  const requestAsset = { ...asset };
+  extensionReleaseAttempt.value = { asset: requestAsset, mode };
+  extensionRelease.value = null;
+  extensionReleaseError.value = '';
+  extensionReleaseLoadingMode.value = mode;
   extensionReleaseLoading.value = true;
+  view.value = 'publish';
   try {
-    const context = await api.queryExtensionReleaseContext(scope, asset);
+    const context = await api.queryExtensionReleaseContext(scope, requestAsset, mode);
     if (
       sequence !== extensionReleaseSequence ||
       currentListSequence !== listSequence ||
-      view.value !== originView
+      view.value !== 'publish'
     )
       return;
-    if (mode === 'publish' && (!context.scene.publishable || context.scene.publishing)) {
-      showToast(context.scene.publishing ? '当前已有发布进行中' : '场景不完备，无法发布');
-      return;
-    }
     extensionRelease.value = { context, mode };
-    extensionReturnView.value = originView === 'detail' ? 'detail' : 'list';
-    view.value = 'publish';
   } catch (error) {
     if (sequence === extensionReleaseSequence)
-      showToast(errorMessage(error, 'Extension 发布信息加载失败'));
+      extensionReleaseError.value = errorMessage(
+        error,
+        mode === 'history' ? '发布历史加载失败' : 'Extension 发布信息加载失败',
+      );
   } finally {
     if (sequence === extensionReleaseSequence) extensionReleaseLoading.value = false;
   }
+}
+
+async function reloadExtensionRelease(): Promise<void> {
+  const attempt = extensionReleaseAttempt.value;
+  if (attempt) await openExtensionRelease(attempt.asset, attempt.mode);
 }
 
 async function onExtensionReleased(): Promise<void> {
@@ -585,8 +641,14 @@ async function onExtensionReleased(): Promise<void> {
 }
 
 function returnFromExtensionRelease(): void {
+  extensionReleaseSequence += 1;
+  extensionReleaseLoading.value = false;
+  extensionReleaseError.value = '';
+  extensionReleaseAttempt.value = null;
   view.value = extensionReturnView.value === 'detail' && selectedAsset.value ? 'detail' : 'list';
   extensionRelease.value = null;
+  if (view.value === 'detail' && (extensionReturnNeedsDetail || !detail.value)) void loadDetail();
+  extensionReturnNeedsDetail = false;
 }
 
 function statusClass(asset: HarnessAsset): string {
@@ -635,6 +697,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   listSequence += 1;
+  detailSequence += 1;
   extensionReleaseSequence += 1;
   if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
   window.clearTimeout(toastTimer);
@@ -643,14 +706,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="asset-page harness-viewport-page">
-    <div v-if="extensionReleaseLoading" class="asset-toast" role="status">
-      正在加载 Extension 发布信息…
-    </div>
+    <HarnessAssetDeleteDialog
+      v-if="deleteTarget"
+      :asset-name="deleteTarget.asset.name"
+      :asset-type="deleteTarget.asset.assetType"
+      :delete-asset="deleteCurrentAsset"
+      @close="deleteTarget = null"
+      @deleted="onAssetDeleted"
+    />
     <HarnessCatalogImportDialog
       v-if="importAssetType"
       :asset-type="importAssetType"
       :user-id="props.userId"
-      :department-tree="selectableDepartmentTree"
+      :department-tree="manageableDepartmentTree"
       :initial-scope="importScope"
       :allowed-department-paths="normalizedAllowedPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
@@ -661,7 +729,7 @@ onBeforeUnmount(() => {
       v-if="createAssetType === 'Skill'"
       create-only
       :user-id="props.userId"
-      :department-tree="selectableDepartmentTree"
+      :department-tree="manageableDepartmentTree"
       :current-user-department-path="props.currentUserDepartmentPath"
       :allowed-department-paths="normalizedAllowedPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
@@ -674,7 +742,7 @@ onBeforeUnmount(() => {
       create-only
       :capability-type="createAssetType === 'Agent' ? 'agent' : 'command'"
       :user-id="props.userId"
-      :department-tree="selectableDepartmentTree"
+      :department-tree="manageableDepartmentTree"
       :current-user-department-path="props.currentUserDepartmentPath"
       :default-department-path="normalizedAllowedPaths[0] ?? props.currentUserDepartmentPath"
       :allowed-department-paths="normalizedAllowedPaths"
@@ -684,13 +752,16 @@ onBeforeUnmount(() => {
     <template v-if="view === 'list'">
       <header class="asset-page__header harness-page-heading">
         <div>
-          <h1 class="harness-page-title">资产清单</h1>
-          <p class="harness-page-description">Extension 基于场景自动生成。</p>
+          <h1 ref="assetListHeading" class="harness-page-title" tabindex="-1">资产清单</h1>
+          <p class="harness-page-description">
+            集中浏览 Agent、Skill、Command 和 Extension，查看版本内容与 Skill 质量报告，管理
+            Extension 发布及历史记录。
+          </p>
         </div>
         <div class="asset-page__actions">
           <button
             type="button"
-            class="asset-button is-primary"
+            class="asset-button is-secondary"
             :aria-expanded="actionMenu === 'import'"
             @click="openActionMenu('import')"
           >
@@ -728,18 +799,17 @@ onBeforeUnmount(() => {
           @update:model-value="selectDepartment"
         />
 
-        <select
+        <HarnessSelect
           v-if="products.length > 0"
           v-model="selectedProductId"
           class="asset-select"
           aria-label="产品筛选"
           @change="reloadAssets"
-        >
-          <option value="">全部产品</option>
-          <option v-for="product in products" :key="product.id" :value="product.id">
-            {{ product.name }}
-          </option>
-        </select>
+          :options="[
+            { value: '', label: '全部产品' },
+            ...products.map((product) => ({ value: product.id, label: product.name })),
+          ]"
+        />
       </section>
       <p v-if="productError" class="asset-scope-error" role="alert">{{ productError }}</p>
 
@@ -749,6 +819,7 @@ onBeforeUnmount(() => {
           :key="item.key"
           type="button"
           :class="{ 'is-active': filter === item.key }"
+          :aria-pressed="filter === item.key"
           @click="selectFilter(item.key)"
         >
           {{ item.label }}
@@ -844,9 +915,33 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-else-if="view === 'detail' && selectedAsset">
-      <button type="button" class="asset-back asset-detail-back" @click="returnToAssetList">
-        <span aria-hidden="true">←</span> 返回列表
-      </button>
+      <div class="asset-detail-toolbar">
+        <button type="button" class="asset-back asset-detail-back" @click="returnToAssetList">
+          <span aria-hidden="true">←</span> 返回列表
+        </button>
+        <button
+          v-if="selectedAsset.assetType !== 'Extension'"
+          type="button"
+          class="asset-delete-button"
+          aria-label="删除资产"
+          @click="requestAssetDelete"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+          </svg>
+          删除
+        </button>
+      </div>
 
       <section class="asset-board asset-detail" aria-labelledby="asset-detail-title">
         <header class="asset-detail__header">
@@ -862,22 +957,27 @@ onBeforeUnmount(() => {
                 >
                   {{ statusLabel(selectedAsset) }}
                 </span>
-                <span v-if="selectedAsset.auto" class="asset-badge is-type">自动生成</span>
               </div>
             </div>
             <div class="asset-detail__meta">
-              <select
+              <HarnessVersionPicker
                 v-model="selectedVersion"
-                class="asset-detail__version"
-                aria-label="版本"
+                :versions="detailVersions"
                 :disabled="detailLoading"
                 @change="changeDetailVersion"
-              >
-                <option v-if="detailVersions.length === 0" value="">无可用版本</option>
-                <option v-for="version in detailVersions" :key="version" :value="version">
-                  v{{ version }}
-                </option>
-              </select>
+              />
+              <dl class="asset-detail__summary">
+                <div class="asset-detail__summary-field is-category">
+                  <dt>归属于</dt>
+                  <dd :title="detailCategory">{{ detailCategory }}</dd>
+                </div>
+                <div class="asset-detail__summary-field is-description">
+                  <dt>描述</dt>
+                  <dd class="asset-detail__description" :title="detailDescription">
+                    {{ detailDescription }}
+                  </dd>
+                </div>
+              </dl>
             </div>
           </div>
           <div v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__actions">
@@ -903,25 +1003,11 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <p v-if="detailComponent?.description" class="asset-detail__description">
-          {{ detailComponent.description }}
-        </p>
-        <dl class="asset-detail__people">
-          <div v-if="detailComponent" class="asset-detail__person">
-            <dt>类别</dt>
-            <dd>{{ detailComponent.category || '—' }}</dd>
-          </div>
-          <div
-            v-for="{ field, label } in PERSON_FIELDS.filter(
-              (person) => selectedAsset?.assetType !== 'Extension' || person.field === 'owner',
-            )"
-            :key="field"
-            class="asset-detail__person"
-          >
+        <dl v-if="selectedAsset.assetType !== 'Extension'" class="asset-detail__people">
+          <div v-for="{ field, label } in PERSON_FIELDS" :key="field" class="asset-detail__person">
             <dt>{{ label }}</dt>
             <dd>{{ detailPersonLabel(field) }}</dd>
             <button
-              v-if="selectedAsset.assetType !== 'Extension'"
               type="button"
               class="asset-detail__person-edit"
               :aria-label="`修改${label}`"
@@ -968,7 +1054,7 @@ onBeforeUnmount(() => {
             :aria-controls="catalogDetailRecord ? 'catalog-detail-panel-detail' : undefined"
             @click="detailTab = 'content'"
           >
-            {{ selectedAsset.assetType === 'Extension' && transportIsHttp ? '版本记录' : '内容' }}
+            内容
           </button>
           <button
             v-if="selectedAsset.assetType === 'Skill'"
@@ -1001,28 +1087,6 @@ onBeforeUnmount(() => {
           :version="selectedVersion"
           :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
         />
-        <div
-          v-else-if="detailComponent && selectedAsset.assetType === 'Extension'"
-          class="asset-version-history"
-        >
-          <table v-if="detailComponent.versions.length">
-            <thead>
-              <tr>
-                <th>版本</th>
-                <th>上传时间</th>
-                <th>上传人</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in detailComponent.versions" :key="item.version">
-                <td>{{ item.version }}</td>
-                <td>{{ item.uploadedAt || '—' }}</td>
-                <td>{{ item.uploadedBy || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-else class="asset-empty">暂无已上传版本</div>
-        </div>
         <div v-else class="asset-file-tree">
           <strong>📁 {{ selectedAsset.name }}/</strong>
           <div v-if="detail?.files.length" class="asset-file-tree__branch">
@@ -1043,9 +1107,39 @@ onBeforeUnmount(() => {
       :user-id="props.userId"
       :user-name="props.userName"
       @close="returnFromExtensionRelease"
+      @reload="reloadExtensionRelease"
       @released="onExtensionReleased"
       @notify="showToast"
     />
+
+    <template v-else-if="view === 'publish'">
+      <button
+        type="button"
+        class="asset-back asset-detail-back"
+        @click="returnFromExtensionRelease"
+      >
+        <span aria-hidden="true">←</span> 返回
+      </button>
+      <header class="asset-page__header">
+        <div>
+          <h2>{{ extensionReleaseLoadingMode === 'history' ? '发布历史' : '发布' }}</h2>
+          <p>{{ extensionReleaseAttempt?.asset.name }}</p>
+        </div>
+      </header>
+      <div v-if="extensionReleaseLoading" class="asset-empty" role="status">
+        {{
+          extensionReleaseLoadingMode === 'history'
+            ? '正在加载发布历史…'
+            : '正在加载 Extension 发布信息…'
+        }}
+      </div>
+      <div v-else-if="extensionReleaseError" class="asset-empty asset-empty--error" role="alert">
+        <span>{{ extensionReleaseError }}</span>
+        <button type="button" class="asset-button is-secondary" @click="reloadExtensionRelease">
+          重新加载
+        </button>
+      </div>
+    </template>
 
     <HarnessAssetPersonEditDialog
       v-if="personEditor"
@@ -1088,7 +1182,7 @@ onBeforeUnmount(() => {
 
 .asset-page button,
 .asset-page input,
-.asset-page select {
+.asset-page :is(select, .harness-select) {
   line-height: normal;
   letter-spacing: normal;
 }
@@ -1561,6 +1655,37 @@ onBeforeUnmount(() => {
   color: #2563eb;
 }
 
+.asset-detail-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.asset-detail-toolbar .asset-detail-back {
+  align-self: center;
+  margin-bottom: 0;
+}
+.asset-delete-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--hw-danger, #b42318);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--hw-danger, #b42318);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.asset-delete-button:hover {
+  background: #fef3f2;
+}
+
 .asset-detail {
   padding: 24px;
   border: 1px solid #eef0f3;
@@ -1617,29 +1742,12 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail__meta {
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 24px;
   margin-top: 6px;
   color: #6b7280;
   font-size: 13px;
   line-height: 20px;
-}
-
-.asset-detail__version {
-  max-width: 100%;
-  margin-left: -4px;
-  padding: 2px 4px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.asset-detail__version:hover {
-  border-color: #dbeafe;
-  background: #f8fafc;
-  color: #2563eb;
 }
 
 .asset-detail__actions {
@@ -1658,11 +1766,56 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.asset-detail__description {
-  margin: 16px 0 0;
+.asset-detail__summary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
+  margin: 0;
+}
+
+.asset-detail__summary-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.asset-detail__summary-field.is-category {
+  flex: 0 1 auto;
+  gap: 6px;
+  max-width: 40%;
+  padding: 3px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.asset-detail__summary-field.is-description {
+  flex: 1;
+}
+
+.asset-detail__summary-field.is-description dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.asset-detail__summary-field dt {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.asset-detail__summary-field dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
   color: #4b5563;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .asset-detail__people {
@@ -1729,7 +1882,6 @@ onBeforeUnmount(() => {
 
 .asset-detail__person-edit:focus-visible,
 .asset-detail-back:focus-visible,
-.asset-detail__version:focus-visible,
 .asset-detail__actions button:focus-visible,
 .asset-detail__tabs button:focus-visible {
   outline: 2px solid #2563eb;
@@ -1850,26 +2002,6 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 
-.asset-version-history table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.48px;
-}
-
-.asset-version-history th,
-.asset-version-history td {
-  padding: 6.4px;
-  text-align: left;
-}
-
-.asset-version-history td {
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.asset-version-history th {
-  background: #f3f4f6;
-}
-
 .asset-toast {
   position: fixed;
   right: 24px;
@@ -1896,6 +2028,16 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 700px) {
+  .asset-detail__meta {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .asset-detail__summary {
+    flex-basis: 100%;
+    gap: 16px;
+  }
+
   .asset-detail__people {
     align-items: flex-start;
     flex-direction: column;

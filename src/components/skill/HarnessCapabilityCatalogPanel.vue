@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from './HarnessSelect.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
@@ -1051,10 +1052,15 @@ onMounted(async () => {
     >
       <label class="capability-master-field capability-master-field--level">
         <span>层级 <em>*</em></span>
-        <select v-model="filterForm.level" @change="onLevelChange">
-          <option value="部门级">部门级</option>
-          <option value="产品级">产品级</option>
-        </select>
+        <HarnessSelect
+          v-model="filterForm.level"
+          @change="onLevelChange"
+          :searchable="false"
+          :options="[
+            { value: '部门级', label: '部门级' },
+            { value: '产品级', label: '产品级' },
+          ]"
+        />
       </label>
       <div class="capability-master-field capability-master-field--dept">
         <span>{{ filterForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
@@ -1075,28 +1081,25 @@ onMounted(async () => {
         class="capability-master-field capability-master-field--product"
       >
         <span>产品 <em>*</em></span>
-        <select
+        <HarnessSelect
           v-model="filterForm.product"
           :disabled="!filterForm.departmentName || productsLoading"
           @change="onProductChange"
-        >
-          <option value="">
-            {{
-              productsLoading
+          :options="[
+            {
+              value: '',
+              label: productsLoading
                 ? '产品加载中...'
                 : filterForm.departmentName
                   ? '请选择产品'
-                  : '请先选择部门'
-            }}
-          </option>
-          <option
-            v-for="product in productOptions"
-            :key="product.offeringId"
-            :value="product.offeringName"
-          >
-            {{ product.offeringName }}
-          </option>
-        </select>
+                  : '请先选择部门',
+            },
+            ...productOptions.map((product) => ({
+              value: product.offeringName,
+              label: product.offeringName,
+            })),
+          ]"
+        />
       </label>
       <label class="capability-master-field capability-master-field--keyword">
         <span>关键词</span>
@@ -1304,11 +1307,12 @@ onMounted(async () => {
       <footer class="capability-master-pagination">
         <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
         <div class="capability-master-pagination__controls">
-          <select v-model.number="pageSize" @change="changePageSize">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
+          <HarnessSelect
+            v-model="pageSize"
+            @change="changePageSize"
+            :searchable="false"
+            :options="[...pageSizeOptions.map((size) => ({ value: size, label: size + '条/页' }))]"
+          />
           <button type="button" :disabled="pageNum <= 1" @click="goPage(pageNum - 1)">
             上一页
           </button>
@@ -1332,6 +1336,7 @@ onMounted(async () => {
       <div
         v-if="editor.open"
         class="capability-master-overlay"
+        :class="{ 'harness-workspace-overlay': props.createOnly }"
         @click.stop
         @pointerdown.stop
         @pointerup.stop
@@ -1351,7 +1356,7 @@ onMounted(async () => {
         >
           <header>
             <div>
-              <small>{{ capabilityLabel.toUpperCase() }} MASTER</small>
+              <small v-if="!props.createOnly">{{ capabilityLabel.toUpperCase() }} MASTER</small>
               <strong>{{
                 editor.mode === 'create' ? `添加 ${capabilityLabel}` : `编辑 ${capabilityLabel}`
               }}</strong>
@@ -1596,7 +1601,7 @@ onMounted(async () => {
   font-style: normal;
 }
 .capability-master-field input,
-.capability-master-field select {
+.capability-master-field :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   height: 38px;
@@ -1622,7 +1627,7 @@ onMounted(async () => {
   box-shadow: none;
 }
 .capability-master-field input:focus,
-.capability-master-field select:focus {
+.capability-master-field :is(select, .harness-select):focus {
   border-color: #6285f5;
   box-shadow: 0 0 0 3px rgba(75, 103, 241, 0.11);
 }
@@ -1961,7 +1966,7 @@ td.is-description > span {
   align-items: center;
   gap: 8px;
 }
-.capability-master-pagination select,
+.capability-master-pagination :is(select, .harness-select),
 .capability-master-pagination button {
   height: 32px;
   border: 1px solid #dbe5f2;
@@ -1971,7 +1976,7 @@ td.is-description > span {
   font: inherit;
   font-size: 13px;
 }
-.capability-master-pagination select {
+.capability-master-pagination :is(select, .harness-select) {
   padding: 0 8px;
 }
 .capability-master-pagination button {
@@ -2093,7 +2098,7 @@ td.is-description > span {
 }
 .capability-master-form input,
 .capability-master-form textarea,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   padding: 11px 13px;
@@ -2143,13 +2148,13 @@ td.is-description > span {
 }
 .capability-master-form input,
 .capability-master-form textarea,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   padding: 0 11px;
   border-color: #d7dfeb;
   font-size: 11px;
 }
 .capability-master-form input,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   height: 40px;
 }
 .capability-master-form textarea {
