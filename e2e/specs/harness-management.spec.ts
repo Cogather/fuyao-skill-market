@@ -362,7 +362,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
 
     const workflowCard = harnessPage.workflowCard(workflowName);
     await expect(workflowCard).toBeVisible();
-    await expect(workflowCard.getByText('✓ 设计完成', { exact: true })).toBeVisible();
+    await expect(workflowCard.getByRole('button', { name: '查看设计', exact: true })).toBeVisible();
     await expect(workflowCard.getByText(commandName, { exact: true })).toBeVisible();
     await expect(workflowCard.getByText(assetName).first()).toBeVisible();
     await expect(workflowCard.getByText(nodeName, { exact: true })).toBeVisible();

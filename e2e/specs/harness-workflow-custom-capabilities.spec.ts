@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import { HarnessManagementPage } from '../pages/harnessManagement.page';
 
@@ -13,6 +14,7 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
   await wizard.getByLabel('场景编码 *').fill('harness-pipeline-personnel');
   await wizard.getByLabel('场景说明与目标').fill('执行研发任务并保留责任人信息');
   await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+  await wizard.getByLabel('流程名称', { exact: true }).fill('自定义资产人员工作流');
   await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
   await wizard.getByPlaceholder('环节名称').fill('实现');
   await wizard.getByRole('button', { name: '添加环节', exact: true }).click();
@@ -75,9 +77,9 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
     }
     await form.getByRole('button', { name: '创建并加入资产清单', exact: true }).click();
     await expect(form).toBeHidden();
-    await wizard
-      .locator('.assignment select')
-      .selectOption({ label: `harness-pipeline-personnel-${type.toLowerCase()}（${type}）` });
+    await selectHarnessOption(wizard.getByRole('combobox', { name: /分配资产$/ }), {
+      label: `harness-pipeline-personnel-${type.toLowerCase()}（${type}）`,
+    });
   }
   await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
   await expect(wizard).toBeHidden();

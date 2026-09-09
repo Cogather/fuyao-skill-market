@@ -376,8 +376,8 @@ onBeforeUnmount(invalidate);
   background: #fff;
 }
 .capability-search:focus-within {
-  border-color: #87acf0;
-  box-shadow: 0 0 0 2px #eff4ff;
+  border-color: #94a3b8;
+  box-shadow: none;
 }
 .capability-types {
   display: flex;

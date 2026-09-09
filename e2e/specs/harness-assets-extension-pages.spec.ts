@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
 
@@ -6,8 +7,8 @@ test.describe('资产卡片 Extension 发布页面', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto(`${APP_BASE_PATH}/harness-management`);
-    await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
-    await page.getByLabel('产品筛选').selectOption('harness-pipeline');
+    await page.locator('#harness-tab-assets').click();
+    await selectHarnessOption(page.getByLabel('产品筛选'), { label: 'harness-pipeline' });
     await page.getByRole('button', { name: 'Extension', exact: true }).click();
   });
 
@@ -23,15 +24,15 @@ test.describe('资产卡片 Extension 发布页面', () => {
     await expect(page.getByRole('tablist', { name: 'Extension 发布分区' })).toHaveCount(0);
     await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('.asset-grid')).toHaveCount(0);
-    await expect(dialog.getByLabel(/发布通道/)).toHaveValue('beta');
+    await expect(dialog.getByLabel(/发布通道/)).toHaveAttribute('data-value', 'beta');
     await expect(dialog.locator('.publish-summary li')).toHaveCount(2);
     await dialog.getByLabel(/Extension 名称/).fill('INVALID NAME');
     await dialog.getByRole('button', { name: '确认发布' }).click();
     await expect(dialog.locator('.modal-error')).toContainText('仅允许小写字母');
     await dialog.getByLabel(/Extension 名称/).fill('harness-pipeline-dialog-test');
     await dialog.getByLabel(/Extension 描述/).fill('从资产卡片发起的发布');
-    await dialog.getByLabel(/发布通道/).selectOption('product');
-    await dialog.getByLabel(/目标组织/).selectOption('org-yunshan');
+    await selectHarnessOption(dialog.getByLabel(/发布通道/), 'product');
+    await selectHarnessOption(dialog.getByLabel(/目标组织/), 'org-yunshan');
     await page
       .locator('.extension-page--embedded')
       .screenshot({ path: testInfo.outputPath('extension-publish-page.png') });

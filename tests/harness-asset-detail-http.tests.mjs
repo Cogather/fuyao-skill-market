@@ -82,7 +82,7 @@ try {
       versions,
     };
     response = success(component);
-    const detail = await api.queryDetail(scope, currentAsset);
+    const detail = await api.queryDetail(scope, currentAsset, undefined, { includeFiles: false });
     assert.deepEqual(calls, [
       {
         url: '/v1/harness/plans/components/detail',
@@ -97,7 +97,10 @@ try {
       'preserve upload order, not semantic version order',
     );
     assert.equal(detail.version, '1.0.0', 'initial selection comes from fresh detail');
-    assert.equal((await api.queryDetail(scope, currentAsset, '2.0.0')).version, '2.0.0');
+    assert.equal(
+      (await api.queryDetail(scope, currentAsset, '2.0.0', { includeFiles: false })).version,
+      '2.0.0',
+    );
     const previousFileTreeRequests = fileTreeRequests;
     const metadataOnly = await api.queryDetail(scope, currentAsset, '2.0.0', {
       includeFiles: false,
@@ -120,6 +123,116 @@ try {
   await assert.rejects(api.queryDetail(scope, asset('Extension')), /组件不存在/);
   console.log(
     'PASS four card types use GET component detail, metadata, ordered versions and empty/error responses',
+  );
+
+  const extensionAsset = { ...asset('Extension'), currentVersion: '2.0.0', canPublish: false };
+  const fileCalls = [];
+  response = success({
+    name: extensionAsset.name,
+    type: 'EXTENSION',
+    description: '文件内容测试',
+    versions: [...versions, { version: '0.5.0', uploadedAt: null, uploadedBy: 'u001' }],
+  });
+  request.harnessApi = async (config) => {
+    calls.push(config);
+    assert.equal(config.url, '/extensions/detail');
+    return success({
+      firstScene: '应用开发',
+      secondScene: '代码开发',
+      readyStatus: '已就绪',
+      publishedExtension: null,
+      components: {
+        skills: [{ name: 'current-skill', version: '3.0.0' }],
+        commands: [],
+        agents: [],
+      },
+    });
+  };
+  skillBaseService.queryPublishedHistoryList = async () =>
+    success([
+      {
+        version: '1.0.0',
+        extensionName: extensionAsset.name,
+        firstScene: '应用开发',
+        secondScene: '代码开发',
+        publishStatus: 'success',
+        skills: [{ name: 'historical-skill', version: '0.9.0' }],
+        commands: [{ name: 'historical-command', version: '0.8.0' }],
+      },
+    ]);
+  skillBaseService.queryPlanningItemTree = async (params) => {
+    fileCalls.push({ kind: 'tree', ...params });
+    return success(['SKILL.md']);
+  };
+  skillBaseService.queryPlanningItemContent = async (params) => {
+    fileCalls.push({ kind: 'file', ...params });
+    return success({ content: `${params.componentName}@${params.componentVersion}` });
+  };
+  const historicalDetail = await api.queryDetail(scope, extensionAsset, '1.0.0');
+  assert.deepEqual(
+    historicalDetail.files,
+    [
+      {
+        path: 'skills/historical-skill/SKILL.md',
+        category: 'skill',
+        content: 'historical-skill@0.9.0',
+      },
+      {
+        path: 'commands/historical-command/historical-command.md',
+        category: 'command',
+        content: 'historical-command@0.8.0',
+      },
+    ],
+    'Extension content uses the selected release snapshot even without publish permission',
+  );
+  assert.ok(fileCalls.every((call) => call.componentName !== 'current-skill'));
+  const currentDetail = await api.queryDetail(scope, extensionAsset, '2.0.0');
+  assert.equal(currentDetail.files[0].content, 'current-skill@3.0.0');
+  const beforeMissingSnapshot = fileCalls.length;
+  const missingSnapshot = await api.queryDetail(scope, extensionAsset, '0.5.0');
+  assert.deepEqual(
+    missingSnapshot.files,
+    [],
+    'unknown historical content must not show current bindings',
+  );
+  assert.equal(fileCalls.length, beforeMissingSnapshot);
+  const previousDetailCalls = calls.filter((call) => call.url === '/extensions/detail').length;
+  skillBaseService.queryPublishedHistoryList = async () =>
+    success([
+      {
+        version: '0.5.0',
+        extensionName: extensionAsset.name,
+        firstScene: '应用开发',
+        secondScene: '代码开发',
+        publishStatus: 'success',
+        skills: [{ name: 'newly-loaded-snapshot-skill', version: '0.4.0' }],
+      },
+    ]);
+  const refreshedSnapshot = await api.queryDetail(scope, extensionAsset, '0.5.0');
+  assert.deepEqual(
+    refreshedSnapshot.files,
+    [
+      {
+        path: 'skills/newly-loaded-snapshot-skill/SKILL.md',
+        category: 'skill',
+        content: 'newly-loaded-snapshot-skill@0.4.0',
+      },
+    ],
+    'reselecting a version must use freshly fetched Extension details and release snapshots',
+  );
+  assert.equal(
+    calls.filter((call) => call.url === '/extensions/detail').length,
+    previousDetailCalls + 1,
+    'version content must refresh the same detail endpoint used by Extension publication',
+  );
+  skillBaseService.queryPlanningItemContent = async () => {
+    throw new Error('文件读取失败');
+  };
+  await assert.rejects(api.queryDetail(scope, extensionAsset, '0.5.0'), /文件读取失败/);
+  skillBaseService.queryPlanningItemContent = async () => success({ content: '# package' });
+  skillBaseService.queryPublishedHistoryList = async () => success([]);
+  console.log(
+    'PASS HTTP Extension content follows release versions, keeps drafts, and surfaces file errors',
   );
 
   response = success({

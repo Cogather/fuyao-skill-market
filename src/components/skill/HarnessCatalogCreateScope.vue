@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from './HarnessSelect.vue';
 import { ref } from 'vue';
 import MarketDeptCascader, { type MarketDeptCascaderNode } from './MarketDeptCascader.vue';
 import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
@@ -34,7 +35,7 @@ const emit = defineEmits<{
   'product-change': [name: string];
 }>();
 const departmentError = ref('');
-const productSelectRef = ref<HTMLSelectElement | null>(null);
+const productSelectRef = ref<{ element: HTMLButtonElement | null } | null>(null);
 
 function confirmDepartment(path: string[]): boolean {
   const allowedPaths = props.allowedDepartmentPaths.length
@@ -61,19 +62,17 @@ function confirmDepartment(path: string[]): boolean {
   <fieldset class="catalog-create-scope" :disabled="props.disabled" :aria-label="props.scopeLabel">
     <label>
       <span>层级 <em>*</em></span>
-      <select
+      <HarnessSelect
         aria-label="层级"
-        :value="props.level"
-        @change="
-          emit(
-            'level-change',
-            ($event.target as HTMLSelectElement).value as HarnessScopeSnapshot['level'],
-          )
-        "
-      >
-        <option value="产品级">产品级</option>
-        <option value="部门级">部门级</option>
-      </select>
+        :model-value="props.level"
+        :disabled="props.disabled"
+        @change="emit('level-change', $event as HarnessScopeSnapshot['level'])"
+        :searchable="false"
+        :options="[
+          { value: '产品级', label: '产品级' },
+          { value: '部门级', label: '部门级' },
+        ]"
+      />
     </label>
     <div class="catalog-create-scope__department">
       <span>{{ props.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
@@ -90,7 +89,7 @@ function confirmDepartment(path: string[]): boolean {
         :allowed-paths="props.allowedDepartmentPaths"
         :before-done="confirmDepartment"
         match-trigger-width
-        :panel-right-anchor="props.level === '产品级' ? productSelectRef : null"
+        :panel-right-anchor="props.level === '产品级' ? productSelectRef?.element : null"
         searchable
         @clear="emit('department-change', $event)"
         @done="emit('department-change', $event)"
@@ -98,22 +97,20 @@ function confirmDepartment(path: string[]): boolean {
     </div>
     <label v-if="props.level === '产品级'">
       <span>产品 <em>*</em></span>
-      <select
+      <HarnessSelect
         ref="productSelectRef"
         aria-label="产品"
-        :value="props.productName"
-        :disabled="props.productsLoading || !props.departmentPath.length"
-        @change="emit('product-change', ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">{{ props.productsLoading ? '产品加载中...' : '请选择产品' }}</option>
-        <option
-          v-for="product in props.products"
-          :key="product.offeringId"
-          :value="product.offeringName"
-        >
-          {{ product.offeringName }}
-        </option>
-      </select>
+        :model-value="props.productName"
+        :disabled="props.disabled || props.productsLoading || !props.departmentPath.length"
+        @change="emit('product-change', $event)"
+        :options="[
+          { value: '', label: props.productsLoading ? '产品加载中...' : '请选择产品' },
+          ...props.products.map((product) => ({
+            value: product.offeringName,
+            label: product.offeringName,
+          })),
+        ]"
+      />
     </label>
     <p v-if="departmentError" class="catalog-create-scope__error" role="alert">
       {{ departmentError }}
@@ -169,7 +166,7 @@ function confirmDepartment(path: string[]): boolean {
   font-size: 11px;
 }
 
-.catalog-create-scope select {
+.catalog-create-scope :is(select, .harness-select) {
   width: 100%;
   min-width: 0;
   height: 36px;

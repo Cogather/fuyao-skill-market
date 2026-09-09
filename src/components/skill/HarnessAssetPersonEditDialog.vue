@@ -43,7 +43,11 @@ onMounted(() => dialogRef.value?.querySelector<HTMLInputElement>('input')?.focus
 
 <template>
   <Teleport to="body">
-    <div class="person-editor-overlay" @click.self="close" @keydown.esc="close">
+    <div
+      class="person-editor-overlay harness-workspace-overlay"
+      @click.self="close"
+      @keydown.esc="close"
+    >
       <form
         ref="dialogRef"
         class="person-editor"
@@ -65,11 +69,13 @@ onMounted(() => dialogRef.value?.querySelector<HTMLInputElement>('input')?.focus
             ×
           </button>
         </header>
-        <p class="person-editor__current">当前{{ label }}：{{ currentValue || '—' }}</p>
-        <fieldset :disabled="submitting">
-          <WorkflowPersonPicker v-model="selectedPerson" :label="label" />
-        </fieldset>
-        <p v-if="error" class="person-editor__error" role="alert">{{ error }}</p>
+        <div class="person-editor__body">
+          <p class="person-editor__current">当前{{ label }}：{{ currentValue || '—' }}</p>
+          <fieldset :disabled="submitting">
+            <WorkflowPersonPicker v-model="selectedPerson" :label="label" />
+          </fieldset>
+          <p v-if="error" class="person-editor__error" role="alert">{{ error }}</p>
+        </div>
         <footer class="person-editor__footer">
           <button type="button" :disabled="submitting" @click="close">取消</button>
           <button

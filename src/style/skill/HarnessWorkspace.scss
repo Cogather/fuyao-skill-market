@@ -1,0 +1,986 @@
+// Adapt the three new workspaces to the existing Fuyao management UI.
+// Page IDs bound the adapter; teleported create-only dialogs opt in explicitly.
+// The ID specificity also keeps existing SFC-scoped rules from changing the theme.
+$workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-panel-assets, .harness-workspace-overlay)';
+
+#{$workspace} {
+  --hw-font:
+    'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei UI',
+    'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --hw-heading: #17233d;
+  --hw-text: #334155;
+  --hw-muted: #667085;
+  --hw-line: #e2e8f0;
+  --hw-control-line: #8593a5;
+  --hw-surface: #ffffff;
+  --hw-quiet: #f8fafc;
+  --hw-primary: #2563eb;
+  --hw-primary-hover: #1d4ed8;
+  --hw-selected: #eff6ff;
+  --hw-danger: #b42318;
+  font-family: var(--hw-font);
+
+  :is(
+    .scenario-page,
+    .workflows-page,
+    .asset-page,
+    .modal,
+    [role='dialog'],
+    .extension-page--embedded
+  ) {
+    --blue: var(--hw-primary);
+    --line: var(--hw-line);
+    --muted: var(--hw-muted);
+    color: var(--hw-text);
+    font: 14px/1.5 var(--hw-font);
+    letter-spacing: 0;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :is(h1, h2, h3, h4, button, input, select, .harness-select, textarea) {
+    font-family: var(--hw-font);
+  }
+
+  .workflow-capability-picker {
+    font-family: var(--hw-font);
+  }
+
+  :is(h2, h3, h4) {
+    color: var(--hw-heading);
+  }
+
+  button {
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .harness-select {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .wf-page-size.harness-select {
+    width: 112px;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  :is(input, select, .harness-select, textarea):not([type='checkbox']):not([type='radio']) {
+    box-sizing: border-box;
+    max-width: 100%;
+    border-color: var(--hw-control-line);
+    border-radius: 6px;
+    color: var(--hw-text);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 20px;
+  }
+
+  :is(input, textarea)::placeholder {
+    color: var(--hw-muted);
+    opacity: 1;
+  }
+
+  :is(input, select, .harness-select, textarea):disabled {
+    border-color: var(--hw-line);
+    background: var(--hw-quiet);
+  }
+
+  // Same scope, same density, whichever tab the user is working in.
+  :is(.selector, .dept-product-selector, .asset-scope) {
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--hw-line);
+    border-radius: 8px;
+    background: var(--hw-surface);
+    box-shadow: none;
+  }
+
+  :is(.selector, .dept-product-selector, .asset-scope)
+    :is(select, .harness-select, .market-dept-cascader-trigger) {
+    height: 36px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--hw-control-line);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  :is(.selector, .dept-product-selector, .asset-scope) > :is(select, .harness-select) {
+    flex: 0 0 200px;
+    width: 200px;
+    min-width: 0;
+  }
+
+  :is(.selector > .divider, .selector-divider) {
+    display: none;
+  }
+
+  :is(
+    .asset-button,
+    .workflow-entry-link,
+    .catalog-import-button,
+    .person-editor__footer button,
+    .dialog > footer button,
+    .capability-master-dialog > footer button,
+    .extension-button--modal-action
+  ) {
+    box-sizing: border-box;
+    justify-content: center;
+    min-height: 32px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--hw-control-line);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 20px;
+    box-shadow: none;
+  }
+
+  :is(
+    .asset-button.is-secondary,
+    .catalog-import-button,
+    .person-editor__footer button,
+    .dialog > footer button,
+    .capability-master-dialog > footer button,
+    .extension-button--ghost
+  ) {
+    background: var(--hw-surface);
+    color: var(--hw-text);
+  }
+
+  :is(
+    .primary,
+    .asset-button.is-primary:not(:disabled),
+    .workflow-entry-link,
+    .capability-master-dialog > footer button.is-primary,
+    .catalog-import-button.is-primary,
+    .person-editor__save,
+    .extension-button--publish:not(:disabled)
+  ) {
+    border-color: var(--hw-primary) !important;
+    background: var(--hw-primary) !important;
+    color: #fff !important;
+    box-shadow: none;
+  }
+
+  :is(
+      .primary,
+      .asset-button.is-primary,
+      .workflow-entry-link,
+      .capability-master-dialog > footer button.is-primary,
+      .catalog-import-button.is-primary,
+      .person-editor__save,
+      .extension-button--publish
+    ):hover:not(:disabled) {
+    background: var(--hw-primary-hover) !important;
+    transform: none;
+  }
+
+  .danger-btn {
+    border-color: var(--hw-danger) !important;
+    background: var(--hw-danger) !important;
+    color: #fff !important;
+  }
+
+  // Readable secondary content must not use disabled-text colors.
+  :is(
+    .tree-sort-hint,
+    .config-grid small,
+    .stage-title small,
+    h4 small,
+    .stage p,
+    .stage small,
+    .wf-page-total,
+    .asset-action-menu small,
+    .asset-list-footer,
+    .asset-empty,
+    .editor-heading p,
+    .optional-mark,
+    .editor-tags legend > span,
+    .tag-picker-meta,
+    .tag-empty,
+    .editor-footer-note,
+    .catalog-import-description,
+    .catalog-import-dropzone > span,
+    .field-hint,
+    .capability-field-hint,
+    .assignment-description,
+    .empty-hint,
+    .history-end,
+    .extension-follow-publish-note
+  ) {
+    color: var(--hw-muted);
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  // Table headers retain scope while the list scrolls.
+  .workflows-card {
+    padding: 0 16px;
+    border-color: var(--hw-line);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .workflows-toolbar {
+    padding: 12px 0;
+  }
+
+  .empty-icon {
+    width: 40px;
+    height: 40px;
+    color: var(--hw-muted);
+  }
+
+  .workflows-table {
+    margin-top: 0;
+  }
+
+  .workflows-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 40px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--hw-line);
+    background: #eaf1fb;
+    color: #405779;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .workflows-table td {
+    height: 48px;
+    padding: 10px 12px;
+    border-bottom-color: var(--hw-line);
+    color: var(--hw-text);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .workflows-table .wf-name {
+    color: var(--hw-heading);
+  }
+
+  .workflows-pagination {
+    padding: 12px 0;
+    margin-top: 0;
+    border-top-color: var(--hw-line);
+  }
+
+  :is(.workflows-status-filter, .asset-filters) {
+    align-self: flex-start;
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--hw-line);
+    border-radius: 8px;
+    background: var(--hw-quiet);
+  }
+
+  :is(.workflows-status-filter, .asset-filters) button {
+    min-height: 32px;
+    padding: 4px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--hw-muted);
+    font-size: 13px;
+    box-shadow: none;
+  }
+
+  :is(.wf-status-chip.active, .asset-filters button.is-active) {
+    border-color: var(--hw-primary);
+    background: var(--hw-surface);
+    color: var(--hw-primary);
+    font-weight: 600;
+  }
+
+  // Preserve the tree / workflow structure while reducing nested card decoration.
+  :is(.tree-panel, .design-panel) {
+    border-color: var(--hw-line);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .design-panel {
+    padding: 20px;
+  }
+
+  .summary {
+    gap: 16px;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+  }
+
+  .summary h2 {
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  .tree-panel > header button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--hw-control-line);
+    border-radius: 6px;
+    background: var(--hw-surface);
+    color: var(--hw-primary);
+    font-size: 18px;
+  }
+
+  .tree-node.active {
+    background: var(--hw-selected);
+  }
+
+  .scenario-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .node-actions {
+    gap: 2px;
+    margin-left: 8px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tree-node:is(:hover, :focus-within) .node-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .node-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    padding: 5px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--hw-muted);
+  }
+
+  .node-actions svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .node-actions button:hover:not(:disabled) {
+    background: #dbeafe;
+    color: var(--hw-primary-hover);
+  }
+
+  .node-actions .danger:hover:not(:disabled) {
+    background: #fee2e2;
+    color: var(--hw-danger);
+  }
+
+  @media (hover: none) {
+    .node-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+
+  .tree-node::before {
+    background: var(--hw-primary);
+  }
+
+  .workflow-card {
+    padding: 16px 0 0;
+    border: 0;
+    border-top: 1px solid var(--hw-line);
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .workflow-card::before {
+    display: none;
+  }
+
+  .workflow-card:hover {
+    border-color: var(--hw-line);
+    box-shadow: none;
+    transform: none;
+  }
+
+  .config-grid section {
+    padding: 12px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--hw-quiet);
+  }
+
+  :is(.config-grid section > header, .stage-title) {
+    gap: 12px;
+    font-weight: 600;
+  }
+
+  .commands div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 8px 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--hw-text);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .commands code {
+    color: var(--hw-primary-hover);
+    font-size: 13px;
+    white-space: pre-wrap;
+  }
+
+  .stage {
+    border: 1px solid var(--hw-line);
+    border-radius: 8px;
+    min-width: min(240px, 100%);
+    overflow-wrap: anywhere;
+  }
+
+  .stage-node {
+    border-left: 2px solid #cbd5e1;
+    background: var(--hw-quiet);
+  }
+
+  .boxed {
+    min-height: 180px;
+    padding: 24px;
+    border: 1px dashed var(--hw-line);
+    border-radius: 8px;
+    background: var(--hw-quiet);
+  }
+
+  // Shared dialog shell, including dialogs teleported outside the page.
+  .modal {
+    padding: 24px;
+    background: rgb(15 23 42 / 38%);
+    backdrop-filter: blur(3px);
+  }
+
+  [role='dialog'] {
+    border: 1px solid var(--hw-line);
+    border-radius: 10px;
+    box-shadow: 0 20px 64px rgb(15 23 42 / 18%);
+  }
+
+  [role='dialog'] > header {
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  [role='dialog'] :is(header h2, header strong) {
+    margin: 0;
+    color: var(--hw-heading);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 28px;
+    overflow-wrap: anywhere;
+  }
+
+  [role='dialog'] > header p {
+    margin: 4px 0 0;
+    color: var(--hw-muted);
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  :is(.editor-icon) {
+    display: none;
+  }
+
+  :is(.editor-header, .editor-body) {
+    padding: 20px 24px;
+  }
+
+  .editor-body {
+    gap: 20px;
+  }
+
+  :is(.wizard, .person-editor, .catalog-import-dialog, .is-create-dialog) {
+    padding: 24px;
+  }
+
+  .person-editor {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 48px);
+  }
+
+  .person-editor__header {
+    flex-shrink: 0;
+  }
+
+  .person-editor__body {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px;
+    margin: 0 -4px;
+  }
+
+  .person-editor .workflow-person-picker__popup {
+    max-height: none;
+    overflow: visible;
+  }
+
+  :is(
+    .editor-close,
+    .wizard .close,
+    .person-editor__close,
+    .catalog-import-close,
+    .is-create-dialog > header > button
+  ) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: var(--hw-quiet);
+    color: var(--hw-muted);
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  [role='dialog']
+    :is(
+      label,
+      legend,
+      .capability-master-form label,
+      .form-grid label > span,
+      .catalog-create-scope span,
+      .workflow-person-picker__label
+    ) {
+    color: var(--hw-text);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  [role='dialog'] :is(input, select, .harness-select):not([type='checkbox']):not([type='radio']) {
+    height: 40px;
+  }
+
+  [role='dialog'] :is(input, select, .harness-select, textarea) {
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  [role='dialog'] .market-dept-cascader-trigger {
+    height: 40px;
+    min-height: 40px;
+    border-color: var(--hw-control-line);
+    border-radius: 6px;
+    font-weight: 400;
+  }
+
+  .catalog-create-scope {
+    border-color: var(--hw-line);
+    border-radius: 8px;
+    background: var(--hw-quiet);
+  }
+
+  .catalog-create-scope__error {
+    color: var(--hw-danger);
+  }
+
+  [role='dialog'] > footer {
+    flex-shrink: 0;
+    gap: 8px;
+    padding-top: 16px;
+    margin-top: 20px;
+    border-top: 1px solid var(--hw-line);
+    background: var(--hw-surface);
+  }
+
+  .scenario-editor > .editor-footer {
+    margin: 0;
+    padding: 16px 24px;
+  }
+
+  .wizard > header {
+    padding-bottom: 16px;
+  }
+
+  .wizard > nav {
+    margin: 16px 0;
+  }
+
+  .wizard > nav button {
+    font-size: 12px;
+  }
+
+  .wizard > nav .current > b {
+    box-shadow: none;
+  }
+
+  .wizard > .wizard-page {
+    padding: 16px;
+    border: 1px solid var(--hw-line);
+    border-radius: 8px;
+    background: #f5f8fd;
+  }
+
+  .wizard :is(.create-command-trigger, .capability-create-entry button, .nodes > button) {
+    border-color: var(--hw-primary);
+    background: #e8f0ff;
+    color: var(--hw-primary-hover);
+    font-weight: 600;
+  }
+
+  .wizard :is(.create-command-trigger, .capability-create-entry button, .nodes > button):hover {
+    background: #dbeafe;
+  }
+
+  .wizard :is(.edit-stage, .assignment) {
+    border-color: #ccdaed;
+    background: #edf3fc;
+  }
+
+  .wizard .edit-stage > header {
+    background: #e8f0fc;
+    color: #284c80;
+  }
+
+  .wizard .nodes {
+    background: #f6f9fe;
+  }
+
+  .wizard :is(.node-item, .assignment > div) {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border: 1px solid var(--hw-line);
+    border-radius: 6px;
+    background: var(--hw-surface);
+  }
+
+  .wizard :is(.asset-option .option-content > b, .chips > span) {
+    color: var(--hw-text);
+  }
+
+  .wizard .command-row {
+    padding: 14px 16px;
+    border: 1px solid #243550;
+    border-radius: 8px;
+    background: #172235;
+  }
+
+  .wizard .command-details code {
+    color: #b9d4ff;
+    font:
+      13px/1.7 'Cascadia Code',
+      Consolas,
+      monospace;
+    overflow-wrap: anywhere;
+  }
+
+  .wizard .command-details code::before {
+    content: '$ ';
+    color: #82cdb9;
+  }
+
+  .wizard .command-details p {
+    color: #c9d4e4;
+  }
+
+  .wizard .command-remove {
+    color: #fda4af;
+  }
+
+  .wizard .command-remove:hover {
+    background: #3d293a;
+    color: #fecdd3;
+  }
+
+  :is(.capability-master-form, .form-grid) {
+    gap: 16px;
+  }
+
+  // Asset detail keeps the existing source viewer, with a readable text scale.
+  .asset-board {
+    box-shadow: none;
+  }
+
+  .asset-board--catalog {
+    background: transparent;
+  }
+
+  .asset-card {
+    border-color: var(--hw-line);
+    border-radius: 8px;
+  }
+
+  .asset-card:hover {
+    box-shadow: 0 3px 12px rgb(35 52 84 / 6%);
+  }
+
+  .asset-card__title .asset-badge.is-type {
+    width: auto;
+    background: var(--hw-quiet);
+    color: var(--hw-muted);
+  }
+
+  .asset-action-menu {
+    max-width: calc(100vw - 48px);
+    min-width: min(282px, calc(100vw - 48px));
+  }
+
+  .asset-detail {
+    border: 1px solid var(--hw-line);
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .catalog-detail-capability {
+    border-color: var(--hw-line);
+    box-shadow: none;
+  }
+
+  :is(.catalog-detail-file-content, .catalog-detail-direct-content) {
+    margin-left: 0;
+    border: 0;
+    border-radius: 6px;
+    background: var(--hw-quiet);
+  }
+
+  :is(.catalog-detail-file-content pre, .catalog-detail-direct-content pre) {
+    padding: 16px;
+    color: var(--hw-text);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  // The embedded release form uses page spacing and a comfortable reading width.
+  .extension-page--embedded :is(.modal-body, .modal-header, .modal-footer) {
+    padding: 16px 24px;
+  }
+
+  .extension-page--embedded .modal-body:not(.history-body) > * {
+    max-width: 880px;
+  }
+
+  .extension-page--embedded .modal-field {
+    margin-bottom: 20px;
+  }
+
+  .extension-page--embedded .modal-field > span {
+    color: var(--hw-text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .extension-page--embedded .modal-field :is(input, select, .harness-select) {
+    height: 40px;
+  }
+
+  .extension-page--embedded :is(.publish-summary, .timeline-item) {
+    font-size: 13px;
+  }
+
+  .extension-page--embedded .modal-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  // Explicit focus takes precedence over legacy outline resets and hover shadows.
+  :is(
+    button,
+    a,
+    input,
+    select,
+    .harness-select,
+    textarea,
+    [tabindex='0'],
+    [role='treeitem']
+  ):focus-visible {
+    outline: 2px solid var(--hw-primary) !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+  }
+
+  :is(.tag-search, .workflow-capability-picker__search):focus-within {
+    outline: 2px solid var(--hw-primary);
+    outline-offset: -2px;
+  }
+
+  .capability-search:focus-within {
+    outline: 2px solid var(--hw-primary);
+    outline-offset: 2px;
+  }
+
+  // The search container provides the focus cue; avoid a second ring around its input.
+  .capability-search input:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  @media (max-width: 760px) {
+    :is(.selector, .dept-product-selector, .asset-scope) {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    :is(.selector, .dept-product-selector, .asset-scope)
+      > :is(select, .harness-select, .dept-picker, .asset-department) {
+      flex: 0 0 auto;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .scenario-page {
+      padding: 0;
+    }
+
+    :is(.design-panel, .asset-detail) {
+      padding: 16px;
+    }
+
+    .modal {
+      padding: 12px;
+    }
+
+    [role='dialog'] {
+      max-width: 100%;
+      max-height: calc(100dvh - 24px);
+    }
+
+    :is(.wizard, .person-editor, .catalog-import-dialog, .is-create-dialog) {
+      padding: 16px;
+    }
+
+    :is(.editor-header, .editor-body, .scenario-editor > .editor-footer) {
+      padding: 16px;
+    }
+
+    .wizard > nav {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .wizard > nav i {
+      display: none;
+    }
+
+    .wizard > nav button {
+      flex-direction: row;
+      gap: 6px;
+      min-width: 0;
+      text-align: left;
+    }
+
+    .wizard > nav button > b {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+    }
+
+    .wizard > nav span {
+      display: inline;
+      overflow-wrap: anywhere;
+    }
+
+    .wizard > .wizard-footer {
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+    }
+
+    .wizard-save-feedback {
+      flex-basis: 100%;
+    }
+
+    .wizard-footer > span:last-child {
+      margin-left: auto;
+      flex-wrap: wrap;
+    }
+
+    .catalog-import-dialog > header {
+      flex-wrap: wrap;
+    }
+
+    .catalog-import-header-actions {
+      margin-left: auto;
+    }
+
+    .extension-page--embedded :is(.modal-body, .modal-header, .modal-footer) {
+      padding: 16px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition: none !important;
+      animation: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @media (forced-colors: active) {
+    :is(.tag-search, .workflow-capability-picker__search, .capability-search):focus-within {
+      outline-color: Highlight;
+    }
+
+    :is(
+      button,
+      a,
+      input,
+      select,
+      .harness-select,
+      textarea,
+      [tabindex='0'],
+      [role='treeitem']
+    ):focus-visible {
+      outline-color: Highlight !important;
+    }
+
+    :is(
+      .primary,
+      .asset-button.is-primary,
+      .workflow-entry-link,
+      .capability-master-dialog > footer button.is-primary,
+      .catalog-import-button.is-primary,
+      .person-editor__save,
+      .extension-button--publish
+    ) {
+      border: 1px solid ButtonText !important;
+      background: ButtonFace !important;
+      color: ButtonText !important;
+    }
+
+    :is(.wf-status-chip.active, .asset-filters button.is-active, .tree-node.active) {
+      border: 1px solid Highlight;
+      color: Highlight;
+    }
+  }
+  &.harness-workspace-overlay {
+    background: rgb(15 23 42 / 38%);
+    backdrop-filter: blur(3px);
+  }
+}

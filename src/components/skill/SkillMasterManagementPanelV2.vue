@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from './HarnessSelect.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
@@ -2061,15 +2062,12 @@ onMounted(() => {
       >
         <label class="master-scope-field master-scope-field--level">
           <span>层级 <em>*</em></span>
-          <select v-model="masterScopeForm.level" @change="onMasterScopeLevelChange">
-            <option
-              v-for="item in planningLevelOptions"
-              :key="`master-level-${item}`"
-              :value="item"
-            >
-              {{ item }}
-            </option>
-          </select>
+          <HarnessSelect
+            v-model="masterScopeForm.level"
+            @change="onMasterScopeLevelChange"
+            :searchable="false"
+            :options="[...planningLevelOptions.map((item) => ({ value: item, label: item }))]"
+          />
         </label>
         <div class="master-scope-field master-scope-field--dept">
           <span
@@ -2098,28 +2096,25 @@ onMounted(() => {
         </div>
         <label v-if="masterScopeForm.level === '产品级'" class="master-scope-field">
           <span>产品 <em>*</em></span>
-          <select
+          <HarnessSelect
             v-model="masterScopeForm.offeringName"
             :disabled="!masterScopeForm.planningDeptName || masterProductsLoading"
             @change="onMasterProductChange"
-          >
-            <option value="">
-              {{
-                !masterScopeForm.planningDeptName
+            :options="[
+              {
+                value: '',
+                label: !masterScopeForm.planningDeptName
                   ? '请先选择部门'
                   : masterProductsLoading
                     ? '产品加载中...'
-                    : '请选择产品'
-              }}
-            </option>
-            <option
-              v-for="item in masterProductOptions"
-              :key="item.offeringId || item.offeringName"
-              :value="item.offeringName"
-            >
-              {{ item.offeringName }}
-            </option>
-          </select>
+                    : '请选择产品',
+              },
+              ...masterProductOptions.map((item) => ({
+                value: item.offeringName,
+                label: item.offeringName,
+              })),
+            ]"
+          />
         </label>
         <label class="master-scope-field master-scope-field--keyword">
           <span>关键词</span>
@@ -2374,15 +2369,15 @@ onMounted(() => {
       <div class="master-pagination">
         <span>第 {{ masterPageStart }}-{{ masterPageEnd }} 条，共 {{ masterTotal }} 条</span>
         <div class="master-pagination__controls">
-          <select
-            v-model.number="masterPageSize"
+          <HarnessSelect
+            v-model="masterPageSize"
             :disabled="masterLoading"
             @change="changeMasterPageSize"
-          >
-            <option v-for="size in masterPageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
+            :searchable="false"
+            :options="[
+              ...masterPageSizeOptions.map((size) => ({ value: size, label: size + '条/页' })),
+            ]"
+          />
           <button
             type="button"
             :disabled="masterLoading || masterPageNum <= 1"
@@ -2411,7 +2406,14 @@ onMounted(() => {
     />
 
     <Teleport to="body">
-      <div v-if="editor.open" class="overlay" @click.stop @pointerdown.stop @pointerup.stop>
+      <div
+        v-if="editor.open"
+        class="overlay"
+        :class="{ 'harness-workspace-overlay': props.createOnly }"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
+      >
         <form
           ref="editorFormRef"
           class="dialog"
@@ -2432,7 +2434,7 @@ onMounted(() => {
         >
           <header>
             <div>
-              <small>SKILL MASTER</small
+              <small v-if="!props.createOnly">SKILL MASTER</small
               ><strong>
                 {{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}
                 <em
@@ -2681,16 +2683,19 @@ onMounted(() => {
 
               <div class="import-pagination">
                 <span>共 {{ importTotal }} 条</span>
-                <select
-                  v-model.number="importPageSize"
+                <HarnessSelect
+                  v-model="importPageSize"
                   :disabled="importLoading"
                   aria-label="每页条数"
                   @change="changeImportPageSize"
-                >
-                  <option v-for="size in importPageSizeOptions" :key="size" :value="size">
-                    {{ size }} 条/页
-                  </option>
-                </select>
+                  :searchable="false"
+                  :options="[
+                    ...importPageSizeOptions.map((size) => ({
+                      value: size,
+                      label: size + '条/页',
+                    })),
+                  ]"
+                />
                 <button
                   type="button"
                   :disabled="importLoading || importPageNum <= 1"
@@ -3149,7 +3154,7 @@ onMounted(() => {
   font-style: normal;
 }
 .master-scope-field input,
-.master-scope-field select {
+.master-scope-field :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   height: 38px;
@@ -3164,7 +3169,7 @@ onMounted(() => {
   outline: none;
 }
 .master-scope-field input:focus,
-.master-scope-field select:focus {
+.master-scope-field :is(select, .harness-select):focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
@@ -3519,7 +3524,7 @@ onMounted(() => {
   color: #7c879a;
   font-size: 11px;
 }
-.import-pagination select {
+.import-pagination :is(select, .harness-select) {
   height: 28px;
   padding: 0 8px;
   border: 1px solid #d7dfeb;
@@ -3531,11 +3536,11 @@ onMounted(() => {
   outline: none;
   cursor: pointer;
 }
-.import-pagination select:focus {
+.import-pagination :is(select, .harness-select):focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
-.import-pagination select:disabled {
+.import-pagination :is(select, .harness-select):disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -3727,7 +3732,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
 }
-.master-pagination__controls select,
+.master-pagination__controls :is(select, .harness-select),
 .master-pagination__controls button {
   height: 32px;
   border: 1px solid #dbe5f2;
@@ -3737,7 +3742,7 @@ onMounted(() => {
   font: inherit;
   font-size: 13px;
 }
-.master-pagination__controls select {
+.master-pagination__controls :is(select, .harness-select) {
   padding: 0 8px;
 }
 .master-pagination__controls button {
@@ -3745,7 +3750,7 @@ onMounted(() => {
   cursor: pointer;
 }
 .master-pagination__controls button:disabled,
-.master-pagination__controls select:disabled {
+.master-pagination__controls :is(select, .harness-select):disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -4046,7 +4051,7 @@ onMounted(() => {
   line-height: 1.45;
 }
 .form-grid input,
-.form-grid select,
+.form-grid :is(select, .harness-select),
 .form-grid textarea {
   box-sizing: border-box;
   width: 100%;
@@ -4056,7 +4061,7 @@ onMounted(() => {
   background: #fff;
 }
 .form-grid input,
-.form-grid select {
+.form-grid :is(select, .harness-select) {
   height: 40px;
 }
 .form-grid textarea {

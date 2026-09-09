@@ -7,6 +7,11 @@ export type HarnessAssetFilter = 'all' | HarnessAssetType;
 export type HarnessAtomicAssetType = Exclude<HarnessAssetType, 'Extension'>;
 export type HarnessAssetPersonField = 'owner' | 'developer';
 
+export type DeleteHarnessAssetInput = {
+  asset: HarnessAsset;
+  userId: string;
+};
+
 export type UpdateHarnessAssetPersonInput = {
   asset: HarnessAsset;
   field: HarnessAssetPersonField;
@@ -133,6 +138,7 @@ export type PublishHarnessAssetInput = {
 };
 
 export interface HarnessAssetApi {
+  deleteAsset(input: DeleteHarnessAssetInput): Promise<void>;
   updatePerson(input: UpdateHarnessAssetPersonInput): Promise<string>;
   queryProducts(
     scope: Omit<HarnessAssetScope, 'product' | 'assetType'>,
@@ -161,6 +167,7 @@ export interface HarnessAssetApi {
   queryExtensionReleaseContext(
     scope: HarnessAssetScope,
     asset: HarnessAsset,
+    mode?: 'publish' | 'history',
   ): Promise<ExtensionReleaseContext>;
   publish(input: PublishHarnessAssetInput): Promise<HarnessAssetRelease>;
 }

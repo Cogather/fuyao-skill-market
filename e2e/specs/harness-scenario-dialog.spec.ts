@@ -29,7 +29,8 @@ for (const level of ['一级', '下级']) {
       level === '一级'
         ? harness.scenariosPanel.getByTitle('新建一级场景', { exact: true })
         : harness.scenariosPanel.getByRole('button', { name: '在研发提效下新建场景', exact: true });
-    await opener.click();
+    await opener.focus();
+    await opener.press('Space');
     const dialog = page.getByRole('dialog', { name: `新建${level}场景`, exact: true });
     await dialog.getByLabel('场景名称').fill('保留未提交的场景');
     await dialog.getByLabel('场景说明').fill('误点和滚动后这段内容仍然保留');
@@ -75,7 +76,9 @@ test('场景标签和删除确认仅通过操作按钮关闭', async ({ page }) 
     .locator('.tree-node')
     .filter({ has: page.locator('b', { hasText: /^代码生成$/ }) });
   await scenario.hover();
-  await scenario.getByRole('button', { name: '删除代码生成', exact: true }).click();
+  const deleteButton = scenario.getByRole('button', { name: '删除代码生成', exact: true });
+  await deleteButton.focus();
+  await deleteButton.press('Space');
   const deletion = page.getByRole('dialog', { name: '删除场景', exact: true });
   await expectExplicitDismissalOnly(page, deletion);
   await deletion.getByRole('button', { name: '取消', exact: true }).click();

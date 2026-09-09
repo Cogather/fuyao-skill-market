@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import type { Locator, Page } from '@playwright/test';
 import { APP_BASE_PATH } from '../helpers/constants';
 
@@ -188,7 +189,7 @@ export class HarnessManagementPage {
 
   /** 在 Harness 工作流清单中切换产品范围。 */
   async selectWorkflowProduct(productName: string): Promise<void> {
-    await this.workflowsProductFilter.selectOption({ label: productName });
+    await selectHarnessOption(this.workflowsProductFilter, { label: productName });
   }
 
   /** 按业务状态筛选 Harness 工作流。 */
@@ -336,7 +337,9 @@ export class HarnessManagementPage {
     const assignment = this.workflowDesignDialog.locator('.assignment').filter({
       hasText: options.nodeName,
     });
-    await assignment.locator('select').selectOption({ label: `${options.assetName}（Agent）` });
+    await selectHarnessOption(assignment.getByRole('combobox'), {
+      label: `${options.assetName}（Agent）`,
+    });
     await this.workflowDesignDialog.getByRole('button', { name: '完成设计', exact: true }).click();
     await this.workflowDesignDialog.waitFor({ state: 'hidden' });
   }

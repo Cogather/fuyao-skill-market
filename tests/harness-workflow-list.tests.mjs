@@ -185,6 +185,64 @@ try {
     });
   });
 
+  await test('Page size changes reset HTTP pagination and page jumps stay within the result range', async () => {
+    const requests = [];
+    api.queryHarnessWorkflowList = async (params) => {
+      requests.push(params);
+      return success({
+        total: 123,
+        pageNo: params.pageNo,
+        pageSize: params.pageSize,
+        list: [row(`page-${params.pageNo}-size-${params.pageSize}`)],
+      });
+    };
+    const { state } = mount();
+    await settle();
+    state.page.value = 3;
+    await settle();
+    const beforeResize = requests.length;
+    state.setPageSize(20);
+    await settle();
+    assert.equal(requests.length, beforeResize + 1);
+    assert.equal(requests.at(-1).pageNo, 1);
+    assert.equal(requests.at(-1).pageSize, 20);
+    assert.equal(state.totalPages.value, 7);
+    assert.equal(state.visibleRows.value[0].name, 'page-1-size-20');
+
+    state.jumpPage.value = '4';
+    state.goToPage();
+    await settle();
+    assert.equal(requests.at(-1).pageNo, 4);
+    assert.equal(requests.at(-1).pageSize, 20);
+
+    for (const [input, expectedPage] of [
+      ['999', 7],
+      ['0', 1],
+      ['-2', 1],
+      ['2.5', 2],
+    ]) {
+      state.jumpPage.value = input;
+      state.goToPage();
+      await settle();
+      assert.equal(state.page.value, expectedPage);
+      assert.equal(state.jumpPage.value, String(expectedPage));
+    }
+    const beforeInvalid = requests.length;
+    for (const input of ['', 'invalid']) {
+      state.jumpPage.value = input;
+      state.goToPage();
+      await settle();
+      assert.equal(state.page.value, 2);
+      assert.equal(state.jumpPage.value, '2');
+    }
+    assert.equal(requests.length, beforeInvalid);
+    state.statusFilter.value = '待发布';
+    await settle();
+    assert.equal(requests.at(-1).pageNo, 1);
+    assert.equal(requests.at(-1).pageSize, 20);
+    assert.equal(state.jumpPage.value, '1');
+  });
+
   await test('Latest status selection wins when older HTTP responses finish later', async () => {
     let release;
     api.queryHarnessWorkflowList = async (params) => {
@@ -347,6 +405,18 @@ try {
     await settle();
     assert.equal(state.visibleRows.value.length, 2);
     assert.equal(state.visibleRows.value[1].commandCount, 2);
+    state.setPageSize(20);
+    await settle();
+    assert.equal(state.page.value, 1);
+    assert.equal(state.visibleRows.value.length, 12);
+    assert.equal(state.totalPages.value, 1);
+    state.setPageSize(10);
+    await settle();
+    state.jumpPage.value = '2';
+    state.goToPage();
+    await settle();
+    assert.equal(state.visibleRows.value.length, 2);
+    assert.equal(state.visibleRows.value[0].name, '本地流程10');
     state.statusFilter.value = '已发布';
     await settle();
     assert.equal(state.page.value, 1);

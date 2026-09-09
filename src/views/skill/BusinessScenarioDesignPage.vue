@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import WorkflowCapabilityPicker from '../../components/skill/WorkflowCapabilityPicker.vue';
@@ -88,16 +89,17 @@ async function loadTags() {
     workspaceError.value = error instanceof Error ? error.message : '标签加载失败';
   }
 }
-const accents = ['#2563eb', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899'];
 const scenarioPageRoot = ref<HTMLElement | null>(null);
 const scenarioDialogElement = ref<HTMLElement | null>(null);
 const tagDialogElement = ref<HTMLElement | null>(null);
 const deleteDialogElement = ref<HTMLElement | null>(null);
 const wizardDialogElement = ref<HTMLElement | null>(null);
+const structureDeleteDialogElement = ref<HTMLElement | null>(null);
 let scenarioDialogOpener: HTMLElement | null = null;
 let tagDialogOpener: HTMLElement | null = null;
 let deleteDialogOpener: HTMLElement | null = null;
 let wizardOpener: HTMLElement | null = null;
+let structureDeleteOpener: HTMLElement | null = null;
 const focusableSelector =
   'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 const wizardSteps = ['业务场景分析', 'Workflow 规划', 'Command 入口', 'Skill / Agent 集成'];
@@ -120,7 +122,16 @@ const deleteTarget = ref<Scenario | null>(null);
 const tagTarget = ref<Scenario | null>(null);
 const wizard = ref<Wizard | null>(null);
 const capabilitySaving = ref(false);
-const wizardBusy = computed(() => saving.value || capabilitySaving.value);
+const structureDeleting = ref(false);
+const structureDeleteTarget = ref<{
+  stageId: string;
+  nodeId?: string;
+  name: string;
+  error: string;
+} | null>(null);
+const wizardBusy = computed(
+  () => saving.value || capabilitySaving.value || structureDeleting.value,
+);
 const savedWizardSnapshot = ref('');
 const wizardSaveConfirmed = ref(false);
 function wizardSnapshot(w: Wizard): string {
@@ -150,7 +161,8 @@ const scenarioDropTarget = ref<{ id: string; placement: 'before' | 'after' } | n
 const sortingMessage = ref('');
 const sortingFailed = ref(false);
 const sortingPending = ref(false);
-const canSortScenarios = computed(() => available.value && !loading.value && !saving.value);
+const canEdit = computed(() => props.workspace.canManageDepartment.value && available.value);
+const canSortScenarios = computed(() => canEdit.value && !loading.value && !saving.value);
 let sortingScope = 0;
 const scenarioError = ref('');
 const scenarioForm = reactive({ name: '', code: '', description: '', tags: [] as string[] });
@@ -413,6 +425,7 @@ function handleModalKeydown(event: KeyboardEvent, dialog: HTMLElement | null) {
   }
 }
 function openScenario(parentId: string | null) {
+  if (!canEdit.value) return;
   if (!parentId) void loadTags();
   tagSearch.value = '';
   scenarioDialogOpener = activeElement();
@@ -425,7 +438,7 @@ function openScenario(parentId: string | null) {
   focusDialog(scenarioDialogElement);
 }
 function openEditScenario(scenario: Scenario) {
-  if (saving.value || !available.value) return;
+  if (saving.value || !canEdit.value) return;
   scenarioDialogOpener = activeElement();
   scenarioForm.name = scenario.name;
   scenarioForm.code = scenario.code;
@@ -488,6 +501,7 @@ async function saveScenario() {
   }
 }
 function openTagDialog(target: Scenario) {
+  if (!canEdit.value) return;
   void loadTags();
   tagSearch.value = '';
   tagDialogOpener = activeElement();
@@ -521,6 +535,7 @@ function toggleFormTag(tag: string) {
     : [...scenarioForm.tags, tag];
 }
 function openDeleteDialog(target: Scenario) {
+  if (!canEdit.value) return;
   deleteDialogOpener = activeElement();
   deleteTarget.value = target;
   focusDialog(deleteDialogElement);
@@ -585,6 +600,7 @@ function progress(workflow: Workflow) {
 async function openWizard(workflow?: Workflow, step = 0) {
   const scenario = currentScenario.value;
   if (
+    !canEdit.value ||
     !scenario ||
     scenario.level !== 2 ||
     loading.value ||
@@ -694,6 +710,8 @@ function wizardStepError(w: Wizard, step: number): string {
 }
 function dismissWizard() {
   const workflowId = wizard.value?.workflow._id;
+  structureDeleteTarget.value = null;
+  structureDeleteOpener = null;
   wizard.value = null;
   const opener = wizardOpener;
   wizardOpener = null;
@@ -734,20 +752,24 @@ async function saveWizard(): Promise<boolean> {
       releaseCount: currentScenario.value?.releaseCount,
     });
     if (wizard.value !== w) return false;
-    w.workflow = props.workspace.isHttp ? JSON.parse(JSON.stringify(saved)) : saved;
-    w.poolIds = saved.assets.map((item) => item.assetId);
-    w.nodeAssetsMap = Object.fromEntries(
-      saved.stages.flatMap((stage) =>
-        stage.steps.map((node) => [node.id, node.assets.map((asset) => asset.assetId)]),
-      ),
-    );
-    savedWizardSnapshot.value = wizardSnapshot(w);
-    wizardSaveConfirmed.value = true;
+    applySavedWizard(w, saved);
     return true;
   } catch (cause) {
     w.error = cause instanceof Error ? cause.message : 'Workflow 保存失败';
     return false;
   }
+}
+function applySavedWizard(w: Wizard, saved: Workflow) {
+  if (props.workspace.isHttp) w.workflow = JSON.parse(JSON.stringify(saved));
+  else Object.assign(w.workflow, saved);
+  w.poolIds = saved.assets.map((item) => item.assetId);
+  w.nodeAssetsMap = Object.fromEntries(
+    saved.stages.flatMap((stage) =>
+      stage.steps.map((node) => [node.id, node.assets.map((asset) => asset.assetId)]),
+    ),
+  );
+  savedWizardSnapshot.value = wizardSnapshot(w);
+  wizardSaveConfirmed.value = true;
 }
 async function saveCurrentDesign() {
   const w = wizard.value;
@@ -910,33 +932,82 @@ function deleteStage(stageId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
   if (!w || !stage || wizardBusy.value) return;
-  if (!window.confirm('确认删除该环节？其下节点及相关资产绑定、规划记录会一并删除，资产本身保留。'))
-    return;
-  stage.steps.forEach((node) => delete w.nodeAssetsMap[node.id]);
-  w.workflow.stages = w.workflow.stages.filter((item) => item.id !== stageId);
-  [...w.workflow.stages]
-    .sort((a, b) => a.order - b.order)
-    .forEach((item, index) => {
-      item.order = index;
-    });
-  w.stageDraft = null;
-  w.nodeDraft = null;
-  syncWizard();
+  structureDeleteOpener = activeElement();
+  structureDeleteTarget.value = { stageId, name: stage.name, error: '' };
+  focusDialog(structureDeleteDialogElement);
 }
 function deleteNode(stageId: string, nodeId: string) {
   const w = wizard.value;
   const stage = w?.workflow.stages.find((item) => item.id === stageId);
-  if (!w || !stage || wizardBusy.value) return;
-  if (!window.confirm('确认删除该节点？相关资产绑定和规划记录会一并删除，资产本身保留。')) return;
-  stage.steps = stage.steps.filter((item) => item.id !== nodeId);
-  [...stage.steps]
-    .sort((a, b) => a.order - b.order)
-    .forEach((item, index) => {
-      item.order = index;
-    });
-  delete w.nodeAssetsMap[nodeId];
-  w.nodeDraft = null;
+  const node = stage?.steps.find((item) => item.id === nodeId);
+  if (!w || !node || wizardBusy.value) return;
+  structureDeleteOpener = activeElement();
+  structureDeleteTarget.value = { stageId, nodeId, name: node.name, error: '' };
+  focusDialog(structureDeleteDialogElement);
+}
+function closeStructureDeleteDialog() {
+  if (structureDeleting.value) return;
+  structureDeleteTarget.value = null;
+  const opener = structureDeleteOpener;
+  structureDeleteOpener = null;
+  nextTick(() => (opener?.isConnected ? opener : wizardDialogElement.value)?.focus());
+}
+function handleStructureDeleteKeydown(event: KeyboardEvent) {
+  handleModalKeydown(event, structureDeleteDialogElement.value);
+  if (event.key === 'Escape') closeStructureDeleteDialog();
+}
+async function confirmStructureDelete() {
+  const w = wizard.value;
+  const target = structureDeleteTarget.value;
+  if (!w || !target || wizardBusy.value) return;
+  target.error = wizardStepError(w, 0) || workflowNameError(w.form.name);
+  if (target.error) return;
   syncWizard();
+  // Keep the displayed draft intact until the complete server save succeeds.
+  const draft: Workflow = JSON.parse(JSON.stringify(w.workflow));
+  const stage = draft.stages.find((item) => item.id === target.stageId);
+  if (!stage) return;
+  if (target.nodeId) {
+    stage.steps = stage.steps.filter((item) => item.id !== target.nodeId);
+    [...stage.steps]
+      .sort((a, b) => a.order - b.order)
+      .forEach((node, index) => {
+        node.order = index;
+      });
+  } else {
+    draft.stages = draft.stages.filter((item) => item.id !== target.stageId);
+    [...draft.stages]
+      .sort((a, b) => a.order - b.order)
+      .forEach((item, index) => {
+        item.order = index;
+      });
+  }
+  structureDeleting.value = true;
+  target.error = '';
+  w.error = '';
+  let deleted = false;
+  try {
+    const saved = await props.workspace.saveWorkflow(draft, {
+      name: w.form.scenarioName,
+      code: w.form.code,
+      description: w.form.scenarioDesc,
+      releaseCount: currentScenario.value?.releaseCount,
+    });
+    if (wizard.value !== w || structureDeleteTarget.value !== target) return;
+    if (!target.nodeId && w.stageDraft?.id === target.stageId) w.stageDraft = null;
+    if (
+      w.nodeDraft?.stageId === target.stageId &&
+      (!target.nodeId || w.nodeDraft.id === target.nodeId)
+    )
+      w.nodeDraft = null;
+    applySavedWizard(w, saved);
+    deleted = true;
+  } catch (cause) {
+    target.error = cause instanceof Error ? cause.message : '删除失败，请重试';
+  } finally {
+    structureDeleting.value = false;
+    if (deleted) closeStructureDeleteDialog();
+  }
 }
 function move<T extends { order: number }>(
   items: T[],
@@ -1170,8 +1241,7 @@ async function createAsset() {
     <header class="page-header harness-page-heading">
       <h1 class="harness-page-title">业务场景设计台</h1>
       <p class="harness-page-description">
-        复用配置管理的一级、二级场景；每个二级场景可创建一个 Harness
-        工作流，环节与节点归属于该工作流。
+        围绕业务场景设计工作流，编排环节与节点，配置 Command 入口并集成 Agent 和 Skill。
       </p>
     </header>
     <section class="selector">
@@ -1184,18 +1254,17 @@ async function createAsset() {
         @update:model-value="selectDepartment"
       />
       <span v-if="productOptions.length" class="divider">→</span
-      ><select
+      ><HarnessSelect
         v-if="productOptions.length"
         v-model="productId"
         aria-label="选择产品"
         :disabled="loading || saving"
         @change="selectProduct(productId)"
-      >
-        <option value="">选产品…</option>
-        <option v-for="product in productOptions" :key="product._id" :value="product._id">
-          {{ product.name }}
-        </option>
-      </select>
+        :options="[
+          { value: '', label: '选产品…' },
+          ...productOptions.map((product) => ({ value: product._id, label: product.name })),
+        ]"
+      />
     </section>
     <p v-if="workspaceError" class="error" role="alert">
       {{ workspaceError }} <button @click="props.workspace.reloadScenes()">重试加载</button>
@@ -1208,9 +1277,9 @@ async function createAsset() {
     >
       <aside class="tree-panel">
         <header>
-          🗺️ 场景地图
+          场景地图
           <button
-            :disabled="!productId"
+            :disabled="!productId || !canEdit"
             :title="productId ? '新建一级场景' : '请先选择部门与产品'"
             @click="openScenario(null)"
           >
@@ -1232,9 +1301,9 @@ async function createAsset() {
           }}
         </p>
         <div class="tree-body" role="tree" aria-label="业务场景地图" @dragend="clearScenarioDrag">
-          <p v-if="!productId" class="tree-empty">👆<br />请先在上方选择部门与产品。</p>
+          <p v-if="!productId" class="tree-empty">请先在上方选择部门与产品。</p>
           <p v-else-if="!tree().length" class="tree-empty">
-            🌱<br />该产品下暂无业务场景，请先创建一级场景。
+            该产品下暂无业务场景，请先创建一级场景。
           </p>
           <template v-else
             ><div v-for="item in tree()" :key="item._id" class="tree-item">
@@ -1280,47 +1349,67 @@ async function createAsset() {
                   @click.stop="collapsed[item._id] = !collapsed[item._id]"
                 >
                   ▾</button
-                ><b>{{ item.name }}</b>
-                <button
-                  class="scenario-edit"
-                  type="button"
-                  :aria-label="`编辑${item.name}`"
-                  :title="`编辑${item.name}`"
-                  :disabled="saving || !available"
-                  @click.stop="openEditScenario(item)"
-                  @keydown.stop
-                >
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.7"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                ><b class="scenario-name" :title="item.name">{{ item.name }}</b>
+                <span class="node-actions" @keydown.stop>
+                  <button
+                    class="scenario-edit"
+                    type="button"
+                    :aria-label="`编辑${item.name}`"
+                    :title="`编辑${item.name}`"
+                    :disabled="saving || !canEdit"
+                    @click.stop="openEditScenario(item)"
+                    @keydown.stop
                   >
-                    <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
-                  </svg>
-                </button>
-                <span class="node-actions"
-                  ><button
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
+                    </svg>
+                  </button>
+                  <button
                     v-if="item.level === 1"
                     type="button"
                     :aria-label="`在${item.name}下新建场景`"
                     :title="`在${item.name}下新建场景`"
+                    :disabled="!canEdit"
                     @click.stop="openScenario(item._id)"
                   >
-                    +</button
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg></button
                   ><button
                     class="danger"
                     type="button"
                     :aria-label="`删除${item.name}`"
                     :title="`删除${item.name}`"
+                    :disabled="!canEdit"
                     @click.stop="openDeleteDialog(item)"
                   >
-                    ×
-                  </button></span
-                >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" />
+                    </svg></button
+                ></span>
               </div>
               <div
                 v-if="item.level === 1 && !collapsed[item._id]"
@@ -1365,48 +1454,57 @@ async function createAsset() {
                       <circle cx="9" cy="14" r="1.2" />
                     </svg>
                   </span>
-                  <i></i><b>{{ child.name }}</b>
-                  <button
-                    class="scenario-edit"
-                    type="button"
-                    :aria-label="`编辑${child.name}`"
-                    :title="`编辑${child.name}`"
-                    :disabled="saving || !available"
-                    @click.stop="openEditScenario(child)"
-                    @keydown.stop
-                  >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.7"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
+                  <i></i><b class="scenario-name" :title="child.name">{{ child.name }}</b>
+                  <span class="node-actions" @keydown.stop>
+                    <button
+                      class="scenario-edit"
+                      type="button"
+                      :aria-label="`编辑${child.name}`"
+                      :title="`编辑${child.name}`"
+                      :disabled="saving || !canEdit"
+                      @click.stop="openEditScenario(child)"
+                      @keydown.stop
                     >
-                      <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
-                    </svg>
-                  </button>
-                  <span class="node-actions"
-                    ><button
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m16 3 5 5M4 15 16 3a2.1 2.1 0 0 1 5 5L9 20l-6 1z" />
+                      </svg>
+                    </button>
+                    <button
                       class="danger"
                       type="button"
                       :aria-label="`删除${child.name}`"
                       :title="`删除${child.name}`"
+                      :disabled="!canEdit"
                       @click.stop="openDeleteDialog(child)"
                     >
-                      ×
-                    </button></span
-                  >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" />
+                      </svg></button
+                  ></span>
                 </div>
-              </div>
-            </div></template
-          >
+              </div></div
+          ></template>
         </div>
       </aside>
       <section class="design-panel">
         <div v-if="!currentScenario" class="empty">
-          🧭<b>选择或创建业务场景</b><small>例如：需求开发 → 编解码开发</small>
+          <b>选择或创建业务场景</b><small>例如：需求开发 → 编解码开发</small>
         </div>
         <template v-else
           ><header class="summary">
@@ -1418,7 +1516,7 @@ async function createAsset() {
               <p v-if="currentScenario.description">{{ currentScenario.description }}</p>
               <div v-if="currentScenario.level === 1" class="tags">
                 <span v-for="tag in currentScenario.tags" :key="tag">#{{ tag }}</span
-                ><button @click="openTagDialog(currentScenario)">
+                ><button :disabled="!canEdit" @click="openTagDialog(currentScenario)">
                   {{ currentScenario.tags.length ? '编辑标签' : '+ 添加标签' }}
                 </button>
               </div>
@@ -1426,14 +1524,14 @@ async function createAsset() {
             <button
               v-if="currentScenario.level === 2 && !currentWorkflows.length"
               class="primary start-workflow-button"
-              :disabled="workflowLoading || wizardBusy"
+              :disabled="!canEdit || workflowLoading || wizardBusy"
               @click="openWizard()"
             >
               + 开始设计 Workflow
             </button>
           </header>
           <div v-if="currentScenario.level === 1" class="empty boxed">
-            🗂️<b>一级场景为业务分组节点</b
+            <b>一级场景为业务分组节点</b
             ><small
               >一级场景不支持直接定义
               Workflow，请在左侧选择或新建下级场景进行流程设计（场景最多两级）。</small
@@ -1442,7 +1540,7 @@ async function createAsset() {
           <template v-else
             ><h3>场景 Workflow</h3>
             <div v-if="!currentWorkflows.length" class="empty boxed">
-              🛠️<b>该场景尚未开始 Workflow 设计</b
+              <b>该场景尚未开始 Workflow 设计</b
               ><small>点击右上角“开始设计 Workflow”，按向导完成规划、Command 与资产集成。</small>
             </div>
             <article
@@ -1454,19 +1552,10 @@ async function createAsset() {
               <header>
                 <div>
                   <h3>{{ workflow.name || '未命名 Workflow' }}</h3>
-                  <span
-                    class="status"
-                    :class="progress(workflow).complete ? 'complete' : 'ongoing'"
-                    >{{
-                      progress(workflow).complete
-                        ? '✓ 设计完成'
-                        : `进行中 · ${progress(workflow).done}/4`
-                    }}</span
-                  >
                 </div>
                 <button
                   class="primary"
-                  :disabled="workflowLoading || wizardBusy"
+                  :disabled="!canEdit || workflowLoading || wizardBusy"
                   @click="openWizard(workflow, progress(workflow).next)"
                 >
                   {{ progress(workflow).complete ? '查看设计' : '继续设计' }}
@@ -1477,6 +1566,7 @@ async function createAsset() {
                   v-for="(label, i) in wizardSteps"
                   :key="label"
                   :class="progress(workflow).states[i]"
+                  :disabled="!canEdit"
                   @click="openWizard(workflow, i)"
                 >
                   <b>{{ i + 1 }}</b>
@@ -1486,18 +1576,19 @@ async function createAsset() {
               <div class="config-grid">
                 <section>
                   <header>
-                    🧩 Workflow 资产池 <small>{{ workflow.assets.length }} 个</small>
+                    Workflow 资产池 <small>{{ workflow.assets.length }} 个</small>
                   </header>
                   <button
                     v-if="!workflow.assets.length"
                     class="empty-link"
+                    :disabled="!canEdit"
                     @click="openWizard(workflow, 3)"
                   >
                     尚未配置 Agent / Skill 资产池
                   </button>
                   <div v-else class="chips">
                     <span v-for="item in workflow.assets" :key="item.assetId"
-                      ><b>{{ item.type }}</b
+                      ><b class="asset-type-label" :data-type="item.type">{{ item.type }}</b
                       >{{ assetById.get(item.assetId)?.name || '未找到资产' }}
                       <i
                         v-if="assetById.get(item.assetId)?.packageReady === true"
@@ -1512,11 +1603,12 @@ async function createAsset() {
                 </section>
                 <section>
                   <header>
-                    ⌨️ Command 入口 <small>{{ workflow.commands.length }} 个</small>
+                    Command 入口 <small>{{ workflow.commands.length }} 个</small>
                   </header>
                   <button
                     v-if="!workflow.commands.length"
                     class="empty-link"
+                    :disabled="!canEdit"
                     @click="openWizard(workflow, 2)"
                   >
                     尚未设计 Command 入口
@@ -1530,11 +1622,12 @@ async function createAsset() {
                 </section>
               </div>
               <header class="stage-title">
-                🔗 环节与节点 <small>{{ workflow.stages.length }} 个环节</small>
+                环节与节点 <small>{{ workflow.stages.length }} 个环节</small>
               </header>
               <button
                 v-if="!workflow.stages.length"
                 class="empty-link"
+                :disabled="!canEdit"
                 @click="openWizard(workflow, 1)"
               >
                 尚未编排环节与节点，点击开始
@@ -1544,7 +1637,7 @@ async function createAsset() {
                   v-for="(stage, index) in [...workflow.stages].sort((a, b) => a.order - b.order)"
                   :key="stage.id"
                   ><i v-if="index" class="arrow">→</i>
-                  <section class="stage" :style="{ '--accent': accents[index % accents.length] }">
+                  <section class="stage">
                     <h4>{{ stage.name }}</h4>
                     <p>{{ stage.description }}</p>
                     <div
@@ -1831,16 +1924,14 @@ async function createAsset() {
       tabindex="-1"
       @keydown="handleDeleteDialogKeydown"
     >
-      <template v-if="children(deleteTarget._id).length"
-        ><i>🗂️</i>
+      <template v-if="children(deleteTarget._id).length">
         <h2>无法删除</h2>
         <p>
           「{{ deleteTarget.name }}」下有
           {{ children(deleteTarget._id).length }} 个下级场景，请先删除下级场景后再删除该场景。
         </p>
         <footer><button @click="closeDeleteDialog">知道了</button></footer></template
-      ><template v-else
-        ><i>⚠️</i>
+      ><template v-else>
         <h2>删除场景</h2>
         <p>
           确认删除场景「<b>{{ deleteTarget.name }}</b
@@ -1863,7 +1954,8 @@ async function createAsset() {
       role="dialog"
       aria-modal="true"
       aria-label="Workflow 设计"
-      :inert="wizardBusy || undefined"
+      :inert="wizardBusy || structureDeleteTarget ? true : undefined"
+      :aria-hidden="structureDeleteTarget ? 'true' : undefined"
       :aria-busy="wizardBusy"
       tabindex="-1"
       @keydown="handleWizardKeydown"
@@ -2201,7 +2293,9 @@ async function createAsset() {
         </h4>
         <div class="chips">
           <span v-for="id in wizard.poolIds" :key="id"
-            ><b>{{ assets.find((a) => a._id === id)?.assetType }}</b
+            ><b class="asset-type-label" :data-type="assets.find((a) => a._id === id)?.assetType">{{
+              assets.find((a) => a._id === id)?.assetType
+            }}</b
             >{{ assets.find((a) => a._id === id)?.name
             }}<button @click="togglePool(id)">×</button></span
           >
@@ -2307,35 +2401,34 @@ async function createAsset() {
             }}</small>
             <div class="chips">
               <span v-for="id in wizard.nodeAssetsMap[node.id] || []" :key="id"
-                ><b>{{ assets.find((a) => a._id === id)?.assetType }}</b
+                ><b
+                  class="asset-type-label"
+                  :data-type="assets.find((a) => a._id === id)?.assetType"
+                  >{{ assets.find((a) => a._id === id)?.assetType }}</b
                 >{{ assets.find((a) => a._id === id)?.name
                 }}<button @click="toggleNodeAsset(node.id, id)">×</button></span
               >
             </div>
-            <select
+            <HarnessSelect
               :aria-label="`为${node.name}分配资产`"
               v-if="
                 wizard.poolIds.some((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
               "
-              @change="
-                ($event.target as HTMLSelectElement).value &&
-                  toggleNodeAsset(node.id, ($event.target as HTMLSelectElement).value);
-                ($event.target as HTMLSelectElement).value = '';
-              "
-            >
-              <option value="">+ 从资产池添加…</option>
-              <option
-                v-for="id in wizard.poolIds.filter(
-                  (id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id),
-                )"
-                :key="id"
-                :value="id"
-              >
-                {{ assets.find((a) => a._id === id)?.name }}（{{
-                  assets.find((a) => a._id === id)?.assetType
-                }}）
-              </option></select
-            ><small v-else-if="!(wizard.nodeAssetsMap[node.id] || []).length">未分配资产</small>
+              @change="toggleNodeAsset(node.id, $event)"
+              placeholder="+ 从资产池添加…"
+              :options="[
+                ...wizard.poolIds
+                  .filter((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
+                  .map((id) => ({
+                    value: id,
+                    label:
+                      assets.find((a) => a._id === id)?.name +
+                      '（' +
+                      assets.find((a) => a._id === id)?.assetType +
+                      '）',
+                  })),
+              ]"
+            /><small v-else-if="!(wizard.nodeAssetsMap[node.id] || []).length">未分配资产</small>
           </div>
         </div>
       </section>
@@ -2369,6 +2462,48 @@ async function createAsset() {
             {{ wizardBusy ? '正在保存…' : wizard.step === 3 ? '完成设计' : '下一步' }}
           </button></span
         >
+      </footer>
+    </section>
+  </div>
+  <div v-if="wizard && structureDeleteTarget" class="modal structure-delete-modal">
+    <section
+      ref="structureDeleteDialogElement"
+      class="dialog small structure-delete-dialog"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="structureDeleteTarget.nodeId ? '删除节点' : '删除环节'"
+      aria-describedby="structure-delete-description"
+      :aria-busy="structureDeleting"
+      tabindex="-1"
+      @keydown="handleStructureDeleteKeydown"
+    >
+      <h2>{{ structureDeleteTarget.nodeId ? '删除节点' : '删除环节' }}</h2>
+      <p id="structure-delete-description">
+        确认删除{{ structureDeleteTarget.nodeId ? '节点' : '环节' }}「<b>{{
+          structureDeleteTarget.name
+        }}</b
+        >」？
+        {{
+          structureDeleteTarget.nodeId
+            ? '相关资产绑定和规划记录会一并删除，资产本身保留。'
+            : '其下节点及相关资产绑定、规划记录会一并删除，资产本身保留。'
+        }}
+      </p>
+      <p v-if="structureDeleteTarget.error" class="form-error" role="alert">
+        {{ structureDeleteTarget.error }}
+      </p>
+      <footer>
+        <button type="button" :disabled="structureDeleting" @click="closeStructureDeleteDialog">
+          取消
+        </button>
+        <button
+          class="danger-btn"
+          type="button"
+          :disabled="structureDeleting"
+          @click="confirmStructureDelete"
+        >
+          {{ structureDeleting ? '正在删除…' : '确认删除' }}
+        </button>
       </footer>
     </section>
   </div>
@@ -2437,12 +2572,12 @@ async function createAsset() {
   min-width: 320px;
   flex: 1;
 }
-.selector > select {
+.selector > :is(select, .harness-select) {
   width: auto;
   min-width: 180px;
   flex: 0 0 180px;
 }
-select {
+:is(select, .harness-select) {
   width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -2713,8 +2848,7 @@ select {
   margin: 8px 0;
   font-size: 25px;
 }
-.level,
-.status {
+.level {
   display: inline-flex;
   padding: 4px 10px;
   border-radius: 999px;
@@ -2750,6 +2884,15 @@ select {
   border: 0;
   background: transparent;
   color: #6b7280;
+}
+.chips > span {
+  color: var(--hw-text, #334155);
+}
+.chips .asset-type-label[data-type='Agent'] {
+  color: var(--hw-primary, #2563eb);
+}
+.chips .asset-type-label[data-type='Skill'] {
+  color: #7c3aed;
 }
 .asset-package-status {
   flex-shrink: 0;
@@ -2844,14 +2987,6 @@ select {
 }
 .workflow-card h3 {
   margin: 0 0 6px;
-}
-.status.complete {
-  background: #d1fae5;
-  color: #065f46;
-}
-.status.ongoing {
-  background: #eff6ff;
-  color: #1d4ed8;
 }
 .progress {
   display: flex;
@@ -3016,6 +3151,22 @@ h4 small {
 .dialog h2 {
   margin: 0 0 18px;
 }
+.structure-delete-modal {
+  z-index: 1100;
+}
+.structure-delete-dialog {
+  width: min(440px, 90vw);
+}
+.structure-delete-dialog:focus {
+  outline: none;
+}
+.structure-delete-dialog p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.structure-delete-dialog .form-error {
+  margin: 16px 0 0;
+}
 .form-error {
   margin: -6px 0 16px;
   padding: 9px 11px;
@@ -3031,7 +3182,7 @@ h4 small {
 }
 .dialog input,
 .dialog textarea,
-.dialog select {
+.dialog :is(select, .harness-select) {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -3159,7 +3310,7 @@ h4 small {
 }
 .wizard input,
 .wizard textarea,
-.wizard select {
+.wizard :is(select, .harness-select) {
   margin-top: 8px;
   padding: 7px 10px;
   color: #334155;
@@ -3173,7 +3324,7 @@ h4 small {
 }
 .wizard input:focus-visible,
 .wizard textarea:focus-visible,
-.wizard select:focus-visible {
+.wizard :is(select, .harness-select):focus-visible {
   outline: none;
   border-color: #9bbbf5;
   box-shadow: 0 0 0 3px #eff4ff;
@@ -3227,7 +3378,7 @@ h4 small {
   gap: 10px;
 }
 .wizard .inline input,
-.wizard .inline select {
+.wizard .inline :is(select, .harness-select) {
   margin-top: 0;
 }
 .wizard .edit-stage > header button,
@@ -3425,7 +3576,7 @@ h4 small {
   border-radius: 7px;
 }
 .inline input,
-.inline select {
+.inline :is(select, .harness-select) {
   flex: 1;
   min-width: 130px;
 }
@@ -3529,7 +3680,7 @@ h4 small {
 }
 .wizard .capability-create-fields input,
 .wizard .capability-create-fields textarea,
-.wizard .capability-create-fields select {
+.wizard .capability-create-fields :is(select, .harness-select) {
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -3786,7 +3937,7 @@ h4 small {
   border-top: 1px solid #f3f4f6;
   border-left: 2px solid #e5e7eb;
 }
-.assignment select {
+.assignment :is(select, .harness-select) {
   width: 100%;
   padding: 7px;
   border: 1px solid #d1d5db;
@@ -4195,7 +4346,7 @@ h4 small {
   .dept-picker {
     min-width: 100%;
   }
-  .selector > select {
+  .selector > :is(select, .harness-select) {
     width: 100%;
     flex-basis: 100%;
   }

@@ -61,12 +61,11 @@ const emit = defineEmits<{
 const managementTabs: Array<{
   key: CapabilityManagementTab;
   label: string;
-  summary: string;
 }> = [
-  { key: 'command', label: 'Command', summary: '维护可用于场景关系配置的 Command。' },
-  { key: 'skill', label: 'Skill', summary: '维护和引入可复用的原子 Skill。' },
-  { key: 'agent', label: 'Agent', summary: '维护可用于场景关系配置的 Agent。' },
-  { key: 'extension', label: 'Extension', summary: '按业务场景组织并发布 Extension。' },
+  { key: 'command', label: 'Command' },
+  { key: 'skill', label: 'Skill' },
+  { key: 'agent', label: 'Agent' },
+  { key: 'extension', label: 'Extension' },
 ];
 
 const activeManagementTab = ref<CapabilityManagementTab>('command');
@@ -76,9 +75,6 @@ const activatedTabs = ref<Record<CapabilityManagementTab, boolean>>({
   agent: false,
   extension: false,
 });
-const activeTabMeta = computed(
-  () => managementTabs.find((tab) => tab.key === activeManagementTab.value) ?? managementTabs[0]!,
-);
 
 const commandCatalogPanel = ref<InstanceType<typeof HarnessCapabilityCatalogPanel> | null>(null);
 const skillCatalogPanel = ref<InstanceType<typeof SkillMasterManagementPanel> | null>(null);
@@ -266,9 +262,7 @@ defineExpose({ openCatalogAction });
       <div>
         <h2 class="harness-page-title">资产清单</h2>
         <p class="harness-page-description">
-          集中维护 Command、Skill 与 Agent 原子能力清单，并完成 Extension 发布。当前分区：{{
-            activeTabMeta.summary
-          }}
+          统一维护 Command、Skill 和 Agent 的基础信息、责任分工与开发计划，支持资产导入和 Extension 发布。
         </p>
       </div>
     </header>

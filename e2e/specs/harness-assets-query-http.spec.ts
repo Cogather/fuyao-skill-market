@@ -1,7 +1,10 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
 
-test('HTTP 四类资产详情展示 owner 和 developer，空人员字段保留占位', async ({ page }, testInfo) => {
+test('HTTP Extension 详情隐藏人员信息，其他资产展示 owner 和 developer 并保留空值占位', async ({
+  page,
+}, testInfo) => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '验证 HTTP 人员字段');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.addInitScript(() => {
@@ -40,7 +43,7 @@ test('HTTP 四类资产详情展示 owner 和 developer，空人员字段保留�
     await route.fulfill({ json: { meta: { success: true }, data } });
   });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
-  await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
+  await page.locator('#harness-tab-assets').click();
   for (const type of ['Agent', 'Skill', 'Command', 'Extension']) {
     await page.getByRole('button', { name: type, exact: true }).click();
     for (const [suffix, expectedNames] of [
@@ -52,9 +55,13 @@ test('HTTP 四类资产详情展示 owner 和 developer，空人员字段保留�
         .getByRole('heading', { name: `${type.toUpperCase()}-${suffix}`, exact: true })
         .click();
       const people = page.locator('.asset-detail__people');
-      await expect(people).toBeVisible();
-      await expect(people.locator('dt')).toHaveText(['责任人', '开发责任人']);
-      await expect(people.locator('dd')).toHaveText([...expectedNames]);
+      if (type === 'Extension') {
+        await expect(people).toHaveCount(0);
+      } else {
+        await expect(people).toBeVisible();
+        await expect(people.locator('dt')).toHaveText(['责任人', '开发责任人']);
+        await expect(people.locator('dd')).toHaveText([...expectedNames]);
+      }
       if (type === 'Skill' && suffix === 'assigned') {
         await people.screenshot({ path: testInfo.outputPath('asset-detail-people.png') });
       }
@@ -113,7 +120,7 @@ test('HTTP 资产状态严格使用接口字段，空值不根据版本推导，
     await route.fulfill({ json: { meta: { success: true }, data } });
   });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
-  await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
+  await page.locator('#harness-tab-assets').click();
   for (const type of ['Agent', 'Skill', 'Command', 'Extension']) {
     await page.getByRole('button', { name: type, exact: true }).click();
     await expect(page.locator('.asset-card')).toHaveCount(records.length);
@@ -224,7 +231,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
     return route.fulfill({ json: success([]) });
   });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
-  await page.getByRole('tab', { name: 'Agent / Skill 资产', exact: true }).click();
+  await page.locator('#harness-tab-assets').click();
   const filters = page.getByRole('navigation', { name: '资产类型' });
   await expect(filters.getByRole('button')).toHaveText(['Agent', 'Skill', 'Command', 'Extension']);
   await expect(filters.getByRole('button', { name: 'Agent', exact: true })).toHaveClass(
@@ -256,7 +263,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
   await expect(cards.first().getByRole('heading')).toHaveText('AGENT-1');
   await expect(cards.last().getByRole('heading')).toHaveText('AGENT-61');
 
-  await page.getByLabel('产品筛选').selectOption('pipeline-code');
+  await selectHarnessOption(page.getByLabel('产品筛选'), 'pipeline-code');
   await expect(cards).toHaveCount(30);
   expect(bodies.at(-1)).toMatchObject({ productCode: 'pipeline-code', pageNo: 1 });
   await expect.poll(() => board.evaluate((element) => element.scrollTop)).toBe(0);
@@ -275,7 +282,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
       pageSize: 30,
     });
   }
-  await page.getByLabel('产品筛选').selectOption('');
+  await selectHarnessOption(page.getByLabel('产品筛选'), '');
   await expect.poll(() => bodies.at(-1)?.productCode).toBeUndefined();
   await page.getByRole('button', { name: '选择部门', exact: true }).click();
   await page.getByRole('button', { name: '清空部门', exact: true }).click();

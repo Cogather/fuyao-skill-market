@@ -254,7 +254,12 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="catalog-import-mask" @click.self="close" @dragover.prevent @drop.prevent>
+    <div
+      class="catalog-import-mask harness-workspace-overlay"
+      @click.self="close"
+      @dragover.prevent
+      @drop.prevent
+    >
       <section
         ref="dialogRef"
         class="catalog-import-dialog"
@@ -267,7 +272,6 @@ onBeforeUnmount(() => {
       >
         <header>
           <div>
-            <span class="catalog-import-eyebrow">IMPORT</span>
             <h2>导入 {{ assetType }}</h2>
           </div>
           <div class="catalog-import-header-actions">

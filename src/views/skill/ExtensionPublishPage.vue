@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
@@ -76,6 +77,7 @@ const currentUserName = computed(() => String(props.userName ?? '').trim());
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
   close: [];
+  reload: [];
   released: [];
   notify: [message: string];
 }>();
@@ -734,6 +736,7 @@ const publishError = ref('');
 const publishSubmitting = ref(false);
 const historyLoading = ref(false);
 const historyError = ref('');
+let historyLoadSequence = 0;
 const retryingReleaseId = ref('');
 const publishNameLocked = computed(() => Boolean(modalScene.value?.releases.length));
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
@@ -750,12 +753,13 @@ const modalHistory = computed(() => {
 const visibleHistory = computed(() => modalHistory.value.slice(0, historyLimit.value));
 
 async function openPublishModal(scene: ExtensionScene): Promise<void> {
-  if (!scene.publishable) {
-    showToast('场景不完备，无法发布');
-    return;
-  }
-  if (scene.publishing) {
-    showToast('当前已有发布进行中');
+  const blockedReason = scene.publishing
+    ? '当前已有发布进行中'
+    : !scene.publishable
+      ? '场景不完备，无法发布'
+      : '';
+  if (blockedReason && !props.releaseContext) {
+    showToast(blockedReason);
     return;
   }
   const latest = latestSuccessfulRelease(scene);
@@ -772,6 +776,8 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   publishForm.description = scene.extension.description;
   publishForm.channel = 'beta';
   activeModal.value = 'publish';
+  publishError.value = blockedReason;
+  if (blockedReason) return;
   if (transportIsHttp) {
     organizations.value = [];
     publishForm.organizationId = '';
@@ -793,6 +799,7 @@ function finishPublish(): void {
 }
 
 async function openHistoryModal(scene: ExtensionScene): Promise<void> {
+  const sequence = ++historyLoadSequence;
   modalSceneId.value = scene.id;
   historyLimit.value = 3;
   historyError.value = '';
@@ -806,19 +813,27 @@ async function openHistoryModal(scene: ExtensionScene): Promise<void> {
   historyLoading.value = true;
   try {
     const historyScene = await queryHttpExtensionHistory(scope, scene);
-    if (appliedHttpScope.value !== scope || modalSceneId.value !== scene.id) return;
+    if (
+      sequence !== historyLoadSequence ||
+      appliedHttpScope.value !== scope ||
+      modalSceneId.value !== scene.id
+    )
+      return;
     scenes.value = scenes.value.map((item) =>
       item.id === scene.id ? { ...historyScene, id: scene.id } : item,
     );
   } catch (error) {
-    historyError.value = errorMessage(error, '发布历史加载失败');
+    if (sequence === historyLoadSequence)
+      historyError.value = errorMessage(error, '发布历史加载失败');
   } finally {
-    historyLoading.value = false;
+    if (sequence === historyLoadSequence) historyLoading.value = false;
   }
 }
 
 function closeModal(): void {
   if (publishSubmitting.value || retryingReleaseId.value) return;
+  historyLoadSequence += 1;
+  historyLoading.value = false;
   activeModal.value = null;
   publishError.value = '';
   historyError.value = '';
@@ -826,7 +841,11 @@ function closeModal(): void {
 
 async function confirmPublish(): Promise<void> {
   const scene = modalScene.value;
-  if (!scene) return;
+  if (!scene || publishSubmitting.value) return;
+  if (!scene.publishable || scene.publishing) {
+    publishError.value = scene.publishing ? '当前已有发布进行中' : '场景不完备，无法发布';
+    return;
+  }
   const name = publishForm.name.trim();
   const description = publishForm.description.trim();
   if (!name) {
@@ -1042,6 +1061,7 @@ onMounted(() => {
   void applyFilters();
 });
 onBeforeUnmount(() => {
+  historyLoadSequence += 1;
   if (toastTimer) window.clearTimeout(toastTimer);
 });
 </script>
@@ -1087,11 +1107,14 @@ onBeforeUnmount(() => {
             >
               产品级
             </div>
-            <select v-else v-model="draftLevel" :disabled="scopeLoading" @change="onLevelChanged">
-              <option v-for="level in filterLevelOptions" :key="level" :value="level">
-                {{ level }}
-              </option>
-            </select>
+            <HarnessSelect
+              v-else
+              v-model="draftLevel"
+              :disabled="scopeLoading"
+              @change="onLevelChanged"
+              :searchable="false"
+              :options="[...filterLevelOptions.map((level) => ({ value: level, label: level }))]"
+            />
           </label>
 
           <div class="filter-field filter-field--department">
@@ -1120,21 +1143,19 @@ onBeforeUnmount(() => {
 
           <label v-if="draftLevel === '产品级'" class="filter-field">
             <span>产品 <em>*</em></span>
-            <select
+            <HarnessSelect
               v-model="draftProductId"
               :disabled="scopeLoading || productsLoading || availableDraftProducts.length === 0"
               @change="applyFilters"
-            >
-              <option v-if="productsLoading" value="">产品加载中...</option>
-              <option v-else-if="availableDraftProducts.length === 0" value="">暂无产品</option>
-              <option
-                v-for="product in availableDraftProducts"
-                :key="product.id"
-                :value="product.id"
-              >
-                {{ product.name }}
-              </option>
-            </select>
+              :options="[
+                ...(productsLoading ? [{ value: '', label: '产品加载中...' }] : []),
+                ...(availableDraftProducts.length === 0 ? [{ value: '', label: '暂无产品' }] : []),
+                ...availableDraftProducts.map((product) => ({
+                  value: product.id,
+                  label: product.name,
+                })),
+              ]"
+            />
           </label>
         </div>
       </section>
@@ -1379,7 +1400,8 @@ onBeforeUnmount(() => {
                                 : fileErrors[fileKey(currentScene, capability, file.name)] ||
                                   file.content ||
                                   '(空)'
-                            }}</pre>
+                            }}</pre
+                          >
                         </li>
                         <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
                       </template>
@@ -1420,10 +1442,13 @@ onBeforeUnmount(() => {
         :class="{ 'extension-panel': Boolean(releaseContext) }"
         :role="releaseContext ? 'region' : 'dialog'"
         :aria-modal="releaseContext ? undefined : true"
-        aria-labelledby="publish-modal-title"
+        :aria-labelledby="releaseContext ? undefined : 'publish-modal-title'"
+        :aria-label="releaseContext ? `发布 Extension · ${modalScene.name}` : undefined"
       >
         <header class="modal-header">
-          <h3 id="publish-modal-title">发布 Extension · {{ modalScene.name }}</h3>
+          <h3 id="publish-modal-title">
+            {{ releaseContext ? modalScene.name : `发布 Extension · ${modalScene.name}` }}
+          </h3>
           <button
             v-if="!releaseContext"
             type="button"
@@ -1467,10 +1492,15 @@ onBeforeUnmount(() => {
           </label>
           <label class="modal-field">
             <span>发布通道 <em>*</em></span>
-            <select v-model="publishForm.channel" :disabled="publishSubmitting">
-              <option value="beta">beta</option>
-              <option value="product">product</option>
-            </select>
+            <HarnessSelect
+              v-model="publishForm.channel"
+              :disabled="publishSubmitting"
+              :searchable="false"
+              :options="[
+                { value: 'beta', label: 'beta' },
+                { value: 'product', label: 'product' },
+              ]"
+            />
             <small class="field-hint">系统将在发布时自动递增 Extension 版本号。</small>
           </label>
           <div class="modal-field">
@@ -1496,22 +1526,28 @@ onBeforeUnmount(() => {
           </p>
           <label class="modal-field">
             <span>目标组织 <em>*</em></span>
-            <select
+            <HarnessSelect
               v-model="publishForm.organizationId"
               :disabled="publishSubmitting || organizationLoading || organizations.length === 0"
-            >
-              <option v-if="organizationLoading" value="">正在加载组织…</option>
-              <option v-else-if="organizations.length === 0" value="">暂无可发布组织</option>
-              <option
-                v-for="organization in organizations"
-                :key="organization.id"
-                :value="organization.id"
-              >
-                {{ organization.name }}
-              </option>
-            </select>
+              :options="[
+                ...(organizationLoading ? [{ value: '', label: '正在加载组织…' }] : []),
+                ...(organizations.length === 0 ? [{ value: '', label: '暂无可发布组织' }] : []),
+                ...organizations.map((organization) => ({
+                  value: organization.id,
+                  label: organization.name,
+                })),
+              ]"
+            />
           </label>
-          <p v-if="publishError" class="modal-error">{{ publishError }}</p>
+          <p v-if="publishError" class="modal-error" role="alert">{{ publishError }}</p>
+          <button
+            v-if="releaseContext && (!modalScene.publishable || modalScene.publishing)"
+            type="button"
+            class="extension-button extension-button--ghost"
+            @click="emit('reload')"
+          >
+            重新加载
+          </button>
         </div>
         <footer class="modal-footer">
           <button
@@ -1525,7 +1561,13 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="extension-button extension-button--publish extension-button--modal-action"
-            :disabled="publishSubmitting || organizationLoading || organizations.length === 0"
+            :disabled="
+              publishSubmitting ||
+              organizationLoading ||
+              organizations.length === 0 ||
+              !modalScene.publishable ||
+              Boolean(modalScene.publishing)
+            "
             @click="confirmPublish"
           >
             {{ publishSubmitting ? '发布中…' : '确认发布' }}
@@ -1539,11 +1581,15 @@ onBeforeUnmount(() => {
         :class="{ 'extension-panel': Boolean(releaseContext) }"
         :role="releaseContext ? 'region' : 'dialog'"
         :aria-modal="releaseContext ? undefined : true"
-        aria-labelledby="history-modal-title"
+        :aria-labelledby="releaseContext ? undefined : 'history-modal-title'"
+        :aria-label="
+          releaseContext ? `发布历史 · ${modalScene.name || modalScene.extension.name}` : undefined
+        "
       >
         <header class="modal-header">
           <h3 id="history-modal-title">
-            发布历史 · {{ modalScene.name }}
+            <template v-if="!releaseContext">发布历史 · </template>
+            {{ modalScene.name || modalScene.extension.name }}
             <small>共 {{ modalHistory.length }} 条</small>
           </h3>
           <button
@@ -1561,7 +1607,16 @@ onBeforeUnmount(() => {
           <div v-if="historyLoading" class="empty-state empty-state--history">
             正在加载发布历史…
           </div>
-          <div v-else-if="historyError" class="modal-error" role="alert">{{ historyError }}</div>
+          <div v-else-if="historyError" class="modal-error" role="alert">
+            <span>{{ historyError }}</span>
+            <button
+              type="button"
+              class="extension-button extension-button--ghost extension-button--small"
+              @click="openHistoryModal(modalScene)"
+            >
+              重新加载
+            </button>
+          </div>
           <div v-else-if="visibleHistory.length" class="timeline">
             <article
               v-for="release in visibleHistory"
@@ -1785,7 +1840,7 @@ onBeforeUnmount(() => {
 
 .extension-page button,
 .extension-page input,
-.extension-page select,
+.extension-page :is(select, .harness-select),
 .extension-page textarea {
   font: inherit;
 }
@@ -1857,7 +1912,7 @@ onBeforeUnmount(() => {
 }
 
 .filter-field input,
-.filter-field select {
+.filter-field :is(select, .harness-select) {
   width: 100%;
   min-width: 0;
   height: 38px;
@@ -1872,12 +1927,12 @@ onBeforeUnmount(() => {
 }
 
 .filter-field input:focus,
-.filter-field select:focus {
+.filter-field :is(select, .harness-select):focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
 
-.filter-field select:disabled {
+.filter-field :is(select, .harness-select):disabled {
   background: #f8fbff;
   color: #64748b;
   cursor: not-allowed;
@@ -2827,7 +2882,7 @@ onBeforeUnmount(() => {
 }
 
 .modal-field input,
-.modal-field select,
+.modal-field :is(select, .harness-select),
 .modal-field textarea {
   width: 100%;
   box-sizing: border-box;
@@ -2840,7 +2895,7 @@ onBeforeUnmount(() => {
 }
 
 .modal-field input,
-.modal-field select {
+.modal-field :is(select, .harness-select) {
   height: 34px;
   padding: 0 10px;
 }
@@ -2853,7 +2908,7 @@ onBeforeUnmount(() => {
 }
 
 .modal-field input:focus,
-.modal-field select:focus,
+.modal-field :is(select, .harness-select):focus,
 .modal-field textarea:focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.13);

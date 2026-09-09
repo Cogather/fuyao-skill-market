@@ -44,7 +44,7 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
 
   await harness.selectWorkflowDepartment('流水线平台小组');
   await expect(harness.workflowStatusButton('全部')).toHaveAttribute('aria-pressed', 'true');
-  await expect(harness.workflowsProductFilter).toHaveValue('');
+  await expect(harness.workflowsProductFilter).toHaveAttribute('data-value', '');
   await expect(rows).toHaveCount(3);
   await expect(rows.locator('td:nth-child(3)')).toHaveText(Array(3).fill('流水线平台小组'));
 
@@ -101,9 +101,7 @@ test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新
 
   const expected = await page.evaluate((key) => {
     const saved = JSON.parse(localStorage.getItem(key)!);
-    const draft = saved.workflows.find(
-      (workflow: { name: string }) => workflow.name === '',
-    );
+    const draft = saved.workflows.find((workflow: { name: string }) => workflow.name === '');
     const samples = saved.workflows.filter(
       (workflow: { name: string }) => workflow.name !== draft.name,
     );
