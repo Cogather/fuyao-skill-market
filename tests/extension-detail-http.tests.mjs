@@ -121,7 +121,7 @@ try {
   const discovered = await queryHttpExtensionBindings('user-001', scope, emptyScene);
   assert.equal(bindingCalls, 0);
   assert.equal(calls.length, 1, 'scene names directly load single detail without bulk discovery');
-  assert.equal(historyCalls, 1, 'initial selection does not request release history twice');
+  assert.equal(historyCalls, 0, 'publish preparation must never request release history');
   assert.deepEqual(calls[0].data, {
     dimType: scope.dimType,
     dimCode: scope.dimCode,
@@ -131,41 +131,28 @@ try {
   });
   assert.equal(discovered.capabilities.agent[0].name, 'udm-coding-agent');
 
-  skillBaseService.queryPublishedHistoryList = async () =>
-    success([
-      {
-        id: 'release-1',
-        firstScene: '应用开发',
-        secondScene: 'mml代码开发',
-        extensionName: 'udm-mml-e2e-extension',
-        version: '1.0.0',
-        publishStatus: 'processing',
-        description: '历史描述',
-        operatorName: '原发布人',
-        userId: 'publisher-1',
-        publishedAt: '2026-08-01 10:00:00',
-        targetOrgName: '原目标组织',
-        releaseType: 'product',
-        agents: [{ name: 'historical-agent', version: '1.0.0' }],
-      },
-    ]);
-  const withHistory = await queryHttpExtensionBindings('user-001', scope, namedScene);
+  skillBaseService.queryPublishedHistoryList = async () => {
+    assert.fail('history service is unavailable and must not affect publication');
+  };
+  const withoutHistory = await queryHttpExtensionBindings('user-001', scope, namedScene);
+  assert.equal(withoutHistory.publishing, null);
+  assert.equal(withoutHistory.releases.length, 1);
+  assert.equal(withoutHistory.releases[0].version, '1.0.0');
+  assert.equal(withoutHistory.releases[0].status, '成功');
+  detailResponse = success({
+    ...detailData,
+    publishedExtension: {
+      ...detailData.publishedExtension,
+      publishStatus: '发布中',
+    },
+  });
+  const publishing = await queryHttpExtensionBindings('user-001', scope, namedScene);
   assert.equal(
-    withHistory.publishing,
-    null,
-    'new detail status supersedes a stale processing status',
+    publishing.publishing.version,
+    '1.0.0',
+    'publication in progress comes from detail summary',
   );
-  assert.equal(
-    withHistory.releases.length,
-    1,
-    'summary and history of the same version are merged',
-  );
-  assert.equal(withHistory.releases[0].id, 'release-1');
-  assert.equal(withHistory.releases[0].operator.name, '原发布人');
-  assert.equal(withHistory.releases[0].organization, '原目标组织');
-  assert.equal(withHistory.releases[0].channel, 'Product');
-  assert.equal(withHistory.releases[0].items[0].name, 'historical-agent');
-  skillBaseService.queryPublishedHistoryList = async () => success([]);
+  assert.deepEqual(publishing.releases, []);
 
   detailResponse = success({ ...detailData, readyStatus: '不完备', publishedExtension: null });
   const incomplete = await queryHttpExtensionBindings('user-001', scope, namedScene);

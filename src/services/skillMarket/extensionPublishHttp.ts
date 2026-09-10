@@ -496,6 +496,30 @@ export async function queryHttpExtensionBindings(
   });
 }
 
+/** 资产内容按所选 Extension 版本读取绑定，只保留卡片自身的一、二级场景。 */
+export async function queryHttpExtensionVersionCapabilities(
+  userId: string,
+  scope: ExtensionScope,
+  identity: { firstScene?: string | null; secondScene?: string | null },
+  version: string,
+): Promise<ExtensionScene['capabilities']> {
+  const firstScene = requiredText(identity.firstScene, 'Extension 缺少一级场景，无法查看内容');
+  const secondScene = requiredText(identity.secondScene, 'Extension 缺少二级场景，无法查看内容');
+  const response = await skillBaseService.querySceneAndBindingPlanningItems(
+    { userId: requiredText(userId, '尚未获取当前用户工号') },
+    {
+      dimType: scope.dimType,
+      dimCode: scope.dimCode,
+      dimName: scope.dimName,
+      version: requiredText(version, '请选择 Extension 版本'),
+    },
+  );
+  const scene = mapBindingScenes(response, scope, []).find(
+    (item) => item.primary === firstScene && item.name === secondScene,
+  );
+  return scene?.capabilities ?? { skill: [], command: [], agent: [] };
+}
+
 /** 发布准备查询：有编码优先按编码查，否则直接按一、二级场景名查。 */
 export async function queryHttpExtensionDetail(
   userId: string,
@@ -526,24 +550,10 @@ export async function queryHttpExtensionDetail(
     requiredText(firstScene, 'Extension 详情缺少一级场景');
     requiredText(secondScene, 'Extension 详情缺少二级场景');
   }
-  let releases = unconfigured ? [] : await queryAllHistory(scope);
   const publishedExtension = asRecord(data.publishedExtension);
   const summary = mapHistoryRelease({ ...publishedExtension, firstScene, secondScene });
-  if (summary.extensionName && summary.version) {
-    const previous = releases.find(
-      (release) =>
-        sameScene(release, firstScene, secondScene) && release.version === summary.version,
-    );
-    const current = previous
-      ? {
-          ...previous,
-          extensionName: summary.extensionName,
-          description: summary.description,
-          status: summary.status,
-        }
-      : summary;
-    releases = [current, ...releases.filter((release) => release !== previous)];
-  }
+  // 发布准备只使用详情中的发布摘要；完整历史仅由历史入口查询。
+  const releases = summary.extensionName && summary.version ? [summary] : [];
   const detail = mapBindingScenes(
     { data: [{ firstScene, secondScenes: [{ ...data, secondScene }] }] },
     scope,

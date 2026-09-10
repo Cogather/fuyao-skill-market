@@ -2,6 +2,7 @@ import {
   publishHttpExtension,
   queryHttpExtensionDetail,
   queryHttpExtensionHistory,
+  queryHttpExtensionVersionCapabilities,
   queryHttpHydratedExtensionScenes,
   queryHttpPublishableOrganizations,
   type ExtensionScope,
@@ -880,7 +881,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     if (transport !== 'http' || (cached && !refresh)) return cached;
     const pending = pendingExtensionAssets.get(asset.id);
     if (pending) return pending;
-    // 详情文件与发布准备共用按 Extension 编码获取的场景配置及发布快照。
+    // 发布准备按 Extension 编码获取场景配置及详情中的发布摘要。
     const load = (async () => {
       const queryScope = await resolveHttpExtensionScope(scope, asset, loadMissingProducts);
       const scene = await queryHttpExtensionDetail(scope.userId, dimensionScope(queryScope), {
@@ -988,21 +989,24 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
         );
         const selectedVersion = versions.includes(version ?? '') ? version! : (versions[0] ?? '');
         let files: HarnessAssetFile[] = [];
+        let capabilities: HarnessAssetDetail['capabilities'];
         if (selectedVersion && options?.includeFiles !== false) {
-          const content =
-            asset.assetType === 'Extension'
-              ? await extensionDetail(
-                  scope,
-                  asset,
-                  // 每次选择版本都刷新发布详情与历史，避免复用首次打开时的快照。
-                  await ensureExtensionScene(scope, asset, true),
-                  selectedVersion,
-                  selectedVersion === normalizeHarnessAssetVersion(asset.currentVersion),
-                )
-              : await atomicDetail(scope, asset, selectedVersion);
-          files = content.files;
+          if (asset.assetType === 'Extension') {
+            const queryScope = await resolveHttpExtensionScope(scope, asset, false);
+            capabilities = await queryHttpExtensionVersionCapabilities(
+              scope.userId,
+              dimensionScope(queryScope),
+              {
+                firstScene: asset.firstScene ?? component.firstScene,
+                secondScene: asset.secondScene ?? component.secondScene,
+              },
+              selectedVersion,
+            );
+          } else {
+            files = (await atomicDetail(scope, asset, selectedVersion)).files;
+          }
         }
-        return { component, versions, version: selectedVersion, files };
+        return { component, versions, version: selectedVersion, files, capabilities };
       }
       if (asset.assetType !== 'Extension')
         return atomicDetail(scope, asset, version ?? asset.currentVersion);

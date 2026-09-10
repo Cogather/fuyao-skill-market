@@ -267,6 +267,7 @@ const bindingsLoading = ref(false);
 const scopeError = ref('');
 const organizationLoading = ref(false);
 const organizationError = ref('');
+let organizationLoadSequence = 0;
 let productLoadSequence = 0;
 let sceneListLoadSequence = 0;
 let bindingLoadSequence = 0;
@@ -712,6 +713,10 @@ function formatNow(): string {
 
 const activeModal = ref<ExtensionModal>(null);
 watch(activeModal, (modal, previous) => {
+  if (modal !== 'publish') {
+    organizationLoadSequence += 1;
+    organizationLoading.value = false;
+  }
   if (props.releaseContext && previous && !modal) emit('close');
 });
 const modalSceneId = ref('');
@@ -777,19 +782,17 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   publishForm.channel = 'beta';
   activeModal.value = 'publish';
   publishError.value = blockedReason;
-  if (blockedReason) return;
+  organizationError.value = '';
   if (transportIsHttp) {
-    organizations.value = [];
-    publishForm.organizationId = '';
     await loadHttpOrganizations();
+  } else {
+    publishForm.organizationId = organizations.value[0]?.id ?? '';
   }
-  publishForm.organizationId = organizations.value[0]?.id ?? '';
-  publishError.value = organizationError.value;
 }
 
 function finishPublish(): void {
   emit('released');
-  if (props.releaseContext) {
+  if (props.releaseContext && !transportIsHttp) {
     historyLimit.value = 3;
     historyError.value = '';
     activeModal.value = 'history';
@@ -892,7 +895,7 @@ async function confirmPublish(): Promise<void> {
         organization,
       });
       const sceneId = scene.id;
-      await refreshHttpScenes(sceneId, false);
+      if (!props.releaseContext) await refreshHttpScenes(sceneId, false);
       finishPublish();
       showToast(`已提交 ${publishForm.channel} 发布 → ${organization.name}，后台处理中`);
     } catch (error) {
@@ -958,22 +961,28 @@ async function retryRelease(release: ExtensionRelease): Promise<void> {
 }
 
 async function loadHttpOrganizations(): Promise<void> {
+  const sequence = ++organizationLoadSequence;
   const scope = appliedHttpScope.value;
+  organizations.value = [];
+  publishForm.organizationId = '';
+  organizationError.value = '';
   if (!scope) {
-    organizations.value = [];
+    organizationLoading.value = false;
     organizationError.value = '当前发布范围无效，请重新选择';
     return;
   }
   organizationLoading.value = true;
-  organizationError.value = '';
   try {
-    organizations.value = await queryHttpPublishableOrganizations(props.userId.trim(), scope);
+    const result = await queryHttpPublishableOrganizations(props.userId.trim(), scope);
+    if (sequence !== organizationLoadSequence || activeModal.value !== 'publish') return;
+    organizations.value = result;
+    publishForm.organizationId = result[0]?.id ?? '';
     if (!organizations.value.length) organizationError.value = '当前用户暂无可发布组织';
   } catch (error) {
-    organizations.value = [];
+    if (sequence !== organizationLoadSequence || activeModal.value !== 'publish') return;
     organizationError.value = errorMessage(error, '可发布组织加载失败');
   } finally {
-    organizationLoading.value = false;
+    if (sequence === organizationLoadSequence) organizationLoading.value = false;
   }
 }
 
@@ -1061,6 +1070,7 @@ onMounted(() => {
   void applyFilters();
 });
 onBeforeUnmount(() => {
+  organizationLoadSequence += 1;
   historyLoadSequence += 1;
   if (toastTimer) window.clearTimeout(toastTimer);
 });
@@ -1531,7 +1541,9 @@ onBeforeUnmount(() => {
               :disabled="publishSubmitting || organizationLoading || organizations.length === 0"
               :options="[
                 ...(organizationLoading ? [{ value: '', label: '正在加载组织…' }] : []),
-                ...(organizations.length === 0 ? [{ value: '', label: '暂无可发布组织' }] : []),
+                ...(!organizationLoading && organizations.length === 0
+                  ? [{ value: '', label: '暂无可发布组织' }]
+                  : []),
                 ...organizations.map((organization) => ({
                   value: organization.id,
                   label: organization.name,
@@ -1539,6 +1551,17 @@ onBeforeUnmount(() => {
               ]"
             />
           </label>
+          <div v-if="organizationError" class="modal-error" role="alert">
+            <p>{{ organizationError }}</p>
+            <button
+              type="button"
+              class="extension-button extension-button--ghost"
+              :disabled="organizationLoading"
+              @click="loadHttpOrganizations"
+            >
+              重新加载组织
+            </button>
+          </div>
           <p v-if="publishError" class="modal-error" role="alert">{{ publishError }}</p>
           <button
             v-if="releaseContext && (!modalScene.publishable || modalScene.publishing)"
@@ -1590,7 +1613,9 @@ onBeforeUnmount(() => {
           <h3 id="history-modal-title">
             <template v-if="!releaseContext">发布历史 · </template>
             {{ modalScene.name || modalScene.extension.name }}
-            <small>共 {{ modalHistory.length }} 条</small>
+            <small class="history-description">
+              {{ modalScene.extension.description || '暂无描述' }}
+            </small>
           </h3>
           <button
             v-if="!releaseContext"
@@ -2850,6 +2875,13 @@ onBeforeUnmount(() => {
   color: #98a2b3;
   font-size: 11px;
   font-weight: 650;
+}
+
+.modal-header h3 .history-description {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .modal-close {

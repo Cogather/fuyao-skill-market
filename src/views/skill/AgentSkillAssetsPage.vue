@@ -3,6 +3,7 @@ import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
+import HarnessExtensionDetailContent from '../../components/skill/HarnessExtensionDetailContent.vue';
 import HarnessAssetPersonEditDialog from '../../components/skill/HarnessAssetPersonEditDialog.vue';
 import HarnessAssetDeleteDialog from '../../components/skill/HarnessAssetDeleteDialog.vue';
 import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
@@ -214,6 +215,9 @@ function pathStartsWith(path: string[], prefix: string[]): boolean {
 const normalizedAllowedPaths = computed(() =>
   props.allowedDepartmentPaths.map(normalizePath).filter((path) => path.length > 0),
 );
+const defaultCatalogDepartmentPath = computed(
+  () => normalizedAllowedPaths.value[0] ?? normalizePath(props.currentUserDepartmentPath),
+);
 
 function filterDepartmentTree(
   nodes: DepartmentTreeNode[],
@@ -302,6 +306,9 @@ const filteredAssets = computed(() =>
 );
 const detailVersions = computed(
   () => detail.value?.versions ?? selectedAsset.value?.versions ?? [],
+);
+const extensionHasNoVersion = computed(
+  () => selectedAsset.value?.assetType === 'Extension' && !selectedAsset.value.currentVersion,
 );
 const detailComponent = computed(() => detail.value?.component);
 const detailCategory = computed(
@@ -533,7 +540,7 @@ async function selectFilter(nextFilter: HarnessAssetFilter): Promise<void> {
 async function loadDetail(): Promise<void> {
   const scope = currentScope.value;
   const asset = selectedAsset.value;
-  if (!scope || !asset) return;
+  if (!scope || !asset || extensionHasNoVersion.value) return;
   if (!transportIsHttp && asset.assetType !== 'Extension') return;
   const sequence = ++detailSequence;
   const requestedView = view.value;
@@ -637,6 +644,9 @@ async function reloadExtensionRelease(): Promise<void> {
 }
 
 async function onExtensionReleased(): Promise<void> {
+  if (transportIsHttp && extensionRelease.value?.mode === 'publish') {
+    extensionReturnView.value = 'list';
+  }
   await reloadAssets();
 }
 
@@ -668,11 +678,14 @@ function manageCatalog(assetType: (typeof CATALOG_TYPES)[number], action: Catalo
     createAssetType.value = assetType;
     return;
   }
-  const department = selectedDepartment.value;
-  const product = selectedProduct.value;
+  const departmentPath = defaultCatalogDepartmentPath.value;
+  const product =
+    selectedDepartment.value?.path.join('\u0001') === departmentPath.join('\u0001')
+      ? selectedProduct.value
+      : null;
   importScope.value = {
-    level: product ? '产品级' : '部门级',
-    departmentPath: [...(department?.path ?? [])],
+    level: selectedProduct.value ? '产品级' : '部门级',
+    departmentPath: [...departmentPath],
     offeringId: product?.id ?? '',
     offeringName: product?.name ?? '',
   };
@@ -744,7 +757,7 @@ onBeforeUnmount(() => {
       :user-id="props.userId"
       :department-tree="manageableDepartmentTree"
       :current-user-department-path="props.currentUserDepartmentPath"
-      :default-department-path="normalizedAllowedPaths[0] ?? props.currentUserDepartmentPath"
+      :default-department-path="defaultCatalogDepartmentPath"
       :allowed-department-paths="normalizedAllowedPaths"
       @close="createAssetType = null"
       @created="onAssetCreated"
@@ -960,12 +973,6 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <div class="asset-detail__meta">
-              <HarnessVersionPicker
-                v-model="selectedVersion"
-                :versions="detailVersions"
-                :disabled="detailLoading"
-                @change="changeDetailVersion"
-              />
               <dl class="asset-detail__summary">
                 <div class="asset-detail__summary-field is-category">
                   <dt>归属于</dt>
@@ -1044,6 +1051,15 @@ onBeforeUnmount(() => {
           </div>
         </dl>
 
+        <div class="asset-detail__version">
+          <HarnessVersionPicker
+            v-model="selectedVersion"
+            :versions="detailVersions"
+            :disabled="detailLoading"
+            @change="changeDetailVersion"
+          />
+        </div>
+
         <nav class="asset-subtabs asset-detail__tabs" role="tablist" aria-label="资产详情分区">
           <button
             id="asset-detail-tab-content"
@@ -1070,7 +1086,10 @@ onBeforeUnmount(() => {
           </button>
         </nav>
 
-        <div v-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
+        <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
+          暂无版本，当前无法查看详情
+        </div>
+        <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
         <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
           <span>{{ detailError }}</span>
           <button type="button" class="asset-button is-secondary" @click="loadDetail">
@@ -1086,6 +1105,13 @@ onBeforeUnmount(() => {
           :capability-type="catalogCapabilityType"
           :version="selectedVersion"
           :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
+        />
+        <HarnessExtensionDetailContent
+          v-else-if="detail?.capabilities"
+          :key="`${selectedAssetKey}:${selectedVersion}`"
+          :name="selectedAsset.name"
+          :user-id="props.userId"
+          :capabilities="detail.capabilities"
         />
         <div v-else class="asset-file-tree">
           <strong>📁 {{ selectedAsset.name }}/</strong>
@@ -1886,6 +1912,12 @@ onBeforeUnmount(() => {
 .asset-detail__tabs button:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 3px;
+}
+
+.asset-detail__version {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
 }
 
 .asset-detail .asset-detail__tabs {

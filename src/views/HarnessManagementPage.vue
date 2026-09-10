@@ -242,8 +242,9 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   defaultDepartmentPath:
     permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
   allowedDepartmentPaths: permissionDepartmentPaths.value,
-  // 场景与工作流的部门选择仅用于筛选，使用父页面提供的完整部门树。
-  restrictToAllowedDepartments: false,
+  // 场景设计按管理权限选择部门；只读工作流清单保留完整部门筛选。
+  restrictToAllowedDepartments:
+    restrictToPermissionDepartments.value && activeHarnessTab.value === 'scenarios',
 }));
 const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
   const product = scenarioWorkspace.products.find(

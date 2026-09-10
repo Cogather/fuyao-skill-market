@@ -1,6 +1,7 @@
 import type { ExtensionReleaseContext } from './extensionPublishHttp';
 import type { SkillPlanningUserOption } from './skillPlanningShared';
 import type { HarnessAssetComponentDetailDto } from './apiTypes';
+import type { ExtensionScene } from './extensionPublishMock';
 
 export type HarnessAssetType = 'Agent' | 'Skill' | 'Command' | 'Extension';
 export type HarnessAssetFilter = 'all' | HarnessAssetType;
@@ -100,6 +101,8 @@ export type HarnessAssetDetail = {
   files: HarnessAssetFile[];
   version?: string;
   component?: HarnessAssetComponentDetailDto;
+  /** HTTP Extension 内容只加载组件清单，目录与文件由用户展开时读取。 */
+  capabilities?: ExtensionScene['capabilities'];
 };
 
 export type HarnessAssetQualityItem = {

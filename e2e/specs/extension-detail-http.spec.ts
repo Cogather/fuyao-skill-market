@@ -9,6 +9,8 @@ test.describe('资产清单 Extension 新详情与旧发布', () => {
     const detailRequests: Request[] = [];
     const bindingRequests: Request[] = [];
     const publishRequests: Request[] = [];
+    const organizationRequests: Request[] = [];
+    const historyRequests: Request[] = [];
     const detail = {
       firstScene: '应用开发',
       secondScene: '代码开发',
@@ -60,8 +62,10 @@ test.describe('资产清单 Extension 新详情与旧发布', () => {
         }
         data = detail;
       } else if (path.endsWith('/extensions/orgs')) {
+        organizationRequests.push(request);
         data = [{ orgCode: 'org-1', orgName: '目标组织' }];
       } else if (path.endsWith('/extensions/history')) {
+        historyRequests.push(request);
         data = [
           {
             id: 'older-release',
@@ -141,8 +145,20 @@ test.describe('资产清单 Extension 新详情与旧发布', () => {
     await panel.getByRole('button', { name: '发布', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: /发布 Extension/ });
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('combobox', { name: '目标组织' })).toHaveAttribute(
+      'data-value',
+      'org-1',
+    );
+    expect(historyRequests).toHaveLength(0);
+    expect(organizationRequests).toHaveLength(1);
+    expect(Object.fromEntries(new URL(organizationRequests[0]!.url()).searchParams)).toEqual({
+      userId: 'extension-tester',
+      dimType: '产品级',
+      dimCode: 'product-1',
+    });
     await dialog.getByRole('button', { name: '确认发布', exact: true }).click();
     await expect(dialog).toBeHidden();
+    expect(historyRequests).toHaveLength(0);
     expect(publishRequests).toHaveLength(1);
     expect(publishRequests[0]!.postDataJSON()).toMatchObject({
       extensionName: 'udm-code-extension',

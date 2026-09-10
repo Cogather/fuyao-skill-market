@@ -39,8 +39,7 @@ try {
     return success(['SKILL.md']);
   };
   skillBaseService.queryPlanningItemContent = async () => success({ content: '# package' });
-  skillBaseService.querySceneAndBindingPlanningItems = async () =>
-    assert.fail('must not query all scene bindings');
+
   skillBaseService.queryPublishedHistoryList = async () => success([]);
   const { getHarnessAssetApi } = await server.ssrLoadModule(
     '/src/services/skillMarket/assetManagementService.ts',
@@ -125,114 +124,107 @@ try {
     'PASS four card types use GET component detail, metadata, ordered versions and empty/error responses',
   );
 
-  const extensionAsset = { ...asset('Extension'), currentVersion: '2.0.0', canPublish: false };
-  const fileCalls = [];
+  const extensionAsset = {
+    ...asset('Extension'),
+    currentVersion: '2.0.0',
+    canPublish: false,
+    dimType: '部门级',
+    dimCode: 'record-dept',
+    dimName: '卡片部门',
+    firstScene: '应用开发',
+    secondScene: '代码开发',
+  };
   response = success({
     name: extensionAsset.name,
     type: 'EXTENSION',
     description: '文件内容测试',
-    versions: [...versions, { version: '0.5.0', uploadedAt: null, uploadedBy: 'u001' }],
+    firstScene: '不能覆盖卡片一级场景',
+    secondScene: '不能覆盖卡片二级场景',
+    versions,
   });
+  skillBaseService.queryPublishedHistoryList = async () =>
+    assert.fail('card content must not query history');
+  skillBaseService.queryPlanningItemTree = async () => assert.fail('tree is lazy');
+  skillBaseService.queryPlanningItemContent = async () => assert.fail('file content is lazy');
+  const bindingCalls = [];
+  let failBindings = false;
+  let matchingScene = true;
   request.harnessApi = async (config) => {
     calls.push(config);
-    assert.equal(config.url, '/extensions/detail');
-    return success({
-      firstScene: '应用开发',
-      secondScene: '代码开发',
-      readyStatus: '已就绪',
-      publishedExtension: null,
-      components: {
-        skills: [{ name: 'current-skill', version: '3.0.0' }],
-        commands: [],
-        agents: [],
-      },
-    });
-  };
-  skillBaseService.queryPublishedHistoryList = async () =>
-    success([
+    bindingCalls.push(config);
+    assert.equal(config.url, '/scenes/bindings');
+    if (failBindings) return { meta: { success: false, message: '绑定查询失败' }, data: null };
+    const components = {
+      skills: [
+        { name: 'selected-skill', version: config.data.version === '1.0.0' ? '0.9.0' : '3.0.0' },
+      ],
+      commands: [{ name: 'selected-command', version: '0.8.0', filePath: 'commands/run.md' }],
+      agents: [{ name: 'selected-agent', version: '0.7.0' }],
+    };
+    return success([
+      { firstScene: '其他场景', secondScenes: [{ secondScene: '代码开发', components }] },
       {
-        version: '1.0.0',
-        extensionName: extensionAsset.name,
         firstScene: '应用开发',
-        secondScene: '代码开发',
-        publishStatus: 'success',
-        skills: [{ name: 'historical-skill', version: '0.9.0' }],
-        commands: [{ name: 'historical-command', version: '0.8.0' }],
+        secondScenes: [
+          { secondScene: '其他子场景', components },
+          ...(matchingScene ? [{ secondScene: '代码开发', components }] : []),
+        ],
       },
     ]);
-  skillBaseService.queryPlanningItemTree = async (params) => {
-    fileCalls.push({ kind: 'tree', ...params });
-    return success(['SKILL.md']);
   };
-  skillBaseService.queryPlanningItemContent = async (params) => {
-    fileCalls.push({ kind: 'file', ...params });
-    return success({ content: `${params.componentName}@${params.componentVersion}` });
-  };
-  const historicalDetail = await api.queryDetail(scope, extensionAsset, '1.0.0');
+  calls.length = 0;
+  const latestDetail = await api.queryDetail(scope, extensionAsset);
+  assert.equal(latestDetail.version, '1.0.0', 'select latest upload from fresh component detail');
   assert.deepEqual(
-    historicalDetail.files,
-    [
-      {
-        path: 'skills/historical-skill/SKILL.md',
-        category: 'skill',
-        content: 'historical-skill@0.9.0',
-      },
-      {
-        path: 'commands/historical-command/historical-command.md',
-        category: 'command',
-        content: 'historical-command@0.8.0',
-      },
-    ],
-    'Extension content uses the selected release snapshot even without publish permission',
+    calls.map((call) => call.url),
+    ['/v1/harness/plans/components/detail', '/scenes/bindings'],
   );
-  assert.ok(fileCalls.every((call) => call.componentName !== 'current-skill'));
-  const currentDetail = await api.queryDetail(scope, extensionAsset, '2.0.0');
-  assert.equal(currentDetail.files[0].content, 'current-skill@3.0.0');
-  const beforeMissingSnapshot = fileCalls.length;
-  const missingSnapshot = await api.queryDetail(scope, extensionAsset, '0.5.0');
+  assert.deepEqual(bindingCalls[0], {
+    url: '/scenes/bindings',
+    method: 'post',
+    params: { userId: 'user-001' },
+    data: { dimType: '部门级', dimCode: 'record-dept', dimName: '卡片部门', version: '1.0.0' },
+  });
+  assert.deepEqual(latestDetail.files, [], 'files must not be eagerly fetched');
   assert.deepEqual(
-    missingSnapshot.files,
-    [],
-    'unknown historical content must not show current bindings',
+    Object.values(latestDetail.capabilities).map((rows) => rows.length),
+    [1, 1, 1],
   );
-  assert.equal(fileCalls.length, beforeMissingSnapshot);
-  const previousDetailCalls = calls.filter((call) => call.url === '/extensions/detail').length;
-  skillBaseService.queryPublishedHistoryList = async () =>
-    success([
-      {
-        version: '0.5.0',
-        extensionName: extensionAsset.name,
-        firstScene: '应用开发',
-        secondScene: '代码开发',
-        publishStatus: 'success',
-        skills: [{ name: 'newly-loaded-snapshot-skill', version: '0.4.0' }],
-      },
-    ]);
-  const refreshedSnapshot = await api.queryDetail(scope, extensionAsset, '0.5.0');
-  assert.deepEqual(
-    refreshedSnapshot.files,
-    [
-      {
-        path: 'skills/newly-loaded-snapshot-skill/SKILL.md',
-        category: 'skill',
-        content: 'newly-loaded-snapshot-skill@0.4.0',
-      },
-    ],
-    'reselecting a version must use freshly fetched Extension details and release snapshots',
+  assert.equal(latestDetail.capabilities.skill[0].name, 'selected-skill');
+  assert.equal(latestDetail.capabilities.skill[0].version, '0.9.0');
+  assert.deepEqual(latestDetail.capabilities.command[0].files, [
+    { name: 'commands/run.md', content: '' },
+  ]);
+  assert.deepEqual(latestDetail.capabilities.agent[0].files, [
+    { name: 'selected-agent.md', content: '' },
+  ]);
+  const otherVersion = await api.queryDetail(scope, extensionAsset, '2.0.0');
+  assert.equal(bindingCalls.length, 2, 'one bindings request per selected version');
+  assert.equal(bindingCalls[1].data.version, '2.0.0');
+  assert.equal(otherVersion.capabilities.skill[0].version, '3.0.0');
+  matchingScene = false;
+  assert.deepEqual((await api.queryDetail(scope, extensionAsset)).capabilities, {
+    skill: [],
+    command: [],
+    agent: [],
+  });
+  failBindings = true;
+  await assert.rejects(api.queryDetail(scope, extensionAsset), /绑定查询失败/);
+  const beforeMissingScene = bindingCalls.length;
+  await assert.rejects(
+    api.queryDetail(scope, { ...extensionAsset, firstScene: '', secondScene: '' }),
+    /缺少一级场景/,
   );
   assert.equal(
-    calls.filter((call) => call.url === '/extensions/detail').length,
-    previousDetailCalls + 1,
-    'version content must refresh the same detail endpoint used by Extension publication',
+    bindingCalls.length,
+    beforeMissingScene,
+    'missing scene must not query unrelated content',
   );
-  skillBaseService.queryPlanningItemContent = async () => {
-    throw new Error('文件读取失败');
-  };
-  await assert.rejects(api.queryDetail(scope, extensionAsset, '0.5.0'), /文件读取失败/);
+  skillBaseService.queryPlanningItemTree = async () => success(['SKILL.md']);
   skillBaseService.queryPlanningItemContent = async () => success({ content: '# package' });
   skillBaseService.queryPublishedHistoryList = async () => success([]);
   console.log(
-    'PASS HTTP Extension content follows release versions, keeps drafts, and surfaces file errors',
+    'PASS versioned Extension bindings use record scope, exact scene filtering and lazy files',
   );
 
   response = success({

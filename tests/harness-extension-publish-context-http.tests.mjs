@@ -40,7 +40,8 @@ try {
   request.harnessApi = async (config) => {
     calls.push(config);
     if (config.url === '/smapi-product-by-dept') return success(availableProducts);
-    if (config.url === '/extensions/history') return success([]);
+    if (config.url === '/extensions/history')
+      assert.fail('publish preparation must not query history');
     assert.equal(config.url, '/extensions/detail');
     return success({
       firstScene: '应用开发',
@@ -61,7 +62,7 @@ try {
   const context = await api.queryExtensionReleaseContext(scope, asset);
   assert.deepEqual(
     calls.map((call) => call.url),
-    ['/extensions/detail', '/extensions/history'],
+    ['/extensions/detail'],
   );
   assert.deepEqual(calls[0], {
     url: '/extensions/detail',
@@ -90,7 +91,7 @@ try {
   assert.equal(calls[0].data.dimCode, '30222');
   assert.deepEqual(
     calls.map((call) => call.url),
-    ['/extensions/detail', '/extensions/history'],
+    ['/extensions/detail'],
   );
 
   // Department Extensions must not need a product list either.
@@ -108,7 +109,7 @@ try {
   const departmentContext = await api.queryExtensionReleaseContext(scope, departmentAsset);
   assert.deepEqual(
     calls.map((call) => call.url),
-    ['/extensions/detail', '/extensions/history'],
+    ['/extensions/detail'],
   );
   assert.equal(calls[0].data.dimType, '部门级');
   assert.equal(calls[0].data.dimCode, 'dept-2');
@@ -136,7 +137,7 @@ try {
   assert.equal(retried.scope.dimCode, '30222');
   assert.deepEqual(
     calls.map((call) => call.url),
-    ['/extensions/detail', '/extensions/history'],
+    ['/extensions/detail'],
   );
   console.log('PASS department scope, missing product identity, and cached-product retry');
 } finally {

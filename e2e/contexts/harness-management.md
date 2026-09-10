@@ -27,9 +27,10 @@
 - Agent / Skill 资产面板：`#harness-panel-assets`，HTTP 和 Mock 均只显示 Agent / Skill / Command / Extension 四个类型，默认选中 Agent，无「全部」入口；包含详情、Skill 质量报告和发布流程。
 - HTTP 资产列表使用 `httpRequest.api` 的 `POST /v1/harness/plans/components/query`，body 包含 `userId`、可选 `deptCode` / `productCode`、大写 `type`、`sortBy: updatedAt`、`sortOrder: desc`、`pageNo`、`pageSize: 30`。未选部门或产品时省略对应编码；清空部门后仍可查询列表。
 - HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。
-- Agent、Skill、Command、Extension 四类卡片点击都调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写，Extension 的 `name` 为二级场景编码。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本按接口上传时间顺序展示，空数组显示无版本。原子资产继续按所选版本查询包文件。Extension 首次进入、切换版本及重试时刷新 `POST /api/harness/extensions/detail` 和 `/extensions/history`，按所选版本匹配发布快照，再按快照内的组件版本查询包文件；历史版本缺少快照时显示「该版本暂无文件」，当前未发布版本沿用场景绑定。只有元信息查询（`includeFiles: false`）不加载这些内容接口。
+- Agent、Skill、Command 和有版本的 Extension 卡片点击调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本保持接口上传时间顺序，默认选最新上传的第一项；原子资产继续按所选版本查询包文件。Extension 随后只调用一次 `POST /api/harness/scenes/bindings`，body 使用卡片记录的 `dimType/dimCode/dimName` 和所选 `version`，响应按卡片的一、二级场景精确过滤，仅展示对应 skills、commands、agents；切换版本重新获取绑定，清空旧文件内容。展开 Skill 时查询 `/packages/tree`；Command、Agent 使用绑定中的文件路径（缺省为名称加 `.md`）。点击具体文件才查询 `/packages/file`，参数使用该组件自身的名称、版本和文件路径；目录和文件加载失败支持局部重试。卡片内容不调用发布详情或发布历史接口，`includeFiles: false` 仅查询元信息。
 - Extension 列表项的 `canPublish` 控制当前用户的发布权限，与场景是否就绪独立。值为 `false` 时卡片及详情页的「发布 / 继续发布」保持可见但置灰禁用，发布准备和提交方法均拒绝调用接口；历史刷新保留权限标志。
-- Extension 点击「发布」后立即进入页面，再调用 `POST /api/harness/extensions/detail?userId=...` 获取当前场景组件、就绪状态和发布摘要；body 的 `dimType/dimCode/dimName/firstScene/secondScene` 均来自 `/harness/plans/components/query` 响应 `data.records` 中被点击的那条记录，并携带其名字作为 `extensionName`。记录维度优先于产品筛选和缓存，点击发布不调用 `/smapi-product-by-dept`；无编码的场景选择入口直接传 `firstScene/secondScene`。请求失败在页内显示原因并可重新加载，保留原记录参数；未配置、不完备或已有发布进行中时显示发布表单和原因，禁止确认发布。加载期间返回后，迟到响应不能重新打开页面。提交发布仍走原 `/api/harness/extensions` 接口。
+- Extension 列表项没有版本号时（`latestVersion` 为 null、空字符串或缺省），点击卡片或按 Enter 进入详情仅显示列表中的基本信息和「暂无版本，当前无法查看详情」，不请求组件详情、Extension 详情、历史或文件接口，也不显示重新加载按钮。有版本的 Extension 继续按正常流程加载详情。
+- Extension 点击「发布」后立即进入页面，再调用 `POST /api/harness/extensions/detail?userId=...` 获取当前场景组件、就绪状态和发布摘要；body 的 `dimType/dimCode/dimName/firstScene/secondScene` 均来自 `/harness/plans/components/query` 响应 `data.records` 中被点击的那条记录，并携带其名字作为 `extensionName`。记录维度优先于产品筛选和缓存，点击发布不调用 `/smapi-product-by-dept`；无编码的场景选择入口直接传 `firstScene/secondScene`。请求失败在页内显示原因并可重新加载，保留原记录参数；未配置、不完备或已有发布进行中时显示发布表单和原因，禁止确认发布。加载期间返回后，迟到响应不能重新打开页面。详情返回后调用 `GET /api/harness/extensions/orgs`，Query 使用当前用户 `userId` 与卡片维度 `dimType/dimCode`，下拉选项只来自接口；即使场景不完备或发布中也查询组织，但保持发布禁用。组织加载中禁用选择；失败或空结果显示原因，可单独重试且保留表单。发布准备不调用 history，已发布名称、版本及状态直接使用详情中的 `publishedExtension`。提交发布仍走原 `/api/harness/extensions` 接口；HTTP 提交成功后刷新卡片并返回列表，不自动查询历史，点击「发布历史」才加载完整历史。
 - Extension「发布历史」独立调用 `/api/harness/extensions/history`，不依赖当前场景的 `/extensions/detail`。场景字段完整时按一级、二级场景匹配历史，否则按 Extension 名称精确匹配；旧资产没有当前绑定也可查历史。历史查询失败支持重新加载；异常响应不能当作空历史，刷新和重试发布保持原资产身份与权限。
 - Mock 保留原资产聚合与每页 24 条的滚动加载。HTTP 切换部门、产品或类型时从第 1 页重载，晚返回的旧请求不能覆盖当前筛选。
 - 任务管理面板：`#harness-panel-tasks`（`role=tabpanel`）
@@ -40,6 +41,8 @@
 - tab 切换用 `aria-selected` 属性断言选中态，不依赖样式 class
 - 若未来断言面板内业务内容，注意不同权限（task-only/owner/admin）渲染差异
 - 「业务场景设计」与「Harness 工作流」共享同一个路由级 workspace；跨 tab 新建的 Workflow 和当前部门必须立即同步，两个面板用 `v-show` 保持自身筛选 UI 状态
+- HTTP「业务场景设计」的部门选择仅允许权限接口返回的可管理部门及其下级，上级路径只用于导航，不能确认为选择结果。「Harness 工作流」与资产页保留全量部门筛选；从工作流返回场景设计时，如果当前部门未授权，会自动切回首个授权部门。
+- Agent / Skill / Command 导入窗口与新增窗口使用相同的默认部门规则：优先首个授权部门，其次当前用户部门，不直接沿用列表的部门筛选。默认部门与列表部门不同时，重新加载默认部门的产品；打开导入不会改变列表筛选。
 - 删除叶子业务场景时会级联删除其 Workflow，只读清单切回后不得残留对应行
 - Harness 工作流是只读清单，不为行提供点击、详情或编辑入口；设计入口统一通过「前往场景设计 →」返回业务场景页
 - 场景新建、标签、删除确认和 Workflow 设计弹窗仅通过显式操作按钮关闭（如取消、×、完成、完成设计）；点击遮罩或空白、拖动、滚动及 Esc 不关闭弹窗，也不会保存未提交的修改。Tab 焦点限制在弹窗内。
