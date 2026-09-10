@@ -62,6 +62,8 @@
 
 ## 演进记录
 
+- 2026-09-10：旧「资产清单」（`#harness-tab-capabilities`）的 Command / Skill / Agent 清单继续使用各自 `/api/harness/{commands|skills|agents}/management/query`。旧 Extension 发布工作区、发布与历史弹窗按 `e78abf5` 恢复为独立的 `LegacyExtensionPublishPage.vue` 和 `legacyExtensionPublishHttp.ts`：选场景查询 `/scenes/bindings` 与 `/extensions/history`，发布时查询 `/extensions/orgs` 并提交 `/extensions`，历史使用原时间线、默认三条、加载更多和失败重试 `/extensions/{id}/retry`。保留原名称、描述、通道、组织表单与弹窗样式。新资产页仍使用 `ExtensionPublishPage.vue` / `extensionPublishHttp.ts` 的现有逻辑，不与旧页恢复联动；不得将旧绑定查询换成新 `/extensions/detail`。回归：`extension-detail-http.spec.ts`、`tests/legacy-extension-bindings-http.tests.mjs`。
+
 - 2026-09-10：业务场景详情的「Command 入口」恢复原有深蓝圆角条目（`#0f172a`）、浅蓝命令名（`#7dd3fc`）和浅灰说明；统一样式不再覆盖此区域的原样式。名称宽度最多占行内容的 2/3，描述使用剩余宽度；两者均限制为单行，超出显示省略号，鼠标悬浮通过 `title` 查看完整字段。
 
 - 2026-09-10：三个工作区及复用的资产创建、导入、详情、发布弹窗统一使用 `HarnessSelect` 替代原生下拉。浮层挂载到 body，自动避让视口并高于所在弹窗；支持搜索、键盘选择、Escape 和外部点击关闭。测试通过 `e2e/helpers/selectHarnessOption.ts` 的可见浮层交互选择，数值通过 `data-value` 检查；避免对自定义组件调用原生 `selectOption()`。资产工作区入口使用稳定 ID `#harness-tab-assets`，不依赖显示名称。

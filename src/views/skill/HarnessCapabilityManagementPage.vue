@@ -5,7 +5,7 @@ import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabil
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import type { HarnessCapabilityType } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
-import ExtensionPublishPage from './ExtensionPublishPage.vue';
+import ExtensionPublishPage from './LegacyExtensionPublishPage.vue';
 
 type DepartmentTreeNode = {
   id?: string;

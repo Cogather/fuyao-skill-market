@@ -8,7 +8,7 @@ import AgentSkillAssetsPage from './skill/AgentSkillAssetsPage.vue';
 import BusinessScenarioDesignPage from './skill/BusinessScenarioDesignPage.vue';
 import HarnessCapabilityManagementPage from './skill/HarnessCapabilityManagementPage.vue';
 import HarnessWorkflowsPage from './skill/HarnessWorkflowsPage.vue';
-import ExtensionPublishPage from './skill/ExtensionPublishPage.vue';
+import ExtensionPublishPage from './skill/LegacyExtensionPublishPage.vue';
 import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
 import { createHarnessScenarioWorkspace } from '../composables/useHarnessScenarioWorkspace';
