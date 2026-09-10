@@ -5,7 +5,12 @@ import { APP_BASE_PATH } from '../helpers/constants';
 
 const envelope = (data: unknown) => ({ meta: { success: true }, data });
 
-async function prepare(page: Page, withHistory = false, unavailableScene = false) {
+async function prepare(
+  page: Page,
+  withHistory = false,
+  unavailableScene = false,
+  emptyProducts = false,
+) {
   const publishes: Request[] = [];
   const retries: Request[] = [];
   const organizationQueries: Request[] = [];
@@ -70,10 +75,12 @@ async function prepare(page: Page, withHistory = false, unavailableScene = false
         adminOrgs: [],
       };
     } else if (path.endsWith('/smapi-product-by-dept')) {
-      data = [
-        { offeringId: 'product-a-id', offeringName: 'product-a' },
-        { offeringId: 'product-b-id', offeringName: 'product-b' },
-      ];
+      data = emptyProducts
+        ? []
+        : [
+            { offeringId: 'product-a-id', offeringName: 'product-a' },
+            { offeringId: 'product-b-id', offeringName: 'product-b' },
+          ];
     } else if (path.endsWith('/components/query')) {
       data = {
         records: [
@@ -83,6 +90,11 @@ async function prepare(page: Page, withHistory = false, unavailableScene = false
             latestVersion: '0.4',
             status: publishing ? '发布中' : '待发布',
             category: '产品级/product-b',
+            dimType: '产品级',
+            dimCode: 'product-b-id',
+            dimName: 'product-b',
+            firstScene: unavailableScene ? null : '开发',
+            secondScene: unavailableScene ? null : '构建诊断',
           },
         ],
         total: 1,
@@ -164,6 +176,128 @@ async function prepare(page: Page, withHistory = false, unavailableScene = false
 test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
+  test('点击发布直接查询单场景详情，不重新调用部门产品接口', async ({ page }) => {
+    const { detailQueries } = await prepare(page, false, false, true);
+    const productQueries: Request[] = [];
+    await page.route('**/api/harness/smapi-product-by-dept**', async (route) => {
+      productQueries.push(route.request());
+      await route.fulfill({ status: 503, json: { message: '产品服务暂不可用' } });
+    });
+    await page.locator('.asset-card').getByRole('button', { name: '发布', exact: true }).click();
+    const publish = page.getByRole('region', { name: /发布 Extension/ });
+    await expect(publish).toBeVisible();
+    await expect(publish.locator('.publish-summary li')).toHaveCount(3);
+    expect(productQueries).toHaveLength(0);
+    expect(detailQueries).toHaveLength(1);
+    expect(detailQueries[0]!.method()).toBe('POST');
+    expect(new URL(detailQueries[0]!.url()).pathname).toBe('/api/harness/extensions/detail');
+    expect(detailQueries[0]!.postDataJSON()).toEqual({
+      dimType: '产品级',
+      dimCode: 'product-b-id',
+      dimName: 'product-b',
+      extensionName: 'product-b-build-extension',
+      firstScene: '开发',
+      secondScene: '构建诊断',
+    });
+  });
+
+  test('产品列表为空时，发布历史使用卡片维度并只查询历史接口', async ({ page }) => {
+    const { detailQueries, historyQueries } = await prepare(page, true, false, true);
+    const unrelatedQueries: Request[] = [];
+    page.on('request', (request) => {
+      if (/\/(smapi-product-by-dept|components\/detail)$/.test(new URL(request.url()).pathname)) {
+        unrelatedQueries.push(request);
+      }
+    });
+    await page
+      .locator('.asset-card')
+      .getByRole('button', { name: '发布历史', exact: true })
+      .click();
+    const history = page.getByRole('region', { name: /发布历史/ });
+    await expect(history.locator('.timeline-item')).toHaveCount(3);
+    await expect(history.getByText('目标组织拒绝签名', { exact: true })).toBeVisible();
+    expect(historyQueries).toHaveLength(1);
+    expect(historyQueries[0]!.method()).toBe('POST');
+    expect(new URL(historyQueries[0]!.url()).pathname).toBe('/api/harness/extensions/history');
+    expect(historyQueries[0]!.postDataJSON()).toMatchObject({
+      dimType: '产品级',
+      dimCode: 'product-b-id',
+      dimName: 'product-b',
+    });
+    expect(detailQueries).toHaveLength(0);
+    expect(unrelatedQueries).toHaveLength(0);
+  });
+
+  test('产品列表为空时，点击卡片空白处查询组件详情并按记录维度加载文件', async ({ page }) => {
+    const { detailQueries, historyQueries, organizationQueries, publishes } = await prepare(
+      page,
+      false,
+      false,
+      true,
+    );
+    const metadataQueries: Request[] = [];
+    const productQueries: Request[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/smapi-product-by-dept')) {
+        productQueries.push(request);
+      }
+    });
+    await page.route('**/api/v1/harness/plans/components/detail**', async (route) => {
+      metadataQueries.push(route.request());
+      await route.fulfill({
+        json: envelope({
+          name: 'product-b-build-extension',
+          description: '接口返回的 Extension 详情',
+          type: 'EXTENSION',
+          category: '产品级/product-b',
+          firstScene: '开发',
+          secondScene: '构建诊断',
+          versions: [
+            { version: '0.4', uploadedAt: '2026-09-10 10:00:00', uploadedBy: 'release-user' },
+          ],
+        }),
+      });
+    });
+    await page.route('**/api/harness/packages/tree**', (route) =>
+      route.fulfill({ json: envelope(['README.md']) }),
+    );
+    await page.route('**/api/harness/packages/file**', (route) =>
+      route.fulfill({ json: envelope({ content: '来自接口的组件文件内容' }) }),
+    );
+    // Click the article's padding, outside its title and action buttons.
+    await page.locator('.asset-card').click({ position: { x: 10, y: 10 } });
+    await expect(page.locator('.asset-detail__description')).toHaveText(
+      '接口返回的 Extension 详情',
+    );
+    await expect(page.locator('.asset-file-tree pre')).toHaveCount(3);
+    await expect(page.locator('.asset-file-tree pre').first()).toHaveText('来自接口的组件文件内容');
+    expect(metadataQueries).toHaveLength(1);
+    expect(metadataQueries[0]!.method()).toBe('GET');
+    expect(Object.fromEntries(new URL(metadataQueries[0]!.url()).searchParams)).toEqual({
+      userId: 'release-user',
+      type: 'EXTENSION',
+      name: 'product-b-build-extension',
+    });
+    expect(detailQueries).toHaveLength(1);
+    expect(detailQueries[0]!.postDataJSON()).toEqual({
+      dimType: '产品级',
+      dimCode: 'product-b-id',
+      dimName: 'product-b',
+      extensionName: 'product-b-build-extension',
+      firstScene: '开发',
+      secondScene: '构建诊断',
+    });
+    expect(historyQueries).toHaveLength(1);
+    expect(historyQueries[0]!.postDataJSON()).toMatchObject({
+      dimType: '产品级',
+      dimCode: 'product-b-id',
+      dimName: 'product-b',
+    });
+    expect(productQueries).toHaveLength(0);
+    expect(organizationQueries).toHaveLength(0);
+    expect(publishes).toHaveLength(0);
+  });
+
   test('从尚未加载完的资产详情进入发布，取消后恢复详情内容', async ({ page }) => {
     await prepare(page);
     let releaseResponse!: () => void;
@@ -243,6 +377,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
             {
               name: 'product-b-first',
               category: '产品级/product-b',
+              dimType: '产品级',
+              dimCode: 'first-product-code',
+              dimName: 'first-product',
               description: '第一张',
               status: '待发布',
               latestVersion: '0.1',
@@ -253,6 +390,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
             {
               name: 'product-b-second',
               category: '产品级/product-b',
+              dimType: '产品级',
+              dimCode: 'product-b-id',
+              dimName: 'product-b',
               description: '第二张',
               status: '待发布',
               latestVersion: '0.1',

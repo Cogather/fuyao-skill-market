@@ -778,6 +778,9 @@ export type HarnessAssetComponentDto = {
   developer?: string | null;
   category: string;
   updatedAt: string;
+  dimType?: string | null;
+  dimCode?: string | null;
+  dimName?: string | null;
   firstScene?: string | null;
   secondScene?: string | null;
   canPublish?: boolean;

@@ -61,6 +61,10 @@ export type HarnessAsset = {
   name: string;
   description: string;
   assetType: HarnessAssetType;
+  /** 发布查询使用列表记录自身的维度，不从筛选项反推。 */
+  dimType?: string | null;
+  dimCode?: string | null;
+  dimName?: string | null;
   firstScene?: string | null;
   secondScene?: string | null;
   currentVersion: string;
