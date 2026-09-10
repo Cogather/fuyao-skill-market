@@ -333,20 +333,33 @@ onBeforeUnmount(() => {
       <template v-else>
         <div class="workflows-toolbar">
           <div class="workflows-status-filter" role="group" aria-label="筛选工作流状态">
-            <button
-              v-for="status in statusOptions"
-              :key="status"
-              class="wf-status-chip"
-              :class="{ active: statusFilter === status }"
-              type="button"
-              :aria-pressed="statusFilter === status"
-              @click="statusFilter = status"
-            >
-              {{ status }}
-              <span v-if="!isHttp" class="wf-status-count" aria-hidden="true">{{
-                statusCounts[status]
-              }}</span>
-            </button>
+            <template v-for="status in statusOptions" :key="status">
+              <template v-if="status === '待发布'">
+                <button
+                  v-if="false"
+                  class="wf-status-chip"
+                  :class="{ active: statusFilter === status }"
+                  type="button"
+                  :aria-pressed="statusFilter === status"
+                  @click="statusFilter = status"
+                >
+                  {{ status }}
+                </button>
+              </template>
+              <button
+                v-else
+                class="wf-status-chip"
+                :class="{ active: statusFilter === status }"
+                type="button"
+                :aria-pressed="statusFilter === status"
+                @click="statusFilter = status"
+              >
+                {{ status }}
+                <span v-if="!isHttp" class="wf-status-count" aria-hidden="true">{{
+                  statusCounts[status]
+                }}</span>
+              </button>
+            </template>
           </div>
         </div>
 
