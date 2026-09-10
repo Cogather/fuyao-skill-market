@@ -47,6 +47,7 @@ import type {
 } from './assetManagementTypes';
 import { normalizeHarnessAssetVersion } from './assetManagementTypes';
 import { updateHarnessAssetPerson } from './assetPersonManagementService';
+import { updateHarnessAssetDetails } from './assetDetailEditingService';
 import { deleteHarnessAsset } from './assetDeletionService';
 import {
   queryHttpHarnessAssetComponentDetail,
@@ -203,7 +204,10 @@ function atomicAsset(
     currentVersion,
     versions,
     owner: record.owner,
+    ownerId: record.owner.trim().match(/\s+(\S+)$/)?.[1] ?? '',
     developer: record.developOwner,
+    // Mock catalog records simulate an explicit editable response.
+    canEdit: true,
     departmentName: record.department || scope.department.name,
     departmentPath: product ? [...product.departmentPath] : [...scope.department.path],
     productId: product?.id ?? '',
@@ -936,6 +940,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     queryProducts: loadProducts,
     deleteAsset: (input) => deleteHarnessAsset(input, transport),
     updatePerson: (input) => updateHarnessAssetPerson(input, transport),
+    updateDetails: (input) => updateHarnessAssetDetails(input, transport),
 
     async queryAssets(scope, requestedPage): Promise<HarnessAssetPageResult> {
       const page = normalizedPage(requestedPage);
@@ -1064,6 +1069,8 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
       }
       const scene = await ensureExtensionScene(scope, asset, true, false);
       if (!scene) throw new Error('未找到该 Extension 对应场景');
+      scene.extension.name ||= asset.name;
+      scene.extension.description ||= asset.description;
       const queryScope = assetScope(scope, asset);
       if (transport === 'http') {
         // 发布准备已按卡片及现有筛选数据解析维度，直接复用，不再查询部门产品列表。

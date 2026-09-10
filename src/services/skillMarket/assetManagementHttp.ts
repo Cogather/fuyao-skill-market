@@ -91,6 +91,7 @@ export async function queryHttpHarnessAssetPage(
       firstScene: record.firstScene ?? null,
       secondScene: record.secondScene ?? null,
       canPublish: record.canPublish,
+      canEdit: record.canEdit,
       currentVersion,
       versions: currentVersion ? [currentVersion] : [],
       owner: record.owner ?? '',
@@ -104,7 +105,9 @@ export async function queryHttpHarnessAssetPage(
       releases: [],
       publishable:
         assetType === 'Extension' &&
-        (record.status === '待发布' || (record.status === '可发布' && Boolean(currentVersion))),
+        (record.status === '待发布' ||
+          (record.status === '可发布' && Boolean(currentVersion)) ||
+          (record.status === '已发布' && record.canPublish === true)),
       status: record.status,
       category,
       updatedAt: record.updatedAt,

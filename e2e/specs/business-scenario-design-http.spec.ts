@@ -340,7 +340,10 @@ test.describe('业务场景设计 HTTP', () => {
         const form = wizard.locator('.capability-create-form');
         for (const label of ['开发责任人 *', '责任人 *']) {
           await form.getByRole('combobox', { name: label, exact: true }).fill('张三');
-          await form.getByRole('option', { name: /u1/ }).click();
+          await page
+            .getByRole('listbox', { name: `${label}搜索结果`, exact: true })
+            .getByRole('option', { name: /u1/ })
+            .click();
         }
         await form.getByPlaceholder('描述 *').fill('HTTP 创建能力');
         await form.locator('input[type="date"]').fill('2026-12-31');
@@ -440,6 +443,9 @@ test.describe('业务场景设计 HTTP', () => {
         }
       }
       const command = calls.find((call) => call.path.endsWith('/commands/config/supplement/add'))!;
+      expect(command.body.commandName).toBe(
+        missingCommandName ? 'demo-created-command' : 'demo-start',
+      );
       expect(command.body.activityNodeName).toBeNull();
       expect(command.body.subActivityNodeName).toBeNull();
       expect(command.query.get('dimCode')).toBe('p-demo');

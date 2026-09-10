@@ -394,6 +394,64 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
   },
 ];
 
+type MockSkillDetailsPatch = Pick<
+  MockSkillMasterManagementRecord,
+  'skillName' | 'skillDescription'
+> &
+  Partial<
+    Pick<
+      MockSkillMasterManagementRecord,
+      'ownerName' | 'ownerId' | 'developOwnerName' | 'developOwnerId'
+    >
+  >;
+const SKILL_DETAILS_STORAGE_KEY = 'harness-mock-skill-details-v1';
+const savedSkillDetails: Record<string, MockSkillDetailsPatch> = {};
+if (typeof window !== 'undefined') {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SKILL_DETAILS_STORAGE_KEY) || '{}');
+    for (const record of mockSkillMasterManagementRecords) {
+      const patch = saved?.[record.id];
+      if (
+        !patch ||
+        typeof patch.skillName !== 'string' ||
+        typeof patch.skillDescription !== 'string'
+      )
+        continue;
+      const clean: MockSkillDetailsPatch = {
+        skillName: patch.skillName,
+        skillDescription: patch.skillDescription,
+      };
+      for (const key of ['ownerName', 'ownerId', 'developOwnerName', 'developOwnerId'] as const) {
+        if (typeof patch[key] === 'string') clean[key] = patch[key];
+      }
+      Object.assign(record, clean);
+      savedSkillDetails[record.id] = clean;
+    }
+  } catch {
+    /* An invalid local draft must not prevent loading Mock fixtures. */
+  }
+}
+
+export function getMockSkillMasterManagementRecord(
+  id: string,
+): MockSkillMasterManagementRecord | undefined {
+  const record = mockSkillMasterManagementRecords.find((item) => item.id === id);
+  return record ? { ...record } : undefined;
+}
+
+export function updateMockSkillMasterManagementDetails(
+  id: string,
+  patch: MockSkillDetailsPatch,
+): void {
+  const record = mockSkillMasterManagementRecords.find((item) => item.id === id);
+  if (!record) throw new Error('未找到对应资产，请刷新后重试');
+  const next = { ...savedSkillDetails, [id]: { ...savedSkillDetails[id], ...patch } };
+  if (typeof window !== 'undefined')
+    window.localStorage.setItem(SKILL_DETAILS_STORAGE_KEY, JSON.stringify(next));
+  Object.assign(savedSkillDetails, next);
+  Object.assign(record, patch, { updatedAt: nowLocalDateTimeArray() });
+}
+
 function readSkillRequestBody(data: unknown): unknown {
   if (data === undefined || data === null || data === '') {
     return {};

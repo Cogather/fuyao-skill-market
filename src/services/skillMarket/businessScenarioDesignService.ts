@@ -412,7 +412,12 @@ export const harnessWorkflowService = {
     return httpRequest.harnessApi({
       url: '/commands/config/supplement/add',
       method: 'POST',
-      data: { ...body, activityNodeName: null, subActivityNodeName: null },
+      data: {
+        ...body,
+        commandName: body.commandName.trim().replace(/^\/+/, ''),
+        activityNodeName: null,
+        subActivityNodeName: null,
+      },
       params: params,
     });
   },

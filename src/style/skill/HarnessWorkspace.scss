@@ -536,11 +536,6 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     margin: 0 -4px;
   }
 
-  .person-editor .workflow-person-picker__popup {
-    max-height: none;
-    overflow: visible;
-  }
-
   :is(
     .editor-close,
     .wizard .close,
@@ -776,8 +771,10 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     padding: 16px 24px;
   }
 
-  .extension-page--embedded .modal-body:not(.history-body) > * {
-    max-width: 880px;
+  .extension-page--embedded .publish-content {
+    width: 100%;
+    max-width: 1120px;
+    margin-inline: auto;
   }
 
   .extension-page--embedded .modal-field {

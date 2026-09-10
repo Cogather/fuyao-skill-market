@@ -24,6 +24,8 @@ const pickerId = `workflow-person-${useId()}`;
 const listboxId = `${pickerId}-options`;
 const rootRef = ref<HTMLDivElement | null>(null);
 const inputRef = ref<HTMLInputElement | null>(null);
+const popupRef = ref<HTMLDivElement | null>(null);
+const popupStyle = ref<Record<string, string>>({});
 const keyword = ref('');
 const open = ref(false);
 const loading = ref(false);
@@ -69,6 +71,53 @@ function closePopup(): void {
   activeIndex.value = -1;
 }
 
+function positionPopup(): void {
+  if (!open.value || !inputRef.value) return;
+  const rect = inputRef.value.getBoundingClientRect();
+  const width = Math.min(rect.width, window.innerWidth - 24);
+  const below = window.innerHeight - rect.bottom - 18;
+  const above = rect.top - 18;
+  const desiredHeight = Math.min(240, popupRef.value?.scrollHeight || 44);
+  const upward = below < desiredHeight && above > below;
+  let zIndex = 1600;
+  for (
+    let ancestor: HTMLElement | null = inputRef.value;
+    ancestor;
+    ancestor = ancestor.parentElement
+  ) {
+    const layer = Number.parseInt(getComputedStyle(ancestor).zIndex, 10);
+    if (Number.isFinite(layer)) zIndex = Math.max(zIndex, layer + 1);
+  }
+  popupStyle.value = {
+    zIndex: String(zIndex),
+    width: `${width}px`,
+    left: `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`,
+    ...(upward
+      ? { bottom: `${window.innerHeight - rect.top + 6}px` }
+      : { top: `${rect.bottom + 6}px` }),
+    maxHeight: `${Math.max(44, Math.min(240, upward ? above : below))}px`,
+  };
+}
+
+function isInsidePicker(target: EventTarget | null): boolean {
+  return (
+    target instanceof Node &&
+    Boolean(rootRef.value?.contains(target) || popupRef.value?.contains(target))
+  );
+}
+
+function onViewportScroll(event: Event): void {
+  if (event.target instanceof Node && popupRef.value?.contains(event.target)) return;
+  // Focusing a field can scroll its dialog; keep the popup anchored without
+  // cancelling the in-flight search when that happens.
+  positionPopup();
+}
+
+function removePopupListeners(): void {
+  window.removeEventListener('scroll', onViewportScroll, true);
+  window.removeEventListener('resize', positionPopup);
+}
+
 async function searchUsers(query: string, sequence: number): Promise<void> {
   if (sequence !== requestSequence) return;
   try {
@@ -85,6 +134,10 @@ async function searchUsers(query: string, sequence: number): Promise<void> {
 }
 
 function scheduleSearch(delay = 250): void {
+  if (inputRef.value?.matches(':disabled')) {
+    closePopup();
+    return;
+  }
   // Invalidate at the edit, before the debounce, so older responses cannot replace this query.
   invalidateSearch();
   options.value = [];
@@ -111,6 +164,12 @@ function onInput(event: Event): void {
   scheduleSearch();
 }
 
+function retrySearch(): void {
+  // The retry button disappears while loading; keep focus inside the picker.
+  inputRef.value?.focus({ preventScroll: true });
+  scheduleSearch(0);
+}
+
 function onCompositionStart(): void {
   composing = true;
   scheduleSearch();
@@ -126,6 +185,7 @@ function onFocus(): void {
 }
 
 function selectPerson(option: SkillPlanningUserOption): void {
+  if (inputRef.value?.matches(':disabled')) return;
   closePopup();
   emit('update:modelValue', option);
 }
@@ -181,22 +241,38 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 function onFocusOut(event: FocusEvent): void {
-  if (event.relatedTarget instanceof Node && rootRef.value?.contains(event.relatedTarget)) return;
+  if (isInsidePicker(event.relatedTarget)) return;
   // Keep the outside click target in place until its click handler has run.
   if (outsidePointerInProgress) return;
   closePopup();
 }
 
 function onOutsidePointerDown(event: PointerEvent): void {
-  outsidePointerInProgress = event.target instanceof Node && !rootRef.value?.contains(event.target);
+  outsidePointerInProgress = event.target instanceof Node && !isInsidePicker(event.target);
 }
 
 function onDocumentClick(event: MouseEvent): void {
   outsidePointerInProgress = false;
   // Internal actions can remove their button before this bubbling listener runs.
   const root = rootRef.value;
-  if (root && !event.composedPath().includes(root)) closePopup();
+  const path = event.composedPath();
+  if (root && !path.includes(root) && (!popupRef.value || !path.includes(popupRef.value)))
+    closePopup();
 }
+
+watch(open, async (isOpen) => {
+  removePopupListeners();
+  if (!isOpen) return;
+  await nextTick();
+  if (!open.value) return;
+  positionPopup();
+  window.addEventListener('scroll', onViewportScroll, true);
+  window.addEventListener('resize', positionPopup);
+});
+
+watch([() => options.value.length, statusMessage], () => {
+  if (open.value) void nextTick(positionPopup);
+});
 
 watch(
   () => props.modelValue,
@@ -216,7 +292,8 @@ onMounted(() => {
   document.addEventListener('click', onDocumentClick);
 });
 onBeforeUnmount(() => {
-  invalidateSearch();
+  closePopup();
+  removePopupListeners();
   document.removeEventListener('pointerdown', onOutsidePointerDown, true);
   document.removeEventListener('click', onDocumentClick);
 });
@@ -258,44 +335,53 @@ onBeforeUnmount(() => {
         ×
       </button>
     </div>
-    <div v-if="open" class="workflow-person-picker__popup">
-      <div v-if="statusMessage" class="workflow-person-picker__status" role="status">
-        <span>{{ statusMessage }}</span>
-        <button
-          v-if="error"
-          class="workflow-person-picker__retry"
-          type="button"
-          @mousedown.prevent
-          @click="scheduleSearch(0)"
-        >
-          重试
-        </button>
+    <Teleport to="body">
+      <div
+        v-if="open"
+        ref="popupRef"
+        class="workflow-person-picker__popup"
+        :style="popupStyle"
+        @focusout="onFocusOut"
+        @keydown.esc.stop.prevent="closePopup"
+      >
+        <div v-if="statusMessage" class="workflow-person-picker__status" role="status">
+          <span>{{ statusMessage }}</span>
+          <button
+            v-if="error"
+            class="workflow-person-picker__retry"
+            type="button"
+            @mousedown.prevent
+            @click="retrySearch"
+          >
+            重试
+          </button>
+        </div>
+        <div v-if="options.length" :id="listboxId" role="listbox" :aria-label="`${label}搜索结果`">
+          <button
+            v-for="(option, index) in options"
+            :id="`${pickerId}-option-${index}`"
+            :key="`${option.sAMAccountName || option.id}-${option.label}`"
+            class="workflow-person-picker__option"
+            :class="{ 'is-active': activeIndex === index }"
+            type="button"
+            role="option"
+            tabindex="-1"
+            :aria-selected="activeIndex === index"
+            @mousedown.prevent
+            @mouseenter="activeIndex = index"
+            @click="selectPerson(option)"
+          >
+            <span class="workflow-person-picker__identity">
+              <strong>{{ option.chName || option.label }}</strong>
+              <small>{{ option.sAMAccountName || option.id }}</small>
+            </span>
+            <span class="workflow-person-picker__department">{{
+              option.deptName || '暂无部门'
+            }}</span>
+          </button>
+        </div>
       </div>
-      <div v-if="options.length" :id="listboxId" role="listbox" :aria-label="`${label}搜索结果`">
-        <button
-          v-for="(option, index) in options"
-          :id="`${pickerId}-option-${index}`"
-          :key="`${option.sAMAccountName || option.id}-${option.label}`"
-          class="workflow-person-picker__option"
-          :class="{ 'is-active': activeIndex === index }"
-          type="button"
-          role="option"
-          tabindex="-1"
-          :aria-selected="activeIndex === index"
-          @mousedown.prevent
-          @mouseenter="activeIndex = index"
-          @click="selectPerson(option)"
-        >
-          <span class="workflow-person-picker__identity">
-            <strong>{{ option.chName || option.label }}</strong>
-            <small>{{ option.sAMAccountName || option.id }}</small>
-          </span>
-          <span class="workflow-person-picker__department">{{
-            option.deptName || '暂无部门'
-          }}</span>
-        </button>
-      </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -365,14 +451,25 @@ onBeforeUnmount(() => {
 }
 
 .workflow-person-picker__popup {
+  /* Keep every state (including loading and errors) outside the form layout. */
+  position: fixed;
   box-sizing: border-box;
-  max-height: 180px;
+  max-height: 240px;
+  margin: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px;
   border: 1px solid #dce3ee;
   border-radius: 6px;
   background: #fff;
+  box-shadow: 0 10px 28px rgb(24 43 77 / 14%);
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
 }
 
 .workflow-person-picker__option {

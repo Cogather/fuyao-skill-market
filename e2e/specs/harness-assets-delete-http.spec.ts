@@ -61,6 +61,8 @@ async function prepare(
       };
     } else if (path.endsWith('/components/detail')) {
       data = {
+        ownerName: '删除测试用户',
+        ownerId: 'delete-user',
         name: assetName,
         description: '用于删除流程验证的资产',
         category: options.detailCategory ?? '产品级/资产所属产品',

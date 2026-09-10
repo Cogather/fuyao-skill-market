@@ -20,6 +20,19 @@ export type UpdateHarnessAssetPersonInput = {
   userId: string;
 };
 
+export type UpdateHarnessAssetDetailsInput = {
+  asset: HarnessAsset;
+  userId: string;
+  name: string;
+  description: string;
+  /** 未修改的人员字段省略；修改后必须从搜索结果选中有效人员。 */
+  owner?: SkillPlanningUserOption | null;
+  developer?: SkillPlanningUserOption | null;
+};
+
+export type HarnessAssetDetailsUpdate = Pick<HarnessAsset, 'name' | 'description'> &
+  Partial<Pick<HarnessAsset, 'owner' | 'developer'>>;
+
 export type HarnessAssetDepartment = {
   id: string;
   code: string;
@@ -72,6 +85,8 @@ export type HarnessAsset = {
   nextPublishVersion?: string;
   versions: string[];
   owner: string;
+  /** Mock 资产提供结构化责任人 ID；HTTP 权限以详情 ownerId 为准。 */
+  ownerId?: string;
   developer: string;
   departmentName: string;
   departmentPath: string[];
@@ -83,6 +98,7 @@ export type HarnessAsset = {
   publishable: boolean;
   /** 当前用户的发布权限，与资产是否已就绪分别判断。 */
   canPublish?: boolean;
+  canEdit?: boolean | null;
   status?: string;
   category?: string;
   updatedAt?: string;
@@ -145,6 +161,7 @@ export type PublishHarnessAssetInput = {
 };
 
 export interface HarnessAssetApi {
+  updateDetails(input: UpdateHarnessAssetDetailsInput): Promise<HarnessAssetDetailsUpdate>;
   deleteAsset(input: DeleteHarnessAssetInput): Promise<void>;
   updatePerson(input: UpdateHarnessAssetPersonInput): Promise<string>;
   queryProducts(

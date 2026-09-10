@@ -98,7 +98,7 @@ async function mountPicker(
                   selected.value = value;
                 },
               }),
-              h('button', { type: 'button' }, '移开焦点'),
+              h('button', { type: 'button', style: 'margin-top:260px' }, '移开焦点'),
             ],
           );
       },
@@ -132,6 +132,55 @@ async function resolveQuery(page: Page, index: number, users: UserRecord[]): Pro
   );
 }
 
+test('人员列表默认悬浮，查询和多条结果均不改变表单高度与按钮位置', async ({ page }) => {
+  await mountPicker(page);
+  const host = page.locator('#workflow-person-picker-test');
+  const input = host.getByRole('combobox');
+  const button = host.getByRole('button', { name: '移开焦点' });
+  const bounds = await host.boundingBox();
+  const buttonBounds = await button.boundingBox();
+  await input.fill('用户');
+  await expect(page.getByRole('status')).toBeVisible();
+  expect(await host.boundingBox()).toEqual(bounds);
+  expect(await button.boundingBox()).toEqual(buttonBounds);
+  await page.clock.fastForward(250);
+  await expect.poll(async () => (await snapshot(page)).calls).toHaveLength(1);
+  await resolveQuery(
+    page,
+    0,
+    Array.from({ length: 12 }, (_, index) => user(`w${index}`, `用户${index}`)),
+  );
+  await expect(page.getByRole('option')).toHaveCount(12);
+  expect(await host.boundingBox()).toEqual(bounds);
+  expect(await button.boundingBox()).toEqual(buttonBounds);
+  await page.getByRole('option').last().click();
+  await expect(input).toHaveValue('用户11 w11');
+  expect(await host.boundingBox()).toEqual(bounds);
+});
+
+test('页面滚动后浮层跟随输入框，进行中的人员查询仍可返回并选择', async ({ page }) => {
+  await mountPicker(page);
+  const input = page.getByRole('combobox', { name: '开发责任人', exact: true });
+  await input.fill('用户');
+  await page.clock.fastForward(250);
+  await expect.poll(async () => (await snapshot(page)).calls).toHaveLength(1);
+  await page.evaluate(() => {
+    document.body.style.minHeight = '1600px';
+    window.scrollTo(0, 20);
+  });
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(20);
+  await page.clock.runFor(50);
+  await expect(input).toHaveAttribute('aria-expanded', 'true');
+  await resolveQuery(page, 0, [user('w123')]);
+  await expect(page.getByRole('option')).toBeVisible();
+  const inputBounds = (await input.boundingBox())!;
+  const popupBounds = (await page.locator('.workflow-person-picker__popup').boundingBox())!;
+  expect(popupBounds.y).toBeGreaterThanOrEqual(inputBounds.y + inputBounds.height);
+  expect(popupBounds.y).toBeLessThan(inputBounds.y + inputBounds.height + 16);
+  await page.getByRole('option').click();
+  await expect(input).toHaveValue('测试用户 w123');
+});
+
 test('姓名和工号查询均以最新 info 防抖，并提交真实服务规范化的人员', async ({ page }) => {
   await mountPicker(page);
   const picker = page.locator('#workflow-person-picker-test');
@@ -148,7 +197,7 @@ test('姓名和工号查询均以最新 info 防抖，并提交真实服务规�
   await page.clock.fastForward(1);
   await expect.poll(async () => (await snapshot(page)).calls).toEqual([{ info: '测试用户' }]);
   await resolveQuery(page, 0, [user('w123')]);
-  const person = picker.getByRole('option');
+  const person = page.getByRole('option');
   await expect(person).toHaveCount(1);
   await expect(person).toContainText('测试用户');
   await expect(person).toContainText('w123');
@@ -157,7 +206,7 @@ test('姓名和工号查询均以最新 info 防抖，并提交真实服务规�
   await person.click();
   expect((await snapshot(page)).selected).toEqual(normalized(user('w123')));
   await expect(search).toHaveValue(/测试用户.*w123/);
-  await expect(picker.getByRole('listbox')).toBeHidden();
+  await expect(page.getByRole('listbox')).toBeHidden();
 
   await picker.getByRole('button', { name: /清空/ }).click();
   await expect(search).toHaveValue('');
@@ -175,7 +224,7 @@ test('姓名和工号查询均以最新 info 防抖，并提交真实服务规�
     .poll(async () => (await snapshot(page)).calls)
     .toEqual([{ info: '测试用户' }, { info: 'w123' }]);
   await resolveQuery(page, 1, [user('w123')]);
-  await picker.getByRole('option').click();
+  await page.getByRole('option').click();
   expect((await snapshot(page)).updates).toEqual([
     normalized(user('w123')),
     null,
@@ -210,7 +259,7 @@ test('改词后的防抖窗口和清空操作都会立即使在途请求失效',
 
   await search.fill('second');
   await resolveQuery(page, 0, [user('w-old-first', '旧查询人员')]);
-  await expect(picker.getByRole('option')).toHaveCount(0);
+  await expect(page.getByRole('option')).toHaveCount(0);
   await page.clock.fastForward(249);
   expect((await snapshot(page)).calls).toHaveLength(1);
   await page.clock.fastForward(1);
@@ -218,7 +267,7 @@ test('改词后的防抖窗口和清空操作都会立即使在途请求失效',
   await picker.getByRole('button', { name: /清空/ }).click();
   await resolveQuery(page, 1, [user('w-old-second', '清空前人员')]);
   await expect(search).toHaveValue('');
-  await expect(picker.getByRole('option')).toHaveCount(0);
+  await expect(page.getByRole('option')).toHaveCount(0);
   await page.clock.fastForward(500);
   expect((await snapshot(page)).calls).toEqual([{ info: 'first' }, { info: 'second' }]);
   expect((await snapshot(page)).selected).toBeNull();
@@ -230,10 +279,10 @@ test('改词后的防抖窗口和清空操作都会立即使在途请求失效',
   await page.clock.fastForward(250);
   await expect.poll(async () => (await snapshot(page)).calls).toHaveLength(4);
   await resolveQuery(page, 3, [user('w-latest', '最新人员')]);
-  await expect(picker.getByRole('option')).toContainText('最新人员');
+  await expect(page.getByRole('option')).toContainText('最新人员');
   await resolveQuery(page, 2, [user('w-old-third', '更迟返回的旧人员')]);
-  await expect(picker.getByRole('option')).toHaveCount(1);
-  await expect(picker.getByRole('option')).toContainText('最新人员');
+  await expect(page.getByRole('option')).toHaveCount(1);
+  await expect(page.getByRole('option')).toContainText('最新人员');
 });
 
 test('空结果和请求错误有反馈，重试仍使用同一查询并能恢复选择', async ({ page }) => {
@@ -244,8 +293,8 @@ test('空结果和请求错误有反馈，重试仍使用同一查询并能恢�
   await page.clock.fastForward(250);
   await expect.poll(async () => (await snapshot(page)).calls).toHaveLength(1);
   await resolveQuery(page, 0, []);
-  await expect(picker.getByRole('option')).toHaveCount(0);
-  await expect(picker.getByText(/未找到|无匹配|暂无.*人员/)).toBeVisible();
+  await expect(page.getByRole('option')).toHaveCount(0);
+  await expect(page.getByText(/未找到|无匹配|暂无.*人员/)).toBeVisible();
 
   await search.fill('测试用户');
   await page.clock.fastForward(250);
@@ -256,15 +305,15 @@ test('空结果和请求错误有反馈，重试仍使用同一查询并能恢�
       '人员服务暂不可用',
     ),
   );
-  await expect(picker.getByRole('status')).toContainText('人员服务暂不可用');
-  await expect(picker.getByRole('option')).toHaveCount(0);
-  await picker.getByRole('button', { name: '重试', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('人员服务暂不可用');
+  await expect(page.getByRole('option')).toHaveCount(0);
+  await page.getByRole('button', { name: '重试', exact: true }).press('Enter');
   await expect
     .poll(async () => (await snapshot(page)).calls)
     .toEqual([{ info: 'nobody' }, { info: '测试用户' }, { info: '测试用户' }]);
   await resolveQuery(page, 2, [user('w123')]);
-  await expect(picker.getByText('人员服务暂不可用', { exact: true })).toHaveCount(0);
-  await picker.getByRole('option').click();
+  await expect(page.getByText('人员服务暂不可用', { exact: true })).toHaveCount(0);
+  await page.getByRole('option').click();
   expect((await snapshot(page)).selected).toEqual(normalized(user('w123')));
 });
 
@@ -276,20 +325,20 @@ test('键盘可选择候选，Esc 关闭下拉且不会冒泡关闭父级界面'
   await page.clock.fastForward(250);
   await expect.poll(async () => (await snapshot(page)).calls).toHaveLength(1);
   await resolveQuery(page, 0, [user('w123', '第一用户'), user('w456', '第二用户')]);
-  await expect(picker.getByRole('option')).toHaveCount(2);
+  await expect(page.getByRole('option')).toHaveCount(2);
   await search.press('ArrowDown');
   await search.press('Enter');
   expect((await snapshot(page)).selected).toEqual(normalized(user('w123', '第一用户')));
-  await expect(picker.getByRole('listbox')).toBeHidden();
+  await expect(page.getByRole('listbox')).toBeHidden();
 
   await picker.getByRole('button', { name: /清空/ }).click();
   await search.fill('用户');
   await page.clock.fastForward(250);
   await expect.poll(async () => (await snapshot(page)).calls).toHaveLength(2);
   await resolveQuery(page, 1, [user('w456', '第二用户')]);
-  await expect(picker.getByRole('listbox')).toBeVisible();
+  await expect(page.getByRole('listbox')).toBeVisible();
   await search.press('Escape');
-  await expect(picker.getByRole('listbox')).toBeHidden();
+  await expect(page.getByRole('listbox')).toBeHidden();
   await expect(search).toBeFocused();
   expect((await snapshot(page)).escaped).toBe(0);
   expect((await snapshot(page)).selected).toBeNull();
@@ -313,6 +362,6 @@ test('中文输入法组词期间不发送请求，组合结束后仅查询完�
   await page.clock.fastForward(1);
   await expect.poll(async () => (await snapshot(page)).calls).toEqual([{ info: '测试用户' }]);
   await resolveQuery(page, 0, [user('w123')]);
-  await expect(picker.getByRole('option')).toContainText('测试用户');
+  await expect(page.getByRole('option')).toContainText('测试用户');
   expect((await snapshot(page)).selected).toBeNull();
 });

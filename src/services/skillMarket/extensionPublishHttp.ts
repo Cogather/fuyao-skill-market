@@ -559,6 +559,13 @@ export async function queryHttpExtensionDetail(
     scope,
     releases,
   )[0]!;
+  const publishCheck = asRecord(data.publishCheck);
+  if (typeof publishCheck.canPublish === 'boolean') {
+    detail.publishCheck = {
+      canPublish: publishCheck.canPublish,
+      message: typeof publishCheck.message === 'string' ? publishCheck.message : '',
+    };
+  }
   detail.extension.name ||= extensionName;
   return detail;
 }
@@ -600,6 +607,9 @@ function componentBody(
 }
 
 export async function publishHttpExtension(input: PublishExtensionInput): Promise<void> {
+  if (input.scene.publishCheck?.canPublish === false) {
+    throw new Error(input.scene.publishCheck.message);
+  }
   const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
   if (!isCatalogItemNameValid(extensionName)) {
     throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');
