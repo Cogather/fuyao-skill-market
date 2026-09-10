@@ -117,7 +117,7 @@ defineExpose({ validateBeforeLeave });
 <template>
   <div class="configuration-page harness-viewport-page">
     <header class="configuration-hero harness-page-heading">
-      <h2 class="harness-page-title">权限配置管理</h2>
+      <h2 class="harness-page-title">权限管理</h2>
       <p class="harness-page-description">
         集中维护各项 Harness 规划能力共用的场景、场景工作流的环节与节点及部门人员权限。
       </p>

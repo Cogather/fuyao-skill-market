@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import HarnessSelect from './HarnessSelect.vue';
 import {
   latestPlanningTaskVersion,
   planningTaskCapabilityLabel,
@@ -37,7 +38,10 @@ const remoteTasks = usesRemotePlanningTasks();
 let reloadSequence = 0;
 const keyword = ref('');
 const page = ref(1);
-const pageSize = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const pageSize = ref(10);
+const jumpPage = ref<string | number>('1');
+const tableScroll = ref<HTMLElement | null>(null);
 const toast = ref('');
 const progressDrafts = reactive<Record<string, number>>({});
 let toastTimer: number | null = null;
@@ -125,15 +129,19 @@ const filteredTasks = computed(() => {
   });
 });
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredTasks.value.length / pageSize)));
-const pagedTasks = computed(() => {
-  const start = (page.value - 1) * pageSize;
-  return filteredTasks.value.slice(start, start + pageSize);
-});
-const pageStart = computed(() =>
-  filteredTasks.value.length === 0 ? 0 : (page.value - 1) * pageSize + 1,
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredTasks.value.length / pageSize.value)),
 );
-const pageEnd = computed(() => Math.min(page.value * pageSize, filteredTasks.value.length));
+const pageNumbers = computed(() =>
+  Array.from(
+    { length: Math.min(7, totalPages.value) },
+    (_, index) => Math.max(1, Math.min(page.value - 3, totalPages.value - 6)) + index,
+  ),
+);
+const pagedTasks = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredTasks.value.slice(start, start + pageSize.value);
+});
 const todayNotices = computed(() => notices.value.filter((notice) => notice.day === '今天'));
 const yesterdayNotices = computed(() => notices.value.filter((notice) => notice.day === '昨天'));
 
@@ -295,12 +303,34 @@ function closeTask(): void {
 }
 
 function goPage(next: number): void {
-  page.value = Math.min(totalPages.value, Math.max(1, next));
+  page.value = Math.min(totalPages.value, Math.max(1, Math.trunc(next)));
+}
+
+function setPageSize(size: number): void {
+  if (!PAGE_SIZE_OPTIONS.includes(size)) return;
+  pageSize.value = size;
+  page.value = 1;
+  jumpPage.value = '1';
+}
+
+function goToPage(): void {
+  const requestedPage = Number(jumpPage.value);
+  if (String(jumpPage.value).trim() && Number.isFinite(requestedPage)) goPage(requestedPage);
+  jumpPage.value = String(page.value);
 }
 
 watch(keyword, () => {
   page.value = 1;
 });
+watch(totalPages, () => goPage(page.value));
+watch(
+  [page, pageSize, keyword],
+  () => {
+    jumpPage.value = String(page.value);
+    if (tableScroll.value) tableScroll.value.scrollTop = 0;
+  },
+  { flush: 'post' },
+);
 watch([() => props.userId, () => props.capabilityType], () => void reload());
 onMounted(() => void reload());
 onBeforeUnmount(() => {
@@ -333,7 +363,14 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <div class="task-table-wrap">
+        <div
+          ref="tableScroll"
+          class="task-table-wrap"
+          role="region"
+          aria-label="任务列表"
+          tabindex="0"
+          :aria-busy="loading"
+        >
           <table class="task-table">
             <colgroup>
               <col class="task-col-name" />
@@ -424,16 +461,84 @@ onBeforeUnmount(() => {
           </table>
         </div>
 
-        <footer class="task-pagination">
-          <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ filteredTasks.length }} 条</span>
-          <div>
-            <button type="button" :disabled="page <= 1" @click="goPage(page - 1)">上一页</button>
-            <strong>{{ page }} / {{ totalPages }}</strong>
-            <button type="button" :disabled="page >= totalPages" @click="goPage(page + 1)">
-              下一页
-            </button>
+        <nav class="task-pagination" aria-label="任务分页">
+          <span class="task-page-total" aria-live="polite">共 {{ filteredTasks.length }} 条</span>
+          <div class="task-page-controls">
+            <HarnessSelect
+              class="task-page-size"
+              aria-label="每页条数"
+              :model-value="pageSize"
+              :searchable="false"
+              :options="PAGE_SIZE_OPTIONS.map((size) => ({ value: size, label: size + '条/页' }))"
+              @change="setPageSize(Number($event))"
+            />
+            <div class="task-page-navigation">
+              <button
+                class="task-page-btn icon"
+                type="button"
+                aria-label="上一页"
+                title="上一页"
+                :disabled="page <= 1"
+                @click="goPage(page - 1)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="m14 6-6 6 6 6"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                v-for="pageNumber in pageNumbers"
+                :key="pageNumber"
+                class="task-page-btn num"
+                :class="{ active: page === pageNumber }"
+                type="button"
+                :aria-label="`第 ${pageNumber} 页`"
+                :aria-current="page === pageNumber ? 'page' : undefined"
+                @click="goPage(pageNumber)"
+              >
+                {{ pageNumber }}
+              </button>
+              <button
+                class="task-page-btn icon"
+                type="button"
+                aria-label="下一页"
+                title="下一页"
+                :disabled="page >= totalPages"
+                @click="goPage(page + 1)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="m10 6 6 6-6 6"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <label class="task-page-jump">
+              前往
+              <input
+                v-model="jumpPage"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                :max="totalPages"
+                step="1"
+                aria-label="跳转页码"
+                @keydown.enter.prevent="goToPage"
+                @blur="goToPage"
+              />
+              页
+            </label>
           </div>
-        </footer>
+        </nav>
       </div>
     </div>
 
@@ -556,7 +661,8 @@ onBeforeUnmount(() => {
                     <pre
                       v-if="expandedDetailFilePath === file.path"
                       class="task-detail-file-content"
-                      >{{ file.loading ? '正在加载…' : file.error || file.content || '(空)' }}</pre>
+                      >{{ file.loading ? '正在加载…' : file.error || file.content || '(空)' }}</pre
+                    >
                   </li>
                 </ul>
                 <div v-else class="task-detail-state">暂无文件</div>
@@ -711,15 +817,19 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  padding: 0 16px;
+  border-radius: 8px;
+  border-color: #e2e8f0;
+  box-shadow: none;
 }
 
 .task-toolbar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 15px 17px;
-  border-bottom: 1px solid #e9eef5;
+  padding: 12px 0;
 }
 
 .task-toolbar > div:first-child {
@@ -728,13 +838,13 @@ onBeforeUnmount(() => {
 }
 
 .task-toolbar > div:first-child strong {
-  font-size: 15px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .task-toolbar > div:first-child small {
-  color: #8995a7;
-  font-size: 10px;
+  color: #667085;
+  font-size: 12px;
 }
 
 .task-toolbar__actions {
@@ -744,11 +854,11 @@ onBeforeUnmount(() => {
 }
 
 .task-toolbar input {
+  box-sizing: border-box;
   height: 36px;
   padding: 0 10px;
-  border: 1px solid #d9e1ed;
-  border-radius: 8px;
-  outline: 0;
+  border: 1px solid #8593a5;
+  border-radius: 6px;
   background: #fff;
   color: #40506a;
 }
@@ -762,6 +872,13 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 0;
   overflow: auto;
+}
+
+.task-table-wrap:focus-visible,
+.task-toolbar input:focus-visible,
+.task-pagination :is(button, input):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 
 .task-table {
@@ -799,28 +916,42 @@ onBeforeUnmount(() => {
 }
 
 .task-table th {
-  height: 42px;
-  padding: 0 11px;
-  border-bottom: 1px solid #e9eef5;
-  background: #f8f9fc;
-  color: #7f8b9e;
-  font-size: 10px;
-  font-weight: 800;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #eaf1fb;
+  color: #405779;
+  font-size: 12px;
+  font-weight: 600;
   text-align: center;
 }
 
 .task-table td {
-  height: 70px;
-  padding: 8px 11px;
-  border-bottom: 1px solid #eff2f7;
-  color: #435169;
-  font-size: 10px;
+  box-sizing: border-box;
+  height: 64px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
   text-align: center;
 }
 
+.task-table th:first-child,
 .task-table td:first-child {
-  padding-left: 24px;
   text-align: left;
+}
+
+.task-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.task-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .task-name-cell {
@@ -858,19 +989,20 @@ onBeforeUnmount(() => {
 }
 
 .task-name-cell strong {
-  color: #223149;
-  font-size: 11px;
+  color: #17233d;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .task-name-cell small,
 .owner-cell small {
-  color: #8b96a7;
-  font-size: 9px;
+  color: #667085;
+  font-size: 12px;
 }
 
 .owner-cell strong {
-  color: #3c4a61;
-  font-size: 10px;
+  color: #334155;
+  font-size: 13px;
 }
 
 .status-badge {
@@ -1065,33 +1197,99 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 50px;
-  padding: 0 16px;
-  border-top: 1px solid #edf1f6;
-  color: #8b96a7;
-  font-size: 9px;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid #e2e8f0;
+  color: #667085;
+  font-size: 12px;
 }
 
-.task-pagination > div {
+.task-page-total {
+  flex-shrink: 0;
+}
+
+.task-page-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.task-page-navigation {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
-.task-pagination button {
-  height: 28px;
-  padding: 0 9px;
-  border: 1px solid #dce3ed;
+.task-page-controls .task-page-size,
+.task-page-jump input {
+  box-sizing: border-box;
+  width: auto;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid #8593a5;
   border-radius: 6px;
   background: #fff;
-  color: #536178;
-  font-size: 9px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.task-page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.task-page-jump input {
+  width: 52px;
+  text-align: center;
+  appearance: textfield;
+}
+
+.task-page-jump input::-webkit-inner-spin-button,
+.task-page-jump input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.task-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 32px;
+  min-width: 32px;
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
   cursor: pointer;
 }
 
-.task-pagination button:disabled {
+.task-page-btn.icon {
+  width: 32px;
+  padding: 0;
+}
+
+.task-page-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.task-page-btn.num.active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.task-page-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 .notification-panel {
@@ -1628,15 +1826,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 820px) {
-  .task-dashboard {
-    height: auto;
-    overflow: visible;
-  }
-
-  .task-board {
-    height: auto;
-  }
-
   .task-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -1648,6 +1837,11 @@ onBeforeUnmount(() => {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric-card {
+    min-height: 64px;
+    padding: 10px 14px;
   }
 
   .task-toolbar__actions {
@@ -1694,29 +1888,41 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 560px) {
-  .metric-grid {
-    grid-template-columns: 1fr;
-  }
-
   .task-pagination {
     align-items: flex-start;
     flex-direction: column;
     justify-content: center;
     gap: 7px;
   }
+
+  .task-page-controls {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .task-page-navigation {
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+
+  .task-page-btn {
+    min-width: 28px;
+    height: 28px;
+    padding: 4px;
+  }
+
+  .task-page-btn.icon {
+    width: 28px;
+  }
 }
 
 /* Responsive task typography for wide screens */
 @media (min-width: 1440px) {
-  .task-toolbar > div:first-child strong,
   .notification-panel > header strong {
     font-size: clamp(14px, 0.86vw, 17px);
   }
 
-  .task-toolbar > div:first-child small,
-  .task-table th,
-  .task-table td,
-  .owner-cell strong,
   .status-badge,
   .progress-input,
   .task-actions button,
@@ -1724,17 +1930,10 @@ onBeforeUnmount(() => {
     font-size: clamp(10px, 0.625vw, 13px);
   }
 
-  .task-name-cell strong {
-    font-size: clamp(11px, 0.7vw, 14px);
-  }
-
-  .task-name-cell small,
-  .owner-cell small,
   .progress-cell > strong,
   .notification-panel h4,
   .notification-panel article p,
-  .notification-panel time,
-  .task-pagination {
+  .notification-panel time {
     font-size: clamp(9px, 0.56vw, 12px);
   }
 

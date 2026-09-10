@@ -1615,8 +1615,13 @@ async function createAsset() {
                   </button>
                   <div v-else class="commands">
                     <div v-for="command in workflow.commands" :key="command.id">
-                      <code>{{ command.name }}</code
-                      ><span v-if="command.description?.trim()">{{ command.description }}</span>
+                      <code :title="command.name">{{ command.name }}</code
+                      ><span
+                        v-if="command.description?.trim()"
+                        class="command-description"
+                        :title="command.description"
+                        >{{ command.description }}</span
+                      >
                     </div>
                   </div>
                 </section>
@@ -3064,7 +3069,7 @@ h4 small {
 }
 .commands div {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: fit-content(66.666667%) minmax(0, 1fr);
   gap: 8px;
   padding: 7px 9px;
   border-radius: 7px;
@@ -3073,9 +3078,19 @@ h4 small {
   font-size: 11px;
 }
 .commands code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #7dd3fc;
   padding: 0;
   background: transparent;
+}
+.commands .command-description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .stage-title {
   border-top: 1px solid #f3f4f6;
@@ -4389,7 +4404,13 @@ h4 small {
   margin-bottom: 0;
 }
 
-@media (min-width: 1101px) and (min-height: 900px) {
+@media (min-width: 1101px) {
+  .scenario-page {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .workspace {
     flex: 1;
     min-height: 0;

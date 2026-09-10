@@ -774,7 +774,7 @@ const visibleHistory = computed(() => modalHistory.value.slice(0, historyLimit.v
 async function openPublishModal(scene: ExtensionScene): Promise<void> {
   const blockedReason = scene.publishing
     ? '当前已有发布进行中'
-    : !scene.publishable
+    : !scene.publishable && !(transportIsHttp && props.releaseContext)
       ? '场景不完备，无法发布'
       : '';
   if (blockedReason && !props.releaseContext) {

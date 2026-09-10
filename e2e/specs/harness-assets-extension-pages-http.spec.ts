@@ -488,7 +488,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       await page.getByRole('option', { name: '目标组织', exact: true }).click();
       await expect(orgSelect).toHaveAttribute('data-value', 'org-target');
       if (readyStatus === '不完备') {
-        await expect(publish.getByRole('alert')).toContainText('场景不完备');
+        await expect(publish.getByText('场景不完备，无法发布', { exact: true })).toHaveCount(0);
         await expect(publish.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
       }
     });
@@ -906,7 +906,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     await page.getByRole('button', { name: '重新加载', exact: true }).click();
     const publish = page.getByRole('region', { name: /发布 Extension/ });
     await expect(publish).toBeVisible();
-    await expect(publish.getByRole('alert')).toContainText('场景不完备');
+    await expect(publish.getByText('场景不完备，无法发布', { exact: true })).toHaveCount(0);
     await expect(publish.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
     await publish.getByRole('button', { name: '重新加载', exact: true }).click();
     await expect(publish.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();

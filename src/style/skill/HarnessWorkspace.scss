@@ -433,20 +433,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
   }
 
   .commands div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-    padding: 8px 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--hw-text);
-    font-size: 13px;
     overflow-wrap: anywhere;
-  }
-
-  .commands code {
-    color: var(--hw-primary-hover);
-    font-size: 13px;
-    white-space: pre-wrap;
   }
 
   .stage {

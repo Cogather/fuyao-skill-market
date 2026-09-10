@@ -99,8 +99,8 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
   { key: 'planning', label: 'Skill 规划', description: '统一管理各部门规划建设中的 Skill。' },
   { key: 'agent', label: 'Agent 规划', description: '统一规划和管理 Agent 能力。' },
   { key: 'extension', label: 'Extension 发布', description: '集中管理 Extension 的发布流程。' },
-  { key: 'settings', label: '权限配置管理', description: '维护 Harness 管理相关的公共配置。' },
-  { key: 'tasks', label: '任务管理', description: '集中跟踪当前用户负责的 Skill 任务。' },
+  { key: 'settings', label: '权限管理', description: '维护 Harness 管理相关的公共配置。' },
+  { key: 'tasks', label: '待办任务', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
 const showLegacyPlanningTabs = false;
 
@@ -461,9 +461,8 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              tab.key !== 'capabilities' &&
-              (showLegacyPlanningTabs ||
-                !['command', 'planning', 'agent', 'extension'].includes(tab.key))
+              showLegacyPlanningTabs ||
+              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -937,7 +936,8 @@ onBeforeRouteLeave(() => {
   padding: 14px 50px 34px;
 }
 
-#harness-panel-workflows {
+#harness-panel-workflows,
+#harness-panel-tasks {
   overflow: hidden;
 }
 
@@ -991,6 +991,12 @@ onBeforeRouteLeave(() => {
   margin-top: 24px;
   color: #98a2b3;
   font-size: 12px;
+}
+
+@media (min-width: 1101px) {
+  #harness-panel-scenarios {
+    overflow: hidden;
+  }
 }
 
 @media (min-width: 1101px) and (min-height: 900px) {
