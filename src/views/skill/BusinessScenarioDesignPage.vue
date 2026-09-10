@@ -2062,8 +2062,10 @@ async function createAsset() {
         >
           <header>
             <div class="structure-info">
-              <b>{{ stage.name }}</b>
-              <small v-if="stage.description">{{ stage.description }}</small>
+              <b :title="stage.name">{{ stage.name }}</b>
+              <small v-if="stage.description" :title="stage.description">{{
+                stage.description
+              }}</small>
             </div>
             <span
               ><button @click="move(wizard.workflow.stages, stage.id, -1)">↑</button
@@ -2090,8 +2092,10 @@ async function createAsset() {
             >
               <div class="node-row">
                 <div class="structure-info">
-                  <b>{{ node.name }}</b>
-                  <small v-if="node.description">{{ node.description }}</small>
+                  <b :title="node.name">{{ node.name }}</b>
+                  <small v-if="node.description" :title="node.description">{{
+                    node.description
+                  }}</small>
                 </div>
                 <span
                   ><button @click="move(stage.steps, node.id, -1)">↑</button
@@ -2211,8 +2215,10 @@ async function createAsset() {
         <p v-if="!wizard.workflow.commands.length" class="hint">尚未选择 Command 入口。</p>
         <div v-for="command in wizard.workflow.commands" :key="command.id" class="command-row">
           <div class="command-details">
-            <code>{{ command.name }}</code>
-            <p v-if="command.description?.trim()">{{ command.description }}</p>
+            <code :title="command.name">{{ command.name }}</code>
+            <p v-if="command.description?.trim()" :title="command.description">
+              {{ command.description }}
+            </p>
           </div>
           <button
             type="button"
@@ -2395,15 +2401,21 @@ async function createAsset() {
           :key="stage.id"
           class="assignment"
         >
-          <b>{{ stage.name }}</b>
-          <small v-if="stage.description" class="assignment-description">{{
-            stage.description
-          }}</small>
+          <b :title="stage.name">{{ stage.name }}</b>
+          <small
+            v-if="stage.description"
+            class="assignment-description"
+            :title="stage.description"
+            >{{ stage.description }}</small
+          >
           <div v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)" :key="node.id">
-            <strong>{{ node.name }}</strong>
-            <small v-if="node.description" class="assignment-description">{{
-              node.description
-            }}</small>
+            <strong :title="node.name">{{ node.name }}</strong>
+            <small
+              v-if="node.description"
+              class="assignment-description"
+              :title="node.description"
+              >{{ node.description }}</small
+            >
             <div class="chips">
               <span v-for="id in wizard.nodeAssetsMap[node.id] || []" :key="id"
                 ><b
@@ -3557,6 +3569,26 @@ h4 small {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.structure-info b,
+.assignment > b,
+.assignment > div > strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wizard .structure-info small,
+.wizard .assignment-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .wizard .structure-info small,
 .wizard .assignment-description {
   margin: 2px 0 0;
@@ -3881,14 +3913,21 @@ h4 small {
   color: #334764;
   font-weight: 500;
   line-height: 1.6;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .command-details p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin: 4px 0 0;
   color: #7b8799;
   font-size: 12px;
   line-height: 1.6;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 .wizard .command-remove {

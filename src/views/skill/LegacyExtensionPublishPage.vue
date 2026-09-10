@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
+  getHttpExtensionSceneStatus,
   publishHttpExtension,
   queryHttpExtensionBindings,
   queryHttpExtensionHistory,
@@ -15,6 +16,8 @@ import {
   queryHttpPublishableOrganizations,
   retryHttpExtension,
   type ExtensionPublishChannel,
+  type ExtensionRelease,
+  type ExtensionScene,
   type ExtensionScope,
   type PublishableOrganization,
 } from '../../services/skillMarket/legacyExtensionPublishHttp';
@@ -24,9 +27,7 @@ import {
   type ExtensionCapability,
   type ExtensionCapabilityType,
   type ExtensionProduct,
-  type ExtensionRelease,
   type ExtensionReleaseItem,
-  type ExtensionScene,
 } from '../../services/skillMarket/extensionPublishMock';
 import {
   getProductCatalogItemNamePrefix,
@@ -643,8 +644,9 @@ function latestSuccessfulRelease(scene: ExtensionScene): ExtensionRelease | null
 
 function sceneStatus(scene: ExtensionScene): {
   label: string;
-  className: 'publishing' | 'published' | 'ready' | 'incomplete';
+  className: 'publishing' | 'published' | 'ready' | 'incomplete' | '';
 } {
+  if (transportIsHttp) return getHttpExtensionSceneStatus(scene);
   if (scene.publishing) return { label: '发布中', className: 'publishing' };
   if (latestSuccessfulRelease(scene)) return { label: '已发布', className: 'published' };
   if (scene.publishable) return { label: '就绪', className: 'ready' };
@@ -652,6 +654,7 @@ function sceneStatus(scene: ExtensionScene): {
 }
 
 function treeStatusLabel(scene: ExtensionScene): string {
+  if (transportIsHttp) return getHttpExtensionSceneStatus(scene).label;
   if (scene.publishing) return '发布中';
   const latest = latestSuccessfulRelease(scene);
   if (latest?.version) return `v${displayVersion(latest.version)}`;
@@ -662,10 +665,11 @@ function displayVersion(version: string): string {
   return version.replace(/^v(?=\d)/i, '') || '—';
 }
 
-function releaseStatusClass(status: ExtensionRelease['status']): 'ok' | 'fail' | 'pending' {
+function releaseStatusClass(status: ExtensionRelease['status']): 'ok' | 'fail' | 'pending' | '' {
   if (status === '成功') return 'ok';
   if (status === '失败') return 'fail';
-  return 'pending';
+  if (status === '进行中') return 'pending';
+  return '';
 }
 
 function capabilityItems(scene: ExtensionScene): ExtensionReleaseItem[] {
@@ -1095,7 +1099,11 @@ onBeforeUnmount(() => {
                 >
                   <span class="primary-tag">{{ scene.primary }}</span>
                   <span class="scene-button__name">{{ scene.name }}</span>
-                  <span class="tree-status" :class="sceneStatus(scene).className">
+                  <span
+                    v-if="treeStatusLabel(scene)"
+                    class="tree-status"
+                    :class="sceneStatus(scene).className"
+                  >
                     <i aria-hidden="true"></i>{{ treeStatusLabel(scene) }}
                   </span>
                 </button>
@@ -1114,7 +1122,11 @@ onBeforeUnmount(() => {
           <header class="scene-header">
             <div class="scene-header__main">
               <div class="scene-title-row">
-                <span class="scene-status" :class="sceneStatus(currentScene).className">
+                <span
+                  v-if="sceneStatus(currentScene).label"
+                  class="scene-status"
+                  :class="sceneStatus(currentScene).className"
+                >
                   {{ sceneStatus(currentScene).label }}
                 </span>
                 <h3>{{ currentScene.primary }} / {{ currentScene.name }}</h3>

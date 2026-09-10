@@ -3,9 +3,9 @@ import type {
   ExtensionCapability,
   ExtensionCapabilityType,
   ExtensionProduct,
-  ExtensionRelease,
+  ExtensionRelease as BaseExtensionRelease,
   ExtensionReleaseItem,
-  ExtensionScene,
+  ExtensionScene as BaseExtensionScene,
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
@@ -14,6 +14,36 @@ import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
+
+export type ExtensionRelease = Omit<BaseExtensionRelease, 'status'> & {
+  status: string;
+  /** 保留接口原始值，场景标签不再从历史成功记录推导状态。 */
+  publishStatus?: string;
+};
+
+export type ExtensionScene = Omit<BaseExtensionScene, 'releases' | 'publishing'> & {
+  releases: ExtensionRelease[];
+  publishing: ExtensionRelease | null;
+};
+
+export function getHttpExtensionSceneStatus(scene: ExtensionScene): {
+  label: string;
+  className: 'publishing' | 'published' | 'ready' | 'incomplete' | '';
+} {
+  const latest = [...scene.releases, ...(scene.publishing ? [scene.publishing] : [])].sort(
+    (left, right) => right.publishedAt.localeCompare(left.publishedAt),
+  )[0];
+  const publishStatus = latest?.publishStatus ?? '';
+  if (!publishStatus) return { label: '', className: '' };
+  if (latest?.status === '成功' && latest.version) {
+    return { label: `v${latest.version.replace(/^v(?=\d)/i, '')}`, className: 'published' };
+  }
+  return {
+    label: publishStatus,
+    className:
+      latest?.status === '进行中' ? 'publishing' : latest?.status === '失败' ? 'incomplete' : '',
+  };
+}
 
 export type ExtensionScope = {
   dimType: '产品级' | '部门级';
@@ -130,7 +160,8 @@ function normalizeReleaseStatus(value: unknown): ExtensionRelease['status'] {
   const status = normalizeText(value).toLowerCase();
   if (/失败|fail|error|rejected/.test(status)) return '失败';
   if (/进行|发布中|pending|processing|running|progress/.test(status)) return '进行中';
-  return '成功';
+  if (/^(成功|发布成功|success|succeeded|published)$/.test(status)) return '成功';
+  return normalizeText(value);
 }
 
 function normalizeReleaseChannel(value: unknown): ExtensionRelease['channel'] {
@@ -191,6 +222,7 @@ function mapHistoryRelease(value: unknown): HttpExtensionRelease {
       record.publishedAt ?? record.publishAt ?? record.updatedAt ?? record.createdAt,
     ),
     status: normalizeReleaseStatus(record.publishStatus ?? record.status),
+    publishStatus: readText(record, ['publishStatus']),
     organization: readText(record, ['targetOrgName', 'organizationName', 'orgName']),
     items: mapReleaseItems(record),
     failReason: readText(record, ['errorMessage']),

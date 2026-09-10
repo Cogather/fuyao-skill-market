@@ -28,9 +28,8 @@ const scene = {
 
 try {
   const { default: request } = await server.ssrLoadModule('/src/services/skillMarket/request.ts');
-  const { queryHttpExtensionBindings } = await server.ssrLoadModule(
-    '/src/services/skillMarket/legacyExtensionPublishHttp.ts',
-  );
+  const { queryHttpExtensionBindings, queryHttpExtensionHistory, getHttpExtensionSceneStatus } =
+    await server.ssrLoadModule('/src/services/skillMarket/legacyExtensionPublishHttp.ts');
   const calls = [];
   let bindings = success([
     {
@@ -58,7 +57,7 @@ try {
     extensionName: 'udm-extension',
     description: '旧发布历史说明',
   });
-  const history = success([
+  let history = success([
     release('other', '其他场景', '99.0', '发布成功', '2026-09-10'),
     release('running', '代码开发', '0.3', '发布中', '2026-09-09'),
     release('failed', '代码开发', '0.2', '发布失败', '2026-09-08'),
@@ -94,6 +93,7 @@ try {
     assert.equal(result.capabilities.skill[0].publishDate, '2026-08-01');
     assert.equal(result.extension.description, '旧发布历史说明');
     assert.equal(result.publishing.version, '0.3');
+    assert.equal(getHttpExtensionSceneStatus(result).label, '发布中');
     assert.deepEqual(
       result.releases.map((item) => [item.version, item.status]),
       [
@@ -102,6 +102,32 @@ try {
       ],
     );
   }
+  for (const [publishStatus, version, label] of [
+    ['发布失败', '0.5', '发布失败'],
+    ['等待审批', '0.5', '等待审批'],
+    ['发布成功', '0.5', 'v0.5'],
+  ]) {
+    history = success([
+      release('latest', '代码开发', version, publishStatus, '2026-09-10'),
+      release('older-success', '代码开发', '0.1', '发布成功', '2026-09-09'),
+    ]);
+    const result = await queryHttpExtensionBindings('user-1', scope, scene);
+    assert.equal(
+      getHttpExtensionSceneStatus(result).label,
+      label,
+      'latest publishStatus controls display without falling back to an older successful version',
+    );
+  }
+  history = success([
+    release('unknown', '代码开发', '0.5', '等待审批', '2026-09-10'),
+    release('missing', '代码开发', '0.4', undefined, '2026-09-09'),
+  ]);
+  const unknownHistory = await queryHttpExtensionHistory(scope, scene);
+  assert.deepEqual(
+    unknownHistory.releases.map((item) => item.status),
+    ['等待审批', ''],
+    'unknown and missing publication statuses must never default to success',
+  );
   bindings = success([]);
   assert.deepEqual(await queryHttpExtensionBindings('user-1', scope, scene), scene);
   bindings = { meta: { success: false, message: '旧绑定接口失败' }, data: null };
