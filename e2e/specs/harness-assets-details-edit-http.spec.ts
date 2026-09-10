@@ -243,7 +243,7 @@ test.describe('资产详情统一编辑 HTTP', () => {
     await expect(page.getByRole('button', { name: '保存中…', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeDisabled();
     await expect(page.getByRole('textbox', { name: '名称', exact: true })).toBeDisabled();
     await expect(page.getByRole('combobox', { name: '责任人', exact: true })).toBeDisabled();
     await expect(page.getByRole('combobox', { name: '版本', exact: true })).toBeDisabled();

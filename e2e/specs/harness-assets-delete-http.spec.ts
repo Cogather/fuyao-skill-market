@@ -61,6 +61,7 @@ async function prepare(
       };
     } else if (path.endsWith('/components/detail')) {
       data = {
+        canEdit: true,
         ownerName: '删除测试用户',
         ownerId: 'delete-user',
         name: assetName,

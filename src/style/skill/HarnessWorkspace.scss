@@ -766,15 +766,13 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     line-height: 1.7;
   }
 
-  // The embedded release form uses page spacing and a comfortable reading width.
+  // Align the embedded release form with the panel header and footer spacing.
   .extension-page--embedded :is(.modal-body, .modal-header, .modal-footer) {
     padding: 16px 24px;
   }
 
   .extension-page--embedded .publish-content {
     width: 100%;
-    max-width: 1120px;
-    margin-inline: auto;
   }
 
   .extension-page--embedded .modal-field {

@@ -1650,7 +1650,13 @@ onBeforeUnmount(() => {
                 重新加载组织
               </button>
             </div>
-            <p v-if="modalScene.publishCheck?.message" class="publish-check-message" role="status">
+            <p
+              v-if="
+                modalScene.publishCheck?.canPublish === false && modalScene.publishCheck.message
+              "
+              class="publish-check-message"
+              role="status"
+            >
               {{ modalScene.publishCheck.message }}
             </p>
             <p v-if="publishError" class="modal-error" role="alert">{{ publishError }}</p>

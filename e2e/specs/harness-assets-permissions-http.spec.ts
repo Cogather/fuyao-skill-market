@@ -103,20 +103,24 @@ async function prepare(
 test.describe('资产详情权限 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
   for (const type of ['Agent', 'Skill', 'Command']) {
-    test(`${type} canEdit=true 可编辑，非责任人即使同名且是开发责任人也看不到删除`, async ({
-      page,
-    }) => {
+    test(`${type} canEdit=true 可编辑和删除，不要求当前用户是责任人`, async ({ page }) => {
       const { writes } = await prepare(page, type, { canEdit: true, ownerId: 'other-user' });
       await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
-      await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
       await page.getByRole('button', { name: '编辑', exact: true }).click();
       await page.getByRole('textbox', { name: '描述', exact: true }).fill('允许保存的描述');
       await page.getByRole('button', { name: '保存', exact: true }).click();
       await expect(page.locator('.asset-detail__description')).toHaveText('允许保存的描述');
       expect(writes).toHaveLength(1);
+      await page.getByRole('button', { name: '删除资产', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: `删除 ${type} 资产` });
+      await dialog.getByRole('button', { name: '确认删除', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      expect(writes).toHaveLength(2);
+      expect(writes[1]!.method()).toBe('DELETE');
     });
 
-    test(`${type} 责任人没有 canEdit 时编辑禁用，但仍可打开删除确认`, async ({ page }) => {
+    test(`${type} canEdit=false 时责任人的编辑和删除按钮也置灰禁用`, async ({ page }) => {
       const { writes } = await prepare(page, type, {
         canEdit: false,
         listCanEdit: true,
@@ -133,9 +137,12 @@ test.describe('资产详情权限 HTTP', () => {
       await edit.evaluate((button) => button.removeAttribute('disabled'));
       await edit.click();
       await expect(page.getByRole('textbox', { name: '名称', exact: true })).toHaveCount(0);
-      await page.getByRole('button', { name: '删除资产', exact: true }).click();
-      await expect(page.getByRole('dialog', { name: `删除 ${type} 资产` })).toBeVisible();
-      await page.getByRole('button', { name: '取消', exact: true }).click();
+      const remove = page.getByRole('button', { name: '删除资产', exact: true });
+      await expect(remove).toBeDisabled();
+      await expect(remove).toHaveCSS('background-color', 'rgb(229, 231, 235)');
+      await remove.evaluate((button) => button.removeAttribute('disabled'));
+      await remove.click();
+      await expect(page.getByRole('dialog', { name: `删除 ${type} 资产` })).toHaveCount(0);
       expect(writes).toHaveLength(0);
     });
   }
@@ -144,12 +151,12 @@ test.describe('资产详情权限 HTTP', () => {
     test(`canEdit=${String(canEdit)} 不按 truthy 值授予编辑权限`, async ({ page }) => {
       const { writes } = await prepare(page, 'Command', { canEdit, ownerId: null });
       await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeDisabled();
-      await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeDisabled();
       expect(writes).toHaveLength(0);
     });
   }
 
-  test('责任人转交并保存后，原责任人的删除按钮立即隐藏', async ({ page }) => {
+  test('责任人转交并保存后，删除仍由 canEdit 决定', async ({ page }) => {
     const { writes } = await prepare(page, 'Command', { canEdit: true, ownerId: 'current-user' });
     await page.route('**/dataengineering/config-center/hw-userinfo**', (route) =>
       route.fulfill({
@@ -173,17 +180,17 @@ test.describe('资产详情权限 HTTP', () => {
     await page.getByRole('option', { name: /新责任人/ }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
     expect(writes[0]!.postDataJSON().ownerId).toBe('new-owner');
   });
 
   test('列表显式返回 canEdit 时透传，详情未给该字段可使用列表权限', async ({ page }) => {
     await prepare(page, 'Agent', { listCanEdit: true, ownerId: 'current-user-suffix' });
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
   });
 
-  test('详情加载中不授予权限，响应后显示责任人操作', async ({ page }) => {
+  test('详情加载中编辑和删除均禁用，响应后按 canEdit 启用', async ({ page }) => {
     const { releaseDetail } = await prepare(page, 'Skill', {
       canEdit: true,
       listCanEdit: true,
@@ -191,16 +198,16 @@ test.describe('资产详情权限 HTTP', () => {
       delayDetail: true,
     });
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeDisabled();
     releaseDetail();
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
   });
 
-  test('详情失败时，即使列表标记可编辑也禁用编辑并隐藏删除', async ({ page }) => {
+  test('详情失败时，即使列表标记可编辑也禁用编辑和删除', async ({ page }) => {
     await prepare(page, 'Agent', { listCanEdit: true, ownerId: 'current-user', failDetail: true });
     await expect(page.getByText('详情暂不可用', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeDisabled();
   });
 });

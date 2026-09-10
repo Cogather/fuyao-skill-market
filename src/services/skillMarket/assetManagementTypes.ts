@@ -85,7 +85,7 @@ export type HarnessAsset = {
   nextPublishVersion?: string;
   versions: string[];
   owner: string;
-  /** Mock 资产提供结构化责任人 ID；HTTP 权限以详情 ownerId 为准。 */
+  /** Mock 资产的结构化责任人 ID，仅用于人员信息。 */
   ownerId?: string;
   developer: string;
   departmentName: string;

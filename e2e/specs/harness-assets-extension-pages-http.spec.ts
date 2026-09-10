@@ -184,7 +184,9 @@ async function prepare(
 test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
-  test('publishCheck 控制确认发布并展示原文，再次进入使用最新检查结果', async ({ page }) => {
+  test('publishCheck 控制确认发布且仅在不可发布时展示提示，再次进入使用最新检查结果', async ({
+    page,
+  }) => {
     const { publishes } = await prepare(page, true);
     let publishCheck: { canPublish: boolean; message: string } | undefined;
     let readyStatus = '就绪';
@@ -239,7 +241,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       await expect(publish.getByLabel(/目标组织/)).toHaveAttribute('data-value', 'org-first');
       const confirm = publish.getByRole('button', { name: '确认发布', exact: true });
       const message = publish.locator('.publish-check-message');
-      if (scenario.check?.message) {
+      if (scenario.check?.canPublish === false && scenario.check.message) {
         await expect(message).toHaveText(scenario.check.message);
         await expect(message).toBeVisible();
       } else {
@@ -254,7 +256,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
         if (scenario.check?.canPublish) {
           await confirm.click();
           await expect(publish.getByRole('alert')).toHaveText('发布服务暂不可用');
-          await expect(message).toHaveText(scenario.check.message);
+          await expect(message).toHaveCount(0);
           expect(publishes).toHaveLength(1);
         }
       }
@@ -264,9 +266,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     expect(publishes).toHaveLength(1);
   });
 
-  test('已发布的 Extension 有权限时在卡片和详情显示发布按钮并可再次进入发布', async ({
-    page,
-  }) => {
+  test('已发布的 Extension 有权限时在卡片和详情显示发布按钮并可再次进入发布', async ({ page }) => {
     const { detailQueries } = await prepare(page, true);
     const records = [true, false, undefined].map((canPublish, index) => ({
       name: index === 0 ? 'product-b-build-extension' : `published-extension-${index}`,

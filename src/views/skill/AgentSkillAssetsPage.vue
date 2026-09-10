@@ -263,7 +263,7 @@ async function saveDetailEdits(): Promise<void> {
 
 function requestAssetDelete(): void {
   const asset = selectedAsset.value;
-  if (!asset || !canDeleteDetail.value || detailSaving.value || detailDraft.value) return;
+  if (!asset || !canEditDetail.value || detailSaving.value || detailDraft.value) return;
   deleteTarget.value = {
     asset: { ...asset },
     userId: props.userId,
@@ -273,12 +273,12 @@ function requestAssetDelete(): void {
 async function deleteCurrentAsset(): Promise<void> {
   if (!deleteTarget.value) throw new Error('请重新打开删除确认窗口');
   if (
-    !canDeleteDetail.value ||
+    !canEditDetail.value ||
     deleteTarget.value.userId !== props.userId ||
     !selectedAsset.value ||
     assetKey(deleteTarget.value.asset) !== assetKey(selectedAsset.value)
   ) {
-    throw new Error('仅当前资产的责任人可以删除该资产');
+    throw new Error('当前用户没有删除权限，请刷新后重试');
   }
   const detailCategory = detailComponent.value?.category?.trim();
   if (detailCategory && detailCategory !== deleteTarget.value.asset.category?.trim()) {
@@ -419,13 +419,6 @@ const canEditDetail = computed(() => {
   const permission = detailComponent.value?.canEdit;
   // An explicit detail denial (including null) must not fall back to list permission.
   return (permission === undefined ? selectedAsset.value?.canEdit : permission) === true;
-});
-const canDeleteDetail = computed(() => {
-  if (!detailPermissionsReady.value) return false;
-  const ownerId = transportIsHttp ? detailComponent.value?.ownerId : selectedAsset.value?.ownerId;
-  return (
-    typeof ownerId === 'string' && Boolean(ownerId.trim()) && ownerId.trim() === props.userId.trim()
-  );
 });
 const detailCategory = computed(
   () => (detailComponent.value?.category ?? selectedAsset.value?.category) || '—',
@@ -1076,11 +1069,11 @@ onBeforeUnmount(() => {
             取消
           </button>
           <button
-            v-if="canDeleteDetail"
             type="button"
             class="asset-delete-button"
             aria-label="删除资产"
-            :disabled="detailSaving || Boolean(detailDraft)"
+            :disabled="!canEditDetail || detailSaving || Boolean(detailDraft)"
+            :title="detailPermissionsReady && !canEditDetail ? '当前用户没有删除权限' : undefined"
             @click="requestAssetDelete"
           >
             <svg
@@ -1907,8 +1900,15 @@ onBeforeUnmount(() => {
   font-weight: 500;
   cursor: pointer;
 }
-.asset-delete-button:hover {
+.asset-delete-button:hover:not(:disabled) {
   background: #fef3f2;
+}
+
+.asset-delete-button:disabled {
+  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
 }
 
 .asset-detail {
