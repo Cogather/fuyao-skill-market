@@ -22,6 +22,7 @@ export async function resolveHarnessAssetMasterRecord(
 ): Promise<MasterRecord> {
   const [dimType = '', ...names] = text(asset.category).split('/');
   const dimName = names.join('/');
+  const dimCode = text(asset.dimCode);
   if (!['产品级', '部门级'].includes(dimType) || !dimName) {
     throw new Error('缺少资产归属，请刷新后重试');
   }
@@ -34,6 +35,7 @@ export async function resolveHarnessAssetMasterRecord(
       keyword: asset.name,
       dimType,
       dimName,
+      ...(dimCode ? { dimCode } : {}),
       pageNum,
       pageSize,
     });
@@ -52,7 +54,8 @@ export async function resolveHarnessAssetMasterRecord(
         id &&
         text(record[`${type.toLowerCase()}Name`] ?? record.name) === asset.name &&
         text(record.dimType) === dimType &&
-        text(record.dimName) === dimName
+        text(record.dimName) === dimName &&
+        (!dimCode || text(record.dimCode) === dimCode)
       )
         matches.set(id, record);
     }

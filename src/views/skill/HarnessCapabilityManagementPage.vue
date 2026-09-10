@@ -5,7 +5,7 @@ import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabil
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import type { HarnessCapabilityType } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
-import ExtensionPublishPage from './ExtensionPublishPage.vue';
+import ExtensionPublishPage from './LegacyExtensionPublishPage.vue';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -262,7 +262,8 @@ defineExpose({ openCatalogAction });
       <div>
         <h2 class="harness-page-title">资产清单</h2>
         <p class="harness-page-description">
-          统一维护 Command、Skill 和 Agent 的基础信息、责任分工与开发计划，支持资产导入和 Extension 发布。
+          统一维护 Command、Skill 和 Agent 的基础信息、责任分工与开发计划，支持资产导入和 Extension
+          发布。
         </p>
       </div>
     </header>
@@ -386,6 +387,7 @@ defineExpose({ openCatalogAction });
 }
 
 .capability-management-hero {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -515,23 +517,29 @@ defineExpose({ openCatalogAction });
 .capability-management-page {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .planning-tabs {
   flex-shrink: 0;
 }
 
-@media (min-width: 1101px) and (min-height: 900px) {
-  .capability-management-panel {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-  }
+.capability-management-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
 
-  .capability-management-panel > :deep(*) {
-    flex: 1;
-    min-height: 0;
-  }
+.capability-management-panel > :deep(*) {
+  flex: 1;
+  min-height: 0;
+}
+
+#capability-management-panel-extension :deep(.extension-hero) {
+  display: none;
 }
 </style>

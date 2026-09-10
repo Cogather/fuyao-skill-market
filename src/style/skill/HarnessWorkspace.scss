@@ -433,20 +433,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
   }
 
   .commands div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-    padding: 8px 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--hw-text);
-    font-size: 13px;
     overflow-wrap: anywhere;
-  }
-
-  .commands code {
-    color: var(--hw-primary-hover);
-    font-size: 13px;
-    white-space: pre-wrap;
   }
 
   .stage {
@@ -534,11 +521,6 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     overflow-y: auto;
     padding: 4px;
     margin: 0 -4px;
-  }
-
-  .person-editor .workflow-person-picker__popup {
-    max-height: none;
-    overflow: visible;
   }
 
   :is(
@@ -771,13 +753,13 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     line-height: 1.7;
   }
 
-  // The embedded release form uses page spacing and a comfortable reading width.
+  // Align the embedded release form with the panel header and footer spacing.
   .extension-page--embedded :is(.modal-body, .modal-header, .modal-footer) {
     padding: 16px 24px;
   }
 
-  .extension-page--embedded .modal-body:not(.history-body) > * {
-    max-width: 880px;
+  .extension-page--embedded .publish-content {
+    width: 100%;
   }
 
   .extension-page--embedded .modal-field {

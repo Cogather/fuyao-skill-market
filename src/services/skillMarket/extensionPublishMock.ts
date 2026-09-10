@@ -43,6 +43,8 @@ export type ExtensionScene = {
   primary: string;
   name: string;
   publishable: boolean;
+  /** 发布详情接口的检查结果，与场景就绪状态独立。 */
+  publishCheck?: { canPublish: boolean; message: string };
   extension: { name: string; description: string; version?: string };
   capabilities: Record<ExtensionCapabilityType, ExtensionCapability[]>;
   releases: ExtensionRelease[];

@@ -1,6 +1,7 @@
 import type { ExtensionReleaseContext } from './extensionPublishHttp';
 import type { SkillPlanningUserOption } from './skillPlanningShared';
 import type { HarnessAssetComponentDetailDto } from './apiTypes';
+import type { ExtensionScene } from './extensionPublishMock';
 
 export type HarnessAssetType = 'Agent' | 'Skill' | 'Command' | 'Extension';
 export type HarnessAssetFilter = 'all' | HarnessAssetType;
@@ -18,6 +19,19 @@ export type UpdateHarnessAssetPersonInput = {
   person: SkillPlanningUserOption;
   userId: string;
 };
+
+export type UpdateHarnessAssetDetailsInput = {
+  asset: HarnessAsset;
+  userId: string;
+  name: string;
+  description: string;
+  /** 未修改的人员字段省略；修改后必须从搜索结果选中有效人员。 */
+  owner?: SkillPlanningUserOption | null;
+  developer?: SkillPlanningUserOption | null;
+};
+
+export type HarnessAssetDetailsUpdate = Pick<HarnessAsset, 'name' | 'description'> &
+  Partial<Pick<HarnessAsset, 'owner' | 'developer'>>;
 
 export type HarnessAssetDepartment = {
   id: string;
@@ -61,12 +75,18 @@ export type HarnessAsset = {
   name: string;
   description: string;
   assetType: HarnessAssetType;
+  /** 发布查询使用列表记录自身的维度，不从筛选项反推。 */
+  dimType?: string | null;
+  dimCode?: string | null;
+  dimName?: string | null;
   firstScene?: string | null;
   secondScene?: string | null;
   currentVersion: string;
   nextPublishVersion?: string;
   versions: string[];
   owner: string;
+  /** Mock 资产的结构化责任人 ID，仅用于人员信息。 */
+  ownerId?: string;
   developer: string;
   departmentName: string;
   departmentPath: string[];
@@ -78,6 +98,7 @@ export type HarnessAsset = {
   publishable: boolean;
   /** 当前用户的发布权限，与资产是否已就绪分别判断。 */
   canPublish?: boolean;
+  canEdit?: boolean | null;
   status?: string;
   category?: string;
   updatedAt?: string;
@@ -96,6 +117,8 @@ export type HarnessAssetDetail = {
   files: HarnessAssetFile[];
   version?: string;
   component?: HarnessAssetComponentDetailDto;
+  /** HTTP Extension 内容只加载组件清单，目录与文件由用户展开时读取。 */
+  capabilities?: ExtensionScene['capabilities'];
 };
 
 export type HarnessAssetQualityItem = {
@@ -138,6 +161,7 @@ export type PublishHarnessAssetInput = {
 };
 
 export interface HarnessAssetApi {
+  updateDetails(input: UpdateHarnessAssetDetailsInput): Promise<HarnessAssetDetailsUpdate>;
   deleteAsset(input: DeleteHarnessAssetInput): Promise<void>;
   updatePerson(input: UpdateHarnessAssetPersonInput): Promise<string>;
   queryProducts(

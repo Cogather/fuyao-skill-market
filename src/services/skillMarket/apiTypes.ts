@@ -778,9 +778,13 @@ export type HarnessAssetComponentDto = {
   developer?: string | null;
   category: string;
   updatedAt: string;
+  dimType?: string | null;
+  dimCode?: string | null;
+  dimName?: string | null;
   firstScene?: string | null;
   secondScene?: string | null;
   canPublish?: boolean;
+  canEdit?: boolean | null;
 };
 
 export type HarnessAssetComponentsResponse = {
@@ -808,6 +812,8 @@ export type HarnessAssetComponentDetailDto = {
   ownerId: string | null;
   developerName: string | null;
   developerId: string | null;
+  /** 仅明确返回 true 时允许编辑，未返回时使用列表的显式权限。 */
+  canEdit?: boolean | null;
   type: QueryHarnessAssetComponentsBody['type'];
   firstScene: string | null;
   secondScene: string | null;

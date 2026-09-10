@@ -250,15 +250,15 @@ onBeforeUnmount(invalidate);
           >
             <span class="option-symbol" aria-hidden="true">/</span>
             <span class="option-content"
-              ><code>{{ option.name }}</code
-              ><small>{{ option.description }}</small></span
+              ><code :title="option.name">{{ option.name }}</code
+              ><small :title="option.description">{{ option.description }}</small></span
             >
             <span class="option-action" aria-hidden="true">+ 添加</span>
           </button>
           <div v-else class="asset-option capability-option">
             <span class="option-content"
-              ><b>{{ option.name }}</b
-              ><small>{{
+              ><b :title="option.name">{{ option.name }}</b
+              ><small :title="[option.developer, option.description].filter(Boolean).join(' · ')">{{
                 [option.developer, option.description].filter(Boolean).join(' · ')
               }}</small></span
             >
@@ -488,15 +488,21 @@ onBeforeUnmount(invalidate);
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .option-content small {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin: 3px 0 0;
   color: #7b8799;
   font-size: 12px;
   line-height: 18px;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 .option-symbol {

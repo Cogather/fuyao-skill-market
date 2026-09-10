@@ -1,19 +1,51 @@
+// 旧资产页接口与数据映射恢复自 e78abf5；新资产页继续使用 extensionPublishHttp。
 import type {
   ExtensionCapability,
   ExtensionCapabilityType,
   ExtensionProduct,
-  ExtensionRelease,
+  ExtensionRelease as BaseExtensionRelease,
   ExtensionReleaseItem,
-  ExtensionScene,
+  ExtensionScene as BaseExtensionScene,
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
-import { harnessWorkflowService } from './businessScenarioDesignService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
 import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
+
+export type ExtensionRelease = Omit<BaseExtensionRelease, 'status'> & {
+  status: string;
+  /** 保留接口原始值，场景标签不再从历史成功记录推导状态。 */
+  publishStatus?: string;
+};
+
+export type ExtensionScene = Omit<BaseExtensionScene, 'releases' | 'publishing'> & {
+  /** bindings 中二级场景返回的原始就绪状态，仅用于场景树标签。 */
+  readyStatus?: string;
+  releases: ExtensionRelease[];
+  publishing: ExtensionRelease | null;
+};
+
+export function getHttpExtensionSceneStatus(scene: ExtensionScene): {
+  label: string;
+  className: 'publishing' | 'published' | 'ready' | 'incomplete' | '';
+} {
+  const latest = [...scene.releases, ...(scene.publishing ? [scene.publishing] : [])].sort(
+    (left, right) => right.publishedAt.localeCompare(left.publishedAt),
+  )[0];
+  const publishStatus = latest?.publishStatus ?? '';
+  if (!publishStatus) return { label: '', className: '' };
+  if (latest?.status === '成功' && latest.version) {
+    return { label: `v${latest.version.replace(/^v(?=\d)/i, '')}`, className: 'published' };
+  }
+  return {
+    label: publishStatus,
+    className:
+      latest?.status === '进行中' ? 'publishing' : latest?.status === '失败' ? 'incomplete' : '',
+  };
+}
 
 export type ExtensionScope = {
   dimType: '产品级' | '部门级';
@@ -31,12 +63,6 @@ export type PublishableOrganization = {
 };
 
 export type ExtensionPublishChannel = 'beta' | 'product';
-
-export type ExtensionReleaseContext = {
-  scope: ExtensionScope;
-  scene: ExtensionScene;
-  productName: string;
-};
 
 export type PublishExtensionInput = {
   userId: string;
@@ -136,7 +162,8 @@ function normalizeReleaseStatus(value: unknown): ExtensionRelease['status'] {
   const status = normalizeText(value).toLowerCase();
   if (/失败|fail|error|rejected/.test(status)) return '失败';
   if (/进行|发布中|pending|processing|running|progress/.test(status)) return '进行中';
-  return '成功';
+  if (/^(成功|发布成功|success|succeeded|published)$/.test(status)) return '成功';
+  return normalizeText(value);
 }
 
 function normalizeReleaseChannel(value: unknown): ExtensionRelease['channel'] {
@@ -148,8 +175,7 @@ function normalizeReady(value: unknown): boolean | null {
   if (typeof value === 'boolean') return value;
   const status = normalizeText(value).toLowerCase();
   if (!status) return null;
-  if (/未配置|不完备|未就绪|未完成|不可发布|incomplete|not.ready|unready/.test(status))
-    return false;
+  if (/不完备|未就绪|未完成|不可发布|incomplete|not.ready|unready/.test(status)) return false;
   if (/已就绪|就绪|已完成|可发布|ready|complete|publishable/.test(status)) return true;
   return null;
 }
@@ -198,6 +224,7 @@ function mapHistoryRelease(value: unknown): HttpExtensionRelease {
       record.publishedAt ?? record.publishAt ?? record.updatedAt ?? record.createdAt,
     ),
     status: normalizeReleaseStatus(record.publishStatus ?? record.status),
+    publishStatus: readText(record, ['publishStatus']),
     organization: readText(record, ['targetOrgName', 'organizationName', 'orgName']),
     items: mapReleaseItems(record),
     failReason: readText(record, ['errorMessage']),
@@ -209,11 +236,7 @@ function mapHistoryRelease(value: unknown): HttpExtensionRelease {
 function historyRows(response: unknown): unknown[] {
   const data = unwrapResponseData(response);
   if (Array.isArray(data)) return data;
-  const record = asRecord(data);
-  for (const key of ['list', 'records', 'items', 'rows', 'content']) {
-    if (Array.isArray(record[key])) return record[key] as unknown[];
-  }
-  throw new Error('发布历史响应格式不正确');
+  return readArray(asRecord(data), ['list', 'records', 'items', 'rows', 'content']);
 }
 
 function historyTotal(response: unknown, fallback: number): number {
@@ -221,7 +244,6 @@ function historyTotal(response: unknown, fallback: number): number {
   const meta = asRecord(responseRecord.meta);
   const data = asRecord(unwrapResponseData(response));
   for (const value of [data.total, data.number, meta.number, responseRecord.total]) {
-    if (value == null || value === '') continue;
     const total = Number(value);
     if (Number.isFinite(total) && total >= 0) return total;
   }
@@ -282,9 +304,10 @@ function mapCapability(
       stableId([sceneKey, type, name || String(index)]),
     name,
     version,
-    publishDate: normalizeDate(
-      record.uploadedAt ?? record.uploadAt ?? record.updatedAt ?? record.publishedAt,
-    ).slice(0, 10),
+    publishDate: normalizeDate(record.uploadAt ?? record.updatedAt ?? record.publishedAt).slice(
+      0,
+      10,
+    ),
     ready: explicitReady ?? Boolean(name && version),
     files: directFilePath ? [{ name: directFilePath, content: '' }] : [],
   };
@@ -337,11 +360,9 @@ function mapBindingScenes(
         const publishing = sceneReleases.find((release) => release.status === '进行中') ?? null;
         const completedReleases = sceneReleases.filter((release) => release.status !== '进行中');
         const latestRelease = sceneReleases[0];
-        const publishedExtension = asRecord(secondRecord.publishedExtension);
         const capabilityList = Object.values(capabilities).flat();
         const explicitReady = normalizeReady(
-          secondRecord.readyStatus ??
-            secondRecord.publishable ??
+          secondRecord.publishable ??
             secondRecord.ready ??
             secondRecord.status ??
             secondRecord.subScenes,
@@ -351,15 +372,14 @@ function mapBindingScenes(
           productId: scope.productId || scope.dimCode,
           primary: firstScene,
           name: secondScene,
+          readyStatus:
+            typeof secondRecord.readyStatus === 'string' ? secondRecord.readyStatus : undefined,
           publishable:
             explicitReady ??
             (capabilityList.length > 0 && capabilityList.every((capability) => capability.ready)),
           extension: {
-            name:
-              readText(publishedExtension, ['extensionName']) || latestRelease?.extensionName || '',
-            description:
-              readText(publishedExtension, ['description']) || latestRelease?.description || '',
-            version: readText(publishedExtension, ['version']),
+            name: latestRelease?.extensionName ?? '',
+            description: latestRelease?.description ?? '',
           },
           capabilities,
           releases: completedReleases,
@@ -460,137 +480,49 @@ export async function queryHttpExtensionScenes(
   return mapSceneOptionGroups(groups, scope);
 }
 
-/**
- * Load every Extension scene in the selected scope together with its bound
- * capabilities and release history. Asset aggregation uses this bulk entry so
- * bindings and history are fetched once per scope instead of once per scene.
- */
-export async function queryHttpHydratedExtensionScenes(
-  userId: string,
-  scope: ExtensionScope,
-): Promise<ExtensionScene[]> {
-  const normalizedUserId = requiredText(userId, '尚未获取当前用户工号');
-  const [bindingResponse, releases] = await Promise.all([
-    skillBaseService.querySceneAndBindingPlanningItems(
-      { userId: normalizedUserId },
-      {
-        dimType: scope.dimType,
-        dimCode: scope.dimCode,
-        dimName: scope.dimName,
-      },
-    ),
-    queryAllHistory(scope),
-  ]);
-  return mapBindingScenes(bindingResponse, scope, releases);
-}
-
 export async function queryHttpExtensionBindings(
   userId: string,
   scope: ExtensionScope,
   scene: ExtensionScene,
+  onBindingsLoaded?: (scenes: ExtensionScene[]) => void,
 ): Promise<ExtensionScene> {
-  return queryHttpExtensionDetail(userId, scope, {
-    extensionName: scene.extension.name,
-    firstScene: scene.primary,
-    secondScene: scene.name,
-  });
-}
-
-/** 资产内容按所选 Extension 版本读取绑定，只保留卡片自身的一、二级场景。 */
-export async function queryHttpExtensionVersionCapabilities(
-  userId: string,
-  scope: ExtensionScope,
-  identity: { firstScene?: string | null; secondScene?: string | null },
-  version: string,
-): Promise<ExtensionScene['capabilities']> {
-  const firstScene = requiredText(identity.firstScene, 'Extension 缺少一级场景，无法查看内容');
-  const secondScene = requiredText(identity.secondScene, 'Extension 缺少二级场景，无法查看内容');
-  const response = await skillBaseService.querySceneAndBindingPlanningItems(
-    { userId: requiredText(userId, '尚未获取当前用户工号') },
-    {
-      dimType: scope.dimType,
-      dimCode: scope.dimCode,
-      dimName: scope.dimName,
-      version: requiredText(version, '请选择 Extension 版本'),
-    },
+  const [bindingResponse, releases] = await Promise.all([
+    skillBaseService
+      .querySceneAndBindingPlanningItems(
+        { userId: requiredText(userId, '尚未获取当前用户工号') },
+        {
+          dimType: scope.dimType,
+          dimCode: scope.dimCode,
+          dimName: scope.dimName,
+        },
+      )
+      .then((response: unknown) => {
+        // 整棵场景树的就绪状态直接来自 bindings，不等待发布历史。
+        onBindingsLoaded?.(mapBindingScenes(response, scope, []));
+        return response;
+      }),
+    queryAllHistory(scope),
+  ]);
+  const bindingScenes = mapBindingScenes(bindingResponse, scope, releases);
+  return (
+    bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ?? {
+      ...scene,
+      readyStatus: undefined,
+    }
   );
-  const scene = mapBindingScenes(response, scope, []).find(
-    (item) => item.primary === firstScene && item.name === secondScene,
-  );
-  return scene?.capabilities ?? { skill: [], command: [], agent: [] };
-}
-
-/** 发布准备查询：有编码优先按编码查，否则直接按一、二级场景名查。 */
-export async function queryHttpExtensionDetail(
-  userId: string,
-  scope: ExtensionScope,
-  identity: { extensionName?: string; firstScene?: string; secondScene?: string },
-): Promise<ExtensionScene> {
-  const extensionName = normalizeText(identity.extensionName);
-  const lookup = extensionName
-    ? {
-        extensionName,
-        ...(normalizeText(identity.firstScene) ? { firstScene: identity.firstScene } : {}),
-        ...(normalizeText(identity.secondScene) ? { secondScene: identity.secondScene } : {}),
-      }
-    : {
-        firstScene: requiredText(identity.firstScene, '请选择一级场景'),
-        secondScene: requiredText(identity.secondScene, '请选择二级场景'),
-      };
-  const response = await harnessWorkflowService.queryExtensionSceneDetail(
-    { userId: requiredText(userId, '尚未获取当前用户工号') },
-    { dimType: scope.dimType, dimCode: scope.dimCode, dimName: scope.dimName, ...lookup },
-  );
-  assertHttpSuccess(response, 'Extension 发布详情加载失败');
-  const data = asRecord(unwrapResponseData(response));
-  const unconfigured = normalizeText(data.readyStatus) === '未配置';
-  const firstScene = readText(data, ['firstScene']) || normalizeText(identity.firstScene);
-  const secondScene = readText(data, ['secondScene']) || normalizeText(identity.secondScene);
-  if (!unconfigured) {
-    requiredText(firstScene, 'Extension 详情缺少一级场景');
-    requiredText(secondScene, 'Extension 详情缺少二级场景');
-  }
-  const publishedExtension = asRecord(data.publishedExtension);
-  const summary = mapHistoryRelease({ ...publishedExtension, firstScene, secondScene });
-  // 发布准备只使用详情中的发布摘要；完整历史仅由历史入口查询。
-  const releases = summary.extensionName && summary.version ? [summary] : [];
-  const detail = mapBindingScenes(
-    { data: [{ firstScene, secondScenes: [{ ...data, secondScene }] }] },
-    scope,
-    releases,
-  )[0]!;
-  const publishCheck = asRecord(data.publishCheck);
-  if (typeof publishCheck.canPublish === 'boolean') {
-    detail.publishCheck = {
-      canPublish: publishCheck.canPublish,
-      message: typeof publishCheck.message === 'string' ? publishCheck.message : '',
-    };
-  }
-  detail.extension.name ||= extensionName;
-  return detail;
 }
 
 export async function queryHttpExtensionHistory(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
-  const firstScene = normalizeText(scene.primary);
-  const secondScene = normalizeText(scene.name);
-  const extensionName = normalizeText(scene.extension.name);
-  const hasSceneIdentity = Boolean(firstScene && secondScene);
-  if (!hasSceneIdentity && !extensionName) {
-    throw new Error('缺少 Extension 名称或完整场景信息，无法查询发布历史');
-  }
   const sceneReleases = (await queryAllHistory(scope)).filter((release) =>
-    hasSceneIdentity
-      ? sameScene(release, firstScene, secondScene)
-      : release.extensionName === extensionName,
+    sameScene(release, scene.primary, scene.name),
   );
   const latestRelease = sceneReleases[0];
   return {
     ...scene,
     extension: {
-      ...scene.extension,
       name: latestRelease?.extensionName ?? scene.extension.name,
       description: latestRelease?.description ?? scene.extension.description,
     },
@@ -607,9 +539,6 @@ function componentBody(
 }
 
 export async function publishHttpExtension(input: PublishExtensionInput): Promise<void> {
-  if (input.scene.publishCheck?.canPublish === false) {
-    throw new Error(input.scene.publishCheck.message);
-  }
   const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
   if (!isCatalogItemNameValid(extensionName)) {
     throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');

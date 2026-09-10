@@ -142,7 +142,7 @@ test.describe('Harness 任务管理 Mock 数据', () => {
     }
   });
 
-  test('versions 为空时仅展示任务基本信息', async ({ page }) => {
+  test('versions 为空时隐藏查看入口', async ({ page }) => {
     await page.goto(`${APP_BASE_PATH}/harness-management`);
     await page.getByRole('tab', { name: '任务管理', exact: true }).click();
 
@@ -159,19 +159,11 @@ test.describe('Harness 任务管理 Mock 数据', () => {
         .locator('tbody .task-version')
         .filter({ hasText: '—' })
         .first();
-      await emptyVersionCell.locator('xpath=ancestor::tr').getByRole('button').click();
-
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toBeVisible();
-      await expect(dialog).toHaveClass(/is-basic-only/);
-      await expect(dialog.locator('.task-detail-version-filter')).toHaveCount(0);
-      await expect(dialog.locator('.task-detail-capability')).toHaveCount(0);
-      await expect(dialog.locator('footer')).toHaveCount(0);
-      const compactDialogBox = await dialog.boundingBox();
-      expect(compactDialogBox).not.toBeNull();
-      expect(compactDialogBox!.height).toBeLessThan(200);
-      await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
-      await expect(dialog).toBeHidden();
+      await expect(emptyVersionCell).toBeVisible();
+      await expect(emptyVersionCell.locator('xpath=ancestor::tr').getByRole('button')).toHaveCount(
+        0,
+      );
+      await expect(page.getByRole('dialog')).toBeHidden();
     }
   });
 });

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from './HarnessSelect.vue';
+import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
@@ -118,7 +119,7 @@ const emit = defineEmits<{
 const records = ref<SkillMasterRecord[]>([]);
 const detailRecord = ref<SkillMasterRecord | null>(null);
 const masterLoading = ref(false);
-const masterPageSizeOptions = [5, 10, 20, 50];
+const tableScroll = ref<HTMLElement | null>(null);
 const masterPageNum = ref(1);
 const masterPageSize = ref(10);
 const masterTotal = ref(0);
@@ -618,12 +619,6 @@ const filteredRecords = computed(() => {
 const masterTotalPages = computed(() =>
   Math.max(1, Math.ceil(masterTotal.value / masterPageSize.value)),
 );
-const masterPageStart = computed(() =>
-  masterTotal.value === 0 ? 0 : (masterPageNum.value - 1) * masterPageSize.value + 1,
-);
-const masterPageEnd = computed(() =>
-  Math.min(masterTotal.value, masterPageNum.value * masterPageSize.value),
-);
 const selectedMasterRecords = computed(() =>
   records.value.filter((record) => selectedMasterIds.value.includes(record.id)),
 );
@@ -681,6 +676,7 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
 
 async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
   if (props.createOnly) return;
+  tableScroll.value?.scrollTo({ top: 0 });
   const requestSequence = ++masterQuerySequence;
   const validationMessage = masterQueryValidationMessage();
   if (validationMessage) {
@@ -1995,7 +1991,8 @@ async function goMasterPage(nextPage: number): Promise<void> {
   await reload();
 }
 
-async function changeMasterPageSize(): Promise<void> {
+async function changeMasterPageSize(size: number): Promise<void> {
+  masterPageSize.value = size;
   masterPageNum.value = 1;
   await reload();
 }
@@ -2213,7 +2210,13 @@ onMounted(() => {
           </button>
         </div>
       </header>
-      <div class="table-wrap">
+      <div
+        ref="tableScroll"
+        class="table-wrap"
+        role="region"
+        aria-label="Skill 清单表格"
+        tabindex="0"
+      >
         <table>
           <colgroup>
             <col class="selection-column" />
@@ -2366,35 +2369,14 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
-      <div class="master-pagination">
-        <span>第 {{ masterPageStart }}-{{ masterPageEnd }} 条，共 {{ masterTotal }} 条</span>
-        <div class="master-pagination__controls">
-          <HarnessSelect
-            v-model="masterPageSize"
-            :disabled="masterLoading"
-            @change="changeMasterPageSize"
-            :searchable="false"
-            :options="[
-              ...masterPageSizeOptions.map((size) => ({ value: size, label: size + '条/页' })),
-            ]"
-          />
-          <button
-            type="button"
-            :disabled="masterLoading || masterPageNum <= 1"
-            @click="goMasterPage(masterPageNum - 1)"
-          >
-            上一页
-          </button>
-          <strong>{{ masterPageNum }} / {{ masterTotalPages }}</strong>
-          <button
-            type="button"
-            :disabled="masterLoading || masterPageNum >= masterTotalPages"
-            @click="goMasterPage(masterPageNum + 1)"
-          >
-            下一页
-          </button>
-        </div>
-      </div>
+      <HarnessCatalogPagination
+        :page="masterPageNum"
+        :page-size="masterPageSize"
+        :total="masterTotal"
+        :loading="masterLoading"
+        @page-change="goMasterPage"
+        @page-size-change="changeMasterPageSize"
+      />
     </div>
 
     <HarnessCatalogDetailDialog
@@ -3110,6 +3092,7 @@ onMounted(() => {
   overflow: hidden;
 }
 .master-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3716,43 +3699,6 @@ onMounted(() => {
 }
 .table-wrap tbody tr:hover td {
   background: #f8fbff;
-}
-.master-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-top: 1px solid #edf2f7;
-  color: #64748b;
-  font-size: 13px;
-}
-.master-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.master-pagination__controls :is(select, .harness-select),
-.master-pagination__controls button {
-  height: 32px;
-  border: 1px solid #dbe5f2;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #253857;
-  font: inherit;
-  font-size: 13px;
-}
-.master-pagination__controls :is(select, .harness-select) {
-  padding: 0 8px;
-}
-.master-pagination__controls button {
-  padding: 0 10px;
-  cursor: pointer;
-}
-.master-pagination__controls button:disabled,
-.master-pagination__controls :is(select, .harness-select):disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 .table-wrap .selection-cell {
   text-align: center;
@@ -4384,13 +4330,6 @@ onMounted(() => {
   }
 }
 @media (max-width: 1100px) {
-  .master-panel {
-    height: auto;
-    overflow: visible;
-  }
-  .master-board {
-    flex: 0 0 auto;
-  }
   .master-hero {
     align-items: stretch;
     flex-direction: column;
@@ -4398,14 +4337,6 @@ onMounted(() => {
   .master-toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-  .master-pagination {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .master-pagination__controls {
-    justify-content: flex-start;
-    flex-wrap: wrap;
   }
 
   .master-scope-controls,

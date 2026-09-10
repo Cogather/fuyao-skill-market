@@ -331,8 +331,10 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await card.getByRole('button', { name: '\u53d1\u5e03', exact: true }).click();
 
     const publishDialog = page.getByRole('region', { name: /发布 Extension/ });
-    const publishedName = 'harness-pipeline-build-published';
-    await publishDialog.getByLabel(/Extension 名称/).fill(publishedName);
+    const publishedName = '构建诊断 Extension';
+    await expect(
+      publishDialog.getByRole('heading', { name: publishedName, exact: true }),
+    ).toBeVisible();
     const organizationSelect = page.getByRole('combobox', { name: '\u76ee\u6807\u7ec4\u7ec7' });
     await expect(organizationSelect).toBeVisible();
     const organizationOptions = await (await openHarnessSelect(organizationSelect))

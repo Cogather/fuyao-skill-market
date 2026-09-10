@@ -878,6 +878,19 @@ export function updateMockCapabilityCatalogPerson(
   persistState(type, state);
 }
 
+export function updateMockCapabilityCatalogDetails(
+  type: MockHarnessCapabilityType,
+  id: string,
+  patch: Pick<SkillMasterRecord, 'name' | 'description'> &
+    Partial<Pick<SkillMasterRecord, 'owner' | 'developOwner'>>,
+): void {
+  const state = readState(type);
+  const record = state.catalog.find((item) => item.id === id);
+  if (!record) throw new Error(`未找到该 ${capabilityLabel(type)}`);
+  Object.assign(record, patch, { updatedAt: new Date().toISOString() });
+  persistState(type, state);
+}
+
 export async function deleteMockCapabilityCatalogRecord(
   type: MockHarnessCapabilityType,
   id: string,

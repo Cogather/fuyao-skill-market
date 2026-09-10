@@ -42,7 +42,7 @@ const activeTaskTabMeta = computed(
 <template>
   <div class="task-management-page harness-viewport-page">
     <header class="task-management-hero harness-page-heading">
-      <h2 class="harness-page-title">任务管理</h2>
+      <h2 class="harness-page-title">待办任务</h2>
       <p class="harness-page-description">
         集中查看当前用户负责的 Harness 任务，持续跟踪 Command、Skill 与 Agent 建设状态及完成进度。
       </p>
@@ -148,7 +148,10 @@ const activeTaskTabMeta = computed(
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .task-management-tab:hover {
@@ -164,7 +167,9 @@ const activeTaskTabMeta = computed(
 .task-management-tab.is-active {
   background: #eef2ff;
   color: #4054ce;
-  box-shadow: inset 0 0 0 1px #cfd8ff, 0 3px 10px rgba(80, 99, 216, 0.08);
+  box-shadow:
+    inset 0 0 0 1px #cfd8ff,
+    0 3px 10px rgba(80, 99, 216, 0.08);
 }
 
 .task-management-tab__icon {
@@ -223,12 +228,20 @@ const activeTaskTabMeta = computed(
   .task-management-tabs {
     display: grid;
     width: 100%;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .task-management-tab {
     width: 100%;
     min-width: 0;
+    min-height: 40px;
+    justify-content: center;
+    padding: 8px 4px;
+  }
+
+  .task-management-tab__icon,
+  .task-management-tab small {
+    display: none;
   }
 }
 
@@ -240,6 +253,9 @@ const activeTaskTabMeta = computed(
 .task-management-page {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .task-management-tabs {
@@ -247,20 +263,15 @@ const activeTaskTabMeta = computed(
 }
 
 .task-management-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
   padding-top: 0;
 }
 
-@media (min-width: 1101px) and (min-height: 900px) {
-  .task-management-content {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-  }
-
-  .task-management-content > :deep(*) {
-    flex: 1;
-    min-height: 0;
-  }
+.task-management-content > :deep(*) {
+  flex: 1;
+  min-height: 0;
 }
 </style>

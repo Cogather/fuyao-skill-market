@@ -43,6 +43,28 @@ try {
     assert.equal(calls.at(-1).data.activityNodeName, null);
     assert.equal(calls.at(-1).data.subActivityNodeName, null);
   });
+  await test('Command binding strips leading display slashes without changing the source or other fields', async () => {
+    for (const [input, expected] of [
+      ['/demo-entry', 'demo-entry'],
+      ['demo-entry', 'demo-entry'],
+      [' //demo-entry ', 'demo-entry'],
+      ['/demo/entry', 'demo/entry'],
+    ]) {
+      const body = { firstScene: '研发/交付', secondScene: '代码生成', commandName: input };
+      const original = structuredClone(body);
+      await api.commandBindScene(body, scope);
+      assert.equal(calls.at(-1).url, '/commands/config/supplement/add');
+      assert.equal(calls.at(-1).method, 'POST');
+      assert.deepEqual(calls.at(-1).params, scope);
+      assert.deepEqual(calls.at(-1).data, {
+        ...body,
+        commandName: expected,
+        activityNodeName: null,
+        subActivityNodeName: null,
+      });
+      assert.deepEqual(body, original);
+    }
+  });
   await test('scene refresh sends firstSceneDescription and retains existing child metadata', async () => {
     const root = {
       firstScene: '新建一级场景',

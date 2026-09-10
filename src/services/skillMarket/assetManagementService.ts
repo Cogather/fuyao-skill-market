@@ -2,6 +2,7 @@ import {
   publishHttpExtension,
   queryHttpExtensionDetail,
   queryHttpExtensionHistory,
+  queryHttpExtensionVersionCapabilities,
   queryHttpHydratedExtensionScenes,
   queryHttpPublishableOrganizations,
   type ExtensionScope,
@@ -46,6 +47,7 @@ import type {
 } from './assetManagementTypes';
 import { normalizeHarnessAssetVersion } from './assetManagementTypes';
 import { updateHarnessAssetPerson } from './assetPersonManagementService';
+import { updateHarnessAssetDetails } from './assetDetailEditingService';
 import { deleteHarnessAsset } from './assetDeletionService';
 import {
   queryHttpHarnessAssetComponentDetail,
@@ -202,7 +204,10 @@ function atomicAsset(
     currentVersion,
     versions,
     owner: record.owner,
+    ownerId: record.owner.trim().match(/\s+(\S+)$/)?.[1] ?? '',
     developer: record.developOwner,
+    // Mock catalog records simulate an explicit editable response.
+    canEdit: true,
     departmentName: record.department || scope.department.name,
     departmentPath: product ? [...product.departmentPath] : [...scope.department.path],
     productId: product?.id ?? '',
@@ -807,15 +812,40 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
   async function resolveHttpExtensionScope(
     scope: HarnessAssetScope,
     asset: HarnessAsset,
+    loadMissingProducts = true,
   ): Promise<HarnessAssetScope> {
+    if (asset.dimType != null || asset.dimCode != null || asset.dimName != null) {
+      const dimType = asset.dimType?.trim();
+      const dimCode = asset.dimCode?.trim();
+      const dimName = asset.dimName?.trim();
+      if ((dimType !== '产品级' && dimType !== '部门级') || !dimCode || !dimName) {
+        throw new Error('资产列表记录缺少有效的 Extension 维度信息，请刷新列表后重试');
+      }
+      // 列表记录的维度优先于 category 和当前筛选范围，无需调用部门产品接口。
+      return dimType === '产品级'
+        ? {
+            ...scope,
+            product: { id: dimCode, name: dimName, departmentPath: [...asset.departmentPath] },
+          }
+        : {
+            ...scope,
+            product: undefined,
+            department: {
+              id: dimCode,
+              code: dimCode,
+              name: dimName,
+              path: [...asset.departmentPath],
+            },
+          };
+    }
     let product: HarnessAssetProduct | undefined;
     if (asset.productName) {
       product = asset.productId
         ? { id: asset.productId, name: asset.productName, departmentPath: asset.departmentPath }
         : scope.product?.name === asset.productName
           ? scope.product
-          : (await productsForScope(scope)).find((item) => item.name === asset.productName);
-      if (!product?.id) {
+          : productCache.get(departmentKey(scope))?.find((item) => item.name === asset.productName);
+      if (!product?.id && loadMissingProducts) {
         product = (await loadProducts(scope)).find((item) => item.name === asset.productName);
       }
       if (!product?.id) {
@@ -849,14 +879,15 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     scope: HarnessAssetScope,
     asset: HarnessAsset,
     refresh = false,
+    loadMissingProducts = true,
   ): Promise<ExtensionScene | undefined> {
     const cached = sceneByAssetId.get(asset.id);
     if (transport !== 'http' || (cached && !refresh)) return cached;
     const pending = pendingExtensionAssets.get(asset.id);
     if (pending) return pending;
-    // 详情文件与发布准备共用按 Extension 编码获取的场景配置及发布快照。
+    // 发布准备按 Extension 编码获取场景配置及详情中的发布摘要。
     const load = (async () => {
-      const queryScope = await resolveHttpExtensionScope(scope, asset);
+      const queryScope = await resolveHttpExtensionScope(scope, asset, loadMissingProducts);
       const scene = await queryHttpExtensionDetail(scope.userId, dimensionScope(queryScope), {
         extensionName: asset.name,
         firstScene: asset.firstScene ?? undefined,
@@ -909,6 +940,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     queryProducts: loadProducts,
     deleteAsset: (input) => deleteHarnessAsset(input, transport),
     updatePerson: (input) => updateHarnessAssetPerson(input, transport),
+    updateDetails: (input) => updateHarnessAssetDetails(input, transport),
 
     async queryAssets(scope, requestedPage): Promise<HarnessAssetPageResult> {
       const page = normalizedPage(requestedPage);
@@ -962,21 +994,24 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
         );
         const selectedVersion = versions.includes(version ?? '') ? version! : (versions[0] ?? '');
         let files: HarnessAssetFile[] = [];
+        let capabilities: HarnessAssetDetail['capabilities'];
         if (selectedVersion && options?.includeFiles !== false) {
-          const content =
-            asset.assetType === 'Extension'
-              ? await extensionDetail(
-                  scope,
-                  asset,
-                  // 每次选择版本都刷新发布详情与历史，避免复用首次打开时的快照。
-                  await ensureExtensionScene(scope, asset, true),
-                  selectedVersion,
-                  selectedVersion === normalizeHarnessAssetVersion(asset.currentVersion),
-                )
-              : await atomicDetail(scope, asset, selectedVersion);
-          files = content.files;
+          if (asset.assetType === 'Extension') {
+            const queryScope = await resolveHttpExtensionScope(scope, asset, false);
+            capabilities = await queryHttpExtensionVersionCapabilities(
+              scope.userId,
+              dimensionScope(queryScope),
+              {
+                firstScene: asset.firstScene ?? component.firstScene,
+                secondScene: asset.secondScene ?? component.secondScene,
+              },
+              selectedVersion,
+            );
+          } else {
+            files = (await atomicDetail(scope, asset, selectedVersion)).files;
+          }
         }
-        return { component, versions, version: selectedVersion, files };
+        return { component, versions, version: selectedVersion, files, capabilities };
       }
       if (asset.assetType !== 'Extension')
         return atomicDetail(scope, asset, version ?? asset.currentVersion);
@@ -1032,9 +1067,19 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
       if (transport === 'http' && mode === 'history') {
         return httpExtensionHistoryContext(scope, asset);
       }
-      const scene = await ensureExtensionScene(scope, asset, true);
+      const scene = await ensureExtensionScene(scope, asset, true, false);
       if (!scene) throw new Error('未找到该 Extension 对应场景');
+      scene.extension.name ||= asset.name;
+      scene.extension.description ||= asset.description;
       const queryScope = assetScope(scope, asset);
+      if (transport === 'http') {
+        // 发布准备已按卡片及现有筛选数据解析维度，直接复用，不再查询部门产品列表。
+        return {
+          scene,
+          scope: dimensionScope(queryScope),
+          productName: queryScope.product?.name ?? '',
+        };
+      }
       const products = await productsForScope(queryScope);
       const product = productForScene(scene, products, queryScope, transport);
       if (asset.productName && !product?.id)

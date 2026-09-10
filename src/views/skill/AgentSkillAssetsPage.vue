@@ -3,7 +3,8 @@ import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
-import HarnessAssetPersonEditDialog from '../../components/skill/HarnessAssetPersonEditDialog.vue';
+import HarnessExtensionDetailContent from '../../components/skill/HarnessExtensionDetailContent.vue';
+import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
 import HarnessAssetDeleteDialog from '../../components/skill/HarnessAssetDeleteDialog.vue';
 import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
@@ -96,12 +97,6 @@ const selectedVersion = ref('');
 const detailTab = ref<'content' | 'report'>('content');
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
-const personEditor = ref<{
-  asset: HarnessAsset;
-  field: HarnessAssetPersonField;
-  label: string;
-  userId: string;
-} | null>(null);
 const extensionRelease = ref<{
   context: ExtensionReleaseContext;
   mode: 'publish' | 'history';
@@ -134,6 +129,15 @@ const assetBoardElement = ref<HTMLElement | null>(null);
 const productError = ref('');
 const detailLoading = ref(false);
 const detailError = ref('');
+const detailDraft = ref<{
+  name: string;
+  description: string;
+  people: Record<HarnessAssetPersonField, SkillPlanningUserOption | null>;
+  changedPeople: Partial<Record<HarnessAssetPersonField, boolean>>;
+} | null>(null);
+const detailSaving = ref(false);
+const detailEditError = ref('');
+const detailNameInput = ref<HTMLInputElement | null>(null);
 const toastMessage = ref('');
 let listSequence = 0;
 let lastObservedAssetScrollTop = 0;
@@ -145,37 +149,121 @@ let detailSequence = 0;
 let extensionReleaseSequence = 0;
 let toastTimer: number | undefined;
 
-function openPersonEditor(field: HarnessAssetPersonField, label: string): void {
-  if (!selectedAsset.value || selectedAsset.value.assetType === 'Extension') return;
-  personEditor.value = { asset: selectedAsset.value, field, label, userId: props.userId };
+function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
+  const component = detailComponent.value;
+  const label = selectedAsset.value?.[field] ?? '';
+  const parts = label.match(/^(.*?)\s+([^\s]+)$/);
+  const name = component
+    ? field === 'owner'
+      ? component.ownerName
+      : component.developerName
+    : parts?.[1];
+  const id = component
+    ? field === 'owner'
+      ? component.ownerId
+      : component.developerId
+    : parts?.[2];
+  if (!name || !id) return null;
+  return { chName: name, id, sAMAccountName: id, label: `${name} ${id}`, deptName: '', raw: {} };
 }
 
-async function savePerson(person: SkillPlanningUserOption): Promise<string> {
-  const editor = personEditor.value;
-  if (!editor) throw new Error('请重新打开人员编辑窗口');
-  const label = await api.updatePerson({ ...editor, person });
-  editor.asset[editor.field] = label;
-  if (detail.value?.component && selectedAsset.value === editor.asset) {
-    const component = detail.value.component;
-    if (editor.field === 'owner') {
-      component.ownerName = person.chName.trim();
-      component.ownerId = person.id.trim() || person.sAMAccountName.trim();
-    } else {
-      component.developerName = person.chName.trim();
-      component.developerId = person.id.trim() || person.sAMAccountName.trim();
-    }
+async function beginDetailEdit(): Promise<void> {
+  const asset = selectedAsset.value;
+  if (!asset || !canEditDetail.value || detailSaving.value) return;
+  if (transportIsHttp && !detailComponent.value) return;
+  detailEditError.value = '';
+  detailDraft.value = {
+    name: detailComponent.value?.name ?? asset.name,
+    description: detailComponent.value?.description ?? asset.description ?? '',
+    people: { owner: initialDetailPerson('owner'), developer: initialDetailPerson('developer') },
+    changedPeople: {},
+  };
+  await nextTick();
+  detailNameInput.value?.focus();
+}
+
+function changeDraftPerson(
+  field: HarnessAssetPersonField,
+  person: SkillPlanningUserOption | null,
+): void {
+  if (!detailDraft.value || !canEditDetail.value || detailSaving.value) return;
+  detailDraft.value.people[field] = person;
+  detailDraft.value.changedPeople[field] = true;
+}
+
+function cancelDetailEdit(): void {
+  if (detailSaving.value) return;
+  detailDraft.value = null;
+  detailEditError.value = '';
+}
+
+async function saveDetailEdits(): Promise<void> {
+  const asset = selectedAsset.value;
+  const draft = detailDraft.value;
+  if (!asset || !draft || detailSaving.value) return;
+  if (!canEditDetail.value) {
+    detailEditError.value = '当前用户没有编辑权限';
+    return;
   }
-  return label;
-}
-
-function onPersonSaved(): void {
-  showToast(`${personEditor.value?.label || '人员'}已更新`);
-  personEditor.value = null;
+  const sequence = detailSequence;
+  const originalId = asset.id;
+  detailSaving.value = true;
+  detailEditError.value = '';
+  try {
+    if (detailComponent.value?.category && detailComponent.value.category !== asset.category) {
+      throw new Error('资产详情与列表归属不一致，请返回列表刷新后重试');
+    }
+    const saved = await api.updateDetails({
+      asset: { ...asset },
+      userId: props.userId,
+      name: draft.name,
+      description: draft.description,
+      ...(draft.changedPeople.owner ? { owner: draft.people.owner } : {}),
+      ...(draft.changedPeople.developer ? { developer: draft.people.developer } : {}),
+    });
+    if (
+      sequence !== detailSequence ||
+      view.value !== 'detail' ||
+      selectedAsset.value?.id !== originalId
+    )
+      return;
+    Object.assign(asset, saved);
+    if (draft.changedPeople.owner && draft.people.owner) {
+      asset.ownerId = draft.people.owner.id.trim() || draft.people.owner.sAMAccountName.trim();
+    }
+    if (transportIsHttp)
+      asset.id = JSON.stringify([asset.assetType, asset.category ?? '', asset.name]);
+    selectedAssetKey.value = assetKey(asset);
+    const component = detail.value?.component;
+    if (component) {
+      component.name = saved.name;
+      component.description = saved.description;
+      for (const field of ['owner', 'developer'] as const) {
+        const person = draft.people[field];
+        if (!draft.changedPeople[field] || !person) continue;
+        const id = person.id.trim() || person.sAMAccountName.trim();
+        if (field === 'owner') {
+          component.ownerName = person.chName.trim();
+          component.ownerId = id;
+        } else {
+          component.developerName = person.chName.trim();
+          component.developerId = id;
+        }
+      }
+    }
+    detailDraft.value = null;
+    showToast('资产信息已保存');
+  } catch (error) {
+    if (sequence === detailSequence)
+      detailEditError.value = errorMessage(error, '资产信息保存失败');
+  } finally {
+    if (sequence === detailSequence) detailSaving.value = false;
+  }
 }
 
 function requestAssetDelete(): void {
   const asset = selectedAsset.value;
-  if (!asset || asset.assetType === 'Extension') return;
+  if (!asset || !canEditDetail.value || detailSaving.value || detailDraft.value) return;
   deleteTarget.value = {
     asset: { ...asset },
     userId: props.userId,
@@ -184,6 +272,14 @@ function requestAssetDelete(): void {
 
 async function deleteCurrentAsset(): Promise<void> {
   if (!deleteTarget.value) throw new Error('请重新打开删除确认窗口');
+  if (
+    !canEditDetail.value ||
+    deleteTarget.value.userId !== props.userId ||
+    !selectedAsset.value ||
+    assetKey(deleteTarget.value.asset) !== assetKey(selectedAsset.value)
+  ) {
+    throw new Error('当前用户没有删除权限，请刷新后重试');
+  }
   const detailCategory = detailComponent.value?.category?.trim();
   if (detailCategory && detailCategory !== deleteTarget.value.asset.category?.trim()) {
     throw new Error('资产详情与列表归属不一致，请返回列表刷新后重试');
@@ -213,6 +309,9 @@ function pathStartsWith(path: string[], prefix: string[]): boolean {
 
 const normalizedAllowedPaths = computed(() =>
   props.allowedDepartmentPaths.map(normalizePath).filter((path) => path.length > 0),
+);
+const defaultCatalogDepartmentPath = computed(
+  () => normalizedAllowedPaths.value[0] ?? normalizePath(props.currentUserDepartmentPath),
 );
 
 function filterDepartmentTree(
@@ -303,7 +402,24 @@ const filteredAssets = computed(() =>
 const detailVersions = computed(
   () => detail.value?.versions ?? selectedAsset.value?.versions ?? [],
 );
+const extensionHasNoVersion = computed(
+  () => selectedAsset.value?.assetType === 'Extension' && !selectedAsset.value.currentVersion,
+);
 const detailComponent = computed(() => detail.value?.component);
+const detailPermissionsReady = computed(
+  () =>
+    Boolean(selectedAsset.value && props.userId.trim()) &&
+    selectedAsset.value?.assetType !== 'Extension' &&
+    !detailLoading.value &&
+    !detailError.value &&
+    (!transportIsHttp || Boolean(detailComponent.value)),
+);
+const canEditDetail = computed(() => {
+  if (!detailPermissionsReady.value) return false;
+  const permission = detailComponent.value?.canEdit;
+  // An explicit detail denial (including null) must not fall back to list permission.
+  return (permission === undefined ? selectedAsset.value?.canEdit : permission) === true;
+});
 const detailCategory = computed(
   () => (detailComponent.value?.category ?? selectedAsset.value?.category) || '—',
 );
@@ -533,7 +649,7 @@ async function selectFilter(nextFilter: HarnessAssetFilter): Promise<void> {
 async function loadDetail(): Promise<void> {
   const scope = currentScope.value;
   const asset = selectedAsset.value;
-  if (!scope || !asset) return;
+  if (!scope || !asset || extensionHasNoVersion.value) return;
   if (!transportIsHttp && asset.assetType !== 'Extension') return;
   const sequence = ++detailSequence;
   const requestedView = view.value;
@@ -560,6 +676,7 @@ async function loadDetail(): Promise<void> {
 }
 
 async function openDetail(asset: HarnessAsset): Promise<void> {
+  cancelDetailEdit();
   detailSequence += 1;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
   selectedVersion.value = transportIsHttp ? '' : asset.currentVersion || asset.versions[0] || '';
@@ -572,6 +689,8 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
 }
 
 async function returnToAssetList(): Promise<void> {
+  if (detailSaving.value) return;
+  cancelDetailEdit();
   detailSequence += 1;
   view.value = 'list';
   await nextTick();
@@ -637,6 +756,9 @@ async function reloadExtensionRelease(): Promise<void> {
 }
 
 async function onExtensionReleased(): Promise<void> {
+  if (transportIsHttp && extensionRelease.value?.mode === 'publish') {
+    extensionReturnView.value = 'list';
+  }
   await reloadAssets();
 }
 
@@ -668,11 +790,14 @@ function manageCatalog(assetType: (typeof CATALOG_TYPES)[number], action: Catalo
     createAssetType.value = assetType;
     return;
   }
-  const department = selectedDepartment.value;
-  const product = selectedProduct.value;
+  const departmentPath = defaultCatalogDepartmentPath.value;
+  const product =
+    selectedDepartment.value?.path.join('\u0001') === departmentPath.join('\u0001')
+      ? selectedProduct.value
+      : null;
   importScope.value = {
-    level: product ? '产品级' : '部门级',
-    departmentPath: [...(department?.path ?? [])],
+    level: selectedProduct.value ? '产品级' : '部门级',
+    departmentPath: [...departmentPath],
     offeringId: product?.id ?? '',
     offeringName: product?.name ?? '',
   };
@@ -744,7 +869,7 @@ onBeforeUnmount(() => {
       :user-id="props.userId"
       :department-tree="manageableDepartmentTree"
       :current-user-department-path="props.currentUserDepartmentPath"
-      :default-department-path="normalizedAllowedPaths[0] ?? props.currentUserDepartmentPath"
+      :default-department-path="defaultCatalogDepartmentPath"
       :allowed-department-paths="normalizedAllowedPaths"
       @close="createAssetType = null"
       @created="onAssetCreated"
@@ -916,38 +1041,75 @@ onBeforeUnmount(() => {
 
     <template v-else-if="view === 'detail' && selectedAsset">
       <div class="asset-detail-toolbar">
-        <button type="button" class="asset-back asset-detail-back" @click="returnToAssetList">
+        <button
+          type="button"
+          class="asset-back asset-detail-back"
+          :disabled="detailSaving"
+          @click="returnToAssetList"
+        >
           <span aria-hidden="true">←</span> 返回列表
         </button>
-        <button
-          v-if="selectedAsset.assetType !== 'Extension'"
-          type="button"
-          class="asset-delete-button"
-          aria-label="删除资产"
-          @click="requestAssetDelete"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+        <div v-if="selectedAsset.assetType !== 'Extension'" class="asset-detail-toolbar__actions">
+          <button
+            type="button"
+            class="asset-button is-primary asset-detail__edit"
+            :disabled="detailSaving || !canEditDetail"
+            :title="detailPermissionsReady && !canEditDetail ? '当前用户没有编辑权限' : undefined"
+            @click="detailDraft ? saveDetailEdits() : beginDetailEdit()"
           >
-            <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
-          </svg>
-          删除
-        </button>
+            {{ detailSaving ? '保存中…' : detailDraft ? '保存' : '编辑' }}
+          </button>
+          <button
+            v-if="detailDraft"
+            type="button"
+            class="asset-button is-secondary"
+            :disabled="detailSaving"
+            @click="cancelDetailEdit"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="asset-delete-button"
+            aria-label="删除资产"
+            :disabled="!canEditDetail || detailSaving || Boolean(detailDraft)"
+            :title="detailPermissionsReady && !canEditDetail ? '当前用户没有删除权限' : undefined"
+            @click="requestAssetDelete"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+            </svg>
+            删除
+          </button>
+        </div>
       </div>
+      <p v-if="detailEditError" class="asset-edit-error" role="alert">{{ detailEditError }}</p>
 
       <section class="asset-board asset-detail" aria-labelledby="asset-detail-title">
         <header class="asset-detail__header">
           <div class="asset-detail__identity">
             <div class="asset-detail__title">
-              <h1 id="asset-detail-title">{{ detailComponent?.name ?? selectedAsset.name }}</h1>
+              <h1 id="asset-detail-title">
+                <input
+                  v-if="detailDraft"
+                  ref="detailNameInput"
+                  v-model="detailDraft.name"
+                  class="asset-edit-input"
+                  aria-label="名称"
+                  :disabled="detailSaving || !canEditDetail"
+                />
+                <template v-else>{{ detailComponent?.name ?? selectedAsset.name }}</template>
+              </h1>
               <div class="asset-detail__badges">
                 <span class="asset-badge is-type">{{ selectedAsset.assetType }}</span>
                 <span
@@ -958,23 +1120,25 @@ onBeforeUnmount(() => {
                   {{ statusLabel(selectedAsset) }}
                 </span>
               </div>
+              <dl class="asset-detail__summary-field is-category">
+                <dt>归属于</dt>
+                <dd :title="detailCategory">{{ detailCategory }}</dd>
+              </dl>
             </div>
             <div class="asset-detail__meta">
-              <HarnessVersionPicker
-                v-model="selectedVersion"
-                :versions="detailVersions"
-                :disabled="detailLoading"
-                @change="changeDetailVersion"
-              />
               <dl class="asset-detail__summary">
-                <div class="asset-detail__summary-field is-category">
-                  <dt>归属于</dt>
-                  <dd :title="detailCategory">{{ detailCategory }}</dd>
-                </div>
                 <div class="asset-detail__summary-field is-description">
                   <dt>描述</dt>
                   <dd class="asset-detail__description" :title="detailDescription">
-                    {{ detailDescription }}
+                    <textarea
+                      v-if="detailDraft"
+                      v-model="detailDraft.description"
+                      class="asset-edit-input asset-edit-description"
+                      aria-label="描述"
+                      :disabled="detailSaving || !canEditDetail"
+                      rows="2"
+                    />
+                    <template v-else>{{ detailDescription }}</template>
                   </dd>
                 </div>
               </dl>
@@ -1005,29 +1169,17 @@ onBeforeUnmount(() => {
 
         <dl v-if="selectedAsset.assetType !== 'Extension'" class="asset-detail__people">
           <div v-for="{ field, label } in PERSON_FIELDS" :key="field" class="asset-detail__person">
-            <dt>{{ label }}</dt>
-            <dd>{{ detailPersonLabel(field) }}</dd>
-            <button
-              type="button"
-              class="asset-detail__person-edit"
-              :aria-label="`修改${label}`"
-              :title="`修改${label}`"
-              @click="openPersonEditor(field, label)"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="m16 3 5 5M3 21l5-1L21 7a2.1 2.1 0 0 0-5-5L3 15z" />
-              </svg>
-            </button>
+            <dt v-if="!detailDraft">{{ label }}</dt>
+            <dd v-if="detailDraft" class="asset-detail__person-input">
+              <fieldset :disabled="detailSaving || !canEditDetail">
+                <WorkflowPersonPicker
+                  :model-value="detailDraft.people[field]"
+                  :label="label"
+                  @update:model-value="changeDraftPerson(field, $event)"
+                />
+              </fieldset>
+            </dd>
+            <dd v-else>{{ detailPersonLabel(field) }}</dd>
           </div>
           <div
             v-if="detailComponent?.firstScene || detailComponent?.secondScene"
@@ -1043,6 +1195,15 @@ onBeforeUnmount(() => {
             </dd>
           </div>
         </dl>
+
+        <div class="asset-detail__version">
+          <HarnessVersionPicker
+            v-model="selectedVersion"
+            :versions="detailVersions"
+            :disabled="detailLoading || detailSaving || Boolean(detailDraft)"
+            @change="changeDetailVersion"
+          />
+        </div>
 
         <nav class="asset-subtabs asset-detail__tabs" role="tablist" aria-label="资产详情分区">
           <button
@@ -1070,7 +1231,10 @@ onBeforeUnmount(() => {
           </button>
         </nav>
 
-        <div v-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
+        <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
+          暂无版本，当前无法查看详情
+        </div>
+        <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
         <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
           <span>{{ detailError }}</span>
           <button type="button" class="asset-button is-secondary" @click="loadDetail">
@@ -1086,6 +1250,13 @@ onBeforeUnmount(() => {
           :capability-type="catalogCapabilityType"
           :version="selectedVersion"
           :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
+        />
+        <HarnessExtensionDetailContent
+          v-else-if="detail?.capabilities"
+          :key="`${selectedAssetKey}:${selectedVersion}`"
+          :name="selectedAsset.name"
+          :user-id="props.userId"
+          :capabilities="detail.capabilities"
         />
         <div v-else class="asset-file-tree">
           <strong>📁 {{ selectedAsset.name }}/</strong>
@@ -1140,15 +1311,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </template>
-
-    <HarnessAssetPersonEditDialog
-      v-if="personEditor"
-      :label="personEditor.label"
-      :current-value="personEditor.asset[personEditor.field]"
-      :save-person="savePerson"
-      @close="personEditor = null"
-      @saved="onPersonSaved"
-    />
 
     <Transition name="asset-toast">
       <div v-if="toastMessage" class="asset-toast" role="status">{{ toastMessage }}</div>
@@ -1667,6 +1829,62 @@ onBeforeUnmount(() => {
   align-self: center;
   margin-bottom: 0;
 }
+
+.asset-detail-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.asset-edit-input {
+  box-sizing: border-box;
+  width: min(440px, 100%);
+  padding: 8px 12px;
+  border: 1px solid #b8c7e0;
+  border-radius: 8px;
+  background: #fff;
+  color: #17233d;
+  font: inherit;
+}
+
+.asset-edit-input:focus-visible {
+  outline: 2px solid #4569ff;
+  outline-offset: 2px;
+}
+
+.asset-edit-description {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 58px;
+  min-height: 58px;
+  max-height: 58px;
+  line-height: 20px;
+  overflow-y: auto;
+  resize: none;
+}
+
+.asset-detail__person-input {
+  width: 300px;
+  max-width: 100%;
+}
+
+.asset-detail__person-input fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.asset-detail__person-input :deep(.workflow-person-picker .workflow-person-picker__input) {
+  background: #fff;
+}
+
+.asset-edit-error {
+  flex-shrink: 0;
+  margin: 0 0 12px;
+  color: #b42318;
+}
 .asset-delete-button {
   display: inline-flex;
   align-items: center;
@@ -1682,8 +1900,15 @@ onBeforeUnmount(() => {
   font-weight: 500;
   cursor: pointer;
 }
-.asset-delete-button:hover {
+.asset-delete-button:hover:not(:disabled) {
   background: #fef3f2;
+}
+
+.asset-delete-button:disabled {
+  border-color: #d1d5db;
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
 }
 
 .asset-detail {
@@ -1786,13 +2011,21 @@ onBeforeUnmount(() => {
   flex: 0 1 auto;
   gap: 6px;
   max-width: 40%;
+  margin: 0;
   padding: 3px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
   background: #f1f5f9;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .asset-detail__summary-field.is-description {
+  flex: 1;
+}
+
+.asset-detail__description {
   flex: 1;
 }
 
@@ -1860,32 +2093,17 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 
-.asset-detail__person-edit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: 5px;
-  color: #7d8da8;
-  background: transparent;
-  cursor: pointer;
-}
-
-.asset-detail__person-edit:hover {
-  color: #4569ff;
-  background: #edf2ff;
-}
-
-.asset-detail__person-edit:focus-visible,
 .asset-detail-back:focus-visible,
 .asset-detail__actions button:focus-visible,
 .asset-detail__tabs button:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 3px;
+}
+
+.asset-detail__version {
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
 }
 
 .asset-detail .asset-detail__tabs {
@@ -1996,7 +2214,8 @@ onBeforeUnmount(() => {
 }
 
 .asset-button.asset-card__publish:disabled,
-.asset-button.asset-detail__publish:disabled {
+.asset-button.asset-detail__publish:disabled,
+.asset-button.asset-detail__edit:disabled {
   background: #e5e7eb;
   color: #9ca3af;
   opacity: 1;

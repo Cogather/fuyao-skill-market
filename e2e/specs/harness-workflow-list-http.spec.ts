@@ -76,7 +76,7 @@ async function mountWorkflowPage(page: Page) {
 test.describe('Harness 工作流服务端列表', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
-  test('独立读取后端分页和总数，并传递部门路径、产品编码及待发布筛选', async ({ page }) => {
+  test('独立读取后端分页和总数，并传递部门路径、产品编码及状态筛选', async ({ page }) => {
     await prepare(page);
     const queries: { method: string; params: Record<string, string> }[] = [];
     await page.route('**/api/harness/workflow/list**', async (route) => {
@@ -114,14 +114,17 @@ test.describe('Harness 工作流服务端列表', () => {
       harness.workflowsTable.getByRole('columnheader', { name: '部门', exact: true }),
     ).toHaveCount(0);
     await expect(harness.workflowsPanel.locator('.wf-status-count')).toHaveCount(0);
+    await expect(
+      harness.workflowsPanel.getByRole('button', { name: '待发布', exact: true }),
+    ).toHaveCount(0);
 
     await harness.workflowsNextPageButton.click();
     await expect(harness.workflowInventoryRow('服务端第2页')).toBeVisible();
     expect(queries.at(-1)?.params.pageNo).toBe('2');
     await expect(harness.workflowsTable.locator('tbody tr')).toHaveCount(1);
-    await harness.workflowsPanel.getByRole('button', { name: '待发布', exact: true }).click();
+    await harness.workflowStatusButton('已发布').click();
     await expect(harness.workflowsPanel.getByText('共 1 条', { exact: true })).toBeVisible();
-    expect(queries.at(-1)?.params).toMatchObject({ status: '待发布', pageNo: '1' });
+    expect(queries.at(-1)?.params).toMatchObject({ status: '已发布', pageNo: '1' });
     await harness.selectWorkflowProduct('产品筛选项');
     await expect.poll(() => queries.at(-1)?.params.productCode).toBe('remote-product');
     await harness.selectWorkflowDepartment('平台组');
@@ -137,6 +140,7 @@ test.describe('Harness 工作流服务端列表', () => {
   test('失败可重试，空筛选仍可切换，过期请求不能覆盖新的状态结果', async ({ page }) => {
     await prepare(page);
     let fail = true;
+    let emptyDesign = false;
     let releasePublished: (() => void) | undefined;
     await page.route('**/api/harness/workflow/list**', async (route) => {
       const params = new URL(route.request().url()).searchParams;
@@ -151,11 +155,11 @@ test.describe('Harness 工作流服务端列表', () => {
         });
       await route.fulfill({
         json: success({
-          total: status === '待发布' ? 0 : 1,
+          total: emptyDesign && status === '设计中' ? 0 : 1,
           pageNo: 1,
           pageSize: 10,
           list:
-            status === '待发布'
+            emptyDesign && status === '设计中'
               ? []
               : [workflow(status === '已发布' ? '过期已发布' : '最新结果', status || '设计中')],
         }),
@@ -180,7 +184,10 @@ test.describe('Harness 工作流服务端列表', () => {
     await publishedResponse;
     await expect(harness.workflowInventoryRow('最新结果')).toBeVisible();
     await expect(harness.workflowInventoryRow('过期已发布')).toHaveCount(0);
-    await harness.workflowsPanel.getByRole('button', { name: '待发布', exact: true }).click();
+    await harness.workflowStatusButton('全部').click();
+    await expect(harness.workflowInventoryRow('最新结果')).toBeVisible();
+    emptyDesign = true;
+    await harness.workflowStatusButton('设计中').click();
     await expect(
       harness.workflowsPanel.getByText('该状态下暂无工作流', { exact: true }),
     ).toBeVisible();

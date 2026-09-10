@@ -112,6 +112,32 @@ try {
   }
   console.log('PASS all four filters use one components query and map the supplied records');
 
+  for (const [status, canPublish, latestVersion, publishable] of [
+    ['已发布', true, '0.0.1', true],
+    ['已发布', true, null, true],
+    ['已发布', false, '0.0.1', false],
+    ['已发布', undefined, '0.0.1', false],
+    ['发布中', true, '0.0.1', false],
+    ['未开发', true, null, false],
+    ['待发布', true, null, true],
+    ['可发布', true, '0.0.1', true],
+    ['可发布', false, '0.0.1', true],
+    ['可发布', true, null, false],
+  ]) {
+    nextResponse = response([{ ...row, status, canPublish, latestVersion }], 1);
+    const result = await api.queryAssets(
+      { ...scope, assetType: 'Extension' },
+      { pageNum: 1, pageSize: 30 },
+    );
+    assert.equal(
+      result.list[0].publishable,
+      publishable,
+      `${status}, canPublish=${canPublish}, version=${latestVersion}: publish action visibility`,
+    );
+    assert.equal(result.list[0].canPublish, canPublish);
+  }
+  console.log('PASS published Extensions can be published again only with explicit permission');
+
   requests.length = 0;
   nextResponse = response([{ ...row, name: 'next-page' }], 31, 2);
   const lastPage = await api.queryAssets(

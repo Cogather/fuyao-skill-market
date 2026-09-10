@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from './HarnessSelect.vue';
+import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
@@ -107,7 +108,7 @@ const loading = ref(false);
 const selectedIds = ref<string[]>([]);
 const pageNum = ref(1);
 const pageSize = ref(10);
-const pageSizeOptions = [5, 10, 20, 50];
+const tableScroll = ref<HTMLElement | null>(null);
 const toast = ref('');
 let toastTimer: number | null = null;
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -327,8 +328,6 @@ function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const pageRecords = computed(() => records.value);
-const pageStart = computed(() => (total.value ? (pageNum.value - 1) * pageSize.value + 1 : 0));
-const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
 const allPageSelected = computed(
   () =>
     pageRecords.value.length > 0 &&
@@ -337,6 +336,7 @@ const allPageSelected = computed(
 
 async function reload(): Promise<void> {
   if (props.createOnly) return;
+  tableScroll.value?.scrollTo({ top: 0 });
   const scope = currentCatalogScope.value;
   if (!scope) {
     records.value = [];
@@ -954,7 +954,8 @@ async function goPage(next: number): Promise<void> {
   await reload();
 }
 
-async function changePageSize(): Promise<void> {
+async function changePageSize(size: number): Promise<void> {
+  pageSize.value = size;
   pageNum.value = 1;
   selectedIds.value = [];
   await reload();
@@ -1185,7 +1186,13 @@ onMounted(async () => {
         </div>
       </header>
 
-      <div class="capability-master-table-wrap">
+      <div
+        ref="tableScroll"
+        class="capability-master-table-wrap"
+        role="region"
+        :aria-label="`${capabilityLabel} 清单表格`"
+        tabindex="0"
+      >
         <table class="capability-master-table">
           <colgroup>
             <col class="is-check-column" />
@@ -1304,24 +1311,14 @@ onMounted(async () => {
           </tbody>
         </table>
       </div>
-      <footer class="capability-master-pagination">
-        <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
-        <div class="capability-master-pagination__controls">
-          <HarnessSelect
-            v-model="pageSize"
-            @change="changePageSize"
-            :searchable="false"
-            :options="[...pageSizeOptions.map((size) => ({ value: size, label: size + '条/页' }))]"
-          />
-          <button type="button" :disabled="pageNum <= 1" @click="goPage(pageNum - 1)">
-            上一页
-          </button>
-          <span>{{ pageNum }} / {{ totalPages }}</span>
-          <button type="button" :disabled="pageNum >= totalPages" @click="goPage(pageNum + 1)">
-            下一页
-          </button>
-        </div>
-      </footer>
+      <HarnessCatalogPagination
+        :page="pageNum"
+        :page-size="pageSize"
+        :total="total"
+        :loading="loading"
+        @page-change="goPage"
+        @page-size-change="changePageSize"
+      />
     </section>
 
     <HarnessCatalogDetailDialog
@@ -1705,6 +1702,7 @@ onMounted(async () => {
   box-shadow: 0 10px 28px rgba(35, 52, 84, 0.06);
 }
 .capability-master-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1951,41 +1949,6 @@ td.is-description > span {
   height: 108px;
   color: #64748b;
   text-align: center;
-}
-.capability-master-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  color: #64748b;
-  font-size: 13px;
-}
-.capability-master-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.capability-master-pagination :is(select, .harness-select),
-.capability-master-pagination button {
-  height: 32px;
-  border: 1px solid #dbe5f2;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #253857;
-  font: inherit;
-  font-size: 13px;
-}
-.capability-master-pagination :is(select, .harness-select) {
-  padding: 0 8px;
-}
-.capability-master-pagination button {
-  padding: 0 10px;
-  cursor: pointer;
-}
-.capability-master-pagination button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 .capability-master-overlay {
   position: fixed;
@@ -2324,13 +2287,6 @@ td.is-description > span {
   }
 }
 @media (max-width: 1100px) {
-  .capability-master-panel {
-    height: auto;
-    overflow: visible;
-  }
-  .capability-master-board {
-    flex: 0 0 auto;
-  }
   .capability-master-filter {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
