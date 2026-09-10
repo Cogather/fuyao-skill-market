@@ -37,6 +37,7 @@ try {
       secondScenes: [
         {
           secondScene: '代码开发',
+          readyStatus: '不完备',
           ready: true,
           components: {
             skills: [{ name: 'udm-skill', version: '2.0.0', uploadAt: '2026-08-01 10:00:00' }],
@@ -44,6 +45,8 @@ try {
             agents: [],
           },
         },
+        { secondScene: '补丁开发', readyStatus: '已就绪' },
+        { secondScene: '日志获取', readyStatus: '未配置', ready: true },
       ],
     },
   ]);
@@ -89,6 +92,11 @@ try {
       },
     );
     assert.equal(result.publishable, true);
+    assert.equal(
+      result.readyStatus,
+      '不完备',
+      'bindings readyStatus is preserved independently of components and publication history',
+    );
     assert.equal(result.capabilities.skill[0].name, 'udm-skill');
     assert.equal(result.capabilities.skill[0].publishDate, '2026-08-01');
     assert.equal(result.extension.description, '旧发布历史说明');
@@ -113,9 +121,31 @@ try {
     ]);
     const result = await queryHttpExtensionBindings('user-1', scope, scene);
     assert.equal(
+      result.readyStatus,
+      '不完备',
+      'publishStatus and version must not replace readyStatus',
+    );
+    assert.equal(
       getHttpExtensionSceneStatus(result).label,
       label,
       'latest publishStatus controls display without falling back to an older successful version',
+    );
+  }
+  for (const readyStatus of ['已就绪', '不完备', '未配置', '接口新增状态', '', undefined, null]) {
+    bindings.data[0].secondScenes[0].readyStatus = readyStatus;
+    let observedBindings;
+    const result = await queryHttpExtensionBindings('user-1', scope, scene, (items) => {
+      observedBindings = items;
+    });
+    assert.equal(result.readyStatus, readyStatus ?? undefined);
+    assert.deepEqual(
+      observedBindings.map((item) => [item.name, item.readyStatus]),
+      [
+        ['代码开发', readyStatus ?? undefined],
+        ['补丁开发', '已就绪'],
+        ['日志获取', '未配置'],
+      ],
+      'one bindings response supplies the raw status of every scene',
     );
   }
   history = success([
@@ -129,7 +159,10 @@ try {
     'unknown and missing publication statuses must never default to success',
   );
   bindings = success([]);
-  assert.deepEqual(await queryHttpExtensionBindings('user-1', scope, scene), scene);
+  assert.deepEqual(
+    await queryHttpExtensionBindings('user-1', scope, { ...scene, readyStatus: '已就绪' }),
+    { ...scene, readyStatus: undefined },
+  );
   bindings = { meta: { success: false, message: '旧绑定接口失败' }, data: null };
   await assert.rejects(queryHttpExtensionBindings('user-1', scope, scene), /旧绑定接口失败/);
   console.log('Legacy Extension bindings and release history passed.');

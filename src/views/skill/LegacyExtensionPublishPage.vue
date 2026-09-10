@@ -337,7 +337,25 @@ async function selectScene(sceneId: string): Promise<void> {
   bindingsLoading.value = true;
   scopeError.value = '';
   try {
-    const hydratedScene = await queryHttpExtensionBindings(props.userId.trim(), scope, scene);
+    const hydratedScene = await queryHttpExtensionBindings(
+      props.userId.trim(),
+      scope,
+      scene,
+      (bindings) => {
+        if (
+          requestSequence !== bindingLoadSequence ||
+          appliedHttpScope.value !== scope ||
+          selectedSceneId.value !== sceneId
+        )
+          return;
+        scenes.value = scenes.value.map((item) => ({
+          ...item,
+          readyStatus: bindings.find(
+            (binding) => binding.primary === item.primary && binding.name === item.name,
+          )?.readyStatus,
+        }));
+      },
+    );
     if (
       requestSequence !== bindingLoadSequence ||
       appliedHttpScope.value !== scope ||
@@ -653,12 +671,10 @@ function sceneStatus(scene: ExtensionScene): {
   return { label: '不完备', className: 'incomplete' };
 }
 
-function treeStatusLabel(scene: ExtensionScene): string {
-  if (transportIsHttp) return getHttpExtensionSceneStatus(scene).label;
-  if (scene.publishing) return '发布中';
-  const latest = latestSuccessfulRelease(scene);
-  if (latest?.version) return `v${displayVersion(latest.version)}`;
-  return scene.publishable ? '就绪' : '不完备';
+function readyStatusClass(readyStatus?: string): 'ready' | 'incomplete' | '' {
+  if (readyStatus === '不完备') return 'incomplete';
+  if (readyStatus === '就绪' || readyStatus === '已就绪') return 'ready';
+  return '';
 }
 
 function displayVersion(version: string): string {
@@ -1100,11 +1116,11 @@ onBeforeUnmount(() => {
                   <span class="primary-tag">{{ scene.primary }}</span>
                   <span class="scene-button__name">{{ scene.name }}</span>
                   <span
-                    v-if="treeStatusLabel(scene)"
+                    v-if="scene.readyStatus"
                     class="tree-status"
-                    :class="sceneStatus(scene).className"
+                    :class="readyStatusClass(scene.readyStatus)"
                   >
-                    <i aria-hidden="true"></i>{{ treeStatusLabel(scene) }}
+                    <i aria-hidden="true"></i>{{ scene.readyStatus }}
                   </span>
                 </button>
               </li>
@@ -1305,7 +1321,8 @@ onBeforeUnmount(() => {
                               : fileErrors[fileKey(currentScene, capability, file.name)] ||
                                 file.content ||
                                 '(空)'
-                          }}</pre>
+                          }}</pre
+                        >
                       </li>
                       <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
                     </template>
@@ -1598,10 +1615,14 @@ onBeforeUnmount(() => {
   --extension-text: #17233d;
   --extension-muted: #667085;
   --extension-border: #e0e7f3;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   width: 100%;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   box-sizing: border-box;
   color: var(--extension-text);
   font-family:
@@ -1820,8 +1841,9 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(280px, 0.32fr) minmax(0, 1fr);
   gap: 16px;
-  height: clamp(560px, calc(100vh - 382px), 880px);
-  min-height: 560px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1841,6 +1863,7 @@ onBeforeUnmount(() => {
 }
 
 .panel-card__header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3085,6 +3108,7 @@ onBeforeUnmount(() => {
     height: auto;
     min-height: 0;
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 2fr);
   }
 
   .scene-tree-card {
@@ -3092,7 +3116,7 @@ onBeforeUnmount(() => {
   }
 
   .detail-card {
-    min-height: 580px;
+    min-height: 0;
   }
 }
 

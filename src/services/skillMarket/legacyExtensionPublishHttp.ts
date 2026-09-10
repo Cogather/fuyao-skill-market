@@ -22,6 +22,8 @@ export type ExtensionRelease = Omit<BaseExtensionRelease, 'status'> & {
 };
 
 export type ExtensionScene = Omit<BaseExtensionScene, 'releases' | 'publishing'> & {
+  /** bindings 中二级场景返回的原始就绪状态，仅用于场景树标签。 */
+  readyStatus?: string;
   releases: ExtensionRelease[];
   publishing: ExtensionRelease | null;
 };
@@ -370,6 +372,8 @@ function mapBindingScenes(
           productId: scope.productId || scope.dimCode,
           primary: firstScene,
           name: secondScene,
+          readyStatus:
+            typeof secondRecord.readyStatus === 'string' ? secondRecord.readyStatus : undefined,
           publishable:
             explicitReady ??
             (capabilityList.length > 0 && capabilityList.every((capability) => capability.ready)),
@@ -480,22 +484,31 @@ export async function queryHttpExtensionBindings(
   userId: string,
   scope: ExtensionScope,
   scene: ExtensionScene,
+  onBindingsLoaded?: (scenes: ExtensionScene[]) => void,
 ): Promise<ExtensionScene> {
   const [bindingResponse, releases] = await Promise.all([
-    skillBaseService.querySceneAndBindingPlanningItems(
-      { userId: requiredText(userId, '尚未获取当前用户工号') },
-      {
-        dimType: scope.dimType,
-        dimCode: scope.dimCode,
-        dimName: scope.dimName,
-      },
-    ),
+    skillBaseService
+      .querySceneAndBindingPlanningItems(
+        { userId: requiredText(userId, '尚未获取当前用户工号') },
+        {
+          dimType: scope.dimType,
+          dimCode: scope.dimCode,
+          dimName: scope.dimName,
+        },
+      )
+      .then((response: unknown) => {
+        // 整棵场景树的就绪状态直接来自 bindings，不等待发布历史。
+        onBindingsLoaded?.(mapBindingScenes(response, scope, []));
+        return response;
+      }),
     queryAllHistory(scope),
   ]);
   const bindingScenes = mapBindingScenes(bindingResponse, scope, releases);
   return (
-    bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ??
-    scene
+    bindingScenes.find((item) => item.primary === scene.primary && item.name === scene.name) ?? {
+      ...scene,
+      readyStatus: undefined,
+    }
   );
 }
 

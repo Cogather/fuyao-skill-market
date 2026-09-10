@@ -461,8 +461,10 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              showLegacyPlanningTabs ||
-              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              tab.key === 'assets'
+                ? false
+                : showLegacyPlanningTabs ||
+                  !['command', 'planning', 'agent', 'extension'].includes(tab.key)
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -937,6 +939,7 @@ onBeforeRouteLeave(() => {
 }
 
 #harness-panel-workflows,
+#harness-panel-capabilities,
 #harness-panel-tasks {
   overflow: hidden;
 }
