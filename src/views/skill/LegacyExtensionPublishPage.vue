@@ -2054,9 +2054,9 @@ onBeforeUnmount(() => {
 }
 
 .tree-status.ready {
-  border-color: #d6dcff;
-  background: #eef2ff;
-  color: #4266d5;
+  border-color: #b9e6cd;
+  background: #eaf8f1;
+  color: #27815d;
 }
 
 .tree-status.incomplete {
