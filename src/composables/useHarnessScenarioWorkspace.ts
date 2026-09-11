@@ -21,8 +21,7 @@ import {
   createDesignCapability,
   attachDesignCapability,
 } from '../services/skillMarket/businessScenarioDesignRepository';
-import { validateWorkflowCapabilityName } from '../utils/workflowCapabilityName';
-import { validateScenarioCreationCode } from '../utils/scenarioCreationCode';
+import { validateProductCatalogItemName } from '../utils/scenarioCreationCode';
 import {
   queryWorkflowCapabilityOptions,
   type WorkflowCapabilityType,
@@ -350,7 +349,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
     if (saving.value) throw new Error('正在保存，请稍候');
     const product = currentProduct();
-    assertScenarioCode(values.code, product, true);
+    assertScenarioCode(values.code, product);
     let scope = sceneContext(workflow.scenarioId);
     const selectedProduct = productId.value;
     let scenario = scenarios.find((item) => item._id === workflow.scenarioId)!;
@@ -448,10 +447,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     onCreated?: (saved: Asset | Command) => void,
   ) {
     const product = currentProduct(true);
-    const invalid = validateWorkflowCapabilityName(
+    const invalid = validateProductCatalogItemName(
       type === 'Command' ? item.name.replace(/^\/+/, '') : item.name,
       product.name,
-      product.code,
     );
     if (invalid) throw new Error(`${type} 名称不符合命名规则：${invalid}`);
     if (!isHttp) {
@@ -683,14 +681,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       if (sequence !== loadSequence) return;
       for (let i = products.length - 1; i >= 0; i--)
         if (products[i]?.departmentId === department._id) products.splice(i, 1);
-      const loaded = options.map(
-        (item): Product => ({
-          _id: JSON.stringify([department._id, item.offeringId || item.offeringName]),
-          name: item.offeringName,
-          code: item.offeringId,
-          departmentId: department._id,
-        }),
-      );
+      const loaded = options.map((item): Product => ({
+        _id: JSON.stringify([department._id, item.offeringId || item.offeringName]),
+        name: item.offeringName,
+        code: item.offeringId,
+        departmentId: department._id,
+      }));
       products.push(...loaded);
       productsLoadedFor = department._id;
       productId.value =
@@ -916,10 +912,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       ownSave = wasOwnSave;
     }
   }
-  function assertScenarioCode(code: string, product: Product, creating = false) {
-    const invalid = creating
-      ? validateScenarioCreationCode(code, product.name)
-      : validateWorkflowCapabilityName(code, product.name, product.code);
+  function assertScenarioCode(code: string, product: Product) {
+    const invalid = validateProductCatalogItemName(code, product.name);
     if (invalid) throw new Error(`场景编码不符合命名规则：${invalid}`);
   }
   async function acceptScenarioMutation(
@@ -982,20 +976,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     if (saving.value) throw new Error('正在保存场景，请稍候');
     saving.value = true;
     try {
-      return await saveScenarioDraft(
-        scenario,
-        options.nameOnly === true,
-        options.creating === true,
-      );
+      return await saveScenarioDraft(scenario, options.nameOnly === true);
     } finally {
       saving.value = false;
     }
   }
-  async function saveScenarioDraft(
-    scenario: Scenario,
-    nameOnly = false,
-    creating = false,
-  ): Promise<Scenario> {
+  async function saveScenarioDraft(scenario: Scenario, nameOnly = false): Promise<Scenario> {
     const product = currentProduct(true);
     if (scenario.productId !== product._id) throw new Error('场景不属于当前产品');
     const records = clone(recordsByProduct.get(product._id) || []);
@@ -1015,8 +1001,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       throw new Error('同一层级下已存在同名场景');
     const existing = records.find((item) => item.id === scenario.sourceId);
     // Existing scenes may predate Workflow design and have no extension code yet.
-    if (scenario.level === 2 && !(nameOnly && existing))
-      assertScenarioCode(scenario.code, product, creating || !existing);
+    if (scenario.level === 2 && !(nameOnly && existing)) assertScenarioCode(scenario.code, product);
     if (isHttp && existing) {
       const current = scenarios.find(
         (item) => item.sourceId === existing.id && item.productId === product._id,

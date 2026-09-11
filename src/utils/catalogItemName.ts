@@ -1,5 +1,5 @@
 export const CATALOG_ITEM_NAME_PATTERN = /^[a-z0-9-]{1,64}$/;
-export const CATALOG_PRODUCT_NAME_PATTERN = /^[a-zA-Z0-9-]{1,64}$/;
+export const CATALOG_PRODUCT_NAME_PATTERN = /^(?=.{1,62}$)[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$/;
 
 export function isCatalogItemNameValid(name: string): boolean {
   return CATALOG_ITEM_NAME_PATTERN.test(name);
@@ -10,7 +10,7 @@ export function isCatalogProductNameValid(name: string): boolean {
 }
 
 /**
- * 产品原名只有在未经 trim、大小写转换等处理时就合法，才参与清单名称前缀约束。
+ * 产品原名只有在无需清洗且能给连字符和名称后缀留出空间时，才参与清单名称前缀约束。
  */
 export function getProductCatalogItemNamePrefix(
   level: string,
