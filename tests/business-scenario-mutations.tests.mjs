@@ -57,6 +57,18 @@ try {
     );
     return state;
   }
+  async function renderMountedScenarioPage(state, workspace) {
+    return renderToString(
+      createSSRApp(
+        {
+          props: ScenarioPage.props,
+          setup: () => state,
+          ssrRender: ScenarioPage.ssrRender,
+        },
+        { workspace, active: true },
+      ),
+    );
+  }
   async function fixture({
     bound = false,
     failReadbackOnce = false,
@@ -342,6 +354,11 @@ try {
     'Harness平台',
     'Harness Pipeline',
     'Harness_Pipeline',
+    '-harness-pipeline',
+    'harness-pipeline-',
+    'harness--pipeline',
+    'a'.repeat(63),
+    'a'.repeat(64),
     'a'.repeat(65),
   ]) {
     await test(`new child scenes omit invalid product-name prefixes: ${productName}`, async () => {
@@ -366,9 +383,140 @@ try {
       const created = f.workspace.scenarios.find((item) => item.name === '新增下级场景');
       assert.equal(created.code, 'custom-extension');
       assert.equal(f.calls.find(([op]) => op === 'code')[1].sceneExtensionCode, 'custom-extension');
+      await assert.doesNotReject(() =>
+        f.workspace.saveScenario({ ...f.scenario, code: 'custom-extension' }),
+      );
+    });
+  }
+  await test('Workflow wizard omits the fallback product code for an invalid product name', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow);
+    assert.equal(state.wizard.value.form.code, '');
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /placeholder="例如：mml-dev"/);
+    assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
+  });
+  await test('Workflow wizard accepts a valid standalone code when the product name is invalid', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow);
+    state.wizard.value.form.code = 'custom-extension';
+    assert.equal(await state.saveWizard(), true);
+    assert.equal(state.wizard.value.error, '');
+    assert.equal(f.detail().sceneExtensionCode, 'custom-extension');
+  });
+  await test('custom Command omits the fallback product code and accepts a standalone name', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline' });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 2);
+    state.openCommandDraft();
+    const wizard = state.wizard.value;
+    assert.equal(wizard.commandDraft.name, '');
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /placeholder="\/e2e-codec"/);
+    assert.doesNotMatch(html, /\/product-demo-e2e-codec|以 product-demo- 开头/);
+    Object.assign(wizard.commandDraft, {
+      name: '/invalid command',
+      description: '自定义 Command',
+      developer: { id: 'u1', label: '开发者', deptName: '研发部' },
+      owner: { id: 'u2', label: '责任人', deptName: '研发部' },
+      dueDate: '2026-12-31',
+    });
+    await state.createCommand();
+    assert.match(wizard.error, /只能包含小写字母、数字和连字符/);
+    assert.equal(
+      f.calls.some(([op]) => op === 'create'),
+      false,
+    );
+    wizard.commandDraft.name = '/custom-command';
+    await state.createCommand();
+    assert.equal(wizard.error, '');
+    assert.equal(
+      f.calls.find(([op, type]) => op === 'create' && type === 'COMMAND')[2].commandName,
+      'custom-command',
+    );
+  });
+  for (const assetType of ['Agent', 'Skill']) {
+    await test(`custom ${assetType} omits the fallback product code and accepts a standalone name`, async () => {
+      const f = await fixture({ productName: 'Harness Pipeline' });
+      const state = await mountScenarioPage(f.workspace);
+      await state.openWizard(f.workflow, 3);
+      state.openAssetDraft(assetType);
+      const wizard = state.wizard.value;
+      assert.equal(wizard.assetDraft.name, '');
+      const example = assetType === 'Agent' ? 'coding-agent' : 'codec-generator';
+      const html = await renderMountedScenarioPage(state, f.workspace);
+      assert.match(html, new RegExp(`placeholder="${example}"`));
+      assert.doesNotMatch(html, new RegExp(`product-demo-${example}|以 product-demo- 开头`));
+      Object.assign(wizard.assetDraft, {
+        name: `invalid ${assetType.toLowerCase()}`,
+        description: `自定义 ${assetType}`,
+        developer: { id: 'u1', label: '开发者', deptName: '研发部' },
+        owner: { id: 'u2', label: '责任人', deptName: '研发部' },
+        dueDate: '2026-12-31',
+      });
+      await state.createAsset();
+      assert.match(wizard.error, /只能包含小写字母、数字和连字符/);
+      assert.equal(
+        f.calls.some(([op]) => op === 'create'),
+        false,
+      );
+      wizard.assetDraft.name = `custom-${assetType.toLowerCase()}`;
+      await state.createAsset();
+      assert.equal(wizard.error, '');
+      assert.equal(
+        f.calls.find(([op, type]) => op === 'create' && type === assetType.toUpperCase())[2][
+          `${assetType.toLowerCase()}Name`
+        ],
+        `custom-${assetType.toLowerCase()}`,
+      );
+    });
+  }
+  for (const productName of ['harness-pipeline', 'Harness-Pipeline']) {
+    await test(`custom capabilities retain the lowercase valid product-name prefix: ${productName}`, async () => {
+      const f = await fixture({ productName });
+      const state = await mountScenarioPage(f.workspace);
+      await state.openWizard(f.workflow, 2);
+      state.openCommandDraft();
+      assert.equal(state.wizard.value.commandDraft.name, '/harness-pipeline-');
+      state.openAssetDraft('Agent');
+      assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      state.openAssetDraft('Skill');
+      assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      const common = {
+        description: '能力说明',
+        owner: '责任人 u1',
+        ownerId: 'u1',
+        developer: '开发者 u2',
+        developerId: 'u2',
+        version: null,
+      };
       await assert.rejects(
-        () => f.workspace.saveScenario({ ...f.scenario, code: 'custom-extension' }),
-        /产品名/,
+        () =>
+          f.workspace.createCapability('Command', {
+            _id: 'invalid-command',
+            name: '/standalone-command',
+            ...common,
+          }),
+        /必须以产品名开头/,
+      );
+      for (const assetType of ['Agent', 'Skill']) {
+        await assert.rejects(
+          () =>
+            f.workspace.createCapability(assetType, {
+              _id: `invalid-${assetType.toLowerCase()}`,
+              name: `standalone-${assetType.toLowerCase()}`,
+              assetType,
+              status: 'draft',
+              ...common,
+            }),
+          /必须以产品名开头/,
+        );
+      }
+      assert.equal(
+        f.calls.some(([op]) => op === 'create'),
+        false,
       );
     });
   }

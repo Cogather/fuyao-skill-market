@@ -7,11 +7,7 @@ import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vu
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningService';
 import type { WorkflowCapabilityOption } from '../../services/skillMarket/workflowCapabilitySearchService';
 import { getProductCatalogItemNamePrefix } from '../../utils/catalogItemName';
-import { validateScenarioCreationCode } from '../../utils/scenarioCreationCode';
-import {
-  workflowCapabilityPrefix,
-  validateWorkflowCapabilityName,
-} from '../../utils/workflowCapabilityName';
+import { validateProductCatalogItemName } from '../../utils/scenarioCreationCode';
 import type {
   Asset,
   AssetType,
@@ -170,13 +166,13 @@ const scenarioError = ref('');
 const scenarioForm = reactive({ name: '', code: '', description: '', tags: [] as string[] });
 const uid = (prefix: string) => `${prefix}${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 const currentProduct = computed(() => products.find((item) => item._id === productId.value));
-const scenarioCreationPrefix = computed(() =>
+const productCatalogItemPrefix = computed(() =>
   getProductCatalogItemNamePrefix('产品级', currentProduct.value?.name ?? ''),
 );
 function isLocalProductOption(item: { sourceId?: string; productId?: string; name: string }) {
   if (item.sourceId) return false;
   if (item.productId) return item.productId === productId.value;
-  const prefix = productPrefix();
+  const prefix = productCatalogItemPrefix.value;
   return Boolean(prefix && item.name.replace(/^\//, '').startsWith(prefix));
 }
 const localCommandOptions = computed<WorkflowCapabilityOption[]>(() =>
@@ -222,19 +218,6 @@ watch([selectedDeptId, productId, available], () => {
   sortingMessage.value = '';
   sortingFailed.value = false;
 });
-const productPrefix = (productName = currentProduct.value?.name ?? '') => {
-  return workflowCapabilityPrefix(
-    productName,
-    products.find((item) => item.name === productName)?.code,
-  );
-};
-function validateName(value: string, productName = currentProduct.value?.name ?? '') {
-  return validateWorkflowCapabilityName(
-    value,
-    productName,
-    products.find((item) => item.name === productName)?.code,
-  );
-}
 function scenarioValidationError(
   scenario: Pick<Scenario, 'name' | 'description' | 'code' | 'releaseCount'>,
   productName: string,
@@ -242,7 +225,7 @@ function scenarioValidationError(
   if (!scenario.name.trim()) return '请填写场景名称';
   if (!scenario.code.trim()) return '请填写场景编码';
   if (!scenario.releaseCount) {
-    const error = validateName(scenario.code, productName);
+    const error = validateProductCatalogItemName(scenario.code, productName);
     if (error) return `场景编码不符合命名规则：${error}`;
   }
   return '';
@@ -257,7 +240,7 @@ function workflowPlanningError(workflow: Workflow): string {
   return '';
 }
 function hasMainEntry(commandsToCheck: CommandRef[], productName: string): boolean {
-  const prefix = productPrefix(productName).replace(/-$/, '');
+  const prefix = getProductCatalogItemNamePrefix('产品级', productName).replace(/-$/, '');
   return commandsToCheck.some((command) => {
     const name = command.name.trim().replace(/^\//, '');
     return /^e2e(-|$)/.test(name) || Boolean(prefix && name.startsWith(`${prefix}-e2e`));
@@ -435,7 +418,7 @@ function openScenario(parentId: string | null) {
   tagSearch.value = '';
   scenarioDialogOpener = activeElement();
   scenarioForm.name = '';
-  scenarioForm.code = parentId ? scenarioCreationPrefix.value : '';
+  scenarioForm.code = parentId ? productCatalogItemPrefix.value : '';
   scenarioForm.description = '';
   scenarioForm.tags = [];
   scenarioError.value = '';
@@ -475,7 +458,10 @@ async function saveScenario() {
   const parentId = scenarioDialog.value?.parentId || null;
   const editingScenario = scenarioDialog.value?.editingScenario;
   if (!editingScenario && parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
-    const error = validateScenarioCreationCode(scenarioForm.code, currentProduct.value?.name ?? '');
+    const error = validateProductCatalogItemName(
+      scenarioForm.code,
+      currentProduct.value?.name ?? '',
+    );
     if (error) {
       scenarioError.value = `场景编码不符合命名规则：${error}`;
       return;
@@ -639,7 +625,7 @@ async function openWizard(workflow?: Workflow, step = 0) {
     form: {
       name: wf.name,
       description: wf.description,
-      code: scenario.code || (scenario.releaseCount ? '' : productPrefix()),
+      code: scenario.code || (scenario.releaseCount ? '' : productCatalogItemPrefix.value),
       scenarioName: scenario.name,
       scenarioDesc: scenario.description,
     },
@@ -1075,7 +1061,7 @@ function openCommandDraft() {
   if (!wizard.value) return;
   wizard.value.error = '';
   wizard.value.commandDraft = {
-    name: productPrefix() ? `/${productPrefix()}` : '',
+    name: productCatalogItemPrefix.value ? `/${productCatalogItemPrefix.value}` : '',
     description: '',
     developer: null,
     owner: null,
@@ -1088,7 +1074,7 @@ function openAssetDraft(type: AssetType) {
   w.error = '';
   w.assetTypeTab = type;
   w.assetDraft = {
-    name: productPrefix(),
+    name: productCatalogItemPrefix.value,
     assetType: type,
     description: '',
     developer: null,
@@ -1122,7 +1108,10 @@ async function createCommand() {
     w.error = '请完整填写 Command 描述、开发责任人、责任人和完成时间';
     return;
   }
-  const error = validateName(d.name.trim().replace(/^\//, ''));
+  const error = validateProductCatalogItemName(
+    d.name.trim().replace(/^\//, ''),
+    currentProduct.value?.name ?? '',
+  );
   if (error) {
     w.error = `Command 名称不符合命名规则：${error}`;
     return;
@@ -1201,7 +1190,7 @@ async function createAsset() {
     w.error = '请完整填写资产描述、开发责任人、责任人和完成时间';
     return;
   }
-  const error = validateName(d.name);
+  const error = validateProductCatalogItemName(d.name, currentProduct.value?.name ?? '');
   if (error) {
     w.error = `资产名称不符合命名规则：${error}`;
     return;
@@ -1750,11 +1739,11 @@ async function createAsset() {
             v-model="scenarioForm.code"
             maxlength="64"
             required
-            :placeholder="`例如：${scenarioCreationPrefix}mml-dev`"
+            :placeholder="`例如：${productCatalogItemPrefix}mml-dev`"
           />
           <small>
             该编码将作为发布的 Extension 名称：{{
-              scenarioCreationPrefix ? `以 ${scenarioCreationPrefix} 开头、` : ''
+              productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头、` : ''
             }}全部小写、仅用连字符分隔。
           </small>
         </label>
@@ -2026,12 +2015,13 @@ async function createAsset() {
             required
             maxlength="64"
             :readonly="!!currentScenario?.releaseCount"
-            :placeholder="`例如：${productPrefix()}mml-dev`"
+            :placeholder="`例如：${productCatalogItemPrefix}mml-dev`"
           /><small v-if="currentScenario?.releaseCount"
             >该场景已发布过版本，编码已锁定不可修改。</small
-          ><small v-else
-            >该编码将作为发布的 Extension 名称：以产品前缀
-            {{ productPrefix() }} 开头、全部小写、仅用连字符分隔。</small
+          ><small v-else>
+            该编码将作为发布的 Extension 名称：{{
+              productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头、` : ''
+            }}全部小写、仅用连字符分隔。</small
           ></label
         ><label
           >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
@@ -2212,7 +2202,7 @@ async function createAsset() {
         </p>
         <p class="main-hint">
           <b>主入口建议：</b>建议选择一个包含 <code>e2e</code> 的 Command 作为流程主入口，例如
-          <code>/{{ productPrefix() }}e2e-codec</code>。
+          <code>/{{ productCatalogItemPrefix }}e2e-codec</code>。
         </p>
         <p
           v-if="
@@ -2261,11 +2251,11 @@ async function createAsset() {
               Command 名称 *
               <input
                 v-model="wizard.commandDraft.name"
-                :placeholder="`/${productPrefix()}e2e-codec`"
+                :placeholder="`/${productCatalogItemPrefix}e2e-codec`"
               />
               <span class="capability-field-hint">
                 {{
-                  productPrefix() ? `以 ${productPrefix()} 开头，` : ''
+                  productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
                 }}仅使用小写字母、数字和连字符。
               </span>
             </label>
@@ -2357,11 +2347,11 @@ async function createAsset() {
               {{ wizard.assetDraft.assetType }} 名称 *
               <input
                 v-model="wizard.assetDraft.name"
-                :placeholder="`${productPrefix()}${wizard.assetDraft.assetType === 'Skill' ? 'codec-generator' : 'coding-agent'}`"
+                :placeholder="`${productCatalogItemPrefix}${wizard.assetDraft.assetType === 'Skill' ? 'codec-generator' : 'coding-agent'}`"
               />
               <span class="capability-field-hint">
                 {{
-                  productPrefix() ? `以 ${productPrefix()} 开头，` : ''
+                  productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
                 }}仅使用小写字母、数字和连字符。
               </span>
             </label>
