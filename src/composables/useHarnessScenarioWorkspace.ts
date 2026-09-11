@@ -22,6 +22,7 @@ import {
   attachDesignCapability,
 } from '../services/skillMarket/businessScenarioDesignRepository';
 import { validateWorkflowCapabilityName } from '../utils/workflowCapabilityName';
+import { validateScenarioCreationCode } from '../utils/scenarioCreationCode';
 import {
   queryWorkflowCapabilityOptions,
   type WorkflowCapabilityType,
@@ -915,8 +916,10 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       ownSave = wasOwnSave;
     }
   }
-  function assertScenarioCode(code: string, product: Product) {
-    const invalid = validateWorkflowCapabilityName(code, product.name, product.code);
+  function assertScenarioCode(code: string, product: Product, creating = false) {
+    const invalid = creating
+      ? validateScenarioCreationCode(code, product.name)
+      : validateWorkflowCapabilityName(code, product.name, product.code);
     if (invalid) throw new Error(`场景编码不符合命名规则：${invalid}`);
   }
   async function acceptScenarioMutation(
@@ -973,18 +976,26 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   }
   async function saveScenario(
     scenario: Scenario,
-    options: { nameOnly?: boolean } = {},
+    options: { nameOnly?: boolean; creating?: boolean } = {},
   ): Promise<Scenario> {
     assertCanManageDepartment();
     if (saving.value) throw new Error('正在保存场景，请稍候');
     saving.value = true;
     try {
-      return await saveScenarioDraft(scenario, options.nameOnly === true);
+      return await saveScenarioDraft(
+        scenario,
+        options.nameOnly === true,
+        options.creating === true,
+      );
     } finally {
       saving.value = false;
     }
   }
-  async function saveScenarioDraft(scenario: Scenario, nameOnly = false): Promise<Scenario> {
+  async function saveScenarioDraft(
+    scenario: Scenario,
+    nameOnly = false,
+    creating = false,
+  ): Promise<Scenario> {
     const product = currentProduct(true);
     if (scenario.productId !== product._id) throw new Error('场景不属于当前产品');
     const records = clone(recordsByProduct.get(product._id) || []);
@@ -1004,7 +1015,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       throw new Error('同一层级下已存在同名场景');
     const existing = records.find((item) => item.id === scenario.sourceId);
     // Existing scenes may predate Workflow design and have no extension code yet.
-    if (scenario.level === 2 && !(nameOnly && existing)) assertScenarioCode(scenario.code, product);
+    if (scenario.level === 2 && !(nameOnly && existing))
+      assertScenarioCode(scenario.code, product, creating || !existing);
     if (isHttp && existing) {
       const current = scenarios.find(
         (item) => item.sourceId === existing.id && item.productId === product._id,

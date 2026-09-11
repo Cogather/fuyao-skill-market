@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { effectScope, nextTick } from 'vue';
+import { createSSRApp, effectScope, nextTick } from 'vue';
+import { renderToString } from '@vue/server-renderer';
 import { createServer } from 'vite';
 
 process.env.VITE_SKILL_MARKET_TRANSPORT = 'http';
 const previousWindow = globalThis.window;
+const previousDocument = globalThis.document;
+const previousHTMLElement = globalThis.HTMLElement;
 const storage = new Map();
 globalThis.window = {
   localStorage: {
@@ -37,7 +40,29 @@ try {
   const { harnessWorkflowService: api } = await server.ssrLoadModule(
     '/src/services/skillMarket/businessScenarioDesignService.ts',
   );
-  async function fixture({ bound = false, failReadbackOnce = false, sceneCode = 'demo-old' } = {}) {
+  const { default: ScenarioPage } = await server.ssrLoadModule(
+    '/src/views/skill/BusinessScenarioDesignPage.vue',
+  );
+  globalThis.document = { activeElement: null };
+  globalThis.HTMLElement = class {};
+  async function mountScenarioPage(workspace) {
+    let state;
+    await renderToString(
+      createSSRApp({
+        setup(_, context) {
+          state = ScenarioPage.setup({ workspace, active: true }, context);
+          return () => null;
+        },
+      }),
+    );
+    return state;
+  }
+  async function fixture({
+    bound = false,
+    failReadbackOnce = false,
+    sceneCode = 'demo-old',
+    productName = 'demo',
+  } = {}) {
     storage.clear();
     const calls = [];
     let rows = [
@@ -67,7 +92,8 @@ try {
       nextStep: 0,
       allDone: false,
     };
-    api.queryProducts = async () => success([{ offeringId: 'product-demo', offeringName: 'demo' }]);
+    api.queryProducts = async () =>
+      success([{ offeringId: 'product-demo', offeringName: productName }]);
     api.querySceneList = async () => {
       if (failReadbackOnce && calls.some(([op]) => ['refresh', 'rename'].includes(op))) {
         failReadbackOnce = false;
@@ -311,6 +337,81 @@ try {
     assert.equal(writes[1][1].secondSceneDescription, '下级场景说明');
     assert.equal(saved.code.trim(), 'demo-child-extension');
     assert.equal(saved.description.trim(), '下级场景说明');
+  });
+  for (const productName of [
+    'Harness平台',
+    'Harness Pipeline',
+    'Harness_Pipeline',
+    'a'.repeat(65),
+  ]) {
+    await test(`new child scenes omit invalid product-name prefixes: ${productName}`, async () => {
+      const f = await fixture({ productName });
+      const state = await mountScenarioPage(f.workspace);
+      state.openScenario(f.scenario.parentId);
+      assert.equal(state.scenarioForm.code, '');
+      state.scenarioForm.name = '新增下级场景';
+      for (const code of ['INVALID', 'invalid_code', 'invalid--code', 'invalid-', 'a'.repeat(65)]) {
+        state.scenarioForm.code = code;
+        await state.saveScenario();
+        assert.ok(state.scenarioError.value);
+        assert.equal(
+          f.calls.some(([op]) => op === 'refresh'),
+          false,
+        );
+      }
+      state.scenarioForm.code = 'custom-extension';
+      await state.saveScenario();
+      assert.equal(state.scenarioError.value, '');
+      assert.equal(state.scenarioDialog.value, null);
+      const created = f.workspace.scenarios.find((item) => item.name === '新增下级场景');
+      assert.equal(created.code, 'custom-extension');
+      assert.equal(f.calls.find(([op]) => op === 'code')[1].sceneExtensionCode, 'custom-extension');
+      await assert.rejects(
+        () => f.workspace.saveScenario({ ...f.scenario, code: 'custom-extension' }),
+        /产品名/,
+      );
+    });
+  }
+  for (const productName of ['harness-pipeline', 'Harness-Pipeline']) {
+    await test(`new child scenes require the lowercase valid product-name prefix: ${productName}`, async () => {
+      const f = await fixture({ productName });
+      const state = await mountScenarioPage(f.workspace);
+      state.openScenario(f.scenario.parentId);
+      assert.equal(state.scenarioForm.code, 'harness-pipeline-');
+      state.scenarioForm.name = '新增下级场景';
+      for (const code of ['custom-extension', 'product-demo-extension', 'harness-pipeline-']) {
+        state.scenarioForm.code = code;
+        await state.saveScenario();
+        assert.ok(state.scenarioError.value);
+        assert.equal(
+          f.calls.some(([op]) => op === 'refresh'),
+          false,
+        );
+      }
+      state.scenarioForm.code = 'harness-pipeline-extension';
+      await state.saveScenario();
+      assert.equal(state.scenarioError.value, '');
+      assert.equal(state.scenarioDialog.value, null);
+      assert.equal(
+        f.workspace.scenarios.find((item) => item.name === '新增下级场景').code,
+        'harness-pipeline-extension',
+      );
+    });
+  }
+  await test('retrying new child creation with an invalid product name preserves the committed identity', async () => {
+    const f = await fixture({ productName: 'Harness平台', failReadbackOnce: true });
+    const state = await mountScenarioPage(f.workspace);
+    state.openScenario(f.scenario.parentId);
+    state.scenarioForm.name = '新增下级场景';
+    state.scenarioForm.code = 'custom-extension';
+    await state.saveScenario();
+    assert.match(state.scenarioError.value, /list readback outage/);
+    assert.ok(state.scenarioDialog.value.savedIdentity.sourceId);
+    await state.saveScenario();
+    assert.equal(state.scenarioError.value, '');
+    assert.equal(state.scenarioDialog.value, null);
+    assert.equal(f.calls.filter(([op]) => op === 'refresh').length, 1);
+    assert.equal(f.workspace.scenarios.filter((item) => item.name === '新增下级场景').length, 1);
   });
   await test('renaming a scene migrates its identity before updating changed code and description', async () => {
     const f = await fixture();
@@ -573,5 +674,7 @@ try {
 } finally {
   await server.close();
   globalThis.window = previousWindow;
+  globalThis.document = previousDocument;
+  globalThis.HTMLElement = previousHTMLElement;
 }
 if (failed) process.exitCode = 1;

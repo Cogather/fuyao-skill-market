@@ -6,6 +6,8 @@ import WorkflowCapabilityPicker from '../../components/skill/WorkflowCapabilityP
 import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningService';
 import type { WorkflowCapabilityOption } from '../../services/skillMarket/workflowCapabilitySearchService';
+import { getProductCatalogItemNamePrefix } from '../../utils/catalogItemName';
+import { validateScenarioCreationCode } from '../../utils/scenarioCreationCode';
 import {
   workflowCapabilityPrefix,
   validateWorkflowCapabilityName,
@@ -168,6 +170,9 @@ const scenarioError = ref('');
 const scenarioForm = reactive({ name: '', code: '', description: '', tags: [] as string[] });
 const uid = (prefix: string) => `${prefix}${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 const currentProduct = computed(() => products.find((item) => item._id === productId.value));
+const scenarioCreationPrefix = computed(() =>
+  getProductCatalogItemNamePrefix('产品级', currentProduct.value?.name ?? ''),
+);
 function isLocalProductOption(item: { sourceId?: string; productId?: string; name: string }) {
   if (item.sourceId) return false;
   if (item.productId) return item.productId === productId.value;
@@ -430,7 +435,7 @@ function openScenario(parentId: string | null) {
   tagSearch.value = '';
   scenarioDialogOpener = activeElement();
   scenarioForm.name = '';
-  scenarioForm.code = parentId ? productPrefix() : '';
+  scenarioForm.code = parentId ? scenarioCreationPrefix.value : '';
   scenarioForm.description = '';
   scenarioForm.tags = [];
   scenarioError.value = '';
@@ -470,7 +475,7 @@ async function saveScenario() {
   const parentId = scenarioDialog.value?.parentId || null;
   const editingScenario = scenarioDialog.value?.editingScenario;
   if (!editingScenario && parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
-    const error = validateName(scenarioForm.code);
+    const error = validateScenarioCreationCode(scenarioForm.code, currentProduct.value?.name ?? '');
     if (error) {
       scenarioError.value = `场景编码不符合命名规则：${error}`;
       return;
@@ -491,7 +496,10 @@ async function saveScenario() {
     releaseCount: editingScenario?.releaseCount || 0,
   };
   try {
-    const saved = await props.workspace.saveScenario(scenario, { nameOnly: !!editingScenario });
+    const saved = await props.workspace.saveScenario(scenario, {
+      nameOnly: !!editingScenario,
+      creating: !editingScenario,
+    });
     if (!editingScenario) selectedScenarioId.value = saved._id;
     closeScenarioDialog();
   } catch (error) {
@@ -1742,9 +1750,13 @@ async function createAsset() {
             v-model="scenarioForm.code"
             maxlength="64"
             required
-            :placeholder="`例如：${productPrefix()}mml-dev`"
+            :placeholder="`例如：${scenarioCreationPrefix}mml-dev`"
           />
-          <small>该编码将作为发布的 Extension 名称：以产品名开头、全部小写、仅用连字符分隔。</small>
+          <small>
+            该编码将作为发布的 Extension 名称：{{
+              scenarioCreationPrefix ? `以 ${scenarioCreationPrefix} 开头、` : ''
+            }}全部小写、仅用连字符分隔。
+          </small>
         </label>
         <fieldset v-else-if="!scenarioDialog.editingScenario" class="editor-tags">
           <legend>场景标签 <span>可多选</span></legend>
