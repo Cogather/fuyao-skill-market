@@ -242,7 +242,7 @@ function scenarioValidationError(
   if (!scenario.name.trim()) return '请填写场景名称';
   if (!scenario.code.trim()) return '请填写场景编码';
   if (!scenario.releaseCount) {
-    const error = validateName(scenario.code, productName);
+    const error = validateScenarioCreationCode(scenario.code, productName);
     if (error) return `场景编码不符合命名规则：${error}`;
   }
   return '';
@@ -639,7 +639,7 @@ async function openWizard(workflow?: Workflow, step = 0) {
     form: {
       name: wf.name,
       description: wf.description,
-      code: scenario.code || (scenario.releaseCount ? '' : productPrefix()),
+      code: scenario.code || (scenario.releaseCount ? '' : scenarioCreationPrefix.value),
       scenarioName: scenario.name,
       scenarioDesc: scenario.description,
     },
@@ -2026,12 +2026,13 @@ async function createAsset() {
             required
             maxlength="64"
             :readonly="!!currentScenario?.releaseCount"
-            :placeholder="`例如：${productPrefix()}mml-dev`"
+            :placeholder="`例如：${scenarioCreationPrefix}mml-dev`"
           /><small v-if="currentScenario?.releaseCount"
             >该场景已发布过版本，编码已锁定不可修改。</small
-          ><small v-else
-            >该编码将作为发布的 Extension 名称：以产品前缀
-            {{ productPrefix() }} 开头、全部小写、仅用连字符分隔。</small
+          ><small v-else>
+            该编码将作为发布的 Extension 名称：{{
+              scenarioCreationPrefix ? `以 ${scenarioCreationPrefix} 开头、` : ''
+            }}全部小写、仅用连字符分隔。</small
           ></label
         ><label
           >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>

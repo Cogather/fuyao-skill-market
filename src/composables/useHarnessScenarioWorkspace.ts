@@ -350,7 +350,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
     if (saving.value) throw new Error('正在保存，请稍候');
     const product = currentProduct();
-    assertScenarioCode(values.code, product);
+    assertScenarioCode(values.code, product, true);
     let scope = sceneContext(workflow.scenarioId);
     const selectedProduct = productId.value;
     let scenario = scenarios.find((item) => item._id === workflow.scenarioId)!;

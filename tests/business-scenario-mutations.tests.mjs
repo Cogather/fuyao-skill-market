@@ -57,6 +57,18 @@ try {
     );
     return state;
   }
+  async function renderMountedScenarioPage(state, workspace) {
+    return renderToString(
+      createSSRApp(
+        {
+          props: ScenarioPage.props,
+          setup: () => state,
+          ssrRender: ScenarioPage.ssrRender,
+        },
+        { workspace, active: true },
+      ),
+    );
+  }
   async function fixture({
     bound = false,
     failReadbackOnce = false,
@@ -372,6 +384,24 @@ try {
       );
     });
   }
+  await test('Workflow wizard omits the fallback product code for an invalid product name', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow);
+    assert.equal(state.wizard.value.form.code, '');
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /placeholder="例如：mml-dev"/);
+    assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
+  });
+  await test('Workflow wizard accepts a valid standalone code when the product name is invalid', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow);
+    state.wizard.value.form.code = 'custom-extension';
+    assert.equal(await state.saveWizard(), true);
+    assert.equal(state.wizard.value.error, '');
+    assert.equal(f.detail().sceneExtensionCode, 'custom-extension');
+  });
   for (const productName of ['harness-pipeline', 'Harness-Pipeline']) {
     await test(`new child scenes require the lowercase valid product-name prefix: ${productName}`, async () => {
       const f = await fixture({ productName });
