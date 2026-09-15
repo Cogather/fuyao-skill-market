@@ -70,6 +70,13 @@ export type HarnessAssetMarketplace = {
   calls: number;
 };
 
+export type HarnessAssetVersionDetail = {
+  version: string;
+  uploadedAt: string | null;
+  uploadedBy?: string;
+  status?: string;
+};
+
 export type HarnessAsset = {
   id: string;
   name: string;
@@ -84,10 +91,14 @@ export type HarnessAsset = {
   currentVersion: string;
   nextPublishVersion?: string;
   versions: string[];
+  /** 版本选择器对应的上传信息；列表接口未返回时可省略。 */
+  versionDetails?: HarnessAssetVersionDetail[];
   owner: string;
   /** Mock 资产的结构化责任人 ID，仅用于人员信息。 */
   ownerId?: string;
   developer: string;
+  /** Extension 当前版本的发布人；Agent / Skill / Command 留空。 */
+  publisher?: string;
   departmentName: string;
   departmentPath: string[];
   productId: string;

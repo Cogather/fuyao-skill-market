@@ -149,6 +149,189 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     ).toHaveCount(0);
   });
 
+  test('Workflow 摘要隐藏环节描述和未关联资产提示', async () => {
+    const scenarioName = '摘要精简';
+    const stageDescription = '摘要中不应显示的环节说明';
+
+    await harnessPage.goto();
+    await harnessPage.switchToScenarios();
+    await harnessPage.createChildScenario({
+      parentScenarioName: '研发提效',
+      scenarioName,
+      scenarioCode: 'harness-pipeline-workflow-summary-compact',
+      scenarioDescription: '验证工作流摘要的精简展示。',
+    });
+
+    await harnessPage.openScenarioDesign();
+    const wizard = harnessPage.workflowDesignDialog;
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+    await wizard.getByLabel('流程名称', { exact: true }).fill(`${scenarioName}作业流`);
+    await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
+    await wizard.getByPlaceholder('环节名称', { exact: true }).fill('需求实现');
+    await wizard.getByPlaceholder('环节说明（可选）', { exact: true }).fill(stageDescription);
+    await wizard.getByRole('button', { name: '添加环节', exact: true }).click();
+    const stage = wizard.locator('.edit-stage').filter({ hasText: '需求实现' });
+    await stage.getByRole('button', { name: '+ 添加节点', exact: true }).click();
+    await stage.getByPlaceholder('节点名称', { exact: true }).fill('编码');
+    await stage.getByRole('button', { name: '添加节点', exact: true }).click();
+    await wizard.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+    await wizard.getByRole('button', { name: '关闭 Workflow 设计' }).click();
+
+    const workflowCard = harnessPage.workflowCard(`${scenarioName}作业流`);
+    await expect(workflowCard.getByText('需求实现', { exact: true })).toBeVisible();
+    await expect(workflowCard.getByText('编码', { exact: true })).toBeVisible();
+    await expect(workflowCard.getByText(stageDescription, { exact: true })).toHaveCount(0);
+    await expect(workflowCard.getByText('未关联 Agent / Skill', { exact: true })).toHaveCount(0);
+  });
+
+  test('Workflow 摘要恢复 9 月 7 日原版卡片样式', async () => {
+    const scenarioName = '彩色流程';
+    const structure = [
+      { stage: '需求分析', node: '需求澄清' },
+      { stage: '方案设计', node: '接口设计' },
+      { stage: '编码实现', node: '功能开发' },
+    ];
+
+    await harnessPage.goto();
+    await harnessPage.switchToScenarios();
+    await harnessPage.createChildScenario({
+      parentScenarioName: '研发提效',
+      scenarioName,
+      scenarioCode: 'harness-pipeline-color-workflow',
+      scenarioDescription: '验证环节颜色层次。',
+    });
+
+    await harnessPage.openScenarioDesign();
+    const wizard = harnessPage.workflowDesignDialog;
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+    await wizard.getByLabel('流程名称', { exact: true }).fill(`${scenarioName}作业流`);
+    for (const item of structure) {
+      await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
+      await wizard.getByPlaceholder('环节名称', { exact: true }).fill(item.stage);
+      await wizard.getByRole('button', { name: '添加环节', exact: true }).click();
+      const stage = wizard.locator('.edit-stage').filter({ hasText: item.stage });
+      await stage.getByRole('button', { name: '+ 添加节点', exact: true }).click();
+      await stage.getByPlaceholder('节点名称', { exact: true }).fill(item.node);
+      await stage.getByRole('button', { name: '添加节点', exact: true }).click();
+    }
+    await wizard.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+    await wizard.getByRole('button', { name: '关闭 Workflow 设计' }).click();
+
+    const workflowCard = harnessPage.workflowCard(`${scenarioName}作业流`);
+    const configSections = workflowCard.locator('.config-grid section');
+    await expect(configSections).toHaveCount(2);
+    const configAppearance = await configSections.evaluateAll((elements) =>
+      elements.map((section) => {
+        const style = getComputedStyle(section);
+        return {
+          minHeight: style.minHeight,
+          padding: style.padding,
+          border: `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`,
+          borderRadius: style.borderRadius,
+          background: style.backgroundColor,
+        };
+      }),
+    );
+    expect(configAppearance).toEqual([
+      {
+        minHeight: '92px',
+        padding: '14px',
+        border: '1px solid rgb(229, 231, 235)',
+        borderRadius: '10px',
+        background: 'rgb(252, 252, 253)',
+      },
+      {
+        minHeight: '92px',
+        padding: '14px',
+        border: '1px solid rgb(229, 231, 235)',
+        borderRadius: '10px',
+        background: 'rgb(252, 252, 253)',
+      },
+    ]);
+
+    const stages = workflowCard.locator('.stage');
+    await expect(stages).toHaveCount(3);
+    const appearance = await stages.evaluateAll((elements) =>
+      elements.map((stage) => {
+        const node = stage.querySelector<HTMLElement>('.stage-node')!;
+        const stageStyle = getComputedStyle(stage);
+        const nodeStyle = getComputedStyle(node);
+        return {
+          stageBorderTop: `${stageStyle.borderTopWidth} ${stageStyle.borderTopStyle} ${stageStyle.borderTopColor}`,
+          stageBackground: stageStyle.backgroundColor,
+          nodeBorderLeft: `${nodeStyle.borderLeftWidth} ${nodeStyle.borderLeftStyle} ${nodeStyle.borderLeftColor}`,
+          nodeBackground: nodeStyle.backgroundColor,
+        };
+      }),
+    );
+    expect(appearance).toEqual([
+      {
+        stageBorderTop: '3px solid rgb(37, 99, 235)',
+        stageBackground: 'rgba(0, 0, 0, 0)',
+        nodeBorderLeft: '3px solid rgb(37, 99, 235)',
+        nodeBackground: 'rgb(249, 250, 251)',
+      },
+      {
+        stageBorderTop: '3px solid rgb(139, 92, 246)',
+        stageBackground: 'rgba(0, 0, 0, 0)',
+        nodeBorderLeft: '3px solid rgb(139, 92, 246)',
+        nodeBackground: 'rgb(249, 250, 251)',
+      },
+      {
+        stageBorderTop: '3px solid rgb(6, 182, 212)',
+        stageBackground: 'rgba(0, 0, 0, 0)',
+        nodeBorderLeft: '3px solid rgb(6, 182, 212)',
+        nodeBackground: 'rgb(249, 250, 251)',
+      },
+    ]);
+  });
+
+  test('Workflow 摘要中的 Command 名称与描述保持紧凑对齐', async () => {
+    const scenarioName = '命令字号';
+
+    await harnessPage.goto();
+    await harnessPage.switchToScenarios();
+    await harnessPage.createChildScenario({
+      parentScenarioName: '研发提效',
+      scenarioName,
+      scenarioCode: 'harness-pipeline-command-title-size',
+      scenarioDescription: '验证摘要中的 Command 名称字号。',
+    });
+
+    await harnessPage.openScenarioDesign();
+    const wizard = harnessPage.workflowDesignDialog;
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+    await wizard.getByLabel('流程名称', { exact: true }).fill(`${scenarioName}作业流`);
+    await wizard.getByRole('button', { name: '+ 添加环节', exact: true }).click();
+    await wizard.getByPlaceholder('环节名称', { exact: true }).fill('命令接入');
+    await wizard.getByRole('button', { name: '添加环节', exact: true }).click();
+    const stage = wizard.locator('.edit-stage').filter({ hasText: '命令接入' });
+    await stage.getByRole('button', { name: '+ 添加节点', exact: true }).click();
+    await stage.getByPlaceholder('节点名称', { exact: true }).fill('执行命令');
+    await stage.getByRole('button', { name: '添加节点', exact: true }).click();
+    await wizard.getByRole('button', { name: '下一步', exact: true }).click();
+    await wizard.getByRole('button', { name: '+ 选择一个 Command 加入… ▾' }).click();
+    await wizard.getByRole('button', { name: /\/harness-pipeline-e2e-codec/ }).click();
+    await wizard.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+    await wizard.getByRole('button', { name: '关闭 Workflow 设计' }).click();
+
+    const command = harnessPage.workflowCard(`${scenarioName}作业流`).locator('.commands div').first();
+    await expect(command.locator('code')).toHaveText('/harness-pipeline-e2e-codec');
+    const appearance = await command.evaluate((element) => ({
+      alignment: getComputedStyle(element).alignItems,
+      nameFontSize: getComputedStyle(element.querySelector('code')!).fontSize,
+      descriptionFontSize: getComputedStyle(element.querySelector('.command-description')!).fontSize,
+    }));
+    expect(appearance).toEqual({
+      alignment: 'baseline',
+      nameFontSize: '13px',
+      descriptionFontSize: '11px',
+    });
+  });
+
   test('配置管理暂时仅显示不带序号的部门权限配置', async ({ page }) => {
     await harnessPage.goto();
     await page.locator('#harness-tab-settings').click();
@@ -234,19 +417,21 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
       '状态',
       '所属业务场景',
       'Command 入口',
+      '操作',
     ]);
-    await expect(harnessPage.workflowStatusButton('全部')).toHaveText(/全部\s*1/);
-    await expect(harnessPage.workflowStatusButton('已发布')).toHaveText(/已发布\s*0/);
-    await expect(harnessPage.workflowStatusButton('设计中')).toHaveText(/设计中\s*1/);
+    await expect(
+      harnessPage.workflowsPanel.getByRole('group', { name: '筛选工作流状态' }).getByRole('button'),
+    ).toHaveText(['全部', '开发中', '待发布', '已发布']);
 
     const draftRow = harnessPage.workflowInventoryRow('未命名 Workflow');
     await expect(draftRow.getByRole('cell')).toHaveText([
       '未命名 Workflow',
       'harness-pipeline',
       '持续交付组',
-      '设计中',
+      '开发中',
       '研发提效 / 代码生成',
       '0 个',
+      '查看',
     ]);
     await expect(harnessPage.workflowsPreviousPageButton).toBeDisabled();
     await expect(harnessPage.workflowsNextPageButton).toBeDisabled();
@@ -341,7 +526,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
 
     await harnessPage.workflowsNextPageButton.click();
     await expect(harnessPage.workflowInventoryRow('分页场景10作业流')).toBeVisible();
-    await harnessPage.workflowStatusButton('设计中').click();
+    await harnessPage.workflowStatusButton('开发中').click();
     await expect(harnessPage.workflowInventoryRow('未命名 Workflow')).toBeVisible();
     await expect(harnessPage.workflowInventoryRow('分页场景10作业流')).toHaveCount(0);
   });
@@ -396,9 +581,10 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
       workflowName,
       'harness-pipeline',
       '持续交付组',
-      '设计中',
+      '开发中',
       `研发提效 / ${scenarioName}`,
       '1 个',
+      '查看',
     ]);
 
     await harnessPage.openScenariosFromWorkflows();

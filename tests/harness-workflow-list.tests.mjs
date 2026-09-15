@@ -254,7 +254,7 @@ try {
         total: 1,
         pageNo: 1,
         pageSize: 10,
-        list: [row(params.status || 'initial', params.status || '设计中')],
+        list: [row(params.status || 'initial', params.status || '开发中')],
       });
     };
     const { state } = mount();
@@ -262,12 +262,12 @@ try {
     state.statusFilter.value = '已发布';
     await settle();
     assert.equal(typeof release, 'function', 'Status selection must send a server query');
-    state.statusFilter.value = '设计中';
+    state.statusFilter.value = '开发中';
     await settle();
-    assert.equal(state.visibleRows.value[0].name, '设计中');
+    assert.equal(state.visibleRows.value[0].name, '开发中');
     release();
     await settle();
-    assert.equal(state.visibleRows.value[0].name, '设计中');
+    assert.equal(state.visibleRows.value[0].name, '开发中');
     assert.equal(state.inventoryLoading.value, false);
   });
 
@@ -392,6 +392,7 @@ try {
         scenarioId: 'scene',
         description: '',
         commands: Array.from({ length: index % 3 }, () => ({})),
+        status: index === 4 ? 'active' : index === 5 ? undefined : 'draft',
         releaseCount: index < 4 ? 1 : 0,
       })),
     );
@@ -422,6 +423,15 @@ try {
     assert.equal(state.page.value, 1);
     assert.equal(state.totalRows.value, 4);
     assert.ok(state.visibleRows.value.every((item) => item.status === '已发布'));
+    state.statusFilter.value = '待发布';
+    await settle();
+    assert.equal(state.totalRows.value, 1);
+    assert.equal(state.visibleRows.value[0].name, '本地流程4');
+    assert.equal(state.visibleRows.value[0].status, '待发布');
+    state.statusFilter.value = '开发中';
+    await settle();
+    assert.equal(state.totalRows.value, 7);
+    assert.ok(state.visibleRows.value.every((item) => item.status === '开发中'));
     assert.equal(requests, 0);
   });
 } finally {

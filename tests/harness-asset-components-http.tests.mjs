@@ -58,6 +58,9 @@ try {
     description: '检查流水线',
     latestVersion: '0.0.1',
     status: '待发布',
+    owner: '责任人 u001',
+    developer: '开发责任人 u002',
+    publisher: '发布人 u003',
     category: '产品级/流水线',
     updatedAt: '2026-03-24 10:00:00',
   };
@@ -104,6 +107,8 @@ try {
     assert.equal(asset.assetType, assetType);
     assert.equal(asset.currentVersion, '0.0.1');
     assert.deepEqual(asset.versions, ['0.0.1']);
+    assert.equal(asset.developer, row.developer);
+    assert.equal(asset.publisher, assetType === 'Extension' ? row.publisher : '');
     assert.equal(harnessAssetStatus(asset), '待发布');
     assert.equal(asset.publishable, assetType === 'Extension');
     assert.equal(asset.category, row.category);
@@ -111,6 +116,14 @@ try {
     assert.ok(asset.id, 'records without a backend id still need a stable list key');
   }
   console.log('PASS all four filters use one components query and map the supplied records');
+
+  nextResponse = response([{ ...row, publisher: null, uploadedBy: '上传发布人 u004' }], 1);
+  const extensionWithUploader = await api.queryAssets(
+    { ...scope, assetType: 'Extension' },
+    { pageNum: 1, pageSize: 30 },
+  );
+  assert.equal(extensionWithUploader.list[0].publisher, '上传发布人 u004');
+  console.log('PASS Extension publisher supports the current-version uploadedBy response field');
 
   for (const [status, canPublish, latestVersion, publishable] of [
     ['已发布', true, '0.0.1', true],

@@ -30,11 +30,9 @@ const {
   selectDepartment,
 } = props.workspace;
 
-const STATUS_OPTIONS = ['全部', '已发布', '待发布', '设计中'] as const;
+const STATUS_OPTIONS = ['全部', '开发中', '待发布', '已发布'] as const;
 type StatusFilter = (typeof STATUS_OPTIONS)[number];
-const statusOptions = computed(() =>
-  isHttp ? STATUS_OPTIONS : STATUS_OPTIONS.filter((status) => status !== '待发布'),
-);
+type WorkflowStatus = Exclude<StatusFilter, '全部'>;
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const pageSize = ref(10);
 const productFilter = ref('');
@@ -87,17 +85,22 @@ const scopedWorkflows = computed(() =>
   }),
 );
 
-function statusOf(workflow: Workflow): Exclude<StatusFilter, '全部'> {
-  return workflow.releaseCount > 0 ? '已发布' : '设计中';
+function normalizeWorkflowStatus(status: unknown, releaseCount = 0): WorkflowStatus {
+  const normalized = String(status ?? '')
+    .trim()
+    .toLowerCase();
+  if (releaseCount > 0 || ['已发布', 'published', 'released'].includes(normalized)) {
+    return '已发布';
+  }
+  if (['待发布', '可发布', 'ready', 'active', 'completed', 'complete'].includes(normalized)) {
+    return '待发布';
+  }
+  return '开发中';
 }
 
-const statusCounts = computed(() => {
-  const total = scopedWorkflows.value.length;
-  const published = scopedWorkflows.value.filter(
-    (workflow) => statusOf(workflow) === '已发布',
-  ).length;
-  return { 全部: total, 已发布: published, 待发布: 0, 设计中: total - published };
-});
+function statusOf(workflow: Workflow): WorkflowStatus {
+  return normalizeWorkflowStatus(workflow.status, workflow.releaseCount);
+}
 const filteredWorkflows = computed(() =>
   statusFilter.value === '全部'
     ? scopedWorkflows.value
@@ -123,7 +126,9 @@ const visibleRows = computed(() => {
       scenarioDescription: row.secondSceneDescription || '',
       commandCount:
         Number.isSafeInteger(row.commandCount) && row.commandCount! >= 0 ? row.commandCount : null,
-      status: row.status || '-',
+      status: normalizeWorkflowStatus(row.status || ''),
+      canPublish: row.canPublish,
+      changed: row.changed,
     }));
   }
   return filteredWorkflows.value
@@ -147,9 +152,16 @@ const visibleRows = computed(() => {
             : scenario.name
           : workflow.businessScenario || '未关联场景',
         status: statusOf(workflow),
+        canPublish: workflow.canPublish,
+        changed: workflow.changed,
       };
     });
 });
+
+function shouldShowPublish(row: (typeof visibleRows.value)[number]): boolean {
+  if (row.status === '待发布') return row.canPublish === true;
+  return row.status === '已发布' && row.canPublish === true && row.changed === true;
+}
 
 function setPageSize(size: number) {
   pageSize.value = size;
@@ -333,33 +345,17 @@ onBeforeUnmount(() => {
       <template v-else>
         <div class="workflows-toolbar">
           <div class="workflows-status-filter" role="group" aria-label="筛选工作流状态">
-            <template v-for="status in statusOptions" :key="status">
-              <template v-if="status === '待发布'">
-                <button
-                  v-if="false"
-                  class="wf-status-chip"
-                  :class="{ active: statusFilter === status }"
-                  type="button"
-                  :aria-pressed="statusFilter === status"
-                  @click="statusFilter = status"
-                >
-                  {{ status }}
-                </button>
-              </template>
-              <button
-                v-else
-                class="wf-status-chip"
-                :class="{ active: statusFilter === status }"
-                type="button"
-                :aria-pressed="statusFilter === status"
-                @click="statusFilter = status"
-              >
-                {{ status }}
-                <span v-if="!isHttp" class="wf-status-count" aria-hidden="true">{{
-                  statusCounts[status]
-                }}</span>
-              </button>
-            </template>
+            <button
+              v-for="status in STATUS_OPTIONS"
+              :key="status"
+              class="wf-status-chip"
+              :class="{ active: statusFilter === status }"
+              type="button"
+              :aria-pressed="statusFilter === status"
+              @click="statusFilter = status"
+            >
+              {{ status }}
+            </button>
           </div>
         </div>
 
@@ -391,6 +387,7 @@ onBeforeUnmount(() => {
                   <th scope="col">状态</th>
                   <th scope="col">所属业务场景</th>
                   <th scope="col">Command 入口</th>
+                  <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,7 +401,7 @@ onBeforeUnmount(() => {
                       :class="{
                         published: row.status === '已发布',
                         pending: row.status === '待发布',
-                        designing: row.status === '设计中',
+                        developing: row.status === '开发中',
                       }"
                     >
                       {{ row.status }}
@@ -415,6 +412,19 @@ onBeforeUnmount(() => {
                     <span class="wf-count-pill">{{
                       row.commandCount === null ? '-' : `${row.commandCount} 个`
                     }}</span>
+                  </td>
+                  <td>
+                    <div class="wf-actions">
+                      <button type="button" @click="emit('open-scenarios')">查看</button>
+                      <button
+                        v-if="shouldShowPublish(row)"
+                        type="button"
+                        class="is-publish"
+                        @click="emit('open-scenarios')"
+                      >
+                        发布
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -642,41 +652,28 @@ onBeforeUnmount(() => {
 }
 .workflows-status-filter {
   display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  border-radius: 9px;
-  background: #f3f4f6;
+  gap: 6px;
 }
 .workflows-page .wf-status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.7rem;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-.wf-status-chip.active {
+  min-height: 28px;
+  padding: 5px 13px;
+  border: 1px solid #dde1ea;
+  border-radius: 16px;
   background: #fff;
-  color: var(--blue);
-  box-shadow: 0 1px 3px #0f172a1f;
+  color: #5a6478;
+  font-size: 12.5px;
+  font-weight: 400;
 }
-.wf-status-count {
-  min-width: 1.1rem;
-  padding: 0.02rem 0.28rem;
-  border-radius: 999px;
-  background: #e5e7eb;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
+.workflows-page .wf-status-chip:hover {
+  border-color: #b9c2d4;
 }
-.wf-status-chip.active .wf-status-count {
-  background: #dbeafe;
-  color: #1d4ed8;
+.workflows-page .wf-status-chip.active {
+  border-color: #1f2329;
+  background: #1f2329;
+  color: #fff;
+  box-shadow: none;
 }
 .table-scroll {
   overflow-x: auto;
@@ -728,7 +725,7 @@ onBeforeUnmount(() => {
   background: #d1fae5;
   color: #065f46;
 }
-.workflow-status-badge.designing {
+.workflow-status-badge.developing {
   background: #fef3c7;
   color: #92400e;
 }
@@ -739,6 +736,36 @@ onBeforeUnmount(() => {
 .wf-count-pill {
   background: #f3f4f6;
   color: var(--muted);
+}
+.wf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.workflows-page .wf-actions button {
+  min-width: 52px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #d9deea;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: 13px;
+}
+.workflows-page .wf-actions button:hover {
+  border-color: #b9c2d4;
+  background: #f8fafc;
+}
+.workflows-page .wf-actions .is-publish {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+  font-weight: 600;
+}
+.workflows-page .wf-actions .is-publish:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
 }
 .workflows-pagination {
   display: flex;

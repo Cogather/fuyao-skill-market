@@ -186,8 +186,7 @@ test.describe('HTTP 场景部门权限与列表筛选', () => {
     await prepare(page);
     await page.locator('#harness-tab-assets').click();
     await selectDepartment(page, '#harness-panel-assets', ['运营部']);
-    await page.getByRole('button', { name: '+ 新建资产', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Agent', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '添加 Agent' });
     await dialog.getByRole('button', { name: '新增资产部门', exact: true }).click();
     const options = page.getByRole('listbox').getByRole('option');
@@ -203,8 +202,8 @@ test.describe('HTTP 场景部门权限与列表筛选', () => {
       await selectDepartment(page, '#harness-panel-assets', ['运营部']);
       await selectHarnessOption(page.getByLabel('产品筛选'), 'product-operations');
 
-      await page.getByRole('button', { name: '+ 新建资产', exact: true }).click();
-      await page.getByRole('menuitem', { name: type, exact: true }).click();
+      await page.getByRole('button', { name: type, exact: true }).click();
+      await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
       const createDialog = page.getByRole('dialog');
       const createDepartment = createDialog.getByRole('button', {
         name: '新增资产部门',
@@ -217,8 +216,8 @@ test.describe('HTTP 场景部门权限与列表筛选', () => {
       await createDialog.getByRole('button', { name: '取消', exact: true }).click();
       await expect(createDialog).toHaveCount(0);
 
+      await page.getByRole('button', { name: type, exact: true }).click();
       await page.getByRole('button', { name: '导入', exact: true }).click();
-      await page.getByRole('menuitem', { name: type, exact: true }).click();
       const dialog = page.getByRole('dialog', { name: `导入 ${type}`, exact: true });
       const department = dialog.getByRole('button', { name: '导入资产部门', exact: true });
       await expect(department.locator('.market-dept-cascader-trigger-text')).toHaveText(

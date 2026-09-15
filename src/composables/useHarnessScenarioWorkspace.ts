@@ -108,6 +108,8 @@ export type Workflow = {
   scenarioId: string;
   status: string;
   releaseCount: number;
+  canPublish?: boolean;
+  changed?: boolean;
   stages: Stage[];
   assets: AssetRef[];
   commands: CommandRef[];

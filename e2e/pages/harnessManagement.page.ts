@@ -203,7 +203,7 @@ export class HarnessManagementPage {
   }
 
   /** 按业务状态筛选 Harness 工作流。 */
-  workflowStatusButton(status: '全部' | '已发布' | '设计中'): Locator {
+  workflowStatusButton(status: '全部' | '开发中' | '待发布' | '已发布'): Locator {
     return this.workflowsPanel.getByRole('button', { name: status, exact: true });
   }
 

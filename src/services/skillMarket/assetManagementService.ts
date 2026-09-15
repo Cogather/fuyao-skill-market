@@ -189,12 +189,18 @@ function atomicAsset(
   scope: HarnessAssetScope,
   products: HarnessAssetProduct[],
 ): HarnessAsset {
-  const versions = (record.versions ?? [])
-    .map((version) => normalizeHarnessAssetVersion(version.version))
-    .filter(Boolean);
   const currentVersion = normalizeHarnessAssetVersion(
     latestSkillMasterVersion(record)?.version ?? '',
   );
+  const published = record.status === '已完成' && Boolean(currentVersion);
+  const versionDetails = (record.versions ?? [])
+    .map((item) => ({
+      version: normalizeHarnessAssetVersion(item.version),
+      uploadedAt: item.uploadedAt || null,
+      ...(published ? { status: '已发布' } : {}),
+    }))
+    .filter((item) => Boolean(item.version));
+  const versions = versionDetails.map((item) => item.version);
   const product = products.find((item) => item.name === record.product);
   return {
     id: record.id,
@@ -203,6 +209,7 @@ function atomicAsset(
     assetType: type,
     currentVersion,
     versions,
+    versionDetails,
     owner: record.owner,
     ownerId: record.owner.trim().match(/\s+(\S+)$/)?.[1] ?? '',
     developer: record.developOwner,
@@ -217,6 +224,7 @@ function atomicAsset(
     // 原子能力由 Extension 打包发布，规划服务没有独立的发布或历史接口。
     releases: [],
     publishable: false,
+    ...(published ? { status: '已发布' } : {}),
   };
 }
 
@@ -319,7 +327,8 @@ function extensionPublishName(asset: HarnessAsset, scene: ExtensionScene): strin
 
 function extensionAsset(scene: ExtensionScene, product: HarnessAssetProduct): HarnessAsset {
   const releases = sceneReleases(scene);
-  const latestSuccessfulVersion = releases.find((release) => release.status === '成功')?.version;
+  const publishedReleases = releases.filter((release) => release.status === '成功');
+  const latestSuccessfulVersion = publishedReleases[0]?.version;
   const nextPublishVersion = scene.publishable ? nextExtensionVersion(scene) : '';
   const currentVersion = scene.publishable
     ? normalizeHarnessAssetVersion(
@@ -328,13 +337,27 @@ function extensionAsset(scene: ExtensionScene, product: HarnessAssetProduct): Ha
     : '';
   const versions = [
     ...new Set(
-      [
-        nextPublishVersion,
-        currentVersion,
-        ...releases.map((release) => normalizeHarnessAssetVersion(release.version)),
-      ].filter(Boolean),
+      publishedReleases
+        .map((release) => normalizeHarnessAssetVersion(release.version))
+        .filter(Boolean),
     ),
   ];
+  const releaseByVersion = new Map(
+    releases.map((release) => [normalizeHarnessAssetVersion(release.version), release]),
+  );
+  const versionDetails = versions.map((version) => {
+    const release = releaseByVersion.get(version);
+    return {
+      version,
+      uploadedAt: release?.publishedAt ?? null,
+      ...(release
+        ? {
+            uploadedBy: `${release.operator.name} ${release.operator.no}`.trim(),
+            status: '已发布',
+          }
+        : {}),
+    };
+  });
   return {
     id: scene.id,
     name: scene.extension.name || generatedExtensionName(scene, product),
@@ -347,13 +370,16 @@ function extensionAsset(scene: ExtensionScene, product: HarnessAssetProduct): Ha
     currentVersion,
     nextPublishVersion,
     versions,
+    versionDetails,
     owner: '',
     developer: '',
+    publisher: versionDetails.find((detail) => detail.version === currentVersion)?.uploadedBy ?? '',
     departmentName: product.departmentPath.at(-1) ?? '',
     departmentPath: [...product.departmentPath],
     productId: product.id,
     productName: product.name,
     auto: true,
+    canEdit: true,
     marketplace: { rating: 0, downloads: 0, calls: 0 },
     releases: releases.map(mapExtensionRelease),
     publishable: scene.publishable && Boolean(currentVersion),

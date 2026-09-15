@@ -116,8 +116,8 @@ test.describe('资产页新建 HTTP 归属', () => {
     test(`${type} 人员搜索面板仅在点击自身区域外时独立收起`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await prepareAssets(page);
-      await page.getByRole('button', { name: '+ 新建资产' }).click();
-      await page.getByRole('menuitem', { name: type, exact: true }).click();
+      await page.getByRole('button', { name: type, exact: true }).click();
+      await page.getByRole('button', { name: '＋ 新增' }).click();
       const dialog = page.getByRole('dialog', { name: `添加 ${type}` });
       const pickers = dialog.locator('.person-search:visible');
       const owner = pickers.nth(0);
@@ -192,8 +192,7 @@ test.describe('资产页新建 HTTP 归属', () => {
       await expect(page.locator('.asset-card')).toHaveCount(1);
       const originalListQuery = listRequests.at(-1)!.postDataJSON();
       for (const level of ['产品级', '部门级']) {
-        await page.getByRole('button', { name: '+ 新建资产' }).click();
-        await page.getByRole('menuitem', { name: type, exact: true }).click();
+        await page.getByRole('button', { name: '＋ 新增' }).click();
         const dialog = page.getByRole('dialog', { name: `添加 ${type}` });
         await expect(dialog).toBeVisible();
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
@@ -261,8 +260,8 @@ test.describe('资产页新建 HTTP 归属', () => {
         json: { meta: { success: false, message: '名称已存在' }, data: null },
       });
     });
-    await page.getByRole('button', { name: '+ 新建资产' }).click();
-    await page.getByRole('menuitem', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增' }).click();
     const dialog = page.getByRole('dialog', { name: '添加 Skill' });
     const scope = dialog.getByRole('group', { name: '新增资产归属' });
     await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(

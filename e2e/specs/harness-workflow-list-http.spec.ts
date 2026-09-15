@@ -67,7 +67,20 @@ async function mountWorkflowPage(page: Page) {
           allowedDepartmentPaths: [['研发部']],
           restrictToAllowedDepartments: true,
         }));
-        return () => h('div', { id: 'harness-panel-workflows' }, h(Component, { workspace }));
+        return () =>
+          h('div', { id: 'harness-panel-workflows' }, [
+            h('span', { id: 'workflow-list-event-probe', 'data-open-count': '0' }),
+            h(Component, {
+              workspace,
+              onOpenScenarios() {
+                const probe = document.getElementById('workflow-list-event-probe');
+                probe?.setAttribute(
+                  'data-open-count',
+                  String(Number(probe.getAttribute('data-open-count')) + 1),
+                );
+              },
+            }),
+          ]);
       },
     }).mount('#test-host');
   });
@@ -116,7 +129,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await expect(harness.workflowsPanel.locator('.wf-status-count')).toHaveCount(0);
     await expect(
       harness.workflowsPanel.getByRole('button', { name: '待发布', exact: true }),
-    ).toHaveCount(0);
+    ).toHaveCount(1);
 
     await harness.workflowsNextPageButton.click();
     await expect(harness.workflowInventoryRow('服务端第2页')).toBeVisible();
@@ -137,6 +150,71 @@ test.describe('Harness 工作流服务端列表', () => {
     });
   });
 
+  test('操作列始终显示查看并按状态、canPublish 和 changed 显示发布', async ({ page }) => {
+    await prepare(page);
+    await page.route('**/api/harness/workflow/list**', (route) =>
+      route.fulfill({
+        json: success({
+          total: 5,
+          pageNo: 1,
+          pageSize: 10,
+          list: [
+            { ...workflow('开发中可发布', '开发中'), canPublish: true, changed: true },
+            { ...workflow('待发布允许', '待发布'), canPublish: true, changed: false },
+            { ...workflow('待发布拒绝', '待发布'), canPublish: false, changed: true },
+            { ...workflow('已发布有变更', '已发布'), canPublish: true, changed: true },
+            { ...workflow('已发布无变更', '已发布'), canPublish: true, changed: false },
+          ],
+        }),
+      }),
+    );
+    const harness = new HarnessManagementPage(page);
+    await mountWorkflowPage(page);
+
+    await expect(
+      harness.workflowsTable.getByRole('columnheader', { name: '操作', exact: true }),
+    ).toBeVisible();
+    for (const name of [
+      '开发中可发布',
+      '待发布允许',
+      '待发布拒绝',
+      '已发布有变更',
+      '已发布无变更',
+    ]) {
+      await expect(
+        harness.workflowInventoryRow(name).getByRole('button', { name: '查看', exact: true }),
+      ).toBeEnabled();
+    }
+    await expect(
+      harness.workflowInventoryRow('开发中可发布').getByRole('button', { name: '发布' }),
+    ).toHaveCount(0);
+    await expect(
+      harness.workflowInventoryRow('待发布允许').getByRole('button', { name: '发布' }),
+    ).toBeEnabled();
+    await expect(
+      harness.workflowInventoryRow('待发布拒绝').getByRole('button', { name: '发布' }),
+    ).toHaveCount(0);
+    await expect(
+      harness.workflowInventoryRow('已发布有变更').getByRole('button', { name: '发布' }),
+    ).toBeEnabled();
+    await expect(
+      harness.workflowInventoryRow('已发布无变更').getByRole('button', { name: '发布' }),
+    ).toHaveCount(0);
+
+    await harness
+      .workflowInventoryRow('开发中可发布')
+      .getByRole('button', { name: '查看', exact: true })
+      .click();
+    await harness
+      .workflowInventoryRow('待发布允许')
+      .getByRole('button', { name: '发布', exact: true })
+      .click();
+    await expect(page.locator('#workflow-list-event-probe')).toHaveAttribute(
+      'data-open-count',
+      '2',
+    );
+  });
+
   test('失败可重试，空筛选仍可切换，过期请求不能覆盖新的状态结果', async ({ page }) => {
     await prepare(page);
     let fail = true;
@@ -155,13 +233,13 @@ test.describe('Harness 工作流服务端列表', () => {
         });
       await route.fulfill({
         json: success({
-          total: emptyDesign && status === '设计中' ? 0 : 1,
+          total: emptyDesign && status === '开发中' ? 0 : 1,
           pageNo: 1,
           pageSize: 10,
           list:
-            emptyDesign && status === '设计中'
+            emptyDesign && status === '开发中'
               ? []
-              : [workflow(status === '已发布' ? '过期已发布' : '最新结果', status || '设计中')],
+              : [workflow(status === '已发布' ? '过期已发布' : '最新结果', status || '开发中')],
         }),
       });
     });
@@ -173,7 +251,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await expect(harness.workflowInventoryRow('最新结果')).toBeVisible();
     await harness.workflowStatusButton('已发布').click();
     await expect.poll(() => Boolean(releasePublished)).toBe(true);
-    await harness.workflowStatusButton('设计中').click();
+    await harness.workflowStatusButton('开发中').click();
     await expect(harness.workflowInventoryRow('最新结果')).toBeVisible();
     const publishedResponse = page.waitForResponse(
       (response) =>
@@ -187,7 +265,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await harness.workflowStatusButton('全部').click();
     await expect(harness.workflowInventoryRow('最新结果')).toBeVisible();
     emptyDesign = true;
-    await harness.workflowStatusButton('设计中').click();
+    await harness.workflowStatusButton('开发中').click();
     await expect(
       harness.workflowsPanel.getByText('该状态下暂无工作流', { exact: true }),
     ).toBeVisible();

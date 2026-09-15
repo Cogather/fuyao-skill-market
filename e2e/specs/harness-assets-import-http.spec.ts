@@ -80,15 +80,29 @@ async function prepareAssets(page: Page) {
 }
 
 async function openImport(page: Page, type: string) {
+  await page.getByRole('button', { name: type, exact: true }).click();
   await page.getByRole('button', { name: '导入', exact: true }).click();
-  await page.getByRole('menuitem', { name: type, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: `导入 ${type}`, exact: true });
   await expect(dialog).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
   return dialog;
 }
 
-async function selectTargetDepartment(page: Page, dialog: Locator) {
-  await dialog.getByRole('button', { name: '导入资产部门', exact: true }).click();
+async function openExport(page: Page, type: string) {
+  await page.getByRole('button', { name: type, exact: true }).click();
+  await page.getByRole('button', { name: '导出', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: `导出 ${type}`, exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  return dialog;
+}
+
+async function selectTargetDepartment(
+  page: Page,
+  dialog: Locator,
+  departmentLabel = '导入资产部门',
+) {
+  await dialog.getByRole('button', { name: departmentLabel, exact: true }).click();
   const panel = page.getByRole('listbox');
   await panel
     .locator('.market-dept-cascader-col')
@@ -106,19 +120,19 @@ async function selectTargetDepartment(page: Page, dialog: Locator) {
   await expect(panel).toBeHidden();
 }
 
-test.describe('资产页导入弹窗 HTTP', () => {
+test.describe('资产页导入导出弹窗 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
   for (const type of ['Agent', 'Skill', 'Command']) {
     for (const level of ['产品级', '部门级']) {
-      test(`${type} ${level} 下载已有数据使用弹窗归属，不要求上传文件`, async ({
+      test(`${type} ${level} 独立导出弹窗使用当前类型和弹窗归属`, async ({
         page,
       }, testInfo) => {
         const { exports, imports, lists, catalogQueries } = await prepareAssets(page);
+        const dialog = await openExport(page, type);
         const originalQuery = lists.at(-1)!.postDataJSON();
-        const dialog = await openImport(page, type);
         await selectHarnessOption(dialog.getByLabel('层级'), level);
-        await selectTargetDepartment(page, dialog);
+        await selectTargetDepartment(page, dialog, '导出资产部门');
         if (level === '产品级') {
           await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'target-product');
         }
@@ -126,9 +140,10 @@ test.describe('资产页导入弹窗 HTTP', () => {
           .locator('header')
           .getByRole('button', { name: '下载已有数据', exact: true });
         await expect(download).toBeEnabled();
-        await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
+        await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toHaveCount(0);
+        await expect(dialog.locator('.catalog-import-dropzone')).toHaveCount(0);
         if (type === 'Skill' && level === '产品级') {
-          await dialog.screenshot({ path: testInfo.outputPath('import-download-data.png') });
+          await dialog.screenshot({ path: testInfo.outputPath('export-dialog.png') });
         }
         await download.click();
         await expect.poll(() => exports.length).toBe(1);
@@ -159,13 +174,16 @@ test.describe('资产页导入弹窗 HTTP', () => {
 
       test(`${type} ${level} 在当前页确认导入，dim 取弹窗选择`, async ({ page }, testInfo) => {
         const { imports, lists, catalogQueries } = await prepareAssets(page);
-        const originalQuery = lists.at(-1)!.postDataJSON();
         let chooserCount = 0;
         page.on('filechooser', () => chooserCount++);
         const dialog = await openImport(page, type);
+        const originalQuery = lists.at(-1)!.postDataJSON();
         expect(chooserCount).toBe(0);
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
+        await expect(
+          dialog.getByRole('button', { name: '下载已有数据', exact: true }),
+        ).toHaveCount(0);
         await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
         await selectHarnessOption(dialog.getByLabel('层级'), level);
         await selectTargetDepartment(page, dialog);
@@ -201,8 +219,8 @@ test.describe('资产页导入弹窗 HTTP', () => {
           await dialog.screenshot({ path: testInfo.outputPath('import-dialog.png') });
         const listCount = lists.length;
         await dialog.getByRole('button', { name: '开始导入', exact: true }).click();
+        await expect.poll(() => imports.length).toBe(1);
         await expect(dialog.getByRole('status')).toContainText('成功 2 条');
-        expect(imports).toHaveLength(1);
         const request = imports[0]!;
         expect(request.method()).toBe('POST');
         expect(new URL(request.url()).pathname).toBe(
@@ -225,6 +243,15 @@ test.describe('资产页导入弹窗 HTTP', () => {
       });
     }
   }
+
+  test('Extension 禁用导入和导出', async ({ page }) => {
+    await prepareAssets(page);
+    await page.getByRole('button', { name: 'Extension', exact: true }).click();
+
+    await expect(page.getByRole('button', { name: '导入', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '导出', exact: true })).toBeDisabled();
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  });
 
   test('文件校验、取消和失败重试不触发额外导入', async ({ page }) => {
     const { imports } = await prepareAssets(page);
@@ -267,18 +294,13 @@ test.describe('资产页导入弹窗 HTTP', () => {
     expect(attempts).toBe(2);
   });
 
-  test('下载需完整归属，失败保留文件可重试，处理中阻止重复提交', async ({ page }) => {
+  test('导出需完整归属，失败可重试，处理中锁定归属', async ({ page }) => {
     const { imports } = await prepareAssets(page);
-    const dialog = await openImport(page, 'Skill');
+    const dialog = await openExport(page, 'Skill');
     const download = dialog.getByRole('button', { name: '下载已有数据', exact: true });
     await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), '');
     await expect(download).toBeDisabled();
     await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'list-product');
-    await dialog.locator('input[type=file]').setInputFiles({
-      name: 'keep.xlsx',
-      mimeType: 'application/octet-stream',
-      buffer: Buffer.from('workbook'),
-    });
     let attempts = 0;
     let releaseResponse!: () => void;
     const responseGate = new Promise<void>((resolve) => {
@@ -300,10 +322,9 @@ test.describe('资产页导入弹窗 HTTP', () => {
     await expect.poll(() => attempts).toBe(1);
     await expect(dialog.getByRole('button', { name: '下载中…', exact: true })).toBeDisabled();
     await expect(dialog.getByLabel('层级')).toBeDisabled();
-    await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toHaveCount(0);
     releaseResponse();
     await expect(dialog.getByRole('alert')).toContainText('导出服务暂不可用');
-    await expect(dialog.getByText('keep.xlsx', { exact: true })).toBeVisible();
     await download.click();
     await expect(dialog.getByRole('alert')).toContainText('未获取到下载链接');
     await download.click();
@@ -315,7 +336,7 @@ test.describe('资产页导入弹窗 HTTP', () => {
       )
       .toEqual(['https://downloads.example.test/retry.xlsx']);
     await expect(dialog.getByRole('alert')).toHaveCount(0);
-    await expect(dialog.getByText('keep.xlsx', { exact: true })).toBeVisible();
+    await expect(dialog.locator('input[type=file]')).toHaveCount(0);
     expect(attempts).toBe(3);
     expect(imports).toHaveLength(0);
   });

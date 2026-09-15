@@ -118,6 +118,22 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     min-width: 0;
   }
 
+  .asset-page .asset-toolbar .asset-search input {
+    border-radius: 9px;
+  }
+
+  .asset-page__actions .asset-button {
+    min-height: 34px;
+    height: 34px;
+    padding: 0 14px;
+    border-color: #dde1ea;
+    border-radius: 8px;
+    background: #fff;
+    color: #3c4457;
+    font-size: 13px;
+    font-weight: 400;
+  }
+
   :is(.selector > .divider, .selector-divider) {
     display: none;
   }
@@ -154,6 +170,11 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
   ) {
     background: var(--hw-surface);
     color: var(--hw-text);
+  }
+
+  .asset-page__actions .asset-button.is-secondary {
+    background: #fff;
+    color: #3c4457;
   }
 
   :is(
@@ -199,7 +220,6 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     .stage p,
     .stage small,
     .wf-page-total,
-    .asset-action-menu small,
     .asset-list-footer,
     .asset-empty,
     .editor-heading p,
@@ -209,6 +229,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     .tag-empty,
     .editor-footer-note,
     .catalog-import-description,
+    .catalog-export-description,
     .catalog-import-dropzone > span,
     .field-hint,
     .capability-field-hint,
@@ -278,32 +299,65 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     border-top-color: var(--hw-line);
   }
 
-  :is(.workflows-status-filter, .asset-filters) {
+  .workflows-status-filter {
     align-self: flex-start;
     display: inline-flex;
-    gap: 4px;
-    padding: 4px;
-    border: 1px solid var(--hw-line);
-    border-radius: 8px;
-    background: var(--hw-quiet);
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: transparent;
   }
 
-  :is(.workflows-status-filter, .asset-filters) button {
-    min-height: 32px;
-    padding: 4px 12px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--hw-muted);
-    font-size: 13px;
+  .workflows-status-filter button {
+    min-height: 28px;
+    padding: 5px 13px;
+    border: 1px solid #dde1ea;
+    border-radius: 16px;
+    background: #fff;
+    color: #5a6478;
+    font-size: 12.5px;
+    font-weight: 400;
     box-shadow: none;
   }
 
-  :is(.wf-status-chip.active, .asset-filters button.is-active) {
-    border-color: var(--hw-primary);
-    background: var(--hw-surface);
-    color: var(--hw-primary);
+  .workflows-status-filter button:hover {
+    border-color: #b9c2d4;
+  }
+
+  .wf-status-chip.active,
+  .workflows-status-filter button.active:hover {
+    border-color: #1f2329;
+    background: #1f2329;
+    color: #fff;
+    font-weight: 400;
+  }
+
+  .asset-filters {
+    align-self: auto;
+    display: flex;
+    gap: 0;
+    padding: 3px;
+    border: 0;
+    border-radius: 10px;
+    background: #e9ecf3;
+  }
+
+  .asset-filters button {
+    min-height: 34px;
+    padding: 7px 18px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #5a6478;
+    font-size: 13.5px;
+    box-shadow: none;
+  }
+
+  .asset-filters button.is-active {
+    background: #fff;
+    color: #1f2329;
     font-weight: 600;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
   }
 
   // Preserve the tree / workflow structure while reducing nested card decoration.
@@ -421,10 +475,10 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
   }
 
   .config-grid section {
-    padding: 12px;
-    border: 0;
-    border-radius: 6px;
-    background: var(--hw-quiet);
+    padding: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fcfcfd;
   }
 
   :is(.config-grid section > header, .stage-title) {
@@ -434,18 +488,6 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
 
   .commands div {
     overflow-wrap: anywhere;
-  }
-
-  .stage {
-    border: 1px solid var(--hw-line);
-    border-radius: 8px;
-    min-width: min(240px, 100%);
-    overflow-wrap: anywhere;
-  }
-
-  .stage-node {
-    border-left: 2px solid #cbd5e1;
-    background: var(--hw-quiet);
   }
 
   .boxed {
@@ -502,7 +544,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     gap: 20px;
   }
 
-  :is(.wizard, .person-editor, .catalog-import-dialog, .is-create-dialog) {
+  :is(.wizard, .person-editor, .catalog-import-dialog, .catalog-export-dialog, .is-create-dialog) {
     padding: 24px;
   }
 
@@ -528,6 +570,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     .wizard .close,
     .person-editor__close,
     .catalog-import-close,
+    .catalog-export-close,
     .is-create-dialog > header > button
   ) {
     display: inline-flex;
@@ -709,23 +752,19 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
   }
 
   .asset-card {
-    border-color: var(--hw-line);
-    border-radius: 8px;
+    border-color: #e5e7eb;
+    border-radius: 14px;
   }
 
   .asset-card:hover {
-    box-shadow: 0 3px 12px rgb(35 52 84 / 6%);
+    border-color: #c3d2f7;
+    box-shadow: 0 6px 18px rgb(31 58 138 / 9%);
   }
 
   .asset-card__title .asset-badge.is-type {
     width: auto;
-    background: var(--hw-quiet);
-    color: var(--hw-muted);
-  }
-
-  .asset-action-menu {
-    max-width: calc(100vw - 48px);
-    min-width: min(282px, calc(100vw - 48px));
+    background: #f2f4f9;
+    color: #5a6478;
   }
 
   .asset-detail {
@@ -849,7 +888,13 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
       max-height: calc(100dvh - 24px);
     }
 
-    :is(.wizard, .person-editor, .catalog-import-dialog, .is-create-dialog) {
+    :is(
+      .wizard,
+      .person-editor,
+      .catalog-import-dialog,
+      .catalog-export-dialog,
+      .is-create-dialog
+    ) {
       padding: 16px;
     }
 
@@ -901,11 +946,11 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
       flex-wrap: wrap;
     }
 
-    .catalog-import-dialog > header {
+    :is(.catalog-import-dialog, .catalog-export-dialog) > header {
       flex-wrap: wrap;
     }
 
-    .catalog-import-header-actions {
+    :is(.catalog-import-header-actions, .catalog-export-header-actions) {
       margin-left: auto;
     }
 

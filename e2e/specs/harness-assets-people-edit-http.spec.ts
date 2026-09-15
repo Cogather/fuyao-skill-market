@@ -106,7 +106,7 @@ async function prepare(
   });
   const openDetail = async () => {
     await page.goto(`${APP_BASE_PATH}/harness-management`);
-    await page.getByRole('tab', { name: '资产清单', exact: true }).click();
+    await page.locator('#harness-tab-assets').click();
     await page.getByRole('button', { name: type, exact: true }).click();
     await page.getByRole('heading', { name: assetName, exact: true }).click();
   };

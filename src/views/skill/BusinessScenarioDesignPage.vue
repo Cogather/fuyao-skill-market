@@ -91,6 +91,7 @@ async function loadTags() {
     workspaceError.value = error instanceof Error ? error.message : '标签加载失败';
   }
 }
+const accents = ['#2563eb', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ec4899'];
 const scenarioPageRoot = ref<HTMLElement | null>(null);
 const scenarioDialogElement = ref<HTMLElement | null>(null);
 const tagDialogElement = ref<HTMLElement | null>(null);
@@ -1650,16 +1651,14 @@ async function createAsset() {
                   v-for="(stage, index) in [...workflow.stages].sort((a, b) => a.order - b.order)"
                   :key="stage.id"
                   ><i v-if="index" class="arrow">→</i>
-                  <section class="stage">
+                  <section class="stage" :style="{ '--accent': accents[index % accents.length] }">
                     <h4>{{ stage.name }}</h4>
-                    <p>{{ stage.description }}</p>
                     <div
                       v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)"
                       :key="node.id"
                       class="stage-node"
                     >
                       <b>{{ node.name }}</b
-                      ><small v-if="!node.assets.length">未关联 Agent / Skill</small
                       ><span v-for="asset in node.assets" :key="asset.assetId"
                         ><b>{{ asset.type }}</b
                         >{{
@@ -3094,6 +3093,7 @@ h4 small {
 .commands div {
   display: grid;
   grid-template-columns: fit-content(66.666667%) minmax(0, 1fr);
+  align-items: baseline;
   gap: 8px;
   padding: 7px 9px;
   border-radius: 7px;
@@ -3107,6 +3107,7 @@ h4 small {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #7dd3fc;
+  font-size: 13px;
   padding: 0;
   background: transparent;
 }
@@ -3142,14 +3143,8 @@ h4 small {
   border-top: 3px solid var(--accent);
   border-radius: 10px;
 }
-.stage h4,
-.stage p {
+.stage h4 {
   margin: 3px 0;
-}
-.stage p,
-.stage small {
-  color: #9ca3af;
-  font-size: 12px;
 }
 .stage-node {
   display: flex;

@@ -776,6 +776,10 @@ export type HarnessAssetComponentDto = {
   status: string;
   owner?: string | null;
   developer?: string | null;
+  /** Extension 当前版本的发布人；原子资产不使用。 */
+  publisher?: string | null;
+  /** 兼容组件列表以版本上传人命名发布人的响应。 */
+  uploadedBy?: string | null;
   category: string;
   updatedAt: string;
   dimType?: string | null;
