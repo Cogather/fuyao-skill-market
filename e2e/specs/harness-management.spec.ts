@@ -65,6 +65,20 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     ).toBeVisible();
   });
 
+  test('第二个资产清单入口可见并可打开统一资产面板', async () => {
+    await harnessPage.goto();
+
+    await expect(harnessPage.tabAssets).toBeVisible();
+    await expect(harnessPage.tabAssets).toHaveText('资产清单');
+
+    await harnessPage.switchToAssets();
+
+    await expect(harnessPage.tabAssets).toHaveAttribute('aria-selected', 'true');
+    await expect(
+      harnessPage.assetsPanel.getByRole('heading', { name: '资产清单', exact: true }),
+    ).toBeVisible();
+  });
+
   test('切换到业务场景设计台并可打开 Workflow 设计向导', async () => {
     await harnessPage.goto();
     await harnessPage.switchToScenarios();
