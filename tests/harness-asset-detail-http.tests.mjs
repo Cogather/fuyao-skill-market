@@ -23,16 +23,25 @@ try {
   const { skillBaseService } = await server.ssrLoadModule(
     '/src/services/skillMarket/skillBaseService.ts',
   );
+  const { queryHttpPlanningItemContent } = await server.ssrLoadModule(
+    '/src/services/skillMarket/extensionPublishHttp.ts',
+  );
   const calls = [];
   let response;
-  request.api = async (config) => {
+  let loadVersionContent;
+  const handleComponentRequest = async (config) => {
     calls.push(config);
-    return response;
+    if (config.url === '/components/detail' || config.url === '/components/query') return response;
+    if (
+      config.url === '/v1/harness/plans/components/detail' ||
+      config.url === '/v1/harness/plans/components/query'
+    )
+      return response;
+    if (loadVersionContent) return loadVersionContent(config);
+    throw new Error(`Unexpected Harness request: ${config.url}`);
   };
-  request.harnessApi = async (config) => {
-    calls.push(config);
-    throw new Error('Unexpected publish detail on card click');
-  };
+  request.api = handleComponentRequest;
+  request.harnessApi = handleComponentRequest;
   let fileTreeRequests = 0;
   skillBaseService.queryPlanningItemTree = async () => {
     fileTreeRequests += 1;
@@ -84,7 +93,7 @@ try {
     const detail = await api.queryDetail(scope, currentAsset, undefined, { includeFiles: false });
     assert.deepEqual(calls, [
       {
-        url: '/v1/harness/plans/components/detail',
+        url: '/components/detail',
         method: 'get',
         params: { userId: 'user-001', type: type.toUpperCase(), name: currentAsset.name },
       },
@@ -146,44 +155,57 @@ try {
     assert.fail('card content must not query history');
   skillBaseService.queryPlanningItemTree = async () => assert.fail('tree is lazy');
   skillBaseService.queryPlanningItemContent = async () => assert.fail('file content is lazy');
-  const bindingCalls = [];
-  let failBindings = false;
-  let matchingScene = true;
-  request.harnessApi = async (config) => {
-    calls.push(config);
-    bindingCalls.push(config);
-    assert.equal(config.url, '/scenes/bindings');
-    if (failBindings) return { meta: { success: false, message: '绑定查询失败' }, data: null };
-    const components = {
+  const versionHistoryCalls = [];
+  let failVersionHistory = false;
+  let malformedVersionHistory = false;
+  loadVersionContent = async (config) => {
+    versionHistoryCalls.push(config);
+    assert.equal(config.url, '/extensions/version-history');
+    if (failVersionHistory) {
+      return { meta: { success: false, message: '冻结清单查询失败' }, data: null };
+    }
+    if (malformedVersionHistory) {
+      return success({ extensionName: extensionAsset.name, version: config.params.version });
+    }
+    return success({
+      extensionName: extensionAsset.name,
+      version: config.params.version,
+      description: '发布时冻结内容',
+      dimType: '部门级',
+      dimCode: 'record-dept',
+      dimName: '卡片部门',
+      targetOrgCode: 'org-1',
+      targetOrgName: '组织一',
+      operatorName: '发布用户',
+      publishStatus: '成功',
+      releaseType: 'Product',
       skills: [
-        { name: 'selected-skill', version: config.data.version === '1.0.0' ? '0.9.0' : '3.0.0' },
+        {
+          name: 'selected-skill',
+          version: config.params.version === '1.0.0' ? '0.9.0' : '3.0.0',
+        },
       ],
-      commands: [{ name: 'selected-command', version: '0.8.0', filePath: 'commands/run.md' }],
+      commands: [{ name: 'selected-command', version: '0.8.0' }],
       agents: [{ name: 'selected-agent', version: '0.7.0' }],
-    };
-    return success([
-      { firstScene: '其他场景', secondScenes: [{ secondScene: '代码开发', components }] },
-      {
-        firstScene: '应用开发',
-        secondScenes: [
-          { secondScene: '其他子场景', components },
-          ...(matchingScene ? [{ secondScene: '代码开发', components }] : []),
-        ],
-      },
-    ]);
+    });
   };
   calls.length = 0;
   const latestDetail = await api.queryDetail(scope, extensionAsset);
   assert.equal(latestDetail.version, '1.0.0', 'select latest upload from fresh component detail');
   assert.deepEqual(
     calls.map((call) => call.url),
-    ['/v1/harness/plans/components/detail', '/scenes/bindings'],
+    ['/components/detail', '/extensions/version-history'],
   );
-  assert.deepEqual(bindingCalls[0], {
-    url: '/scenes/bindings',
-    method: 'post',
-    params: { userId: 'user-001' },
-    data: { dimType: '部门级', dimCode: 'record-dept', dimName: '卡片部门', version: '1.0.0' },
+  assert.deepEqual(versionHistoryCalls[0], {
+    url: '/extensions/version-history',
+    method: 'get',
+    params: {
+      userId: 'user-001',
+      dimType: '部门级',
+      dimCode: 'record-dept',
+      name: extensionAsset.name,
+      version: '1.0.0',
+    },
   });
   assert.deepEqual(latestDetail.files, [], 'files must not be eagerly fetched');
   assert.deepEqual(
@@ -192,39 +214,34 @@ try {
   );
   assert.equal(latestDetail.capabilities.skill[0].name, 'selected-skill');
   assert.equal(latestDetail.capabilities.skill[0].version, '0.9.0');
-  assert.deepEqual(latestDetail.capabilities.command[0].files, [
-    { name: 'commands/run.md', content: '' },
-  ]);
-  assert.deepEqual(latestDetail.capabilities.agent[0].files, [
-    { name: 'selected-agent.md', content: '' },
-  ]);
+  assert.deepEqual(latestDetail.capabilities.command[0].files, []);
+  assert.deepEqual(latestDetail.capabilities.agent[0].files, []);
   const otherVersion = await api.queryDetail(scope, extensionAsset, '2.0.0');
-  assert.equal(bindingCalls.length, 2, 'one bindings request per selected version');
-  assert.equal(bindingCalls[1].data.version, '2.0.0');
+  assert.equal(versionHistoryCalls.length, 2, 'one frozen-history request per selected version');
+  assert.equal(versionHistoryCalls[1].params.version, '2.0.0');
   assert.equal(otherVersion.capabilities.skill[0].version, '3.0.0');
-  matchingScene = false;
-  assert.deepEqual((await api.queryDetail(scope, extensionAsset)).capabilities, {
-    skill: [],
-    command: [],
-    agent: [],
-  });
-  failBindings = true;
-  await assert.rejects(api.queryDetail(scope, extensionAsset), /绑定查询失败/);
-  const beforeMissingScene = bindingCalls.length;
-  await assert.rejects(
-    api.queryDetail(scope, { ...extensionAsset, firstScene: '', secondScene: '' }),
-    /缺少一级场景/,
-  );
-  assert.equal(
-    bindingCalls.length,
-    beforeMissingScene,
-    'missing scene must not query unrelated content',
-  );
+  malformedVersionHistory = true;
+  await assert.rejects(api.queryDetail(scope, extensionAsset), /冻结清单响应格式/);
+  malformedVersionHistory = false;
+  failVersionHistory = true;
+  await assert.rejects(api.queryDetail(scope, extensionAsset), /冻结清单查询失败/);
   skillBaseService.queryPlanningItemTree = async () => success(['SKILL.md']);
+  skillBaseService.queryPlanningItemContent = async () =>
+    success({ content: 'IyBwYWNrYWdl', encoding: 'base64' });
+  assert.equal(
+    await queryHttpPlanningItemContent(
+      'user-001',
+      'skill',
+      { name: 'selected-skill', version: '0.9.0' },
+      'SKILL.md',
+    ),
+    '# package',
+  );
   skillBaseService.queryPlanningItemContent = async () => success({ content: '# package' });
   skillBaseService.queryPublishedHistoryList = async () => success([]);
+  loadVersionContent = undefined;
   console.log(
-    'PASS versioned Extension bindings use record scope, exact scene filtering and lazy files',
+    'PASS versioned Extension content uses the frozen history list and lazy package files',
   );
 
   response = success({
@@ -262,7 +279,6 @@ try {
   assert.equal(selectedExtension.firstScene, '应用开发二');
   assert.equal(selectedExtension.secondScene, '代码开发二');
   calls.length = 0;
-  request.api = async () => assert.fail('publish must not query card metadata');
   request.harnessApi = async (config) => {
     calls.push(config);
     return success({

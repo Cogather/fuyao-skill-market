@@ -1,6 +1,6 @@
 import type { ExtensionReleaseContext } from './extensionPublishHttp';
 import type { SkillPlanningUserOption } from './skillPlanningShared';
-import type { HarnessAssetComponentDetailDto } from './apiTypes';
+import type { HarnessAssetComponentDetailDto, HarnessAssetQueryStatus } from './apiTypes';
 import type { ExtensionScene } from './extensionPublishMock';
 
 export type HarnessAssetType = 'Agent' | 'Skill' | 'Command' | 'Extension';
@@ -79,6 +79,9 @@ export type HarnessAssetVersionDetail = {
 
 export type HarnessAsset = {
   id: string;
+  skillId?: string | null;
+  agentId?: string | null;
+  commandId?: string | null;
   name: string;
   description: string;
   assetType: HarnessAssetType;
@@ -156,6 +159,8 @@ export type HarnessAssetScope = {
 export type HarnessAssetPageQuery = {
   pageNum: number;
   pageSize: number;
+  keyword?: string;
+  status?: HarnessAssetQueryStatus;
 };
 
 export type HarnessAssetPageResult = {

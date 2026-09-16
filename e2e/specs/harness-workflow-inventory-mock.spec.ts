@@ -12,7 +12,7 @@ test('Harness 工作流使用与资产清单一致的四状态胶囊筛选', asy
     name: '筛选工作流状态',
   });
   const statusButtons = statusFilter.getByRole('button');
-  await expect(statusButtons).toHaveText(['全部', '开发中', '待发布', '已发布']);
+  await expect(statusButtons).toHaveText(['全部', '设计中', '待发布', '已发布']);
   await expect(statusFilter.locator('.wf-status-count')).toHaveCount(0);
 
   const activeStyle = await harness.workflowStatusButton('全部').evaluate((element) => {
@@ -29,11 +29,11 @@ test('Harness 工作流使用与资产清单一致的四状态胶囊筛选', asy
     color: 'rgb(255, 255, 255)',
   });
 
-  await harness.workflowStatusButton('开发中').click();
+  await harness.workflowStatusButton('设计中').click();
   const rows = harness.workflowsTable.locator('tbody').getByRole('row');
-  await expect(rows.first().getByRole('cell').nth(3)).toHaveText('开发中');
+  await expect(rows.first().getByRole('cell').nth(3)).toHaveText('设计中');
   expect(new Set(await rows.locator('td:nth-child(4)').allTextContents())).toEqual(
-    new Set(['开发中']),
+    new Set(['设计中']),
   );
 });
 
@@ -122,10 +122,10 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
     new Set(['已发布']),
   );
 
-  await harness.workflowStatusButton('开发中').click();
-  await expect(rows.first().getByRole('cell').nth(3)).toHaveText('开发中');
+  await harness.workflowStatusButton('设计中').click();
+  await expect(rows.first().getByRole('cell').nth(3)).toHaveText('设计中');
   expect(new Set(await rows.locator('td:nth-child(4)').allTextContents())).toEqual(
-    new Set(['开发中']),
+    new Set(['设计中']),
   );
 
   await harness.selectWorkflowDepartment('流水线平台小组');

@@ -321,12 +321,14 @@ test.describe('第二个资产清单参考稿样式', () => {
 
     await firstMore.click();
     await firstMenu.getByRole('menuitem', { name: '编辑信息', exact: true }).click();
-    await expect(page.locator('.asset-detail')).toBeVisible();
-    await expect(page.getByRole('textbox', { name: '名称', exact: true })).toHaveValue(
+    const editDialog = page.getByRole('dialog', { name: '编辑 Agent', exact: true });
+    await expect(editDialog).toBeVisible();
+    await expect(page.locator('.asset-detail')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '资产清单', exact: true })).toBeVisible();
+    await expect(editDialog.getByRole('textbox', { name: '名称', exact: true })).toHaveValue(
       '流水线异常分析 Agent',
     );
-    await page.getByRole('button', { name: '取消', exact: true }).click();
-    await page.getByRole('button', { name: '返回列表', exact: true }).click();
+    await editDialog.getByRole('button', { name: '取消', exact: true }).click();
 
     await firstMore.click();
     await firstMenu.getByRole('menuitem', { name: '删除', exact: true }).click();

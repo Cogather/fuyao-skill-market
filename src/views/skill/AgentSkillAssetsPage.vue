@@ -4,12 +4,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
 import HarnessExtensionDetailContent from '../../components/skill/HarnessExtensionDetailContent.vue';
-import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
 import HarnessAssetDeleteDialog from '../../components/skill/HarnessAssetDeleteDialog.vue';
 import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
 import HarnessCatalogExportDialog from '../../components/skill/HarnessCatalogExportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import HarnessVersionPicker from '../../components/skill/HarnessVersionPicker.vue';
+import HarnessAssetEditDialog from '../../components/skill/HarnessAssetEditDialog.vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
@@ -34,6 +34,7 @@ import {
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
 import { firstNonBlankText, formatCompactDateTime } from '../../utils/common';
+import { getAssetCatalogItemNamePrefix } from '../../utils/catalogItemName';
 import { mergeUniquePage, shouldLoadNextPage } from '../../utils/infiniteScroll';
 
 type PageView = 'list' | 'detail' | 'publish';
@@ -83,6 +84,14 @@ const STATUS_FILTERS: Array<{ key: AssetStatusFilter; label: string }> = [
   { key: 'pending', label: '待发布' },
   { key: 'published', label: '已发布' },
 ];
+const STATUS_QUERY_VALUES: Record<
+  Exclude<AssetStatusFilter, 'all'>,
+  '开发中' | '待发布' | '已发布'
+> = {
+  developing: '开发中',
+  pending: '待发布',
+  published: '已发布',
+};
 const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
 const PERSON_FIELDS = [
   { field: 'owner', label: '责任人' },
@@ -97,10 +106,12 @@ const api = getHarnessAssetApi();
 const view = ref<PageView>('list');
 const filter = ref<HarnessAssetFilter>('Agent');
 const assetSearchQuery = ref('');
+const appliedAssetSearchKeyword = ref('');
 const assetStatusFilter = ref<AssetStatusFilter>('all');
 const selectedDepartmentId = ref('');
 const selectedProductId = ref('');
 const assets = ref<HarnessAsset[]>([]);
+const assetTotal = ref(0);
 const products = ref<HarnessAssetProduct[]>([]);
 const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
@@ -155,13 +166,13 @@ const detailDraft = ref<{
 } | null>(null);
 const detailSaving = ref(false);
 const detailEditError = ref('');
-const detailNameInput = ref<HTMLInputElement | null>(null);
 const toastMessage = ref('');
 let listSequence = 0;
 let lastObservedAssetScrollTop = 0;
 let pendingAssetScrollPreviousTop = 0;
 let pendingAssetScrollTop = 0;
 let assetScrollFrame: number | undefined;
+let assetSearchTimer: number | undefined;
 let productSequence = 0;
 let detailSequence = 0;
 let extensionReleaseSequence = 0;
@@ -185,7 +196,7 @@ function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserO
   return { chName: name, id, sAMAccountName: id, label: `${name} ${id}`, deptName: '', raw: {} };
 }
 
-async function beginDetailEdit(): Promise<void> {
+function beginDetailEdit(): void {
   const asset = selectedAsset.value;
   if (!asset || !canEditDetail.value || detailSaving.value) return;
   if (transportIsHttp && !detailComponent.value) return;
@@ -196,8 +207,6 @@ async function beginDetailEdit(): Promise<void> {
     people: { owner: initialDetailPerson('owner'), developer: initialDetailPerson('developer') },
     changedPeople: {},
   };
-  await nextTick();
-  detailNameInput.value?.focus();
 }
 
 function changeDraftPerson(
@@ -224,6 +233,7 @@ async function saveDetailEdits(): Promise<void> {
     return;
   }
   const sequence = detailSequence;
+  const editView = view.value;
   const originalId = asset.id;
   detailSaving.value = true;
   detailEditError.value = '';
@@ -241,7 +251,7 @@ async function saveDetailEdits(): Promise<void> {
     });
     if (
       sequence !== detailSequence ||
-      view.value !== 'detail' ||
+      view.value !== editView ||
       selectedAsset.value?.id !== originalId
     )
       return;
@@ -412,7 +422,9 @@ const selectedAsset = computed(
     null,
 );
 const filteredAssets = computed(() => {
-  const query = assetSearchQuery.value.trim().toLocaleLowerCase('zh-CN');
+  const query = transportIsHttp
+    ? ''
+    : assetSearchQuery.value.trim().toLocaleLowerCase('zh-CN');
   const candidates = transportIsHttp
     ? assets.value
     : assets.value.filter(
@@ -423,6 +435,7 @@ const filteredAssets = computed(() => {
   return candidates.filter((asset) => {
     const status = statusLabel(asset);
     const matchesStatus =
+      transportIsHttp ||
       assetStatusFilter.value === 'all' ||
       (assetStatusFilter.value === 'developing' && ['未开发', '开发中'].includes(status)) ||
       (assetStatusFilter.value === 'pending' && ['待发布', '可发布', '发布中'].includes(status)) ||
@@ -449,6 +462,9 @@ const extensionHasNoVersion = computed(
   () => selectedAsset.value?.assetType === 'Extension' && !selectedAsset.value.currentVersion,
 );
 const detailComponent = computed(() => detail.value?.component);
+const detailRequiredNamePrefix = computed(() =>
+  selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
+);
 const detailPermissionsReady = computed(
   () =>
     Boolean(selectedAsset.value && props.userId.trim()) &&
@@ -473,6 +489,16 @@ const detailDim = computed(
       selectedAsset.value?.departmentName,
     ]) || '—',
 );
+const detailDimLabel = computed(() => {
+  const dimType = firstNonBlankText([
+    selectedAsset.value?.dimType,
+    detailComponent.value?.category?.split('/')[0],
+    selectedAsset.value?.category?.split('/')[0],
+  ]);
+  if (dimType === '产品级') return '归属产品';
+  if (dimType === '部门级') return '归属部门';
+  return '归属范围';
+});
 const extensionDim = computed(
   () =>
     firstNonBlankText([
@@ -606,6 +632,7 @@ function resetAssetScrollPosition(): void {
 function resetAssetListState(): number {
   const sequence = ++listSequence;
   assets.value = [];
+  assetTotal.value = 0;
   assetPageNum.value = 0;
   hasMoreAssets.value = false;
   listError.value = '';
@@ -613,6 +640,31 @@ function resetAssetListState(): number {
   listLoadingMore.value = false;
   resetAssetScrollPosition();
   return sequence;
+}
+
+function assetPageQuery(pageNum: number) {
+  const status =
+    assetStatusFilter.value === 'all'
+      ? undefined
+      : STATUS_QUERY_VALUES[assetStatusFilter.value];
+  return {
+    pageNum,
+    pageSize: ASSET_PAGE_SIZE,
+    ...(appliedAssetSearchKeyword.value
+      ? { keyword: appliedAssetSearchKeyword.value }
+      : {}),
+    ...(transportIsHttp && status ? { status } : {}),
+  };
+}
+
+function scheduleAssetSearch(event: Event): void {
+  assetSearchQuery.value = (event.target as HTMLInputElement).value;
+  if (assetSearchTimer !== undefined) window.clearTimeout(assetSearchTimer);
+  assetSearchTimer = window.setTimeout(() => {
+    assetSearchTimer = undefined;
+    appliedAssetSearchKeyword.value = assetSearchQuery.value.trim();
+    void reloadAssets();
+  }, 250);
 }
 
 async function reloadAssets(): Promise<void> {
@@ -625,9 +677,10 @@ async function reloadAssets(): Promise<void> {
   }
   listLoading.value = true;
   try {
-    const result = await api.queryAssets(scope, { pageNum: 1, pageSize: ASSET_PAGE_SIZE });
+    const result = await api.queryAssets(scope, assetPageQuery(1));
     if (sequence !== listSequence) return;
     assets.value = mergeUniquePage([], result.list, assetKey);
+    assetTotal.value = result.total;
     assetPageNum.value = 1;
     hasMoreAssets.value = result.hasMore;
   } catch (error) {
@@ -674,10 +727,7 @@ async function loadNextAssetPage(): Promise<void> {
   try {
     let nextPage = assetPageNum.value + 1;
     for (let probe = 0; probe < MAX_EMPTY_PAGE_PROBES; probe += 1) {
-      const result = await api.queryAssets(scope, {
-        pageNum: nextPage,
-        pageSize: ASSET_PAGE_SIZE,
-      });
+      const result = await api.queryAssets(scope, assetPageQuery(nextPage));
       if (sequence !== listSequence) return;
       const beforeLength = assets.value.length;
       assets.value = mergeUniquePage(assets.value, result.list, assetKey);
@@ -768,6 +818,12 @@ async function selectFilter(nextFilter: HarnessAssetFilter): Promise<void> {
   await reloadAssets();
 }
 
+async function selectStatusFilter(nextFilter: AssetStatusFilter): Promise<void> {
+  if (assetStatusFilter.value === nextFilter) return;
+  assetStatusFilter.value = nextFilter;
+  await reloadAssets();
+}
+
 async function loadDetail(): Promise<void> {
   const scope = currentScope.value;
   const asset = selectedAsset.value;
@@ -813,12 +869,25 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
 }
 
 async function editCardAsset(asset: HarnessAsset): Promise<void> {
-  await openDetail(asset);
+  closeCardMenu();
+  if (!canAccessAsset(asset)) return;
+  cancelDetailEdit();
+  detailSequence += 1;
+  selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
+  selectedVersion.value = transportIsHttp ? '' : asset.currentVersion || asset.versions[0] || '';
+  detail.value = null;
+  detailLoading.value = false;
+  detailError.value = '';
+  await loadDetail();
+  if (detailError.value) {
+    showToast(detailError.value);
+    return;
+  }
   if (!canEditDetail.value) {
     showToast('当前用户没有编辑权限');
     return;
   }
-  await beginDetailEdit();
+  beginDetailEdit();
 }
 
 async function deleteCardAsset(asset: HarnessAsset): Promise<void> {
@@ -1008,6 +1077,7 @@ onBeforeUnmount(() => {
   detailSequence += 1;
   extensionReleaseSequence += 1;
   if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
+  if (assetSearchTimer !== undefined) window.clearTimeout(assetSearchTimer);
   window.clearTimeout(toastTimer);
 });
 </script>
@@ -1021,6 +1091,21 @@ onBeforeUnmount(() => {
       :delete-asset="deleteCurrentAsset"
       @close="deleteTarget = null"
       @deleted="onAssetDeleted"
+    />
+    <HarnessAssetEditDialog
+      v-if="detailDraft && selectedAsset && selectedAsset.assetType !== 'Extension'"
+      :asset-type="selectedAsset.assetType"
+      :name="detailDraft.name"
+      :description="detailDraft.description"
+      :people="detailDraft.people"
+      :submitting="detailSaving"
+      :error="detailEditError"
+      :required-name-prefix="detailRequiredNamePrefix"
+      @update:name="detailDraft.name = $event"
+      @update:description="detailDraft.description = $event"
+      @update-person="changeDraftPerson"
+      @close="cancelDetailEdit"
+      @save="saveDetailEdits"
     />
     <HarnessCatalogImportDialog
       v-if="importAssetType"
@@ -1121,10 +1206,11 @@ onBeforeUnmount(() => {
         <label class="asset-search">
           <span class="asset-search__icon" aria-hidden="true" />
           <input
-            v-model="assetSearchQuery"
+            :value="assetSearchQuery"
             type="search"
             aria-label="搜索资产"
             placeholder="搜索名称 / 描述 / 责任人…"
+            @input="scheduleAssetSearch"
           />
         </label>
 
@@ -1171,12 +1257,14 @@ onBeforeUnmount(() => {
             type="button"
             :class="{ 'is-active': assetStatusFilter === item.key }"
             :aria-pressed="assetStatusFilter === item.key"
-            @click="assetStatusFilter = item.key"
+            @click="selectStatusFilter(item.key)"
           >
             {{ item.label }}
           </button>
         </nav>
-        <span class="asset-result-count">共 {{ filteredAssets.length }} 个资产</span>
+        <span class="asset-result-count">
+          共 {{ transportIsHttp ? assetTotal : filteredAssets.length }} 个资产
+        </span>
       </div>
 
       <section
@@ -1332,18 +1420,9 @@ onBeforeUnmount(() => {
             class="asset-button is-primary asset-detail__edit"
             :disabled="detailSaving || !canEditDetail"
             :title="detailPermissionsReady && !canEditDetail ? '当前用户没有编辑权限' : undefined"
-            @click="detailDraft ? saveDetailEdits() : beginDetailEdit()"
+            @click="beginDetailEdit"
           >
-            {{ detailSaving ? '保存中…' : detailDraft ? '保存' : '编辑' }}
-          </button>
-          <button
-            v-if="detailDraft"
-            type="button"
-            class="asset-button is-secondary"
-            :disabled="detailSaving"
-            @click="cancelDetailEdit"
-          >
-            取消
+            编辑
           </button>
           <button
             type="button"
@@ -1370,7 +1449,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
-      <p v-if="detailEditError" class="asset-edit-error" role="alert">{{ detailEditError }}</p>
 
       <section class="asset-board asset-detail" aria-labelledby="asset-detail-title">
         <header class="asset-detail__header asset-detail__hero">
@@ -1384,15 +1462,7 @@ onBeforeUnmount(() => {
           <div class="asset-detail__identity">
             <div class="asset-detail__title">
               <h1 id="asset-detail-title">
-                <input
-                  v-if="detailDraft"
-                  ref="detailNameInput"
-                  v-model="detailDraft.name"
-                  class="asset-edit-input"
-                  aria-label="名称"
-                  :disabled="detailSaving || !canEditDetail"
-                />
-                <template v-else>{{ detailComponent?.name ?? selectedAsset.name }}</template>
+                {{ detailComponent?.name ?? selectedAsset.name }}
               </h1>
               <div class="asset-detail__badges">
                 <span
@@ -1409,15 +1479,7 @@ onBeforeUnmount(() => {
                 <div class="asset-detail__summary-field is-description">
                   <dt>描述</dt>
                   <dd class="asset-detail__description" :title="detailDescription">
-                    <textarea
-                      v-if="detailDraft"
-                      v-model="detailDraft.description"
-                      class="asset-edit-input asset-edit-description"
-                      aria-label="描述"
-                      :disabled="detailSaving || !canEditDetail"
-                      rows="2"
-                    />
-                    <template v-else>{{ detailDescription }}</template>
+                    {{ detailDescription }}
                   </dd>
                 </div>
               </dl>
@@ -1444,22 +1506,13 @@ onBeforeUnmount(() => {
               :key="field"
               class="asset-detail__person asset-detail__fact"
             >
-              <dt v-if="!detailDraft">{{ label }}</dt>
-              <dd v-if="detailDraft" class="asset-detail__person-input">
-                <fieldset :disabled="detailSaving || !canEditDetail">
-                  <WorkflowPersonPicker
-                    :model-value="detailDraft.people[field]"
-                    :label="label"
-                    @update:model-value="changeDraftPerson(field, $event)"
-                  />
-                </fieldset>
-              </dd>
-              <dd v-else>{{ detailPersonLabel(field) }}</dd>
+              <dt>{{ label }}</dt>
+              <dd>{{ detailPersonLabel(field) }}</dd>
             </div>
           </dl>
           <dl class="asset-detail__scope">
             <div class="asset-detail__fact">
-              <dt>归属 dim</dt>
+              <dt>{{ detailDimLabel }}</dt>
               <dd :title="detailDim">{{ detailDim }}</dd>
             </div>
           </dl>
@@ -1492,7 +1545,7 @@ onBeforeUnmount(() => {
           </dl>
           <dl class="asset-detail__scope">
             <div class="asset-detail__fact">
-              <dt>归属 dim</dt>
+              <dt>{{ detailDimLabel }}</dt>
               <dd :title="extensionDim">{{ extensionDim }}</dd>
             </div>
           </dl>
@@ -1556,7 +1609,7 @@ onBeforeUnmount(() => {
               v-model="selectedVersion"
               :versions="detailVersions"
               :statuses="detailVersionStatuses"
-              :disabled="detailLoading || detailSaving || Boolean(detailDraft)"
+              :disabled="detailLoading || detailSaving"
               @change="changeDetailVersion"
             />
           </div>
@@ -2420,55 +2473,6 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-.asset-edit-input {
-  box-sizing: border-box;
-  width: min(440px, 100%);
-  padding: 8px 12px;
-  border: 1px solid #b8c7e0;
-  border-radius: 8px;
-  background: #fff;
-  color: #17233d;
-  font: inherit;
-}
-
-.asset-edit-input:focus-visible {
-  outline: 2px solid #4569ff;
-  outline-offset: 2px;
-}
-
-.asset-edit-description {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  height: 58px;
-  min-height: 58px;
-  max-height: 58px;
-  line-height: 20px;
-  overflow-y: auto;
-  resize: none;
-}
-
-.asset-detail__person-input {
-  width: 300px;
-  max-width: 100%;
-}
-
-.asset-detail__person-input fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.asset-detail__person-input :deep(.workflow-person-picker .workflow-person-picker__input) {
-  background: #fff;
-}
-
-.asset-edit-error {
-  flex-shrink: 0;
-  margin: 0 0 12px;
-  color: #b42318;
-}
 .asset-delete-button {
   display: inline-flex;
   align-items: center;
@@ -2747,10 +2751,6 @@ onBeforeUnmount(() => {
 
 .asset-detail__scope .asset-detail__fact dd {
   font-size: 11.5px;
-}
-
-.asset-detail__person-input {
-  order: 1;
 }
 
 .asset-detail-back:focus-visible,

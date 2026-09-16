@@ -46,10 +46,10 @@ const sections = reactive(
       (capability): CapabilityRow => ({
         capability,
         open: false,
-        loaded: type !== 'skill',
+        loaded: false,
         loading: false,
         error: '',
-        files: capability.files.map((file) => fileRow(file.name)),
+        files: [],
       }),
     ),
   })),
@@ -63,12 +63,12 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-async function loadFiles(row: CapabilityRow): Promise<void> {
+async function loadFiles(type: ExtensionCapabilityType, row: CapabilityRow): Promise<void> {
   if (row.loaded || row.loading) return;
   row.loading = true;
   row.error = '';
   try {
-    const paths = await queryHttpPlanningItemFiles(props.userId, 'skill', row.capability);
+    const paths = await queryHttpPlanningItemFiles(props.userId, type, row.capability);
     if (!active) return;
     row.files = paths.map(fileRow);
     row.loaded = true;
@@ -79,9 +79,12 @@ async function loadFiles(row: CapabilityRow): Promise<void> {
   }
 }
 
-async function toggleCapability(row: CapabilityRow): Promise<void> {
+async function toggleCapability(
+  type: ExtensionCapabilityType,
+  row: CapabilityRow,
+): Promise<void> {
   row.open = !row.open;
-  if (row.open) await loadFiles(row);
+  if (row.open) await loadFiles(type, row);
 }
 
 async function loadContent(
@@ -138,7 +141,7 @@ async function toggleFile(
           class="extension-tree-toggle"
           :aria-expanded="row.open"
           :disabled="!row.capability.name || !row.capability.version"
-          @click="toggleCapability(row)"
+          @click="toggleCapability(section.type, row)"
         >
           <span aria-hidden="true">{{ row.open ? '▾' : '▸' }}</span>
           <span>{{ row.capability.name }}</span>
@@ -152,7 +155,7 @@ async function toggleFile(
           <p v-if="row.loading" role="status">正在加载目录…</p>
           <div v-else-if="row.error" class="extension-error" role="alert">
             {{ row.error }}
-            <button type="button" @click="loadFiles(row)">重新加载目录</button>
+            <button type="button" @click="loadFiles(section.type, row)">重新加载目录</button>
           </div>
           <p v-else-if="!row.files.length" class="extension-empty">暂无文件</p>
           <div v-for="file in row.files" :key="file.name" class="extension-file">

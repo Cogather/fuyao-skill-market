@@ -20,12 +20,14 @@
 - tabs（`role=tab`）：业务场景设计 / Harness 工作流 / 资产清单 / Agent / Skill 资产 / 配置管理 / 任务管理；前四个 tab 的 DOM id 分别为 `#harness-tab-scenarios`、`#harness-tab-workflows`、`#harness-tab-capabilities`、`#harness-tab-assets`。四个旧规划入口暂时隐藏。
 - 资产清单面板：`#harness-panel-capabilities`；内部 `role=tablist` 的 aria-label 为「资产清单分区」，依次包含 Command 清单 / Skill 清单 / Agent 清单 / Extension 发布。默认打开 Command 清单，四个分区复用原业务组件并按首次访问懒挂载，切换后保活。
 - 业务场景面板：`#harness-panel-scenarios`，包含 heading「业务场景设计台」；场景树复用配置管理，mock 默认「研发提效 → 代码生成」，初始无 Workflow。「开始设计 Workflow」或「继续设计」打开设计 dialog。
-- Harness 工作流面板：`#harness-panel-workflows`，包含 heading「Harness 工作流」、aria-label「选择部门」按钮、aria-label「筛选产品」下拉框、accessible name「Harness 工作流清单」的只读表格，以及「前往场景设计 →」按钮
-- Harness 工作流表格固定六列：名称 / 产品 / 部门 / 状态 / 所属业务场景 / Command 入口；状态由发布次数决定（`releaseCount > 0` 为「已发布」，否则为「设计中」），不以四步设计是否完成决定
-- 默认部门「持续交付组」、产品 `harness-pipeline`；初始工作流清单为空。部门筛选包含已关联工作流的下级部门，产品筛选进一步收窄结果；状态按钮 accessible name 为「全部」「已发布」「设计中」。
+- Harness 工作流面板：`#harness-panel-workflows`，包含 heading「Harness 工作流」、aria-label「选择部门」按钮、aria-label「筛选产品」下拉框、accessible name「Harness 工作流清单」的表格，以及「前往场景设计 →」按钮。每行固定提供「查看」，符合发布条件时提供「发布」。
+- Harness 工作流表格列为名称 / 产品 /（Mock 下显示部门）/ 状态 / 所属业务场景 / Command 入口 / 操作；状态统一展示为「设计中」「待发布」「已发布」，其中旧接口值「开发中」兼容归一为「设计中」，Mock 的 `releaseCount > 0` 仍优先归一为「已发布」
+- 默认部门「持续交付组」、产品 `harness-pipeline`；初始工作流清单为空。部门筛选包含已关联工作流的下级部门，产品筛选进一步收窄结果；状态按钮 accessible name 为「全部」「设计中」「待发布」「已发布」。
 - Harness 工作流每页 10 条；切换部门、产品或状态会把页码重置为第一页，分页按钮 accessible name 为「上一页」「下一页」
+- Harness 工作流「查看」直接进入旧版 Extension 发布历史页面，不调用 `/api/harness/workflow/detail`；历史通过 `POST /api/harness/extensions/history` 查询，请求使用列表记录的 `dimType/dimCode/dimName/firstScene/secondScene`，返回后保留工作流列表筛选与分页状态。
+- Harness 工作流「发布」复用旧版 Extension 发布页面：先按列表记录的 `dimType/dimCode/dimName/sceneExtensionCode` 调用 `/api/harness/extensions/detail`，再调用 `/extensions/orgs`，并优先预选列表的 `targetOrgCode/targetOrgName`；提交直接回传详情接口中的 skills/commands/agents。待发布行仅在 `canPublish=true` 时显示发布；已发布行还要求 `changed=true`。
 - Agent / Skill 资产面板：`#harness-panel-assets`，HTTP 和 Mock 均只显示 Agent / Skill / Command / Extension 四个类型，默认选中 Agent，无「全部」入口；包含详情、Skill 质量报告和发布流程。工具栏操作按钮固定按「＋ 新增 / 导入 / 导出」排列，统一使用白底描边样式；点击新增直接使用当前类型页签打开 Agent / Skill / Command 新增弹窗，不再二次选择类型，Extension 页签下禁用新增。
-- Agent、Skill、Command 详情右上角通过同一个「编辑 / 保存」按钮统一修改名称、描述、责任人和开发责任人；人员使用搜索选择器，点击保存才提交，取消恢复原值，失败保留草稿。保存期间禁止重复提交、返回、删除及版本切换。HTTP 先按原名称、归属和列表维度编码解析真实清单 ID，再调用对应 `/api/harness/{agents|skills|commands}/management/update`，一个 PUT 更新四项（未修改的人员字段省略）；成功后同步详情、卡片名称及身份，支持再次编辑。Mock 保存到原清单存储。实际改名复用清单名称格式和产品前缀规则，保留历史未改名及引用 Skill 的例外；Extension 暂无信息更新接口，不显示此编辑入口。回归为 `harness-assets-details-edit-http.spec.ts`、`harness-assets-details-edit-mock.spec.ts` 和 `tests/harness-asset-details-edit.tests.mjs`。
+- Agent、Skill、Command 的卡片「编辑信息」和详情右上角「编辑」统一打开资产信息弹框，视觉及字段布局对齐第一个资产清单的编辑弹框；详情页始终只读。弹框可修改名称、描述、责任人和开发责任人，人员使用搜索选择器，选中后输入区仍保持白底以提示可清除重选；点击保存才提交，取消恢复原值，失败保留草稿。保存期间禁止重复提交、关闭、返回、删除及版本切换。HTTP 先按原名称、归属和列表维度编码解析真实清单 ID，再调用对应 `/api/harness/{agents|skills|commands}/management/update`，一个 PUT 更新四项（未修改的人员字段省略）；成功后同步详情、卡片名称及身份，支持再次编辑。Mock 保存到原清单存储。实际改名复用清单名称格式和产品前缀规则，保留历史未改名及引用 Skill 的例外；Extension 暂无信息更新接口，不显示此编辑入口。回归为 `harness-assets-details-edit-http.spec.ts`、`harness-assets-details-edit-mock.spec.ts` 和 `tests/harness-asset-details-edit.tests.mjs`。
 - HTTP 资产列表使用 `httpRequest.api` 的 `POST /v1/harness/plans/components/query`，body 包含 `userId`、可选 `deptCode` / `productCode`、大写 `type`、`sortBy: updatedAt`、`sortOrder: desc`、`pageNo`、`pageSize: 30`。未选部门或产品时省略对应编码；清空部门后仍可查询列表。
 - HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。Agent、Skill、Command 卡片人员字段固定展示开发责任人，Extension 没有责任人或开发责任人，固定展示当前版本发布人（兼容列表的 `publisher` / `uploadedBy` 字段），不得相互回退或串用。
 - Agent、Skill、Command 和有版本的 Extension 卡片点击调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本保持接口上传时间顺序，默认选最新上传的第一项；原子资产继续按所选版本查询包文件。Extension 随后只调用一次 `POST /api/harness/scenes/bindings`，body 使用卡片记录的 `dimType/dimCode/dimName` 和所选 `version`，响应按卡片的一、二级场景精确过滤，仅展示对应 skills、commands、agents；切换版本重新获取绑定，清空旧文件内容。展开 Skill 时查询 `/packages/tree`；Command、Agent 使用绑定中的文件路径（缺省为名称加 `.md`）。点击具体文件才查询 `/packages/file`，参数使用该组件自身的名称、版本和文件路径；目录和文件加载失败支持局部重试。卡片内容不调用发布详情或发布历史接口，`includeFiles: false` 仅查询元信息。
@@ -45,7 +47,7 @@
 - HTTP「业务场景设计」的部门选择仅允许权限接口返回的可管理部门及其下级，上级路径只用于导航，不能确认为选择结果。「Harness 工作流」与资产页保留全量部门筛选；从工作流返回场景设计时，如果当前部门未授权，会自动切回首个授权部门。
 - Agent / Skill / Command 导入窗口与新增窗口使用相同的默认部门规则：优先首个授权部门，其次当前用户部门，不直接沿用列表的部门筛选。默认部门与列表部门不同时，重新加载默认部门的产品；打开导入不会改变列表筛选。
 - 删除叶子业务场景时会级联删除其 Workflow，只读清单切回后不得残留对应行
-- Harness 工作流是只读清单，不为行提供点击、详情或编辑入口；设计入口统一通过「前往场景设计 →」返回业务场景页
+- Harness 工作流不在清单内编辑配置；「查看」进入 Extension 发布历史页，「发布」进入 Extension 发布页，配置修改入口仍统一通过「前往场景设计 →」返回业务场景页。
 - 场景新建、标签、删除确认和 Workflow 设计弹窗仅通过显式操作按钮关闭（如取消、×、完成、完成设计）；点击遮罩或空白、拖动、滚动及 Esc 不关闭弹窗，也不会保存未提交的修改。Tab 焦点限制在弹窗内。
 
 ## 场景与活动统一关系
@@ -56,11 +58,13 @@
 - 旧活动库及规划项引用不做破坏性迁移。用户可将指定旧活动及子活动导入当前场景，保留 `sourceActivityId`；其他场景不会被自动关联。
 - 场景改名和排序保留稳定身份及 Workflow 关联；删除场景会清理其 Workflow、环节和节点，已被规划项引用的场景禁止直接删除。
 - 场景地图通过左侧拖拽手柄排序：一级场景之间、同一一级场景内的二级场景之间可拖到目标行上半区/下半区，松手后自动保存。只调整同产品同父级顺序，保留原有上下箭头；保存成功前不改变现有顺序，失败显示原因，刷新及配置管理读取同一顺序。
-- 工作流设计、场景编码/说明及关联保存在当前浏览器，按用户和 transport 隔离；目前没有工作流后端读写契约，不调用虚构接口。清空浏览器存储会移除本地工作流草稿。
+- Mock 工作流设计、场景编码/说明及关联保存在当前浏览器，按用户和 transport 隔离；HTTP 清单使用 `/workflow/list`，场景设计向导加载已有配置时使用 `/workflow/detail`，工作流清单的「查看」不使用该详情接口。设计写入仍只调用已有明确契约。清空浏览器存储会移除本地工作流草稿。
 - 场景标签沿用配置管理的标签服务；无权限、加载中或加载失败时禁止场景写入，失败加载不能被当作空配置保存。
 - 相关回归：`harness-management.spec.ts`、`harness-scenario-relations.spec.ts`、`harness-workspace-relations.spec.ts`、`harness-scenario-ordering.spec.ts`；数据层排序回归为 `node tests/harness-scenario-ordering.tests.mjs`。
 
 ## 演进记录
+
+- 2026-09-16：Harness 工作流行级「查看」调整为直接打开旧版 Extension 发布历史页，按维度与一级/二级场景调用 `/extensions/history`，不再请求 `/workflow/detail`；「发布」继续复用 Extension 发布页，并保留 canPublish/changed 控制、最近目标组织预填和发布后列表刷新。回归：`harness-workflow-list-http.spec.ts`、`tests/harness-workflow-list.tests.mjs`、`tests/harness-asset-history-http.tests.mjs`。
 
 - 2026-09-10：旧「资产清单」（`#harness-tab-capabilities`）的 Command / Skill / Agent 清单继续使用各自 `/api/harness/{commands|skills|agents}/management/query`。旧 Extension 发布工作区、发布与历史弹窗按 `e78abf5` 恢复为独立的 `LegacyExtensionPublishPage.vue` 和 `legacyExtensionPublishHttp.ts`：选场景查询 `/scenes/bindings` 与 `/extensions/history`，发布时查询 `/extensions/orgs` 并提交 `/extensions`，历史使用原时间线、默认三条、加载更多和失败重试 `/extensions/{id}/retry`。保留原名称、描述、通道、组织表单与弹窗样式。新资产页仍使用 `ExtensionPublishPage.vue` / `extensionPublishHttp.ts` 的现有逻辑，不与旧页恢复联动；不得将旧绑定查询换成新 `/extensions/detail`。回归：`extension-detail-http.spec.ts`、`tests/legacy-extension-bindings-http.tests.mjs`。
 

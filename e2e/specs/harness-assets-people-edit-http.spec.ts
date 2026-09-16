@@ -50,6 +50,7 @@ async function prepare(
         records: [
           {
             name: assetName,
+            canEdit: true,
             description: '原描述',
             latestVersion: '1.0.0',
             status: '已发布',
@@ -109,6 +110,7 @@ async function prepare(
     await page.locator('#harness-tab-assets').click();
     await page.getByRole('button', { name: type, exact: true }).click();
     await page.getByRole('heading', { name: assetName, exact: true }).click();
+    await expect(page.locator('#asset-detail-title')).toHaveText(assetName);
   };
   await openDetail();
   return { updates, queries, openDetail };
@@ -148,6 +150,9 @@ test.describe('HTTP 资产人员编辑', () => {
           await page.screenshot({ path: testInfo.outputPath('person-editor.png') });
         }
         await page.getByRole('button', { name: '保存', exact: true }).click();
+        await expect(
+          page.getByRole('dialog', { name: /^编辑 (Agent|Skill|Command)$/ }),
+        ).toBeHidden();
         await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeVisible();
         const request = updates.at(-1)!;
         expect(request.method()).toBe('PUT');
@@ -193,6 +198,7 @@ test.describe('HTTP 资产人员编辑', () => {
       '原责任人 u1',
     );
     await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '编辑 Skill', exact: true })).toBeHidden();
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeVisible();
     expect(updates).toHaveLength(2);
     await expect(page.locator('.asset-detail__people dd')).toHaveText([

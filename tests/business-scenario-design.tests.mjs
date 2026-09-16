@@ -236,7 +236,19 @@ try {
         { ...context, assetType: 'AGENT', assetName: 'demo-agent' },
         undefined,
       ],
-      ['queryHarnessWorkflowDetail', [context], 'GET', '/workflow/detail', context, undefined],
+      [
+        'queryHarnessWorkflowDetail',
+        [context],
+        'GET',
+        '/workflow/detail',
+        {
+          userId: context.userId,
+          dimCode: context.dimCode,
+          firstScene: context.firstScene,
+          secondScene: context.secondScene,
+        },
+        undefined,
+      ],
       [
         'agentBindActivity',
         [

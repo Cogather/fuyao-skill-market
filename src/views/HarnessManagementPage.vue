@@ -557,6 +557,7 @@ onBeforeRouteLeave(() => {
       <HarnessWorkflowsPage
         :workspace="scenarioWorkspace"
         :active="activeHarnessTab === 'workflows'"
+        :user-name="userName"
         @open-scenarios="selectHarnessTab('scenarios')"
       />
     </section>

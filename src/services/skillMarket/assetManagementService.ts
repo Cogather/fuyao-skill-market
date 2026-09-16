@@ -94,9 +94,13 @@ type AssetQueryState = {
 const ATOMIC_TYPES: HarnessAtomicAssetType[] = ['Agent', 'Skill', 'Command'];
 
 function normalizedPage(page: HarnessAssetPageQuery): HarnessAssetPageQuery {
+  const keyword = String(page.keyword ?? '').trim();
+  const status = page.status;
   return {
     pageNum: Math.max(1, Math.floor(Number(page.pageNum) || 1)),
     pageSize: Math.max(1, Math.floor(Number(page.pageSize) || 1)),
+    ...(keyword ? { keyword } : {}),
+    ...(status ? { status } : {}),
   };
 }
 
@@ -1028,8 +1032,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
               scope.userId,
               dimensionScope(queryScope),
               {
-                firstScene: asset.firstScene ?? component.firstScene,
-                secondScene: asset.secondScene ?? component.secondScene,
+                name: component.name || asset.name,
               },
               selectedVersion,
             );

@@ -284,6 +284,7 @@ test('HTTP Extension 仅显示接口状态为已发布的资产', async ({ page 
     { name: 'publishing', latestVersion: '1.0.0', status: '发布中' },
     { name: 'custom-status', latestVersion: '', status: '接口自定义状态' },
   ].map((record) => ({ ...record, canEdit: true }));
+  const componentBodies: Record<string, unknown>[] = [];
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (!path.startsWith('/api/')) return route.fallback();
@@ -300,14 +301,19 @@ test('HTTP Extension 仅显示接口状态为已发布的资产', async ({ page 
         },
       });
     }
-    const data = path.endsWith('/components/query')
-      ? { records, total: records.length, pageNo: 1, pageSize: 30 }
-      : [];
+    let data: unknown = [];
+    if (path.endsWith('/components/query')) {
+      const body = route.request().postDataJSON();
+      componentBodies.push(body);
+      const filtered = records.filter((record) => !body.status || record.status === body.status);
+      data = { records: filtered, total: filtered.length, pageNo: 1, pageSize: 30 };
+    }
     await route.fulfill({ json: { meta: { success: true }, data } });
   });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
   await page.locator('#harness-tab-assets').click();
   await page.getByRole('button', { name: 'Extension', exact: true }).click();
+  await expect.poll(() => componentBodies.at(-1)?.status).toBe('已发布');
   await expect(page.locator('.asset-card')).toHaveCount(1);
   for (const record of records.filter((record) => record.status !== '已发布')) {
     await expect(page.getByRole('heading', { name: record.name, exact: true })).toHaveCount(0);
@@ -366,7 +372,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
         ]),
       });
     }
-    if (url.pathname.endsWith('/plans/components/query')) {
+    if (url.pathname.endsWith('/components/query')) {
       expect(route.request().method()).toBe('POST');
       const body = route.request().postDataJSON();
       bodies.push(body);
@@ -387,7 +393,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
         name: `${body.type}-${index + 1}`,
         description: `资产说明 ${index + 1}`,
         latestVersion: '0.0.1',
-        status: body.type === 'EXTENSION' ? '已发布' : '待发布',
+        status: body.status ?? (body.type === 'EXTENSION' ? '已发布' : '待发布'),
         category: '部门级/交付部',
         updatedAt: '2026-03-24 10:00:00',
       })).slice((body.pageNo - 1) * body.pageSize, body.pageNo * body.pageSize);
@@ -430,9 +436,30 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
   await expect(cards.first().getByRole('heading')).toHaveText('AGENT-1');
   await expect(cards.last().getByRole('heading')).toHaveText('AGENT-61');
 
+  for (const [label, status] of [
+    ['开发中', '开发中'],
+    ['待发布', '待发布'],
+    ['已发布', '已发布'],
+  ]) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    await expect.poll(() => bodies.at(-1)?.status).toBe(status);
+    await expect.poll(() => bodies.at(-1)?.pageNo).toBe(1);
+  }
+  await page.getByRole('button', { name: '全部', exact: true }).click();
+  await expect.poll(() => bodies.at(-1)?.status).toBeUndefined();
+
+  const search = page.getByRole('searchbox', { name: '搜索资产' });
+  await search.fill('  pipeline owner  ');
+  await expect.poll(() => bodies.at(-1)?.keyword).toBe('pipeline owner');
+  await expect.poll(() => bodies.at(-1)?.pageNo).toBe(1);
+  await expect(cards).toHaveCount(30);
+  await search.fill('');
+  await expect.poll(() => bodies.at(-1)?.keyword).toBeUndefined();
+
   await selectHarnessOption(page.getByLabel('产品筛选'), 'pipeline-code');
   await expect(cards).toHaveCount(30);
   expect(bodies.at(-1)).toMatchObject({ productCode: 'pipeline-code', pageNo: 1 });
+  expect(bodies.at(-1)?.deptCode).toBeUndefined();
   await expect.poll(() => board.evaluate((element) => element.scrollTop)).toBe(0);
   for (const [label, type] of [
     ['Skill', 'SKILL'],
@@ -447,6 +474,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
       productCode: 'pipeline-code',
       pageNo: 1,
       pageSize: 30,
+      ...(type === 'EXTENSION' ? { status: '已发布' } : {}),
     });
   }
   await selectHarnessOption(page.getByLabel('产品筛选'), '');
@@ -458,6 +486,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
   expect(bodies.at(-1)).toEqual({
     userId: 'asset-user',
     type: 'EXTENSION',
+    status: '已发布',
     sortBy: 'updatedAt',
     sortOrder: 'desc',
     pageNo: 1,
@@ -478,7 +507,7 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
   await expect(cards.first().getByRole('heading')).toHaveText('SKILL-1');
   const lateResponse = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/plans/components/query') &&
+      response.url().endsWith('/components/query') &&
       response.request().postDataJSON().type === 'AGENT',
   );
   releaseAgent!();

@@ -324,6 +324,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       await expect(publish).toHaveCount(0);
 
       await card.getByRole('heading', { name: record.name, exact: true }).click();
+      const facts = page.locator('.asset-detail__facts.is-extension');
+      await expect(facts.getByText('归属产品', { exact: true })).toBeVisible();
+      await expect(facts.getByText('归属 dim', { exact: true })).toHaveCount(0);
       const detailPublish = page
         .locator('.asset-detail__actions')
         .getByRole('button', { name: '发布', exact: true });

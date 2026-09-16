@@ -26,6 +26,14 @@ try {
   const { queryMockCapabilityCatalog } = await server.ssrLoadModule(
     '/src/services/skillMarket/harnessCapabilityPlanningMock.ts',
   );
+  const { getAssetCatalogItemNamePrefix } = await server.ssrLoadModule(
+    '/src/utils/catalogItemName.ts',
+  );
+  assert.equal(
+    getAssetCatalogItemNamePrefix({ productName: 'CurrentProduct' }),
+    'currentproduct-',
+    'the edit dialog derives its prefix from the current asset product',
+  );
   const person = {
     id: ' u9 ',
     chName: ' 新人员 ',
@@ -138,10 +146,19 @@ try {
         },
       ],
     });
-    const productInput = { ...input, asset: { ...asset, category: '产品级/MyProduct' } };
+    const productInput = {
+      ...input,
+      asset: {
+        ...asset,
+        category: '产品级/MyProduct',
+        dimType: '产品级',
+        productName: 'CurrentProduct',
+      },
+    };
     await assert.rejects(update(productInput, 'http'), /需以产品名称/);
-    await assert.rejects(update({ ...productInput, name: 'myproduct-' }, 'http'), /后补充/);
-    await update({ ...productInput, name: 'myproduct-renamed' }, 'http');
+    await assert.rejects(update({ ...productInput, name: 'currentproduct-' }, 'http'), /后补充/);
+    await update({ ...productInput, name: 'currentproduct-renamed' }, 'http');
+    await assert.rejects(update({ ...productInput, name: 'myproduct-renamed' }, 'http'), /需以产品名称/);
     await update({ ...productInput, name: asset.name }, 'http');
 
     const records = () =>

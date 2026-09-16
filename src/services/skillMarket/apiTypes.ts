@@ -757,11 +757,15 @@ export type CreateAgentMasterManagementBody = Omit<
   agentDescription: string;
 };
 
-/** Agent / Skill 资产筛选列表（POST /v1/harness/plans/components/query）。 */
+export type HarnessAssetQueryStatus = '开发中' | '待发布' | '已发布';
+
+/** 资产清单统一筛选列表（POST /api/harness/components/query）。 */
 export type QueryHarnessAssetComponentsBody = {
   userId: string;
   deptCode?: string;
   productCode?: string;
+  keyword?: string;
+  status?: HarnessAssetQueryStatus;
   type: 'AGENT' | 'SKILL' | 'COMMAND' | 'EXTENSION';
   sortBy: 'updatedAt';
   sortOrder: 'desc';
@@ -772,8 +776,11 @@ export type QueryHarnessAssetComponentsBody = {
 export type HarnessAssetComponentDto = {
   name: string;
   description: string;
-  latestVersion: string;
+  latestVersion: string | null;
   status: string;
+  skillId?: string | null;
+  agentId?: string | null;
+  commandId?: string | null;
   owner?: string | null;
   developer?: string | null;
   /** Extension 当前版本的发布人；原子资产不使用。 */
@@ -822,6 +829,36 @@ export type HarnessAssetComponentDetailDto = {
   firstScene: string | null;
   secondScene: string | null;
   versions: Array<{ version: string; uploadedAt: string | null; uploadedBy: string }>;
+};
+
+export type QueryExtensionVersionHistoryParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  name: string;
+  version?: string;
+};
+
+export type ExtensionFrozenComponentDto = {
+  name: string;
+  version: string;
+};
+
+export type ExtensionVersionHistoryDto = {
+  extensionName: string;
+  version: string;
+  description: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  targetOrgCode: string;
+  targetOrgName: string;
+  operatorName: string;
+  publishStatus: string;
+  releaseType: string;
+  agents: ExtensionFrozenComponentDto[];
+  commands: ExtensionFrozenComponentDto[];
+  skills: ExtensionFrozenComponentDto[];
 };
 
 /** Skill 清单查询（POST /management/query）；字段均可为空 */

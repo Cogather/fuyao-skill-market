@@ -228,7 +228,10 @@ function historyTotal(response: unknown, fallback: number): number {
   return fallback;
 }
 
-async function queryAllHistory(scope: ExtensionScope): Promise<HttpExtensionRelease[]> {
+async function queryAllHistory(
+  scope: ExtensionScope,
+  scene?: { firstScene: string; secondScene: string },
+): Promise<HttpExtensionRelease[]> {
   const pageSize = 100;
   const body = {
     dimType: scope.dimType,
@@ -241,6 +244,7 @@ async function queryAllHistory(scope: ExtensionScope): Promise<HttpExtensionRele
     pageSize,
     sortBy: 'updatedAt',
     sortOrder: 'desc',
+    ...(scene ? { firstScene: scene.firstScene, secondScene: scene.secondScene } : {}),
   };
   const firstResponse = await skillBaseService.queryPublishedHistoryList(body);
   assertHttpSuccess(firstResponse, '发布历史加载失败');
@@ -496,28 +500,38 @@ export async function queryHttpExtensionBindings(
   });
 }
 
-/** 资产内容按所选 Extension 版本读取绑定，只保留卡片自身的一、二级场景。 */
+/** 资产内容按所选 Extension 版本读取发布时冻结的子资产清单。 */
 export async function queryHttpExtensionVersionCapabilities(
   userId: string,
   scope: ExtensionScope,
-  identity: { firstScene?: string | null; secondScene?: string | null },
+  identity: { name?: string | null },
   version: string,
 ): Promise<ExtensionScene['capabilities']> {
-  const firstScene = requiredText(identity.firstScene, 'Extension 缺少一级场景，无法查看内容');
-  const secondScene = requiredText(identity.secondScene, 'Extension 缺少二级场景，无法查看内容');
-  const response = await skillBaseService.querySceneAndBindingPlanningItems(
-    { userId: requiredText(userId, '尚未获取当前用户工号') },
-    {
-      dimType: scope.dimType,
-      dimCode: scope.dimCode,
-      dimName: scope.dimName,
-      version: requiredText(version, '请选择 Extension 版本'),
-    },
-  );
-  const scene = mapBindingScenes(response, scope, []).find(
-    (item) => item.primary === firstScene && item.name === secondScene,
-  );
-  return scene?.capabilities ?? { skill: [], command: [], agent: [] };
+  const extensionName = requiredText(identity.name, 'Extension 缺少名称，无法查看内容');
+  const selectedVersion = requiredText(version, '请选择 Extension 版本');
+  const response = await skillBaseService.queryExtensionVersionHistory({
+    userId: requiredText(userId, '尚未获取当前用户工号'),
+    dimType: requiredText(scope.dimType, 'Extension 缺少维度类型，无法查看内容'),
+    dimCode: requiredText(scope.dimCode, 'Extension 缺少维度编码，无法查看内容'),
+    name: extensionName,
+    version: selectedVersion,
+  });
+  assertHttpSuccess(response, 'Extension 冻结清单加载失败');
+  const data = asRecord(unwrapResponseData(response));
+  if (!Array.isArray(data.skills) || !Array.isArray(data.commands) || !Array.isArray(data.agents)) {
+    throw new Error('Extension 冻结清单响应格式不正确');
+  }
+  const sceneKey = stableId([scope.dimCode, extensionName, selectedVersion]);
+  const mapFrozen = (type: ExtensionCapabilityType, rows: unknown[]) =>
+    rows.map((item, index) => ({
+      ...mapCapability(item, type, sceneKey, index),
+      files: [],
+    }));
+  return {
+    skill: mapFrozen('skill', data.skills),
+    command: mapFrozen('command', data.commands),
+    agent: mapFrozen('agent', data.agents),
+  };
 }
 
 /** 发布准备查询：有编码优先按编码查，否则直接按一、二级场景名查。 */
@@ -581,7 +595,9 @@ export async function queryHttpExtensionHistory(
   if (!hasSceneIdentity && !extensionName) {
     throw new Error('缺少 Extension 名称或完整场景信息，无法查询发布历史');
   }
-  const sceneReleases = (await queryAllHistory(scope)).filter((release) =>
+  const sceneReleases = (
+    await queryAllHistory(scope, hasSceneIdentity ? { firstScene, secondScene } : undefined)
+  ).filter((release) =>
     hasSceneIdentity
       ? sameScene(release, firstScene, secondScene)
       : release.extensionName === extensionName,
@@ -700,5 +716,19 @@ export async function queryHttpPlanningItemContent(
   });
   assertHttpSuccess(response, '规划件文件内容加载失败');
   const data = unwrapResponseData(response);
-  return typeof data === 'string' ? data : normalizeText(asRecord(data).content);
+  if (typeof data === 'string') return data;
+  const record = asRecord(data);
+  const content = normalizeText(record.content);
+  if (normalizeText(record.encoding).toLowerCase() !== 'base64') return content;
+  if (typeof atob !== 'function') return `Base64 编码文件：\n${content}`;
+  try {
+    const binary = atob(content);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(decoded)
+      ? `Base64 编码文件：\n${content}`
+      : decoded;
+  } catch {
+    return `Base64 编码文件：\n${content}`;
+  }
 }

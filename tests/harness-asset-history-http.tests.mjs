@@ -35,7 +35,8 @@ try {
     '/src/services/skillMarket/extensionPublishHttp.ts',
   );
   const api = getHarnessAssetApi();
-  request.api = async () => success({ records: [row], total: 1, pageNo: 1, pageSize: 30 });
+  skillBaseService.queryHarnessAssetComponents = async () =>
+    success({ records: [row], total: 1, pageNo: 1, pageSize: 30 });
   const asset = (await api.queryAssets(scope, { pageNum: 1, pageSize: 30 })).list[0];
   assert.equal(
     asset.productId,
@@ -125,6 +126,10 @@ try {
     },
   ]);
   history = await queryHttpExtensionHistory(sceneContext.scope, sceneContext.scene);
+  assert.equal(historyRequests.at(-1).data.firstScene, '开发');
+  assert.equal(historyRequests.at(-1).data.secondScene, '旧场景');
+  assert.equal(historyRequests.at(-1).data.dimType, sceneContext.scope.dimType);
+  assert.equal(historyRequests.at(-1).data.dimCode, sceneContext.scope.dimCode);
   assert.equal(history.publishing.id, 'renamed');
   assert.deepEqual(history.releases, []);
   assert.equal(history.extension.name, 'published-name');

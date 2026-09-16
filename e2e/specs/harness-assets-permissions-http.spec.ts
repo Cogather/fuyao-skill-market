@@ -12,8 +12,11 @@ async function prepare(
     delayDetail?: boolean;
     failDetail?: boolean;
     enterDetail?: boolean;
+    dimType?: '产品级' | '部门级';
   } = {},
 ) {
+  const dimType = permission.dimType ?? '部门级';
+  const dimName = dimType === '产品级' ? '资产产品' : '研发部';
   const writes: Request[] = [];
   let releaseDetail!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -50,7 +53,9 @@ async function prepare(
           {
             name: 'permission-asset',
             description: '权限检查',
-            category: '部门级/研发部',
+            category: `${dimType}/${dimName}`,
+            dimType,
+            dimName,
             latestVersion: '1.0.0',
             status: '已发布',
             canEdit: permission.listCanEdit,
@@ -69,7 +74,8 @@ async function prepare(
       data = {
         name: 'permission-asset',
         description: '权限检查',
-        category: '部门级/研发部',
+        category: `${dimType}/${dimName}`,
+        dimType,
         type: type.toUpperCase(),
         canEdit: permission.canEdit,
         ownerName: '同名用户',
@@ -83,9 +89,9 @@ async function prepare(
         {
           id: 42,
           [`${type.toLowerCase()}Name`]: 'permission-asset',
-          dimType: '部门级',
-          dimCode: 'dept-root',
-          dimName: '研发部',
+          dimType,
+          dimCode: dimType === '产品级' ? 'asset-product' : 'dept-root',
+          dimName,
         },
       ];
     else if (pathname.endsWith('/packages/tree')) data = ['SKILL.md'];
@@ -107,6 +113,24 @@ async function prepare(
 test.describe('资产详情权限 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
+  for (const [dimType, expectedLabel] of [
+    ['产品级', '归属产品'],
+    ['部门级', '归属部门'],
+  ] as const) {
+    test(`${dimType}资产详情显示“${expectedLabel}”`, async ({ page }) => {
+      await prepare(page, 'Agent', {
+        canEdit: true,
+        listCanEdit: true,
+        ownerId: 'current-user',
+        dimType,
+      });
+
+      const scope = page.locator('.asset-detail__scope').first();
+      await expect(scope.getByText(expectedLabel, { exact: true })).toBeVisible();
+      await expect(scope.getByText('归属 dim', { exact: true })).toHaveCount(0);
+    });
+  }
+
   test('列表 canEdit=true 时查看详情和编辑信息均可用', async ({ page }) => {
     const { card } = await prepare(page, 'Agent', {
       canEdit: true,
@@ -117,8 +141,15 @@ test.describe('资产详情权限 HTTP', () => {
     await card.getByRole('button', { name: /^更多操作：/ }).click();
     const menu = card.getByRole('menu');
     const view = menu.getByRole('menuitem', { name: '查看详情', exact: true });
+    const edit = menu.getByRole('menuitem', { name: '编辑信息', exact: true });
     await expect(view).toBeEnabled();
-    await expect(menu.getByRole('menuitem', { name: '编辑信息', exact: true })).toBeEnabled();
+    await expect(edit).toBeEnabled();
+    await edit.click();
+    const editDialog = page.getByRole('dialog', { name: '编辑 Agent', exact: true });
+    await expect(editDialog).toBeVisible();
+    await expect(page.locator('.asset-detail')).toHaveCount(0);
+    await editDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await card.getByRole('button', { name: /^更多操作：/ }).click();
     await view.click();
     await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeVisible();
   });
@@ -246,6 +277,7 @@ test.describe('资产详情权限 HTTP', () => {
     await page.getByRole('combobox', { name: '责任人', exact: true }).fill('new-owner');
     await page.getByRole('option', { name: /新责任人/ }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '编辑 Agent', exact: true })).toBeHidden();
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
     expect(writes[0]!.postDataJSON().ownerId).toBe('new-owner');

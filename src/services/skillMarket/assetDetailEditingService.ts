@@ -14,7 +14,7 @@ import {
   updateMockCapabilityCatalogDetails,
 } from './harnessCapabilityPlanningMock';
 import {
-  getProductCatalogItemNamePrefix,
+  getAssetCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 
@@ -24,8 +24,9 @@ function validateNameChange(
   type: string,
   name: string,
   previousName: string,
-  level: string,
-  product: string,
+  asset: UpdateHarnessAssetDetailsInput['asset'],
+  fallbackLevel: string,
+  fallbackProduct: string,
   source?: unknown,
 ): void {
   // Historical names and imported Skills keep the existing catalog exceptions.
@@ -33,7 +34,7 @@ function validateNameChange(
     return;
   if (!isCatalogItemNameValid(name))
     throw new Error(`${type} 名称仅允许小写字母、数字、连字符，最长 64 字符`);
-  const prefix = getProductCatalogItemNamePrefix(level, product);
+  const prefix = getAssetCatalogItemNamePrefix(asset, fallbackLevel, fallbackProduct);
   if (!prefix) return;
   if (!name.startsWith(prefix))
     throw new Error(`产品级 ${type} 名称需以产品名称的小写形式“${prefix}”开头`);
@@ -75,6 +76,7 @@ export async function updateHarnessAssetDetails(
         'Skill',
         name,
         record.skillName,
+        asset,
         record.dimType,
         record.dimName,
         record.skillSource,
@@ -95,6 +97,7 @@ export async function updateHarnessAssetDetails(
       asset.assetType,
       name,
       record.name,
+      asset,
       record.level,
       record.product,
       record.skillSource,
@@ -119,6 +122,7 @@ export async function updateHarnessAssetDetails(
     asset.assetType,
     name,
     asset.name,
+    asset,
     text(record.dimType),
     String(record.dimName ?? ''),
     record.skillSource,

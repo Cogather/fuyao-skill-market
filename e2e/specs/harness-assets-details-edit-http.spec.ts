@@ -108,21 +108,22 @@ async function prepare(page: Page, type: string, rejectFirst = false) {
   return { record, updates, queries };
 }
 
-test.describe('资产详情统一编辑 HTTP', () => {
+test.describe('资产弹框统一编辑 HTTP', () => {
   test('编辑责任人时浮层不撑高信息区，两个选择器均可正常选择和关闭', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await prepare(page, 'Agent');
     await page.getByRole('button', { name: '编辑', exact: true }).click();
-    const people = page.locator('.asset-detail__people');
-    const bounds = await people.boundingBox();
+    const dialog = page.getByRole('dialog', { name: '编辑 Agent', exact: true });
+    const bounds = await dialog.boundingBox();
     expect(bounds).not.toBeNull();
+    await expect(page.locator('.asset-detail').getByRole('textbox')).toHaveCount(0);
     for (const label of ['责任人', '开发责任人']) {
-      const input = page.getByRole('combobox', { name: label, exact: true });
-      await page.getByRole('button', { name: `清空${label}`, exact: true }).click();
+      const input = dialog.getByRole('combobox', { name: label, exact: true });
+      await dialog.getByRole('button', { name: `清空${label}`, exact: true }).click();
       await input.fill('u9');
       const option = page.getByRole('option').filter({ hasText: '新负责人' });
       await expect(option).toBeVisible();
-      expect(await people.boundingBox()).toEqual(bounds);
+      expect(await dialog.boundingBox()).toEqual(bounds);
       await option.click();
       await expect(input).toHaveValue('新负责人 u9');
       await expect(page.getByRole('listbox')).toHaveCount(0);
@@ -138,7 +139,7 @@ test.describe('资产详情统一编辑 HTTP', () => {
     await expect(page.getByRole('option')).toBeVisible();
     await page.getByRole('textbox', { name: '描述', exact: true }).click();
     await expect(page.getByRole('listbox')).toHaveCount(0);
-    expect(await people.boundingBox()).toEqual(bounds);
+    expect(await dialog.boundingBox()).toEqual(bounds);
   });
 
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
@@ -148,11 +149,12 @@ test.describe('资产详情统一编辑 HTTP', () => {
     }, testInfo) => {
       const { updates, queries } = await prepare(page, type);
       await page.getByRole('button', { name: '编辑', exact: true }).click();
-      const save = page.getByRole('button', { name: '保存', exact: true });
+      const dialog = page.getByRole('dialog', { name: `编辑 ${type}`, exact: true });
+      const save = dialog.getByRole('button', { name: '保存', exact: true });
       await expect(save).toBeVisible();
-      await expect(page.getByRole('button', { name: '编辑', exact: true })).toHaveCount(0);
-      await page.getByRole('textbox', { name: '名称', exact: true }).fill('renamed-asset');
-      await page.getByRole('textbox', { name: '描述', exact: true }).fill('新的资产描述');
+      await expect(page.locator('.asset-detail').getByRole('textbox')).toHaveCount(0);
+      await dialog.getByRole('textbox', { name: '名称', exact: true }).fill('renamed-asset');
+      await dialog.getByRole('textbox', { name: '描述', exact: true }).fill('新的资产描述');
       for (const label of ['责任人', '开发责任人']) {
         const picker = page.getByRole('combobox', { name: label, exact: true });
         await picker.locator('..').getByRole('button', { name: /清空/ }).click();
@@ -162,6 +164,7 @@ test.describe('资产详情统一编辑 HTTP', () => {
       expect(updates).toHaveLength(0);
       if (type === 'Agent') await page.screenshot({ path: testInfo.outputPath('asset-edit.png') });
       await save.click();
+      await expect(dialog).toBeHidden();
       await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeVisible();
       await expect(page.locator('#asset-detail-title')).toHaveText('renamed-asset');
       await expect(page.locator('.asset-detail__description')).toHaveText('新的资产描述');
