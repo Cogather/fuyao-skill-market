@@ -58,6 +58,7 @@ const props = withDefaults(
     initialScope?: HarnessScopeSnapshot;
     releaseContext?: ExtensionReleaseContext;
     initialPanel?: Exclude<ExtensionModal, null>;
+    preferredOrganization?: { id?: string | null; name?: string | null };
   }>(),
   {
     userId: '',
@@ -69,6 +70,7 @@ const props = withDefaults(
     initialScope: undefined,
     releaseContext: undefined,
     initialPanel: 'publish',
+    preferredOrganization: undefined,
   },
 );
 
@@ -748,6 +750,17 @@ const publishForm = reactive({
   channel: 'beta' as ExtensionPublishChannel,
   organizationId: organizations.value[0]?.id ?? '',
 });
+
+function preferredOrganizationId(items: PublishableOrganization[]): string {
+  const preferredId = props.preferredOrganization?.id?.trim() ?? '';
+  const preferredName = props.preferredOrganization?.name?.trim() ?? '';
+  return (
+    items.find((item) => preferredId && item.id === preferredId)?.id ??
+    items.find((item) => preferredName && item.name === preferredName)?.id ??
+    items[0]?.id ??
+    ''
+  );
+}
 const requiredExtensionNamePrefix = computed(() =>
   getProductCatalogItemNamePrefix(publishDimension.value.type, publishDimension.value.name),
 );
@@ -795,7 +808,7 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   if (transportIsHttp) {
     await loadHttpOrganizations();
   } else {
-    publishForm.organizationId = organizations.value[0]?.id ?? '';
+    publishForm.organizationId = preferredOrganizationId(organizations.value);
   }
 }
 
@@ -1003,7 +1016,7 @@ async function loadHttpOrganizations(): Promise<void> {
     const result = await queryHttpPublishableOrganizations(props.userId.trim(), scope);
     if (sequence !== organizationLoadSequence || activeModal.value !== 'publish') return;
     organizations.value = result;
-    publishForm.organizationId = result[0]?.id ?? '';
+    publishForm.organizationId = preferredOrganizationId(result);
     if (!organizations.value.length) organizationError.value = '当前用户暂无可发布组织';
   } catch (error) {
     if (sequence !== organizationLoadSequence || activeModal.value !== 'publish') return;

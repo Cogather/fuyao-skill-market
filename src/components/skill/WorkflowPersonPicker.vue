@@ -421,7 +421,7 @@ onBeforeUnmount(() => {
 }
 
 .workflow-person-picker__input[readonly] {
-  background: #f8fbff;
+  background: #fff;
   cursor: default;
 }
 

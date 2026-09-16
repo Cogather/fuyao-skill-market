@@ -17,6 +17,8 @@ export class HarnessManagementPage {
   readonly tabScenarios: Locator;
   readonly tabCapabilities: Locator;
   readonly capabilitiesPanel: Locator;
+  readonly tabAssets: Locator;
+  readonly assetsPanel: Locator;
   readonly capabilityManagementTabList: Locator;
   readonly scenariosPanel: Locator;
   readonly scenariosHeading: Locator;
@@ -55,6 +57,8 @@ export class HarnessManagementPage {
     this.tabScenarios = page.locator('#harness-tab-scenarios');
     this.tabCapabilities = page.locator('#harness-tab-capabilities');
     this.capabilitiesPanel = page.locator('#harness-panel-capabilities');
+    this.tabAssets = page.locator('#harness-tab-assets');
+    this.assetsPanel = page.locator('#harness-panel-assets');
     this.capabilityManagementTabList = this.capabilitiesPanel.getByRole('tablist', {
       name: '资产清单分区',
     });
@@ -153,6 +157,12 @@ export class HarnessManagementPage {
     await this.capabilitiesPanel.waitFor();
   }
 
+  /** 切换到第二个「资产清单」，并等待统一资产面板渲染 */
+  async switchToAssets(): Promise<void> {
+    await this.tabAssets.click();
+    await this.assetsPanel.waitFor();
+  }
+
   capabilityManagementTab(name: 'Command 清单' | 'Skill 清单' | 'Agent 清单' | 'Extension 发布') {
     return this.capabilityManagementTabList.getByRole('tab', {
       name: name.replace(/ (清单|发布)$/, ''),
@@ -193,7 +203,7 @@ export class HarnessManagementPage {
   }
 
   /** 按业务状态筛选 Harness 工作流。 */
-  workflowStatusButton(status: '全部' | '已发布' | '设计中'): Locator {
+  workflowStatusButton(status: '全部' | '设计中' | '待发布' | '已发布'): Locator {
     return this.workflowsPanel.getByRole('button', { name: status, exact: true });
   }
 

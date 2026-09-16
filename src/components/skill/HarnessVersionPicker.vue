@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } fro
 const props = defineProps<{
   modelValue: string;
   versions: string[];
+  statuses?: Record<string, string>;
   disabled?: boolean;
 }>();
 const emit = defineEmits<{
@@ -17,9 +18,46 @@ const open = ref(false);
 const activeIndex = ref(0);
 const menuStyle = ref<Record<string, string>>({});
 const unavailable = computed(() => props.disabled || props.versions.length === 0);
-const displayVersion = computed(() => (props.modelValue ? `v${props.modelValue}` : '无可用版本'));
+const displayVersion = computed(() => props.modelValue || '无可用版本');
 let search = '';
 let searchTime = 0;
+
+type VersionStatusTone = 'developing' | 'pending' | 'published';
+
+function versionStatus(status: string | undefined): {
+  label: '开发中' | '待发布' | '已发布';
+  tone: VersionStatusTone;
+} {
+  const normalized = String(status ?? '')
+    .trim()
+    .toLocaleLowerCase();
+  if (['已发布', '发布成功', '成功', 'published', 'released', 'success'].includes(normalized)) {
+    return { label: '已发布', tone: 'published' };
+  }
+  if (
+    [
+      '待发布',
+      '可发布',
+      '发布中',
+      '进行中',
+      'pending',
+      'ready',
+      'processing',
+      'in_progress',
+    ].includes(normalized)
+  ) {
+    return { label: '待发布', tone: 'pending' };
+  }
+  return { label: '开发中', tone: 'developing' };
+}
+
+const versionOptions = computed(() =>
+  props.versions.map((version) => ({
+    version,
+    ...versionStatus(props.statuses?.[version]),
+  })),
+);
+const selectedStatus = computed(() => versionStatus(props.statuses?.[props.modelValue]));
 
 function revealActive(): void {
   nextTick(() =>
@@ -32,7 +70,7 @@ function revealActive(): void {
 function positionMenu(): void {
   if (!trigger.value) return;
   const rect = trigger.value.getBoundingClientRect();
-  const width = Math.min(Math.max(rect.width, 220), window.innerWidth - 24);
+  const width = Math.min(Math.max(rect.width, 200), window.innerWidth - 24);
   const below = window.innerHeight - rect.bottom - 12;
   const above = rect.top - 12;
   const upward = below < 180 && above > below;
@@ -170,29 +208,14 @@ onBeforeUnmount(() => {
       @keydown="keydown"
       @blur="close"
     >
-      <svg
+      <span class="harness-version-picker__value">{{ displayVersion }}</span>
+      <span
+        v-if="modelValue"
+        class="harness-version-picker__status-dot"
+        :class="`is-${selectedStatus.tone}`"
         aria-hidden="true"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-      >
-        <circle cx="5" cy="4" r="2" />
-        <circle cx="5" cy="16" r="2" />
-        <circle cx="15" cy="5" r="2" />
-        <path d="M5 6v8m0-3h5a5 5 0 0 0 5-4" />
-      </svg>
-      <span>{{ displayVersion }}</span>
-      <svg
-        class="harness-version-picker__chevron"
-        aria-hidden="true"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-      >
-        <path d="m5 8 5 5 5-5" />
-      </svg>
+      />
+      <span class="harness-version-picker__chevron" aria-hidden="true" />
     </button>
     <Teleport to="body">
       <div
@@ -204,35 +227,32 @@ onBeforeUnmount(() => {
         aria-label="可用版本"
         :style="menuStyle"
       >
-        <div class="harness-version-picker__caption" aria-hidden="true">选择版本</div>
         <button
-          v-for="(version, index) in versions"
+          v-for="(option, index) in versionOptions"
           :id="`${menuId}-${index}`"
-          :key="version"
+          :key="option.version"
           class="harness-version-picker__option"
           :class="{ 'is-active': index === activeIndex }"
           :data-index="index"
           type="button"
           role="option"
-          :aria-selected="version === modelValue"
-          :aria-label="`v${version}`"
-          :title="`v${version}`"
+          :aria-selected="option.version === modelValue"
+          :aria-label="`${option.version} ${option.label}`"
+          :title="`${option.version} ${option.label}`"
           tabindex="-1"
           @pointerdown.prevent
           @pointermove="activeIndex = index"
           @click="choose(index)"
         >
-          <span>v{{ version }}</span>
-          <svg
-            v-if="version === modelValue"
-            aria-hidden="true"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-          >
-            <path d="m4 10 4 4 8-8" />
-          </svg>
+          <span class="harness-version-picker__option-version">{{ option.version }}</span>
+          <span class="harness-version-picker__option-status">
+            <span
+              class="harness-version-picker__status-dot"
+              :class="`is-${option.tone}`"
+              aria-hidden="true"
+            />
+            <small>{{ option.label }}</small>
+          </span>
         </button>
       </div>
     </Teleport>
@@ -246,36 +266,45 @@ onBeforeUnmount(() => {
 .harness-version-picker .harness-version-picker__trigger {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 144px;
+  gap: 10px;
+  min-width: 200px;
   max-width: 100%;
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 1px solid #8593a5;
-  border-radius: 6px;
-  background: #f6f9ff;
-  color: #1d4ed8;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d7dee9;
+  border-radius: 10px;
+  background: #fff;
+  color: #2456e6;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 20px;
   cursor: pointer;
+  transition:
+    border-color 140ms,
+    box-shadow 140ms;
 }
-.harness-version-picker__trigger > span {
+.harness-version-picker__value {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
 }
-.harness-version-picker__trigger svg,
-.harness-version-picker__option svg {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+.harness-version-picker__chevron {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  border-top: 6px solid #8a93a6;
+  transition: transform 140ms;
 }
 .harness-version-picker__trigger[aria-expanded='true'] {
-  border-color: #2563eb;
-  background: #eff6ff;
+  border-color: #2456e6;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(36 86 230 / 10%);
 }
 .harness-version-picker__trigger[aria-expanded='true'] .harness-version-picker__chevron {
   transform: rotate(180deg);
@@ -295,13 +324,13 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px;
-  border: 1px solid #8593a5;
-  border-radius: 8px;
+  padding: 5px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   background: #fff;
-  box-shadow: 0 10px 32px rgb(31 50 81 / 14%);
+  box-shadow: 0 8px 24px rgb(31 35 41 / 14%);
   font:
-    13px/20px 'HarmonyOS Sans SC',
+    13.5px/20px 'HarmonyOS Sans SC',
     'MiSans',
     'Noto Sans SC',
     'PingFang SC',
@@ -309,50 +338,74 @@ onBeforeUnmount(() => {
     'Microsoft YaHei',
     sans-serif;
 }
-.harness-version-picker__caption {
-  padding: 4px 10px 8px;
-  color: #667085;
-  font-size: 12px;
-}
 .harness-version-picker__option {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   box-sizing: border-box;
   width: 100%;
-  min-height: 36px;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: 5px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 7px;
   background: transparent;
-  color: #334155;
+  color: #3c4457;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
-.harness-version-picker__option > span {
+.harness-version-picker__option-version {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.harness-version-picker__option-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  color: #8a93a6;
+  white-space: nowrap;
+}
+.harness-version-picker__option-status small {
+  font-size: 11px;
+  line-height: 18px;
+}
+.harness-version-picker__status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+}
+.harness-version-picker__status-dot.is-developing {
+  background: #a6aebf;
+}
+.harness-version-picker__status-dot.is-pending {
+  background: #f08c2c;
+}
+.harness-version-picker__status-dot.is-published {
+  background: #18b26a;
+}
 .harness-version-picker__option[aria-selected='true'] {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #eef2ff;
+  color: #2456e6;
   font-weight: 600;
 }
+.harness-version-picker__option:hover,
 .harness-version-picker__option.is-active {
-  border-color: #2563eb;
-  background: #edf3ff;
+  background: #f2f4f9;
+}
+.harness-version-picker__option[aria-selected='true']:hover,
+.harness-version-picker__option[aria-selected='true'].is-active {
+  background: #eef2ff;
 }
 @media (forced-colors: active) {
   .harness-version-picker__trigger:focus-visible {
     outline-color: Highlight;
   }
-  .harness-version-picker__option.is-active {
-    border-color: Highlight;
-  }
   .harness-version-picker__option[aria-selected='true'] {
     color: Highlight;
+  }
+  .harness-version-picker__status-dot {
+    background: CanvasText;
   }
 }
 </style>

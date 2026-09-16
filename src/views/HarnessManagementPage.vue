@@ -461,10 +461,8 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              tab.key === 'assets'
-                ? false
-                : showLegacyPlanningTabs ||
-                  !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              showLegacyPlanningTabs ||
+              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -559,6 +557,7 @@ onBeforeRouteLeave(() => {
       <HarnessWorkflowsPage
         :workspace="scenarioWorkspace"
         :active="activeHarnessTab === 'workflows'"
+        :user-name="userName"
         @open-scenarios="selectHarnessTab('scenarios')"
       />
     </section>

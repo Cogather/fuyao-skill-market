@@ -28,3 +28,20 @@ export function isUrl(url: unknown): boolean {
     return false;
   }
 }
+
+/** 返回第一个非空白文本，并移除首尾空白。 */
+export function firstNonBlankText(values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+/** 将接口常见日期时间格式统一为 YYYY-MM-DD HH:mm:ss。 */
+export function formatCompactDateTime(value: unknown): string {
+  const text = String(value ?? '').trim();
+  if (!text) return '—';
+  const matched = text.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
+  return matched ? `${matched[1]} ${matched[2]}:${matched[3] ?? '00'}` : text;
+}

@@ -1,4 +1,5 @@
 import { openHarnessSelect, selectHarnessOption } from '../helpers/selectHarnessOption';
+import { clickAssetCardAction, openAssetCardMenu } from '../helpers/assetCardActions';
 import type { Locator, Page, Request } from '@playwright/test';
 
 import { expect, test } from '../fixtures/base';
@@ -159,12 +160,13 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
               name: names[body.type],
               description: '统一组件列表返回的资产',
               latestVersion: body.type === 'SKILL' ? '1.10.0' : '0.1',
-              status: '待发布',
+              status: body.type === 'EXTENSION' ? '已发布' : '待发布',
               category: '产品级/harness-pipeline',
               updatedAt: '2026-03-24 10:00:00',
               firstScene: body.type === 'EXTENSION' ? '开发' : null,
               secondScene: body.type === 'EXTENSION' ? '构建诊断' : null,
               canPublish: true,
+              canEdit: true,
             },
             ...(body.type === 'EXTENSION'
               ? [
@@ -172,12 +174,13 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
                     name: 'harness-pipeline-denied-extension',
                     description: '无发布权限的就绪资产',
                     latestVersion: '1.0.0',
-                    status: '可发布',
+                    status: '已发布',
                     category: '产品级/harness-pipeline',
                     updatedAt: '2026-03-24 10:00:00',
                     firstScene: '开发',
                     secondScene: '权限测试',
                     canPublish: false,
+                    canEdit: true,
                   },
                 ]
               : []),
@@ -416,8 +419,8 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await expect(page.locator('.asset-detail__people')).toContainText('李四（u002）');
     await page.getByRole('combobox', { name: '版本', exact: true }).click();
     await expect(page.getByRole('listbox', { name: '可用版本' }).getByRole('option')).toHaveText([
-      'v1.10.0',
-      'v0.0.9',
+      '1.10.0待发布',
+      '0.0.9待发布',
     ]);
     await page.getByRole('combobox', { name: '版本', exact: true }).press('Escape');
     expect(fileRequests).toHaveLength(1);
@@ -476,7 +479,7 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     expect(evaluationQuery.get('version')).toBe('1.10.0');
 
     await page.getByRole('combobox', { name: '版本', exact: true }).click();
-    await page.getByRole('option', { name: 'v0.0.9', exact: true }).click();
+    await page.getByRole('option', { name: '0.0.9 待发布', exact: true }).click();
     await page.getByRole('tab', { name: '内容', exact: true }).click();
     await expect(page.locator('.asset-detail')).toContainText('current version: 0.0.9');
 
@@ -501,15 +504,12 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.locator('.asset-back').click();
     await page.getByRole('button', { name: 'Extension', exact: true }).click();
     const deniedCard = assetCard(page, 'harness-pipeline-denied-extension');
-    const deniedPublish = deniedCard.getByRole('button', { name: '发布', exact: true });
-    await expect(deniedPublish).toBeVisible();
-    await expect(deniedPublish).toBeDisabled();
-    await deniedPublish.hover();
-    await expect(deniedPublish).toHaveCSS('background-color', 'rgb(229, 231, 235)');
+    const deniedMenu = await openAssetCardMenu(deniedCard);
+    const deniedPublish = deniedMenu.getByRole('menuitem', { name: '发布', exact: true });
+    await expect(deniedPublish).toHaveCount(0);
     await deniedCard.getByRole('heading').click();
     await expect(page.locator('.asset-detail__description')).toHaveText('组件详情返回的描述');
-    await expect(page.locator('.asset-detail__publish')).toBeVisible();
-    await expect(page.locator('.asset-detail__publish')).toBeDisabled();
+    await expect(page.locator('.asset-detail__publish')).toHaveCount(0);
     const extensionTree = page.locator('.asset-extension-content');
     await extensionTree.getByRole('button', { name: /HTTP 构建诊断 Skill/ }).click();
     await extensionTree.getByRole('button', { name: 'SKILL.md', exact: true }).click();
@@ -532,9 +532,9 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await expect(page.getByRole('combobox')).toHaveCount(1);
     await extensionVersion.click();
     await expect(page.getByRole('listbox', { name: '可用版本' }).getByRole('option')).toHaveText([
-      'v0.1',
-      'v0.0.9',
-      'v0.0.8',
+      '0.1已发布',
+      '0.0.9已发布',
+      '0.0.8已发布',
     ]);
     await extensionVersion.press('Escape');
     async function readExtensionSkill(name: string, version: string) {
@@ -548,7 +548,7 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await readExtensionSkill('HTTP 构建诊断 Skill', '1.0.0');
     const versionBindingCount = bindingRequests.length;
     await extensionVersion.click();
-    await page.getByRole('option', { name: 'v0.0.9', exact: true }).click();
+    await page.getByRole('option', { name: '0.0.9 已发布', exact: true }).click();
     await expect(extensionTree).toContainText('HTTP 历史诊断 Skill');
     await expect(extensionTree.locator('pre')).toHaveCount(0);
     await readExtensionSkill('HTTP 历史诊断 Skill', '0.9.0');
@@ -557,18 +557,18 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     expect(bindingRequests.at(-1)!.postDataJSON().version).toBe('0.0.9');
     expect(publishDetailRequests).toHaveLength(0);
     await extensionVersion.click();
-    await page.getByRole('option', { name: 'v0.0.8', exact: true }).click();
+    await page.getByRole('option', { name: '0.0.8 已发布', exact: true }).click();
     await expect(extensionTree).toContainText('该版本在当前场景下暂无绑定组件');
     historicalSnapshotAvailable = true;
     await extensionVersion.click();
-    await page.getByRole('option', { name: 'v0.0.9', exact: true }).click();
+    await page.getByRole('option', { name: '0.0.9 已发布', exact: true }).click();
     await readExtensionSkill('HTTP 历史诊断 Skill', '0.9.0');
     await extensionVersion.click();
-    await page.getByRole('option', { name: 'v0.0.8', exact: true }).click();
+    await page.getByRole('option', { name: '0.0.8 已发布', exact: true }).click();
     await readExtensionSkill('HTTP 补充绑定 Skill', '0.8.0');
     failNextScriptRequest = true;
     await extensionVersion.click();
-    await page.getByRole('option', { name: 'v0.1', exact: true }).click();
+    await page.getByRole('option', { name: '0.1 已发布', exact: true }).click();
     await extensionTree.getByRole('button', { name: /HTTP 构建诊断 Skill/ }).click();
     await extensionTree.getByRole('button', { name: 'scripts/run.sh', exact: true }).click();
     await expect(extensionTree.getByRole('alert')).toContainText('脚本内容加载失败');
@@ -617,9 +617,7 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await expect(publishDialog).toBeHidden();
     await expect(assetCard(page, 'harness-pipeline-build-extension')).toBeVisible();
     expect(historyRequests).toHaveLength(0);
-    await assetCard(page, 'harness-pipeline-build-extension')
-      .getByRole('button', { name: '发布历史', exact: true })
-      .click();
+    await clickAssetCardAction(assetCard(page, 'harness-pipeline-build-extension'), '发布历史');
     const historyDialog = page.getByRole('region', { name: /发布历史/ });
     await expect(historyDialog.locator('.timeline-item').first()).toContainText('HTTP 目标组织');
 

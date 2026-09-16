@@ -238,6 +238,7 @@ test('已选人员清空后可更换，输入和失焦不会把自由文本提�
   const search = picker.getByRole('combobox');
   await expect(search).toHaveValue('测试用户 w123');
   await expect(search).toHaveAttribute('readonly', '');
+  await expect(search).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await picker.getByRole('button', { name: /清空/ }).click();
   await expect(search).toBeEditable();
   await search.fill('没有选择的自由文本');

@@ -1,4 +1,5 @@
 import { openHarnessSelect, selectHarnessOption } from '../helpers/selectHarnessOption';
+import { openAssetCardMenu } from '../helpers/assetCardActions';
 import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from '../fixtures/base';
@@ -152,14 +153,47 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       .toEqual(['Extension']);
   });
 
+  test('四类资产都有已发布 Mock 数据和多个已发布版本', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+
+    for (const sample of [
+      { type: 'Agent', name: '流水线异常分析 Agent' },
+      { type: 'Skill', name: '流水线失败诊断 Skill' },
+      { type: 'Command', name: '接口契约检查 Command' },
+      { type: 'Extension', name: '问题分析 Extension' },
+    ]) {
+      await page.getByRole('button', { name: sample.type, exact: true }).click();
+      await page
+        .getByRole('navigation', { name: '资产状态' })
+        .getByRole('button', { name: '已发布', exact: true })
+        .click();
+      const card = assetCard(page, sample.name);
+      await expect(card).toBeVisible();
+      await expect(card.getByText('已发布', { exact: true })).toBeVisible();
+      await card.click();
+
+      const versionSelect = page
+        .locator('.asset-detail')
+        .getByRole('combobox', { name: '版本', exact: true });
+      await versionSelect.click();
+      const options = page.getByRole('listbox', { name: '可用版本' }).getByRole('option');
+      expect(await options.count()).toBeGreaterThanOrEqual(3);
+      expect(
+        (await options.allTextContents()).every((label) => label.trim().endsWith('已发布')),
+      ).toBe(true);
+      await versionSelect.press('Escape');
+      await page.locator('.asset-back').click();
+    }
+  });
+
   test('新建和导入资产均在当前页签选择独立归属', async ({ page }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await selectHarnessOption(page.getByLabel('\u4ea7\u54c1\u7b5b\u9009'), {
       label: 'Harness-Pipeline-Pro',
     });
 
-    await page.getByRole('button', { name: '+ \u65b0\u5efa\u8d44\u4ea7' }).click();
-    await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Command' }).click();
+    await page.getByRole('button', { name: 'Command', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
 
     await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
     const createDialog = page.getByRole('dialog', { name: '添加 Command' });
@@ -183,8 +217,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       label: '\u6d41\u6c34\u7ebf\u7ba1\u7406\u5e73\u53f0',
     });
 
+    await page.getByRole('button', { name: 'Agent', exact: true }).click();
     await page.getByRole('button', { name: '导入', exact: true }).click();
-    await page.locator('.asset-action-menu').getByRole('menuitem', { name: 'Agent' }).click();
     const importDialog = page.getByRole('dialog', { name: '导入 Agent', exact: true });
     await expect(importDialog).toBeVisible();
     await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
@@ -214,13 +248,23 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(detail).toBeVisible();
     const versionSelect = detail.getByRole('combobox', { name: '\u7248\u672c' });
     await expect(versionSelect).toBeVisible();
+    await expect(versionSelect).toHaveText(/^\d/);
+    await expect(versionSelect.locator('svg')).toHaveCount(0);
+    await expect(versionSelect.locator('.harness-version-picker__status-dot')).toBeVisible();
     await versionSelect.click();
     const versionMenu = page.getByRole('listbox', { name: '可用版本' });
     await expect(versionMenu).toBeVisible();
-    const versions = (await versionMenu.getByRole('option').allTextContents()).map((label) =>
-      label.trim().replace(/^v/, ''),
-    );
+    await expect(versionMenu.locator('.harness-version-picker__caption')).toHaveCount(0);
+    const options = versionMenu.getByRole('option');
+    const optionLabels = await options.allTextContents();
+    const versions = optionLabels.map((label) => label.trim().match(/^\d[\w.-]*/)?.[0] ?? '');
     expect(versions.length).toBeGreaterThanOrEqual(2);
+    expect(
+      optionLabels.every((label) => /^\d[\w.-]*\s*(开发中|待发布|已发布)$/.test(label.trim())),
+    ).toBe(true);
+    await expect(options.locator('.harness-version-picker__status-dot')).toHaveCount(
+      optionLabels.length,
+    );
     await versionSelect.press('Escape');
     await expect(versionMenu).toBeHidden();
     await expect(versionSelect).toBeFocused();
@@ -243,7 +287,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await versionSelect.press('ArrowDown');
     await versionSelect.press('End');
     await versionSelect.press('Enter');
-    await expect(versionSelect).toContainText(`v${versions.at(-1)}`);
+    await expect(versionSelect).toContainText(versions.at(-1)!);
     await expect(versionMenu).toBeHidden();
     await expect(content).not.toHaveText(initialContent ?? '');
 
@@ -271,7 +315,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await page.screenshot({ path: testInfo.outputPath('asset-skill-quality-dimensions.png') });
 
     await versionSelect.click();
-    await versionMenu.getByRole('option', { name: `v${versions[0]}`, exact: true }).click();
+    await options.first().click();
     await expect(report.getByText('综合得分', { exact: true })).toBeVisible();
     await detail.getByRole('tab', { name: '内容', exact: true }).click();
     await expect(content).toHaveText(initialContent ?? '');
@@ -304,20 +348,18 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       label: 'harness-pipeline',
     });
     await page.getByRole('button', { name: 'Extension', exact: true }).click();
-    await assetCard(page, 'MML\u5f00\u53d1 Extension').click();
+    await assetCard(page, '\u95ee\u9898\u5206\u6790 Extension').click();
 
     const detail = page.locator('.asset-detail');
     const versionSelect = detail.getByRole('combobox', { name: '\u7248\u672c' });
     await versionSelect.click();
-    await page.getByRole('option', { name: 'v0.1.5', exact: true }).click();
+    await page.getByRole('option', { name: /^0\.1\s/ }).click();
 
-    await expect(detail.locator('.asset-file-tree')).toContainText('\u7248\u672c\uff1a1.0.1');
-    await expect(detail.locator('.asset-file-tree')).not.toContainText(
-      'agents/\u4ee3\u7801\u8bc4\u5ba1Agent',
-    );
+    await expect(detail.locator('.asset-file-tree')).toContainText('\u7248\u672c\uff1a1.0.0');
+    await expect(detail.locator('.asset-file-tree')).not.toContainText('\u7248\u672c\uff1a1.2.0');
   });
 
-  test('Extension \u9009\u62e9\u76ee\u6807\u7ec4\u7ec7\u540e\u590d\u7528\u53d1\u5e03\u94fe\u8def\uff0c\u5386\u53f2\u548c\u5217\u8868\u72b6\u6001\u540c\u6b65\u5237\u65b0', async ({
+  test('Extension \u5217\u8868\u9690\u85cf\u672a\u53d1\u5e03\u548c\u53d1\u5e03\u4e2d\u8d44\u4ea7', async ({
     page,
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
@@ -326,42 +368,15 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     });
     await page.getByRole('button', { name: 'Extension', exact: true }).click();
 
-    const card = assetCard(page, '\u6784\u5efa\u8bca\u65ad Extension');
-    await expect(card.getByText('\u5f85\u53d1\u5e03', { exact: true })).toBeVisible();
-    await card.getByRole('button', { name: '\u53d1\u5e03', exact: true }).click();
-
-    const publishDialog = page.getByRole('region', { name: /发布 Extension/ });
-    const publishedName = '构建诊断 Extension';
-    await expect(
-      publishDialog.getByRole('heading', { name: publishedName, exact: true }),
-    ).toBeVisible();
-    const organizationSelect = page.getByRole('combobox', { name: '\u76ee\u6807\u7ec4\u7ec7' });
-    await expect(organizationSelect).toBeVisible();
-    const organizationOptions = await (await openHarnessSelect(organizationSelect))
-      .getByRole('option')
-      .allTextContents();
-    expect(organizationOptions.length).toBeGreaterThan(1);
-    const selectedOrganization = organizationOptions[1]!.trim();
-    await selectHarnessOption(organizationSelect, { index: 1 });
-    await page.getByRole('button', { name: '\u786e\u8ba4\u53d1\u5e03' }).click();
-
-    await expect(publishDialog).toBeHidden();
-    const historyDialog = page.getByRole('region', { name: /发布历史/ });
-    await expect(historyDialog.locator('.timeline-item').first()).toContainText(
-      selectedOrganization,
-    );
-    await page.getByRole('button', { name: '返回', exact: true }).click();
-    const refreshedCard = assetCard(page, publishedName);
-    await expect(refreshedCard.getByText('\u53d1\u5e03\u4e2d', { exact: true })).toBeVisible();
-    await expect(
-      refreshedCard.getByRole('button', { name: '\u53d1\u5e03', exact: true }),
-    ).toHaveCount(0);
-    await refreshedCard.getByRole('button', { name: '发布历史' }).click();
-    await expect(historyDialog.locator('.timeline-item').first()).toContainText(
-      selectedOrganization,
-    );
-    await page.getByRole('button', { name: '返回', exact: true }).click();
-    await expect(refreshedCard).toBeVisible();
+    await expect(assetCard(page, '\u6784\u5efa\u8bca\u65ad Extension')).toHaveCount(0);
+    await expect(assetCard(page, 'MML\u5f00\u53d1 Extension')).toHaveCount(0);
+    const publishedCard = assetCard(page, '\u95ee\u9898\u5206\u6790 Extension');
+    await expect(publishedCard.getByText('\u5df2\u53d1\u5e03', { exact: true })).toBeVisible();
+    const menu = await openAssetCardMenu(publishedCard);
+    await expect(menu.getByRole('menuitem')).toHaveText([
+      '\u67e5\u770b\u8be6\u60c5',
+      '\u53d1\u5e03\u5386\u53f2',
+    ]);
   });
 
   test('\u6ca1\u6709\u53ef\u53d1\u5e03\u7248\u672c\u7684\u8d44\u4ea7\u6807\u8bb0\u4e3a\u672a\u5f00\u53d1\u4e14\u4e0d\u63d0\u4f9b\u53d1\u5e03\u5165\u53e3', async ({
@@ -377,7 +392,10 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(
       card.locator('.asset-badge').getByText('\u672a\u5f00\u53d1', { exact: true }),
     ).toBeVisible();
-    await expect(card.getByRole('button', { name: '\u53d1\u5e03', exact: true })).toHaveCount(0);
+    const cardMenu = await openAssetCardMenu(card);
+    await expect(cardMenu.getByRole('menuitem', { name: '\u53d1\u5e03', exact: true })).toHaveCount(
+      0,
+    );
 
     await card.click();
     await expect(page.locator('.asset-detail')).toBeVisible();

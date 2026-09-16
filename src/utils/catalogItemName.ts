@@ -19,3 +19,19 @@ export function getProductCatalogItemNamePrefix(
   if (level !== '产品级' || !isCatalogProductNameValid(originalProductName)) return '';
   return originalProductName.toLowerCase() + '-';
 }
+
+export function getAssetCatalogItemNamePrefix(
+  asset: { dimType?: unknown; category?: unknown; productName?: unknown },
+  fallbackLevel = '',
+  fallbackProductName = '',
+): string {
+  const [categoryLevel = '', ...categoryNames] = String(asset.category ?? '').split('/');
+  const assetProductName = String(asset.productName ?? '');
+  const level =
+    String(asset.dimType ?? '').trim() ||
+    categoryLevel.trim() ||
+    (assetProductName ? '产品级' : fallbackLevel);
+  const productName =
+    assetProductName || (level === '产品级' ? categoryNames.join('/') : '') || fallbackProductName;
+  return getProductCatalogItemNamePrefix(level, productName);
+}

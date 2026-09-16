@@ -69,7 +69,7 @@ test.describe('资产卡片分页懒加载', () => {
     );
 
     await page.goto(`${APP_BASE_PATH}/harness-management`);
-    await page.getByRole('tab', { name: 'Agent / Skill 资产' }).click();
+    await page.locator('#harness-tab-assets').click();
     await selectDepartmentPath(page, DEPARTMENT_PATH);
     await page
       .getByRole('navigation', { name: '资产类型' })

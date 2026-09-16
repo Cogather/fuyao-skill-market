@@ -1,7 +1,7 @@
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
 
-test.describe('资产详情统一编辑 Mock', () => {
+test.describe('资产弹框统一编辑 Mock', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT === 'http', '需要 Mock 模式');
   for (const type of ['Agent', 'Skill', 'Command']) {
     test(`${type} 长描述和多条人员结果不撑高编辑区域`, async ({ page }, testInfo) => {
@@ -11,26 +11,27 @@ test.describe('资产详情统一编辑 Mock', () => {
       await page.getByRole('button', { name: type, exact: true }).click();
       await page.locator('.asset-card').first().getByRole('heading').click();
       await page.getByRole('button', { name: '编辑', exact: true }).click();
-      const description = page.getByRole('textbox', { name: '描述', exact: true });
+      const dialog = page.getByRole('dialog', { name: `编辑 ${type}`, exact: true });
+      await expect(dialog).toBeVisible();
+      await expect(page.locator('.asset-detail').getByRole('textbox')).toHaveCount(0);
+      const description = dialog.getByRole('textbox', { name: '描述', exact: true });
       await description.fill(
         '自动校验接口契约、请求参数和返回结构，输出可执行的差异清单。'.repeat(40),
       );
-      await expect(description).toHaveAttribute('rows', '2');
-      await expect(description).toHaveCSS('resize', 'none');
+      await expect(description).toHaveAttribute('rows', '5');
+      await expect(description).toHaveCSS('resize', 'vertical');
       expect(await description.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
       const layout = async () => ({
-        people: await page.locator('.asset-detail__people').boundingBox(),
-        owner: await page.getByRole('combobox', { name: '责任人', exact: true }).boundingBox(),
-        developer: await page
+        dialog: await dialog.boundingBox(),
+        owner: await dialog.getByRole('combobox', { name: '责任人', exact: true }).boundingBox(),
+        developer: await dialog
           .getByRole('combobox', { name: '开发责任人', exact: true })
           .boundingBox(),
-        version: await page.locator('.asset-detail__version').boundingBox(),
-        tabs: await page.locator('.asset-detail__tabs').boundingBox(),
       });
       const bounds = await layout();
       for (const label of ['责任人', '开发责任人']) {
-        const input = page.getByRole('combobox', { name: label, exact: true });
-        await page.getByRole('button', { name: `清空${label}`, exact: true }).click();
+        const input = dialog.getByRole('combobox', { name: label, exact: true });
+        await dialog.getByRole('button', { name: `清空${label}`, exact: true }).click();
         await expect(page.getByRole('status')).toBeVisible();
         expect(await layout()).toEqual(bounds);
         await input.fill('w');
@@ -53,10 +54,12 @@ test.describe('资产详情统一编辑 Mock', () => {
       await page.getByRole('button', { name: type, exact: true }).click();
       await page.locator('.asset-card').first().getByRole('heading').click();
       await page.getByRole('button', { name: '编辑', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: `编辑 ${type}`, exact: true });
       const name = `harness-pipeline-${type.toLowerCase()}-saved-details`;
-      await page.getByRole('textbox', { name: '名称', exact: true }).fill(name);
-      await page.getByRole('textbox', { name: '描述', exact: true }).fill('持久化后的描述');
-      await page.getByRole('button', { name: '保存', exact: true }).click();
+      await dialog.getByRole('textbox', { name: '名称', exact: true }).fill(name);
+      await dialog.getByRole('textbox', { name: '描述', exact: true }).fill('持久化后的描述');
+      await dialog.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(dialog).toBeHidden();
       await expect(page.locator('#asset-detail-title')).toHaveText(name);
       await page.reload();
       await page.locator('#harness-tab-assets').click();

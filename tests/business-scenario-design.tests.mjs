@@ -236,7 +236,19 @@ try {
         { ...context, assetType: 'AGENT', assetName: 'demo-agent' },
         undefined,
       ],
-      ['queryHarnessWorkflowDetail', [context], 'GET', '/workflow/detail', context, undefined],
+      [
+        'queryHarnessWorkflowDetail',
+        [context],
+        'GET',
+        '/workflow/detail',
+        {
+          userId: context.userId,
+          dimCode: context.dimCode,
+          firstScene: context.firstScene,
+          secondScene: context.secondScene,
+        },
+        undefined,
+      ],
       [
         'agentBindActivity',
         [
@@ -580,22 +592,54 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('activity refresh preserves other scenes when adding nodes', async () => {
+  await test('activity refresh loads the dimension once and preserves every other scene', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
     mapped.workflow.stages[0].steps.push({ id: 'new', name: '新节点', order: 1, assets: [] });
-    api.querySceneList = async () =>
-      success([scene, { firstScene: '研发', secondScene: '保留场景' }]);
-    api.queryActivitiesByScene = async (params) =>
-      success([
-        { ...params, activityNodeName: '其他环节', subActivityNodeName: '其他节点', sort: 0 },
-      ]);
+    const activityQueries = [];
+    const activityRows = [
+      {
+        ...scene,
+        activityNodeName: '编码',
+        subActivityNodeName: '生成',
+        sort: 0,
+      },
+      {
+        firstScene: '研发',
+        secondScene: '保留场景一',
+        activityNodeName: '其他环节一',
+        subActivityNodeName: '其他节点一',
+        sort: 0,
+      },
+      {
+        firstScene: '测试',
+        secondScene: '保留场景二',
+        activityNodeName: '其他环节二',
+        subActivityNodeName: '其他节点二',
+        sort: 0,
+      },
+    ];
+    api.queryActivitiesByScene = async (params) => {
+      activityQueries.push(structuredClone(params));
+      return success(
+        params.firstScene
+          ? activityRows.filter(
+              (row) =>
+                row.firstScene === params.firstScene && row.secondScene === params.secondScene,
+            )
+          : activityRows,
+      );
+    };
     let refreshed;
     api.refreshActivities = async (_params, body) => {
       refreshed = body;
       return success(null);
     };
     await repository.saveDesignActivities(context, mapped.workflow, detail);
-    assert.equal(refreshed.activities[0].secondScene, '保留场景');
+    assert.deepEqual(activityQueries, [scope]);
+    assert.deepEqual(
+      refreshed.activities.slice(0, 2).map((row) => row.secondScene),
+      ['保留场景一', '保留场景二'],
+    );
     assert.equal(refreshed.activities.at(-1).subActivityNodeName, '新节点');
   });
   await test('successful code writes are remembered even if the subsequent metadata request fails', async () => {

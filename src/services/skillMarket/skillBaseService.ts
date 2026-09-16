@@ -18,6 +18,8 @@ import type {
   HarnessAssetComponentsResponse,
   QueryHarnessAssetComponentDetailParams,
   HarnessAssetComponentDetailDto,
+  QueryExtensionVersionHistoryParams,
+  ExtensionVersionHistoryDto,
   QueryHarnessPermissionUsersParams,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
@@ -500,12 +502,12 @@ export const skillBaseService = {
     });
   },
 
-  /** Agent / Skill 资产页的统一筛选列表。 */
+  /** 资产页的统一筛选列表。 */
   queryHarnessAssetComponents: (
     body: QueryHarnessAssetComponentsBody,
   ): Promise<HarnessAssetComponentsResponse> => {
-    return httpRequest.api<HarnessAssetComponentsResponse>({
-      url: '/v1/harness/plans/components/query',
+    return httpRequest.harnessApi<HarnessAssetComponentsResponse>({
+      url: '/components/query',
       method: 'post',
       data: body,
     });
@@ -514,8 +516,18 @@ export const skillBaseService = {
   queryHarnessAssetComponentDetail: (
     params: QueryHarnessAssetComponentDetailParams,
   ): Promise<ApiEnvelope<HarnessAssetComponentDetailDto>> => {
-    return httpRequest.api<ApiEnvelope<HarnessAssetComponentDetailDto>>({
-      url: '/v1/harness/plans/components/detail',
+    return httpRequest.harnessApi<ApiEnvelope<HarnessAssetComponentDetailDto>>({
+      url: '/components/detail',
+      method: 'get',
+      params,
+    });
+  },
+
+  queryExtensionVersionHistory: (
+    params: QueryExtensionVersionHistoryParams,
+  ): Promise<ApiEnvelope<ExtensionVersionHistoryDto>> => {
+    return httpRequest.harnessApi<ApiEnvelope<ExtensionVersionHistoryDto>>({
+      url: '/extensions/version-history',
       method: 'get',
       params,
     });

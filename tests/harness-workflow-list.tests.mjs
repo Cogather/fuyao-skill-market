@@ -45,6 +45,12 @@ const row = (flowName, status = '待发布') => ({
   dimName: '服务端产品',
   commandCount: 7,
   status,
+  changed: false,
+  canPublish: true,
+  targetOrgCode: 'org-release',
+  targetOrgName: '发布组织',
+  latestPublishTime: '2026-09-15 10:20:30',
+  latestVersion: '1.3.0',
 });
 const settle = async () => {
   await nextTick();
@@ -392,6 +398,7 @@ try {
         scenarioId: 'scene',
         description: '',
         commands: Array.from({ length: index % 3 }, () => ({})),
+        status: index === 4 ? 'active' : index === 5 ? undefined : 'draft',
         releaseCount: index < 4 ? 1 : 0,
       })),
     );
@@ -422,6 +429,15 @@ try {
     assert.equal(state.page.value, 1);
     assert.equal(state.totalRows.value, 4);
     assert.ok(state.visibleRows.value.every((item) => item.status === '已发布'));
+    state.statusFilter.value = '待发布';
+    await settle();
+    assert.equal(state.totalRows.value, 1);
+    assert.equal(state.visibleRows.value[0].name, '本地流程4');
+    assert.equal(state.visibleRows.value[0].status, '待发布');
+    state.statusFilter.value = '设计中';
+    await settle();
+    assert.equal(state.totalRows.value, 7);
+    assert.ok(state.visibleRows.value.every((item) => item.status === '设计中'));
     assert.equal(requests, 0);
   });
 } finally {

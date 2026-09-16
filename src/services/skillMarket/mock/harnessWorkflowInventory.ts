@@ -6,7 +6,13 @@ import type {
 } from '../../../composables/useHarnessScenarioWorkspace';
 import { listScenes } from '../sceneManagementService';
 
-type WorkflowSample = [sceneId: string, name: string, releaseCount: number, commandCount: number];
+type WorkflowSample = [
+  sceneId: string,
+  name: string,
+  releaseCount: number,
+  commandCount: number,
+  publish?: Pick<Workflow, 'status' | 'canPublish' | 'changed'>,
+];
 type ProductSamples = {
   department: string;
   offeringId: string;
@@ -20,10 +26,34 @@ const samples: ProductSamples[] = [
     department: '持续交付组',
     offeringId: 'offering-devops-center-v2-valid',
     workflows: [
-      ['scene-code-gen', '应用脚手架生成流程', 2, 1],
-      ['scene-unit-test', '单元测试补全流程', 0, 0],
-      ['scene-code-review', '合并请求自动评审流程', 3, 2],
-      ['scene-test-design', '回归测试编排流程', 0, 1],
+      [
+        'scene-code-gen',
+        '应用脚手架生成流程',
+        2,
+        1,
+        { status: 'active', canPublish: true, changed: true },
+      ],
+      [
+        'scene-unit-test',
+        '单元测试补全流程',
+        0,
+        0,
+        { status: 'ready', canPublish: true, changed: false },
+      ],
+      [
+        'scene-code-review',
+        '合并请求自动评审流程',
+        3,
+        2,
+        { status: 'active', canPublish: true, changed: true },
+      ],
+      [
+        'scene-test-design',
+        '回归测试编排流程',
+        0,
+        1,
+        { status: 'ready', canPublish: true, changed: false },
+      ],
     ],
   },
   {
@@ -158,17 +188,22 @@ export function seedMockWorkflowInventory(input: {
   if (import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http') return;
   const { departments, workflows, assets, commands, seededDepartmentIds } = input;
   for (const department of departments) {
-    if (seededDepartmentIds.includes(department._id)) continue;
+    const alreadySeeded = seededDepartmentIds.includes(department._id);
     const products = samples.filter((sample) => sample.department === department.name);
     if (!products.length) continue;
     const scenes = listScenes(department.name);
     for (const product of products) {
       const productId = JSON.stringify([department._id, product.offeringId]);
-      for (const [sceneId, name, releaseCount, commandCount] of product.workflows) {
+      for (const [sceneId, name, releaseCount, commandCount, publish] of product.workflows) {
         const scene = scenes.find((item) => item.id === sceneId && item.parentId);
         if (!scene) continue;
         const scenarioId = JSON.stringify([productId, scene.id]);
-        if (workflows.some((item) => item.scenarioId === scenarioId)) continue;
+        const existing = workflows.find((item) => item.scenarioId === scenarioId);
+        if (existing) {
+          if (publish) Object.assign(existing, publish);
+          continue;
+        }
+        if (alreadySeeded) continue;
         const id = `mock-workflow-inventory:${scenarioId}`;
         const owner = `${department.name}负责人`;
         const developer = `${department.name}研发团队`;
@@ -212,8 +247,10 @@ export function seedMockWorkflowInventory(input: {
           description: `由${department.name}负责，完成${scene.name}的输入分析、任务执行与结果复核。`,
           businessScenario: scene.name,
           scenarioId,
-          status: releaseCount > 0 ? 'active' : 'draft',
+          status: publish?.status ?? (releaseCount > 0 ? 'active' : 'draft'),
           releaseCount,
+          canPublish: publish?.canPublish,
+          changed: publish?.changed,
           stages: ['任务执行', '结果复核'].map((stageName, index) => ({
             id: `${id}:stage:${index}`,
             name: stageName,
@@ -237,6 +274,6 @@ export function seedMockWorkflowInventory(input: {
         });
       }
     }
-    seededDepartmentIds.push(department._id);
+    if (!alreadySeeded) seededDepartmentIds.push(department._id);
   }
 }

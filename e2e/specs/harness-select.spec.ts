@@ -51,8 +51,8 @@ test('创建资产弹窗内点击标题可收起下拉菜单，Escape 不关闭�
   const harness = new HarnessManagementPage(page);
   await harness.goto();
   await page.locator('#harness-tab-assets').click();
-  await page.getByRole('button', { name: '+ 新建资产', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Skill', exact: true }).click();
+  await page.getByRole('button', { name: 'Skill', exact: true }).click();
+  await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '添加 Skill' });
   const trigger = dialog.getByRole('combobox', { name: '层级', exact: true });
   const menu = await openHarnessSelect(trigger);

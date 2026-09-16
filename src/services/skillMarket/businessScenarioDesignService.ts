@@ -189,12 +189,8 @@ export const harnessWorkflowService = {
     });
   },
 
-  /**
-   * 查询指定场景下的活动
-   * @param params
-   * @returns
-   */
-  queryActivitiesByScene: (params: WorkflowSceneContext): Promise<any> => {
+  /** 查询指定维度下的活动；传入场景字段时可进一步限定范围。 */
+  queryActivitiesByScene: (params: WorkflowDimension & Partial<WorkflowSceneKey>): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/scene-activity/activity',
       method: 'GET',
@@ -343,11 +339,14 @@ export const harnessWorkflowService = {
    * @param params
    * @returns
    */
-  queryHarnessWorkflowDetail: (params: WorkflowSceneContext): Promise<any> => {
+  queryHarnessWorkflowDetail: (
+    params: Pick<WorkflowSceneContext, 'userId' | 'dimCode' | 'firstScene' | 'secondScene'>,
+  ): Promise<any> => {
+    const { userId, dimCode, firstScene, secondScene } = params;
     return httpRequest.harnessApi({
       url: '/workflow/detail',
       method: 'GET',
-      params: params,
+      params: { userId, dimCode, firstScene, secondScene },
     });
   },
 

@@ -258,6 +258,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [
       { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
       { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
+      { version: '1.1.0', uploadedAt: '2026-09-01 10:00:00' },
     ],
   },
   {
@@ -347,6 +348,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [
       { version: '0.0.2', uploadedAt: '2026-06-20 18:00:00' },
       { version: '0.0.3', uploadedAt: '2026-06-26 18:00:00' },
+      { version: '0.0.4', uploadedAt: '2026-07-03 18:00:00' },
     ],
   },
   {

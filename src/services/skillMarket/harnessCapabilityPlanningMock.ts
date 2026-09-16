@@ -138,6 +138,14 @@ function master(
               version: `0.1.${versionSeed % 10 || 1}`,
               uploadedAt: '2026-08-18 10:00:00',
             },
+            ...(status === '已完成'
+              ? [
+                  {
+                    version: `0.2.${versionSeed % 10 || 1}`,
+                    uploadedAt: '2026-09-01 10:00:00',
+                  },
+                ]
+              : []),
           ],
     createdAt: now,
     updatedAt: now,

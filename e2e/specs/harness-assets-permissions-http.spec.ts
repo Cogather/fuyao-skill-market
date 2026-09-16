@@ -11,8 +11,12 @@ async function prepare(
     ownerId?: string | null;
     delayDetail?: boolean;
     failDetail?: boolean;
+    enterDetail?: boolean;
+    dimType?: '产品级' | '部门级';
   } = {},
 ) {
+  const dimType = permission.dimType ?? '部门级';
+  const dimName = dimType === '产品级' ? '资产产品' : '研发部';
   const writes: Request[] = [];
   let releaseDetail!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -49,7 +53,9 @@ async function prepare(
           {
             name: 'permission-asset',
             description: '权限检查',
-            category: '部门级/研发部',
+            category: `${dimType}/${dimName}`,
+            dimType,
+            dimName,
             latestVersion: '1.0.0',
             status: '已发布',
             canEdit: permission.listCanEdit,
@@ -68,7 +74,8 @@ async function prepare(
       data = {
         name: 'permission-asset',
         description: '权限检查',
-        category: '部门级/研发部',
+        category: `${dimType}/${dimName}`,
+        dimType,
         type: type.toUpperCase(),
         canEdit: permission.canEdit,
         ownerName: '同名用户',
@@ -82,9 +89,9 @@ async function prepare(
         {
           id: 42,
           [`${type.toLowerCase()}Name`]: 'permission-asset',
-          dimType: '部门级',
-          dimCode: 'dept-root',
-          dimName: '研发部',
+          dimType,
+          dimCode: dimType === '产品级' ? 'asset-product' : 'dept-root',
+          dimName,
         },
       ];
     else if (pathname.endsWith('/packages/tree')) data = ['SKILL.md'];
@@ -94,17 +101,100 @@ async function prepare(
   await page.goto(`${APP_BASE_PATH}/harness-management`);
   await page.locator('#harness-tab-assets').click();
   await page.getByRole('button', { name: type, exact: true }).click();
-  await page.getByRole('heading', { name: 'permission-asset', exact: true }).click();
-  if (!permission.delayDetail && !permission.failDetail)
-    await expect(page.locator('.asset-detail__people')).toContainText('同名用户（current-user）');
-  return { writes, releaseDetail };
+  const card = page.locator('.asset-card').filter({ hasText: 'permission-asset' });
+  if (permission.enterDetail !== false) {
+    await card.getByRole('heading', { name: 'permission-asset', exact: true }).click();
+    if (!permission.delayDetail && !permission.failDetail)
+      await expect(page.locator('.asset-detail__people')).toContainText('同名用户（current-user）');
+  }
+  return { writes, releaseDetail, card };
 }
 
 test.describe('资产详情权限 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
+
+  for (const [dimType, expectedLabel] of [
+    ['产品级', '归属产品'],
+    ['部门级', '归属部门'],
+  ] as const) {
+    test(`${dimType}资产详情显示“${expectedLabel}”`, async ({ page }) => {
+      await prepare(page, 'Agent', {
+        canEdit: true,
+        listCanEdit: true,
+        ownerId: 'current-user',
+        dimType,
+      });
+
+      const scope = page.locator('.asset-detail__scope').first();
+      await expect(scope.getByText(expectedLabel, { exact: true })).toBeVisible();
+      await expect(scope.getByText('归属 dim', { exact: true })).toHaveCount(0);
+    });
+  }
+
+  test('列表 canEdit=true 时查看详情和编辑信息均可用', async ({ page }) => {
+    const { card } = await prepare(page, 'Agent', {
+      canEdit: true,
+      listCanEdit: true,
+      ownerId: 'other-user',
+      enterDetail: false,
+    });
+    await card.getByRole('button', { name: /^更多操作：/ }).click();
+    const menu = card.getByRole('menu');
+    const view = menu.getByRole('menuitem', { name: '查看详情', exact: true });
+    const edit = menu.getByRole('menuitem', { name: '编辑信息', exact: true });
+    await expect(view).toBeEnabled();
+    await expect(edit).toBeEnabled();
+    await edit.click();
+    const editDialog = page.getByRole('dialog', { name: '编辑 Agent', exact: true });
+    await expect(editDialog).toBeVisible();
+    await expect(page.locator('.asset-detail')).toHaveCount(0);
+    await editDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await card.getByRole('button', { name: /^更多操作：/ }).click();
+    await view.click();
+    await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeVisible();
+  });
+
+  for (const listCanEdit of [false, undefined, null, 'true', 1]) {
+    test(`列表 canEdit=${typeof listCanEdit}:${String(listCanEdit)} 时禁用查看详情和编辑信息，且卡片不能绕过权限`, async ({
+      page,
+    }) => {
+      const { card, writes } = await prepare(page, 'Agent', {
+        canEdit: true,
+        listCanEdit,
+        ownerId: 'current-user',
+        enterDetail: false,
+      });
+      await expect(card).toHaveAttribute('tabindex', '-1');
+      await card.getByRole('button', { name: /^更多操作：/ }).click();
+      const menu = card.getByRole('menu');
+      const view = menu.getByRole('menuitem', { name: '查看详情', exact: true });
+      const edit = menu.getByRole('menuitem', { name: '编辑信息', exact: true });
+      await expect(view).toBeDisabled();
+      await expect(edit).toBeDisabled();
+
+      await view.evaluate((button) => button.removeAttribute('disabled'));
+      await view.click();
+
+      await card.getByRole('button', { name: /^更多操作：/ }).click();
+      const forcedEdit = card.getByRole('menuitem', { name: '编辑信息', exact: true });
+      await forcedEdit.evaluate((button) => button.removeAttribute('disabled'));
+      await forcedEdit.click();
+      await expect(page.getByRole('textbox', { name: '名称', exact: true })).toHaveCount(0);
+      expect(writes).toHaveLength(0);
+
+      await card.getByRole('heading', { name: 'permission-asset', exact: true }).click();
+      await card.press('Enter');
+      await expect(page.getByRole('button', { name: '返回列表', exact: true })).toHaveCount(0);
+    });
+  }
+
   for (const type of ['Agent', 'Skill', 'Command']) {
     test(`${type} canEdit=true 可编辑和删除，不要求当前用户是责任人`, async ({ page }) => {
-      const { writes } = await prepare(page, type, { canEdit: true, ownerId: 'other-user' });
+      const { writes } = await prepare(page, type, {
+        canEdit: true,
+        listCanEdit: true,
+        ownerId: 'other-user',
+      });
       await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
       await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
       await page.getByRole('button', { name: '编辑', exact: true }).click();
@@ -147,9 +237,13 @@ test.describe('资产详情权限 HTTP', () => {
     });
   }
 
-  for (const canEdit of [undefined, null, 'true', 1]) {
+  for (const canEdit of [null, 'true', 1]) {
     test(`canEdit=${String(canEdit)} 不按 truthy 值授予编辑权限`, async ({ page }) => {
-      const { writes } = await prepare(page, 'Command', { canEdit, ownerId: null });
+      const { writes } = await prepare(page, 'Command', {
+        canEdit,
+        listCanEdit: true,
+        ownerId: null,
+      });
       await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeDisabled();
       await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeDisabled();
       expect(writes).toHaveLength(0);
@@ -157,7 +251,11 @@ test.describe('资产详情权限 HTTP', () => {
   }
 
   test('责任人转交并保存后，删除仍由 canEdit 决定', async ({ page }) => {
-    const { writes } = await prepare(page, 'Command', { canEdit: true, ownerId: 'current-user' });
+    const { writes } = await prepare(page, 'Command', {
+      canEdit: true,
+      listCanEdit: true,
+      ownerId: 'current-user',
+    });
     await page.route('**/dataengineering/config-center/hw-userinfo**', (route) =>
       route.fulfill({
         json: {
@@ -179,6 +277,7 @@ test.describe('资产详情权限 HTTP', () => {
     await page.getByRole('combobox', { name: '责任人', exact: true }).fill('new-owner');
     await page.getByRole('option', { name: /新责任人/ }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '编辑 Agent', exact: true })).toBeHidden();
     await expect(page.getByRole('button', { name: '编辑', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: '删除资产', exact: true })).toBeEnabled();
     expect(writes[0]!.postDataJSON().ownerId).toBe('new-owner');

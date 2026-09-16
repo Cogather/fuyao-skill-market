@@ -16,6 +16,12 @@ export interface HarnessWorkflowListRow {
   dimName: string;
   commandCount: number | null;
   status: string;
+  canPublish?: boolean | null;
+  changed?: boolean | null;
+  targetOrgCode?: string | null;
+  targetOrgName?: string | null;
+  latestPublishTime?: string | null;
+  latestVersion?: string | null;
 }
 
 export interface HarnessWorkflowListPage {

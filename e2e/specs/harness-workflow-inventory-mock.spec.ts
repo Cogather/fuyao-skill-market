@@ -3,6 +3,92 @@ import { HarnessManagementPage } from '../pages/harnessManagement.page';
 
 const workspaceKey = 'harness-scenario-workspace-v2:mock:w30000001';
 
+test('Harness 工作流使用与资产清单一致的四状态胶囊筛选', async ({ page }) => {
+  const harness = new HarnessManagementPage(page);
+  await harness.goto();
+  await harness.switchToWorkflows();
+
+  const statusFilter = harness.workflowsPanel.getByRole('group', {
+    name: '筛选工作流状态',
+  });
+  const statusButtons = statusFilter.getByRole('button');
+  await expect(statusButtons).toHaveText(['全部', '设计中', '待发布', '已发布']);
+  await expect(statusFilter.locator('.wf-status-count')).toHaveCount(0);
+
+  const activeStyle = await harness.workflowStatusButton('全部').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      color: style.color,
+    };
+  });
+  expect(activeStyle).toEqual({
+    backgroundColor: 'rgb(31, 35, 41)',
+    borderRadius: '16px',
+    color: 'rgb(255, 255, 255)',
+  });
+
+  await harness.workflowStatusButton('设计中').click();
+  const rows = harness.workflowsTable.locator('tbody').getByRole('row');
+  await expect(rows.first().getByRole('cell').nth(3)).toHaveText('设计中');
+  expect(new Set(await rows.locator('td:nth-child(4)').allTextContents())).toEqual(
+    new Set(['设计中']),
+  );
+});
+
+test('Mock 工作流提供可发布示例并使用白色查看、蓝色发布按钮', async ({ page }) => {
+  const harness = new HarnessManagementPage(page);
+  await harness.goto();
+  await harness.switchToWorkflows();
+
+  await harness.workflowStatusButton('待发布').click();
+  for (const name of ['单元测试补全流程', '回归测试编排流程']) {
+    await expect(
+      harness.workflowInventoryRow(name).getByRole('button', { name: '发布', exact: true }),
+    ).toBeVisible();
+  }
+
+  const pendingRow = harness.workflowInventoryRow('单元测试补全流程');
+  const view = pendingRow.getByRole('button', { name: '查看', exact: true });
+  const publish = pendingRow.getByRole('button', { name: '发布', exact: true });
+  expect(
+    await view.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        color: style.color,
+      };
+    }),
+  ).toEqual({
+    backgroundColor: 'rgb(255, 255, 255)',
+    borderRadius: '6px',
+    color: 'rgb(52, 64, 84)',
+  });
+  expect(
+    await publish.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        color: style.color,
+      };
+    }),
+  ).toEqual({
+    backgroundColor: 'rgb(37, 99, 235)',
+    borderRadius: '6px',
+    color: 'rgb(255, 255, 255)',
+  });
+
+  await harness.workflowStatusButton('已发布').click();
+  for (const name of ['应用脚手架生成流程', '合并请求自动评审流程']) {
+    await expect(
+      harness.workflowInventoryRow(name).getByRole('button', { name: '发布', exact: true }),
+    ).toBeVisible();
+  }
+});
+
 test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态与范围筛选', async ({ page }) => {
   const harness = new HarnessManagementPage(page);
   await harness.goto();
@@ -13,7 +99,7 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
   await expect(rows).toHaveCount(10);
   await expect(harness.workflowsPreviousPageButton).toBeDisabled();
   const firstPageNames = await rows.locator('td:first-child').allTextContents();
-  const commandCounts = await rows.locator('td:last-child').allTextContents();
+  const commandCounts = await rows.locator('td:nth-child(6)').allTextContents();
 
   await harness.workflowsNextPageButton.click();
   await expect(rows).toHaveCount(5);
@@ -21,7 +107,7 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
   const secondPageNames = await rows.locator('td:first-child').allTextContents();
   expect(new Set([...firstPageNames, ...secondPageNames]).size).toBe(15);
   expect(
-    new Set([...commandCounts, ...(await rows.locator('td:last-child').allTextContents())]),
+    new Set([...commandCounts, ...(await rows.locator('td:nth-child(6)').allTextContents())]),
   ).toEqual(new Set(['0 个', '1 个', '2 个', '3 个']));
 
   await harness.workflowStatusButton('已发布').click();

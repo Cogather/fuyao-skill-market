@@ -46,8 +46,9 @@ export async function queryHttpHarnessAssetPage(
   const productCode = scope.product?.id.trim();
   const response = await skillBaseService.queryHarnessAssetComponents({
     userId: scope.userId.trim(),
-    ...(deptCode ? { deptCode } : {}),
-    ...(productCode ? { productCode } : {}),
+    ...(productCode ? { productCode } : deptCode ? { deptCode } : {}),
+    ...(page.keyword ? { keyword: page.keyword } : {}),
+    ...(page.status ? { status: page.status } : {}),
     type: API_TYPES[assetType],
     sortBy: 'updatedAt',
     sortOrder: 'desc',
@@ -71,6 +72,8 @@ export async function queryHttpHarnessAssetPage(
   }
   const list = data.records.map((record): HarnessAsset => {
     const currentVersion = normalizeHarnessAssetVersion(record.latestVersion);
+    const publisher =
+      assetType === 'Extension' ? String(record.publisher ?? record.uploadedBy ?? '').trim() : '';
     const category = String(record.category ?? '');
     const [level, ...names] = category.split('/');
     const categoryName = names.join('/');
@@ -82,6 +85,9 @@ export async function queryHttpHarnessAssetPage(
     return {
       // 此接口不返回 id；类型、归属和名称在翻页、刷新及版本更新后保持一致。
       id: JSON.stringify([assetType, category, record.name]),
+      skillId: record.skillId ?? null,
+      agentId: record.agentId ?? null,
+      commandId: record.commandId ?? null,
       name: record.name,
       description: record.description,
       assetType,
@@ -96,6 +102,7 @@ export async function queryHttpHarnessAssetPage(
       versions: currentVersion ? [currentVersion] : [],
       owner: record.owner ?? '',
       developer: record.developer ?? '',
+      publisher,
       departmentName: level === '部门级' ? categoryName : scope.department.name,
       departmentPath: [...scope.department.path],
       productId: product?.id ?? '',
