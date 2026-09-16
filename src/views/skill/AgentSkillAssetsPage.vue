@@ -163,6 +163,8 @@ const detailDraft = ref<{
   description: string;
   people: Record<HarnessAssetPersonField, SkillPlanningUserOption | null>;
   changedPeople: Partial<Record<HarnessAssetPersonField, boolean>>;
+  plannedCompleteDate: string;
+  initialPlannedCompleteDate: string;
 } | null>(null);
 const detailSaving = ref(false);
 const detailEditError = ref('');
@@ -196,16 +198,28 @@ function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserO
   return { chName: name, id, sAMAccountName: id, label: `${name} ${id}`, deptName: '', raw: {} };
 }
 
-function beginDetailEdit(): void {
+async function beginDetailEdit(): Promise<void> {
   const asset = selectedAsset.value;
   if (!asset || !canEditDetail.value || detailSaving.value) return;
   if (transportIsHttp && !detailComponent.value) return;
   detailEditError.value = '';
+  let plannedCompleteDate = '';
+  try {
+    plannedCompleteDate = await api.fetchPlannedCompleteDate({
+      asset: { ...asset },
+      userId: props.userId,
+    });
+  } catch {
+    plannedCompleteDate = '';
+  }
+  if (selectedAsset.value?.id !== asset.id) return;
   detailDraft.value = {
     name: detailComponent.value?.name ?? asset.name,
     description: detailComponent.value?.description ?? asset.description ?? '',
     people: { owner: initialDetailPerson('owner'), developer: initialDetailPerson('developer') },
     changedPeople: {},
+    plannedCompleteDate,
+    initialPlannedCompleteDate: plannedCompleteDate,
   };
 }
 
@@ -241,6 +255,8 @@ async function saveDetailEdits(): Promise<void> {
     if (detailComponent.value?.category && detailComponent.value.category !== asset.category) {
       throw new Error('资产详情与列表归属不一致，请返回列表刷新后重试');
     }
+    const plannedCompleteDateChanged =
+      draft.plannedCompleteDate !== draft.initialPlannedCompleteDate;
     const saved = await api.updateDetails({
       asset: { ...asset },
       userId: props.userId,
@@ -248,6 +264,7 @@ async function saveDetailEdits(): Promise<void> {
       description: draft.description,
       ...(draft.changedPeople.owner ? { owner: draft.people.owner } : {}),
       ...(draft.changedPeople.developer ? { developer: draft.people.developer } : {}),
+      ...(plannedCompleteDateChanged ? { plannedCompleteDate: draft.plannedCompleteDate } : {}),
     });
     if (
       sequence !== detailSequence ||
@@ -855,7 +872,6 @@ async function loadDetail(): Promise<void> {
 
 async function openDetail(asset: HarnessAsset): Promise<void> {
   closeCardMenu();
-  if (!canAccessAsset(asset)) return;
   cancelDetailEdit();
   detailSequence += 1;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
@@ -870,7 +886,10 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
 
 async function editCardAsset(asset: HarnessAsset): Promise<void> {
   closeCardMenu();
-  if (!canAccessAsset(asset)) return;
+  if (!canAccessAsset(asset)) {
+    showToast('当前用户没有编辑权限');
+    return;
+  }
   cancelDetailEdit();
   detailSequence += 1;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
@@ -917,24 +936,14 @@ function statusLabel(asset: HarnessAsset): string {
   return transportIsHttp ? (asset.status ?? '') : harnessAssetStatus(asset);
 }
 
-function assetPersonName(value: string | undefined): string {
+function assetPersonName(value: string | undefined, placeholder = '未指定'): string {
   const person = value?.trim() ?? '';
-  if (!person) return '未指定';
+  if (!person) return placeholder;
   return person.replace(/\s+\S+$/, '') || person;
 }
 
 function assetPublisher(asset: HarnessAsset): string {
-  const currentVersion = normalizeHarnessAssetVersion(asset.currentVersion);
-  const versionPublisher = asset.versionDetails?.find(
-    (detail) => normalizeHarnessAssetVersion(detail.version) === currentVersion,
-  )?.uploadedBy;
-  const releasePublisher = asset.releases.find(
-    (release) => normalizeHarnessAssetVersion(release.version) === currentVersion,
-  )?.publisher;
-  return (
-    [asset.publisher, versionPublisher, releasePublisher].find((value) => value?.trim())?.trim() ??
-    ''
-  );
+  return asset.publisher?.trim() ?? '';
 }
 
 function assetScopeLabel(asset: HarnessAsset): string {
@@ -1098,11 +1107,13 @@ onBeforeUnmount(() => {
       :name="detailDraft.name"
       :description="detailDraft.description"
       :people="detailDraft.people"
+      :planned-complete-date="detailDraft.plannedCompleteDate"
       :submitting="detailSaving"
       :error="detailEditError"
       :required-name-prefix="detailRequiredNamePrefix"
       @update:name="detailDraft.name = $event"
       @update:description="detailDraft.description = $event"
+      @update:planned-complete-date="detailDraft.plannedCompleteDate = $event"
       @update-person="changeDraftPerson"
       @close="cancelDetailEdit"
       @save="saveDetailEdits"
@@ -1287,7 +1298,7 @@ onBeforeUnmount(() => {
             class="asset-card"
             :class="{ 'is-menu-open': cardMenuKey === assetKey(asset) }"
             role="button"
-            :tabindex="canAccessAsset(asset) ? 0 : -1"
+            :tabindex="0"
             @click="openDetail(asset)"
             @keydown.enter.self.prevent="openDetail(asset)"
             @keydown.space.self.prevent="openDetail(asset)"
@@ -1315,14 +1326,14 @@ onBeforeUnmount(() => {
               <span
                 v-if="asset.assetType === 'Extension'"
                 class="asset-card__publisher"
-                :title="assetPublisher(asset) || '未指定发布人'"
+                :title="assetPersonName(assetPublisher(asset), '未指定发布人')"
               >
                 {{ assetPersonName(assetPublisher(asset)) }}
               </span>
               <span
                 v-else
                 class="asset-card__developer"
-                :title="asset.developer || '未指定开发责任人'"
+                :title="assetPersonName(asset.developer, '未指定开发责任人')"
               >
                 {{ assetPersonName(asset.developer) }}
               </span>
@@ -1353,7 +1364,6 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 role="menuitem"
-                :disabled="!canAccessAsset(asset)"
                 @click="openDetail(asset)"
               >
                 查看详情
@@ -1416,6 +1426,7 @@ onBeforeUnmount(() => {
         </button>
         <div v-if="selectedAsset.assetType !== 'Extension'" class="asset-detail-toolbar__actions">
           <button
+            v-if="false"
             type="button"
             class="asset-button is-primary asset-detail__edit"
             :disabled="detailSaving || !canEditDetail"
@@ -1425,6 +1436,7 @@ onBeforeUnmount(() => {
             编辑
           </button>
           <button
+            v-if="false"
             type="button"
             class="asset-delete-button"
             aria-label="删除资产"

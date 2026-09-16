@@ -890,7 +890,7 @@ export function updateMockCapabilityCatalogDetails(
   type: MockHarnessCapabilityType,
   id: string,
   patch: Pick<SkillMasterRecord, 'name' | 'description'> &
-    Partial<Pick<SkillMasterRecord, 'owner' | 'developOwner'>>,
+    Partial<Pick<SkillMasterRecord, 'owner' | 'developOwner' | 'plannedCompleteDate'>>,
 ): void {
   const state = readState(type);
   const record = state.catalog.find((item) => item.id === id);

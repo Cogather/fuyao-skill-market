@@ -733,7 +733,7 @@ const publishExtension = computed(() => {
   const latest = scene ? latestSuccessfulRelease(scene) : null;
   return {
     name: scene?.extension.name || latest?.extensionName || '',
-    description: scene?.extension.description || latest?.description || '',
+    description: publishForm.description,
   };
 });
 const publishDimension = computed(() => {
@@ -795,12 +795,12 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
     return;
   }
   modalSceneId.value = scene.id;
+  const latest = latestSuccessfulRelease(scene);
   if (!props.releaseContext) {
-    const latest = latestSuccessfulRelease(scene);
     publishForm.name =
       scene.extension.name || latest?.extensionName || requiredExtensionNamePrefix.value;
-    publishForm.description = scene.extension.description;
   }
+  publishForm.description = scene.extension.description || latest?.description || '';
   publishForm.channel = 'beta';
   activeModal.value = 'publish';
   publishError.value = blockedReason;
@@ -902,9 +902,7 @@ async function confirmPublish(): Promise<void> {
     }
   }
   if (!description) {
-    publishError.value = props.releaseContext
-      ? 'Extension 描述缺失，请完善资产信息后重新发布'
-      : '请输入 Extension 描述';
+    publishError.value = '请输入 Extension 描述';
     return;
   }
   const organization =
@@ -1542,9 +1540,6 @@ onBeforeUnmount(() => {
                   <h4 class="publish-overview__name">
                     {{ publishExtension.name || '未提供名称' }}
                   </h4>
-                  <p class="publish-overview__description">
-                    {{ publishExtension.description || '暂无描述' }}
-                  </p>
                 </div>
               </div>
               <dl class="publish-overview__metadata">
@@ -1629,6 +1624,16 @@ onBeforeUnmount(() => {
                       label: organization.name,
                     })),
                   ]"
+                />
+              </label>
+              <label v-if="releaseContext" class="modal-field is-wide">
+                <span>Extension 描述 <em>*</em></span>
+                <textarea
+                  v-model="publishForm.description"
+                  rows="3"
+                  placeholder="请输入 Extension 描述"
+                  aria-label="Extension 描述"
+                  :disabled="publishSubmitting"
                 />
               </label>
             </div>
@@ -3145,20 +3150,11 @@ onBeforeUnmount(() => {
 }
 
 .publish-overview__name {
-  margin: 0 0 10px;
+  margin: 0;
   color: #17233d;
   font-size: 22px;
   font-weight: 650;
   line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.publish-overview__description {
-  margin: 0;
-  color: #526179;
-  font-size: 13px;
-  line-height: 1.8;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -3239,6 +3235,10 @@ onBeforeUnmount(() => {
 .publish-settings .modal-field {
   min-width: 0;
   align-content: start;
+}
+
+.publish-settings .modal-field.is-wide {
+  grid-column: 1 / -1;
 }
 
 .modal-field {

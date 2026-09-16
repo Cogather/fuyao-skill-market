@@ -403,7 +403,7 @@ type MockSkillDetailsPatch = Pick<
   Partial<
     Pick<
       MockSkillMasterManagementRecord,
-      'ownerName' | 'ownerId' | 'developOwnerName' | 'developOwnerId'
+      'ownerName' | 'ownerId' | 'developOwnerName' | 'developOwnerId' | 'planFinishDate'
     >
   >;
 const SKILL_DETAILS_STORAGE_KEY = 'harness-mock-skill-details-v1';
@@ -423,7 +423,7 @@ if (typeof window !== 'undefined') {
         skillName: patch.skillName,
         skillDescription: patch.skillDescription,
       };
-      for (const key of ['ownerName', 'ownerId', 'developOwnerName', 'developOwnerId'] as const) {
+      for (const key of ['ownerName', 'ownerId', 'developOwnerName', 'developOwnerId', 'planFinishDate'] as const) {
         if (typeof patch[key] === 'string') clean[key] = patch[key];
       }
       Object.assign(record, clean);

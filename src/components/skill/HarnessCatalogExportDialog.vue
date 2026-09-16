@@ -200,26 +200,15 @@ onBeforeUnmount(() => {
       >
         <header>
           <h2>导出 {{ assetType }}</h2>
-          <div class="catalog-export-header-actions">
-            <button
-              type="button"
-              class="catalog-import-button catalog-export-button"
-              :disabled="!canDownload"
-              :title="scopeError || '下载当前归属下的已有数据'"
-              @click="downloadExistingData"
-            >
-              {{ downloading ? '下载中…' : '下载已有数据' }}
-            </button>
-            <button
-              type="button"
-              class="catalog-export-close"
-              aria-label="关闭导出窗口"
-              :disabled="downloading"
-              @click="close"
-            >
-              ×
-            </button>
-          </div>
+          <button
+            type="button"
+            class="catalog-export-close"
+            aria-label="关闭导出窗口"
+            :disabled="downloading"
+            @click="close"
+          >
+            ×
+          </button>
         </header>
         <p class="catalog-export-description">选择资产归属，下载当前范围内的 Excel 数据。</p>
         <HarnessCatalogCreateScope
@@ -246,6 +235,17 @@ onBeforeUnmount(() => {
         <p v-if="downloadMessage" class="catalog-export-description" role="status">
           {{ downloadMessage }}
         </p>
+        <footer>
+          <button
+            type="button"
+            class="catalog-import-button catalog-export-button"
+            :disabled="!canDownload"
+            :title="scopeError || '下载当前归属下的已有数据'"
+            @click="downloadExistingData"
+          >
+            {{ downloading ? '下载中…' : '下载已有数据' }}
+          </button>
+        </footer>
       </section>
     </div>
   </Teleport>
@@ -285,12 +285,6 @@ onBeforeUnmount(() => {
   margin: 10px 0 0;
   font-size: 22px;
 }
-.catalog-export-header-actions {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 12px;
-}
 .catalog-export-close {
   width: 30px;
   height: 30px;
@@ -320,6 +314,11 @@ onBeforeUnmount(() => {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.catalog-export-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 22px;
+}
 .catalog-export-error {
   color: #c64a54;
   font-size: 12px;
@@ -334,9 +333,6 @@ onBeforeUnmount(() => {
   }
   .catalog-export-dialog > header {
     flex-wrap: wrap;
-  }
-  .catalog-export-header-actions {
-    margin-left: auto;
   }
 }
 </style>

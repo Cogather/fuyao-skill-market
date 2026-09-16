@@ -72,8 +72,7 @@ export async function queryHttpHarnessAssetPage(
   }
   const list = data.records.map((record): HarnessAsset => {
     const currentVersion = normalizeHarnessAssetVersion(record.latestVersion);
-    const publisher =
-      assetType === 'Extension' ? String(record.publisher ?? record.uploadedBy ?? '').trim() : '';
+    const publisher = assetType === 'Extension' ? String(record.publisher ?? '').trim() : '';
     const category = String(record.category ?? '');
     const [level, ...names] = category.split('/');
     const categoryName = names.join('/');

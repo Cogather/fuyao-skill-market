@@ -137,7 +137,7 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
           await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'target-product');
         }
         const download = dialog
-          .locator('header')
+          .locator('footer')
           .getByRole('button', { name: '下载已有数据', exact: true });
         await expect(download).toBeEnabled();
         await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toHaveCount(0);

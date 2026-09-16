@@ -155,7 +155,7 @@ test.describe('资产详情权限 HTTP', () => {
   });
 
   for (const listCanEdit of [false, undefined, null, 'true', 1]) {
-    test(`列表 canEdit=${typeof listCanEdit}:${String(listCanEdit)} 时禁用查看详情和编辑信息，且卡片不能绕过权限`, async ({
+    test(`列表 canEdit=${typeof listCanEdit}:${String(listCanEdit)} 时仅禁用编辑信息，查看详情仍可用`, async ({
       page,
     }) => {
       const { card, writes } = await prepare(page, 'Agent', {
@@ -164,16 +164,17 @@ test.describe('资产详情权限 HTTP', () => {
         ownerId: 'current-user',
         enterDetail: false,
       });
-      await expect(card).toHaveAttribute('tabindex', '-1');
+      await expect(card).toHaveAttribute('tabindex', '0');
       await card.getByRole('button', { name: /^更多操作：/ }).click();
       const menu = card.getByRole('menu');
       const view = menu.getByRole('menuitem', { name: '查看详情', exact: true });
       const edit = menu.getByRole('menuitem', { name: '编辑信息', exact: true });
-      await expect(view).toBeDisabled();
+      await expect(view).toBeEnabled();
       await expect(edit).toBeDisabled();
 
-      await view.evaluate((button) => button.removeAttribute('disabled'));
       await view.click();
+      await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: '返回列表', exact: true }).click();
 
       await card.getByRole('button', { name: /^更多操作：/ }).click();
       const forcedEdit = card.getByRole('menuitem', { name: '编辑信息', exact: true });
@@ -183,8 +184,7 @@ test.describe('资产详情权限 HTTP', () => {
       expect(writes).toHaveLength(0);
 
       await card.getByRole('heading', { name: 'permission-asset', exact: true }).click();
-      await card.press('Enter');
-      await expect(page.getByRole('button', { name: '返回列表', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeVisible();
     });
   }
 

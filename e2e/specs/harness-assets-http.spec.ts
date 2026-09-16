@@ -590,11 +590,12 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.getByRole('button', { name: '发布', exact: true }).click();
 
     const publishDialog = page.getByRole('region', { name: /发布 Extension/ });
-    await expect(publishDialog.getByRole('textbox')).toHaveCount(0);
+    await expect(publishDialog.getByLabel('Extension 描述', { exact: true })).toHaveValue(
+      'HTTP Extension 发布摘要',
+    );
     await expect(
       publishDialog.getByRole('heading', { name: 'harness-pipeline-build-extension', exact: true }),
     ).toBeVisible();
-    await expect(publishDialog.getByText('HTTP Extension 发布摘要', { exact: true })).toBeVisible();
     await selectHarnessOption(publishDialog.getByLabel(/发布通道/), 'product');
     const organizationSelect = page.getByRole('combobox', { name: '目标组织' });
     await expect(

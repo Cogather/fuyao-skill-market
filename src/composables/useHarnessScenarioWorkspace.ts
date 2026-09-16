@@ -859,6 +859,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         workflows,
         assets,
         commands,
+        details,
         seededDepartmentIds: mockWorkflowSeededDepartments,
       });
       if (!allowed.some((item) => item._id === selectedDeptId.value)) {

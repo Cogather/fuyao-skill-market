@@ -950,7 +950,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
       flex-wrap: wrap;
     }
 
-    :is(.catalog-import-header-actions, .catalog-export-header-actions) {
+    .catalog-import-header-actions {
       margin-left: auto;
     }
 
