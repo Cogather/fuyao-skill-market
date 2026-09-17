@@ -213,10 +213,10 @@ try {
       ['queryActivitiesByScene', [context], 'GET', '/scene-activity/activity', context, undefined],
       [
         'refreshActivities',
-        [scope, { activities: [] }],
+        [context, { activities: [] }],
         'POST',
         '/scene-activity/activity',
-        scope,
+        context,
         { activities: [] },
       ],
       [
@@ -592,66 +592,29 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('activity refresh queries every retained scene with explicit scene identity', async () => {
+  await test('activity refresh writes only the current scene with scene-scoped params', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
     mapped.workflow.stages[0].steps.push({ id: 'new', name: '新节点', order: 1, assets: [] });
-    const sceneQueries = [];
-    const activityQueries = [];
-    const activityRows = [
-      {
-        ...scene,
-        activityNodeName: '编码',
-        subActivityNodeName: '生成',
-        sort: 0,
-      },
-      {
-        firstScene: '研发',
-        secondScene: '保留场景一',
-        activityNodeName: '其他环节一',
-        subActivityNodeName: '其他节点一',
-        sort: 0,
-      },
-      {
-        firstScene: '测试',
-        secondScene: '保留场景二',
-        activityNodeName: '其他环节二',
-        subActivityNodeName: '其他节点二',
-        sort: 0,
-      },
-    ];
-    api.querySceneList = async (params) => {
-      sceneQueries.push(structuredClone(params));
-      return success([
-        scene,
-        { firstScene: '研发', secondScene: '保留场景一' },
-        { firstScene: '测试', secondScene: '保留场景二' },
-      ]);
+    api.querySceneList = async () => {
+      throw new Error('activity save must not query the scene list');
     };
-    api.queryActivitiesByScene = async (params) => {
-      activityQueries.push(structuredClone(params));
-      return success(
-        params.firstScene
-          ? activityRows.filter(
-              (row) =>
-                row.firstScene === params.firstScene && row.secondScene === params.secondScene,
-            )
-          : activityRows,
-      );
+    api.queryActivitiesByScene = async () => {
+      throw new Error('activity save must not read other scene activities');
     };
+    let refreshedParams;
     let refreshed;
-    api.refreshActivities = async (_params, body) => {
+    api.refreshActivities = async (params, body) => {
+      refreshedParams = structuredClone(params);
       refreshed = body;
       return success(null);
     };
     await repository.saveDesignActivities(context, mapped.workflow, detail);
-    assert.deepEqual(sceneQueries, [scope]);
-    assert.deepEqual(activityQueries, [
-      { ...scope, firstScene: '研发', secondScene: '保留场景一' },
-      { ...scope, firstScene: '测试', secondScene: '保留场景二' },
-    ]);
-    assert.deepEqual(
-      refreshed.activities.slice(0, 2).map((row) => row.secondScene),
-      ['保留场景一', '保留场景二'],
+    assert.deepEqual(refreshedParams, context);
+    assert.equal(refreshed.activities.length, 2);
+    assert.ok(
+      refreshed.activities.every(
+        (row) => row.firstScene === scene.firstScene && row.secondScene === scene.secondScene,
+      ),
     );
     assert.equal(refreshed.activities.at(-1).subActivityNodeName, '新节点');
   });

@@ -604,7 +604,7 @@ async function openWizard(workflow?: Workflow, step = 0) {
   )
     return;
   wizardOpener = activeElement();
-  if (props.workspace.isHttp) {
+  if (props.workspace.isHttp && !props.workspace.hasLoadedWorkflowDetail(scenario._id)) {
     await props.workspace.loadSelectedWorkflow();
     if (workspaceError.value || currentScenario.value?._id !== scenario._id) return;
   }

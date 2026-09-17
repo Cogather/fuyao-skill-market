@@ -252,6 +252,15 @@ try {
     );
     assert.equal(f.scenario.description, '旧目标');
   });
+  await test('workflow save reuses the loaded detail and performs one authoritative readback', async () => {
+    const f = await fixture();
+    f.workflow.name = '更新后的流程';
+    await f.workspace.saveWorkflow(f.workflow, {
+      code: 'demo-old',
+      description: '旧目标',
+    });
+    assert.equal(f.calls.filter(([op]) => op === 'detail').length, 1);
+  });
   await test('creating a root scene sends firstSceneDescription and restores it after reloading', async () => {
     const f = await fixture();
     const root = f.workspace.scenarios.find((item) => item.level === 1);
@@ -392,6 +401,7 @@ try {
     const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
     const state = await mountScenarioPage(f.workspace);
     await state.openWizard(f.workflow);
+    assert.equal(f.calls.filter(([op]) => op === 'detail').length, 0);
     assert.equal(state.wizard.value.form.code, '');
     const html = await renderMountedScenarioPage(state, f.workspace);
     assert.match(html, /placeholder="例如：mml-dev"/);

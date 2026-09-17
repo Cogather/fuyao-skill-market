@@ -264,35 +264,7 @@ export async function saveDesignActivities(
     mapDesignDetail(scope, before, workflow.scenarioId, '').workflow.stages,
   );
   if (JSON.stringify(desired) === JSON.stringify(previous)) return;
-  const params = dimension(scope);
-  // refreshActivities replaces the dimension: include every other scene, including when this one is emptied.
-  const scenes = designData<WorkflowSceneRow[]>(await api.querySceneList(params));
-  const others = [
-    ...new Map(
-      scenes
-        .filter(
-          (item) =>
-            item.secondScene &&
-            (item.firstScene !== scope.firstScene || item.secondScene !== scope.secondScene),
-        )
-        .map((item) => [JSON.stringify(sceneKey(item)), item]),
-    ).values(),
-  ];
-  const untouched = await Promise.all(
-    others.map(async (item) =>
-      designData<WorkflowActivityRow[]>(
-        await api.queryActivitiesByScene({ ...params, ...sceneKey(item) }),
-      ).map((activity) => ({
-        ...sceneKey(item),
-        activityNodeName: activity.activityNodeName,
-        subActivityNodeName: activity.subActivityNodeName || '',
-        sort: activity.sort,
-      })),
-    ),
-  );
-  designData(
-    await api.refreshActivities(params, { activities: [...untouched.flat(), ...desired] }),
-  );
+  designData(await api.refreshActivities(scope, { activities: desired }));
 }
 
 type Binding = { type: WorkflowComponentType; name: string; stage: string; node: string };
