@@ -113,6 +113,17 @@ async function prepare(
         request.postDataJSON().dimCode === 'product-b-id'
           ? [{ firstScene: '开发', secondScenes: [sceneDetail()] }]
           : [];
+    } else if (path.endsWith('/plans/components/detail')) {
+      data = {
+        name: 'product-b-build-extension',
+        type: 'EXTENSION',
+        category: '产品级/product-b',
+        firstScene: '开发',
+        secondScene: '构建诊断',
+        versions: [
+          { version: '0.4', uploadedAt: '2026-09-09 10:00:00', uploadedBy: 'release-user' },
+        ],
+      };
     } else if (path.endsWith('/extensions/detail')) {
       detailQueries.push(request);
       if (unavailableScene) {
@@ -420,15 +431,18 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     });
   });
 
-  test('产品列表为空时，发布历史使用卡片维度并只查询历史接口', async ({ page }) => {
+  test('产品列表为空时，发布记录页签使用卡片维度且不额外查询产品接口', async ({ page }) => {
     const { detailQueries, historyQueries } = await prepare(page, true, false, true);
-    const unrelatedQueries: Request[] = [];
+    const productQueries: Request[] = [];
+    const componentDetailQueries: Request[] = [];
     page.on('request', (request) => {
-      if (/\/(smapi-product-by-dept|components\/detail)$/.test(new URL(request.url()).pathname)) {
-        unrelatedQueries.push(request);
-      }
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith('/smapi-product-by-dept')) productQueries.push(request);
+      else if (/\/components\/detail$/.test(pathname)) componentDetailQueries.push(request);
     });
-    await clickAssetCardAction(page.locator('.asset-card'), '发布历史');
+    await page.locator('.asset-card').getByRole('heading').click();
+    await expect(page.locator('.asset-detail')).toBeVisible();
+    await page.locator('#asset-detail-tab-history').click();
     const history = page.getByRole('region', { name: /发布历史/ });
     await expect(history.locator('.timeline-item')).toHaveCount(3);
     await expect(history.getByText('目标组织拒绝签名', { exact: true })).toBeVisible();
@@ -441,7 +455,8 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       dimName: 'product-b',
     });
     expect(detailQueries).toHaveLength(0);
-    expect(unrelatedQueries).toHaveLength(0);
+    expect(componentDetailQueries).toHaveLength(1);
+    expect(productQueries).toHaveLength(0);
   });
 
   for (const readyStatus of ['已就绪', '不完备']) {
@@ -526,7 +541,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     await expect(
       publish.getByRole('heading', { name: 'product-b-build-extension', exact: true }),
     ).toBeVisible();
-    await expect(publish.getByText('当前场景的说明', { exact: true })).toBeVisible();
+    await expect(publish.getByLabel('Extension 描述', { exact: true })).toHaveValue(
+      '当前场景的说明',
+    );
     await expect(publish.getByLabel(/发布通道/)).toHaveAttribute('data-value', 'product');
     await expect(publish.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
     expect(organizationQueries).toHaveLength(3);
@@ -928,14 +945,16 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', '');
   });
 
-  test('旧资产不依赖当前场景即可查历史，重试发布后不再展示进行中资产', async ({ page }) => {
+  test('旧资产不依赖当前场景即可查发布记录，重试发布后列表状态刷新', async ({ page }) => {
     const { detailQueries, historyQueries, retries, failHistoryOnce } = await prepare(
       page,
       true,
       true,
     );
     failHistoryOnce();
-    await clickAssetCardAction(page.locator('.asset-card'), '发布历史');
+    await page.locator('.asset-card').getByRole('heading').click();
+    await expect(page.locator('.asset-detail')).toBeVisible();
+    await page.locator('#asset-detail-tab-history').click();
     const history = page.getByRole('region', { name: /发布历史/ });
     await expect(history).toBeVisible();
     await expect(history.getByRole('alert')).toContainText('历史服务暂不可用');
@@ -952,10 +971,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     expect(retries).toHaveLength(1);
     expect(detailQueries).toHaveLength(0);
     expect(historyQueries).toHaveLength(3);
-    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await page.getByRole('button', { name: '返回列表', exact: true }).click();
     await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', '');
-    await expect(page.locator('.asset-card')).toHaveCount(0);
-    await expect(page.getByText('暂无资产', { exact: true })).toBeVisible();
+    await expect(page.locator('.asset-card__meta .asset-badge')).toHaveText('发布中');
   });
 
   test('手动刷新发布历史更新进行中状态，保留已展开记录并支持失败重试', async ({
@@ -971,7 +989,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       setLatestReleaseStatus,
     } = await prepare(page, true);
     setLatestReleaseStatus('processing');
-    await clickAssetCardAction(page.locator('.asset-card'), '发布历史');
+    await page.locator('.asset-card').getByRole('heading').click();
+    await expect(page.locator('.asset-detail')).toBeVisible();
+    await page.locator('#asset-detail-tab-history').click();
     const history = page.getByRole('region', { name: /发布历史/ });
     const refresh = page.getByRole('button', { name: '刷新发布历史', exact: true });
     await expect(refresh).toBeVisible();
@@ -1027,7 +1047,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       .screenshot({ path: testInfo.outputPath('extension-history-refresh.png') });
   });
 
-  test('全部产品下只读展示资产信息并沿用原名发布，失败保留通道和组织', async ({
+  test('全部产品下展示资产信息并支持编辑描述，沿用原名发布，失败保留通道、组织和描述', async ({
     page,
   }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -1036,11 +1056,11 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     const dialog = page.getByRole('region', { name: /发布 Extension/ });
     await expect(dialog).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(dialog.getByRole('textbox')).toHaveCount(0);
+    const descriptionInput = dialog.getByLabel('Extension 描述', { exact: true });
+    await expect(descriptionInput).toHaveValue('当前场景的说明');
     await expect(
       dialog.getByRole('heading', { name: 'product-b-build-extension', exact: true }),
     ).toBeVisible();
-    await expect(dialog.getByText('当前场景的说明', { exact: true })).toBeVisible();
     await expect(dialog.getByText('product-b', { exact: true })).toBeVisible();
     await expect(dialog.getByText('产品级', { exact: true })).toBeVisible();
     await expect(dialog.getByText('开发', { exact: true })).toBeVisible();
@@ -1049,6 +1069,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     await expect(dialog.locator('.publish-summary li')).toHaveCount(3);
     await selectHarnessOption(dialog.getByLabel(/发布通道/), 'product');
     await selectHarnessOption(dialog.getByLabel(/目标组织/), 'org-target');
+    await descriptionInput.fill('更新后的发布说明');
     await page
       .locator('.extension-page--embedded')
       .screenshot({ path: testInfo.outputPath('extension-publish-overview.png') });
@@ -1059,8 +1080,14 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     ).toBeVisible();
     await expect(dialog.getByLabel(/发布通道/)).toHaveAttribute('data-value', 'product');
     await expect(dialog.getByLabel(/目标组织/)).toHaveAttribute('data-value', 'org-target');
+    await expect(descriptionInput).toHaveValue('更新后的发布说明');
     await dialog.getByRole('button', { name: '确认发布' }).click();
     await expect(dialog).toBeHidden();
+    const history = page.getByRole('region', { name: /发布历史/ });
+    await expect(history).toBeVisible();
+    await expect(history.locator('.timeline-item').first()).toContainText('进行中');
+    await expect(history.locator('.timeline-item').first()).toContainText('更新后的发布说明');
+    await expect(history.getByRole('button', { name: '刷新发布历史' })).toBeEnabled();
     expect(publishes).toHaveLength(2);
     const request = publishes[1]!;
     expect(Object.fromEntries(new URL(request.url()).searchParams)).toMatchObject({
@@ -1072,7 +1099,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     });
     expect(request.postDataJSON()).toEqual({
       extensionName: 'product-b-build-extension',
-      description: '当前场景的说明',
+      description: '更新后的发布说明',
       releaseType: 'product',
       firstScene: '开发',
       secondScene: '构建诊断',
@@ -1084,23 +1111,32 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     });
     expect(new URL(organizationQueries[0]!.url()).searchParams.get('dimCode')).toBe('product-b-id');
     expect(detailQueries[0]!.postDataJSON().dimCode).toBe('product-b-id');
+    expect(historyQueries).toHaveLength(1);
+    await history.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(history).toHaveCount(0);
     await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('.asset-card')).toHaveCount(0);
     await expect(page.getByText('暂无资产', { exact: true })).toBeVisible();
-    expect(historyQueries).toHaveLength(0);
   });
 
   test('历史时间线显示完整记录、失败原因和重试，已发布名称锁定', async ({ page }) => {
     const { retries } = await prepare(page, true);
     const card = page.locator('.asset-card');
-    await clickAssetCardAction(card, '发布');
+    await card.getByRole('heading').click();
+    await page
+      .locator('.asset-detail__actions')
+      .getByRole('button', { name: '发布', exact: true })
+      .click();
     const publish = page.getByRole('region', { name: /发布 Extension/ });
-    await expect(publish.getByRole('textbox')).toHaveCount(0);
+    await expect(publish.getByLabel('Extension 描述', { exact: true })).toHaveValue(
+      '当前场景的说明',
+    );
     await expect(
       publish.getByRole('heading', { name: 'product-b-build-extension', exact: true }),
     ).toBeVisible();
     await publish.getByRole('button', { name: '取消', exact: true }).click();
-    await clickAssetCardAction(card, '发布历史');
+    await expect(page.locator('.asset-detail')).toBeVisible();
+    await page.locator('#asset-detail-tab-history').click();
     const history = page.getByRole('region', { name: /发布历史/ });
     await expect(history.locator('.timeline-item')).toHaveCount(3);
     await expect(history.locator('.failure-reason')).toContainText('目标组织拒绝签名');

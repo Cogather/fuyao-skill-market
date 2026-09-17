@@ -364,7 +364,7 @@ onBeforeUnmount(() => {
 .catalog-import-dialog {
   display: flex;
   flex-direction: column;
-  width: 804px;
+  width: min(1206px, calc(100vw - 48px));
   max-width: 100%;
   max-height: calc(100dvh - 48px);
   min-height: 0;
@@ -417,6 +417,9 @@ onBeforeUnmount(() => {
 .catalog-import-body {
   min-height: 0;
   overflow-y: auto;
+}
+.catalog-import-body > :deep(.catalog-create-scope) {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(140px, 220px);
 }
 .catalog-import-dropzone {
   display: flex;

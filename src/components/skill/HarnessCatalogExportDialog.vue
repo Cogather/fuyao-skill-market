@@ -169,7 +169,7 @@ async function downloadExistingData(): Promise<void> {
     }
     downloadMessage.value = `已开始下载 ${props.assetType} 清单`;
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '下载已有数据失败，请重试';
+    error.value = cause instanceof Error ? cause.message : '下载失败，请重试';
   } finally {
     downloading.value = false;
   }
@@ -200,26 +200,15 @@ onBeforeUnmount(() => {
       >
         <header>
           <h2>导出 {{ assetType }}</h2>
-          <div class="catalog-export-header-actions">
-            <button
-              type="button"
-              class="catalog-import-button catalog-export-button"
-              :disabled="!canDownload"
-              :title="scopeError || '下载当前归属下的已有数据'"
-              @click="downloadExistingData"
-            >
-              {{ downloading ? '下载中…' : '下载已有数据' }}
-            </button>
-            <button
-              type="button"
-              class="catalog-export-close"
-              aria-label="关闭导出窗口"
-              :disabled="downloading"
-              @click="close"
-            >
-              ×
-            </button>
-          </div>
+          <button
+            type="button"
+            class="catalog-export-close"
+            aria-label="关闭导出窗口"
+            :disabled="downloading"
+            @click="close"
+          >
+            ×
+          </button>
         </header>
         <p class="catalog-export-description">选择资产归属，下载当前范围内的 Excel 数据。</p>
         <HarnessCatalogCreateScope
@@ -246,6 +235,17 @@ onBeforeUnmount(() => {
         <p v-if="downloadMessage" class="catalog-export-description" role="status">
           {{ downloadMessage }}
         </p>
+        <footer>
+          <button
+            type="button"
+            class="catalog-import-button catalog-export-button"
+            :disabled="!canDownload"
+            :title="scopeError || '下载当前归属下的已有数据'"
+            @click="downloadExistingData"
+          >
+            {{ downloading ? '下载中…' : '下载' }}
+          </button>
+        </footer>
       </section>
     </div>
   </Teleport>
@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(4px);
 }
 .catalog-export-dialog {
-  width: 804px;
+  width: min(1206px, calc(100vw - 48px));
   max-width: 100%;
   box-sizing: border-box;
   padding: 22px;
@@ -275,6 +275,9 @@ onBeforeUnmount(() => {
   outline: none;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
 }
+.catalog-export-dialog > :deep(.catalog-create-scope) {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(140px, 220px);
+}
 .catalog-export-dialog header {
   display: flex;
   align-items: flex-start;
@@ -284,12 +287,6 @@ onBeforeUnmount(() => {
 .catalog-export-dialog h2 {
   margin: 10px 0 0;
   font-size: 22px;
-}
-.catalog-export-header-actions {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: 12px;
 }
 .catalog-export-close {
   width: 30px;
@@ -320,6 +317,11 @@ onBeforeUnmount(() => {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.catalog-export-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 22px;
+}
 .catalog-export-error {
   color: #c64a54;
   font-size: 12px;
@@ -334,9 +336,6 @@ onBeforeUnmount(() => {
   }
   .catalog-export-dialog > header {
     flex-wrap: wrap;
-  }
-  .catalog-export-header-actions {
-    margin-left: auto;
   }
 }
 </style>

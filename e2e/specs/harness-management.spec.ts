@@ -439,7 +439,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
       '设计中',
       '研发提效 / 代码生成',
       '0 个',
-      '查看',
+      '查看发布历史',
     ]);
     await expect(harnessPage.workflowsPreviousPageButton).toBeDisabled();
     await expect(harnessPage.workflowsNextPageButton).toBeDisabled();
@@ -598,7 +598,7 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
       '设计中',
       `研发提效 / ${scenarioName}`,
       '1 个',
-      '查看',
+      '查看发布历史',
     ]);
 
     await harnessPage.openScenariosFromWorkflows();

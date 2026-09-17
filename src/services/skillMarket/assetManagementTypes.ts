@@ -28,10 +28,18 @@ export type UpdateHarnessAssetDetailsInput = {
   /** 未修改的人员字段省略；修改后必须从搜索结果选中有效人员。 */
   owner?: SkillPlanningUserOption | null;
   developer?: SkillPlanningUserOption | null;
+  /** 计划完成时间（YYYY-MM-DD）；未修改时省略。 */
+  plannedCompleteDate?: string;
 };
 
 export type HarnessAssetDetailsUpdate = Pick<HarnessAsset, 'name' | 'description'> &
-  Partial<Pick<HarnessAsset, 'owner' | 'developer'>>;
+  Partial<Pick<HarnessAsset, 'owner' | 'developer'>> &
+  Partial<Pick<UpdateHarnessAssetDetailsInput, 'plannedCompleteDate'>>;
+
+export type FetchHarnessAssetPlannedCompleteDateInput = {
+  asset: HarnessAsset;
+  userId: string;
+};
 
 export type HarnessAssetDepartment = {
   id: string;
@@ -178,6 +186,9 @@ export type PublishHarnessAssetInput = {
 
 export interface HarnessAssetApi {
   updateDetails(input: UpdateHarnessAssetDetailsInput): Promise<HarnessAssetDetailsUpdate>;
+  fetchPlannedCompleteDate(
+    input: FetchHarnessAssetPlannedCompleteDateInput,
+  ): Promise<string>;
   deleteAsset(input: DeleteHarnessAssetInput): Promise<void>;
   updatePerson(input: UpdateHarnessAssetPersonInput): Promise<string>;
   queryProducts(

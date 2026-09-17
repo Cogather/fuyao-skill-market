@@ -603,7 +603,7 @@ onBeforeUnmount(() => {
                     <td>
                       <div class="wf-actions">
                         <button type="button" @click="openWorkflowRelease(row, 'history')">
-                          查看
+                          查看发布历史
                         </button>
                         <button
                           v-if="shouldShowPublish(row)"

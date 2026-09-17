@@ -3919,7 +3919,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: min(804px, calc(100vw - 32px));
+  width: min(1206px, calc(100vw - 32px));
   height: 760px;
   min-height: 0;
   max-height: calc(100vh - 92px);
@@ -3932,6 +3932,9 @@ onMounted(() => {
 .dialog.is-create-dialog > .error,
 .dialog.is-create-dialog > footer {
   flex: 0 0 auto;
+}
+.dialog.is-create-dialog > .catalog-create-scope {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(210px, 0.6fr);
 }
 .dialog-scroll-body {
   min-height: 0;

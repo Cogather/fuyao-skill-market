@@ -15,6 +15,7 @@ const props = defineProps<{
   name: string;
   description: string;
   people: Record<HarnessAssetPersonField, SkillPlanningUserOption | null>;
+  plannedCompleteDate: string;
   submitting: boolean;
   error: string;
   requiredNamePrefix?: string;
@@ -23,6 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:name': [value: string];
   'update:description': [value: string];
+  'update:planned-complete-date': [value: string];
   'update-person': [field: HarnessAssetPersonField, value: SkillPlanningUserOption | null];
   close: [];
   save: [];
@@ -30,6 +32,14 @@ const emit = defineEmits<{
 
 const titleId = `asset-edit-dialog-${useId()}`;
 const nameInput = ref<HTMLInputElement | null>(null);
+
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function close(): void {
   if (!props.submitting) emit('close');
@@ -105,6 +115,16 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
               label="开发责任人"
               @update:model-value="emit('update-person', 'developer', $event)"
             />
+            <label class="asset-master-date">
+              <span>计划完成时间 *</span>
+              <input
+                :value="plannedCompleteDate"
+                type="date"
+                aria-label="计划完成时间"
+                :min="currentLocalDate()"
+                @input="emit('update:planned-complete-date', ($event.target as HTMLInputElement).value)"
+              />
+            </label>
           </div>
         </fieldset>
 

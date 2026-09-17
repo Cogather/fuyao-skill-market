@@ -1974,7 +1974,7 @@ td.is-description > span {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: min(804px, calc(100vw - 32px));
+  width: min(1206px, calc(100vw - 32px));
   height: 760px;
   min-height: 0;
   max-height: calc(100vh - 92px);
@@ -1986,6 +1986,9 @@ td.is-description > span {
 .capability-master-dialog.is-create-dialog > .capability-master-error,
 .capability-master-dialog.is-create-dialog > footer {
   flex: 0 0 auto;
+}
+.capability-master-dialog.is-create-dialog > .catalog-create-scope {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(210px, 0.6fr);
 }
 .capability-master-dialog.is-create-dialog > .capability-master-form {
   flex: 1 1 auto;

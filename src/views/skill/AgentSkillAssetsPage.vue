@@ -116,7 +116,7 @@ const products = ref<HarnessAssetProduct[]>([]);
 const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
-const detailTab = ref<'content' | 'report'>('content');
+const detailTab = ref<'content' | 'report' | 'history'>('content');
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
 const extensionRelease = ref<{
@@ -132,6 +132,9 @@ const extensionReleaseAttempt = ref<{
 } | null>(null);
 const extensionReturnView = ref<'list' | 'detail'>('list');
 let extensionReturnNeedsDetail = false;
+const extensionHistoryContext = ref<ExtensionReleaseContext | null>(null);
+const extensionHistoryLoading = ref(false);
+const extensionHistoryError = ref('');
 const cardMenuKey = ref('');
 const createAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
 const importAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
@@ -163,6 +166,8 @@ const detailDraft = ref<{
   description: string;
   people: Record<HarnessAssetPersonField, SkillPlanningUserOption | null>;
   changedPeople: Partial<Record<HarnessAssetPersonField, boolean>>;
+  plannedCompleteDate: string;
+  initialPlannedCompleteDate: string;
 } | null>(null);
 const detailSaving = ref(false);
 const detailEditError = ref('');
@@ -176,6 +181,8 @@ let assetSearchTimer: number | undefined;
 let productSequence = 0;
 let detailSequence = 0;
 let extensionReleaseSequence = 0;
+let extensionHistorySequence = 0;
+let assetsNeedRefresh = false;
 let toastTimer: number | undefined;
 
 function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
@@ -196,16 +203,28 @@ function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserO
   return { chName: name, id, sAMAccountName: id, label: `${name} ${id}`, deptName: '', raw: {} };
 }
 
-function beginDetailEdit(): void {
+async function beginDetailEdit(): Promise<void> {
   const asset = selectedAsset.value;
   if (!asset || !canEditDetail.value || detailSaving.value) return;
   if (transportIsHttp && !detailComponent.value) return;
   detailEditError.value = '';
+  let plannedCompleteDate = '';
+  try {
+    plannedCompleteDate = await api.fetchPlannedCompleteDate({
+      asset: { ...asset },
+      userId: props.userId,
+    });
+  } catch {
+    plannedCompleteDate = '';
+  }
+  if (selectedAsset.value?.id !== asset.id) return;
   detailDraft.value = {
     name: detailComponent.value?.name ?? asset.name,
     description: detailComponent.value?.description ?? asset.description ?? '',
     people: { owner: initialDetailPerson('owner'), developer: initialDetailPerson('developer') },
     changedPeople: {},
+    plannedCompleteDate,
+    initialPlannedCompleteDate: plannedCompleteDate,
   };
 }
 
@@ -241,6 +260,8 @@ async function saveDetailEdits(): Promise<void> {
     if (detailComponent.value?.category && detailComponent.value.category !== asset.category) {
       throw new Error('资产详情与列表归属不一致，请返回列表刷新后重试');
     }
+    const plannedCompleteDateChanged =
+      draft.plannedCompleteDate !== draft.initialPlannedCompleteDate;
     const saved = await api.updateDetails({
       asset: { ...asset },
       userId: props.userId,
@@ -248,6 +269,7 @@ async function saveDetailEdits(): Promise<void> {
       description: draft.description,
       ...(draft.changedPeople.owner ? { owner: draft.people.owner } : {}),
       ...(draft.changedPeople.developer ? { developer: draft.people.developer } : {}),
+      ...(plannedCompleteDateChanged ? { plannedCompleteDate: draft.plannedCompleteDate } : {}),
     });
     if (
       sequence !== detailSequence ||
@@ -461,6 +483,9 @@ const detailVersions = computed(
 const extensionHasNoVersion = computed(
   () => selectedAsset.value?.assetType === 'Extension' && !selectedAsset.value.currentVersion,
 );
+const isExtensionHistoryTab = computed(
+  () => selectedAsset.value?.assetType === 'Extension' && detailTab.value === 'history',
+);
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
@@ -668,6 +693,7 @@ function scheduleAssetSearch(event: Event): void {
 }
 
 async function reloadAssets(): Promise<void> {
+  assetsNeedRefresh = false;
   const scope = currentScope.value;
   const sequence = resetAssetListState();
   if (!scope) {
@@ -855,9 +881,12 @@ async function loadDetail(): Promise<void> {
 
 async function openDetail(asset: HarnessAsset): Promise<void> {
   closeCardMenu();
-  if (!canAccessAsset(asset)) return;
   cancelDetailEdit();
   detailSequence += 1;
+  extensionHistorySequence += 1;
+  extensionHistoryLoading.value = false;
+  extensionHistoryError.value = '';
+  extensionHistoryContext.value = null;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
   selectedVersion.value = transportIsHttp ? '' : asset.currentVersion || asset.versions[0] || '';
   detailTab.value = 'content';
@@ -870,7 +899,10 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
 
 async function editCardAsset(asset: HarnessAsset): Promise<void> {
   closeCardMenu();
-  if (!canAccessAsset(asset)) return;
+  if (!canAccessAsset(asset)) {
+    showToast('当前用户没有编辑权限');
+    return;
+  }
   cancelDetailEdit();
   detailSequence += 1;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
@@ -906,6 +938,7 @@ async function returnToAssetList(): Promise<void> {
   view.value = 'list';
   await nextTick();
   resetAssetScrollPosition();
+  if (assetsNeedRefresh) await reloadAssets();
 }
 
 async function changeDetailVersion(): Promise<void> {
@@ -917,24 +950,14 @@ function statusLabel(asset: HarnessAsset): string {
   return transportIsHttp ? (asset.status ?? '') : harnessAssetStatus(asset);
 }
 
-function assetPersonName(value: string | undefined): string {
+function assetPersonName(value: string | undefined, placeholder = '未指定'): string {
   const person = value?.trim() ?? '';
-  if (!person) return '未指定';
+  if (!person) return placeholder;
   return person.replace(/\s+\S+$/, '') || person;
 }
 
 function assetPublisher(asset: HarnessAsset): string {
-  const currentVersion = normalizeHarnessAssetVersion(asset.currentVersion);
-  const versionPublisher = asset.versionDetails?.find(
-    (detail) => normalizeHarnessAssetVersion(detail.version) === currentVersion,
-  )?.uploadedBy;
-  const releasePublisher = asset.releases.find(
-    (release) => normalizeHarnessAssetVersion(release.version) === currentVersion,
-  )?.publisher;
-  return (
-    [asset.publisher, versionPublisher, releasePublisher].find((value) => value?.trim())?.trim() ??
-    ''
-  );
+  return asset.publisher?.trim() ?? '';
 }
 
 function assetScopeLabel(asset: HarnessAsset): string {
@@ -991,9 +1014,44 @@ async function reloadExtensionRelease(): Promise<void> {
   if (attempt) await openExtensionRelease(attempt.asset, attempt.mode);
 }
 
+function openExtensionHistoryTab(): void {
+  detailTab.value = 'history';
+  void loadExtensionHistory();
+}
+
+async function loadExtensionHistory(): Promise<void> {
+  const asset = selectedAsset.value;
+  const scope = currentScope.value;
+  if (!scope || !asset || asset.assetType !== 'Extension' || extensionHistoryLoading.value) return;
+  const sequence = ++extensionHistorySequence;
+  const requestedAssetKey = selectedAssetKey.value;
+  extensionHistoryError.value = '';
+  extensionHistoryLoading.value = true;
+  try {
+    const context = await api.queryExtensionReleaseContext(scope, asset, 'history');
+    if (
+      sequence !== extensionHistorySequence ||
+      view.value !== 'detail' ||
+      detailTab.value !== 'history' ||
+      selectedAssetKey.value !== requestedAssetKey
+    )
+      return;
+    extensionHistoryContext.value = context;
+  } catch (error) {
+    if (sequence === extensionHistorySequence)
+      extensionHistoryError.value = errorMessage(error, '发布历史加载失败');
+  } finally {
+    if (sequence === extensionHistorySequence) extensionHistoryLoading.value = false;
+  }
+}
+
 async function onExtensionReleased(): Promise<void> {
   if (transportIsHttp && extensionRelease.value?.mode === 'publish') {
     extensionReturnView.value = 'list';
+  }
+  if (view.value === 'detail') {
+    assetsNeedRefresh = true;
+    return;
   }
   await reloadAssets();
 }
@@ -1076,6 +1134,7 @@ onBeforeUnmount(() => {
   listSequence += 1;
   detailSequence += 1;
   extensionReleaseSequence += 1;
+  extensionHistorySequence += 1;
   if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
   if (assetSearchTimer !== undefined) window.clearTimeout(assetSearchTimer);
   window.clearTimeout(toastTimer);
@@ -1098,11 +1157,13 @@ onBeforeUnmount(() => {
       :name="detailDraft.name"
       :description="detailDraft.description"
       :people="detailDraft.people"
+      :planned-complete-date="detailDraft.plannedCompleteDate"
       :submitting="detailSaving"
       :error="detailEditError"
       :required-name-prefix="detailRequiredNamePrefix"
       @update:name="detailDraft.name = $event"
       @update:description="detailDraft.description = $event"
+      @update:planned-complete-date="detailDraft.plannedCompleteDate = $event"
       @update-person="changeDraftPerson"
       @close="cancelDetailEdit"
       @save="saveDetailEdits"
@@ -1287,7 +1348,7 @@ onBeforeUnmount(() => {
             class="asset-card"
             :class="{ 'is-menu-open': cardMenuKey === assetKey(asset) }"
             role="button"
-            :tabindex="canAccessAsset(asset) ? 0 : -1"
+            :tabindex="0"
             @click="openDetail(asset)"
             @keydown.enter.self.prevent="openDetail(asset)"
             @keydown.space.self.prevent="openDetail(asset)"
@@ -1315,14 +1376,14 @@ onBeforeUnmount(() => {
               <span
                 v-if="asset.assetType === 'Extension'"
                 class="asset-card__publisher"
-                :title="assetPublisher(asset) || '未指定发布人'"
+                :title="assetPersonName(assetPublisher(asset), '未指定发布人')"
               >
                 {{ assetPersonName(assetPublisher(asset)) }}
               </span>
               <span
                 v-else
                 class="asset-card__developer"
-                :title="asset.developer || '未指定开发责任人'"
+                :title="assetPersonName(asset.developer, '未指定开发责任人')"
               >
                 {{ assetPersonName(asset.developer) }}
               </span>
@@ -1353,7 +1414,6 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 role="menuitem"
-                :disabled="!canAccessAsset(asset)"
                 @click="openDetail(asset)"
               >
                 查看详情
@@ -1416,6 +1476,7 @@ onBeforeUnmount(() => {
         </button>
         <div v-if="selectedAsset.assetType !== 'Extension'" class="asset-detail-toolbar__actions">
           <button
+            v-if="false"
             type="button"
             class="asset-button is-primary asset-detail__edit"
             :disabled="detailSaving || !canEditDetail"
@@ -1425,6 +1486,7 @@ onBeforeUnmount(() => {
             编辑
           </button>
           <button
+            v-if="false"
             type="button"
             class="asset-delete-button"
             aria-label="删除资产"
@@ -1558,7 +1620,8 @@ onBeforeUnmount(() => {
         </div>
 
         <nav
-          class="asset-subtabs asset-detail__tabs has-version-panel"
+          class="asset-subtabs asset-detail__tabs"
+          :class="{ 'has-version-panel': !isExtensionHistoryTab }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
         >
@@ -1579,8 +1642,9 @@ onBeforeUnmount(() => {
             v-if="selectedAsset.assetType === 'Extension' && canViewAssetHistory(selectedAsset)"
             id="asset-detail-tab-history"
             type="button"
-            :disabled="extensionReleaseLoading"
-            @click="openExtensionRelease(selectedAsset, 'history')"
+            :class="{ 'is-active': detailTab === 'history' }"
+            :disabled="extensionHistoryLoading"
+            @click="openExtensionHistoryTab"
           >
             发布记录
           </button>
@@ -1598,75 +1662,120 @@ onBeforeUnmount(() => {
           </button>
         </nav>
 
-        <section
-          class="asset-detail__version-panel"
-          :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
-          aria-label="版本信息"
-        >
-          <div class="asset-detail__version-row">
-            <span class="asset-detail__version-label">版本</span>
-            <HarnessVersionPicker
-              v-model="selectedVersion"
-              :versions="detailVersions"
-              :statuses="detailVersionStatuses"
-              :disabled="detailLoading || detailSaving"
-              @change="changeDetailVersion"
-            />
-          </div>
-          <p v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__hint">
-            Extension
-            由场景编排生成并发布，新版本发布请前往工作流页面的对应场景操作；本页面仅展示已发布的产物。
-          </p>
-          <div class="asset-detail__version-meta">
-            <span
-              v-if="selectedVersionStatus"
-              class="asset-badge"
-              :class="statusClassForLabel(selectedVersionStatus)"
-            >
-              {{ selectedVersionStatus }}
-            </span>
-            <span class="asset-detail__uploaded-at">
-              上传时间：<strong>{{ selectedVersionUploadedAt }}</strong>
-            </span>
-          </div>
-        </section>
+        <div class="asset-detail__content-scroll">
+          <section
+            v-if="!isExtensionHistoryTab"
+            class="asset-detail__version-panel"
+            :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
+            aria-label="版本信息"
+          >
+            <div class="asset-detail__version-row">
+              <span class="asset-detail__version-label">版本</span>
+              <HarnessVersionPicker
+                v-model="selectedVersion"
+                :versions="detailVersions"
+                :statuses="detailVersionStatuses"
+                :disabled="detailLoading || detailSaving"
+                @change="changeDetailVersion"
+              />
+            </div>
+            <p v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__hint">
+              Extension
+              由场景编排生成并发布，新版本发布请前往工作流页面的对应场景操作；本页面仅展示已发布的产物。
+            </p>
+            <div class="asset-detail__version-meta">
+              <span
+                v-if="selectedVersionStatus"
+                class="asset-badge"
+                :class="statusClassForLabel(selectedVersionStatus)"
+              >
+                {{ selectedVersionStatus }}
+              </span>
+              <span class="asset-detail__uploaded-at">
+                上传时间：<strong>{{ selectedVersionUploadedAt }}</strong>
+              </span>
+            </div>
+          </section>
 
-        <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
-          暂无版本，当前无法查看详情
-        </div>
-        <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
-        <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
-          <span>{{ detailError }}</span>
-          <button type="button" class="asset-button is-secondary" @click="loadDetail">
-            重新加载
-          </button>
-        </div>
-        <HarnessCatalogDetailDialog
-          v-else-if="catalogDetailRecord"
-          open
-          embedded
-          :record="catalogDetailRecord"
-          :user-id="props.userId"
-          :capability-type="catalogCapabilityType"
-          :version="selectedVersion"
-          :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
-        />
-        <HarnessExtensionDetailContent
-          v-else-if="detail?.capabilities"
-          :key="`${selectedAssetKey}:${selectedVersion}`"
-          :name="selectedAsset.name"
-          :user-id="props.userId"
-          :capabilities="detail.capabilities"
-        />
-        <div v-else class="asset-file-tree">
-          <strong>📁 {{ selectedAsset.name }}/</strong>
-          <div v-if="detail?.files.length" class="asset-file-tree__branch">
-            <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
-              <span>📄 {{ file.path }}</span>
-              <pre>{{ file.content || '暂无文件内容' }}</pre>
-            </template>
+          <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
+            暂无版本，当前无法查看详情
           </div>
-          <div v-else class="asset-empty">该版本暂无文件</div>
+          <template v-else-if="isExtensionHistoryTab">
+            <div v-if="extensionHistoryLoading" class="asset-empty" role="status">
+              正在加载发布历史…
+            </div>
+            <div
+              v-else-if="extensionHistoryError"
+              class="asset-empty asset-empty--error"
+              role="alert"
+            >
+              <span>{{ extensionHistoryError }}</span>
+              <button
+                type="button"
+                class="asset-button is-secondary"
+                @click="loadExtensionHistory"
+              >
+                重新加载
+              </button>
+            </div>
+            <ExtensionPublishPage
+              v-else-if="extensionHistoryContext"
+              :release-context="extensionHistoryContext"
+              :initial-panel="'history'"
+              :release-chrome="false"
+              :user-id="props.userId"
+              :user-name="props.userName"
+              @close="detailTab = 'content'"
+              @released="onExtensionReleased"
+              @notify="showToast"
+            />
+            <div v-else class="asset-empty">
+              <span>发布记录暂未加载</span>
+              <button
+                type="button"
+                class="asset-button is-secondary"
+                @click="loadExtensionHistory"
+              >
+                重新加载
+              </button>
+            </div>
+          </template>
+          <div v-else-if="detailLoading" class="asset-empty" role="status">
+            正在加载资产内容…
+          </div>
+          <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
+            <span>{{ detailError }}</span>
+            <button type="button" class="asset-button is-secondary" @click="loadDetail">
+              重新加载
+            </button>
+          </div>
+          <HarnessCatalogDetailDialog
+            v-else-if="catalogDetailRecord"
+            open
+            embedded
+            :record="catalogDetailRecord"
+            :user-id="props.userId"
+            :capability-type="catalogCapabilityType"
+            :version="selectedVersion"
+            :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
+          />
+          <HarnessExtensionDetailContent
+            v-else-if="detail?.capabilities"
+            :key="`${selectedAssetKey}:${selectedVersion}`"
+            :name="selectedAsset.name"
+            :user-id="props.userId"
+            :capabilities="detail.capabilities"
+          />
+          <div v-else class="asset-file-tree">
+            <strong>📁 {{ selectedAsset.name }}/</strong>
+            <div v-if="detail?.files.length" class="asset-file-tree__branch">
+              <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
+                <span>📄 {{ file.path }}</span>
+                <pre>{{ file.content || '暂无文件内容' }}</pre>
+              </template>
+            </div>
+            <div v-else class="asset-empty">该版本暂无文件</div>
+          </div>
         </div>
       </section>
     </template>
@@ -2500,10 +2609,18 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   padding: 24px;
+  padding-bottom: 0;
   border: 1px solid #eef0f3;
   border-radius: 10px;
   background: #fff;
+}
+
+.asset-page > .asset-detail {
+  overflow: hidden;
 }
 
 .asset-detail__header {
@@ -2776,6 +2893,39 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 
+.asset-detail__content-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0 0 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar {
+  width: 9px;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #cbd5e1;
+  background-clip: padding-box;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
 .asset-detail__tabs button {
   margin-bottom: -1px;
   padding: 10px 14px;
@@ -2805,7 +2955,7 @@ onBeforeUnmount(() => {
 
 .asset-detail__version-panel {
   box-sizing: border-box;
-  margin: 0 -24px 18px;
+  margin: 0 0 18px;
   padding: 16px 24px 18px;
   background: #f3f6fb;
 }
@@ -2995,12 +3145,14 @@ onBeforeUnmount(() => {
   }
 
   .asset-detail {
-    padding: 18px 16px;
+    padding: 18px 16px 0;
+  }
+
+  .asset-detail__content-scroll {
+    padding-bottom: 18px;
   }
 
   .asset-detail__version-panel {
-    margin-right: -16px;
-    margin-left: -16px;
     padding-right: 16px;
     padding-left: 16px;
   }

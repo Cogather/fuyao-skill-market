@@ -1,5 +1,5 @@
 import { openHarnessSelect, selectHarnessOption } from '../helpers/selectHarnessOption';
-import { clickAssetCardAction, openAssetCardMenu } from '../helpers/assetCardActions';
+import { openAssetCardMenu } from '../helpers/assetCardActions';
 import type { Locator, Page, Request } from '@playwright/test';
 
 import { expect, test } from '../fixtures/base';
@@ -590,11 +590,12 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.getByRole('button', { name: '发布', exact: true }).click();
 
     const publishDialog = page.getByRole('region', { name: /发布 Extension/ });
-    await expect(publishDialog.getByRole('textbox')).toHaveCount(0);
+    await expect(publishDialog.getByLabel('Extension 描述', { exact: true })).toHaveValue(
+      'HTTP Extension 发布摘要',
+    );
     await expect(
       publishDialog.getByRole('heading', { name: 'harness-pipeline-build-extension', exact: true }),
     ).toBeVisible();
-    await expect(publishDialog.getByText('HTTP Extension 发布摘要', { exact: true })).toBeVisible();
     await selectHarnessOption(publishDialog.getByLabel(/发布通道/), 'product');
     const organizationSelect = page.getByRole('combobox', { name: '目标组织' });
     await expect(
@@ -615,11 +616,15 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.getByRole('button', { name: '确认发布' }).click();
 
     await expect(publishDialog).toBeHidden();
-    await expect(assetCard(page, 'harness-pipeline-build-extension')).toBeVisible();
-    expect(historyRequests).toHaveLength(0);
-    await clickAssetCardAction(assetCard(page, 'harness-pipeline-build-extension'), '发布历史');
     const historyDialog = page.getByRole('region', { name: /发布历史/ });
+    await expect(historyDialog).toBeVisible();
+    await expect(historyDialog.locator('.timeline-item').first()).toContainText('进行中');
     await expect(historyDialog.locator('.timeline-item').first()).toContainText('HTTP 目标组织');
+    await expect(historyDialog.getByRole('button', { name: '刷新发布历史' })).toBeEnabled();
+    expect(historyRequests).toHaveLength(1);
+    await historyDialog.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(historyDialog).toHaveCount(0);
+    await expect(assetCard(page, 'harness-pipeline-build-extension')).toBeVisible();
 
     expect(organizationRequests.length).toBeGreaterThan(0);
     expect(historyRequests.length).toBeGreaterThan(0);

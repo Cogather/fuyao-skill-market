@@ -57,6 +57,7 @@ const props = withDefaults(
     restrictToAllowedDepartments?: boolean;
     initialScope?: HarnessScopeSnapshot;
     releaseContext?: ExtensionReleaseContext;
+    releaseChrome?: boolean;
     initialPanel?: Exclude<ExtensionModal, null>;
     preferredOrganization?: { id?: string | null; name?: string | null };
   }>(),
@@ -69,6 +70,7 @@ const props = withDefaults(
     restrictToAllowedDepartments: false,
     initialScope: undefined,
     releaseContext: undefined,
+    releaseChrome: true,
     initialPanel: 'publish',
     preferredOrganization: undefined,
   },
@@ -733,7 +735,7 @@ const publishExtension = computed(() => {
   const latest = scene ? latestSuccessfulRelease(scene) : null;
   return {
     name: scene?.extension.name || latest?.extensionName || '',
-    description: scene?.extension.description || latest?.description || '',
+    description: publishForm.description,
   };
 });
 const publishDimension = computed(() => {
@@ -743,6 +745,10 @@ const publishDimension = computed(() => {
     type: scope?.dimType ?? appliedFilters.level,
     name: scope?.dimName || product?.name || appliedFilters.departmentPath.at(-1) || '未提供',
   };
+});
+const historySceneName = computed(() => {
+  const scene = modalScene.value;
+  return [scene?.primary, scene?.name].filter(Boolean).join(' / ') || '未提供场景';
 });
 const publishForm = reactive({
   name: '',
@@ -773,6 +779,24 @@ let historyLoadSequence = 0;
 const retryingReleaseId = ref('');
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
 const publishItems = computed(() => (modalScene.value ? capabilityItems(modalScene.value) : []));
+const publishExpandedFolders = ref<Set<ExtensionCapabilityType>>(
+  new Set(capabilitySections.map((section) => section.type)),
+);
+
+function publishItemsForType(type: ExtensionCapabilityType): ExtensionReleaseItem[] {
+  return publishItems.value.filter((item) => item.type === type);
+}
+
+function isPublishFolderExpanded(type: ExtensionCapabilityType): boolean {
+  return publishExpandedFolders.value.has(type);
+}
+
+function togglePublishFolder(type: ExtensionCapabilityType): void {
+  const next = new Set(publishExpandedFolders.value);
+  if (next.has(type)) next.delete(type);
+  else next.add(type);
+  publishExpandedFolders.value = next;
+}
 const historyLimit = ref(3);
 const modalHistory = computed(() => {
   if (!modalScene.value) return [];
@@ -795,12 +819,12 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
     return;
   }
   modalSceneId.value = scene.id;
+  const latest = latestSuccessfulRelease(scene);
   if (!props.releaseContext) {
-    const latest = latestSuccessfulRelease(scene);
     publishForm.name =
       scene.extension.name || latest?.extensionName || requiredExtensionNamePrefix.value;
-    publishForm.description = scene.extension.description;
   }
+  publishForm.description = scene.extension.description || latest?.description || '';
   publishForm.channel = 'beta';
   activeModal.value = 'publish';
   publishError.value = blockedReason;
@@ -812,12 +836,10 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   }
 }
 
-function finishPublish(): void {
+function finishPublish(scene: ExtensionScene): void {
   emit('released');
-  if (props.releaseContext && !transportIsHttp) {
-    historyLimit.value = 3;
-    historyError.value = '';
-    activeModal.value = 'history';
+  if (props.releaseContext) {
+    void openHistoryModal(scene);
   } else {
     activeModal.value = null;
   }
@@ -902,9 +924,7 @@ async function confirmPublish(): Promise<void> {
     }
   }
   if (!description) {
-    publishError.value = props.releaseContext
-      ? 'Extension 描述缺失，请完善资产信息后重新发布'
-      : '请输入 Extension 描述';
+    publishError.value = '请输入 Extension 描述';
     return;
   }
   const organization =
@@ -935,7 +955,7 @@ async function confirmPublish(): Promise<void> {
       });
       const sceneId = scene.id;
       if (!props.releaseContext) await refreshHttpScenes(sceneId, false);
-      finishPublish();
+      finishPublish(scene);
       showToast(`已提交 ${publishForm.channel} 发布 → ${organization.name}，后台处理中`);
     } catch (error) {
       publishError.value = errorMessage(error, 'Extension 发布失败');
@@ -958,7 +978,7 @@ async function confirmPublish(): Promise<void> {
     organization: organization.name,
     items: publishItems.value,
   };
-  finishPublish();
+  finishPublish(scene);
   showToast(
     `已提交 ${scene.publishing.channel} 发布 v${scene.publishing.version} → ${organization.name}，后台处理中`,
   );
@@ -1126,6 +1146,7 @@ onBeforeUnmount(() => {
   >
     <template v-if="releaseContext">
       <button
+        v-if="releaseChrome"
         type="button"
         class="extension-release__back"
         :disabled="publishSubmitting || Boolean(retryingReleaseId)"
@@ -1133,9 +1154,15 @@ onBeforeUnmount(() => {
       >
         <span aria-hidden="true">←</span> 返回
       </button>
-      <header class="extension-release__heading">
+      <header
+        v-if="releaseChrome || activeModal === 'history'"
+        class="extension-release__heading"
+        :class="{ 'extension-release__heading--chromeless': !releaseChrome }"
+      >
         <div class="extension-release__title">
-          <h2>{{ activeModal === 'history' ? '发布历史' : '发布' }}</h2>
+          <h2 v-if="releaseChrome">
+            {{ activeModal === 'history' ? '发布历史' : '发布' }}
+          </h2>
           <button
             v-if="activeModal === 'history'"
             type="button"
@@ -1153,7 +1180,7 @@ onBeforeUnmount(() => {
             </svg>
           </button>
         </div>
-        <span class="extension-release__badge">Extension</span>
+        <span v-if="releaseChrome" class="extension-release__badge">Extension</span>
       </header>
     </template>
     <template v-else>
@@ -1542,9 +1569,6 @@ onBeforeUnmount(() => {
                   <h4 class="publish-overview__name">
                     {{ publishExtension.name || '未提供名称' }}
                   </h4>
-                  <p class="publish-overview__description">
-                    {{ publishExtension.description || '暂无描述' }}
-                  </p>
                 </div>
               </div>
               <dl class="publish-overview__metadata">
@@ -1631,26 +1655,88 @@ onBeforeUnmount(() => {
                   ]"
                 />
               </label>
+              <label v-if="releaseContext" class="modal-field is-wide">
+                <span>Extension 描述 <em>*</em></span>
+                <textarea
+                  v-model="publishForm.description"
+                  rows="3"
+                  placeholder="请输入 Extension 描述"
+                  aria-label="Extension 描述"
+                  :disabled="publishSubmitting"
+                />
+              </label>
             </div>
             <div class="modal-field">
               <span>包含清单（{{ publishItems.length }} 项）</span>
-              <ul class="publish-summary">
-                <li v-for="item in publishItems" :key="`${item.type}-${item.name}`">
-                  <img
-                    class="capability-icon"
-                    :src="capabilityTypeMeta[item.type].iconSrc"
-                    :alt="capabilityTypeMeta[item.type].label"
-                  />
-                  <span class="capability-type-tag" :class="`capability-type-tag--${item.type}`">
-                    {{ capabilityTypeMeta[item.type].label }}
-                  </span>
-                  <strong>{{ item.name }}</strong>
-                  <span>v{{ displayVersion(item.version) }}</span>
-                </li>
-              </ul>
+              <div class="publish-summary">
+                <section
+                  v-for="section in capabilitySections"
+                  :key="section.type"
+                  class="capability-folder"
+                >
+                  <button
+                    type="button"
+                    class="folder-heading"
+                    :aria-expanded="isPublishFolderExpanded(section.type)"
+                    @click="togglePublishFolder(section.type)"
+                  >
+                    <span
+                      class="folder-caret"
+                      :class="{ 'is-open': isPublishFolderExpanded(section.type) }"
+                      >›</span
+                    >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" />
+                    </svg>
+                    <strong>{{ section.folder }}/</strong>
+                    <span class="folder-count">{{ publishItemsForType(section.type).length }}</span>
+                  </button>
+                  <ul
+                    v-if="publishItemsForType(section.type).length"
+                    v-show="isPublishFolderExpanded(section.type)"
+                    class="capability-list"
+                  >
+                    <li
+                      v-for="item in publishItemsForType(section.type)"
+                      :key="`${item.type}-${item.name}`"
+                      class="capability-item"
+                    >
+                      <div class="capability-row capability-row--static">
+                        <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
+                        <span
+                          class="capability-type-tag"
+                          :class="`capability-type-tag--${item.type}`"
+                        >
+                          {{ capabilityTypeMeta[item.type].label }}
+                        </span>
+                        <span class="capability-name">{{ item.name }}</span>
+                        <span class="capability-release-meta">
+                          <span class="capability-version">v{{ displayVersion(item.version) }}</span>
+                        </span>
+                      </div>
+                    </li>
+                  </ul>
+                  <div v-else v-show="isPublishFolderExpanded(section.type)" class="folder-empty">
+                    无
+                  </div>
+                </section>
+              </div>
             </div>
-            <p class="extension-follow-publish-note">
-              清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。
+            <p
+              class="extension-follow-publish-note"
+              :class="{
+                'is-success':
+                  modalScene.publishCheck?.canPublish === true &&
+                  Boolean(modalScene.publishCheck?.message),
+                'is-error':
+                  modalScene.publishCheck?.canPublish === false &&
+                  Boolean(modalScene.publishCheck?.message),
+              }"
+            >
+              {{
+                modalScene.publishCheck?.message ||
+                '清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。'
+              }}
             </p>
             <div v-if="organizationError" class="modal-error" role="alert">
               <p>{{ organizationError }}</p>
@@ -1663,15 +1749,6 @@ onBeforeUnmount(() => {
                 重新加载组织
               </button>
             </div>
-            <p
-              v-if="
-                modalScene.publishCheck?.canPublish === false && modalScene.publishCheck.message
-              "
-              class="publish-check-message"
-              role="status"
-            >
-              {{ modalScene.publishCheck.message }}
-            </p>
             <p v-if="publishError" class="modal-error" role="alert">{{ publishError }}</p>
             <button
               v-if="releaseContext && (!modalScene.publishable || modalScene.publishing)"
@@ -1725,7 +1802,32 @@ onBeforeUnmount(() => {
           <h3 id="history-modal-title">
             <template v-if="!releaseContext">发布历史 · </template>
             {{ modalScene.name || modalScene.extension.name }}
-            <small class="history-description">
+            <span v-if="releaseContext" class="history-context">
+              <span
+                class="history-context__item history-context__item--dimension"
+                aria-label="所属 DIM"
+                title="所属 DIM"
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                  <path d="m8 2.25 4.75 2.5v6.5L8 13.75l-4.75-2.5v-6.5L8 2.25Z" />
+                  <path d="M3.25 4.75 8 7.25l4.75-2.5M8 7.25v6.5" />
+                </svg>
+                <span>{{ publishDimension.name }}</span>
+              </span>
+              <span
+                class="history-context__item history-context__item--scene"
+                aria-label="所属场景"
+                title="所属场景"
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                  <circle cx="3.25" cy="4" r="1.25" />
+                  <circle cx="12.75" cy="12" r="1.25" />
+                  <path d="M4.5 4h2A2.5 2.5 0 0 1 9 6.5v3A2.5 2.5 0 0 0 11.5 12" />
+                </svg>
+                <span>{{ historySceneName }}</span>
+              </span>
+            </span>
+            <small v-else class="history-description">
               {{ modalScene.extension.description || '暂无描述' }}
             </small>
           </h3>
@@ -1939,6 +2041,10 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.extension-release__heading--chromeless {
+  justify-content: flex-end;
 }
 
 .extension-release__heading h2 {
@@ -2373,8 +2479,7 @@ onBeforeUnmount(() => {
 
 .scene-list,
 .capability-list,
-.file-list,
-.publish-summary {
+.file-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3023,6 +3128,11 @@ onBeforeUnmount(() => {
 }
 
 .extension-modal--history .modal-header h3 {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
 }
 
@@ -3070,6 +3180,50 @@ onBeforeUnmount(() => {
   color: #667085;
   font-size: 12px;
   font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.history-context {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-context__item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid #dfe7f2;
+  border-radius: 5px;
+  background: #f8fafc;
+  color: #52647d;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.history-context__item--dimension {
+  border-color: #dbe5f6;
+  background: #f4f7fc;
+  color: #486591;
+}
+
+.history-context__item svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+}
+
+.history-context__item > span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -3145,20 +3299,11 @@ onBeforeUnmount(() => {
 }
 
 .publish-overview__name {
-  margin: 0 0 10px;
+  margin: 0;
   color: #17233d;
   font-size: 22px;
   font-weight: 650;
   line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.publish-overview__description {
-  margin: 0;
-  color: #526179;
-  font-size: 13px;
-  line-height: 1.8;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -3241,6 +3386,10 @@ onBeforeUnmount(() => {
   align-content: start;
 }
 
+.publish-settings .modal-field.is-wide {
+  grid-column: 1 / -1;
+}
+
 .modal-field {
   display: grid;
   gap: 6px;
@@ -3302,42 +3451,19 @@ onBeforeUnmount(() => {
 }
 
 .publish-summary {
-  overflow: hidden;
+  padding: 12px 14px 14px;
   border: 1px solid #e1e6ee;
   border-radius: 9px;
   background: #fbfcff;
 }
 
-.publish-summary li {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 11px;
-  color: #17233d;
-  font-size: 12px;
+.publish-summary .capability-row--static {
+  cursor: default;
 }
 
-.publish-summary li + li {
-  border-top: 1px solid #edf0f4;
-}
-
-.publish-summary .capability-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-}
-
-.publish-summary strong {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.publish-summary > li > span:last-child {
-  color: #16a34a;
-  font-size: 11px;
+.publish-summary .capability-row--static:hover {
+  border-color: transparent;
+  background: transparent;
 }
 
 .extension-follow-publish-note {
@@ -3347,16 +3473,12 @@ onBeforeUnmount(() => {
   line-height: 1.55;
 }
 
-.publish-check-message {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: #f5f7fc;
-  color: #52647d;
-  font-size: 13px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.extension-follow-publish-note.is-success {
+  color: #15803d;
+}
+
+.extension-follow-publish-note.is-error {
+  color: #dc2626;
 }
 
 .modal-error {

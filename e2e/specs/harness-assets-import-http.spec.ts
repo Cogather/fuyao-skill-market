@@ -137,8 +137,8 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
           await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'target-product');
         }
         const download = dialog
-          .locator('header')
-          .getByRole('button', { name: '下载已有数据', exact: true });
+          .locator('footer')
+          .getByRole('button', { name: '下载', exact: true });
         await expect(download).toBeEnabled();
         await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toHaveCount(0);
         await expect(dialog.locator('.catalog-import-dropzone')).toHaveCount(0);
@@ -182,7 +182,7 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
         await expect(
-          dialog.getByRole('button', { name: '下载已有数据', exact: true }),
+          dialog.getByRole('button', { name: '下载', exact: true }),
         ).toHaveCount(0);
         await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
         await selectHarnessOption(dialog.getByLabel('层级'), level);
@@ -297,7 +297,7 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
   test('导出需完整归属，失败可重试，处理中锁定归属', async ({ page }) => {
     const { imports } = await prepareAssets(page);
     const dialog = await openExport(page, 'Skill');
-    const download = dialog.getByRole('button', { name: '下载已有数据', exact: true });
+    const download = dialog.getByRole('button', { name: '下载', exact: true });
     await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), '');
     await expect(download).toBeDisabled();
     await selectHarnessOption(dialog.getByLabel('产品', { exact: true }), 'list-product');

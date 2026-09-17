@@ -1,5 +1,6 @@
 import type { UpdateSkillMasterManagementBody } from './apiTypes';
 import type {
+  FetchHarnessAssetPlannedCompleteDateInput,
   HarnessAssetDetailsUpdate,
   UpdateHarnessAssetDetailsInput,
 } from './assetManagementTypes';
@@ -19,6 +20,14 @@ import {
 } from '../../utils/catalogItemName';
 
 const text = (value: unknown): string => String(value ?? '').trim();
+
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function validateNameChange(
   type: string,
@@ -68,6 +77,13 @@ export async function updateHarnessAssetDetails(
         : { developOwnerName: personName, developOwnerId: id },
     );
   }
+  const plannedCompleteDate = text(input.plannedCompleteDate);
+  if (input.plannedCompleteDate !== undefined) {
+    if (!plannedCompleteDate) throw new Error('请选择计划完成时间');
+    if (plannedCompleteDate < currentLocalDate())
+      throw new Error('计划完成时间不能早于当前日期');
+    result.plannedCompleteDate = plannedCompleteDate;
+  }
   if (transport === 'mock') {
     if (asset.assetType === 'Skill') {
       const record = getMockSkillMasterManagementRecord(asset.id);
@@ -85,6 +101,7 @@ export async function updateHarnessAssetDetails(
         skillName: name,
         skillDescription: description,
         ...people,
+        ...(plannedCompleteDate ? { planFinishDate: plannedCompleteDate } : {}),
       });
       return result;
     }
@@ -107,6 +124,7 @@ export async function updateHarnessAssetDetails(
       description,
       ...(result.owner === undefined ? {} : { owner: result.owner }),
       ...(result.developer === undefined ? {} : { developOwner: result.developer }),
+      ...(plannedCompleteDate ? { plannedCompleteDate } : {}),
     };
     updateMockCapabilityCatalogDetails(
       asset.assetType === 'Agent' ? 'agent' : 'command',
@@ -132,7 +150,11 @@ export async function updateHarnessAssetDetails(
   if (text(asset.dimCode) && text(asset.dimCode) !== dimCode)
     throw new Error('资产归属编码不一致，请刷新后重试');
   const params = { userId, dimType: text(record.dimType), dimCode, dimName: text(record.dimName) };
-  const body = { id: record.id as string | number, ...people };
+  const body = {
+    id: record.id as string | number,
+    ...people,
+    ...(plannedCompleteDate ? { planFinishDate: plannedCompleteDate } : {}),
+  };
   const response =
     asset.assetType === 'Skill'
       ? await skillBaseService.updateSkillMasterManagement(
@@ -151,4 +173,27 @@ export async function updateHarnessAssetDetails(
   if (response?.meta?.success !== true)
     throw new Error(response?.meta?.message || '资产信息保存失败，请稍后重试');
   return result;
+}
+
+export async function fetchHarnessAssetPlannedCompleteDate(
+  input: FetchHarnessAssetPlannedCompleteDateInput,
+  transport: 'http' | 'mock',
+): Promise<string> {
+  const { asset } = input;
+  if (asset.assetType === 'Extension') return '';
+  if (transport === 'mock') {
+    if (asset.assetType === 'Skill') {
+      const record = getMockSkillMasterManagementRecord(asset.id);
+      return text(record?.planFinishDate);
+    }
+    const records = await queryMockCapabilityCatalog(
+      asset.assetType === 'Agent' ? 'agent' : 'command',
+    );
+    const record = records.find((item) => item.id === asset.id);
+    return text(record?.plannedCompleteDate);
+  }
+  const userId = text(input.userId);
+  if (!userId) return '';
+  const record = await resolveHarnessAssetMasterRecord(asset, asset.assetType, userId);
+  return text(record.planFinishDate ?? record.plannedCompleteDate);
 }

@@ -47,7 +47,10 @@ import type {
 } from './assetManagementTypes';
 import { normalizeHarnessAssetVersion } from './assetManagementTypes';
 import { updateHarnessAssetPerson } from './assetPersonManagementService';
-import { updateHarnessAssetDetails } from './assetDetailEditingService';
+import {
+  fetchHarnessAssetPlannedCompleteDate,
+  updateHarnessAssetDetails,
+} from './assetDetailEditingService';
 import { deleteHarnessAsset } from './assetDeletionService';
 import {
   queryHttpHarnessAssetComponentDetail,
@@ -912,7 +915,17 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     loadMissingProducts = true,
   ): Promise<ExtensionScene | undefined> {
     const cached = sceneByAssetId.get(asset.id);
-    if (transport !== 'http' || (cached && !refresh)) return cached;
+    if (transport !== 'http') {
+      if (cached && !refresh) return cached;
+      // Mock 模式按资产 ID 直接复用共享 Extension 场景，不依赖资产清单预热缓存。
+      const scene = sharedMockScenes.find((item) => item.id === asset.id);
+      if (scene) {
+        sceneByAssetId.set(scene.id, scene);
+        scopeByAssetId.set(scene.id, scope);
+      }
+      return scene ?? cached;
+    }
+    if (cached && !refresh) return cached;
     const pending = pendingExtensionAssets.get(asset.id);
     if (pending) return pending;
     // 发布准备按 Extension 编码获取场景配置及详情中的发布摘要。
@@ -971,6 +984,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     deleteAsset: (input) => deleteHarnessAsset(input, transport),
     updatePerson: (input) => updateHarnessAssetPerson(input, transport),
     updateDetails: (input) => updateHarnessAssetDetails(input, transport),
+    fetchPlannedCompleteDate: (input) => fetchHarnessAssetPlannedCompleteDate(input, transport),
 
     async queryAssets(scope, requestedPage): Promise<HarnessAssetPageResult> {
       const page = normalizedPage(requestedPage);

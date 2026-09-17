@@ -506,8 +506,8 @@ export const skillBaseService = {
   queryHarnessAssetComponents: (
     body: QueryHarnessAssetComponentsBody,
   ): Promise<HarnessAssetComponentsResponse> => {
-    return httpRequest.harnessApi<HarnessAssetComponentsResponse>({
-      url: '/components/query',
+    return httpRequest.api<HarnessAssetComponentsResponse>({
+      url: '/v1/harness/plans/components/query',
       method: 'post',
       data: body,
     });
@@ -516,8 +516,8 @@ export const skillBaseService = {
   queryHarnessAssetComponentDetail: (
     params: QueryHarnessAssetComponentDetailParams,
   ): Promise<ApiEnvelope<HarnessAssetComponentDetailDto>> => {
-    return httpRequest.harnessApi<ApiEnvelope<HarnessAssetComponentDetailDto>>({
-      url: '/components/detail',
+    return httpRequest.api<ApiEnvelope<HarnessAssetComponentDetailDto>>({
+      url: '/v1/harness/plans/components/detail',
       method: 'get',
       params,
     });
