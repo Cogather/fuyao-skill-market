@@ -60,6 +60,9 @@ try {
       },
     ];
     const calls = [];
+    let activityQueries = 0;
+    let detailQueries = 0;
+    let poolQueries = 0;
     const detail = () => ({
       flowName: '流程',
       flowDescription: '',
@@ -87,8 +90,12 @@ try {
         (row) =>
           row.activityNodeName === stage && (row.subActivityNodeName || null) === (node || null),
       );
-    api.queryHarnessWorkflowDetail = async () => success(detail());
+    api.queryHarnessWorkflowDetail = async () => {
+      detailQueries++;
+      return success(detail());
+    };
     api.queryActivitiesByScene = async (params) => {
+      activityQueries++;
       assert.deepEqual(params, scope);
       return success(rows.map((row) => ({ ...scope, ...clone(row) })));
     };
@@ -126,7 +133,10 @@ try {
       }));
       return success(null);
     };
-    api.querySceneAssetPool = async () => success(clone(pool));
+    api.querySceneAssetPool = async () => {
+      poolQueries++;
+      return success(clone(pool));
+    };
     for (const method of [
       'queryConfigurationBindings',
       'skillUnbindScene',
@@ -150,7 +160,17 @@ try {
       await repository.saveDesignActivities(scope, mapped.workflow, migrated);
       await repository.saveDesignAssets(scope, mapped.workflow, mapped.assets, migrated);
     };
-    return { before, mapped, calls, save, detail, rows: () => rows };
+    return {
+      before,
+      mapped,
+      calls,
+      save,
+      detail,
+      rows: () => rows,
+      activityQueries: () => activityQueries,
+      detailQueries: () => detailQueries,
+      poolQueries: () => poolQueries,
+    };
   }
   await test('renaming a bound node migrates both Skill and Agent bindings without rebinds', async () => {
     const f = fixture();
@@ -193,6 +213,9 @@ try {
       ['交付'],
     );
     assert.deepEqual(f.detail().assetPool, pool);
+    assert.equal(f.activityQueries(), 1);
+    assert.equal(f.detailQueries(), 0);
+    assert.equal(f.poolQueries(), 0);
   });
   await test('deleting a virtual stage never issues a DELETE for a missing parent record', async () => {
     const f = fixture({ parent: false });
@@ -210,6 +233,9 @@ try {
     assert.equal(f.calls.filter(([op]) => op === 'delete').length, 1);
     assert.deepEqual(f.detail().stages[0].steps[0].boundAssets, [pool[0]]);
     assert.deepEqual(f.detail().assetPool, pool);
+    assert.equal(f.activityQueries(), 0);
+    assert.equal(f.detailQueries(), 0);
+    assert.equal(f.poolQueries(), 0);
   });
   await test('a partially completed stage rename retries only remaining exact records', async () => {
     const f = fixture();

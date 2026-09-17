@@ -367,6 +367,25 @@ try {
     assert.equal(mapped.workflow.stages[0].steps[0].assets[0].assetId, mapped.assets[0]._id);
     assert.equal(mapped.assets[0].packageReady, true);
   });
+  await test('detail mapping treats a null child name as a stage placeholder, not a blank node', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        stages: [
+          {
+            activityNodeName: '编码',
+            sort: 0,
+            steps: [{ subActivityNodeName: null, sort: 0, boundAssets: [] }],
+          },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.equal(mapped.workflow.stages.length, 1);
+    assert.deepEqual(mapped.workflow.stages[0].steps, []);
+  });
   await test('detail mapping tolerates null Command names and uses a nonempty name alias', async () => {
     const mapped = repository.mapDesignDetail(
       context,
