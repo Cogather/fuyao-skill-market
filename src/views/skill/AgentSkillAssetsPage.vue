@@ -116,7 +116,7 @@ const products = ref<HarnessAssetProduct[]>([]);
 const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
-const detailTab = ref<'content' | 'report'>('content');
+const detailTab = ref<'content' | 'report' | 'history'>('content');
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
 const extensionRelease = ref<{
@@ -132,6 +132,9 @@ const extensionReleaseAttempt = ref<{
 } | null>(null);
 const extensionReturnView = ref<'list' | 'detail'>('list');
 let extensionReturnNeedsDetail = false;
+const extensionHistoryContext = ref<ExtensionReleaseContext | null>(null);
+const extensionHistoryLoading = ref(false);
+const extensionHistoryError = ref('');
 const cardMenuKey = ref('');
 const createAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
 const importAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
@@ -178,6 +181,8 @@ let assetSearchTimer: number | undefined;
 let productSequence = 0;
 let detailSequence = 0;
 let extensionReleaseSequence = 0;
+let extensionHistorySequence = 0;
+let assetsNeedRefresh = false;
 let toastTimer: number | undefined;
 
 function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
@@ -478,6 +483,9 @@ const detailVersions = computed(
 const extensionHasNoVersion = computed(
   () => selectedAsset.value?.assetType === 'Extension' && !selectedAsset.value.currentVersion,
 );
+const isExtensionHistoryTab = computed(
+  () => selectedAsset.value?.assetType === 'Extension' && detailTab.value === 'history',
+);
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
@@ -685,6 +693,7 @@ function scheduleAssetSearch(event: Event): void {
 }
 
 async function reloadAssets(): Promise<void> {
+  assetsNeedRefresh = false;
   const scope = currentScope.value;
   const sequence = resetAssetListState();
   if (!scope) {
@@ -874,6 +883,10 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
   closeCardMenu();
   cancelDetailEdit();
   detailSequence += 1;
+  extensionHistorySequence += 1;
+  extensionHistoryLoading.value = false;
+  extensionHistoryError.value = '';
+  extensionHistoryContext.value = null;
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
   selectedVersion.value = transportIsHttp ? '' : asset.currentVersion || asset.versions[0] || '';
   detailTab.value = 'content';
@@ -925,6 +938,7 @@ async function returnToAssetList(): Promise<void> {
   view.value = 'list';
   await nextTick();
   resetAssetScrollPosition();
+  if (assetsNeedRefresh) await reloadAssets();
 }
 
 async function changeDetailVersion(): Promise<void> {
@@ -1000,9 +1014,44 @@ async function reloadExtensionRelease(): Promise<void> {
   if (attempt) await openExtensionRelease(attempt.asset, attempt.mode);
 }
 
+function openExtensionHistoryTab(): void {
+  detailTab.value = 'history';
+  void loadExtensionHistory();
+}
+
+async function loadExtensionHistory(): Promise<void> {
+  const asset = selectedAsset.value;
+  const scope = currentScope.value;
+  if (!scope || !asset || asset.assetType !== 'Extension' || extensionHistoryLoading.value) return;
+  const sequence = ++extensionHistorySequence;
+  const requestedAssetKey = selectedAssetKey.value;
+  extensionHistoryError.value = '';
+  extensionHistoryLoading.value = true;
+  try {
+    const context = await api.queryExtensionReleaseContext(scope, asset, 'history');
+    if (
+      sequence !== extensionHistorySequence ||
+      view.value !== 'detail' ||
+      detailTab.value !== 'history' ||
+      selectedAssetKey.value !== requestedAssetKey
+    )
+      return;
+    extensionHistoryContext.value = context;
+  } catch (error) {
+    if (sequence === extensionHistorySequence)
+      extensionHistoryError.value = errorMessage(error, '发布历史加载失败');
+  } finally {
+    if (sequence === extensionHistorySequence) extensionHistoryLoading.value = false;
+  }
+}
+
 async function onExtensionReleased(): Promise<void> {
   if (transportIsHttp && extensionRelease.value?.mode === 'publish') {
     extensionReturnView.value = 'list';
+  }
+  if (view.value === 'detail') {
+    assetsNeedRefresh = true;
+    return;
   }
   await reloadAssets();
 }
@@ -1085,6 +1134,7 @@ onBeforeUnmount(() => {
   listSequence += 1;
   detailSequence += 1;
   extensionReleaseSequence += 1;
+  extensionHistorySequence += 1;
   if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
   if (assetSearchTimer !== undefined) window.clearTimeout(assetSearchTimer);
   window.clearTimeout(toastTimer);
@@ -1570,7 +1620,8 @@ onBeforeUnmount(() => {
         </div>
 
         <nav
-          class="asset-subtabs asset-detail__tabs has-version-panel"
+          class="asset-subtabs asset-detail__tabs"
+          :class="{ 'has-version-panel': !isExtensionHistoryTab }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
         >
@@ -1591,8 +1642,9 @@ onBeforeUnmount(() => {
             v-if="selectedAsset.assetType === 'Extension' && canViewAssetHistory(selectedAsset)"
             id="asset-detail-tab-history"
             type="button"
-            :disabled="extensionReleaseLoading"
-            @click="openExtensionRelease(selectedAsset, 'history')"
+            :class="{ 'is-active': detailTab === 'history' }"
+            :disabled="extensionHistoryLoading"
+            @click="openExtensionHistoryTab"
           >
             发布记录
           </button>
@@ -1611,6 +1663,7 @@ onBeforeUnmount(() => {
         </nav>
 
         <section
+          v-if="!isExtensionHistoryTab"
           class="asset-detail__version-panel"
           :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
           aria-label="版本信息"
@@ -1646,6 +1699,38 @@ onBeforeUnmount(() => {
         <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
           暂无版本，当前无法查看详情
         </div>
+        <template v-else-if="isExtensionHistoryTab">
+          <div v-if="extensionHistoryLoading" class="asset-empty" role="status">
+            正在加载发布历史…
+          </div>
+          <div
+            v-else-if="extensionHistoryError"
+            class="asset-empty asset-empty--error"
+            role="alert"
+          >
+            <span>{{ extensionHistoryError }}</span>
+            <button type="button" class="asset-button is-secondary" @click="loadExtensionHistory">
+              重新加载
+            </button>
+          </div>
+          <ExtensionPublishPage
+            v-else-if="extensionHistoryContext"
+            :release-context="extensionHistoryContext"
+            :initial-panel="'history'"
+            :release-chrome="false"
+            :user-id="props.userId"
+            :user-name="props.userName"
+            @close="detailTab = 'content'"
+            @released="onExtensionReleased"
+            @notify="showToast"
+          />
+          <div v-else class="asset-empty">
+            <span>发布记录暂未加载</span>
+            <button type="button" class="asset-button is-secondary" @click="loadExtensionHistory">
+              重新加载
+            </button>
+          </div>
+        </template>
         <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
         <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
           <span>{{ detailError }}</span>

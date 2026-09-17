@@ -270,7 +270,8 @@ const extensionBridgeSceneRecords: SceneRecord[] = [
 ];
 
 const EXTENSION_BRIDGE_SCENE_SEED_KEY = 'skill-market-workflow-extension-bridge-v1';
-const EXTENSION_BRIDGE_SEED_PREFIX = 'extension-bridge:';
+// 前缀版本升级后，已播种过的浏览器会再执行一次桥接（按 _id 去重），用于补充新增的桥接行。
+const EXTENSION_BRIDGE_SEED_PREFIX = 'extension-bridge-v2:';
 
 // 桥接工作流：工作流 _id 直接使用共享 Mock Extension 场景 ID，
 // 让“Harness 工作流”页的查看/发布能解析到对应场景（方案 A）。
@@ -327,6 +328,25 @@ const extensionBridgeSamples: Array<{
     offeringId: 'offering-harness-pipeline-valid',
     sceneRecordId: 'scene-release-governance-risk',
     extensionSceneId: 'scene-pipeline-release-risk',
+  },
+  // release-tools-2026 产品下的补充桥接：覆盖“已发布可查历史”和“待发布可直接发布”两类演示。
+  {
+    department: '持续交付组',
+    offeringId: 'offering-release-tools-2026-valid',
+    sceneRecordId: 'scene-dev-mml',
+    extensionSceneId: 'scene-release-mml',
+  },
+  {
+    department: '持续交付组',
+    offeringId: 'offering-release-tools-2026-valid',
+    sceneRecordId: 'scene-issue-locate-analysis',
+    extensionSceneId: 'scene-release-analysis',
+  },
+  {
+    department: '持续交付组',
+    offeringId: 'offering-release-tools-2026-valid',
+    sceneRecordId: 'scene-issue-locate-log',
+    extensionSceneId: 'scene-quality-log',
   },
 ];
 

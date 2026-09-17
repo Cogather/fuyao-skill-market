@@ -157,7 +157,7 @@ test.describe('Harness 工作流服务端列表', () => {
     });
   });
 
-  test('操作列始终显示查看并按状态、canPublish 和 changed 显示发布', async ({ page }) => {
+  test('操作列始终显示查看发布历史并按状态、canPublish 和 changed 显示发布', async ({ page }) => {
     await prepare(page);
     await page.route('**/api/harness/workflow/list**', (route) =>
       route.fulfill({
@@ -192,7 +192,7 @@ test.describe('Harness 工作流服务端列表', () => {
       '已发布无变更',
     ]) {
       await expect(
-        harness.workflowInventoryRow(name).getByRole('button', { name: '查看', exact: true }),
+        harness.workflowInventoryRow(name).getByRole('button', { name: '查看发布历史', exact: true }),
       ).toBeEnabled();
     }
     await expect(
@@ -217,7 +217,7 @@ test.describe('Harness 工作流服务端列表', () => {
     );
   });
 
-  test('查看进入 Extension 发布历史页面并按维度与场景查询记录', async ({ page }) => {
+  test('查看发布历史进入 Extension 发布历史页面并按维度与场景查询记录', async ({ page }) => {
     await prepare(page);
     const historyQueries: Request[] = [];
     let workflowDetailQueries = 0;
@@ -269,7 +269,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await mountWorkflowPage(page);
     await harness
       .workflowInventoryRow('接口生成流程')
-      .getByRole('button', { name: '查看', exact: true })
+      .getByRole('button', { name: '查看发布历史', exact: true })
       .click();
 
     const history = harness.workflowsPanel.getByRole('region', {
@@ -398,6 +398,10 @@ test.describe('Harness 工作流服务端列表', () => {
       commands: [{ name: '执行 Command', version: '1.2.0' }],
       agents: [{ name: '接口 Agent', version: '3.0.0' }],
     });
+
+    const historyRegion = harness.workflowsPanel.getByRole('region', { name: /发布历史/ });
+    await expect(historyRegion).toBeVisible();
+    await expect(historyRegion.getByRole('button', { name: '刷新发布历史' })).toBeEnabled();
   });
 
   test('失败可重试，空筛选仍可切换，过期请求不能覆盖新的状态结果', async ({ page }) => {

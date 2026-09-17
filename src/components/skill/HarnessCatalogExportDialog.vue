@@ -169,7 +169,7 @@ async function downloadExistingData(): Promise<void> {
     }
     downloadMessage.value = `已开始下载 ${props.assetType} 清单`;
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '下载已有数据失败，请重试';
+    error.value = cause instanceof Error ? cause.message : '下载失败，请重试';
   } finally {
     downloading.value = false;
   }
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
             :title="scopeError || '下载当前归属下的已有数据'"
             @click="downloadExistingData"
           >
-            {{ downloading ? '下载中…' : '下载已有数据' }}
+            {{ downloading ? '下载中…' : '下载' }}
           </button>
         </footer>
       </section>
@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(4px);
 }
 .catalog-export-dialog {
-  width: 804px;
+  width: min(1206px, calc(100vw - 48px));
   max-width: 100%;
   box-sizing: border-box;
   padding: 22px;
@@ -274,6 +274,9 @@ onBeforeUnmount(() => {
   box-shadow: 0 24px 70px rgba(20, 29, 49, 0.22);
   outline: none;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+}
+.catalog-export-dialog > :deep(.catalog-create-scope) {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(140px, 220px);
 }
 .catalog-export-dialog header {
   display: flex;

@@ -1,5 +1,4 @@
 import { selectHarnessOption } from '../helpers/selectHarnessOption';
-import { clickAssetCardAction } from '../helpers/assetCardActions';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
 
@@ -22,38 +21,46 @@ test.describe('资产卡片 Extension 发布页面', () => {
       '日志获取 Extension',
       '问题分析 Extension',
     ]);
-    await expect(page.locator('.asset-card__meta .asset-badge')).toHaveText([
-      '已发布',
-      '已发布',
-    ]);
-    await expect(page.getByRole('heading', { name: '构建诊断 Extension', exact: true })).toHaveCount(
+    await expect(page.locator('.asset-card__meta .asset-badge')).toHaveText(['已发布', '已发布']);
+    await expect(
+      page.getByRole('heading', { name: '构建诊断 Extension', exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'MML开发 Extension', exact: true })).toHaveCount(
       0,
     );
-    await expect(page.getByRole('heading', { name: 'MML开发 Extension', exact: true })).toHaveCount(0);
   });
 
-  test('已发布 Extension 可从卡片和详情进入历史并返回原视图', async ({
+  test('已发布 Extension 详情内切换发布记录页签展示历史并保持详情页', async ({
     page,
   }, testInfo) => {
     const card = page
       .locator('.asset-card')
       .filter({ has: page.getByRole('heading', { name: '问题分析 Extension', exact: true }) });
-    await clickAssetCardAction(card, '发布历史');
+    await card.getByRole('heading', { name: '问题分析 Extension', exact: true }).click();
+    await expect(page.locator('.asset-detail')).toBeVisible();
+    await expect(page.locator('.asset-detail__version-panel')).toBeVisible();
+
+    await page.locator('#asset-detail-tab-history').click();
     const history = page.getByRole('region', { name: /发布历史/ });
-    await expect(page.getByRole('heading', { name: '发布历史', exact: true })).toBeVisible();
-    await expect(page.getByRole('tablist', { name: 'Extension 发布分区' })).toHaveCount(0);
-    await expect(history.locator('.timeline-item')).toHaveCount(2);
+    await expect(history).toBeVisible();
+    await expect(page.locator('.asset-detail')).toBeVisible();
+    await expect(page.locator('.asset-detail__version-panel')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '发布历史', exact: true })).toHaveCount(0);
+    await expect(history.locator('.timeline-item')).toHaveCount(3);
     await expect(history.getByRole('button', { name: /加载更多/ })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await page
       .locator('.extension-page--embedded')
-      .screenshot({ path: testInfo.outputPath('extension-history-page.png') });
-    await page.getByRole('button', { name: '返回', exact: true }).click();
-    await card.click();
-    await page.locator('.asset-detail__actions').getByRole('button', { name: '发布历史' }).click();
+      .screenshot({ path: testInfo.outputPath('extension-history-tab.png') });
+
+    await page.locator('#asset-detail-tab-content').click();
+    await expect(history).toHaveCount(0);
+    await expect(page.locator('.asset-detail__version-panel')).toBeVisible();
+
+    await page.locator('#asset-detail-tab-history').click();
     await expect(history).toBeVisible();
-    await expect(page.locator('.asset-detail')).toHaveCount(0);
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByRole('button', { name: '返回', exact: true }).click();
-    await expect(page.locator('.asset-detail')).toBeVisible();
+
+    await page.getByRole('button', { name: '返回列表', exact: true }).click();
+    await expect(page.locator('.asset-card')).toHaveCount(2);
   });
 });
