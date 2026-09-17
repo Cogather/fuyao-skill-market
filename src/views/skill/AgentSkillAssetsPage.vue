@@ -20,7 +20,6 @@ import {
 } from '../../services/skillMarket/assetManagementService';
 import {
   harnessAssetStatus,
-  hasInProgressCurrentRelease,
   normalizeHarnessAssetVersion,
   type HarnessAsset,
   type HarnessAssetDetail,
@@ -321,20 +320,26 @@ function requestAssetDelete(): void {
 }
 
 async function deleteCurrentAsset(): Promise<void> {
-  if (!deleteTarget.value) throw new Error('请重新打开删除确认窗口');
+  const target = deleteTarget.value;
+  if (!target) throw new Error('请重新打开删除确认窗口');
+  const listAsset = assets.value.find((asset) => assetKey(asset) === assetKey(target.asset));
   if (
-    !canEditDetail.value ||
-    deleteTarget.value.userId !== props.userId ||
-    !selectedAsset.value ||
-    assetKey(deleteTarget.value.asset) !== assetKey(selectedAsset.value)
+    target.userId !== props.userId ||
+    !listAsset ||
+    !canAccessAsset(listAsset)
   ) {
     throw new Error('当前用户没有删除权限，请刷新后重试');
   }
   const detailCategory = detailComponent.value?.category?.trim();
-  if (detailCategory && detailCategory !== deleteTarget.value.asset.category?.trim()) {
+  if (
+    selectedAsset.value &&
+    assetKey(selectedAsset.value) === assetKey(target.asset) &&
+    detailCategory &&
+    detailCategory !== target.asset.category?.trim()
+  ) {
     throw new Error('资产详情与列表归属不一致，请返回列表刷新后重试');
   }
-  await api.deleteAsset(deleteTarget.value);
+  await api.deleteAsset(target);
 }
 
 async function onAssetDeleted(): Promise<void> {
@@ -587,16 +592,6 @@ const catalogCapabilityType = computed(() => {
   if (selectedAsset.value?.assetType === 'Command') return 'command';
   return 'skill';
 });
-
-function canPublishAsset(asset: HarnessAsset): boolean {
-  if (transportIsHttp) return asset.publishable;
-  return Boolean(
-    asset.currentVersion &&
-    asset.publishable &&
-    !hasInProgressCurrentRelease(asset) &&
-    statusLabel(asset) !== '已发布',
-  );
-}
 
 function canAccessAsset(asset: HarnessAsset): boolean {
   return asset.canEdit === true;
@@ -922,13 +917,16 @@ async function editCardAsset(asset: HarnessAsset): Promise<void> {
   beginDetailEdit();
 }
 
-async function deleteCardAsset(asset: HarnessAsset): Promise<void> {
-  await openDetail(asset);
-  if (!canEditDetail.value) {
+function deleteCardAsset(asset: HarnessAsset): void {
+  closeCardMenu();
+  if (!canAccessAsset(asset)) {
     showToast('当前用户没有删除权限');
     return;
   }
-  requestAssetDelete();
+  deleteTarget.value = {
+    asset: { ...asset },
+    userId: props.userId,
+  };
 }
 
 async function returnToAssetList(): Promise<void> {
@@ -953,7 +951,7 @@ function statusLabel(asset: HarnessAsset): string {
 function assetPersonName(value: string | undefined, placeholder = '未指定'): string {
   const person = value?.trim() ?? '';
   if (!person) return placeholder;
-  return person.replace(/\s+\S+$/, '') || person;
+  return person;
 }
 
 function assetPublisher(asset: HarnessAsset): string {
@@ -1419,20 +1417,18 @@ onBeforeUnmount(() => {
                 查看详情
               </button>
               <button
-                v-if="asset.assetType !== 'Extension'"
+                v-if="asset.assetType !== 'Extension' && canAccessAsset(asset)"
                 type="button"
                 role="menuitem"
-                :disabled="!canAccessAsset(asset)"
                 @click="editCardAsset(asset)"
               >
                 编辑信息
               </button>
               <button
-                v-if="asset.assetType !== 'Extension'"
+                v-if="asset.assetType !== 'Extension' && canAccessAsset(asset)"
                 type="button"
                 class="is-danger"
                 role="menuitem"
-                :disabled="!canAccessAsset(asset)"
                 @click="deleteCardAsset(asset)"
               >
                 删除
@@ -1546,18 +1542,6 @@ onBeforeUnmount(() => {
                 </div>
               </dl>
             </div>
-          </div>
-          <div v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__actions">
-            <button
-              v-if="canPublishAsset(selectedAsset)"
-              type="button"
-              class="asset-button is-primary asset-detail__publish"
-              :disabled="extensionReleaseLoading || selectedAsset.canPublish === false"
-              :title="selectedAsset.canPublish === false ? '当前用户没有发布权限' : undefined"
-              @click="openExtensionRelease(selectedAsset, 'publish')"
-            >
-              发布
-            </button>
           </div>
         </header>
 
@@ -1762,7 +1746,6 @@ onBeforeUnmount(() => {
           <HarnessExtensionDetailContent
             v-else-if="detail?.capabilities"
             :key="`${selectedAssetKey}:${selectedVersion}`"
-            :name="selectedAsset.name"
             :user-id="props.userId"
             :capabilities="detail.capabilities"
           />
@@ -2677,8 +2660,7 @@ onBeforeUnmount(() => {
 
 .asset-detail__title,
 .asset-detail__badges,
-.asset-detail__meta,
-.asset-detail__actions {
+.asset-detail__meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -2720,22 +2702,6 @@ onBeforeUnmount(() => {
   color: #6b7280;
   font-size: 13px;
   line-height: 20px;
-}
-
-.asset-detail__actions {
-  flex-shrink: 0;
-  gap: 8px;
-  padding-top: 1px;
-}
-
-.asset-detail__actions .asset-button {
-  justify-content: center;
-  min-height: 32px;
-  padding: 7px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  white-space: nowrap;
 }
 
 .asset-detail__summary {
@@ -2871,7 +2837,6 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail-back:focus-visible,
-.asset-detail__actions button:focus-visible,
 .asset-detail__tabs button:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 3px;
@@ -3087,7 +3052,6 @@ onBeforeUnmount(() => {
   word-break: break-all;
 }
 
-.asset-button.asset-detail__publish:disabled,
 .asset-button.asset-detail__edit:disabled {
   background: #e5e7eb;
   color: #9ca3af;

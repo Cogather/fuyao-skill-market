@@ -779,12 +779,15 @@ let historyLoadSequence = 0;
 const retryingReleaseId = ref('');
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
 const publishItems = computed(() => (modalScene.value ? capabilityItems(modalScene.value) : []));
+const selectedPublishCheck = computed(() => modalScene.value?.publishChecks?.[publishForm.channel]);
 const publishExpandedFolders = ref<Set<ExtensionCapabilityType>>(
   new Set(capabilitySections.map((section) => section.type)),
 );
+const publishExpandedCapabilities = ref<Set<string>>(new Set());
+const publishExpandedFiles = ref<Set<string>>(new Set());
 
-function publishItemsForType(type: ExtensionCapabilityType): ExtensionReleaseItem[] {
-  return publishItems.value.filter((item) => item.type === type);
+function publishCapabilitiesForType(type: ExtensionCapabilityType): ExtensionCapability[] {
+  return modalScene.value?.capabilities[type] ?? [];
 }
 
 function isPublishFolderExpanded(type: ExtensionCapabilityType): boolean {
@@ -796,6 +799,35 @@ function togglePublishFolder(type: ExtensionCapabilityType): void {
   if (next.has(type)) next.delete(type);
   else next.add(type);
   publishExpandedFolders.value = next;
+}
+
+async function togglePublishCapability(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: ExtensionCapabilityType,
+): Promise<void> {
+  const key = capabilityKey(scene, capability);
+  const opening = !publishExpandedCapabilities.value.has(key);
+  publishExpandedCapabilities.value = withSetValue(
+    publishExpandedCapabilities.value,
+    key,
+    opening,
+  );
+  if (!opening) return;
+  if (type === 'skill') await loadSkillCapabilityFiles(scene, capability);
+  else await loadDirectCapabilityFile(scene, capability, type);
+}
+
+async function togglePublishFile(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: ExtensionCapabilityType,
+  fileName: string,
+): Promise<void> {
+  const key = fileKey(scene, capability, fileName);
+  const opening = !publishExpandedFiles.value.has(key);
+  publishExpandedFiles.value = withSetValue(publishExpandedFiles.value, key, opening);
+  if (opening) await loadFileContent(scene, capability, type, fileName);
 }
 const historyLimit = ref(3);
 const modalHistory = computed(() => {
@@ -819,6 +851,8 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
     return;
   }
   modalSceneId.value = scene.id;
+  publishExpandedCapabilities.value = new Set();
+  publishExpandedFiles.value = new Set();
   const latest = latestSuccessfulRelease(scene);
   if (!props.releaseContext) {
     publishForm.name =
@@ -899,7 +933,7 @@ function closeModal(): void {
 
 async function confirmPublish(): Promise<void> {
   const scene = modalScene.value;
-  if (!scene || publishSubmitting.value || scene.publishCheck?.canPublish === false) return;
+  if (!scene || publishSubmitting.value || selectedPublishCheck.value?.canPublish === false) return;
   if (!scene.publishable || scene.publishing) {
     publishError.value = scene.publishing ? '当前已有发布进行中' : '场景不完备，无法发布';
     return;
@@ -1689,31 +1723,131 @@ onBeforeUnmount(() => {
                       <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" />
                     </svg>
                     <strong>{{ section.folder }}/</strong>
-                    <span class="folder-count">{{ publishItemsForType(section.type).length }}</span>
+                    <span class="folder-count">{{ publishCapabilitiesForType(section.type).length }}</span>
                   </button>
                   <ul
-                    v-if="publishItemsForType(section.type).length"
+                    v-if="publishCapabilitiesForType(section.type).length"
                     v-show="isPublishFolderExpanded(section.type)"
                     class="capability-list"
                   >
                     <li
-                      v-for="item in publishItemsForType(section.type)"
-                      :key="`${item.type}-${item.name}`"
+                      v-for="capability in publishCapabilitiesForType(section.type)"
+                      :key="capability.id"
                       class="capability-item"
                     >
-                      <div class="capability-row capability-row--static">
+                      <button
+                        type="button"
+                        class="capability-row"
+                        :class="{
+                          'is-open': publishExpandedCapabilities.has(
+                            capabilityKey(modalScene, capability),
+                          ),
+                        }"
+                        :aria-expanded="
+                          publishExpandedCapabilities.has(capabilityKey(modalScene, capability))
+                        "
+                        @click="togglePublishCapability(modalScene, capability, section.type)"
+                      >
+                        <span class="capability-caret">›</span>
                         <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
                         <span
                           class="capability-type-tag"
-                          :class="`capability-type-tag--${item.type}`"
+                          :class="`capability-type-tag--${section.type}`"
                         >
-                          {{ capabilityTypeMeta[item.type].label }}
+                          {{ capabilityTypeMeta[section.type].label }}
                         </span>
-                        <span class="capability-name">{{ item.name }}</span>
+                        <span class="capability-name">{{ capability.name }}</span>
                         <span class="capability-release-meta">
-                          <span class="capability-version">v{{ displayVersion(item.version) }}</span>
+                          <span class="capability-version"
+                            >v{{ displayVersion(capability.version) }}</span
+                          >
                         </span>
-                      </div>
+                      </button>
+
+                      <ul
+                        v-if="
+                          publishExpandedCapabilities.has(capabilityKey(modalScene, capability))
+                        "
+                        class="file-list"
+                      >
+                        <li
+                          v-if="loadingCapabilities.has(capabilityKey(modalScene, capability))"
+                          class="folder-empty"
+                        >
+                          正在加载目录…
+                        </li>
+                        <li
+                          v-else-if="capabilityErrors[capabilityKey(modalScene, capability)]"
+                          class="folder-empty folder-empty--error"
+                        >
+                          {{ capabilityErrors[capabilityKey(modalScene, capability)] }}
+                        </li>
+                        <template v-else-if="section.type === 'skill'">
+                          <li v-for="file in capability.files" :key="file.name">
+                            <button
+                              type="button"
+                              class="file-row"
+                              :class="{
+                                'is-open': publishExpandedFiles.has(
+                                  fileKey(modalScene, capability, file.name),
+                                ),
+                              }"
+                              :aria-expanded="
+                                publishExpandedFiles.has(
+                                  fileKey(modalScene, capability, file.name),
+                                )
+                              "
+                              @click="
+                                togglePublishFile(
+                                  modalScene,
+                                  capability,
+                                  section.type,
+                                  file.name,
+                                )
+                              "
+                            >
+                              <span class="file-caret">›</span>
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M6 3.5h8l4 4V20H6V3.5Z" />
+                                <path d="M14 3.5v4h4" />
+                              </svg>
+                              <span class="file-name">{{ file.name }}</span>
+                            </button>
+                            <pre
+                              v-if="
+                                publishExpandedFiles.has(
+                                  fileKey(modalScene, capability, file.name),
+                                )
+                              "
+                              class="file-content"
+                              >{{
+                                loadingFiles.has(fileKey(modalScene, capability, file.name))
+                                  ? '正在加载…'
+                                  : fileErrors[fileKey(modalScene, capability, file.name)] ||
+                                    file.content ||
+                                    '(空)'
+                              }}</pre
+                            >
+                          </li>
+                          <li v-if="capability.files.length === 0" class="folder-empty">
+                            暂无文件
+                          </li>
+                        </template>
+                        <li v-else-if="capability.files[0]">
+                          <pre class="file-content file-content--direct">{{
+                            loadingFiles.has(
+                              fileKey(modalScene, capability, capability.files[0].name),
+                            )
+                              ? '正在加载…'
+                              : fileErrors[
+                                  fileKey(modalScene, capability, capability.files[0].name)
+                                ] ||
+                                capability.files[0].content ||
+                                '(空)'
+                          }}</pre>
+                        </li>
+                        <li v-else class="folder-empty">暂无文件</li>
+                      </ul>
                     </li>
                   </ul>
                   <div v-else v-show="isPublishFolderExpanded(section.type)" class="folder-empty">
@@ -1723,20 +1857,14 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <p
-              class="extension-follow-publish-note"
+              v-if="selectedPublishCheck?.message"
+              class="extension-follow-publish-note publish-check-message"
               :class="{
-                'is-success':
-                  modalScene.publishCheck?.canPublish === true &&
-                  Boolean(modalScene.publishCheck?.message),
-                'is-error':
-                  modalScene.publishCheck?.canPublish === false &&
-                  Boolean(modalScene.publishCheck?.message),
+                'is-success': selectedPublishCheck.canPublish === true,
+                'is-error': selectedPublishCheck.canPublish === false,
               }"
             >
-              {{
-                modalScene.publishCheck?.message ||
-                '清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。'
-              }}
+              {{ selectedPublishCheck.message }}
             </p>
             <div v-if="organizationError" class="modal-error" role="alert">
               <p>{{ organizationError }}</p>
@@ -1776,7 +1904,7 @@ onBeforeUnmount(() => {
               publishSubmitting ||
               organizationLoading ||
               organizations.length === 0 ||
-              modalScene.publishCheck?.canPublish === false ||
+              selectedPublishCheck?.canPublish === false ||
               !modalScene.publishable ||
               Boolean(modalScene.publishing)
             "
@@ -3455,15 +3583,6 @@ onBeforeUnmount(() => {
   border: 1px solid #e1e6ee;
   border-radius: 9px;
   background: #fbfcff;
-}
-
-.publish-summary .capability-row--static {
-  cursor: default;
-}
-
-.publish-summary .capability-row--static:hover {
-  border-color: transparent;
-  background: transparent;
 }
 
 .extension-follow-publish-note {

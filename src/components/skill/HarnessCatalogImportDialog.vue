@@ -74,7 +74,7 @@ const scopeError = computed(() => {
   return '';
 });
 const busy = computed(() => submitting.value);
-const locked = computed(() => busy.value || Boolean(result.value));
+const locked = computed(() => busy.value);
 const canSubmit = computed(
   () => Boolean(file.value) && !scopeError.value && !productsLoading.value && !locked.value,
 );
@@ -113,6 +113,7 @@ watch([level, departmentPath, productName], () => {
 
 function chooseFiles(files: FileList | null | undefined): void {
   if (locked.value || !files?.length) return;
+  result.value = null;
   file.value = null;
   error.value = '';
   if (files.length !== 1) {

@@ -523,10 +523,7 @@ export async function queryHttpExtensionVersionCapabilities(
   }
   const sceneKey = stableId([scope.dimCode, extensionName, selectedVersion]);
   const mapFrozen = (type: ExtensionCapabilityType, rows: unknown[]) =>
-    rows.map((item, index) => ({
-      ...mapCapability(item, type, sceneKey, index),
-      files: [],
-    }));
+    rows.map((item, index) => mapCapability(item, type, sceneKey, index));
   return {
     skill: mapFrozen('skill', data.skills),
     command: mapFrozen('command', data.commands),
@@ -573,13 +570,24 @@ export async function queryHttpExtensionDetail(
     scope,
     releases,
   )[0]!;
-  const publishCheck = asRecord(data.publishCheck);
-  if (typeof publishCheck.canPublish === 'boolean') {
-    detail.publishCheck = {
-      canPublish: publishCheck.canPublish,
-      message: typeof publishCheck.message === 'string' ? publishCheck.message : '',
-    };
-  }
+  const publishChecks = asRecord(data.publishChecks);
+  const mappedPublishChecks = Object.fromEntries(
+    (['beta', 'product'] as const).flatMap((channel) => {
+      const publishCheck = asRecord(publishChecks[channel]);
+      return typeof publishCheck.canPublish === 'boolean'
+        ? [
+            [
+              channel,
+              {
+                canPublish: publishCheck.canPublish,
+                message: typeof publishCheck.message === 'string' ? publishCheck.message : '',
+              },
+            ],
+          ]
+        : [];
+    }),
+  );
+  if (Object.keys(mappedPublishChecks).length > 0) detail.publishChecks = mappedPublishChecks;
   detail.extension.name ||= extensionName;
   return detail;
 }
@@ -623,8 +631,9 @@ function componentBody(
 }
 
 export async function publishHttpExtension(input: PublishExtensionInput): Promise<void> {
-  if (input.scene.publishCheck?.canPublish === false) {
-    throw new Error(input.scene.publishCheck.message);
+  const publishCheck = input.scene.publishChecks?.[input.channel];
+  if (publishCheck?.canPublish === false) {
+    throw new Error(publishCheck.message);
   }
   const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
   if (!isCatalogItemNameValid(extensionName)) {

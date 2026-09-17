@@ -66,8 +66,11 @@ test('HTTP 原子资产卡片显示开发责任人，Extension 卡片显示发�
     const assignedCard = page.locator('.asset-card').filter({
       has: page.getByRole('heading', { name: `${type.toUpperCase()}-assigned`, exact: true }),
     });
-    await expect(assignedCard.locator('.asset-card__developer')).toHaveText('王强');
-    await expect(assignedCard.locator('.asset-card__developer')).toHaveAttribute('title', '王强');
+    await expect(assignedCard.locator('.asset-card__developer')).toHaveText('王强 w1002');
+    await expect(assignedCard.locator('.asset-card__developer')).toHaveAttribute(
+      'title',
+      '王强 w1002',
+    );
     await expect(assignedCard).not.toContainText('李丹');
 
     const developerOnlyCard = page.locator('.asset-card').filter({
@@ -76,7 +79,7 @@ test('HTTP 原子资产卡片显示开发责任人，Extension 卡片显示发�
         exact: true,
       }),
     });
-    await expect(developerOnlyCard.locator('.asset-card__developer')).toHaveText('陈洁');
+    await expect(developerOnlyCard.locator('.asset-card__developer')).toHaveText('陈洁 w1003');
 
     const unassignedCard = page.locator('.asset-card').filter({
       has: page.getByRole('heading', { name: `${type.toUpperCase()}-unassigned`, exact: true }),
@@ -92,8 +95,11 @@ test('HTTP 原子资产卡片显示开发责任人，Extension 卡片显示发�
   const extensionCard = page.locator('.asset-card').filter({
     has: page.getByRole('heading', { name: 'EXTENSION-assigned', exact: true }),
   });
-  await expect(extensionCard.locator('.asset-card__publisher')).toHaveText('周发布');
-  await expect(extensionCard.locator('.asset-card__publisher')).toHaveAttribute('title', '周发布');
+  await expect(extensionCard.locator('.asset-card__publisher')).toHaveText('周发布 w1004');
+  await expect(extensionCard.locator('.asset-card__publisher')).toHaveAttribute(
+    'title',
+    '周发布 w1004',
+  );
   await expect(extensionCard.locator('.asset-card__developer')).toHaveCount(0);
   await expect(extensionCard).not.toContainText('不应展示的 Owner');
   await expect(extensionCard).not.toContainText('不应展示的开发责任人');
@@ -101,7 +107,7 @@ test('HTTP 原子资产卡片显示开发责任人，Extension 卡片显示发�
   const publisherOnlyCard = page.locator('.asset-card').filter({
     has: page.getByRole('heading', { name: 'EXTENSION-publisher-only', exact: true }),
   });
-  await expect(publisherOnlyCard.locator('.asset-card__publisher')).toHaveText('吴发布');
+  await expect(publisherOnlyCard.locator('.asset-card__publisher')).toHaveText('吴发布 w1005');
 
   const extensionWithoutPublisher = page.locator('.asset-card').filter({
     has: page.getByRole('heading', { name: 'EXTENSION-unassigned', exact: true }),

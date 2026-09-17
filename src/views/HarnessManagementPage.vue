@@ -103,6 +103,14 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
   { key: 'tasks', label: '待办任务', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
 const showLegacyPlanningTabs = false;
+const publicHarnessTabKeys = new Set<HarnessTab>([
+  'scenarios',
+  'workflows',
+  'capabilities',
+  'assets',
+  'tasks',
+]);
+const legacyPlanningTabKeys = new Set<HarnessTab>(['command', 'planning', 'agent', 'extension']);
 
 const activeHarnessTab = ref<HarnessTab>('scenarios');
 const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
@@ -313,9 +321,15 @@ const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
 });
 
 const visibleHarnessTabs = computed(() =>
-  harnessAccessLevel.value === 'task-only'
-    ? harnessTabs.filter((tab) => tab.key === 'tasks')
-    : harnessTabs,
+  harnessTabs.filter((tab) => {
+    if (publicHarnessTabKeys.has(tab.key)) return true;
+    if (tab.key === 'settings') return harnessAccessLevel.value !== 'task-only';
+    return (
+      showLegacyPlanningTabs &&
+      harnessAccessLevel.value !== 'task-only' &&
+      legacyPlanningTabKeys.has(tab.key)
+    );
+  }),
 );
 
 async function loadHarnessDepartmentScope(): Promise<void> {
@@ -433,7 +447,7 @@ onMounted(async () => {
   try {
     if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
-    activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'scenarios';
+    activeHarnessTab.value = 'scenarios';
   } finally {
     permissionContextReady.value = true;
   }
@@ -461,8 +475,9 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              showLegacyPlanningTabs ||
-              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              tab.key !== 'capabilities' &&
+              (showLegacyPlanningTabs ||
+                !['command', 'planning', 'agent', 'extension'].includes(tab.key))
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -510,7 +525,7 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-if="permissionContextReady && harnessAccessLevel !== 'task-only'"
+      v-if="permissionContextReady"
       v-show="activeHarnessTab === 'scenarios'"
       id="harness-panel-scenarios"
       class="harness-tab-panel"
@@ -547,7 +562,7 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-if="permissionContextReady && harnessAccessLevel !== 'task-only'"
+      v-if="permissionContextReady"
       v-show="activeHarnessTab === 'workflows'"
       id="harness-panel-workflows"
       class="harness-tab-panel"

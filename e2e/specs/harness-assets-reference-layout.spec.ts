@@ -341,10 +341,10 @@ test.describe('第二个资产清单参考稿样式', () => {
     const extensionCard = page.locator('.asset-card').filter({
       has: page.getByRole('heading', { name: '问题分析 Extension', exact: true }),
     });
-    await expect(extensionCard.locator('.asset-card__publisher')).toHaveText('李扶摇');
+    await expect(extensionCard.locator('.asset-card__publisher')).toHaveText('李扶摇 A0123');
     await expect(extensionCard.locator('.asset-card__publisher')).toHaveAttribute(
       'title',
-      '李扶摇',
+      '李扶摇 A0123',
     );
     await expect(extensionCard.locator('.asset-card__developer')).toHaveCount(0);
     await extensionCard.getByRole('heading', { name: '问题分析 Extension', exact: true }).click();

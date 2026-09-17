@@ -12,6 +12,7 @@ import {
   MOCK_EXTENSION_ORGANIZATIONS,
   MOCK_EXTENSION_PRODUCTS,
   getSharedMockExtensionScenes,
+  type ExtensionCapability,
   type ExtensionCapabilityType,
   type ExtensionProduct,
   type ExtensionRelease,
@@ -472,13 +473,22 @@ async function extensionDetail(
   version: string,
   useCurrentBindings = true,
 ): Promise<HarnessAssetDetail> {
-  if (!scene) return { versions: [...asset.versions], files: [] };
+  const emptyCapabilities = (): ExtensionScene['capabilities'] => ({
+    skill: [],
+    command: [],
+    agent: [],
+  });
+  if (!scene) {
+    return { versions: [...asset.versions], files: [], capabilities: emptyCapabilities() };
+  }
   const normalizedVersion = normalizeHarnessAssetVersion(version);
   const release = sceneReleases(scene).find(
     (item) => normalizeHarnessAssetVersion(item.version) === normalizedVersion,
   );
   // 历史版本缺少快照时，不能把当前场景内容当成该历史版本展示。
-  if (!release && !useCurrentBindings) return { versions: [...asset.versions], files: [] };
+  if (!release && !useCurrentBindings) {
+    return { versions: [...asset.versions], files: [], capabilities: emptyCapabilities() };
+  }
   const capabilityItems = release
     ? release.items
     : (['skill', 'command', 'agent'] as ExtensionCapabilityType[]).flatMap((type) =>
@@ -488,31 +498,40 @@ async function extensionDetail(
           version: capability.version,
         })),
       );
-  const files = await Promise.all(
-    capabilityItems.flatMap((capability) => {
-      if (!capability.version) return [];
-      const category = capability.type;
+  const capabilities = emptyCapabilities();
+  const mappedCapabilities = await Promise.all(
+    capabilityItems.map(async (item, index) => {
+      const source = scene.capabilities[item.type].find(
+        (capability) => capability.name === item.name && capability.version === item.version,
+      );
+      const capability: ExtensionCapability = {
+        id: source?.id ?? `extension-detail-${item.type}-${index}-${item.name}-${item.version}`,
+        name: item.name,
+        version: item.version,
+        publishDate: source?.publishDate ?? release?.publishedAt.slice(0, 10) ?? '',
+        ready: Boolean(item.name && item.version),
+        files: [],
+      };
+      if (!item.version) return { type: item.type, capability };
+
       const identity = {
         userId: scope.userId,
-        capabilityType: category,
-        capabilityName: capability.name,
-        version: capability.version,
+        capabilityType: item.type,
+        capabilityName: item.name,
+        version: item.version,
       };
-      return [
-        (async (): Promise<HarnessAssetFile[]> => {
-          const paths = await queryPlanningTaskDetailFilePaths(identity);
-          return Promise.all(
-            paths.map(async (path) => ({
-              path: `${category}s/${capability.name}/${path}`,
-              content: await queryPlanningTaskDetailFileContent(identity, path),
-              category,
-            })),
-          );
-        })(),
-      ];
+      const paths = await queryPlanningTaskDetailFilePaths(identity);
+      capability.files = await Promise.all(
+        paths.map(async (path) => ({
+          name: path,
+          content: await queryPlanningTaskDetailFileContent(identity, path),
+        })),
+      );
+      return { type: item.type, capability };
     }),
   );
-  return { versions: [...asset.versions], files: files.flat() };
+  mappedCapabilities.forEach(({ type, capability }) => capabilities[type].push(capability));
+  return { versions: [...asset.versions], files: [], capabilities };
 }
 
 function toHarnessOrganization(organization: PublishableOrganization): HarnessAssetOrganization {

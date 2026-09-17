@@ -840,6 +840,16 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     box-shadow: none !important;
   }
 
+  // Keep the four-pixel focus ring inside scroll clipping without shifting field alignment.
+  :is(
+    .capability-master-dialog.is-create-dialog > .capability-master-form,
+    .dialog.is-create-dialog > .dialog-scroll-body
+  ) {
+    box-sizing: border-box;
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+
   :is(.tag-search, .workflow-capability-picker__search):focus-within {
     outline: 2px solid var(--hw-primary);
     outline-offset: -2px;

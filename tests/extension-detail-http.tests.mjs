@@ -116,19 +116,28 @@ try {
   );
   assert.equal(detail.releases[0].status, '成功');
 
-  for (const publishCheck of [
+  for (const publishChecks of [
     {
-      canPublish: false,
-      message: '当前配置与已发布版本 v1.0.0 完全一致，无需重新发布',
+      beta: {
+        canPublish: false,
+        message: '当前配置与已发布版本 v1.0.0 完全一致，无需重新发布',
+      },
+      product: { canPublish: true, message: '  清单完备，可发布  ' },
     },
-    { canPublish: true, message: '  配置已变更，可以发布  ' },
-    { canPublish: false, message: '' },
+    {
+      beta: { canPublish: true, message: '' },
+      product: { canPublish: false, message: '' },
+    },
     undefined,
   ]) {
-    detailResponse = success({ ...detailData, publishCheck });
+    detailResponse = success({ ...detailData, publishChecks });
     const checked = await queryHttpExtensionBindings('user-001', scope, namedScene);
-    assert.deepEqual(checked.publishCheck, publishCheck, 'retain the check and its exact message');
-    assert.equal(checked.publishable, true, 'publishCheck does not change scene readiness');
+    assert.deepEqual(
+      checked.publishChecks,
+      publishChecks,
+      'retain each channel check and its exact message',
+    );
+    assert.equal(checked.publishable, true, 'publishChecks do not change scene readiness');
   }
   detailResponse = success(detailData);
 
@@ -229,9 +238,12 @@ try {
     },
     'publishing keeps the existing API payload, including extensionName',
   );
-  const publishCheck = {
-    canPublish: false,
-    message: '当前配置与已发布版本 v1.0.0 完全一致，无需重新发布',
+  const publishChecks = {
+    beta: {
+      canPublish: false,
+      message: '当前配置与已发布版本 v1.0.0 完全一致，无需重新发布',
+    },
+    product: { canPublish: true, message: '清单完备，可发布' },
   };
   publishRequest = undefined;
   await assert.rejects(
@@ -239,16 +251,31 @@ try {
       userId: 'user-001',
       operatorName: '发布人',
       scope: { ...scope, dimName: 'udm' },
-      scene: { ...unpublished, publishCheck },
+      scene: { ...unpublished, publishChecks },
       extensionName: 'udm-mml-e2e-extension',
       description: '扩展说明',
       channel: 'beta',
       organization: { id: 'org-1', name: '组织一', deptId: '', deptName: '' },
     }),
-    { message: publishCheck.message },
+    { message: publishChecks.beta.message },
   );
-  assert.equal(publishRequest, undefined, 'a failed publishCheck must not submit a release');
-  console.log('PASS publishCheck is preserved separately from readiness and blocks submission');
+  assert.equal(publishRequest, undefined, 'a failed beta check must not submit a beta release');
+  await publishHttpExtension({
+    userId: 'user-001',
+    operatorName: '发布人',
+    scope: { ...scope, dimName: 'udm' },
+    scene: { ...unpublished, publishChecks },
+    extensionName: 'udm-mml-e2e-extension',
+    description: '扩展说明',
+    channel: 'product',
+    organization: { id: 'org-1', name: '组织一', deptId: '', deptName: '' },
+  });
+  assert.equal(
+    publishRequest.body.releaseType,
+    'product',
+    'a publishable product check allows a product release',
+  );
+  console.log('PASS publishChecks are preserved by channel and block only the selected channel');
   console.log(
     'PASS Extension detail request/mapping, scene-name lookup, readiness, error handling, and legacy publishing',
   );

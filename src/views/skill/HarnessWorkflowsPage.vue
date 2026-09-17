@@ -602,16 +602,30 @@ onBeforeUnmount(() => {
                     </td>
                     <td>
                       <div class="wf-actions">
-                        <button type="button" @click="openWorkflowRelease(row, 'history')">
-                          查看发布历史
+                        <button
+                          type="button"
+                          class="wf-icon-action wf-icon-action--history"
+                          aria-label="查看发布历史"
+                          title="查看发布历史"
+                          @click="openWorkflowRelease(row, 'history')"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8.25" />
+                            <path d="M12 7.5V12l3.25 2" />
+                          </svg>
                         </button>
                         <button
                           v-if="shouldShowPublish(row)"
                           type="button"
-                          class="is-publish"
+                          class="wf-icon-action is-publish"
+                          aria-label="发布"
+                          title="发布"
                           @click="openWorkflowRelease(row, 'publish')"
                         >
-                          发布
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="m21 3-7.1 18-3.2-7.7L3 10.1 21 3Z" />
+                            <path d="m10.7 13.3 4.6-4.6" />
+                          </svg>
                         </button>
                       </div>
                     </td>
@@ -984,6 +998,28 @@ onBeforeUnmount(() => {
 .workflows-page .wf-actions button:hover {
   border-color: #b9c2d4;
   background: #f8fafc;
+}
+.workflows-page .wf-actions .wf-icon-action {
+  display: inline-flex;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.wf-icon-action svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+.workflows-page .wf-actions .wf-icon-action--history:hover {
+  border-color: #93b4f8;
+  background: #f3f7ff;
+  color: var(--blue);
 }
 .workflows-page .wf-actions .is-publish {
   border-color: var(--blue);

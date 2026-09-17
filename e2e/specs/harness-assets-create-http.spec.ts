@@ -113,6 +113,43 @@ test.describe('资产页新建 HTTP 归属', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
   for (const type of ['Agent', 'Skill', 'Command']) {
+    test(`${type} create dialog keeps the complete focus ring inside its scroll area`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await prepareAssets(page);
+      await page.getByRole('button', { name: type, exact: true }).click();
+      await page.getByRole('button', { name: /新增/ }).click();
+      const dialog = page.getByRole('dialog', { name: `添加 ${type}` });
+      const nameInput = dialog.locator('input[maxlength="64"]');
+
+      await nameInput.focus();
+      await expect(nameInput).toBeFocused();
+
+      const focusGeometry = await nameInput.evaluate((element) => {
+        const scrollArea = element.closest<HTMLElement>(
+          '.capability-master-form, .dialog-scroll-body',
+        );
+        if (!scrollArea) throw new Error('Create form scroll area was not found');
+
+        const inputRect = element.getBoundingClientRect();
+        const scrollRect = scrollArea.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const outlineExtent =
+          Number.parseFloat(style.outlineWidth) +
+          Math.max(0, Number.parseFloat(style.outlineOffset));
+
+        return {
+          leftGap: inputRect.left - scrollRect.left,
+          rightGap: scrollRect.right - inputRect.right,
+          outlineExtent,
+        };
+      });
+
+      expect(focusGeometry.leftGap).toBeGreaterThanOrEqual(focusGeometry.outlineExtent);
+      expect(focusGeometry.rightGap).toBeGreaterThanOrEqual(focusGeometry.outlineExtent);
+    });
+
     test(`${type} 人员搜索面板仅在点击自身区域外时独立收起`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await prepareAssets(page);
