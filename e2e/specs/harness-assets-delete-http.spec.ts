@@ -52,6 +52,7 @@ async function prepare(
                 name: assetName,
                 latestVersion: '1.0.0',
                 status: '已发布',
+                canEdit: true,
                 category: '产品级/资产所属产品',
               },
             ],
@@ -159,6 +160,24 @@ test.describe('HTTP 资产详情删除', () => {
     await dialog.getByRole('button', { name: '确认删除', exact: true }).click();
     await expect(dialog).toBeHidden();
     expect(deletes).toHaveLength(2);
+  });
+
+  test('删除确认框忽略面板点击和 Escape，仅由操作按钮关闭', async ({ page }) => {
+    const { assetName } = await prepare(page, 'Agent');
+    await page.getByRole('button', { name: '返回列表', exact: true }).click();
+    const card = page.locator('.asset-card').filter({ hasText: assetName });
+    await card.getByRole('button', { name: `更多操作：${assetName}`, exact: true }).click();
+    await card.getByRole('menuitem', { name: '删除', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '删除 Agent 资产' });
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('.asset-delete-dialog__body').click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
   });
 
   test('提交中禁止重复提交和关闭弹窗', async ({ page }) => {

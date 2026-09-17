@@ -111,11 +111,6 @@ function close(): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    if (document.querySelector('.market-dept-cascader-panel')) return;
-    event.preventDefault();
-    close();
-  }
   if (event.key !== 'Tab') return;
   const elements = Array.from(
     dialogRef.value?.querySelectorAll<HTMLElement>(
@@ -187,7 +182,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div class="catalog-export-mask harness-workspace-overlay" @click.self="close">
+    <div class="catalog-export-mask harness-workspace-overlay">
       <section
         ref="dialogRef"
         class="catalog-export-dialog"
@@ -239,6 +234,14 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="catalog-import-button catalog-export-button"
+            :disabled="downloading"
+            @click="close"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="catalog-import-button catalog-export-button is-primary"
             :disabled="!canDownload"
             :title="scopeError || '下载当前归属下的已有数据'"
             @click="downloadExistingData"
@@ -320,6 +323,7 @@ onBeforeUnmount(() => {
 .catalog-export-dialog footer {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   padding-top: 22px;
 }
 .catalog-export-error {

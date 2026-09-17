@@ -95,17 +95,17 @@ try {
     return { app, state };
   }
 
-  const publicTabKeys = ['scenarios', 'workflows', 'capabilities', 'assets', 'tasks'];
+  const alwaysVisibleTabKeys = ['workflows', 'capabilities', 'assets', 'tasks'];
   const taskOnly = await mountHarness({ ownedOrgs: [], adminOrgs: [] });
   assert.deepEqual(
     taskOnly.state.visibleHarnessTabs.value.map((tab) => tab.key),
-    publicTabKeys,
-    'users without management scope still see every public Harness tab',
+    alwaysVisibleTabKeys,
+    'users without owner or admin scope only see the unrestricted Harness tabs',
   );
   assert.equal(
     taskOnly.state.activeHarnessTab.value,
-    'scenarios',
-    'the public scenario tab remains the default for users without management scope',
+    'workflows',
+    'users without management scope land on the first visible tab',
   );
   taskOnly.app.unmount();
 
@@ -133,12 +133,6 @@ try {
     }
   }
 
-  const scenarioPanel = await renderTaskOnlyPanel('scenarios');
-  assert.match(
-    scenarioPanel,
-    /业务场景设计台/,
-    'the public scenario panel renders without management scope',
-  );
   const workflowPanel = await renderTaskOnlyPanel('workflows');
   assert.match(
     workflowPanel,
@@ -146,22 +140,27 @@ try {
     'the public workflow panel renders without management scope',
   );
 
-  for (const permissionData of [
-    {
-      ownedOrgs: [],
-      adminOrgs: [{ deptName: '研发部', deptCode: 'dept-root', path: ['研发部'], levelNo: 1 }],
-    },
-    {
-      ownedOrgs: [{ deptName: '研发部', deptCode: 'dept-root', path: ['研发部'], levelNo: 1 }],
-      adminOrgs: [],
-    },
-  ]) {
-    const permitted = await mountHarness(permissionData);
-    const visibleKeys = permitted.state.visibleHarnessTabs.value.map((tab) => tab.key);
-    assert.ok(visibleKeys.includes('settings'), 'admin and owner scopes retain the permission tab');
-    for (const key of publicTabKeys) assert.ok(visibleKeys.includes(key), `${key} stays public`);
-    permitted.app.unmount();
-  }
+  const adminOnly = await mountHarness({
+    ownedOrgs: [],
+    adminOrgs: [{ deptName: '研发部', deptCode: 'dept-root', path: ['研发部'], levelNo: 1 }],
+  });
+  assert.deepEqual(
+    adminOnly.state.visibleHarnessTabs.value.map((tab) => tab.key),
+    ['scenarios', ...alwaysVisibleTabKeys],
+    'an admin sees scenario design but not permission management',
+  );
+  adminOnly.app.unmount();
+
+  const owner = await mountHarness({
+    ownedOrgs: [{ deptName: '研发部', deptCode: 'dept-root', path: ['研发部'], levelNo: 1 }],
+    adminOrgs: [],
+  });
+  assert.deepEqual(
+    owner.state.visibleHarnessTabs.value.map((tab) => tab.key),
+    ['scenarios', 'workflows', 'capabilities', 'assets', 'settings', 'tasks'],
+    'an owner sees both scenario design and permission management',
+  );
+  owner.app.unmount();
 
   const { default: AgentSkillAssetsPage } = await server.ssrLoadModule(
     '/src/views/skill/AgentSkillAssetsPage.vue',

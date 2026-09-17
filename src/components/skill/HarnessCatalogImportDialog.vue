@@ -143,12 +143,6 @@ function close(): void {
 }
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    // The department popup handles its own Escape key first.
-    if (document.querySelector('.market-dept-cascader-panel')) return;
-    event.preventDefault();
-    close();
-  }
   if (event.key !== 'Tab') return;
   const elements = Array.from(
     dialogRef.value?.querySelectorAll<HTMLElement>(
@@ -223,7 +217,6 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       class="catalog-import-mask harness-workspace-overlay"
-      @click.self="close"
       @dragover.prevent
       @drop.prevent
     >

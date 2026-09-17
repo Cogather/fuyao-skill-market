@@ -236,6 +236,29 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await importDialog.getByRole('button', { name: '取消', exact: true }).click();
   });
 
+  test('新增资产弹窗忽略遮罩点击和 Escape，仅由显式按钮关闭', async ({ page }) => {
+    for (const sample of [
+      { type: 'Agent', dialogName: '添加 Agent', overlay: '.capability-master-overlay' },
+      { type: 'Command', dialogName: '添加 Command', overlay: '.capability-master-overlay' },
+      { type: 'Skill', dialogName: '添加 Skill', overlay: '.overlay.harness-workspace-overlay' },
+    ]) {
+      await page.getByRole('button', { name: sample.type, exact: true }).click();
+      await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: sample.dialogName, exact: true });
+      await expect(dialog).toBeVisible();
+
+      await page.locator(sample.overlay).click({ position: { x: 6, y: 6 } });
+      await expect(dialog).toBeVisible();
+      await dialog.getByText(sample.dialogName, { exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeVisible();
+
+      await dialog.locator('header button').click();
+      await expect(dialog).toBeHidden();
+    }
+  });
+
   test('Skill \u8be6\u60c5\u4f7f\u7528\u771f\u5b9e\u7248\u672c\u5185\u5bb9\u5e76\u5c55\u793a\u8d28\u91cf\u62a5\u544a', async ({
     page,
   }, testInfo) => {

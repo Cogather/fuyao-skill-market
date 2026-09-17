@@ -103,13 +103,7 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
   { key: 'tasks', label: '待办任务', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
 const showLegacyPlanningTabs = false;
-const publicHarnessTabKeys = new Set<HarnessTab>([
-  'scenarios',
-  'workflows',
-  'capabilities',
-  'assets',
-  'tasks',
-]);
+const publicHarnessTabKeys = new Set<HarnessTab>(['workflows', 'capabilities', 'assets', 'tasks']);
 const legacyPlanningTabKeys = new Set<HarnessTab>(['command', 'planning', 'agent', 'extension']);
 
 const activeHarnessTab = ref<HarnessTab>('scenarios');
@@ -322,8 +316,9 @@ const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
 
 const visibleHarnessTabs = computed(() =>
   harnessTabs.filter((tab) => {
+    if (tab.key === 'scenarios') return harnessAccessLevel.value !== 'task-only';
+    if (tab.key === 'settings') return harnessAccessLevel.value === 'owner';
     if (publicHarnessTabKeys.has(tab.key)) return true;
-    if (tab.key === 'settings') return harnessAccessLevel.value !== 'task-only';
     return (
       showLegacyPlanningTabs &&
       harnessAccessLevel.value !== 'task-only' &&
@@ -447,7 +442,7 @@ onMounted(async () => {
   try {
     if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
-    activeHarnessTab.value = 'scenarios';
+    activeHarnessTab.value = visibleHarnessTabs.value[0]?.key ?? 'workflows';
   } finally {
     permissionContextReady.value = true;
   }
