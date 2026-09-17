@@ -266,20 +266,32 @@ export async function saveDesignActivities(
   if (JSON.stringify(desired) === JSON.stringify(previous)) return;
   const params = dimension(scope);
   // refreshActivities replaces the dimension: include every other scene, including when this one is emptied.
-  const untouched = designData<WorkflowActivityRow[]>(await api.queryActivitiesByScene(params))
-    .filter(
-      (item) =>
-        item.secondScene &&
-        (item.firstScene !== scope.firstScene || item.secondScene !== scope.secondScene),
-    )
-    .map((activity) => ({
-      ...sceneKey(activity),
-      activityNodeName: activity.activityNodeName,
-      subActivityNodeName: activity.subActivityNodeName || '',
-      sort: activity.sort,
-    }));
+  const scenes = designData<WorkflowSceneRow[]>(await api.querySceneList(params));
+  const others = [
+    ...new Map(
+      scenes
+        .filter(
+          (item) =>
+            item.secondScene &&
+            (item.firstScene !== scope.firstScene || item.secondScene !== scope.secondScene),
+        )
+        .map((item) => [JSON.stringify(sceneKey(item)), item]),
+    ).values(),
+  ];
+  const untouched = await Promise.all(
+    others.map(async (item) =>
+      designData<WorkflowActivityRow[]>(
+        await api.queryActivitiesByScene({ ...params, ...sceneKey(item) }),
+      ).map((activity) => ({
+        ...sceneKey(item),
+        activityNodeName: activity.activityNodeName,
+        subActivityNodeName: activity.subActivityNodeName || '',
+        sort: activity.sort,
+      })),
+    ),
+  );
   designData(
-    await api.refreshActivities(params, { activities: [...untouched, ...desired] }),
+    await api.refreshActivities(params, { activities: [...untouched.flat(), ...desired] }),
   );
 }
 

@@ -592,9 +592,10 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('activity refresh loads the dimension once and preserves every other scene', async () => {
+  await test('activity refresh queries every retained scene with explicit scene identity', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
     mapped.workflow.stages[0].steps.push({ id: 'new', name: '新节点', order: 1, assets: [] });
+    const sceneQueries = [];
     const activityQueries = [];
     const activityRows = [
       {
@@ -618,6 +619,14 @@ try {
         sort: 0,
       },
     ];
+    api.querySceneList = async (params) => {
+      sceneQueries.push(structuredClone(params));
+      return success([
+        scene,
+        { firstScene: '研发', secondScene: '保留场景一' },
+        { firstScene: '测试', secondScene: '保留场景二' },
+      ]);
+    };
     api.queryActivitiesByScene = async (params) => {
       activityQueries.push(structuredClone(params));
       return success(
@@ -635,7 +644,11 @@ try {
       return success(null);
     };
     await repository.saveDesignActivities(context, mapped.workflow, detail);
-    assert.deepEqual(activityQueries, [scope]);
+    assert.deepEqual(sceneQueries, [scope]);
+    assert.deepEqual(activityQueries, [
+      { ...scope, firstScene: '研发', secondScene: '保留场景一' },
+      { ...scope, firstScene: '测试', secondScene: '保留场景二' },
+    ]);
     assert.deepEqual(
       refreshed.activities.slice(0, 2).map((row) => row.secondScene),
       ['保留场景一', '保留场景二'],
