@@ -1662,108 +1662,120 @@ onBeforeUnmount(() => {
           </button>
         </nav>
 
-        <section
-          v-if="!isExtensionHistoryTab"
-          class="asset-detail__version-panel"
-          :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
-          aria-label="版本信息"
-        >
-          <div class="asset-detail__version-row">
-            <span class="asset-detail__version-label">版本</span>
-            <HarnessVersionPicker
-              v-model="selectedVersion"
-              :versions="detailVersions"
-              :statuses="detailVersionStatuses"
-              :disabled="detailLoading || detailSaving"
-              @change="changeDetailVersion"
-            />
-          </div>
-          <p v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__hint">
-            Extension
-            由场景编排生成并发布，新版本发布请前往工作流页面的对应场景操作；本页面仅展示已发布的产物。
-          </p>
-          <div class="asset-detail__version-meta">
-            <span
-              v-if="selectedVersionStatus"
-              class="asset-badge"
-              :class="statusClassForLabel(selectedVersionStatus)"
-            >
-              {{ selectedVersionStatus }}
-            </span>
-            <span class="asset-detail__uploaded-at">
-              上传时间：<strong>{{ selectedVersionUploadedAt }}</strong>
-            </span>
-          </div>
-        </section>
-
-        <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
-          暂无版本，当前无法查看详情
-        </div>
-        <template v-else-if="isExtensionHistoryTab">
-          <div v-if="extensionHistoryLoading" class="asset-empty" role="status">
-            正在加载发布历史…
-          </div>
-          <div
-            v-else-if="extensionHistoryError"
-            class="asset-empty asset-empty--error"
-            role="alert"
+        <div class="asset-detail__content-scroll">
+          <section
+            v-if="!isExtensionHistoryTab"
+            class="asset-detail__version-panel"
+            :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
+            aria-label="版本信息"
           >
-            <span>{{ extensionHistoryError }}</span>
-            <button type="button" class="asset-button is-secondary" @click="loadExtensionHistory">
+            <div class="asset-detail__version-row">
+              <span class="asset-detail__version-label">版本</span>
+              <HarnessVersionPicker
+                v-model="selectedVersion"
+                :versions="detailVersions"
+                :statuses="detailVersionStatuses"
+                :disabled="detailLoading || detailSaving"
+                @change="changeDetailVersion"
+              />
+            </div>
+            <p v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__hint">
+              Extension
+              由场景编排生成并发布，新版本发布请前往工作流页面的对应场景操作；本页面仅展示已发布的产物。
+            </p>
+            <div class="asset-detail__version-meta">
+              <span
+                v-if="selectedVersionStatus"
+                class="asset-badge"
+                :class="statusClassForLabel(selectedVersionStatus)"
+              >
+                {{ selectedVersionStatus }}
+              </span>
+              <span class="asset-detail__uploaded-at">
+                上传时间：<strong>{{ selectedVersionUploadedAt }}</strong>
+              </span>
+            </div>
+          </section>
+
+          <div v-if="extensionHasNoVersion" class="asset-empty" role="status">
+            暂无版本，当前无法查看详情
+          </div>
+          <template v-else-if="isExtensionHistoryTab">
+            <div v-if="extensionHistoryLoading" class="asset-empty" role="status">
+              正在加载发布历史…
+            </div>
+            <div
+              v-else-if="extensionHistoryError"
+              class="asset-empty asset-empty--error"
+              role="alert"
+            >
+              <span>{{ extensionHistoryError }}</span>
+              <button
+                type="button"
+                class="asset-button is-secondary"
+                @click="loadExtensionHistory"
+              >
+                重新加载
+              </button>
+            </div>
+            <ExtensionPublishPage
+              v-else-if="extensionHistoryContext"
+              :release-context="extensionHistoryContext"
+              :initial-panel="'history'"
+              :release-chrome="false"
+              :user-id="props.userId"
+              :user-name="props.userName"
+              @close="detailTab = 'content'"
+              @released="onExtensionReleased"
+              @notify="showToast"
+            />
+            <div v-else class="asset-empty">
+              <span>发布记录暂未加载</span>
+              <button
+                type="button"
+                class="asset-button is-secondary"
+                @click="loadExtensionHistory"
+              >
+                重新加载
+              </button>
+            </div>
+          </template>
+          <div v-else-if="detailLoading" class="asset-empty" role="status">
+            正在加载资产内容…
+          </div>
+          <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
+            <span>{{ detailError }}</span>
+            <button type="button" class="asset-button is-secondary" @click="loadDetail">
               重新加载
             </button>
           </div>
-          <ExtensionPublishPage
-            v-else-if="extensionHistoryContext"
-            :release-context="extensionHistoryContext"
-            :initial-panel="'history'"
-            :release-chrome="false"
+          <HarnessCatalogDetailDialog
+            v-else-if="catalogDetailRecord"
+            open
+            embedded
+            :record="catalogDetailRecord"
             :user-id="props.userId"
-            :user-name="props.userName"
-            @close="detailTab = 'content'"
-            @released="onExtensionReleased"
-            @notify="showToast"
+            :capability-type="catalogCapabilityType"
+            :version="selectedVersion"
+            :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
           />
-          <div v-else class="asset-empty">
-            <span>发布记录暂未加载</span>
-            <button type="button" class="asset-button is-secondary" @click="loadExtensionHistory">
-              重新加载
-            </button>
+          <HarnessExtensionDetailContent
+            v-else-if="detail?.capabilities"
+            :key="`${selectedAssetKey}:${selectedVersion}`"
+            :name="selectedAsset.name"
+            :user-id="props.userId"
+            :capabilities="detail.capabilities"
+          />
+          <div v-else class="asset-file-tree">
+            <strong>📁 {{ selectedAsset.name }}/</strong>
+            <div v-if="detail?.files.length" class="asset-file-tree__branch">
+              <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
+                <span>📄 {{ file.path }}</span>
+                <pre>{{ file.content || '暂无文件内容' }}</pre>
+              </template>
+            </div>
+            <div v-else class="asset-empty">该版本暂无文件</div>
           </div>
-        </template>
-        <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
-        <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
-          <span>{{ detailError }}</span>
-          <button type="button" class="asset-button is-secondary" @click="loadDetail">
-            重新加载
-          </button>
-        </div>
-        <HarnessCatalogDetailDialog
-          v-else-if="catalogDetailRecord"
-          open
-          embedded
-          :record="catalogDetailRecord"
-          :user-id="props.userId"
-          :capability-type="catalogCapabilityType"
-          :version="selectedVersion"
-          :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
-        />
-        <HarnessExtensionDetailContent
-          v-else-if="detail?.capabilities"
-          :key="`${selectedAssetKey}:${selectedVersion}`"
-          :name="selectedAsset.name"
-          :user-id="props.userId"
-          :capabilities="detail.capabilities"
-        />
-        <div v-else class="asset-file-tree">
-          <strong>📁 {{ selectedAsset.name }}/</strong>
-          <div v-if="detail?.files.length" class="asset-file-tree__branch">
-            <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
-              <span>📄 {{ file.path }}</span>
-              <pre>{{ file.content || '暂无文件内容' }}</pre>
-            </template>
-          </div>
-          <div v-else class="asset-empty">该版本暂无文件</div>
         </div>
       </section>
     </template>
@@ -2597,10 +2609,18 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   padding: 24px;
+  padding-bottom: 0;
   border: 1px solid #eef0f3;
   border-radius: 10px;
   background: #fff;
+}
+
+.asset-page > .asset-detail {
+  overflow: hidden;
 }
 
 .asset-detail__header {
@@ -2873,6 +2893,39 @@ onBeforeUnmount(() => {
   margin-bottom: 0;
 }
 
+.asset-detail__content-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0 0 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar {
+  width: 9px;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #cbd5e1;
+  background-clip: padding-box;
+}
+
+.asset-detail__content-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
 .asset-detail__tabs button {
   margin-bottom: -1px;
   padding: 10px 14px;
@@ -2902,7 +2955,7 @@ onBeforeUnmount(() => {
 
 .asset-detail__version-panel {
   box-sizing: border-box;
-  margin: 0 -24px 18px;
+  margin: 0 0 18px;
   padding: 16px 24px 18px;
   background: #f3f6fb;
 }
@@ -3092,12 +3145,14 @@ onBeforeUnmount(() => {
   }
 
   .asset-detail {
-    padding: 18px 16px;
+    padding: 18px 16px 0;
+  }
+
+  .asset-detail__content-scroll {
+    padding-bottom: 18px;
   }
 
   .asset-detail__version-panel {
-    margin-right: -16px;
-    margin-left: -16px;
     padding-right: 16px;
     padding-left: 16px;
   }

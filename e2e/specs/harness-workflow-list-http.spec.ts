@@ -277,6 +277,9 @@ test.describe('Harness 工作流服务端列表', () => {
       exact: true,
     });
     await expect(history).toBeVisible();
+    await expect(history.getByLabel('所属 DIM')).toHaveText('服务端产品');
+    await expect(history.getByLabel('所属场景')).toHaveText('研发提效 / 接口生成');
+    await expect(history.locator('.modal-header')).not.toContainText('接口生成流程说明');
     await expect(history).toContainText('v1.3.0');
     await expect(history).toContainText('接口生成流程首次发布');
     await expect(history).toContainText('历史发布人');

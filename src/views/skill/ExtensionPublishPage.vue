@@ -746,6 +746,10 @@ const publishDimension = computed(() => {
     name: scope?.dimName || product?.name || appliedFilters.departmentPath.at(-1) || '未提供',
   };
 });
+const historySceneName = computed(() => {
+  const scene = modalScene.value;
+  return [scene?.primary, scene?.name].filter(Boolean).join(' / ') || '未提供场景';
+});
 const publishForm = reactive({
   name: '',
   description: '',
@@ -1718,8 +1722,21 @@ onBeforeUnmount(() => {
                 </section>
               </div>
             </div>
-            <p class="extension-follow-publish-note">
-              清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。
+            <p
+              class="extension-follow-publish-note"
+              :class="{
+                'is-success':
+                  modalScene.publishCheck?.canPublish === true &&
+                  Boolean(modalScene.publishCheck?.message),
+                'is-error':
+                  modalScene.publishCheck?.canPublish === false &&
+                  Boolean(modalScene.publishCheck?.message),
+              }"
+            >
+              {{
+                modalScene.publishCheck?.message ||
+                '清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。'
+              }}
             </p>
             <div v-if="organizationError" class="modal-error" role="alert">
               <p>{{ organizationError }}</p>
@@ -1732,15 +1749,6 @@ onBeforeUnmount(() => {
                 重新加载组织
               </button>
             </div>
-            <p
-              v-if="
-                modalScene.publishCheck?.canPublish === false && modalScene.publishCheck.message
-              "
-              class="publish-check-message"
-              role="status"
-            >
-              {{ modalScene.publishCheck.message }}
-            </p>
             <p v-if="publishError" class="modal-error" role="alert">{{ publishError }}</p>
             <button
               v-if="releaseContext && (!modalScene.publishable || modalScene.publishing)"
@@ -1794,7 +1802,32 @@ onBeforeUnmount(() => {
           <h3 id="history-modal-title">
             <template v-if="!releaseContext">发布历史 · </template>
             {{ modalScene.name || modalScene.extension.name }}
-            <small class="history-description">
+            <span v-if="releaseContext" class="history-context">
+              <span
+                class="history-context__item history-context__item--dimension"
+                aria-label="所属 DIM"
+                title="所属 DIM"
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                  <path d="m8 2.25 4.75 2.5v6.5L8 13.75l-4.75-2.5v-6.5L8 2.25Z" />
+                  <path d="M3.25 4.75 8 7.25l4.75-2.5M8 7.25v6.5" />
+                </svg>
+                <span>{{ publishDimension.name }}</span>
+              </span>
+              <span
+                class="history-context__item history-context__item--scene"
+                aria-label="所属场景"
+                title="所属场景"
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+                  <circle cx="3.25" cy="4" r="1.25" />
+                  <circle cx="12.75" cy="12" r="1.25" />
+                  <path d="M4.5 4h2A2.5 2.5 0 0 1 9 6.5v3A2.5 2.5 0 0 0 11.5 12" />
+                </svg>
+                <span>{{ historySceneName }}</span>
+              </span>
+            </span>
+            <small v-else class="history-description">
               {{ modalScene.extension.description || '暂无描述' }}
             </small>
           </h3>
@@ -3095,6 +3128,11 @@ onBeforeUnmount(() => {
 }
 
 .extension-modal--history .modal-header h3 {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
 }
 
@@ -3142,6 +3180,50 @@ onBeforeUnmount(() => {
   color: #667085;
   font-size: 12px;
   font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.history-context {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-context__item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid #dfe7f2;
+  border-radius: 5px;
+  background: #f8fafc;
+  color: #52647d;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.history-context__item--dimension {
+  border-color: #dbe5f6;
+  background: #f4f7fc;
+  color: #486591;
+}
+
+.history-context__item svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+}
+
+.history-context__item > span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -3391,16 +3473,12 @@ onBeforeUnmount(() => {
   line-height: 1.55;
 }
 
-.publish-check-message {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: #f5f7fc;
-  color: #52647d;
-  font-size: 13px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.extension-follow-publish-note.is-success {
+  color: #15803d;
+}
+
+.extension-follow-publish-note.is-error {
+  color: #dc2626;
 }
 
 .modal-error {
