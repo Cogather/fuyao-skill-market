@@ -235,8 +235,7 @@ $workspace: ':is(#harness-panel-scenarios, #harness-panel-workflows, #harness-pa
     .capability-field-hint,
     .assignment-description,
     .empty-hint,
-    .history-end,
-    .extension-follow-publish-note
+    .history-end
   ) {
     color: var(--hw-muted);
     font-size: 12px;
