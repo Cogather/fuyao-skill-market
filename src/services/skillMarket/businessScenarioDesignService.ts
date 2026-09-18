@@ -41,7 +41,7 @@ export interface WorkflowDetail {
   flowDescription: string | null;
   sceneExtensionCode: string | null;
   secondSceneDescription: string | null;
-  commands: { commandName: string; description: string }[];
+  commands: { commandName: string; description: string; version?: string | null }[];
   assetPool: WorkflowPoolItem[];
   stages: {
     activityNodeName: string;

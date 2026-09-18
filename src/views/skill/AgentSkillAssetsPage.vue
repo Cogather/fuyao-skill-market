@@ -558,7 +558,7 @@ const selectedVersionUploadedAt = computed(() => {
   return formatCompactDateTime(selectedVersionDetail.value?.uploadedAt);
 });
 const selectedVersionPublisher = computed(
-  () => firstNonBlankText([selectedVersionDetail.value?.uploadedBy]) || '—',
+  () => firstNonBlankText([selectedAsset.value?.publisher]) || '—',
 );
 function detailVersionStatus(versionValue: string): string {
   const asset = selectedAsset.value;

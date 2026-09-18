@@ -208,9 +208,9 @@ test('HTTP Extension 详情仅显示发布人，其他资产展示 owner 和 dev
             uploadedBy:
               type === 'EXTENSION'
                 ? suffix === 'assigned'
-                  ? '周发布 w1004'
+                  ? 'w1004'
                   : suffix === 'developer-only'
-                    ? '吴发布 w1005'
+                    ? 'w1005'
                     : ''
                 : '上传用户',
           },

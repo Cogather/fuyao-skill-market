@@ -205,7 +205,9 @@ test.describe('Harness 工作流服务端列表', () => {
       '已发布无变更',
     ]) {
       await expect(
-        harness.workflowInventoryRow(name).getByRole('button', { name: '查看发布历史', exact: true }),
+        harness
+          .workflowInventoryRow(name)
+          .getByRole('button', { name: '查看发布历史', exact: true }),
       ).toBeEnabled();
     }
     await expect(
@@ -214,14 +216,10 @@ test.describe('Harness 工作流服务端列表', () => {
         .getByRole('button', { name: '发布', exact: true }),
     ).toHaveCount(0);
     await expect(
-      harness
-        .workflowInventoryRow('待发布允许')
-        .getByRole('button', { name: '发布', exact: true }),
+      harness.workflowInventoryRow('待发布允许').getByRole('button', { name: '发布', exact: true }),
     ).toBeEnabled();
     await expect(
-      harness
-        .workflowInventoryRow('待发布拒绝')
-        .getByRole('button', { name: '发布', exact: true }),
+      harness.workflowInventoryRow('待发布拒绝').getByRole('button', { name: '发布', exact: true }),
     ).toHaveCount(0);
     await expect(
       harness
@@ -238,6 +236,111 @@ test.describe('Harness 工作流服务端列表', () => {
       'data-open-count',
       '0',
     );
+  });
+
+  test('仅有 Command 的工作流显示查看按钮，并支持展开内容与失败重试', async ({ page }) => {
+    await prepare(page);
+    const detailRequests: Request[] = [];
+    const contentRequests: Request[] = [];
+    let contentAttempts = 0;
+    await page.route('**/api/harness/workflow/list**', (route) =>
+      route.fulfill({
+        json: success({
+          total: 3,
+          pageNo: 1,
+          pageSize: 10,
+          list: [
+            { ...workflow('有入口流程'), commandCount: 2 },
+            { ...workflow('无入口流程'), commandCount: 0 },
+            { ...workflow('入口数量未知'), commandCount: null },
+          ],
+        }),
+      }),
+    );
+    await page.route('**/api/harness/workflow/detail**', (route) => {
+      detailRequests.push(route.request());
+      return route.fulfill({
+        json: success({
+          flowName: '有入口流程',
+          flowDescription: '流程说明',
+          sceneExtensionCode: 'api-code',
+          secondSceneDescription: '接口说明',
+          commands: [
+            { commandName: '/build-api', description: '构建并检查接口', version: '2.1.0' },
+            { commandName: '/draft-api', description: '仍在设计中的入口', version: null },
+          ],
+          assetPool: [],
+          stages: [],
+          steps: [],
+          nextStep: 0,
+          allDone: false,
+        }),
+      });
+    });
+    await page.route('**/api/harness/packages/file**', (route) => {
+      contentRequests.push(route.request());
+      contentAttempts += 1;
+      if (contentAttempts === 1) {
+        return route.fulfill({
+          json: { meta: { success: false, message: 'Command 内容暂时不可用' }, data: null },
+        });
+      }
+      return route.fulfill({
+        json: success('# /build-api\n\n执行接口构建与校验。'),
+      });
+    });
+
+    const harness = new HarnessManagementPage(page);
+    await mountWorkflowPage(page);
+    const populatedRow = harness.workflowInventoryRow('有入口流程');
+    await expect(
+      populatedRow.getByRole('button', { name: '查看 Command', exact: true }),
+    ).toBeVisible();
+    await expect(
+      harness
+        .workflowInventoryRow('无入口流程')
+        .getByRole('button', { name: '查看 Command', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      harness
+        .workflowInventoryRow('入口数量未知')
+        .getByRole('button', { name: '查看 Command', exact: true }),
+    ).toHaveCount(0);
+
+    await populatedRow.getByRole('button', { name: '查看 Command', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '有入口流程 Command 清单', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('/build-api', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('v2.1.0', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('/draft-api', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('暂无版本', { exact: true })).toBeVisible();
+    expect(detailRequests).toHaveLength(1);
+    expect(Object.fromEntries(new URL(detailRequests[0]!.url()).searchParams)).toEqual({
+      userId: 'workflow-reader',
+      dimCode: 'remote-product',
+      firstScene: '研发提效',
+      secondScene: '接口生成',
+    });
+
+    await dialog.getByRole('button', { name: '展开 Command /build-api', exact: true }).click();
+    await expect.poll(() => contentRequests.length).toBe(1);
+    await expect(dialog.getByText('Command 内容暂时不可用', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: '重新加载 /build-api', exact: true }).click();
+    await expect(dialog.getByText('执行接口构建与校验。', { exact: false })).toBeVisible();
+    expect(contentRequests).toHaveLength(2);
+    expect(Object.fromEntries(new URL(contentRequests[1]!.url()).searchParams)).toEqual({
+      userId: 'workflow-reader',
+      componentType: 'command',
+      componentName: '/build-api',
+      componentVersion: '2.1.0',
+      filePath: '/build-api.md',
+    });
+
+    await dialog.getByRole('button', { name: '展开 Command /draft-api', exact: true }).click();
+    await expect(dialog.getByText('暂无已发布版本，暂不能查看内容', { exact: true })).toBeVisible();
+    expect(contentRequests).toHaveLength(2);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
   });
 
   test('查看发布历史进入 Extension 发布历史页面并按维度与场景查询记录', async ({ page }) => {
@@ -455,9 +558,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await commandItem.getByRole('button', { name: /执行 Command/ }).click();
     await expect(commandItem.locator('.file-content')).toContainText('执行接口生成命令。');
     expect(
-      packageFileRequests.map((request) =>
-        Object.fromEntries(new URL(request.url()).searchParams),
-      ),
+      packageFileRequests.map((request) => Object.fromEntries(new URL(request.url()).searchParams)),
     ).toEqual([
       {
         userId: 'workflow-reader',

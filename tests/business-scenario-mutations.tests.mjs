@@ -71,6 +71,7 @@ try {
   }
   async function fixture({
     bound = false,
+    commandVersion,
     failReadbackOnce = false,
     sceneCode = 'demo-old',
     productName = 'demo',
@@ -91,7 +92,15 @@ try {
     ];
     let detail = {
       ...rows[0],
-      commands: bound ? [{ commandName: '/demo-entry', description: '' }] : [],
+      commands: bound
+        ? [
+            {
+              commandName: '/demo-entry',
+              description: '',
+              ...(commandVersion === undefined ? {} : { version: commandVersion }),
+            },
+          ]
+        : [],
       assetPool: [],
       stages: [
         {
@@ -260,6 +269,107 @@ try {
       description: '旧目标',
     });
     assert.equal(f.calls.filter(([op]) => op === 'detail').length, 1);
+  });
+  await test('unchanged wizard navigation does not save and backward navigation keeps invalid drafts local', async () => {
+    const f = await fixture();
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 1);
+    assert.equal(await state.saveWizard(), true);
+    assert.deepEqual(f.calls, []);
+    await state.goNext();
+    assert.equal(state.wizard.value.step, 2);
+    assert.deepEqual(f.calls, []);
+    await state.goStep(0);
+    assert.equal(state.wizard.value.step, 0);
+    assert.deepEqual(f.calls, []);
+
+    state.wizard.value.step = 1;
+    state.wizard.value.form.name = '';
+    await state.goStep(0);
+    assert.equal(state.wizard.value.step, 0);
+    assert.equal(state.wizard.value.form.name, '');
+    assert.deepEqual(f.calls, []);
+  });
+  await test('selecting capabilities stays local until one workflow save persists them', async () => {
+    const f = await fixture();
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 2);
+    state.selectCapability({
+      _id: 'remote-command',
+      name: '/demo-command',
+      type: 'Command',
+      description: '命令入口',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    state.selectCapability({
+      _id: 'remote-skill',
+      name: 'demo-skill',
+      type: 'Skill',
+      assetType: 'Skill',
+      status: 'active',
+      description: '技能资产',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    await setImmediate();
+    assert.deepEqual(f.calls, []);
+    assert.equal(state.wizard.value.workflow.commands.length, 1);
+    assert.deepEqual(state.wizard.value.poolIds, ['remote-skill']);
+
+    assert.equal(await state.saveWizard(), true);
+    assert.deepEqual(
+      f.calls.map(([op]) => op),
+      ['command-bind', 'pool-add', 'detail'],
+    );
+  });
+  await test('workflow structure and capability chips render distinct visual markers', async () => {
+    const f = await fixture();
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 1);
+    let html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /data-structure-icon="stage"/);
+    assert.match(html, /data-structure-icon="node"/);
+
+    state.wizard.value.step = 3;
+    state.selectCapability({
+      _id: 'visual-agent',
+      name: 'demo-agent',
+      type: 'Agent',
+      assetType: 'Agent',
+      status: 'active',
+      description: '',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    state.selectCapability({
+      _id: 'visual-skill',
+      name: 'demo-skill',
+      type: 'Skill',
+      assetType: 'Skill',
+      status: 'active',
+      description: '',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    const nodeId = state.wizard.value.workflow.stages[0].steps[0].id;
+    state.toggleNodeAsset(nodeId, 'visual-agent');
+    state.toggleNodeAsset(nodeId, 'visual-skill');
+    html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /class="asset-chip" data-asset-type="Agent"/);
+    assert.match(html, /class="asset-chip" data-asset-type="Skill"/);
+  });
+  await test('versioned Commands render a ready badge in the summary and design wizard', async () => {
+    const f = await fixture({ bound: true, commandVersion: '1.2.3' });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 2);
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.equal((html.match(/class="command-version-ready"/g) || []).length, 2);
+    assert.equal((html.match(/已有发布版本：1\.2\.3/g) || []).length, 4);
   });
   await test('creating a root scene sends firstSceneDescription and restores it after reloading', async () => {
     const f = await fixture();
@@ -758,7 +868,7 @@ try {
       false,
     );
   });
-  await test('creating Command and Skill waits for creation then binds the scene or adds to pool', async () => {
+  await test('creating Command and Skill only creates records until the workflow is saved', async () => {
     const f = await fixture();
     const item = {
       _id: 'new-command',
@@ -780,13 +890,10 @@ try {
     });
     assert.deepEqual(
       f.calls.filter(([op]) => op !== 'detail').map(([op]) => op),
-      ['create', 'command-bind', 'create', 'pool-add'],
+      ['create', 'create'],
     );
-    const binding = f.calls.find(([op]) => op === 'command-bind')[1];
-    assert.equal(binding.secondScene, '代码生成');
-    assert.equal(f.calls.find(([op]) => op === 'pool-add')[1].assetType, 'SKILL');
   });
-  await test('creation failure stops binding and attachment failure reports the already created capability', async () => {
+  await test('creation failure returns the API error without attempting attachment', async () => {
     const f = await fixture();
     const item = {
       _id: 'new-agent',
@@ -804,17 +911,6 @@ try {
       f.calls.some(([op]) => op === 'pool-add'),
       false,
     );
-    api.createCapability = async () => success('created-id');
-    api.componentEnterPool = async () => ({ meta: { success: false, message: '入池拒绝' } });
-    let created;
-    await assert.rejects(
-      () =>
-        f.workspace.createCapability('Agent', item, (value) => {
-          created = value;
-        }),
-      /已创建.*入池拒绝/,
-    );
-    assert.equal(created.sourceId, 'created-id');
   });
   await test('removing a bound node uses cascade DELETE without explicit unbinding', async () => {
     const f = await fixture();

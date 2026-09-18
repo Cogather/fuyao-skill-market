@@ -55,9 +55,11 @@ function normalizeCommands(items: unknown[]): WorkflowDetail['commands'] {
     const name = readCommandName(value);
     if (!name) continue;
     const item = record(value);
+    const version = text(item.version);
     commands.set(name, {
       commandName: name,
       description: text(item.description) || text(item.commandDescription),
+      ...(version ? { version } : {}),
     });
   }
   return [...commands.values()];
@@ -156,7 +158,7 @@ export function mapDesignDetail(
     description: item.description || '',
     owner: '',
     developer: '',
-    version: null,
+    version: item.version || null,
   }));
   const workflow: Workflow = {
     _id: `workflow:${scenarioId}`,

@@ -33,7 +33,26 @@ try {
   await renderToString(createSSRApp(TestHost));
 
   assert.equal(bindings.assetPersonName('  周扬 w30000007  '), '周扬 w30000007');
-  console.log('PASS asset cards preserve the complete person value returned by the API');
+  bindings.assets.value = [
+    {
+      id: 'extension-1',
+      assetType: 'Extension',
+      publisher: '周发布 w1004',
+    },
+  ];
+  bindings.selectedAssetKey.value = 'Extension:extension-1';
+  bindings.selectedVersion.value = '1.0.0';
+  bindings.detail.value = {
+    component: {
+      versions: [{ version: '1.0.0', uploadedAt: null, uploadedBy: 'w1004' }],
+    },
+  };
+  assert.equal(
+    bindings.selectedVersionPublisher.value,
+    '周发布 w1004',
+    'Extension detail publisher must come from the query record instead of detail uploadedBy',
+  );
+  console.log('PASS asset cards and Extension detail use the complete query person value');
 } finally {
   await server.close();
 }

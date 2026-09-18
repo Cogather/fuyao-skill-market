@@ -724,6 +724,11 @@ function dismissWizard() {
 async function saveWizard(): Promise<boolean> {
   const w = wizard.value;
   if (!w || wizardBusy.value) return false;
+  if (!wizardHasChanges.value) {
+    w.error = '';
+    wizardSaveConfirmed.value = true;
+    return true;
+  }
   w.error = wizardStepError(w, 0);
   if (w.error) {
     w.step = 0;
@@ -867,6 +872,12 @@ function canGoStep(step: number): boolean {
 async function goStep(step: number) {
   const w = wizard.value;
   if (!w || step === w.step || !canGoStep(step)) return;
+  if (step < w.step) {
+    w.step = step;
+    w.error = '';
+    showWizardPage();
+    return;
+  }
   if (!(await saveWizard())) return;
   w.step = step;
   w.maxReached = Math.max(w.maxReached, step);
@@ -1037,7 +1048,7 @@ function appendCommand(command: Command) {
   });
   syncWizard();
 }
-async function addCommand(id: string) {
+function addCommand(id: string) {
   const w = wizard.value;
   const command = commands.find((item) => item._id === id);
   if (
@@ -1047,16 +1058,8 @@ async function addCommand(id: string) {
     w.workflow.commands.some((item) => item.commandId === id)
   )
     return;
-  capabilitySaving.value = true;
   w.error = '';
-  try {
-    await props.workspace.attachCapability('Command', command);
-    if (wizard.value === w) appendCommand(command);
-  } catch (cause) {
-    w.error = cause instanceof Error ? cause.message : 'Command 绑定失败';
-  } finally {
-    capabilitySaving.value = false;
-  }
+  appendCommand(command);
 }
 function openCommandDraft() {
   if (!wizard.value) return;
@@ -1145,29 +1148,18 @@ async function createCommand() {
     capabilitySaving.value = false;
   }
 }
-async function togglePool(id: string) {
+function togglePool(id: string) {
   const w = wizard.value;
   const asset = assets.find((item) => item._id === id);
   if (!w || !asset || wizardBusy.value) return;
-  const removing = w.poolIds.includes(id);
-  capabilitySaving.value = true;
   w.error = '';
-  try {
-    if (removing) await props.workspace.removePoolAsset(asset);
-    else await props.workspace.attachCapability(asset.assetType, asset);
-    if (wizard.value !== w) return;
-    if (w.poolIds.includes(id)) {
-      w.poolIds = w.poolIds.filter((item) => item !== id);
-      Object.keys(w.nodeAssetsMap).forEach((key) => {
-        w.nodeAssetsMap[key] = (w.nodeAssetsMap[key] || []).filter((item) => item !== id);
-      });
-    } else w.poolIds.push(id);
-    syncWizard();
-  } catch (cause) {
-    w.error = cause instanceof Error ? cause.message : '资产池保存失败';
-  } finally {
-    capabilitySaving.value = false;
-  }
+  if (w.poolIds.includes(id)) {
+    w.poolIds = w.poolIds.filter((item) => item !== id);
+    Object.keys(w.nodeAssetsMap).forEach((key) => {
+      w.nodeAssetsMap[key] = (w.nodeAssetsMap[key] || []).filter((item) => item !== id);
+    });
+  } else w.poolIds.push(id);
+  syncWizard();
 }
 function toggleNodeAsset(nodeId: string, assetId: string) {
   const w = wizard.value;
@@ -1613,8 +1605,18 @@ async function createAsset() {
                   </button>
                   <div v-else class="commands">
                     <div v-for="command in workflow.commands" :key="command.id">
-                      <code :title="command.name">{{ command.name }}</code
-                      ><span
+                      <span class="command-name-line">
+                        <code :title="command.name">{{ command.name }}</code>
+                        <i
+                          v-if="command.version?.trim()"
+                          class="command-version-ready"
+                          role="img"
+                          :title="`已有发布版本：${command.version}`"
+                          :aria-label="`已有发布版本：${command.version}`"
+                          >✓</i
+                        >
+                      </span>
+                      <span
                         v-if="command.description?.trim()"
                         class="command-description"
                         :title="command.description"
@@ -2062,11 +2064,23 @@ async function createAsset() {
           class="edit-stage"
         >
           <header>
-            <div class="structure-info">
-              <b :title="stage.name">{{ stage.name }}</b>
-              <small v-if="stage.description" :title="stage.description">{{
-                stage.description
-              }}</small>
+            <div class="structure-heading">
+              <span
+                class="structure-icon stage-structure-icon"
+                data-structure-icon="stage"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="m12 3 8 4-8 4-8-4 8-4Z" />
+                  <path d="m4 12 8 4 8-4M4 17l8 4 8-4" />
+                </svg>
+              </span>
+              <div class="structure-info">
+                <b :title="stage.name">{{ stage.name }}</b>
+                <small v-if="stage.description" :title="stage.description">{{
+                  stage.description
+                }}</small>
+              </div>
             </div>
             <span
               ><button @click="move(wizard.workflow.stages, stage.id, -1)">↑</button
@@ -2092,11 +2106,25 @@ async function createAsset() {
               class="node-item"
             >
               <div class="node-row">
-                <div class="structure-info">
-                  <b :title="node.name">{{ node.name }}</b>
-                  <small v-if="node.description" :title="node.description">{{
-                    node.description
-                  }}</small>
+                <div class="structure-heading">
+                  <span
+                    class="structure-icon node-structure-icon"
+                    data-structure-icon="node"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="7" cy="7" r="2" />
+                      <circle cx="17" cy="12" r="2" />
+                      <circle cx="7" cy="17" r="2" />
+                      <path d="m9 8 6 3M9 16l6-3" />
+                    </svg>
+                  </span>
+                  <div class="structure-info">
+                    <b :title="node.name">{{ node.name }}</b>
+                    <small v-if="node.description" :title="node.description">{{
+                      node.description
+                    }}</small>
+                  </div>
                 </div>
                 <span
                   ><button @click="move(stage.steps, node.id, -1)">↑</button
@@ -2216,7 +2244,17 @@ async function createAsset() {
         <p v-if="!wizard.workflow.commands.length" class="hint">尚未选择 Command 入口。</p>
         <div v-for="command in wizard.workflow.commands" :key="command.id" class="command-row">
           <div class="command-details">
-            <code :title="command.name">{{ command.name }}</code>
+            <span class="command-name-line">
+              <code :title="command.name">{{ command.name }}</code>
+              <i
+                v-if="command.version?.trim()"
+                class="command-version-ready"
+                role="img"
+                :title="`已有发布版本：${command.version}`"
+                :aria-label="`已有发布版本：${command.version}`"
+                >✓</i
+              >
+            </span>
             <p v-if="command.description?.trim()" :title="command.description">
               {{ command.description }}
             </p>
@@ -2304,7 +2342,11 @@ async function createAsset() {
           <small>{{ wizard.poolIds.length }} 个已选 · 移出资产池会同时解除相关节点的绑定</small>
         </h4>
         <div class="chips">
-          <span v-for="id in wizard.poolIds" :key="id"
+          <span
+            v-for="id in wizard.poolIds"
+            :key="id"
+            class="asset-chip"
+            :data-asset-type="assets.find((a) => a._id === id)?.assetType"
             ><b class="asset-type-label" :data-type="assets.find((a) => a._id === id)?.assetType">{{
               assets.find((a) => a._id === id)?.assetType
             }}</b
@@ -2418,7 +2460,11 @@ async function createAsset() {
               >{{ node.description }}</small
             >
             <div class="chips">
-              <span v-for="id in wizard.nodeAssetsMap[node.id] || []" :key="id"
+              <span
+                v-for="id in wizard.nodeAssetsMap[node.id] || []"
+                :key="id"
+                class="asset-chip"
+                :data-asset-type="assets.find((a) => a._id === id)?.assetType"
                 ><b
                   class="asset-type-label"
                   :data-type="assets.find((a) => a._id === id)?.assetType"
@@ -2894,6 +2940,7 @@ async function createAsset() {
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
+  border: 1px solid transparent;
   border-radius: 6px;
   background: #f3f4f6;
   font-size: 12px;
@@ -2905,6 +2952,28 @@ async function createAsset() {
 }
 .chips > span {
   color: var(--hw-text, #334155);
+}
+.chips .asset-chip {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.chips .asset-chip[data-asset-type='Agent'] {
+  border-color: #bfd3ff;
+  background: #edf4ff;
+}
+.chips .asset-chip[data-asset-type='Skill'] {
+  border-color: #d9c6ff;
+  background: #f5f0ff;
+}
+.chips .asset-chip:hover {
+  border-color: #9ebaf5;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.1);
 }
 .chips .asset-type-label[data-type='Agent'] {
   color: var(--hw-primary, #2563eb);
@@ -3092,6 +3161,7 @@ h4 small {
   font-size: 11px;
 }
 .commands code {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3100,6 +3170,29 @@ h4 small {
   font-size: 13px;
   padding: 0;
   background: transparent;
+}
+.command-name-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+.command-version-ready {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #34d399;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #10b981, #059669);
+  box-shadow: 0 2px 5px rgb(5 150 105 / 24%);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
 }
 .commands .command-description {
   min-width: 0;
@@ -3549,6 +3642,48 @@ h4 small {
   padding: 12px 14px;
   background: #f9fafb;
 }
+.structure-heading {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.structure-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1px solid;
+  border-radius: 8px;
+}
+.structure-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.stage-structure-icon {
+  width: 30px;
+  height: 30px;
+  border-color: #bed2ff;
+  background: #eaf2ff;
+  color: #2563eb;
+}
+.node-structure-icon {
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border-color: #ddd1ff;
+  background: #f5f1ff;
+  color: #7c3aed;
+}
+.node-structure-icon svg {
+  width: 14px;
+  height: 14px;
+}
 .nodes {
   padding: 8px 14px 12px 32px;
 }
@@ -3903,8 +4038,13 @@ h4 small {
 .command-details {
   min-width: 0;
 }
+.command-details .command-name-line {
+  width: 100%;
+}
 .command-details code {
   display: block;
+  flex: 0 1 auto;
+  min-width: 0;
   padding: 0;
   background: transparent;
   color: #334764;

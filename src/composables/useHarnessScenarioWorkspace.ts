@@ -468,27 +468,10 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       return item;
     }
     if (saving.value) throw new Error('正在保存，请稍候');
-    const scope = sceneContext();
-    const scenarioId = selectedScenarioId.value;
     saving.value = true;
     try {
       const created = await createDesignCapability(type, item, dimensionFor(product));
       onCreated?.(created);
-      try {
-        assertCanManageDepartment();
-        if (
-          !available.value ||
-          productId.value !== product._id ||
-          selectedScenarioId.value !== scenarioId ||
-          context().userId !== scope.userId
-        )
-          throw new Error('场景范围已切换，请回到原场景重新选择');
-        await attachDesignCapability(scope, type, created);
-      } catch (cause) {
-        throw new Error(
-          `${type} 已创建，但${type === 'Command' ? '场景绑定' : '入池'}失败：${cause instanceof Error ? cause.message : '请求失败'}。请从资产清单重新选择，无需重复创建`,
-        );
-      }
       return created;
     } finally {
       saving.value = false;

@@ -367,6 +367,22 @@ try {
     assert.equal(mapped.workflow.stages[0].steps[0].assets[0].assetId, mapped.assets[0]._id);
     assert.equal(mapped.assets[0].packageReady, true);
   });
+  await test('detail mapping preserves a nonempty Command version and ignores blank versions', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        commands: [
+          { commandName: '/demo-versioned', description: '已发布入口', version: ' 1.2.3 ' },
+          { commandName: '/demo-draft', description: '未发布入口', version: '   ' },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.equal(mapped.workflow.commands[0].version, '1.2.3');
+    assert.equal(mapped.workflow.commands[1].version, null);
+  });
   await test('detail mapping treats a null child name as a stage placeholder, not a blank node', async () => {
     const mapped = repository.mapDesignDetail(
       context,
