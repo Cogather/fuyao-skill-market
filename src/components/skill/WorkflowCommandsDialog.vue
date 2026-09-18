@@ -105,12 +105,13 @@ async function loadCommandContent(command: HarnessWorkflowCommand, index: number
   state.loading = true;
   state.error = '';
   try {
-    const path = planningTaskDetailDirectFilePath(command.name, 'command');
+    const capabilityName = command.name.replace(/^\/+/, '');
+    const path = planningTaskDetailDirectFilePath(capabilityName, 'command');
     const content = await queryPlanningTaskDetailFileContent(
       {
         userId: props.userId,
         capabilityType: 'command',
-        capabilityName: command.name.replace(/^\/+/, ''),
+        capabilityName,
         version,
         filePath: path,
       },

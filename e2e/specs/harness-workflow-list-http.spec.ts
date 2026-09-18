@@ -333,7 +333,7 @@ test.describe('Harness 工作流服务端列表', () => {
       componentType: 'command',
       componentName: 'build-api',
       componentVersion: '2.1.0',
-      filePath: '/build-api.md',
+      filePath: 'build-api.md',
     });
 
     await dialog.getByRole('button', { name: '展开 Command /draft-api', exact: true }).click();
