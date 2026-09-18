@@ -331,7 +331,7 @@ test.describe('Harness 工作流服务端列表', () => {
     expect(Object.fromEntries(new URL(contentRequests[1]!.url()).searchParams)).toEqual({
       userId: 'workflow-reader',
       componentType: 'command',
-      componentName: '/build-api',
+      componentName: 'build-api',
       componentVersion: '2.1.0',
       filePath: '/build-api.md',
     });

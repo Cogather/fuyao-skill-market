@@ -363,12 +363,13 @@ try {
     assert.match(html, /class="asset-chip" data-asset-type="Agent"/);
     assert.match(html, /class="asset-chip" data-asset-type="Skill"/);
   });
-  await test('versioned Commands render a ready badge in the summary and design wizard', async () => {
+  await test('versioned Commands reuse the asset package ready marker', async () => {
     const f = await fixture({ bound: true, commandVersion: '1.2.3' });
     const state = await mountScenarioPage(f.workspace);
     await state.openWizard(f.workflow, 2);
     const html = await renderMountedScenarioPage(state, f.workspace);
-    assert.equal((html.match(/class="command-version-ready"/g) || []).length, 2);
+    assert.equal((html.match(/class="asset-package-status"/g) || []).length, 2);
+    assert.equal((html.match(/class="command-version-ready"/g) || []).length, 0);
     assert.equal((html.match(/已有发布版本：1\.2\.3/g) || []).length, 4);
   });
   await test('creating a root scene sends firstSceneDescription and restores it after reloading', async () => {

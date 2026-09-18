@@ -1609,7 +1609,7 @@ async function createAsset() {
                         <code :title="command.name">{{ command.name }}</code>
                         <i
                           v-if="command.version?.trim()"
-                          class="command-version-ready"
+                          class="asset-package-status"
                           role="img"
                           :title="`已有发布版本：${command.version}`"
                           :aria-label="`已有发布版本：${command.version}`"
@@ -2248,7 +2248,7 @@ async function createAsset() {
               <code :title="command.name">{{ command.name }}</code>
               <i
                 v-if="command.version?.trim()"
-                class="command-version-ready"
+                class="asset-package-status"
                 role="img"
                 :title="`已有发布版本：${command.version}`"
                 :aria-label="`已有发布版本：${command.version}`"
@@ -3176,23 +3176,6 @@ h4 small {
   min-width: 0;
   align-items: center;
   gap: 6px;
-}
-.command-version-ready {
-  display: inline-flex;
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #34d399;
-  border-radius: 50%;
-  background: linear-gradient(145deg, #10b981, #059669);
-  box-shadow: 0 2px 5px rgb(5 150 105 / 24%);
-  color: #fff;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 800;
-  line-height: 1;
 }
 .commands .command-description {
   min-width: 0;

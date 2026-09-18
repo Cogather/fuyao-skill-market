@@ -110,7 +110,7 @@ async function loadCommandContent(command: HarnessWorkflowCommand, index: number
       {
         userId: props.userId,
         capabilityType: 'command',
-        capabilityName: command.name,
+        capabilityName: command.name.replace(/^\/+/, ''),
         version,
         filePath: path,
       },
