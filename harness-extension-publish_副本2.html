@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Extension 发布模块（原型）</title>
+<style>
+:root{
+  --text:#667085; --text-h:#101828; --bg:#f3f5f9; --panel:#fff;
+  --border:#e4e7ec; --code-bg:#f7f8fa;
+  --accent:#2f7df6; --accent-2:#2563eb; --accent-bg:rgba(47,125,246,.09); --accent-border:rgba(47,125,246,.28);
+  --skill:#2f7df6; --command:#16a34a; --agent:#7552ff;
+  --warn:#b45309; --danger:#dc2626; --ok:#16a34a;
+  --shadow:0 12px 32px rgba(16,24,40,.08); --shadow-sm:0 2px 8px rgba(16,24,40,.06); --shadow-pop:0 24px 60px rgba(16,24,40,.22);
+  --r-sm:8px; --r-md:12px; --r-lg:16px;
+  --sans:system-ui,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--sans);color:var(--text);background:var(--bg);letter-spacing:.002em;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input,select,textarea{font:inherit}
+h1,h2,h3,h4{margin:0;color:var(--text-h);font-weight:700}
+p{margin:0}
+.app{height:100vh;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 80% -12%,rgba(47,125,246,.08),transparent 34%),var(--bg)}
+.topbar{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 18px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.brand{width:30px;height:30px;border-radius:8px;background:linear-gradient(145deg,#4290ff,#246fe5);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.brand-stack{display:flex;flex-direction:column}
+.brand-k{color:#98a2b3;font-size:9px;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+.brand-t{color:var(--text-h);font-size:13px;font-weight:700}
+.spacer{flex:1}
+.sel{height:30px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text-h);font-size:12px;font-weight:600;padding:0 9px;outline:none}
+.sel:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text-h);font-size:10px;font-weight:600}
+.note{font-size:11px;color:#98a2b3}
+.btn{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:5px 11px;border:1px solid transparent;border-radius:7px;font-size:12px;font-weight:600;color:var(--text-h);background:var(--panel);transition:transform .15s,box-shadow .15s,border-color .15s,background .15s}
+.btn:hover:not(:disabled){transform:translateY(-1px)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{border-color:#dfe3e8}
+.btn-ghost:hover:not(:disabled){border-color:var(--accent-border);background:#f6f9ff}
+.btn-primary{background:linear-gradient(135deg,#3b87f7,#276fdf);color:#fff;box-shadow:0 4px 10px rgba(47,125,246,.18)}
+.btn-soft{border-color:#dfe3e8;background:#f6f9ff;color:#2868c7}
+.btn-success{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;box-shadow:0 4px 10px rgba(22,163,74,.2)}
+.btn-danger{border-color:#fca5a5;background:#fff;color:var(--danger)}
+.btn-sm{min-height:26px;padding:3px 9px;font-size:11px;border-radius:6px}
+.btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.body{flex:1;min-height:0;overflow:auto}
+.navbar{display:flex;align-items:center;gap:2px;padding:8px 16px 0;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0}
+.navbar-item{padding:8px 14px;border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;color:var(--text);border-bottom:2px solid transparent;white-space:nowrap;border-radius:6px 6px 0 0}
+.navbar-item:hover{color:var(--text-h);background:#f6f9ff}
+.navbar-item.active{color:var(--accent);border-bottom-color:var(--accent)}
+.nav-div{width:1px;height:20px;background:var(--border);margin:0 6px;flex-shrink:0;align-self:center}
+.content{flex:1;min-width:0;overflow:auto}
+/* config page shared */
+.cfg-wrap{padding:16px 18px 40px;max-width:1320px;margin:0 auto}
+.cfg-hero h1{font-size:18px;font-weight:800}.cfg-hero p{font-size:12px;color:#667085;margin-top:3px}
+.summary-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:var(--shadow-sm);margin:12px 0}
+.sm-metrics{display:flex;gap:26px}
+.sm-metrics>div{display:grid;gap:2px}
+.sm-metrics strong{color:var(--accent);font-size:20px;font-weight:800}
+.sm-metrics span{color:#7a879b;font-size:11px;font-weight:700}
+.taxonomy-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:12px;align-items:start}
+@media(max-width:900px){.taxonomy-grid{grid-template-columns:1fr}}
+.panel-card{border:1px solid var(--border);border-radius:var(--r-md);background:#fff;box-shadow:var(--shadow-sm);overflow:hidden}
+.panel-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #eef0f3;background:#f7f8fa}
+.panel-card-head h3{font-size:13px;font-weight:700}
+.panel-card-head .sub{font-size:11px;color:#98a2b3}
+.panel-card-body{padding:8px}
+.tree-node{display:flex;align-items:center;gap:6px;padding:7px 6px;border-radius:7px;border:1px solid transparent;margin-bottom:2px}
+.tree-node:hover{background:#f6f9ff;border-color:var(--border)}
+.tree-node.active{background:var(--accent-bg);border-color:var(--accent-border)}
+.tn-main{flex:1;display:grid;gap:1px;background:transparent;border:0;text-align:left;cursor:pointer;color:var(--text-h);padding:0}
+.tn-main strong{font-size:13px}.tn-main small{font-size:10px;color:#98a2b3}
+.list-row{display:flex;align-items:center;gap:8px;padding:8px;border-radius:7px;border:1px solid transparent;margin-bottom:2px}
+.list-row:hover{background:#f6f9ff;border-color:var(--border)}
+.lr-main{flex:1;display:grid;gap:1px}
+.lr-main strong{font-size:13px;color:var(--text-h)}.lr-main small{font-size:10px;color:#98a2b3}
+.empty-mini{padding:14px;text-align:center;color:#98a2b3;font-size:11px}
+.icon-btn{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#667085;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+.icon-btn:hover{border-color:var(--accent-border);color:var(--accent);background:var(--accent-bg)}
+.icon-btn.danger:hover{border-color:#fca5a5;color:var(--danger);background:#fff5f5}
+.card{border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm)}
+.filter-card{padding:14px;margin-bottom:12px}
+.scope-bar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:var(--shadow-sm);margin:12px 0}
+.scope-bar .field{min-width:200px;flex:1;max-width:320px}
+.filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end}
+.filter-actions{display:flex;gap:8px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>span{font-size:11px;font-weight:700;color:#475467}
+.field input,.field select{width:100%;height:32px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text-h);font-size:12px;outline:none}
+.field input:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.board{display:flex;flex-direction:column;overflow:hidden}
+.board--auto{height:auto}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid #eef0f3}
+.toolbar__summary{display:flex;flex-direction:column;gap:2px}
+.toolbar__summary strong{font-size:14px;color:var(--text-h)}
+.toolbar__summary span{font-size:11px;color:#98a2b3}
+.toolbar__actions{display:flex;gap:8px;align-items:center}
+.table-wrap{width:100%;overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th,.tbl td{padding:9px 10px;border-bottom:1px solid #eef0f3;text-align:left;vertical-align:middle}
+.tbl th{background:#f7f8fa;color:#475467;font-size:11px;font-weight:700;white-space:nowrap}
+.tbl td{color:var(--text-h)}
+.tbl tbody tr:hover{background:#f9fbff}
+.list-stats{display:flex;gap:10px;margin:12px 0}
+.list-stats .stat{flex:1;min-width:120px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm)}
+.list-stats .stat b{font-size:18px;color:var(--text-h);font-weight:800}
+.list-stats .stat span{display:block;font-size:10px;color:#98a2b3;margin-top:2px}
+.hidden{display:none!important}
+/* placeholder layout */
+.ph-wrap{padding:18px 20px 40px;max-width:1100px;margin:0 auto}
+.ph-hero h1{font-size:18px;font-weight:800}
+.ph-hero p{font-size:12px;color:#667085;margin-top:3px}
+.ph-note{font-size:11px;color:#475467;background:#f6f9ff;border:1px solid #e0e6f0;border-radius:8px;padding:9px 11px;margin:12px 0}
+.ph-note b{color:#2868c7}
+.ph-layout{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.ph-region{border:1px dashed var(--accent-border);border-radius:9px;background:#fbfcff;padding:11px 13px;min-height:48px}
+.ph-region-tag{font-size:10px;font-weight:800;color:var(--accent);background:var(--accent-bg);padding:2px 8px;border-radius:5px;display:inline-block;margin-bottom:5px}
+.ph-region-body{font-size:12px;color:var(--text-h)}
+.ph-hint{margin-top:14px;font-size:11px;color:#98a2b3}
+.hidden{display:none!important}
+
+/* scene list (全景卡片) */
+.list-wrap{padding:18px 20px 40px;max-width:1400px;margin:0 auto}
+.list-hero{margin-bottom:6px}
+.list-hero h1{font-size:20px;font-weight:800}
+.list-hero p{font-size:12px;color:#667085;margin-top:3px}
+.list-stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.stat{flex:1;min-width:130px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm)}
+.stat b{font-size:18px;color:var(--text-h);font-weight:800}
+.stat span{display:block;font-size:10px;color:#98a2b3;margin-top:2px}
+.stat .d{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.sc-card{border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s,box-shadow .15s,transform .15s}
+.sc-card:hover{border-color:var(--accent-border);box-shadow:var(--shadow);transform:translateY(-2px)}
+.sc-top{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.pri{font-size:10px;font-weight:700;color:#6d3bd6;background:#f6f2ff;padding:3px 7px;border-radius:5px;border:1px solid #e4d8fb}
+.stp{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px}
+.stp.undef{background:#f1f3f7;color:#6b7280}
+.stp.draft{background:#eef2ff;color:#4266d5}
+.stp.ing{background:#fff3df;color:#b06a18}
+.stp.ready{background:#fff3df;color:#b06a18}
+.stp.pub{background:#eaf8f1;color:#27815d}
+.sc-card h3{font-size:15px;font-weight:700}
+.sc-card .ext{font-size:11px;color:#667085;margin-top:-4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-progress{display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid #eef0f3;border-radius:9px;background:#fafcff}
+.rdy-line{display:flex;align-items:center;gap:7px}
+.rdy-line b{font-size:13px;color:var(--text-h)}
+.rdy-line span{font-size:10px;color:#98a2b3}
+.rdy-bar{flex:1;height:6px;border-radius:99px;background:#ece9f6;overflow:hidden}
+.rdy-bar .fill{height:100%;background:linear-gradient(90deg,#7552ff,#2f7df6)}
+.dotline{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.dot{font-size:9px;font-weight:700;padding:2px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:4px}
+.dot .dd{width:6px;height:6px;border-radius:50%}
+.dot.plan{background:#eef2ff;color:#4266d5}.dot.plan .dd{background:#4266d5}
+.dot.dev{background:#fff3df;color:#b06a18}.dot.dev .dd{background:#f59e0b}
+.dot.live{background:#eaf8f1;color:#27815d}.dot.live .dd{background:#16a34a}
+.pub-line{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-h)}
+.pub-line .ver{font:700 12px var(--mono);color:var(--ok)}
+.pub-line .cnt{color:#98a2b3;font-size:10px}
+.sc-foot{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#98a2b3;border-top:1px solid #eef0f3;padding-top:8px;margin-top:auto}
+.sc-foot .enter{color:var(--accent);font-weight:600}
+
+/* scene detail */
+.detail{display:flex;flex-direction:column;height:100%;min-height:0}
+.dt-head{padding:13px 20px 11px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#fff,#f6f9ff);flex-shrink:0}
+.dt-head-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dt-head h2{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
+.ext-name{font-size:14px;font-weight:700;color:var(--text-h);border:1px solid #e0e6f0;border-radius:7px;padding:5px 10px;outline:none;min-width:200px;background:#fff}
+.ext-name:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.sp{font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px}
+.sp.undef{background:#f1f3f7;color:#6b7280;border:1px solid #e6e8ec}
+.sp.draft{background:#eef2ff;color:#4266d5;border:1px solid #d6dcff}
+.sp.ing{background:#fff3df;color:#b06a18;border:1px solid #ffe0a3}
+.sp.pub{background:#eaf8f1;color:#27815d;border:1px solid #b9e6cd}
+.dt-head-sub{display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap}
+.ext-desc{flex:1;min-width:200px;font-size:12px;color:#475467;border:1px solid #eef0f3;border-radius:7px;padding:6px 9px;background:#fff;outline:none;min-height:32px}
+.ext-desc:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.dt-acts{display:flex;gap:4px;flex-wrap:wrap}
+.dt-acts .tag{font-size:10px;padding:2px 7px;border-radius:99px;background:#fff7e6;color:#92611a;border:1px solid #ffe0a3}
+/* gauge */
+.gauge{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:linear-gradient(145deg,#fff,#f6f9ff);margin:13px 20px 0}
+.gauge .ring{position:relative;width:54px;height:54px;flex-shrink:0}
+.gauge .ring svg{transform:rotate(-90deg)}
+.gauge .ring .bg{fill:none;stroke:#ece9f6;stroke-width:6}
+.gauge .ring .fg{fill:none;stroke:url(#g);stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset .4s}
+.gauge .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--text-h)}
+.gauge .info{flex:1}
+.gauge .info b{font-size:14px;color:var(--text-h)}
+.gauge .info span{display:block;font-size:11px;color:#98a2b3;margin-top:2px}
+.gauge .src{font-size:10px;color:#98a2b3}
+.dt-body{flex:1;overflow-y:auto;padding:13px 20px 20px}
+.act-grp{border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:11px}
+.act-grp-head{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #eef0f3;background:#f7f8fa}
+.act-grp-head .atag{font-size:11px;font-weight:700;color:#92611a;background:#fff7e6;border:1px solid #ffe0a3;padding:3px 9px;border-radius:6px}
+.act-grp-head b{font-size:12px;color:var(--text-h)}
+.act-grp-head .cnt{margin-left:auto;font-size:10px;color:#98a2b3;background:var(--panel);padding:1px 7px;border-radius:99px;border:1px solid var(--border)}
+.act-grp-body{padding:5px}
+.cap-row{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;font-size:12px;color:var(--text-h);margin-bottom:2px;border:1px solid transparent}
+.cap-row:hover{background:#f6f9ff;border-color:var(--border)}
+.cap-row .nm{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-row .ds{font-size:10px;color:#98a2b3;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-row .reuse{font-size:9px;font-weight:600;color:#6d3bd6;background:#f6f2ff;padding:1px 5px;border-radius:4px;border:1px solid #e4d8fb}
+.ver-sel{height:23px;max-width:76px;padding:0 3px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text-h);font-size:10px;font-family:var(--mono)}
+.type-tag{width:22px;height:22px;border-radius:5px;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.type-tag.skill{background:var(--skill)}
+.type-tag.command{background:var(--command)}
+.type-tag.agent{background:var(--agent)}
+.status-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:5px;font-size:9px;font-weight:700}
+.status-badge .d{width:5px;height:5px;border-radius:50%}
+.sb-plan{background:#eef2ff;color:#4266d5}.sb-plan .d{background:#4266d5}
+.sb-dev{background:#fff3df;color:#b06a18}.sb-dev .d{background:#f59e0b}
+.sb-live{background:#eaf8f1;color:#27815d}.sb-live .d{background:#16a34a}
+.icon-btn{width:24px;height:24px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:#667085;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.icon-btn:hover{border-color:var(--accent-border);color:var(--accent);background:var(--accent-bg)}
+.icon-btn.danger:hover{border-color:#fca5a5;color:var(--danger);background:#fff5f5}
+.icon-btn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.empty{padding:24px;text-align:center;color:#98a2b3;font-size:12px;border:1px dashed var(--border);border-radius:10px;background:#fbfcff}
+/* publish + history */
+.panel-card{border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm);overflow:hidden;margin-top:11px}
+.panel-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:#f7f8fa;border-bottom:1px solid #eef0f3}
+.panel-card-head h3{font-size:12px;font-weight:700}
+.panel-card-head .sub{font-size:10px;color:#98a2b3}
+.panel-card-body{padding:12px}
+.pub-stages{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pub-stages li{display:flex;align-items:center;gap:7px;font-size:11px;color:#98a2b3}
+.pub-stages li.active{color:var(--accent);font-weight:600}
+.pub-stages li.done{color:var(--ok)}
+.pub-stages .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--border);flex-shrink:0}
+.pub-stages li.active .dot{border-color:var(--accent);background:var(--accent);animation:pulse 1.1s infinite}
+.pub-stages li.done .dot{border-color:var(--ok);background:var(--ok)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.pub-bar{height:5px;background:#ece9f6;border-radius:99px;overflow:hidden;margin-top:8px}
+.pub-bar .fill{height:100%;background:linear-gradient(90deg,#7552ff,#2f7df6);transition:width .4s}
+.hist-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #eef0f3}
+.hist-row:last-child{border-bottom:0}
+.hist-ver{font:600 12px var(--mono);color:var(--text-h);min-width:46px}
+.hist-name{font-size:12px;color:var(--text-h);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-items{display:flex;gap:4px;flex-wrap:wrap}
+.hist-items .hchip{font-size:9px;padding:1px 5px;border-radius:4px;background:#f7f8fa;border:1px solid var(--border);color:var(--text-h)}
+.hist-at{font-size:10px;color:#98a2b3;font-family:var(--mono)}
+.hist-st{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:#eaf8f1;color:#27815d}
+.hist-org{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:#f6f2ff;color:#6d3bd6;border:1px solid #e4d8fb}
+.hist-note{font-size:10px;color:#98a2b3;margin-top:1px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* modal */
+.overlay{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.48);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
+.modal{width:min(640px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);border-radius:14px;box-shadow:var(--shadow-pop);overflow:hidden}
+.modal.lg{width:min(860px,100%)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:14px}
+.modal-body{flex:1;overflow-y:auto;padding:16px 18px}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:#fafbfd}
+.x-btn{border:0;background:transparent;font-size:20px;line-height:1;color:#98a2b3;width:28px;height:28px;border-radius:6px}
+.x-btn:hover{background:#f1f3f7;color:var(--text-h)}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
+.field>span{font-size:11px;font-weight:700;color:#475467}
+.field input,.field select,.field textarea{width:100%;height:32px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text-h);font-size:12px;outline:none}
+.field textarea{height:auto;min-height:56px;padding:7px 9px;resize:vertical}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.search{position:relative;flex:1;min-width:160px}
+.search input{width:100%;height:30px;padding:0 9px 0 26px;border:1px solid var(--border);border-radius:7px;background:var(--panel);font-size:12px;outline:none}
+.search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.search svg{position:absolute;left:8px;top:50%;transform:translateY(-50%);width:13px;height:13px;fill:none;stroke:#98a2b3;stroke-width:2}
+.type-chips{display:flex;gap:4px;flex-wrap:wrap}
+.type-chip{padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel);font-size:10px;font-weight:600;color:var(--text)}
+.type-chip.active{border-color:var(--accent-border);background:var(--accent-bg);color:var(--accent)}
+.pick-item{display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);margin-bottom:5px;cursor:pointer}
+.pick-item:hover{border-color:var(--accent-border);background:#f6f9ff}
+.pick-item.on{border-color:var(--accent-border);background:var(--accent-bg)}
+.pick-item input{margin:0;accent-color:var(--accent)}
+.pick-item .nm{font-size:12px;font-weight:600;color:var(--text-h);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick-item .meta{font-size:9px;color:#98a2b3;display:flex;gap:5px;flex-wrap:wrap}
+/* package folder view（按 skill/command/agent 分类） */
+.pkg-view{border:1px solid var(--border);border-radius:var(--r-md);background:var(--panel);box-shadow:var(--shadow-sm);padding:16px;margin-bottom:12px}
+.pkg-tree-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid #eef0f3}
+.pkg-root-name{font-size:15px;font-weight:700;color:var(--text-h)}
+.pkg-root-meta{font-size:11px;color:#98a2b3;margin-left:8px}
+.pkg-folder{margin-bottom:10px}
+.pkg-folder-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #eaecf0;border-radius:8px;background:#fafbfc;font-size:13px;color:var(--text-h)}
+.pkg-folder-icon{font-size:14px}
+.pkg-folder-name{font-weight:700;flex:1}
+.pkg-folder-count{font-size:10px;color:#98a2b3;background:var(--panel);padding:1px 7px;border-radius:99px;border:1px solid var(--border)}
+.pkg-items{list-style:none;margin:6px 0 0;padding:0 0 0 18px;border-left:1px dashed var(--border)}
+.pkg-item-li{margin-bottom:3px;list-style:none}
+.pkg-item-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;font-size:12px;color:var(--text-h);cursor:pointer;border:1px solid transparent}
+.pkg-item-row:hover{background:#f6f9ff;border-color:var(--border)}
+.pkg-caret{width:14px;color:#98a2b3;transition:transform .15s;flex-shrink:0;display:inline-block}
+.pkg-item-row.open .pkg-caret{transform:rotate(90deg)}
+.pkg-item-name{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.actag{font-size:9px;color:#92611a;background:#fff7e6;border:1px solid #ffe0a3;padding:1px 6px;border-radius:4px}
+.pkg-files{list-style:none;margin:2px 0 4px;padding:0 0 0 26px}
+.pkg-files.hidden{display:none}
+.pkg-file-row{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;color:#667085;border-radius:5px}
+.pkg-file-row.clickable{cursor:pointer}
+.pkg-file-row.clickable:hover{background:#f6f9ff;color:var(--text-h)}
+.pkg-file-icon{font-size:11px}
+.pkg-file-name{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* file viewer */
+.fv-path{font-family:var(--mono);font-size:11px;color:#98a2b3;padding:9px 14px;border-bottom:1px solid var(--border);background:#f7f8fa}
+.fv-content{margin:0;padding:14px;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text-h);white-space:pre;overflow:auto;max-height:60vh;background:#fbfcff}
+/* publish wizard */
+.wiz-stepper{display:flex;gap:4px;padding:0 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px;overflow-x:auto}
+.wiz-step{flex:1;display:flex;align-items:center;gap:6px;font-size:11px;color:#98a2b3;min-width:90px}
+.wiz-step .wn{width:20px;height:20px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.wiz-step.active{color:var(--accent);font-weight:600}
+.wiz-step.active .wn{border-color:var(--accent);background:var(--accent);color:#fff}
+.wiz-step.done .wn{background:var(--ok);border-color:var(--ok);color:#fff}
+.wiz-step::after{content:'';flex:1;height:1px;background:var(--border);margin:0 4px}
+.wiz-step:last-child::after{display:none}
+.pw-preview{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:#fbfcff;margin-bottom:12px}
+.pw-preview .ic{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#3b87f7,#276fdf);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}
+.pw-preview b{font-size:14px}
+.pw-preview p{font-size:11px;color:#98a2b3;margin-top:2px}
+.org-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.org-row{display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer}
+.org-row:hover{border-color:var(--accent-border)}
+.org-row.active{border-color:var(--accent-border);background:var(--accent-bg)}
+.org-row .nm{flex:1;font-size:13px;font-weight:600;color:var(--text-h)}
+.org-row .meta{font-size:11px;color:#98a2b3}
+.ro{font-size:13px;color:var(--text-h);padding:6px 9px;background:#f7f8fa;border-radius:6px;display:inline-block}
+/* cap-card (能力清单 / 活动) */
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.tool-spacer{flex:1}
+.scope-switch{display:flex;gap:3px;padding:3px;border:1px solid var(--border);border-radius:8px;background:#f7f8fa}
+.scope-switch button{border:0;background:transparent;font:inherit;font-size:11px;font-weight:600;color:var(--text);padding:4px 10px;border-radius:6px}
+.scope-switch button.active{background:var(--panel);color:var(--accent);box-shadow:var(--shadow-sm)}
+.cascader{position:relative}
+.cascader-trigger{display:flex;align-items:center;gap:6px;height:30px;min-width:160px;padding:0 26px 0 9px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text-h);font-size:12px;font-weight:600;position:relative}
+.cascader-trigger:hover{border-color:var(--accent-border)}
+.cascader-trigger::after{content:'';position:absolute;right:10px;width:7px;height:7px;border-right:1.5px solid #8a98ad;border-bottom:1.5px solid #8a98ad;transform:rotate(45deg) translateY(-2px)}
+.dept-popover{position:fixed;z-index:90;width:240px;max-height:320px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:6px}
+.dept-node{padding:6px 8px;border-radius:6px;font-size:12px;color:var(--text-h);cursor:pointer;display:flex;align-items:center;gap:6px}
+.dept-node:hover{background:var(--accent-bg);color:var(--accent)}
+.dn-caret{font-size:9px;color:#98a2b3;width:10px;flex-shrink:0}
+.lvbadge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:4px;border:1px solid}
+/* activity card */
+.act-card{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:var(--shadow-sm);margin-bottom:8px}
+.act-card .info{flex:1;min-width:0}
+.act-card .nm{font-size:13px;font-weight:700;color:var(--text-h);display:flex;align-items:center;gap:6px}
+.act-card .children{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.act-child{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-h);background:#f7f8fa;border:1px solid var(--border);padding:3px 8px;border-radius:6px}
+.act-child .x{border:0;background:transparent;color:#98a2b3;cursor:pointer;font-size:13px;line-height:1}
+.act-child .x:hover{color:var(--danger)}
+.act-add{border:1px dashed var(--border);background:#fff;color:#98a2b3;font:inherit;font-size:11px;padding:3px 9px;border-radius:6px;cursor:pointer}
+.act-add:hover{border-color:var(--accent-border);color:var(--accent)}
+.cap-card{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:var(--shadow-sm);margin-bottom:8px}
+.cap-card .info{flex:1;min-width:0}
+.cap-card .nm{font-size:13px;font-weight:700;color:var(--text-h);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.cap-card .ref{font-size:9px;font-weight:600;color:#6d3bd6;background:#f6f2ff;padding:1px 6px;border-radius:4px;border:1px solid #e4d8fb}
+.cap-card .ds{font-size:11px;color:#667085;margin:4px 0 7px;line-height:1.5}
+.cap-card .meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:10px;color:#98a2b3}
+.ctr{display:inline-flex;align-items:center;gap:4px;color:#475467;font-size:10px;font-weight:700}
+.ctr select{height:22px;font-size:10px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text-h);padding:0 3px;outline:none}
+.vers{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap}
+.vchip{font:9px var(--mono);color:var(--text-h);background:#f7f8fa;border:1px solid var(--border);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px}
+.addver{border:1px solid var(--border);background:var(--panel);color:var(--accent);width:18px;height:18px;border-radius:4px;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.addver:hover{border-color:var(--accent-border);background:var(--accent-bg)}
+.cap-actions{display:flex;flex-direction:column;gap:5px;flex-shrink:0}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#101828;color:#fff;font-size:12px;padding:7px 15px;border-radius:99px;box-shadow:var(--shadow-pop);z-index:300;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">HW</div>
+    <div class="brand-stack"><span class="brand-k">HARNESS</span><span class="brand-t">能力中心</span></div>
+    <select class="sel" id="role-sel"></select>
+    <div class="scope-switch hidden" id="scope-switch"></div>
+    <div class="cascader hidden" id="dept-cascader"></div>
+    <select class="sel" id="product-sel"></select>
+    <span class="note" id="ctx-note"></span>
+    <div class="spacer"></div>
+    <span class="chip">完整模块全景</span>
+  </header>
+  <nav class="navbar" id="navbar"></nav>
+  <main class="content" id="body"></main>
+</div>
+<svg width="0" height="0"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7552ff"/><stop offset="1" stop-color="#2f7df6"/></linearGradient></defs></svg>
+<div id="modal-root"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============================== 数据 ============================== */
+const PRODUCTS=[
+  {id:'udg',name:'UDG',dept:['研发体系','中央软件院','UDG开发部']},
+  {id:'upcf',name:'UPCF',dept:['研发体系','中央软件院','UPCF开发部']},
+  {id:'mobile',name:'智能终端',dept:['研发体系','终端产品线','终端一部']},
+  {id:'qcloud',name:'质量云',dept:['质量与运维体系','测试中心']},
+];
+const DEPT_TREE=[
+  {name:'研发体系',children:[{name:'中央软件院',children:[{name:'UDG开发部'},{name:'UPCF开发部'}]},{name:'终端产品线',children:[{name:'终端一部'}]}]},
+  {name:'质量与运维体系',children:[{name:'测试中心'}]},
+];
+// 能力清单（现有模块维护；本模块只读）
+const LIBRARY=[
+  {id:'cap-skill-1',type:'skill',name:'接口 Mock 生成',desc:'根据接口定义自动生成 Mock 数据。',productId:'udg',level:'产品级',status:'已完成'},
+  {id:'cap-skill-2',type:'skill',name:'接口文档生成',desc:'解析代码与注释生成接口文档。',productId:'udg',level:'产品级',status:'开发中'},
+  {id:'cap-skill-3',type:'skill',name:'终端崩溃归因',desc:'聚合崩溃堆栈定位根因。',productId:'mobile',level:'部门级',status:'已完成'},
+  {id:'cap-skill-4',type:'skill',name:'测试用例生成',desc:'围绕需求生成测试用例。',productId:'qcloud',level:'部门级',status:'已完成'},
+  {id:'cap-skill-5',type:'skill',name:'mml语法补全',desc:'按 mml 上下文补全代码。',productId:'udg',level:'产品级',status:'已完成'},
+  {id:'cap-command-1',type:'command',name:'拉取代码仓库',desc:'从 Git 拉取分支代码。',productId:'udg',level:'产品级',status:'已完成'},
+  {id:'cap-command-2',type:'command',name:'执行单测',desc:'执行单元测试输出报告。',productId:'qcloud',level:'部门级',status:'已完成'},
+  {id:'cap-command-3',type:'command',name:'打包构建',desc:'构建流水线产出产物。',productId:'mobile',level:'部门级',status:'已完成'},
+  {id:'cap-command-4',type:'command',name:'发布到市场',desc:'将构建产物发布到市场。',productId:'udg',level:'产品级',status:'开发中'},
+  {id:'cap-command-5',type:'command',name:'mml编译',desc:'编译 mml 工程产出产物。',productId:'udg',level:'产品级',status:'已完成'},
+  {id:'cap-agent-1',type:'agent',name:'代码评审 Agent',desc:'基于变更集执行代码评审。',productId:'udg',level:'部门级',status:'已完成'},
+  {id:'cap-agent-2',type:'agent',name:'缺陷归因 Agent',desc:'对测试缺陷归因分析。',productId:'qcloud',level:'部门级',status:'已完成'},
+  {id:'cap-agent-3',type:'agent',name:'日志异常定位 Agent',desc:'汇总日志与调用链定位。',productId:'qcloud',level:'部门级',status:'已完成'},
+];
+const TYPE={skill:{s:'S',n:'Skill'},command:{s:'C',n:'Command'},agent:{s:'A',n:'Agent'}};
+const SB={规划中:'sb-plan',开发中:'sb-dev',已上线:'sb-live'};
+const ACTIVITIES=['需求拆解','代码评审','代码补全','静态扫描','缺陷归因','日志分析','研发提效','mml编译'];
+const ACTIVITY_DICT=[{p:'研发提效',c:['需求拆解','代码评审','代码补全']},{p:'质量保障',c:['静态扫描','缺陷归因']},{p:'知识沉淀',c:['经验沉淀']},{p:'运维监控',c:['日志分析']}];
+
+// 场景：一级场景 primary（设计/开发/测试/运维）+ 二级场景 name（mml开发 等）；caps 来自规划表
+let SCENES=[
+  {id:'scn-udg-mml',productId:'udg',primary:'开发',name:'mml开发',dept:['研发体系','中央软件院','UDG开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-command-5',activity:'代码补全',version:'1.0.0'},{capId:'cap-skill-5',activity:'代码补全',version:'0.9.0'},{capId:'cap-agent-1',activity:'代码评审',version:'1.0.0'}],
+   extension:{name:'mml开发 Extension',desc:'mml 工程端到端开发流。'},
+   publishedVersions:[{version:'0.1',name:'mml开发 Extension',desc:'初版：编译+补全+评审。',items:[{type:'command',name:'mml编译',version:'1.0.0'},{type:'agent',name:'代码评审 Agent',version:'1.0.0'}],at:'2026-07-22 10:14',status:'已发布'}],publishing:null},
+  {id:'scn-udg-code',productId:'udg',primary:'开发',name:'代码开发',dept:['研发体系','中央软件院','UDG开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-command-1',activity:'需求拆解',version:'1.2.0'},{capId:'cap-command-4',activity:'需求拆解',version:'0.9.0'}],
+   extension:{name:'代码开发 Extension',desc:'代码拉取与发布。'},publishedVersions:[],publishing:null},
+  {id:'scn-udg-iface',productId:'udg',primary:'设计',name:'接口设计',dept:['研发体系','中央软件院','UDG开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-skill-2',activity:'代码补全',version:'1.0.0'},{capId:'cap-skill-1',activity:'代码补全',version:'1.2.0'}],
+   extension:{name:'接口设计 Extension',desc:'接口 Mock 与文档。'},publishedVersions:[],publishing:null},
+  {id:'scn-udg-req',productId:'udg',primary:'设计',name:'需求设计',dept:['研发体系','中央软件院','UDG开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[],extension:{name:'',desc:''},publishedVersions:[],publishing:null},
+  {id:'scn-upcf-cfg',productId:'upcf',primary:'开发',name:'配置开发',dept:['研发体系','中央软件院','UPCF开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-skill-2',activity:'代码补全',version:'1.0.0'}],
+   extension:{name:'配置开发 Extension',desc:'配置项开发流。'},publishedVersions:[],publishing:null},
+  {id:'scn-upcf-flow',productId:'upcf',primary:'设计',name:'流程设计',dept:['研发体系','中央软件院','UPCF开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[],extension:{name:'',desc:''},publishedVersions:[],publishing:null},
+  {id:'scn-upcf-test',productId:'upcf',primary:'测试',name:'联调测试',dept:['研发体系','中央软件院','UPCF开发部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-command-2',activity:'静态扫描',version:'1.0.0'},{capId:'cap-skill-4',activity:'静态扫描',version:'1.1.0'}],
+   extension:{name:'联调测试 Extension',desc:'单测与用例。'},
+   publishedVersions:[{version:'0.1',name:'联调测试 Extension',desc:'初版。',items:[{type:'command',name:'执行单测',version:'1.0.0'}],at:'2026-07-30 09:30',status:'已发布'}],publishing:null},
+  {id:'scn-mobile-dev',productId:'mobile',primary:'开发',name:'终端开发',dept:['研发体系','终端产品线','终端一部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-command-3',activity:'研发提效',version:'2.0.0'},{capId:'cap-skill-3',activity:'缺陷归因',version:'1.3.0'}],
+   extension:{name:'终端开发 Extension',desc:'构建、崩溃归因、发布。'},publishedVersions:[],publishing:null},
+  {id:'scn-mobile-test',productId:'mobile',primary:'测试',name:'终端测试',dept:['研发体系','终端产品线','终端一部'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[],extension:{name:'',desc:''},publishedVersions:[],publishing:null},
+  {id:'scn-qc-auto',productId:'qcloud',primary:'测试',name:'自动化测试',dept:['质量与运维体系','测试中心'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-skill-4',activity:'静态扫描',version:'1.1.0'},{capId:'cap-agent-2',activity:'缺陷归因',version:'1.0.0'},{capId:'cap-skill-2',activity:'静态扫描',version:'1.0.0'}],
+   extension:{name:'自动化测试 Extension',desc:'用例与缺陷归因。'},publishedVersions:[],publishing:null},
+  {id:'scn-qc-bug',productId:'qcloud',primary:'运维',name:'缺陷处理',dept:['质量与运维体系','测试中心'],owner:{no:'A0123',name:'李扶摇'},
+   caps:[{capId:'cap-agent-2',activity:'缺陷归因',version:'1.0.0'}],extension:{name:'',desc:''},publishedVersions:[],publishing:null},
+];
+
+/* ============================== 工具 ============================== */
+const $=(s,r=document)=>r.querySelector(s);const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const svg=d=>`<svg viewBox="0 0 24 24">${d}</svg>`;
+const icoPlus=svg('<path d="M12 5v14M5 12h14"/>');
+const icoTrash=svg('<path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9"/>');
+const icoSearch=svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>');
+let toastT;function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),2200);}
+const uid=()=>('x'+Math.random().toString(36).slice(2,8));
+const productOf=id=>PRODUCTS.find(p=>p.id===id);
+const masterOf=id=>LIBRARY.find(m=>m.id===id);
+function deptUnderProducts(dp){return PRODUCTS.filter(p=>p.dept.slice(0,dp.length).join('/')===dp.join('/'));}
+function renderDeptTreeHTML(nodes,prefix,depth){
+  let h='';
+  nodes.forEach(n=>{const p=prefix?[...prefix,n.name]:[n.name];
+    h+='<div class="dept-node" data-dept="'+esc(p.join('/'))+'" style="padding-left:'+(depth*12+6)+'px"><span class="dn-caret">'+(n.children?'▸':'·')+'</span>'+esc(n.name)+'</div>';
+    if(n.children)h+=renderDeptTreeHTML(n.children,p,depth+1);});
+  return h;
+}
+function openDeptPopover(anchor,onPick){
+  const pop=document.createElement('div');pop.className='dept-popover';pop.innerHTML=renderDeptTreeHTML(DEPT_TREE,null,0);
+  document.body.appendChild(pop);
+  const r=anchor.getBoundingClientRect();pop.style.left=Math.min(r.left,window.innerWidth-250)+'px';pop.style.top=(r.bottom+4)+'px';
+  pop.onclick=e=>{const n=e.target.closest('[data-dept]');if(!n)return;onPick(n.dataset.dept.split('/'));pop.remove();};
+  setTimeout(()=>document.addEventListener('click',function rm(ev){if(!ev.target.closest('.dept-popover')&&!anchor.contains(ev.target)){pop.remove();document.removeEventListener('click',rm);}},0));
+}
+function capFiles(m){
+  if(m.files)return m.files;
+  if(m.type==='skill')return ['SKILL.md','scripts/run.sh','templates/config.json','README.md'];
+  if(m.type==='command')return ['command.yml','scripts/exec.sh','README.md'];
+  return ['AGENT.md','prompts/system.md','scripts/tool.py','README.md'];
+}
+function fileContent(m,file){
+  const ext=file.split('.').pop();
+  const n=m.name,d=m.desc||'';
+  if(ext==='md')return `# ${n}\n\n${d}\n\n## 适用场景\n作为 ${TYPE[m.type].n} 能力被 Extension 引用。\n\n## 调用\n\`\`\`yaml\ncapability: ${m.id}\nversion: ${"1.0.0"}\nowner: ${m.owner||'—'}\n\`\`\``;
+  if(ext==='sh')return `#!/bin/bash\n# ${n}\n# ${d}\nset -euo pipefail\n\nmain() {\n  echo "[${n}] start"\n  # ... 业务逻辑 ...\n}\n\nmain "$@"`;
+  if(ext==='json')return `{\n  "name": "${n}",\n  "version": "${"1.0.0"}",\n  "type": "${m.type}",\n  "status": "${m.status}",\n  "description": "${d}"\n}`;
+  if(ext==='py')return `# -*- coding: utf-8 -*-\n\"\"\"${n}\n${d}\n\"\"\"\n\ndef run():\n    # ${n} 实现\n    pass\n\nif __name__ == "__main__":\n    run()`;
+  if(ext==='yml'||ext==='yaml')return `name: ${n}\nversion: ${"1.0.0"}\ntype: ${m.type}\nstatus: ${m.status}\ndescription: ${d}`;
+  return `${n} - ${file}`;
+}
+function openFileViewer(capId,file){
+  const m=masterOf(capId);if(!m)return;
+  openModal(`<div class="modal lg"><div class="modal-head"><h3>${esc(m.name)} · ${esc(file)}</h3><button class="x-btn" data-close>×</button></div>
+    <div class="fv-path">${esc(productOf(m.productId).name)} / ${esc(m.name)} / ${esc(file)}</div>
+    <pre class="fv-content">${esc(fileContent(m,file))}</pre>
+    <div class="modal-foot"><button class="btn btn-ghost" data-close>关闭</button></div></div>`);
+}
+/* 活动父/子解析（兼容旧扁平 activity） */
+function actPair(c){
+  let parent=c.activity||'',child=c.subActivity||'';
+  if(parent && !child){
+    for(const g of ACTIVITY_DICT){ if(g.p===parent){child='';break;} if(g.c.includes(parent)){const t=parent;parent=g.p;child=t;break;} }
+  }
+  return {parent,child};
+}
+function actLabel(c){const p=actPair(c);if(!p.parent&&!p.child)return '—';return p.child?(p.parent+' / '+p.child):p.parent;}
+function effCaps(s){return s.extCaps!=null?s.extCaps:s.caps;}
+function capStatus(s,c){const m=masterOf(c.capId);return m?m.status:'规划中';}
+function readyCount(s){const cs=effCaps(s);const t=cs.length;const r=cs.filter(c=>capStatus(s,c)==='已上线').length;return {total:t,ready:r};}
+function allReady(s){const r=readyCount(s);return r.total>0&&r.ready===r.total;}
+function statusBreakdown(s){const c={规划中:0,开发中:0,已上线:0};effCaps(s).forEach(x=>{c[capStatus(s,x)]++;});return c;}
+function extDefined(s){return !!(s.extension&&s.extension.name);}
+function sceneState(s){if(s.publishing)return 'ing';if(s.publishedVersions.length)return 'pub';if(s.extCaps!=null)return 'draft';return 'undef';}
+const STP={undef:'未配置',draft:'草稿',ing:'发布中',pub:'已发布'};
+function canPublish(s){return extDefined(s)&&allReady(s);}
+function forkExt(s){if(s.extCaps==null)s.extCaps=s.caps.map(c=>({capId:c.capId,activity:c.activity,subActivity:c.subActivity}));}
+
+/* ============================== 状态 ============================== */
+let state={role:'owner',nav:'publish',productId:'udg',deptPath:['研发体系'],primary:'',activeSceneId:null,scope:'产品级',permDeptPath:['研发体系','中央软件院'],pick:{kw:'',t:'',actp:'',actc:''}};
+
+const ROLES=[{id:'owner',name:'Owner'},{id:'admin',name:'管理员'},{id:'dev',name:'普通开发'}];
+const NAV=[
+  {group:'核心 · 交付',items:[
+    {id:'publish',label:'Extension 发布',desc:'场景全景+组装+发布',roles:['owner','admin']},
+  ]},
+  {group:'配置 · 管理视角',items:[
+    {id:'planning',label:'规划表（关系配置）',desc:'cap↔scene↔activity 绑定',roles:['owner','admin']},
+    {id:'caplib',label:'能力清单定义',desc:'skill/command/agent 母版',roles:['owner','admin']},
+    {id:'scene',label:'场景管理',desc:'一/二级场景分类体系',roles:['owner','admin']},
+    {id:'activity',label:'活动管理',desc:'活动标签字典',roles:['owner','admin']},
+    {id:'perm',label:'部门权限配置',desc:'规划与配置人员授权',roles:['owner']},
+  ]},
+  {group:'辅助',items:[
+    {id:'task',label:'任务管理',desc:'当前用户任务跟踪',roles:['owner','admin','dev']},
+  ]},
+];
+const NOTE_MAP={
+  publish:'关联能力来自规划表 · 本模块只读 + 发布 + 编辑入口写回规划表',
+  scene:'一/二级场景分类体系，按部门/产品 scope 维护（原样保留）',
+  activity:'活动标签字典维护；仅作标签，不参与复用判定（原样保留）',
+  caplib:'skill/command/agent 母版注册表；开发一次、跨场景复用',
+  planning:'能力↔场景↔活动 多对多绑定 + owner/计划/状态（原 SkillPlanningPage）',
+  perm:'部门级规划与配置人员授权（完全独立）',
+  task:'当前用户负责的任务跟踪（原 SkillPlanningTaskPanel）',
+};
+const LAYOUT={
+  scene:{title:'场景管理',purpose:'维护一/二级场景分类体系，按部门/产品 scope。',regions:[['顶部','scope 选择（层级+部门/产品）'],['左侧','一级场景树（折叠 / 拖拽排序）'],['右侧','二级场景列表（新增 / 改名 / 删除 / 排序）']],note:'原样保留：DepartmentTaxonomyPanel kind=scene'},
+  activity:{title:'活动管理',purpose:'维护活动标签字典（一级/二级），不挂部门 scope。',regions:[['左侧','一级活动列表'],['右侧','二级活动 chips（新增/删除）']],note:'原样保留：DepartmentTaxonomyPanel kind=activity；活动仅作标签'},
+  caplib:{title:'能力清单定义',purpose:'skill/command/agent 母版注册表；开发一次、跨场景复用。',regions:[['工具栏','筛选(类型/层级/产品) + 新增 + 导入 + 导出'],['表格','类型 | 名称 | 说明 | 版本 | owner | level | 状态'],['行内操作','状态推进 / level 切换 / 加版本 / 编辑 / 删除'],['引用提示','被 N 个场景关系引用']],note:'能力不带场景/活动（保持干净）；关联在规划表'},
+  planning:{title:'规划表（关系配置）',purpose:'cap↔scene↔activity 多对多绑定 + owner/计划完成/状态。',regions:[['顶部','层级 + 部门/产品 scope 选择'],['查询卡','一级场景 / 二级场景 / 活动 / 子活动 / 关键词 + 查询/重置'],['工具栏','新增 + 导入 + 导出 + 批量删除'],['规划表','表头筛选 + 列：一级场景/二级场景/活动/子活动/cap/owner/计划完成/状态'],['内联新增','逐列内联表单']],note:'原 SkillPlanningPage；本模块（Extension 发布）只读此处 + 发布'},
+  perm:{title:'部门权限配置',purpose:'部门级规划与配置人员授权（完全独立）。',regions:[['顶部','部门级联选择'],['指标','可管理部门 / 授权关系 / 当前部门管理员数'],['成员表','人员 | 工号 | 归属部门 | 操作(移除)'],['添加','工号搜索 + 添加']],note:'完全独立，不在本模块做运营'},
+  task:{title:'任务管理',purpose:'当前用户负责的任务跟踪。',regions:[['指标卡','规划中 / 开发中 / 已交付 / 已上线 计数'],['任务表','Skill 名称 | 规划部门 | 负责人 | 状态 | 更新时间 | 操作'],['分页','上一页 / 下一页']],note:'原 SkillPlanningTaskPanel'},
+};
+function renderNavbar(){
+  const role=state.role;let html='';let last='';
+  NAV.forEach(g=>{g.items.forEach(it=>{if(!it.roles.includes(role))return;if(g.group!==last){if(last)html+='<span class="nav-div"></span>';last=g.group;}html+='<button class="navbar-item '+(state.nav===it.id?'active':'')+'" data-nav="'+it.id+'">'+esc(it.label)+'</button>';});});
+  $('#navbar').innerHTML=html;
+  $$('#navbar .navbar-item').forEach(el=>el.onclick=()=>{state.nav=el.dataset.nav;state.activeSceneId=null;render();});
+}
+
+const PRIMARIES=['设计','开发','测试','运维'];
+const TASKS=[
+  {id:1,name:'mml编译 v1.0 上线',dept:'UDG开发部',owner:'李扶摇',status:'已上线',updated:'2026-08-06 14:22'},
+  {id:2,name:'接口文档生成 开发',dept:'UDG开发部',owner:'李扶摇',status:'开发中',updated:'2026-08-05 09:10'},
+  {id:3,name:'终端崩溃归因 交付',dept:'终端一部',owner:'王致远',status:'已上线',updated:'2026-07-28 18:44'},
+  {id:4,name:'自动化测试 规划',dept:'测试中心',owner:'赵思齐',status:'规划中',updated:'2026-08-06 10:35'},
+  {id:5,name:'日志异常定位 上线',dept:'SRE与监控部',owner:'陈嘉树',status:'已上线',updated:'2026-07-30 09:30'},
+];
+let cfg={smPrimary:'开发',clKw:'',clT:'',clLv:'',plPrimary:'',plScene:'',plAct:'',plType:'',plKw:''};
+
+/* 场景管理 */
+function renderSceneMgmt(){
+  const pr=cfg.smPrimary;const sc=SCENES.filter(s=>s.primary===pr);const prod=productOf(state.productId);
+  $('#body').innerHTML='<div class="cfg-wrap"><div class="cfg-hero"><h1>场景管理 · <b>'+esc(prod.name)+'</b></h1><p>一/二级场景分类体系，按产品 scope 维护；改动同步到 Extension 发布的场景列表。</p></div>'+
+    '<div class="intro">原样保留 <b>DepartmentTaxonomyPanel kind=scene</b>。左一级树 / 右二级表，可增删改。</div>'+
+    '<div class="summary-strip"><div class="sm-metrics"><div><strong>'+PRIMARIES.length+'</strong><span>一级场景</span></div><div><strong>'+SCENES.length+'</strong><span>二级场景</span></div><div><strong>'+SCENES.reduce((a,s)=>a+s.caps.length,0)+'</strong><span>关联规划项</span></div></div><button class="btn btn-primary btn-sm" id="sm-save">确认更新</button></div>'+
+    '<div class="taxonomy-grid"><aside class="panel-card"><div class="panel-card-head"><div><h3>一级场景</h3></div><button class="btn btn-soft btn-sm" id="sm-addp">'+icoPlus+'新增</button></div><div class="panel-card-body" id="sm-pri"></div></aside>'+
+    '<section class="panel-card"><div class="panel-card-head"><div><h3>二级场景</h3><span class="sub">归属 '+esc(pr)+'</span></div><button class="btn btn-soft btn-sm" id="sm-adds">'+icoPlus+'新增</button></div><div class="panel-card-body" id="sm-sec"></div></section></div></div>';
+  paintSmPri(pr);paintSmSec(pr,sc);
+  $('#sm-save').onclick=()=>toast('已确认更新（草稿同步生效）');
+  $('#sm-addp').onclick=()=>{const v=prompt('一级场景名称');if(!v||!v.trim())return;if(PRIMARIES.includes(v.trim())){toast('已存在');return;}PRIMARIES.push(v.trim());cfg.smPrimary=v.trim();renderSceneMgmt();};
+  $('#sm-adds').onclick=()=>{const v=prompt('二级场景名称');if(!v||!v.trim())return;SCENES.push({id:uid(),primary:pr,name:v.trim(),productId:state.productId,dept:prod.dept.slice(),owner:{no:'A0123',name:'李扶摇'},caps:[],extension:{name:'',desc:''},publishedVersions:[],publishing:null});renderSceneMgmt();toast('已新增二级场景');};
+  $('#sm-pri').onclick=e=>{const sel=e.target.closest('[data-pri]');if(sel){cfg.smPrimary=sel.dataset.pri;renderSceneMgmt();return;}const ren=e.target.closest('[data-renp]');if(ren){const v=prompt('一级场景改名',ren.dataset.renp);if(v&&v.trim()){const o=ren.dataset.renp;PRIMARIES[PRIMARIES.indexOf(o)]=v.trim();SCENES.forEach(s=>{if(s.primary===o)s.primary=v.trim();});if(cfg.smPrimary===o)cfg.smPrimary=v.trim();renderSceneMgmt();}return;}const del=e.target.closest('[data-delp]');if(del){const p=del.dataset.delp;if(SCENES.some(s=>s.primary===p)){toast('该一级下有二级场景，先删除二级');return;}PRIMARIES.splice(PRIMARIES.indexOf(p),1);if(cfg.smPrimary===p)cfg.smPrimary=PRIMARIES[0]||'';renderSceneMgmt();}};
+  $('#sm-sec').onclick=e=>{const ren=e.target.closest('[data-rens]');if(ren){const s=SCENES.find(x=>x.id===ren.dataset.rens);const v=prompt('二级场景改名',s.name);if(v&&v.trim()){s.name=v.trim();renderSceneMgmt();}return;}const del=e.target.closest('[data-dels]');if(del){const s=SCENES.find(x=>x.id===del.dataset.dels);if(s.publishedVersions.length){toast('已发布过，不能删除');return;}SCENES.splice(SCENES.indexOf(s),1);renderSceneMgmt();toast('已删除');}};
+}
+function paintSmPri(pr){
+  $('#sm-pri').innerHTML=PRIMARIES.map(p=>'<div class="tree-node '+(p===pr?'active':'')+'"><button class="tn-main" data-pri="'+esc(p)+'"><strong>'+esc(p)+'</strong><small>'+SCENES.filter(s=>s.primary===p).length+' 个二级</small></button><button class="icon-btn" data-renp="'+esc(p)+'" title="改名">✎</button><button class="icon-btn danger" data-delp="'+esc(p)+'" title="删除">×</button></div>').join('')||'<div class="empty-mini">无一级场景</div>';
+}
+function paintSmSec(pr,sc){
+  $('#sm-sec').innerHTML=sc.length?sc.map(s=>'<div class="list-row"><div class="lr-main"><strong>'+esc(s.name)+'</strong><small>'+s.caps.length+' 个能力 · '+(s.publishedVersions.length?'已发布':'未发布')+'</small></div><button class="icon-btn" data-rens="'+s.id+'" title="改名">✎</button><button class="icon-btn danger" data-dels="'+s.id+'" title="删除">×</button></div>').join(''):'<div class="empty-mini">该一级下暂无二级场景</div>';
+}
+
+/* 活动管理 */
+function renderActivityMgmt(){
+  $('#body').innerHTML='<div class="cfg-wrap"><div class="cfg-hero"><h1>活动管理</h1><p>活动标签字典（一级父 / 二级子），不挂 scope；仅作标签，不参与复用判定。</p></div>'+
+    '<div class="intro">原样保留 <b>DepartmentTaxonomyPanel kind=activity</b>。活动用于能力绑定时打标签。</div><div id="am-list"></div>'+
+    '<div style="margin-top:10px"><button class="btn btn-soft btn-sm" id="am-addp">'+icoPlus+'新增一级活动</button></div></div>';
+  paintAm();
+  $('#am-addp').onclick=()=>{const v=prompt('一级活动名称');if(!v||!v.trim())return;if(ACTIVITY_DICT.some(g=>g.p===v.trim())){toast('已存在');return;}ACTIVITY_DICT.push({p:v.trim(),c:[]});paintAm();};
+}
+function paintAm(){
+  $('#am-list').innerHTML=ACTIVITY_DICT.length?ACTIVITY_DICT.map((g,i)=>'<div class="act-card"><div class="info"><div class="nm">'+esc(g.p)+' <span class="ref">一级</span></div><div class="children">'+(g.c.length?g.c.map(c=>'<span class="act-child">'+esc(c)+'<button class="x" data-delc="'+i+'|'+esc(c)+'">×</button></span>').join(''):'<span style="font-size:10px;color:#98a2b3">无二级</span>')+'</div></div><div class="cap-actions"><button class="btn btn-soft btn-sm" data-addc="'+i+'">+ 二级</button><button class="btn btn-danger btn-sm" data-delp="'+i+'">删除</button></div></div>').join(''):'<div class="empty-mini">无活动</div>';
+  $('#am-list').onclick=e=>{const dc=e.target.closest('[data-delc]');if(dc){const[i,c]=dc.dataset.delc.split('|');ACTIVITY_DICT[i].c=ACTIVITY_DICT[i].c.filter(x=>x!==c);paintAm();return;}const ac=e.target.closest('[data-addc]');if(ac){const i=+ac.dataset.addc;const v=prompt('二级活动名称');if(v&&v.trim())ACTIVITY_DICT[i].c.push(v.trim());paintAm();return;}const dp=e.target.closest('[data-delp]');if(dp){ACTIVITY_DICT.splice(+dp.dataset.delp,1);paintAm();}};
+}
+
+/* 能力清单定义 */
+function renderCapLibMgmt(){
+  const f=cfg;const scope=state.scope;
+  let list=LIBRARY.slice();
+  if(scope==='部门级')list=list.filter(m=>m.level==='部门级');
+  else list=list.filter(m=>m.productId===state.productId);
+  if(f.clT)list=list.filter(m=>m.type===f.clT);
+  if(f.clKw){const q=f.clKw.toLowerCase();list=list.filter(m=>(m.name+m.desc).toLowerCase().includes(q));}
+  const ctxName=scope==='部门级'?'部门级（跨产品）':productOf(state.productId).name;
+  $('#body').innerHTML='<div class="cfg-wrap"><div class="cfg-hero"><h1>能力清单定义 · <b>'+esc(ctxName)+'</b></h1><p>skill/command/agent 母版注册表；开发一次、跨场景复用。用顶部"产品级/部门级"切换 scope：产品级=本产品能力，部门级=跨产品共享。改动同步到 Extension 发布就绪度。</p></div>'+
+    '<div class="intro">原 <b>HarnessCapabilityCatalogPanel / SkillMasterManagementPanel</b>。能力不带场景/活动（保持干净），不带版本（版本只在 Extension 发布时）。</div>'+
+    '<div class="tools"><div class="search">'+icoSearch+'<input id="cl-kw" value="'+esc(f.clKw)+'" placeholder="搜索名称/说明"/></div>'+
+    '<div class="type-chips" id="cl-types"><button class="type-chip '+(f.clT===''?'active':'')+'" data-t="">全部</button><button class="type-chip '+(f.clT==='skill'?'active':'')+'" data-t="skill">Skill</button><button class="type-chip '+(f.clT==='command'?'active':'')+'" data-t="command">Command</button><button class="type-chip '+(f.clT==='agent'?'active':'')+'" data-t="agent">Agent</button></div>'+
+    '<div class="tool-spacer"></div><button class="btn btn-primary btn-sm" id="cl-add">'+icoPlus+'新增能力</button></div>'+
+    '<div id="cl-list"></div></div>';
+  $('#cl-list').innerHTML=list.length?list.map(capCardHtml).join(''):'<div class="empty-mini">无匹配能力</div>';
+  $('#cl-kw').oninput=e=>{f.clKw=e.target.value;renderCapLibMgmt();};
+  $('#cl-types').onclick=e=>{const c=e.target.closest('[data-t]');if(!c)return;f.clT=c.dataset.t;renderCapLibMgmt();};
+  $('#cl-add').onclick=()=>openCapForm(null,renderCapLibMgmt);
+  $('#cl-list').onchange=e=>{const card=e.target.closest('[data-id]');if(!card)return;const m=masterOf(card.dataset.id);if(!m)return;if(e.target.matches('[data-st]')){m.status=e.target.value;toast(m.name+' → '+m.status);}};
+  $('#cl-list').onclick=e=>{const card=e.target.closest('[data-id]');if(!card)return;const m=masterOf(card.dataset.id);if(!m)return;if(e.target.closest('[data-edit]'))openCapForm(m,renderCapLibMgmt);else if(e.target.closest('[data-del]')){const refs=SCENES.filter(s=>s.caps.some(c=>c.capId===m.id)).length;if(refs){toast('被 '+refs+' 个场景引用，先在规划表解除');return;}LIBRARY.splice(LIBRARY.indexOf(m),1);renderCapLibMgmt();toast('已删除');}};
+}
+function capCardHtml(m){
+  const prod=m.productId?productOf(m.productId):null;const refs=SCENES.filter(s=>s.caps.some(c=>c.capId===m.id)).length;
+  const lvBg=m.level==='部门级'?'#f6f2ff':'#eef2ff',lvC=m.level==='部门级'?'#6d3bd6':'#4266d5',lvBd=m.level==='部门级'?'#e4d8fb':'#d6dcff';
+  return '<div class="cap-card" data-id="'+m.id+'"><span class="type-tag '+m.type+'">'+TYPE[m.type].s+'</span><div class="info"><div class="nm">'+esc(m.name)+(refs?' <span class="ref">'+refs+' 场景引用</span>':'')+' <span class="lvbadge" style="background:'+lvBg+';color:'+lvC+';border-color:'+lvBd+'">'+m.level+'</span></div><div class="ds">'+(esc(m.desc)||'<span style="color:#cbd2dc">无说明</span>')+'</div><div class="meta"><span>'+(prod?esc(prod.name):'部门级（跨产品）')+'</span><label class="ctr">状态 <select data-st>'+['规划中','开发中','已上线'].map(x=>'<option '+(m.status===x?'selected':'')+'>'+x+'</option>').join('')+'</select></label></div></div><div class="cap-actions"><button class="btn btn-ghost btn-sm" data-edit>编辑</button><button class="btn btn-danger btn-sm" data-del>删除</button></div></div>';
+}
+function openCapForm(m,onSaved){
+  const isNew=!m;const lv=m?m.level:state.scope;
+  openModal('<div class="modal"><div class="modal-head"><h3>'+(isNew?'新增能力':'编辑能力')+'</h3><button class="x-btn" data-close>×</button></div><div class="modal-body">'+
+    '<div class="field"><span>类型</span><select id="cf-t">'+['skill','command','agent'].map(x=>'<option value="'+x+'" '+(m&&m.type===x?'selected':'')+'>'+TYPE[x].n+'</option>').join('')+'</select></div>'+
+    '<div class="field"><span>名称 *</span><input id="cf-n" value="'+(m?esc(m.name):'')+'" placeholder="能力名称"/></div>'+
+    '<div class="field"><span>说明</span><textarea id="cf-d" placeholder="能力职责">'+(m?esc(m.desc):'')+'</textarea></div>'+
+    '<div class="field"><span>责任人</span><input id="cf-o" value="'+(m?esc(m.owner||''):'李扶摇')+'"/></div>'+
+    '<div class="field"><span>层级</span><div class="ro">'+lv+'</div><div class="field-hint">层级由顶部"产品级/部门级"切换决定；产品/部门由顶部已选 scope 决定，无需再选。</div></div>'+
+    '<div class="field"><span>状态</span><select id="cf-st">'+['规划中','开发中','已上线'].map(x=>'<option '+(m?(m.status===x?'selected':''):(x==='规划中'?'selected':''))+'>'+x+'</option>').join('')+'</select></div>'+
+    '</div><div class="modal-foot"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="cf-ok">'+(isNew?'创建':'保存')+'</button></div></div>');
+  $('#cf-ok').onclick=()=>{const n=$('#cf-n').value.trim();if(!n){toast('请输入名称');return;}const pid=lv==='产品级'?state.productId:'';if(isNew){LIBRARY.push({id:uid(),type:$('#cf-t').value,name:n,desc:$('#cf-d').value.trim(),owner:$('#cf-o').value.trim(),level:lv,productId:pid,status:$('#cf-st').value});}else{Object.assign(m,{type:$('#cf-t').value,name:n,desc:$('#cf-d').value.trim(),owner:$('#cf-o').value.trim(),level:lv,status:$('#cf-st').value});}closeModal();onSaved&&onSaved();toast(isNew?'已创建':'已保存');};
+}
+
+/* 规划表（关系配置）：一级 → 二级 → 配能力+活动 */
+function renderPlanning(){
+  const f=cfg;const prod=productOf(state.productId);
+  const scenes=SCENES.filter(s=>s.productId===state.productId);
+  const primaries=[...new Set(scenes.map(s=>s.primary))];
+  if(!f.plPrimary||!primaries.includes(f.plPrimary))f.plPrimary=primaries[0]||'';
+  const sec=scenes.filter(s=>s.primary===f.plPrimary);
+  if(!f.plScene||!sec.find(s=>s.id===f.plScene))f.plScene=sec[0]?.id||'';
+  const sel=SCENES.find(s=>s.id===f.plScene);
+  let rows=[];
+  scenes.forEach(s=>s.caps.forEach(c=>{const m=masterOf(c.capId);if(!m)return;const ap=actPair(c);rows.push({sid:s.id,scene:s.name,primary:s.primary,act:actLabel(c),actP:ap.parent,capId:c.capId,cap:m.name,type:m.type,owner:m.owner||'—',status:m.status});}));
+  if(f.plAct)rows=rows.filter(r=>r.actP===f.plAct);
+  if(f.plType)rows=rows.filter(r=>r.type===f.plType);
+  if(f.plKw){const q=f.plKw.toLowerCase();rows=rows.filter(r=>(r.cap+r.scene+r.primary).toLowerCase().includes(q));}
+  const binds=sel?sel.caps.map(c=>({c,m:masterOf(c.capId)})).filter(x=>x.m):[];
+  $('#body').innerHTML='<div class="cfg-wrap"><div class="cfg-hero"><h1>规划表 · <b>'+esc(prod.name)+'</b></h1><p>先选一级场景 → 二级场景，再为其配置 skill/command/agent 并选活动。一级/二级都带，避免同名混淆。</p></div>'+
+    '<div class="intro">原 <b>SkillPlanningPage</b>（统一不分类型）。一行 = 一个绑定关系。</div>'+
+    '<div class="scope-bar">'+
+    '<label class="field"><span>一级场景</span><select id="pl-primary">'+primaries.map(p=>'<option value="'+esc(p)+'" '+(f.plPrimary===p?'selected':'')+'>'+esc(p)+'</option>').join('')+'</select></label>'+
+    '<label class="field"><span>二级场景</span><select id="pl-scene">'+(sec.length?sec.map(s=>'<option value="'+s.id+'" '+(f.plScene===s.id?'selected':'')+'>'+esc(s.name)+'</option>').join(''):'<option value="">（该一级下无二级）</option>')+'</select></label>'+
+    '</div>'+
+    (sel?'<div class="card" style="margin-bottom:12px"><div class="toolbar"><div class="toolbar__summary"><strong>为「'+esc(sel.primary)+' / '+esc(sel.name)+'」配置能力</strong><span>已绑 '+binds.length+' 个</span></div><div class="toolbar__actions"><button class="btn btn-primary btn-sm" id="pl-add">'+icoPlus+'新增绑定</button></div></div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>能力</th><th>类型</th><th>活动</th><th>Owner</th><th>操作</th></tr></thead><tbody>'+
+    (binds.length?binds.map(({c,m})=>'<tr data-cap="'+c.capId+'"><td><strong>'+esc(m.name)+'</strong></td><td><span class="type-tag '+m.type+'">'+TYPE[m.type].s+'</span></td><td>'+esc(actLabel(c))+'</td><td>'+esc(m.owner||'—')+'</td><td><button class="btn btn-danger btn-sm" data-rm="'+c.capId+'">移除</button></td></tr>').join(''):'<tr><td colspan="5" class="empty-mini">暂未绑定能力</td></tr>')+
+    '</tbody></table></div></div>':'<div class="empty" style="margin-bottom:12px">该一级下暂无二级场景，请先在场景管理新建</div>')+
+    '<div class="card board board--auto"><div class="toolbar"><div class="toolbar__summary"><strong>全部规划项</strong><span>'+rows.length+' 条 · 一级/二级已带</span></div><div class="toolbar__actions"><label class="ctr">父活动 <select id="pl-act"><option value="">全部父活动</option>'+ACTIVITY_DICT.map(g=>'<option value="'+esc(g.p)+'" '+(f.plAct===g.p?'selected':'')+'>'+esc(g.p)+'</option>').join('')+'</select></label><label class="ctr">类型 <select id="pl-type"><option value="">全部</option>'+['skill','command','agent'].map(t=>'<option value="'+t+'" '+(f.plType===t?'selected':'')+'>'+TYPE[t].n+'</option>').join('')+'</select></label><div class="search" style="min-width:160px">'+icoSearch+'<input id="pl-kw" value="'+esc(f.plKw)+'" placeholder="搜索"/></div></div></div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>一级场景</th><th>二级场景</th><th>活动</th><th>能力</th><th>类型</th><th>Owner</th><th>状态</th></tr></thead><tbody>'+
+    (rows.length?rows.map(r=>'<tr><td>'+esc(r.primary)+'</td><td>'+esc(r.scene)+'</td><td>'+esc(r.act)+'</td><td><strong>'+esc(r.cap)+'</strong></td><td><span class="type-tag '+r.type+'">'+TYPE[r.type].s+'</span></td><td>'+esc(r.owner)+'</td><td><span class="status-badge '+SB[r.status]+'"><span class="d"></span>'+r.status+'</span></td></tr>').join(''):'<tr><td colspan="7" class="empty-mini">无</td></tr>')+
+    '</tbody></table></div></div></div>';
+  $('#pl-primary').onchange=e=>{f.plPrimary=e.target.value;f.plScene='';renderPlanning();};
+  $('#pl-scene').onchange=e=>{f.plScene=e.target.value;renderPlanning();};
+  $('#pl-act').onchange=e=>{f.plAct=e.target.value;renderPlanning();};
+  $('#pl-type').onchange=e=>{f.plType=e.target.value;renderPlanning();};
+  $('#pl-kw').oninput=e=>{f.plKw=e.target.value;renderPlanning();};
+  if(sel)$('#pl-add').onclick=()=>openBindingEditor(sel);
+  $('#body').onclick=e=>{const rm=e.target.closest('[data-rm]');if(!rm)return;if(!sel)return;sel.caps=sel.caps.filter(c=>c.capId!==rm.dataset.rm);renderPlanning();toast('已移除绑定');};
+}
+function capRowHTML(m,o){
+  const prod=productOf(m.productId);const reuse=m.productId!==o.cur;
+  const inp=o.multi?('<input type="checkbox" '+(o.checked?'checked':'')+' style="pointer-events:none"/>'):'<input type="radio" name="pkcap" '+(o.checked?'checked':'')+' style="pointer-events:none"/>';
+  return '<div class="pick-item'+(o.checked?' on':'')+'" data-cap="'+m.id+'">'+inp+
+    '<span class="type-tag '+m.type+'">'+TYPE[m.type].s+'</span>'+
+    '<span class="nm">'+esc(m.name)+'</span>'+
+    (reuse?('<span class="meta" style="color:#6d3bd6">跨产品·'+esc(prod.name)+'</span>'):('<span class="meta">'+esc(prod.name)+'</span>'))+
+    '<span class="meta"><span class="status-badge '+SB[m.status]+'"><span class="d"></span>'+m.status+'</span></span>'+
+    '</div>';
+}
+function openBindingEditor(sel){
+  const parents=ACTIVITY_DICT.map(g=>g.p);
+  let capId=null,kw='',t='';
+  openModal('<div class="modal lg"><div class="modal-head"><h3>为「'+esc(sel.primary)+' / '+esc(sel.name)+'」新增绑定</h3><button class="x-btn" data-close>×</button></div><div class="modal-body">'+
+    '<p class="note" style="margin-bottom:10px">必须先选父活动才能关联能力。默认加载本产品能力；输入关键词可模糊搜索全部（含其他产品/部门）实现共享。</p>'+
+    '<div style="display:flex;gap:8px;margin-bottom:10px"><div class="field" style="flex:1"><span>父活动 *</span><select id="be-actp"><option value="">请选择父活动</option>'+parents.map(p=>'<option value="'+esc(p)+'">'+esc(p)+'</option>').join('')+'</select></div>'+
+    '<div class="field" style="flex:1"><span>子活动</span><select id="be-actc"><option value="">（不绑子活动）</option></select></div></div>'+
+    '<div class="tools"><div class="search">'+icoSearch+'<input id="be-kw" placeholder="默认本产品；输入关键词模糊搜索全部"/></div><label class="ctr">类型 <select id="be-type"><option value="">全部</option>'+['skill','command','agent'].map(x=>'<option value="'+x+'">'+TYPE[x].n+'</option>').join('')+'</select></label></div>'+
+    '<div id="be-list" style="max-height:280px;overflow:auto"></div>'+
+    '</div><div class="modal-foot"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="be-ok">创建绑定</button></div></div>');
+  function paintChildren(p){const g=ACTIVITY_DICT.find(x=>x.p===p);$('#be-actc').innerHTML='<option value="">（不绑子活动）</option>'+(g?g.c.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join(''): '');}
+  function paintList(){
+    let list=kw?LIBRARY.filter(m=>(m.name+m.desc).toLowerCase().includes(kw.toLowerCase())):LIBRARY.filter(m=>m.productId===sel.productId);
+    if(t)list=list.filter(m=>m.type===t);
+    $('#be-list').innerHTML=list.length?list.map(m=>capRowHTML(m,{multi:false,checked:capId===m.id,cur:sel.productId})).join(''):'<div class="empty-mini">无匹配能力（可在能力清单定义新建）</div>';
+  }
+  $('#be-actp').onchange=e=>{paintChildren(e.target.value);};
+  $('#be-kw').oninput=e=>{kw=e.target.value;paintList();};
+  $('#be-type').onchange=e=>{t=e.target.value;paintList();};
+  $('#be-list').onclick=e=>{if(e.target.closest('[data-capver]'))return;const l=e.target.closest('[data-cap]');if(!l)return;capId=l.dataset.cap;paintList();};
+  paintList();
+  $('#be-ok').onclick=()=>{const actp=$('#be-actp').value,actc=$('#be-actc').value;if(!actp){toast('请先选择父活动');return;}if(!capId){toast('请选择能力');return;}if(sel.caps.some(c=>c.capId===capId&&c.activity===actp&&c.subActivity===actc)){toast('该绑定已存在');return;}sel.caps.push({capId,activity:actp,subActivity:actc});closeModal();renderPlanning();toast('已新增绑定：'+actp+(actc?' / '+actc:''));};
+}
+
+/* 任务管理 */
+function renderTask(){
+  const counts={规划中:0,开发中:0,已上线:0};TASKS.forEach(t=>{counts[t.status]=(counts[t.status]||0)+1;});
+  $('#body').innerHTML='<div class="cfg-wrap"><div class="cfg-hero"><h1>任务管理</h1><p>当前用户负责的任务跟踪。普通开发仅可见此页。</p></div>'+
+    '<div class="list-stats">'+Object.keys(counts).map(k=>'<div class="stat"><b>'+counts[k]+'</b><span>'+k+'</span></div>').join('')+'</div>'+
+    '<div class="card board board--auto"><div class="toolbar"><div class="toolbar__summary"><strong>我的任务</strong><span>当前用户 A0123 · '+TASKS.length+' 项</span></div><div class="toolbar__actions"><div class="search" style="min-width:220px">'+icoSearch+'<input id="tk-kw" placeholder="搜索任务/负责人"/></div></div></div>'+
+    '<div class="table-wrap"><table class="tbl"><thead><tr><th>任务</th><th>部门</th><th>负责人</th><th>状态</th><th>更新时间</th></tr></thead><tbody id="tk-body"></tbody></table></div></div></div>';
+  function paint(kw){let list=TASKS;if(kw){const q=kw.toLowerCase();list=TASKS.filter(t=>(t.name+t.owner).toLowerCase().includes(q));}$('#tk-body').innerHTML=list.length?list.map(t=>'<tr><td><strong>'+esc(t.name)+'</strong></td><td>'+esc(t.dept)+'</td><td>'+esc(t.owner)+'</td><td><span class="status-badge '+SB[t.status]+'"><span class="d"></span>'+t.status+'</span></td><td style="font-family:var(--mono);font-size:11px;color:#98a2b3">'+esc(t.updated)+'</td></tr>').join(''):'<tr><td colspan="5" class="empty-mini">无</td></tr>';}
+  paint('');
+  $('#tk-kw').oninput=e=>paint(e.target.value);
+}
+function renderPlaceholder(id){
+  const m=LAYOUT[id];
+  if(!m){$('#body').innerHTML='<div class="ph-wrap">占位</div>';return;}
+  const prodScoped=['scene','activity','caplib','planning'].includes(id);
+  const prod=productOf(state.productId);
+  const permDept=id==='perm';
+  $('#body').innerHTML=`<div class="ph-wrap">
+    <div class="ph-hero"><h1>${esc(m.title)}</h1><p>${permDept?'':(prodScoped?`<b style="color:var(--text-h)">${esc(prod.name)}</b> · `:'')}${esc(m.purpose)}</p></div>
+    ${permDept?'<div style="margin:10px 0 14px;display:flex;align-items:center;gap:10px"><span style="font-size:11px;font-weight:700;color:#475467">部门树</span><div class="cascader" id="perm-dept-cascader"></div></div>':''}
+    <div class="ph-note"><b>说明</b>　${esc(m.note)}${prodScoped?`　当前产品：${esc(prod.name)}（${esc(prod.dept.join(' / '))}）`:''}${permDept?'　部门权限为独立模块，部门树放在页面内部。':''}</div>
+    <div class="ph-layout">${m.regions.map(r=>`<div class="ph-region"><div class="ph-region-tag">${esc(r[0])}</div><div class="ph-region-body">${esc(r[1])}</div></div>`).join('')}</div>
+    <div class="ph-hint">布局示意（内容未实现，沿用现有组件）。切到「Extension 发布」可体验完整发布流。</div>
+  </div>`;
+  if(permDept){
+    $('#perm-dept-cascader').innerHTML='<button class="cascader-trigger" id="perm-dept-trigger" type="button"><span>'+esc(state.permDeptPath.join(' / '))+'</span></button>';
+    $('#perm-dept-trigger').onclick=()=>openDeptPopover($('#perm-dept-cascader'),dp=>{state.permDeptPath=dp;renderPlaceholder('perm');});
+  }
+}
+
+/* ============================== 渲染 ============================== */
+function render(){
+  $('#role-sel').innerHTML=ROLES.map(r=>`<option value="${r.id}" ${state.role===r.id?'selected':''}>${esc(r.name)}</option>`).join('');
+  const showDept=['publish','scene','activity','caplib','planning'].includes(state.nav);
+  $('#dept-cascader').classList.toggle('hidden',!showDept);
+  if(showDept){
+    $('#dept-cascader').innerHTML='<button class="cascader-trigger" id="dept-trigger" type="button"><span>'+esc(state.deptPath.join(' / '))+'</span></button>';
+    $('#dept-trigger').onclick=()=>openDeptPopover($('#dept-cascader'),dp=>{state.deptPath=dp;const ps=deptUnderProducts(dp);if(!ps.find(p=>p.id===state.productId))state.productId=ps[0]?.id||state.productId;state.activeSceneId=null;render();});
+  }
+  const prods=deptUnderProducts(state.deptPath);
+  if(!prods.find(p=>p.id===state.productId))state.productId=prods[0]?.id||state.productId;
+  $('#product-sel').innerHTML=prods.map(p=>`<option value="${p.id}" ${state.productId===p.id?'selected':''}>${esc(p.name)}</option>`).join('');
+  const showScope=state.nav==='caplib';
+  $('#scope-switch').classList.toggle('hidden',!showScope);
+  if(showScope)$('#scope-switch').innerHTML='<button class="'+(state.scope==='产品级'?'active':'')+'" data-scope="产品级">产品级</button><button class="'+(state.scope==='部门级'?'active':'')+'" data-scope="部门级">部门级</button>';
+  $('#scope-switch').onclick=e=>{const b=e.target.closest('[data-scope]');if(!b)return;state.scope=b.dataset.scope;render();};
+  const showProduct=showDept && (state.nav!=='caplib' || state.scope==='产品级');
+  $('#product-sel').classList.toggle('hidden',!showProduct);
+  $('#ctx-note').textContent=NOTE_MAP[state.nav]||'';
+  renderNavbar();
+  if(state.nav==='publish'){if(!state.activeSceneId)renderList();else renderDetail();}
+  else if(state.nav==='scene')renderSceneMgmt();
+  else if(state.nav==='activity')renderActivityMgmt();
+  else if(state.nav==='caplib')renderCapLibMgmt();
+  else if(state.nav==='planning')renderPlanning();
+  else if(state.nav==='task')renderTask();
+  else renderPlaceholder(state.nav);
+}
+$('#role-sel').onchange=e=>{state.role=e.target.value;const vis=NAV.flatMap(g=>g.items).filter(it=>it.roles.includes(state.role));if(!vis.some(it=>it.id===state.nav))state.nav=vis[0]?.id||'publish';state.activeSceneId=null;render();};
+$('#product-sel').onchange=e=>{state.productId=e.target.value;state.primary='';state.activeSceneId=null;render();};
+
+/* ---------- 场景列表（全景卡片） ---------- */
+function renderList(){
+  const prod=productOf(state.productId);
+  const prs=[...new Set(SCENES.filter(s=>s.productId===state.productId).map(s=>s.primary))];
+  if(state.primary && !prs.includes(state.primary)) state.primary='';
+  let list=SCENES.filter(s=>s.productId===state.productId);
+  if(state.primary)list=list.filter(s=>s.primary===state.primary);
+  const stats={
+    total:list.length,
+    pub:list.filter(s=>s.publishedVersions.length).length,
+    ready:list.filter(s=>canPublish(s)).length,
+    undef:list.filter(s=>!extDefined(s)).length,
+  };
+  $('#body').innerHTML=`<div class="list-wrap">
+    <div class="list-hero"><h1>${esc(prod.name)} · 场景全景</h1><p>${state.primary?`<b style="color:var(--text-h)">${esc(state.primary)}</b> 下二级场景平铺。`:'全部一级场景下二级场景平铺。'}每个二级场景即一个 Extension 交付单元，一眼看出是否已定义/已发布/各能力就绪。</p>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px"><span style="font-size:11px;font-weight:700;color:#475467">一级场景</span><select class="sel" id="primary-filter"><option value="">全部一级场景</option>${prs.map(p=>`<option value="${esc(p)}" ${state.primary===p?'selected':''}>${esc(p)}</option>`).join('')}</select></div>
+    </div>
+    <div class="list-stats">
+      <div class="stat"><b>${stats.total}</b><span>场景总数</span></div>
+      <div class="stat"><b><span class="d" style="background:#16a34a"></span>${stats.pub}</b><span>已发布</span></div>
+      <div class="stat"><b><span class="d" style="background:#f59e0b"></span>${stats.ready}</b><span>可一键发布</span></div>
+      <div class="stat"><b><span class="d" style="background:#9ca3af"></span>${stats.undef}</b><span>未定义 Extension</span></div>
+    </div>
+    <div class="list-grid">${list.length?list.map(card).join(''):'<div style="grid-column:1/-1;padding:40px;text-align:center;color:#98a2b3;font-size:13px">该产品暂无场景</div>'}</div>
+  </div>`;
+  $('#primary-filter').onchange=e=>{state.primary=e.target.value;renderList();};
+  $$('.sc-card').forEach(c=>c.onclick=()=>{state.activeSceneId=c.dataset.id;render();});
+}
+function card(s){
+  const st=sceneState(s);
+  const r=readyCount(s);
+  const bd=statusBreakdown(s);
+  const last=s.publishedVersions[0];
+  const pct=r.total?Math.round(r.ready/r.total*100):0;
+  let prog='';
+  if(st==='pub'){
+    prog=`<div class="pub-line"><span class="ver">v${esc(last.version)}</span><span class="cnt">最新 · 共 ${s.publishedVersions.length} 版</span></div>
+      ${r.total?`<div class="rdy-line" style="margin-top:6px"><span class="dotline"><span class="dot live">${bd['已上线']}已就绪</span>${bd['开发中']?`<span class="dot dev">${bd['开发中']}开发中</span>`:''}</span></div>`:''}`;
+  } else if(st==='ing'){
+    prog=`<div class="pub-line"><span style="color:#b06a18;font-weight:700">发布中…</span></div>`;
+  } else {
+    const src=s.extCaps==null?'<span style="color:#98a2b3">（规划表默认）</span>':'';
+    prog=`<div class="rdy-line"><b>${r.ready}/${r.total}</b><span>就绪 ${pct}%${src?'':'（已保存草稿）'}</span>${src}<div class="rdy-bar"><div class="fill" style="width:${pct}%"></div></div></div>
+      <div class="dotline">${bd['已上线']?`<span class="dot live">${bd['已上线']}已上线</span>`:''}${bd['开发中']?`<span class="dot dev">${bd['开发中']}开发中</span>`:''}${bd['规划中']?`<span class="dot plan">${bd['规划中']}规划中</span>`:''}</div>`;
+  }
+  const stpCls=st==='pub'?'pub':(st==='ing'?'ing':(st==='draft'?'draft':'undef'));
+  return `<div class="sc-card" data-id="${s.id}">
+    <div class="sc-top"><span class="pri">${esc(s.primary)}</span><span class="stp ${stpCls}">${STP[st]}</span></div>
+    <h3>${esc(s.name)}</h3>
+    ${extDefined(s)?`<div class="ext">📦 ${esc(s.extension.name)}</div>`:'<div class="ext" style="color:#cbd2dc">未定义 Extension</div>'}
+    <div class="sc-progress">${prog}</div>
+    <div class="sc-foot"><span>${esc(s.owner.name)}</span><span class="enter">${extDefined(s)?'编辑/发布':'去定义'} →</span></div>
+  </div>`;
+}
+
+/* ---------- 场景详情 ---------- */
+function renderDetail(){
+  const s=SCENES.find(x=>x.id===state.activeSceneId);if(!s){state.activeSceneId=null;renderList();return;}
+  const prod=productOf(s.productId);
+  const r=readyCount(s);const can=canPublish(s);const st=sceneState(s);
+  const lastVer=s.publishedVersions[0]?.version;
+  const pct=r.total?Math.round(r.ready/r.total*100):0;
+  const C=2*Math.PI*22;
+  const eff=effCaps(s);
+  const groups={};eff.forEach(c=>{(groups[c.activity]=groups[c.activity]||[]).push(c);});
+  const acts=Object.keys(groups);
+  const srcLabel=s.extCaps==null?'来自规划表（默认）':'Extension 自有配置';
+  let foldersHTML;
+  if(eff.length){
+    foldersHTML=['skill','command','agent'].filter(t=>eff.some(c=>{const m=masterOf(c.capId);return m&&m.type===t;})).map(t=>{
+      const items=eff.filter(c=>{const m=masterOf(c.capId);return m&&m.type===t;});
+      return '<div class="pkg-folder"><div class="pkg-folder-row"><span class="pkg-folder-icon">📁</span><span class="pkg-folder-name">'+TYPE[t].n+'</span><span class="pkg-folder-count">'+items.length+'</span></div><ul class="pkg-items">'+items.map(c=>pkgItem(s,c,prod)).join('')+'</ul></div>';
+    }).join('');
+  } else foldersHTML='<div class="empty">暂无能力。点"添加能力"或去规划表关联。</div>';
+  $('#body').innerHTML=`<div class="detail">
+    <div class="dt-head">
+      <div class="dt-head-top">
+        <button class="btn btn-ghost btn-sm" id="dt-back">← 场景列表</button>
+        <span class="pri">${esc(s.primary)}</span>
+        <h2>${esc(s.name)}</h2>
+        <div class="spacer"></div>
+        ${extDefined(s)?`<input class="ext-name" id="ext-name" value="${esc(s.extension.name)}" placeholder="Extension 名称"/>`:`<button class="btn btn-primary btn-sm" id="ext-define">定义 Extension</button>`}
+        <button class="btn btn-soft btn-sm" id="btn-save">保存配置</button>
+        <button class="btn ${can?'btn-success':'btn-primary'} btn-sm" id="btn-pub" ${can&&st!=='ing'?'':'disabled'}>${st==='ing'?'发布中…':(can?'一键发布':(extDefined(s)?'待就绪':'待定义'))}</button>
+        <span class="sp ${st}">${STP[st]}${st==='pub'?' · v'+lastVer:''}</span>
+      </div>
+      <div class="dt-head-sub">
+        ${extDefined(s)?`<input class="ext-desc" id="ext-desc" value="${esc(s.extension.desc)}" placeholder="Extension 描述"/>`:'<span class="note">先定义 Extension 名称与描述</span>'}
+        <div class="dt-acts">${acts.length?acts.map(a=>`<span class="tag">${esc(a)}</span>`).join(''):'<span style="font-size:10px;color:#cbd2dc">无活动标签</span>'}</div>
+        <span class="chip">${esc(prod.dept.slice(-1)[0])}</span>
+      </div>
+    </div>
+    ${r.total?`<div class="gauge"><div class="ring"><svg width="54" height="54"><circle class="bg" cx="27" cy="27" r="22"/><circle class="fg" cx="27" cy="27" r="22" stroke-dasharray="${C}" stroke-dashoffset="${C-C*pct/100}"/></svg><div class="pct">${pct}%</div></div><div class="info"><b>${r.ready}/${r.total} 能力就绪</b><span>${r.total-r.ready} 个待开发完成即可发布</span></div><div class="src">${srcLabel}</div></div>`:''}
+    <div class="dt-body" id="dt-body">
+      <div class="pkg-view">
+        <div class="pkg-tree-head">
+          <div><span class="pkg-root-name">📦 ${esc(s.extension.name||s.name)}</span><span class="pkg-root-meta">${eff.length} 项能力 · ${srcLabel}</span></div>
+          <div style="display:flex;gap:6px">
+            ${s.extCaps==null?'':'<button class="btn btn-ghost btn-sm" id="btn-reset">重置为规划表</button>'}
+            <button class="btn btn-soft btn-sm" id="btn-add">${icoPlus}添加能力</button>
+          </div>
+        </div>
+        ${s.extCaps==null?'<div class="intro" style="margin:0 0 10px">当前显示<b>规划表映射数据</b>（默认）。在此调整或点"保存配置"后，将以 Extension 自有配置为准（与规划表解耦）。</div>':''}
+        ${foldersHTML}
+      </div>
+      ${s.publishing?'<div class="panel-card"><div class="panel-card-body"><span class="note">发布中…（在发布向导内进行）</span></div></div>':''}
+      <div class="panel-card"><div class="panel-card-head"><div><h3>发布历史</h3><span class="sub">同一张发布表的已发布行</span></div><span class="sub">${s.publishedVersions.length} 个版本</span></div><div class="panel-card-body">${history(s)}</div></div>
+    </div>
+  </div>`;
+  $('#dt-back').onclick=()=>{state.activeSceneId=null;render();};
+  if(extDefined(s)){
+    $('#ext-name').oninput=e=>{s.extension.name=e.target.value;};
+    $('#ext-desc').oninput=e=>{s.extension.desc=e.target.value;};
+  } else {
+    $('#ext-define').onclick=()=>{s.extension={name:s.name+' Extension',desc:''};renderDetail();};
+  }
+  $('#btn-save').onclick=()=>{forkExt(s);toast('已保存为草稿（全景可查看）');renderDetail();};
+  const btnReset=$('#btn-reset');if(btnReset)btnReset.onclick=()=>{s.extCaps=null;toast('已重置为规划表默认');renderDetail();};
+  $('#btn-pub').onclick=()=>openPublishWizard(s);
+  $('#btn-add').onclick=()=>{forkExt(s);openPicker(s);};
+  $('#dt-body').onclick=e=>{
+    const rm=e.target.closest('[data-rm]');if(rm){forkExt(s);s.extCaps=s.extCaps.filter(x=>x.capId!==rm.dataset.rm);renderDetail();return;}
+    const f=e.target.closest('[data-file]');if(f){const[capId,file]=f.dataset.file.split('|');openFileViewer(capId,file);return;}
+    const row=e.target.closest('[data-cap]');if(row){const sib=row.nextElementSibling;if(sib&&sib.classList.contains('pkg-files')){sib.classList.toggle('hidden');row.classList.toggle('open');}}
+  };
+}
+function pkgItem(s,c,prod){
+  const m=masterOf(c.capId);if(!m)return'';
+  const reuse=m.productId!==s.productId;
+  const files=capFiles(m);
+  return `<li class="pkg-item-li">
+    <div class="pkg-item-row" data-cap="${c.capId}">
+      <span class="pkg-caret">▸</span>
+      <span class="type-tag ${m.type}">${TYPE[m.type].s}</span>
+      <span class="pkg-item-name">${esc(m.name)}</span>
+      ${(c.activity||c.subActivity)?`<span class="actag">${esc(actLabel(c))}</span>`:''}
+      ${reuse?`<span class="reuse">跨产品·${esc(productOf(m.productId).name)}</span>`:''}
+      <span class="status-badge ${SB[m.status]}"><span class="d"></span>${m.status}</span>
+      <button class="icon-btn danger" title="移除关联" data-rm="${c.capId}">${icoTrash}</button>
+    </div>
+    <ul class="pkg-files hidden">${files.map(f=>`<li><div class="pkg-file-row clickable" data-file="${c.capId}|${esc(f)}"><span class="pkg-file-icon">📄</span><span class="pkg-file-name">${esc(f)}</span></div></li>`).join('')}</ul>
+  </li>`;
+}
+function openPublishWizard(s){
+  if(!canPublish(s)){toast('未定义 Extension 或存在未就绪能力');return;}
+  const ORGS=[{id:'org-fuyao',name:'扶摇组织'},{id:'org-yunshan',name:'云山组织'},{id:'org-haichuan',name:'海川组织'}];
+  let step=0,orgId=ORGS[0].id,note='';
+  const nextVer=s.publishedVersions.length?('0.'+(parseInt(s.publishedVersions[0].version.split('.')[1])+1)):'0.1';
+  const steps=['基本信息','装配确认','目标组织','发布进度','完成'];
+  openModal(`<div class="modal lg"><div class="modal-head"><h3>发布 Extension · ${esc(s.name)}</h3><button class="x-btn" data-close>×</button></div>
+    <div class="modal-body" id="wiz-body"></div><div class="modal-foot" id="wiz-foot"></div></div>`);
+  function paint(){
+    $('#wiz-body').innerHTML='<div class="wiz-stepper">'+steps.map((t,i)=>`<div class="wiz-step ${i===step?'active':''} ${i<step?'done':''}"><span class="wn">${i<step?'✓':i+1}</span>${t}</div>`).join('')+'</div>'+panel(step);
+    $('#wiz-foot').innerHTML=foot();
+  }
+  function panel(n){
+    if(n===0)return `<div class="field"><span>Extension 名称</span><input id="pw-name" value="${esc(s.extension.name)}"></div>
+      <div class="field"><span>描述</span><textarea id="pw-desc" placeholder="本次发布的 Extension 说明">${esc(s.extension.desc)}</textarea></div>
+      <div class="field"><span>版本号（自动）</span><div class="ro">v${nextVer}</div><div class="field-hint">基于上一版本自增；上一版本 ${s.publishedVersions.length?'v'+s.publishedVersions[0].version:'无'}。</div></div>`;
+    if(n===1){const r=readyCount(s);const reuse=s.caps.filter(c=>{const m=masterOf(c.capId);return m&&m.productId!==s.productId;}).length;return `<div class="pw-preview"><div class="ic">📦</div><div><b>${esc(s.extension.name)}</b><p>v${nextVer} · 含 ${r.total} 个能力${reuse?'（其中 '+reuse+' 个跨产品复用）':''}</p></div></div>
+      <ul class="checks">${effCaps(s).map(c=>{const m=masterOf(c.capId);return '<li class="ok"><span class="d"></span>'+TYPE[m.type].n+' · '+esc(m.name)+'</li>';}).join('')}<li class="ok"><span class="d"></span>所有能力已上线，可发布</li></ul>`;}
+    if(n===2)return `<div class="field" style="margin-bottom:8px"><span>目标组织</span></div>
+      <div class="org-list" id="org-list">${ORGS.map(o=>`<div class="org-row ${orgId===o.id?'active':''}" data-org="${o.id}"><span class="nm">${esc(o.name)}</span><span class="meta">同步至上级组织</span></div>`).join('')}</div>
+      <div class="field"><span>发布说明（可选）</span><textarea id="pw-note" placeholder="本次发布变更说明">${esc(note)}</textarea></div>`;
+    if(n===3)return `<div class="pub-progress"><ul class="pub-stages" id="ps">${['打包就绪能力','提交同步申请','组织审批','发布到市场'].map((t,i)=>`<li class="${i===0?'active':''}"><span class="dot"></span>${t}</li>`).join('')}</ul><div class="pub-bar"><div class="fill" id="pf" style="width:5%"></div></div></div>`;
+    const orgN=ORGS.find(o=>o.id===orgId).name;
+    return `<div class="pub-success"><div class="ic">✓</div><h3>已发布 ${esc(s.extension.name)} v${nextVer}</h3><p>已发布至 ${esc(orgN)}，含 ${readyCount(s).total} 个能力。</p></div>`;
+  }
+  function foot(){
+    if(step===0)return `<button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="wiz-next">下一步</button>`;
+    if(step===1)return `<button class="btn btn-ghost" id="wiz-prev">上一步</button><button class="btn btn-primary" id="wiz-next">下一步</button>`;
+    if(step===2)return `<button class="btn btn-ghost" id="wiz-prev">上一步</button><button class="btn btn-success" id="wiz-go">确认发布</button>`;
+    if(step===3)return `<span class="note">发布中…</span>`;
+    return `<button class="btn btn-primary" id="wiz-done">完成</button>`;
+  }
+  paint();
+  $('#wiz-foot').addEventListener('click',e=>{
+    if(e.target.closest('#wiz-next')){save();step++;paint();if(step===3)runProgress();}
+    else if(e.target.closest('#wiz-prev')){step--;paint();}
+    else if(e.target.closest('#wiz-go')){save();step++;paint();runProgress();}
+    else if(e.target.closest('#wiz-done')){s.publishing=null;closeModal();renderDetail();toast('发布成功 v'+nextVer);}
+  });
+  $('#wiz-body').addEventListener('click',e=>{const r=e.target.closest('[data-org]');if(!r)return;orgId=r.dataset.org;$$('#wiz-body .org-row').forEach(x=>x.classList.remove('active'));r.classList.add('active');});
+  function save(){if(step===0){const n=$('#pw-name')?.value.trim(),d=$('#pw-desc')?.value;if(n)s.extension.name=n;if(d!==undefined)s.extension.desc=d;}if(step===2){const t=$('#pw-note')?.value;if(t!==undefined)note=t;}}
+  function runProgress(){s.publishing=true;let i=0;const t=setInterval(()=>{const lis=$$('#ps li');const fill=$('#pf');if(!lis.length){clearInterval(t);return;}if(i<lis.length){lis[i].classList.remove('active');lis[i].classList.add('done');i++;if(i<lis.length)lis[i].classList.add('active');if(fill)fill.style.width=(i/lis.length*100)+'%';}else{clearInterval(t);commit();step++;paint();}},800);}
+  function commit(){const eff=effCaps(s);s.publishedVersions.unshift({version:nextVer,name:s.extension.name,desc:s.extension.desc+(note?(' · '+note):''),items:eff.map(c=>{const m=masterOf(c.capId);return {type:m.type,name:m.name};}),at:new Date().toISOString().slice(0,16).replace('T',' '),status:'已发布',org:ORGS.find(o=>o.id===orgId).name});}
+}
+function history(s){
+  if(!s.publishedVersions.length)return '<div class="empty" style="margin:0;border:0;padding:6px 0">暂无发布历史</div>';
+  return s.publishedVersions.map(v=>`<div class="hist-row"><span class="hist-ver">v${esc(v.version)}</span><div style="flex:1;min-width:0"><div class="hist-name">${esc(v.name)}</div>${v.desc?`<div class="hist-note">${esc(v.desc)}</div>`:''}<div class="hist-items" style="margin-top:3px">${v.items.map(it=>`<span class="hchip">${TYPE[it.type].s} ${esc(it.name)}</span>`).join('')}</div></div>${v.org?`<span class="hist-org">${esc(v.org)}</span>`:''}<span class="hist-at">${esc(v.at)}</span><span class="hist-st">${esc(v.status)}</span></div>`).join('');
+}
+
+/* ---------- 添加能力（写回规划表：选 cap + 选活动） ---------- */
+function openPicker(s){
+  const parents=ACTIVITY_DICT.map(g=>g.p);
+  const selset=new Set();let kw='',t='';
+  openModal('<div class="modal lg"><div class="modal-head"><h3>添加能力到「'+esc(s.name)+'」</h3><button class="x-btn" data-close>×</button></div><div class="modal-body">'+
+    '<p class="note" style="margin-bottom:10px">必须先选父活动才能关联能力。默认加载本产品能力；输入关键词可模糊搜索全部（含其他产品/部门）实现共享。选中后挂到下方所选活动，写回规划表。</p>'+
+    '<div style="display:flex;gap:8px;margin-bottom:10px"><div class="field" style="flex:1"><span>父活动 *</span><select id="pk-actp"><option value="">请选择父活动</option>'+parents.map(p=>'<option value="'+esc(p)+'">'+esc(p)+'</option>').join('')+'</select></div>'+
+    '<div class="field" style="flex:1"><span>子活动</span><select id="pk-actc"><option value="">（不绑子活动）</option></select></div></div>'+
+    '<div class="tools"><div class="search">'+icoSearch+'<input id="pk-kw" placeholder="默认本产品；输入关键词模糊搜索全部"/></div><label class="ctr">类型 <select id="pk-type"><option value="">全部</option>'+['skill','command','agent'].map(x=>'<option value="'+x+'">'+TYPE[x].n+'</option>').join('')+'</select></label></div>'+
+    '<div id="pk-list" style="max-height:280px;overflow:auto"></div>'+
+    '</div><div class="modal-foot"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="pk-ok">添加选中</button></div></div>');
+  function paintChildren(p){const g=ACTIVITY_DICT.find(x=>x.p===p);$('#pk-actc').innerHTML='<option value="">（不绑子活动）</option>'+(g?g.c.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join(''): '');}
+  function paintList(){
+    let list=kw?LIBRARY.filter(m=>(m.name+m.desc).toLowerCase().includes(kw.toLowerCase())):LIBRARY.filter(m=>m.productId===s.productId);
+    if(t)list=list.filter(m=>m.type===t);
+    $('#pk-list').innerHTML=list.length?list.map(m=>capRowHTML(m,{multi:true,checked:selset.has(m.id),cur:s.productId})).join(''):'<div class="empty-mini">无匹配能力</div>';
+  }
+  $('#pk-actp').onchange=e=>{paintChildren(e.target.value);};
+  $('#pk-kw').oninput=e=>{kw=e.target.value;paintList();};
+  $('#pk-type').onchange=e=>{t=e.target.value;paintList();};
+  $('#pk-list').onclick=e=>{const l=e.target.closest('[data-cap]');if(!l)return;const id=l.dataset.cap;if(selset.has(id))selset.delete(id);else selset.add(id);paintList();};
+  paintList();
+  $('#pk-ok').onclick=()=>{const actp=$('#pk-actp').value,actc=$('#pk-actc').value;if(!actp){toast('请先选择父活动');return;}if(!selset.size){toast('请选择能力');return;}forkExt(s);const eff=effCaps(s);let n=0;selset.forEach(id=>{if(!eff.some(c=>c.capId===id&&c.activity===actp&&c.subActivity===actc)){eff.push({capId:id,activity:actp,subActivity:actc});n++;}});closeModal();renderDetail();toast('已添加 '+n+' 个能力到「'+actp+(actc?' / '+actc:'')+'」（Extension 自有配置）');};
+}
+
+/* ---------- modal 基础（可层叠） ---------- */
+function openModal(html){const root=$('#modal-root');const ov=document.createElement('div');ov.className='overlay';ov.innerHTML=html;root.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov||e.target.closest('[data-close]'))closeModal();});return ov;}
+function closeModal(){const root=$('#modal-root');if(root.lastChild)root.removeChild(root.lastChild);}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+render();
+</script>
+</body>
+</html>

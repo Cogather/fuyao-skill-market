@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Extension 模块（原型）</title>
+<style>
+:root{
+  --text:#667085; --text-h:#101828; --bg:#f3f5f9; --panel:#fff;
+  --border:#e4e7ec; --code-bg:#f7f8fa;
+  --accent:#2f7df6; --accent-2:#2563eb; --accent-bg:rgba(47,125,246,.09); --accent-border:rgba(47,125,246,.28);
+  --skill:#2f7df6; --command:#16a34a; --agent:#7552ff;
+  --warn:#b45309; --danger:#dc2626; --ok:#16a34a;
+  --shadow:0 12px 32px rgba(16,24,40,.08); --shadow-sm:0 2px 8px rgba(16,24,40,.06); --shadow-pop:0 24px 60px rgba(16,24,40,.22);
+  --r-sm:8px; --r-md:12px; --r-lg:16px;
+  --sans:system-ui,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--sans);color:var(--text);background:var(--bg);letter-spacing:.002em;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer}
+input,select,textarea{font:inherit}
+h1,h2,h3,h4{margin:0;color:var(--text-h);font-weight:700}
+p{margin:0}
+.app{height:100vh;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(circle at 80% -12%,rgba(47,125,246,.08),transparent 34%),var(--bg)}
+.topbar{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 18px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.brand{width:30px;height:30px;border-radius:8px;background:linear-gradient(145deg,#4290ff,#246fe5);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.brand-stack{display:flex;flex-direction:column}
+.brand-k{color:#98a2b3;font-size:9px;font-weight:700;letter-spacing:.11em;text-transform:uppercase}
+.brand-t{color:var(--text-h);font-size:13px;font-weight:700}
+.spacer{flex:1}
+.note{font-size:11px;color:#98a2b3}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text-h);font-size:10px;font-weight:600}
+.scope-badge{font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-border);padding:4px 10px;border-radius:7px}
+.sel{height:30px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text-h);font-size:12px;font-weight:600;padding:0 9px;outline:none}
+.sel:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.btn{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:5px 11px;border:1px solid transparent;border-radius:7px;font-size:12px;font-weight:600;color:var(--text-h);background:var(--panel);transition:transform .15s,box-shadow .15s,border-color .15s,background .15s}
+.btn:hover:not(:disabled){transform:translateY(-1px)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-ghost{border-color:#dfe3e8}
+.btn-ghost:hover:not(:disabled){border-color:var(--accent-border);background:#f6f9ff}
+.btn-success{background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;box-shadow:0 4px 10px rgba(22,163,74,.2)}
+.btn-sm{min-height:26px;padding:3px 9px;font-size:11px;border-radius:6px}
+.content{flex:1;min-height:0;overflow:auto}
+.ext-wrap{display:grid;grid-template-columns:340px minmax(0,1fr);gap:12px;padding:16px 22px 24px;max-width:1400px;margin:0 auto;min-height:0}
+@media(max-width:900px){.ext-wrap{grid-template-columns:1fr}}
+.panel-card{border:1px solid var(--border);border-radius:var(--r-md);background:#fff;box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column}
+.panel-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #eef0f3;background:#f7f8fa;flex-shrink:0}
+.panel-card-head h3{font-size:13px;font-weight:700}
+.panel-card-head .sub{font-size:11px;color:#98a2b3}
+.panel-card-body{padding:8px;flex:1;overflow:auto}
+.ext-tree-body{padding:6px}
+/* tree */
+.tree-l1{margin-bottom:4px}
+.tree-l1-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:7px;font-size:13px;font-weight:700;color:var(--text-h);cursor:pointer;user-select:none}
+.tree-l1-head:hover{background:#f6f9ff}
+.tree-caret{font-size:10px;color:#98a2b3;width:12px;display:inline-block;transition:transform .15s;flex-shrink:0}
+.tree-l1.open .tree-caret{transform:rotate(90deg)}
+.tree-l1-count{margin-left:auto;font-size:10px;color:#98a2b3;background:var(--panel);padding:1px 7px;border-radius:99px;border:1px solid var(--border)}
+.tree-l2-list{list-style:none;margin:0 0 0 12px;padding:0;border-left:1px dashed var(--border);margin-left:12px;display:none}
+.tree-l1.open .tree-l2-list{display:block}
+.tree-l2{padding:6px 8px;border-radius:6px;font-size:12px;color:var(--text-h);cursor:pointer;border:1px solid transparent;margin-bottom:2px;display:flex;align-items:center;gap:6px}
+.tree-l2:hover{background:#f6f9ff;border-color:var(--border)}
+.tree-l2.active{background:var(--accent-bg);border-color:var(--accent-border);color:var(--accent);font-weight:700}
+.tree-l2 .pri-tag{font-size:9px;font-weight:700;color:#6d3bd6;background:#f6f2ff;padding:1px 5px;border-radius:4px;border:1px solid #e4d8fb;flex-shrink:0}
+.tree-l2 .lock{font-size:11px;color:#b06a18}
+/* detail */
+.ext-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#98a2b3;font-size:13px;padding:40px}
+.scene-head{padding:14px 16px;border-bottom:1px solid #eef0f3;background:linear-gradient(180deg,#fff,#f6f9ff);flex-shrink:0}
+.scene-head-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.scene-head h2{font-size:17px;font-weight:800;display:flex;align-items:center;gap:6px}
+.scene-head .ext-info{font-size:12px;color:#667085;margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.scene-head .ext-info b{color:var(--text-h)}
+.scene-head .ver{font:700 12px var(--mono);color:var(--ok)}
+.scene-head .date{font-size:11px;color:#98a2b3;font-family:var(--mono)}
+.sp{font-size:11px;font-weight:700;padding:4px 10px;border-radius:7px;flex-shrink:0}
+.sp.ready{background:#eaf8f1;color:#27815d;border:1px solid #b9e6cd}
+.sp.ing{background:#fff3df;color:#b06a18;border:1px solid #ffe0a3}
+.sp.incomplete{background:#fff3df;color:#b06a18;border:1px solid #ffe0a3}
+.sp.undef{background:#f1f3f7;color:#6b7280;border:1px solid #e6e8ec}
+.warn-bar{margin:12px 16px 0;padding:10px 12px;border:1px solid #ffe0a3;background:#fffbeb;border-radius:8px;font-size:12px;color:#92611a;display:flex;align-items:center;gap:8px}
+.scene-body{padding:14px 16px 24px;overflow-y:auto;flex:1}
+/* folder */
+.pkg-folder{margin-bottom:14px}
+.pkg-folder-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #eaecf0;border-radius:8px;background:#fafbfc;font-size:13px;color:var(--text-h);margin-bottom:6px}
+.pkg-folder-icon{font-size:14px}
+.pkg-folder-name{font-weight:700;flex:1;font-family:var(--mono)}
+.pkg-folder-count{font-size:10px;color:#98a2b3;background:var(--panel);padding:1px 7px;border-radius:99px;border:1px solid var(--border)}
+.pkg-list{list-style:none;margin:0;padding:0 0 0 18px;border-left:1px dashed var(--border)}
+.pkg-item{margin-bottom:4px;list-style:none}
+.pkg-item-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;font-size:12px;color:var(--text-h);border:1px solid transparent}
+.pkg-item-row.clickable{cursor:pointer}
+.pkg-item-row.clickable:hover{background:#f6f9ff;border-color:var(--border)}
+.pkg-item-row.disabled{cursor:default;opacity:.65}
+.pkg-caret{width:14px;color:#98a2b3;transition:transform .15s;flex-shrink:0;display:inline-block}
+.pkg-item-row.open .pkg-caret{transform:rotate(90deg)}
+.type-tag{width:22px;height:22px;border-radius:5px;color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.type-tag.skill{background:var(--skill)}
+.type-tag.command{background:var(--command)}
+.type-tag.agent{background:var(--agent)}
+.pkg-item-name{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pkg-item-ver{font:600 11px var(--mono);color:var(--ok);flex-shrink:0}
+.pkg-item-date{font-size:10px;color:#98a2b3;font-family:var(--mono);flex-shrink:0}
+.pkg-item-unready{font-size:10px;color:#b06a18;background:#fff3df;padding:1px 6px;border-radius:4px;border:1px solid #ffe0a3;flex-shrink:0}
+.pkg-files{list-style:none;margin:2px 0 6px;padding:0 0 0 26px;display:none}
+.pkg-files.show{display:block}
+.pkg-file-row{display:flex;align-items:center;gap:6px;padding:5px 8px;font-size:11px;color:#667085;border-radius:5px;cursor:pointer}
+.pkg-file-row:hover{background:#f6f9ff;color:var(--text-h)}
+.pkg-file-icon{font-size:11px}
+.pkg-file-name{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* tree status badges */
+.tree-status{font-size:9px;font-weight:700;padding:1px 6px;border-radius:99px;border:1px solid;flex-shrink:0;margin-left:auto;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;line-height:1.4}
+.tree-status .d{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.tree-status.pub{background:#eaf8f1;color:#27815d;border-color:#b9e6cd}
+.tree-status.pub .d{background:#16a34a}
+.tree-status.ing{background:#fff3df;color:#b06a18;border-color:#ffe0a3}
+.tree-status.ing .d{background:#f59e0b;animation:pulse 1.1s infinite}
+.tree-status.ready{background:#eef2ff;color:#4266d5;border-color:#d6dcff}
+.tree-status.ready .d{background:#4266d5}
+.tree-status.incomplete{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+.tree-status.incomplete .d{background:#dc2626}
+.tree-l2 .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* inline file content */
+.pkg-file-caret{width:12px;color:#98a2b3;transition:transform .15s;flex-shrink:0;display:inline-block;font-size:9px}
+.pkg-file-row.open .pkg-file-caret{transform:rotate(90deg)}
+.pkg-file-content{margin:4px 0 6px;padding:10px 12px;font-family:var(--mono);font-size:11px;line-height:1.55;color:var(--text-h);white-space:pre;overflow:auto;max-height:260px;background:#fbfcff;border:1px solid var(--border);border-radius:6px;display:none}
+.pkg-file-content.show{display:block}
+/* editable ext name */
+.ext-name-input{font-size:13px;font-weight:700;color:var(--text-h);border:1px solid #e0e6f0;border-radius:7px;padding:5px 10px;outline:none;min-width:220px;background:#fff}
+.ext-name-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.ext-desc-input{font-size:12px;color:#475467;border:1px solid #eef0f3;border-radius:7px;padding:6px 9px;background:#fff;outline:none;min-height:32px;flex:1;min-width:200px}
+.ext-desc-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.ext-label{font-size:11px;font-weight:700;color:#475467;white-space:nowrap}
+.chan-pill{font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;flex-shrink:0}
+.chan-pill.beta{background:#fff3df;color:#b06a18;border:1px solid #ffe0a3}
+.chan-pill.product{background:#eaf8f1;color:#27815d;border:1px solid #b9e6cd}
+/* timeline */
+.tl{position:relative;padding-left:6px;margin-top:4px}
+.tl::before{content:'';position:absolute;left:11px;top:10px;bottom:10px;width:2px;background:linear-gradient(180deg,#2f7df6,#cbd2dc);border-radius:99px}
+.tl-card{position:relative;margin-bottom:14px;padding-left:34px}
+.tl-card:last-child{margin-bottom:0}
+.tl-dot{position:absolute;left:4px;top:8px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--accent);z-index:1;display:flex;align-items:center;justify-content:center}
+.tl-card.ok .tl-dot{border-color:#16a34a;background:#eaf8f1}
+.tl-card.ing .tl-dot{border-color:#f59e0b;background:#fff3df;animation:pulse 1.1s infinite}
+.tl-card.fail .tl-dot{border-color:#dc2626;background:#fef2f2}
+.tl-card.ok .tl-dot::after{content:'';width:5px;height:5px;border-radius:50%;background:#16a34a}
+.tl-card.ing .tl-dot::after{content:'';width:5px;height:5px;border-radius:50%;background:#f59e0b}
+.tl-card.fail .tl-dot::after{content:'';width:5px;height:5px;border-radius:50%;background:#dc2626}
+.tl-body{border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:var(--shadow-sm);overflow:hidden;transition:transform .15s,box-shadow .15s}
+.tl-body:hover{transform:translateX(2px);box-shadow:var(--shadow)}
+.tl-card.ing .tl-body{border-color:#ffe0a3;background:linear-gradient(180deg,#fffbeb,#fff)}
+.tl-card.fail .tl-body{border-color:#fecaca}
+.tl-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid #eef0f3;background:#f7f8fa}
+.tl-head .ver{font:800 13px var(--mono);color:var(--text-h)}
+.tl-head .ext{font-size:12px;font-weight:700;color:var(--text-h);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl-head .st{font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;flex-shrink:0}
+.tl-head .st.ok{background:#eaf8f1;color:#27815d}
+.tl-head .st.fail{background:#fee2e2;color:#b91c1c}
+.tl-head .st.ing{background:#fff3df;color:#b06a18}
+.tl-content{padding:10px 12px}
+.tl-desc{font-size:11px;color:#667085;line-height:1.5;margin-bottom:9px}
+.tl-struct-label{font-size:10px;font-weight:700;color:#475467;margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.tl-struct{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.tl-struct .si{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-h);background:#f7f8fa;border:1px solid var(--border);padding:3px 7px;border-radius:5px}
+.tl-struct .si .v{font:600 9px var(--mono);color:var(--ok)}
+.tl-struct .si .type-tag{width:14px!important;height:14px!important;font-size:7px!important;border-radius:3px!important}
+.tl-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:#98a2b3;padding-top:6px;border-top:1px dashed #eef0f3}
+.tl-fail-reason{margin:8px 0;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-left:3px solid #dc2626;border-radius:6px}
+.tl-fail-label{font-size:10px;font-weight:700;color:#b91c1c;display:block;margin-bottom:3px}
+.tl-fail-text{font-size:11px;color:#7f1d1d;line-height:1.5}
+.tl-actions{margin-top:8px;display:flex;gap:6px}
+.tl-more{display:flex;justify-content:center;padding:14px 0 4px}
+.tl-end{text-align:center;font-size:10px;color:#98a2b3;padding:10px 0 2px}
+.empty-mini{padding:14px;text-align:center;color:#98a2b3;font-size:11px}
+/* modal */
+.overlay{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.48);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
+.modal{width:min(560px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);border-radius:14px;box-shadow:var(--shadow-pop);overflow:hidden}
+.modal.lg{width:min(760px,100%)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:14px}
+.modal-body{flex:1;overflow-y:auto;padding:16px 18px}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:#fafbfd}
+.x-btn{border:0;background:transparent;font-size:20px;line-height:1;color:#98a2b3;width:28px;height:28px;border-radius:6px}
+.x-btn:hover{background:#f1f3f7;color:var(--text-h)}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field>span{font-size:11px;font-weight:700;color:#475467}
+.field input,.field select,.field textarea{width:100%;height:32px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text-h);font-size:12px;outline:none}
+.field textarea{height:auto;min-height:60px;padding:7px 9px;resize:vertical;font-family:var(--mono);font-size:11px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.ro{font-size:13px;color:var(--text-h);padding:6px 9px;background:#f7f8fa;border-radius:6px;display:inline-block}
+.field-hint{font-size:10px;color:#98a2b3;margin-top:-4px;line-height:1.4}
+.field input[readonly]{background:#f7f8fa;color:#667085;cursor:not-allowed}
+.lock-tag{font-size:10px;font-weight:700;color:#b06a18;background:#fff3df;border:1px solid #ffe0a3;padding:1px 6px;border-radius:4px;margin-left:4px}
+/* file viewer */
+.fv-path{font-family:var(--mono);font-size:11px;color:#98a2b3;padding:9px 14px;border-bottom:1px solid var(--border);background:#f7f8fa}
+.fv-content{margin:0;padding:14px;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text-h);white-space:pre;overflow:auto;max-height:60vh;background:#fbfcff}
+/* publish modal summary */
+.pkg-summary{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:9px;background:#fbfcff;overflow:hidden}
+.pkg-summary li{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;color:var(--text-h);border-bottom:1px solid #eef0f3}
+.pkg-summary li:last-child{border-bottom:0}
+.pkg-summary .nm{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pkg-summary .ver{font:600 11px var(--mono);color:var(--ok);flex-shrink:0}
+/* history */
+.hist-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid #eef0f3}
+.hist-row:last-child{border-bottom:0}
+.hist-ver{font:700 12px var(--mono);color:var(--text-h);min-width:46px;flex-shrink:0}
+.hist-info{flex:1;min-width:0}
+.hist-name{font-size:12px;color:var(--text-h);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-desc{font-size:11px;color:#667085;margin-top:2px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:3px;font-size:10px;color:#98a2b3}
+.hist-st{font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;flex-shrink:0;height:fit-content}
+.hist-st.ok{background:#eaf8f1;color:#27815d}
+.hist-st.fail{background:#fee2e2;color:#b91c1c}
+.hist-st.ing{background:#fff3df;color:#b06a18}
+.hist-st.ing::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:pulse 1.1s infinite;margin-right:4px;vertical-align:middle}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* dept dropdown tree */
+.dept-dd{position:relative;flex-shrink:0}
+.dept-dd-trigger{display:flex;align-items:center;gap:6px;height:30px;min-width:210px;max-width:360px;padding:0 28px 0 12px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text-h);font-size:12px;font-weight:600;position:relative;overflow:hidden}
+.dept-dd-trigger:hover{border-color:var(--accent-border)}
+.dept-dd-trigger.open{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.dept-dd-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.dept-dd-label .crumb{color:#98a2b3;font-weight:500}
+.dept-dd-label .leaf{color:var(--accent);font-weight:700}
+.dept-dd-caret{position:absolute;right:10px;font-size:10px;color:#98a2b3;transition:transform .15s}
+.dept-dd-trigger.open .dept-dd-caret{transform:rotate(180deg)}
+.dept-dd-panel{position:absolute;top:34px;left:0;z-index:90;width:300px;max-height:360px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-pop);padding:6px;display:none}
+.dept-dd-panel.show{display:block}
+.dn{padding:6px 8px;border-radius:6px;font-size:12px;color:var(--text-h);display:flex;align-items:center;gap:6px}
+.dn.branch{cursor:pointer;font-weight:700}
+.dn.branch:hover{background:var(--accent-bg)}
+.dn[data-leaf]{cursor:pointer;font-weight:500}
+.dn[data-leaf]:hover{background:var(--accent-bg);color:var(--accent)}
+.dn.active{background:var(--accent-bg);color:var(--accent);font-weight:700}
+.dn-caret{font-size:9px;color:#98a2b3;width:10px;flex-shrink:0;transition:transform .15s;display:inline-block}
+.dn-caret.open{transform:rotate(90deg);color:var(--accent)}
+.dn-dot{width:5px;height:5px;border-radius:50%;background:#cbd2dc;flex-shrink:0;margin:0 2px}
+.dn.active .dn-dot{background:var(--accent)}
+.dn-check{margin-left:auto;font-size:11px;color:var(--accent)}
+.dept-dd-empty{padding:14px;text-align:center;font-size:11px;color:#98a2b3}
+/* toast */
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#101828;color:#fff;font-size:12px;padding:7px 15px;border-radius:99px;box-shadow:var(--shadow-pop);z-index:300;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">EX</div>
+    <div class="brand-stack"><span class="brand-k">EXTENSION</span><span class="brand-t">Extension 模块</span></div>
+    <span class="scope-badge">产品级</span>
+    <div class="dept-dd" id="dept-dd"></div>
+    <select class="sel" id="product-sel"></select>
+    <span class="note" id="ctx-note"></span>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" id="btn-history" disabled>发布历史</button>
+    <button class="btn btn-success btn-sm" id="btn-publish" disabled>发布</button>
+  </header>
+  <main class="content">
+    <div class="ext-wrap">
+      <aside class="panel-card">
+        <div class="panel-card-head"><div><h3>场景树</h3></div><span class="sub" id="tree-sub">—</span></div>
+        <div class="panel-card-body ext-tree-body" id="scene-tree"></div>
+      </aside>
+      <section class="panel-card" id="ext-detail">
+        <div class="ext-empty">选择左侧二级场景查看关联内容</div>
+      </section>
+    </div>
+  </main>
+</div>
+<div id="modal-root"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============================== 数据 ============================== */
+const PRODUCTS=[
+  {id:'uamf',name:'UAMF',dept:['云核心网','分组核心网产品部','移动接入开发部']},
+  {id:'upcf',name:'UPCF',dept:['云核心网','分组核心网产品部','融合数据开发部']},
+  {id:'udm',name:'UDM',dept:['云核心网','分组核心网产品部','融合数据开发部']},
+];
+const DEPT_TREE=[
+  {name:'云核心网',children:[{name:'分组核心网产品部',children:[{name:'移动接入开发部'},{name:'融合数据开发部'}]}]},
+];
+const ORGS=[
+  {id:'org-fuyao',name:'扶摇组织'},
+  {id:'org-yunshan',name:'云山组织'},
+  {id:'org-haichuan',name:'海川组织'},
+];
+const TYPE={skill:{s:'S',n:'Skill'},command:{s:'C',n:'Command'},agent:{s:'A',n:'Agent'}};
+
+// publishable=false 表示场景不完备（后端在返回列表时给出），发布按钮禁用
+// ready=false 的 skill/agent 只显示名字，不可展开
+const SCENES=[
+  /* ---------- UDG ---------- */
+  {id:'scn-uamf-mml',productId:'uamf',primary:'开发',name:'MML开发',publishable:true,
+   extension:{name:'MML开发 Extension',desc:'MML 工程端到端开发流：编译、语法补全、代码评审。'},
+   caps:{
+     skills:[
+       {id:'sk-mml-comp',name:'MML语法补全',version:'0.9.0',publishDate:'2026-07-22',ready:true,files:[
+         {name:'SKILL.md',content:'# MML语法补全\n\n按 MML 上下文补全命令与参数。\n\n## 调用\n```yaml\ncapability: sk-mml-comp\nversion: 0.9.0\n```'},
+         {name:'scripts/run.sh',content:'#!/bin/bash\n# MML语法补全 执行脚本\nset -euo pipefail\necho "[MML补全] start"'},
+         {name:'templates/config.json',content:'{\n  "name": "MML语法补全",\n  "version": "0.9.0"\n}'},
+       ]},
+       {id:'sk-iface-doc',name:'接口文档生成',version:'1.0.0',publishDate:'2026-07-30',ready:true,files:[
+         {name:'SKILL.md',content:'# 接口文档生成\n\n解析 MML 配置与注释生成接口文档。'},
+         {name:'README.md',content:'# 接口文档生成 Skill\n\n## 用法\n调用 generate-doc 工具。'},
+       ]},
+     ],
+     commands:[
+       {id:'cm-mml-build',name:'MML编译',version:'1.0.0',publishDate:'2026-07-22',ready:true,file:{name:'MML编译.md',content:'# MML编译\n\n编译 MML 工程产出配置产物。\n\n## 参数\n- project: 工程路径\n- mode: debug/release'}},
+     ],
+     agents:[
+       {id:'ag-code-review',name:'代码评审Agent',version:'1.0.0',publishDate:'2026-07-22',ready:true,file:{name:'代码评审Agent.md',content:'# 代码评审Agent\n\n基于变更集执行 MML 代码评审。\n\n## 输入\n- diff: 变更内容\n\n## 输出\n- 评审报告'}},
+     ],
+   },
+    publishedVersions:[
+      {version:'0.1',extName:'MML开发 Extension',desc:'初版：编译+补全+评审。',channel:'Product',operator:{no:'A0123',name:'李扶摇'},at:'2026-07-22 10:14',status:'成功',org:'扶摇组织',
+       items:[{type:'command',name:'MML编译',version:'1.0.0'},{type:'skill',name:'MML语法补全',version:'0.9.0'},{type:'agent',name:'代码评审Agent',version:'1.0.0'}]},
+      {version:'0.1.5',extName:'MML开发 Extension',desc:'紧急 hotfix：修复编译脚本路径。',channel:'Beta',operator:{no:'A0456',name:'王致远'},at:'2026-07-25 16:20',status:'失败',org:'云山组织',failReason:'编译脚本路径错误：/build/compile.sh 不存在，导致打包阶段中断。',
+       items:[{type:'command',name:'MML编译',version:'1.0.1'},{type:'skill',name:'MML语法补全',version:'0.9.0'}]},
+      {version:'0.2',extName:'MML开发 Extension',desc:'增加接口文档生成能力，补全能力升级。',channel:'Product',operator:{no:'A0123',name:'李扶摇'},at:'2026-07-30 09:30',status:'成功',org:'扶摇组织',
+       items:[{type:'command',name:'MML编译',version:'1.0.0'},{type:'skill',name:'MML语法补全',version:'0.9.0'},{type:'skill',name:'接口文档生成',version:'1.0.0'},{type:'agent',name:'代码评审Agent',version:'1.0.0'}]},
+      {version:'0.2.1',extName:'MML开发 Extension',desc:'小修：补全配置模板。',channel:'Beta',operator:{no:'A0123',name:'李扶摇'},at:'2026-08-02 14:00',status:'成功',org:'扶摇组织',
+       items:[{type:'command',name:'MML编译',version:'1.0.0'},{type:'skill',name:'MML语法补全',version:'0.9.0'},{type:'skill',name:'接口文档生成',version:'1.0.0'},{type:'agent',name:'代码评审Agent',version:'1.0.0'}]},
+      {version:'0.2.2',extName:'MML开发 Extension',desc:'尝试升级评审 Agent 至 1.1.0。',channel:'Beta',operator:{no:'A0456',name:'王致远'},at:'2026-08-05 11:30',status:'失败',org:'云山组织',failReason:'代码评审Agent v1.1.0 在目标组织云山组织未通过准入校验：签名不匹配，发布被组织侧驳回。',
+       items:[{type:'command',name:'MML编译',version:'1.0.0'},{type:'skill',name:'MML语法补全',version:'0.9.0'},{type:'skill',name:'接口文档生成',version:'1.0.0'},{type:'agent',name:'代码评审Agent',version:'1.1.0'}]},
+    ],
+   publishing:{version:'0.3',extName:'MML开发 Extension',desc:'新增接口文档生成并升级评审 Agent。',channel:'Beta',operator:{no:'A0123',name:'李扶摇'},at:'2026-08-13 14:02',status:'进行中',org:'扶摇组织',
+    items:[{type:'skill',name:'MML语法补全',version:'0.9.0'},{type:'skill',name:'接口文档生成',version:'1.0.0'},{type:'command',name:'MML编译',version:'1.0.0'},{type:'agent',name:'代码评审Agent',version:'1.0.0'}]},
+  },
+  {id:'scn-uamf-patch',productId:'uamf',primary:'开发',name:'补丁开发',publishable:false,extension:{name:'',desc:''},
+   caps:{skills:[{id:'sk-patch-gen',name:'补丁生成Skill',version:'',publishDate:'',ready:false,files:[]}],commands:[],agents:[]},
+   publishedVersions:[],publishing:null},
+  {id:'scn-uamf-log',productId:'uamf',primary:'问题定位',name:'日志获取',publishable:true,extension:{name:'日志获取 Extension',desc:'一键拉取并采集网元日志。'},
+   caps:{skills:[{id:'sk-log-collect',name:'日志采集Skill',version:'1.0.0',publishDate:'2026-08-03',ready:true,files:[
+     {name:'SKILL.md',content:'# 日志采集Skill\n\n按网元与时间窗采集运行日志。'},
+     {name:'scripts/collect.sh',content:'#!/bin/bash\n# 日志采集\nne="$1"; tfrom="$2"; tto="$3"\necho "collect logs from $ne [$tfrom ~ $tto]"'},
+   ]}],commands:[{id:'cm-pull-log',name:'拉取日志',version:'1.0.0',publishDate:'2026-08-03',ready:true,file:{name:'拉取日志.md',content:'# 拉取日志\n\n从目标网元拉取日志文件。\n\n## 参数\n- ne: 网元标识\n- window: 时间窗'}}],agents:[]},
+   publishedVersions:[
+     {version:'0.1',extName:'日志获取 Extension',desc:'初版：日志采集+拉取。',channel:'Product',operator:{no:'A0789',name:'赵思齐'},at:'2026-08-03 14:20',status:'成功',org:'扶摇组织',
+      items:[{type:'skill',name:'日志采集Skill',version:'1.0.0'},{type:'command',name:'拉取日志',version:'1.0.0'}]},
+   ],publishing:null},
+  {id:'scn-uamf-analyze',productId:'uamf',primary:'问题定位',name:'问题分析',publishable:true,extension:{name:'问题分析 Extension',desc:'异常归因与缺陷定位。'},
+   caps:{
+     skills:[{id:'sk-anomaly',name:'异常归因Skill',version:'1.2.0',publishDate:'2026-08-06',ready:true,files:[
+       {name:'SKILL.md',content:'# 异常归因Skill\n\n聚合告警与指标定位异常根因。'},
+       {name:'scripts/analyze.py',content:'# 异常归因分析\nimport re\ndef analyze(alerts):\n    # ... 归因逻辑\n    pass'},
+     ]}],
+     commands:[],
+     agents:[{id:'ag-defect',name:'缺陷归因Agent',version:'1.0.0',publishDate:'2026-08-06',ready:true,file:{name:'缺陷归因Agent.md',content:'# 缺陷归因Agent\n\n对测试缺陷自动归因分析。\n\n## 输入\n- defects: 缺陷列表\n\n## 输出\n- 归因报告'}}],
+   },
+   publishedVersions:[
+     {version:'0.1',extName:'问题分析 Extension',desc:'初版：异常归因。',channel:'Beta',operator:{no:'A0123',name:'李扶摇'},at:'2026-08-06 11:00',status:'成功',org:'扶摇组织',
+      items:[{type:'skill',name:'异常归因Skill',version:'1.0.0'},{type:'agent',name:'缺陷归因Agent',version:'1.0.0'}]},
+     {version:'0.2',extName:'问题分析 Extension',desc:'归因能力升级至 1.2.0，支持多指标关联。',channel:'Product',operator:{no:'A0123',name:'李扶摇'},at:'2026-08-09 16:30',status:'成功',org:'扶摇组织',
+      items:[{type:'skill',name:'异常归因Skill',version:'1.2.0'},{type:'agent',name:'缺陷归因Agent',version:'1.0.0'}]},
+   ],publishing:null},
+  {id:'scn-uamf-report',productId:'uamf',primary:'问题定位',name:'报告输出',publishable:false,extension:{name:'',desc:''},
+   caps:{skills:[{id:'sk-report-gen',name:'报告生成Skill',version:'',publishDate:'',ready:false,files:[]}],commands:[],agents:[]},
+   publishedVersions:[],publishing:null},
+  /* ---------- UPCF ---------- */
+  {id:'scn-upcf-mml',productId:'upcf',primary:'开发',name:'MML开发',publishable:true,extension:{name:'MML开发 Extension',desc:'UPCF 侧 MML 编译与补全。'},
+   caps:{skills:[{id:'sk-mml-comp2',name:'MML语法补全',version:'0.9.0',publishDate:'2026-07-22',ready:true,files:[
+     {name:'SKILL.md',content:'# MML语法补全\n\n按 MML 上下文补全命令与参数。'},
+   ]}],commands:[{id:'cm-mml-build2',name:'MML编译',version:'1.0.0',publishDate:'2026-07-22',ready:true,file:{name:'MML编译.md',content:'# MML编译\n\n编译 MML 工程产出配置产物。'}}],agents:[]},
+   publishedVersions:[
+     {version:'0.1',extName:'MML开发 Extension',desc:'初版：编译+补全。',channel:'Product',operator:{no:'A0456',name:'王致远'},at:'2026-07-22 10:14',status:'成功',org:'扶摇组织',
+      items:[{type:'command',name:'MML编译',version:'1.0.0'},{type:'skill',name:'MML语法补全',version:'0.9.0'}]},
+   ],publishing:null},
+  {id:'scn-upcf-analyze',productId:'upcf',primary:'问题定位',name:'问题分析',publishable:true,extension:{name:'问题分析 Extension',desc:'UPCF 异常归因与缺陷定位。'},
+   caps:{skills:[{id:'sk-anomaly2',name:'异常归因Skill',version:'1.0.0',publishDate:'2026-08-06',ready:true,files:[
+     {name:'SKILL.md',content:'# 异常归因Skill\n\n聚合告警与指标定位异常根因。'},
+   ]}],commands:[],agents:[{id:'ag-defect2',name:'缺陷归因Agent',version:'1.0.0',publishDate:'2026-08-06',ready:true,file:{name:'缺陷归因Agent.md',content:'# 缺陷归因Agent\n\n对测试缺陷自动归因分析。'}}]},
+   publishedVersions:[
+     {version:'0.1',extName:'问题分析 Extension',desc:'初版：异常归因。',channel:'Beta',operator:{no:'A0789',name:'赵思齐'},at:'2026-08-06 11:00',status:'成功',org:'云山组织',
+      items:[{type:'skill',name:'异常归因Skill',version:'1.0.0'},{type:'agent',name:'缺陷归因Agent',version:'1.0.0'}]},
+   ],publishing:null},
+  /* ---------- USMF ---------- */
+  {id:'scn-udm-log',productId:'udm',primary:'问题定位',name:'日志获取',publishable:true,extension:{name:'日志获取 Extension',desc:'USMF 网元日志采集。'},
+   caps:{skills:[{id:'sk-log-collect3',name:'日志采集Skill',version:'1.0.0',publishDate:'2026-08-03',ready:true,files:[
+     {name:'SKILL.md',content:'# 日志采集Skill\n\n按网元与时间窗采集运行日志。'},
+   ]}],commands:[{id:'cm-pull-log3',name:'拉取日志',version:'1.0.0',publishDate:'2026-08-03',ready:true,file:{name:'拉取日志.md',content:'# 拉取日志\n\n从目标网元拉取日志文件。'}}],agents:[]},
+   publishedVersions:[
+     {version:'0.1',extName:'日志获取 Extension',desc:'初版：日志采集+拉取。',channel:'Product',operator:{no:'A0456',name:'王致远'},at:'2026-08-03 14:20',status:'成功',org:'扶摇组织',
+      items:[{type:'skill',name:'日志采集Skill',version:'1.0.0'},{type:'command',name:'拉取日志',version:'1.0.0'}]},
+   ],publishing:null},
+  {id:'scn-udm-report',productId:'udm',primary:'问题定位',name:'报告输出',publishable:false,extension:{name:'',desc:''},
+   caps:{skills:[{id:'sk-report-gen3',name:'报告生成Skill',version:'',publishDate:'',ready:false,files:[]}],commands:[],agents:[]},
+   publishedVersions:[],publishing:null},
+];
+
+/* ============================== 工具 ============================== */
+const $=(s,r=document)=>r.querySelector(s);const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let toastT;function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),2200);}
+const productOf=id=>PRODUCTS.find(p=>p.id===id);
+function productsUnderDept(dp){return PRODUCTS.filter(p=>p.dept.join('/')===dp.join('/'));}
+function isLeafDept(n){return !n.children||!n.children.length;}
+function isSelectableLeaf(p){return PRODUCTS.some(pd=>pd.dept.join('/')===p.join('/'));} // 仅产品所属叶子可选
+function ensureDeptExpand(){// 展开选中叶子的所有祖先
+  let acc=[];
+  for(const seg of state.deptPath){state.deptExpand[acc.concat(seg).join('/')]=true;acc.push(seg);}
+}
+function renderDeptTreeNodes(nodes,prefix,depth){
+  let h='';
+  nodes.forEach(n=>{
+    const p=prefix?[...prefix,n.name]:[n.name];
+    const path=p.join('/');
+    const pad='padding-left:'+(depth*14+8)+'px';
+    if(isLeafDept(n)){
+      const active=state.deptPath.join('/')===path;
+      const selectable=isSelectableLeaf(p);
+      h+='<div class="dn '+(active?'active':'')+'" style="'+pad+'" '+(selectable?'data-leaf="'+esc(path)+'"':'')+'><span class="dn-dot"></span>'+esc(n.name)+(active?'<span class="dn-check">✓</span>':'')+(selectable?'':'<span class="note" style="font-size:10px;margin-left:auto">无产品</span>')+'</div>';
+    } else {
+      const expanded=state.deptExpand[path];
+      h+='<div class="dn branch" style="'+pad+'" data-branch="'+esc(path)+'"><span class="dn-caret '+(expanded?'open':'')+'">▸</span>'+esc(n.name)+'</div>';
+      if(expanded)h+=renderDeptTreeNodes(n.children,p,depth+1);
+    }
+  });
+  return h;
+}
+function openModal(html){const root=$('#modal-root');const ov=document.createElement('div');ov.className='overlay';ov.innerHTML=html;root.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov||e.target.closest('[data-close]'))closeModal();});return ov;}
+function closeModal(){const root=$('#modal-root');if(root.lastChild)root.removeChild(root.lastChild);}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();if(state.deptPanelOpen){state.deptPanelOpen=false;renderTopbar();}}});
+
+/* ============================== 状态 ============================== */
+let state={deptPath:['云核心网','分组核心网产品部','融合数据开发部'],deptExpand:{},deptPanelOpen:false,productId:'upcf',activeSceneId:null,openL1:{},openItems:{},openFiles:{}};
+function currentScene(){return SCENES.find(x=>x.id===state.activeSceneId);}
+
+/* ============================== 顶栏 ============================== */
+function renderTopbar(){
+  ensureDeptExpand();
+  // 部门下拉树
+  const leaf=state.deptPath[state.deptPath.length-1];
+  const crumb=state.deptPath.slice(0,-1).join(' › ');
+  const trigCls='dept-dd-trigger'+(state.deptPanelOpen?' open':'');
+  $('#dept-dd').innerHTML='<button class="'+trigCls+'" id="dept-trigger" type="button"><span class="dept-dd-label">'+(crumb?'<span class="crumb">'+esc(crumb)+' › </span>':'')+'<span class="leaf">'+esc(leaf)+'</span></span><span class="dept-dd-caret">▾</span></span></button>'+
+    '<div class="dept-dd-panel '+(state.deptPanelOpen?'show':'')+'" id="dept-panel">'+renderDeptTreeNodes(DEPT_TREE,null,0)+'</div>';
+  $('#dept-trigger').onclick=e=>{e.stopPropagation();state.deptPanelOpen=!state.deptPanelOpen;renderTopbar();};
+  $('#dept-panel').onclick=e=>{
+    const b=e.target.closest('[data-branch]');if(b){const path=b.dataset.branch;state.deptExpand[path]=!state.deptExpand[path];renderTopbar();return;}
+    const lf=e.target.closest('[data-leaf]');if(lf){state.deptPath=lf.dataset.leaf.split('/');state.deptPanelOpen=false;const ps=productsUnderDept(state.deptPath);state.productId=ps[0]?.id||'';state.activeSceneId=null;render();return;}
+  };
+  // 点击外部关闭
+  if(state.deptPanelOpen)setTimeout(()=>document.addEventListener('click',function close(ev){if(!ev.target.closest('.dept-dd')){state.deptPanelOpen=false;renderTopbar();document.removeEventListener('click',close);}},0));
+  // 产品：仅所选叶子部门下的产品
+  const prods=productsUnderDept(state.deptPath);
+  if(!prods.find(p=>p.id===state.productId))state.productId=prods[0]?.id||'';
+  $('#product-sel').disabled=prods.length===0;
+  $('#product-sel').innerHTML=prods.length?prods.map(p=>`<option value="${p.id}" ${state.productId===p.id?'selected':''}>${esc(p.name)}</option>`).join(''):'<option value="">（请先选择部门）</option>';
+  const prod=productOf(state.productId);
+  $('#ctx-note').textContent=prod?(prod.name+' · '+prod.dept.join(' / ')):'';
+  const s=currentScene();
+  const canPub=!!(s&&s.publishable&&!s.publishing);
+  $('#btn-publish').disabled=!canPub;
+  $('#btn-publish').textContent=s&&s.publishing?'发布中…':'发布';
+  $('#btn-history').disabled=!s;
+}
+$('#product-sel').onchange=e=>{state.productId=e.target.value;state.activeSceneId=null;render();};
+$('#btn-publish').onclick=()=>{const s=currentScene();if(!s)return;if(!s.publishable){toast('场景不完备，无法发布');return;}if(s.publishing){toast('已有发布进行中');return;}openPublishModal(s);};
+$('#btn-history').onclick=()=>{const s=currentScene();if(!s)return;openHistoryModal(s);};
+
+/* ============================== 左侧场景树 ============================== */
+function treeBadge(s){
+  if(s.publishing) return '<span class="tree-status ing"><span class="d"></span>发布中</span>';
+  if(s.publishedVersions.length) return '<span class="tree-status pub"><span class="d"></span>v'+esc(s.publishedVersions[0].version)+'</span>';
+  if(s.publishable) return '<span class="tree-status ready"><span class="d"></span>就绪</span>';
+  return '<span class="tree-status incomplete"><span class="d"></span>不完备</span>';
+}
+function renderTree(){
+  const prod=productOf(state.productId);
+  if(!prod){$('#scene-tree').innerHTML='<div class="empty-mini">无产品</div>';$('#tree-sub').textContent='—';return;}
+  const scenes=SCENES.filter(s=>s.productId===state.productId);
+  const primaries=[...new Set(scenes.map(s=>s.primary))];
+  primaries.forEach(p=>{if(state.openL1[p]===undefined)state.openL1[p]=true;});
+  $('#tree-sub').textContent=scenes.length+' 个二级';
+  $('#scene-tree').innerHTML=primaries.length?primaries.map(p=>{
+    const subs=scenes.filter(s=>s.primary===p);
+    const open=state.openL1[p];
+    return '<div class="tree-l1 '+(open?'open':'')+'"><div class="tree-l1-head" data-l1="'+esc(p)+'"><span class="tree-caret">▸</span><strong>'+esc(p)+'</strong><span class="tree-l1-count">'+subs.length+'</span></div>'+
+      '<ul class="tree-l2-list">'+subs.map(s=>'<li class="tree-l2 '+(state.activeSceneId===s.id?'active':'')+'" data-scene="'+s.id+'"><span class="pri-tag">'+esc(s.primary)+'</span><span class="nm">'+esc(s.name)+'</span>'+treeBadge(s)+'</li>').join('')+'</ul></div>';
+  }).join(''):'<div class="empty-mini">该产品暂无场景</div>';
+  $('#scene-tree').onclick=e=>{
+    const l1=e.target.closest('[data-l1]');if(l1){state.openL1[l1.dataset.l1]=!state.openL1[l1.dataset.l1];renderTree();return;}
+    const l2=e.target.closest('[data-scene]');if(l2){state.activeSceneId=l2.dataset.scene;state.openItems={};state.openFiles={};render();}
+  };
+}
+
+/* ============================== 右侧详情 ============================== */
+function renderDetail(){
+  const s=currentScene();
+  const root=$('#ext-detail');
+  if(!s){root.innerHTML='<div class="ext-empty">选择左侧二级场景查看关联内容</div>';return;}
+  const prod=productOf(s.productId);
+  const last=s.publishedVersions[0];
+  let st,cls;
+  if(s.publishing){st='发布中';cls='ing';}
+  else if(s.publishedVersions.length){st='已发布';cls='ready';}
+  else if(s.publishable){st='就绪';cls='ready';}
+  else{st='不完备';cls='incomplete';}
+  root.innerHTML='<div class="scene-head">'+
+    '<div class="scene-head-top">'+
+      '<span class="sp '+cls+'">'+st+'</span>'+
+      '<h2>'+esc(s.primary)+' / '+esc(s.name)+'</h2>'+
+      '<span class="chip">'+esc(prod.dept.slice(-1)[0])+'</span>'+
+    '</div>'+
+    '<div class="ext-info">'+
+      (s.extension.name?'<span>📦 <b>'+esc(s.extension.name)+'</b></span><span style="color:#667085">'+esc(s.extension.desc)+'</span>':'<span style="color:#cbd2dc">📦 未定义 Extension（点击「发布」在弹窗中填写名称与描述）</span>')+
+      (last?'<span>· 最新 <span class="ver">v'+esc(last.version)+'</span> <span class="date">'+esc(last.at)+'</span></span>':'')+
+      (s.publishing?'<span>· <span style="color:#b06a18;font-weight:700">发布中 v'+esc(s.publishing.version)+'</span> <span class="date">'+esc(s.publishing.at)+'</span></span>':'')+
+    '</div>'+
+  '</div>'+
+  (s.publishable?'':'<div class="warn-bar">⚠ 该场景不完备（部分 skill/agent 未开发完成），暂不具备发布能力。</div>')+
+  '<div class="scene-body" id="scene-body">'+
+    renderFolder('skill',s.caps.skills)+
+    renderFolder('command',s.caps.commands)+
+    renderFolder('agent',s.caps.agents)+
+  '</div>';
+  $('#scene-body').onclick=e=>{
+    // 文件点击优先（避免冒泡到 item 展开）
+    const f=e.target.closest('[data-file]');if(f){
+      const fkey=f.dataset.file;
+      state.openFiles[fkey]=!state.openFiles[fkey];
+      renderDetail();
+      return;
+    }
+    const item=e.target.closest('[data-item]');if(item){
+      const type=item.dataset.type;const idx=+item.dataset.idx;
+      const cap=s.caps[type+'s'][idx];
+      if(!cap||!cap.ready){toast('该 '+TYPE[type].n+' 暂未开发完成，无内容可查看');return;}
+      const key=type+'|'+idx;
+      state.openItems[key]=!state.openItems[key];
+      renderDetail();
+      return;
+    }
+  };
+}
+function renderFolder(type,list){
+  list=list||[];
+  const label=type+'s';
+  const count=list.length;
+  return '<div class="pkg-folder">'+
+    '<div class="pkg-folder-head"><span class="pkg-folder-icon">📁</span><span class="pkg-folder-name">'+label+'/</span><span class="pkg-folder-count">'+count+'</span></div>'+
+    (count?'<ul class="pkg-list">'+list.map((c,i)=>renderItem(type,c,i)).join('')+'</ul>':'<div class="empty-mini" style="margin-left:18px">无</div>')+
+  '</div>';
+}
+function renderItem(type,c,i){
+  const key=type+'|'+i;
+  const open=state.openItems[key];
+  const ready=c.ready;
+  let filesHTML='';
+  if(type==='skill'){
+    if(ready&&c.files&&c.files.length){
+      filesHTML='<ul class="pkg-files '+(open?'show':'')+'">'+c.files.map(f=>{
+        const fkey='skill|'+i+'|'+f.name;
+        const fopen=state.openFiles[fkey];
+        return '<li><div class="pkg-file-row '+(fopen?'open':'')+'" data-file="'+esc(fkey)+'"><span class="pkg-file-caret">▸</span><span class="pkg-file-icon">📄</span><span class="pkg-file-name">'+esc(f.name)+'</span></div><pre class="pkg-file-content '+(fopen?'show':'')+'">'+esc(f.content||'(空)')+'</pre></li>';
+      }).join('')+'</ul>';
+    }
+  } else {
+    if(ready&&c.file){
+      const fkey=type+'|'+i+'|'+c.file.name;
+      const fopen=state.openFiles[fkey];
+      filesHTML='<ul class="pkg-files '+(open?'show':'')+'"><li><div class="pkg-file-row '+(fopen?'open':'')+'" data-file="'+esc(fkey)+'"><span class="pkg-file-caret">▸</span><span class="pkg-file-icon">📄</span><span class="pkg-file-name">'+esc(c.file.name)+'</span></div><pre class="pkg-file-content '+(fopen?'show':'')+'">'+esc(c.file.content||'(空)')+'</pre></li></ul>';
+    }
+  }
+  return '<li class="pkg-item">'+
+    '<div class="pkg-item-row '+(open?'open ':'')+(ready?'clickable':'disabled')+'" data-item data-type="'+type+'" data-idx="'+i+'">'+
+      '<span class="pkg-caret">'+(ready?'▸':'•')+'</span>'+
+      '<span class="type-tag '+type+'">'+TYPE[type].s+'</span>'+
+      '<span class="pkg-item-name">'+esc(c.name)+'</span>'+
+      (ready?
+        (c.version?'<span class="pkg-item-ver">v'+esc(c.version)+'</span>':'<span class="pkg-item-ver" style="color:#98a2b3">v—</span>')+
+        (c.publishDate?'<span class="pkg-item-date">'+esc(c.publishDate)+'</span>':'')
+        :'<span class="pkg-item-unready">未就绪</span>')+
+    '</div>'+filesHTML+
+  '</li>';
+}
+
+/* ============================== 发布弹窗 ============================== */
+function openPublishModal(s){
+  if(!s.publishable){toast('场景不完备，无法发布');return;}
+  if(s.publishing){toast('当前已有发布进行中');return;}
+  const nextVer=s.publishedVersions.length?('0.'+(parseInt(s.publishedVersions[0].version.split('.')[1])+1)):'0.1';
+  const firstPublish=!s.publishedVersions.length;
+  const all=[
+    ...s.caps.skills.map(c=>({type:'skill',c})),
+    ...s.caps.commands.map(c=>({type:'command',c})),
+    ...s.caps.agents.map(c=>({type:'agent',c})),
+  ];
+  openModal('<div class="modal"><div class="modal-head"><h3>发布 Extension · '+esc(s.name)+'</h3><button class="x-btn" data-close>×</button></div>'+
+    '<div class="modal-body">'+
+      '<div class="field"><span>Extension 名称 *'+(firstPublish?'':'<span class="lock-tag">🔒 已发布，不可修改</span>')+'</span>'+
+        '<input id="pub-name" value="'+esc(firstPublish?(s.extension.name||s.name+' Extension'):(s.publishedVersions[0].extName||s.extension.name))+'" placeholder="Extension 名称"'+(firstPublish?'':' readonly')+'/>'+
+        (firstPublish?'':'<div class="field-hint">非首次发布，名称沿用历史版本，不可修改。</div>')+
+      '</div>'+
+      '<div class="field"><span>Extension 描述 *</span><textarea id="pub-desc" placeholder="Extension 描述">'+esc(s.extension.desc)+'</textarea></div>'+
+      '<div class="field"><span>发布通道 *</span><select id="pub-channel"><option value="beta">Beta（测试通道）</option><option value="product">Product（正式通道）</option></select></div>'+
+      '<div class="field"><span>版本号（自增）</span><div class="ro">v'+nextVer+'</div></div>'+
+      '<div class="field"><span>包含清单（'+all.length+' 项）</span>'+
+        '<ul class="pkg-summary">'+all.map(({type,c})=>'<li><span class="type-tag '+type+'">'+TYPE[type].s+'</span><span class="nm">'+esc(c.name)+'</span><span class="ver">v'+esc(c.version)+'</span></li>').join('')+'</ul>'+
+      '</div>'+
+      '<div class="field"><span>目标组织 *</span><select id="pub-org">'+ORGS.map(o=>'<option value="'+o.id+'">'+esc(o.name)+'</option>').join('')+'</select></div>'+
+    '</div>'+
+    '<div class="modal-foot"><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-success" id="pub-go">确认发布</button></div></div>');
+  $('#pub-go').onclick=()=>{
+    const name=$('#pub-name').value.trim();
+    if(!name){toast('请输入 Extension 名称');return;}
+    const desc=$('#pub-desc').value.trim();
+    if(!desc){toast('请输入 Extension 描述');return;}
+    const channel=$('#pub-channel').value;
+    const orgId=$('#pub-org').value;const org=ORGS.find(o=>o.id===orgId);
+    s.extension.name=name;s.extension.desc=desc;
+    s.publishing={version:nextVer,extName:name,desc:desc,channel:channel==='beta'?'Beta':'Product',operator:{no:'A0123',name:'当前用户'},at:new Date().toISOString().slice(0,16).replace('T',' '),status:'进行中',org:org.name,
+      items:all.map(({type,c})=>({type,name:c.name,version:c.version}))};
+    closeModal();render();toast('已提交 '+s.publishing.channel+' 发布 v'+nextVer+' → '+org.name+'，后台处理中');
+  };
+}
+
+/* ============================== 发布历史弹窗（时间线） ============================== */
+function openHistoryModal(s){
+  const all=[...(s.publishing?[s.publishing]:[]),...s.publishedVersions];
+  all.sort((a,b)=>b.at.localeCompare(a.at)); // 时间逆序，最新在前
+  let limit=3; // 懒加载：默认展示 3 条
+  function retryPublish(ver){
+    if(s.publishing){toast('已有发布进行中，无法重试');return;}
+    const failed=s.publishedVersions.find(v=>v.version===ver);
+    if(!failed)return;
+    s.publishing={version:ver,extName:failed.extName,desc:failed.desc,channel:failed.channel,operator:{no:'A0123',name:'当前用户'},at:new Date().toISOString().slice(0,16).replace('T',' '),status:'进行中',org:failed.org,items:failed.items||[]};
+    closeModal();render();toast('已重新提交 v'+ver+' → '+failed.org+'，后台处理中');
+  }
+  function cardHTML(v){
+    const cls=v.status==='成功'?'ok':(v.status==='失败'?'fail':'ing');
+    const chan=v.channel||'Product';
+    const items=v.items||[];
+    return '<div class="tl-card '+cls+'">'+
+      '<div class="tl-dot"></div>'+
+      '<div class="tl-body">'+
+        '<div class="tl-head">'+
+          '<span class="ver">v'+esc(v.version)+'</span>'+
+          '<span class="chan-pill '+chan.toLowerCase()+'">'+esc(chan)+'</span>'+
+          '<span class="ext">'+esc(v.extName)+'</span>'+
+          '<span class="st '+cls+'">'+esc(v.status)+'</span>'+
+        '</div>'+
+        '<div class="tl-content">'+
+          (v.desc?'<div class="tl-desc">'+esc(v.desc)+'</div>':'')+
+          (v.status==='失败'&&v.failReason?'<div class="tl-fail-reason"><span class="tl-fail-label">❌ 失败原因</span><div class="tl-fail-text">'+esc(v.failReason)+'</div></div>':'')+
+          (items.length?'<div class="tl-struct-label">📦 内部结构（'+items.length+' 项）</div><div class="tl-struct">'+items.map(it=>'<span class="si"><span class="type-tag '+it.type+'">'+TYPE[it.type].s+'</span>'+esc(it.name)+'<span class="v">v'+esc(it.version)+'</span></span>').join('')+'</div>':'<div class="tl-struct-label" style="color:#cbd2dc">无结构信息</div>')+
+          '<div class="tl-meta">'+
+            '<span>👤 '+esc(v.operator.name)+' ('+esc(v.operator.no)+')</span>'+
+            '<span>🕒 '+esc(v.at)+'</span>'+
+            (v.org?'<span>🏢 '+esc(v.org)+'</span>':'')+
+          '</div>'+
+          (v.status==='失败'?'<div class="tl-actions"><button class="btn btn-soft btn-sm tl-retry" data-ver="'+esc(v.version)+'">↻ 重试发布</button></div>':'')+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+  function paint(){
+    const body=$('#hist-body');
+    if(!body)return;
+    const shown=all.slice(0,limit);
+    const rest=all.length-limit;
+    body.innerHTML=all.length
+      ? '<div class="tl">'+shown.map(cardHTML).join('')+'</div>'+
+        (rest>0?'<div class="tl-more"><button class="btn btn-soft btn-sm" id="hist-more">加载更多（剩余 '+rest+' 条）</button></div>':'<div class="tl-end">已全部加载 · 共 '+all.length+' 条</div>')
+      : '<div class="empty-mini">暂无发布记录</div>';
+    const more=$('#hist-more');if(more)more.onclick=()=>{limit=all.length;paint();};
+    $$('.tl-retry').forEach(b=>b.onclick=()=>retryPublish(b.dataset.ver));
+  }
+  openModal('<div class="modal lg"><div class="modal-head"><h3>发布历史 · '+esc(s.name)+'<span class="sub" style="margin-left:8px;font-size:11px;color:#98a2b3;font-weight:600">共 '+all.length+' 条</span></h3><button class="x-btn" data-close>×</button></div>'+
+    '<div class="modal-body" id="hist-body"></div>'+
+    '<div class="modal-foot"><button class="btn btn-ghost" data-close>关闭</button></div></div>');
+  paint();
+}
+
+/* ============================== 主渲染 ============================== */
+function render(){renderTopbar();renderTree();renderDetail();}
+render();
+</script>
+</body>
+</html>

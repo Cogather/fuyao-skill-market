@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Extension 编排与调测 — 预览</title>
+<script src="https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js"></script>
+<style>
+:root {
+  --text: #626b7c;
+  --text-h: #15171d;
+  --bg: #fbfcff;
+  --panel: #ffffff;
+  --border: #e9edf3;
+  --code-bg: #f5f7fb;
+  --accent: #2f7df6;
+  --accent-2: #7552ff;
+  --accent-bg: rgba(47, 125, 246, 0.1);
+  --accent-border: rgba(47, 125, 246, 0.34);
+  --shadow: 0 16px 48px rgba(22, 34, 51, 0.08);
+  --mono: ui-monospace, Consolas, monospace;
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--text);
+  background:
+    linear-gradient(rgba(96,111,136,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96,111,136,0.045) 1px, transparent 1px),
+    var(--bg);
+  background-size: 34px 34px, 34px 34px, auto;
+}
+.app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* toolbar */
+.ext-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; }
+.ext-toolbar-left { display:flex; align-items:center; gap:10px; min-width:0; }
+.ext-pkg-icon { font-size:20px; }
+.ext-pkg-title { font-size:15px; font-weight:600; color:var(--text); }
+.ext-level-select { font-size:12px; font-weight:600; padding:4px 8px; border:1px solid var(--accent-border); border-radius:6px; background:var(--accent-bg); color:var(--accent); outline:none; cursor:pointer; }
+.ext-level-select:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+.ext-scope-text { font-size:12px; color:var(--text-h); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-toolbar-right { display:flex; align-items:center; gap:8px; }
+.ext-btn { padding:7px 14px; border-radius:7px; font-size:13px; cursor:pointer; border:1px solid transparent; transition:all .15s; display:inline-flex; align-items:center; gap:4px; font-family:inherit; }
+.ext-btn:disabled { opacity:.5; cursor:not-allowed; }
+.ext-btn-ghost { background:var(--panel); border-color:var(--border); color:var(--text-h); }
+.ext-btn-ghost:hover:not(:disabled) { border-color:var(--accent-border); }
+.ext-btn-primary { background:var(--accent); color:#fff; }
+.ext-btn-primary:hover:not(:disabled) { background:#1f6fe0; }
+.ext-publish-plus { font-size:16px; line-height:1; }
+
+/* columns */
+.ext-cols { flex:1; display:flex; min-height:0; }
+.ext-col { display:flex; flex-direction:column; min-height:0; }
+.ext-col-left { width:300px; border-right:1px solid var(--border); background:var(--bg); padding:12px; gap:12px; }
+.ext-col-center { flex:1; min-width:0; }
+.ext-pool-wrap { flex:1; min-height:0; display:flex; }
+
+/* workspace tabs */
+.work-tabs { display:flex; align-items:center; gap:4px; padding:8px 20px 0; background:var(--panel); border-bottom:1px solid var(--border); flex-shrink:0; }
+.work-tab { position:relative; border:none; background:transparent; color:var(--text); padding:8px 14px 10px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+.work-tab.active { color:var(--accent); }
+.work-tab.active::after { content:''; position:absolute; left:10px; right:10px; bottom:-1px; height:2px; background:var(--accent); border-radius:2px 2px 0 0; }
+.work-tab-badge { margin-left:5px; padding:1px 6px; border-radius:999px; background:var(--code-bg); color:var(--text); font-size:10px; }
+.work-tab.active .work-tab-badge { background:var(--accent-bg); color:var(--accent); }
+
+/* dept/product cascader */
+.dept-product-cascader { display:flex; flex-direction:column; gap:8px; }
+.ai-compose { border:1px solid var(--accent-border); border-radius:10px; background:linear-gradient(145deg,var(--panel),rgba(47,125,246,.045)); overflow:hidden; flex-shrink:0; }
+.ai-compose-head { display:flex; align-items:center; gap:7px; padding:8px 9px 5px; color:var(--text-h); font-size:11px; font-weight:700; }
+.ai-compose-mark { width:19px; height:19px; display:flex; align-items:center; justify-content:center; border-radius:6px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#fff; font-size:10px; }
+.ai-compose textarea { width:100%; min-height:58px; padding:5px 9px; border:none; outline:none; resize:vertical; background:transparent; color:var(--text-h); font:11px/1.5 var(--sans); }
+.ai-compose-actions { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:5px 7px 7px; }
+.ai-compose-hint { color:var(--text); font-size:9px; }
+.ai-plan { margin:0 7px 7px; padding:6px; border:1px solid var(--border); border-radius:7px; background:var(--panel); }
+.ai-plan-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; color:var(--text-h); font-size:10px; font-weight:700; }
+.ai-plan-list { list-style:none; margin:0 0 6px; padding:0; display:flex; flex-direction:column; gap:3px; }
+.ai-plan-list li { display:flex; align-items:center; gap:5px; padding:4px 5px; border-radius:5px; background:var(--bg); color:var(--text-h); font-size:10px; }
+.ai-plan-list .reason { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+.ai-plan-list .version { margin-left:auto; color:var(--accent); font:9px var(--mono); }
+.dp-row { position:relative; }
+.dp-trigger { position:relative; }
+.dp-btn { width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--panel); border:1px solid var(--border); border-radius:8px; font-size:13px; color:var(--text-h); cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+.dp-btn:hover { border-color:var(--accent-border); }
+.dp-btn:disabled { cursor:not-allowed; opacity:.6; }
+.dp-trigger.open .dp-btn { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+.dp-btn-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dp-caret { width:14px; height:14px; fill:none; stroke:var(--text); stroke-width:2; transition:transform .15s; }
+.dp-trigger.open .dp-caret { transform:rotate(180deg); }
+.dp-popover { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; background:var(--panel); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); display:flex; flex-direction:column; max-height:320px; overflow:hidden; }
+.dept-popover { min-width:280px; }
+.dp-list { list-style:none; margin:0; padding:6px; overflow-y:auto; max-height:260px; }
+.dp-list-row { display:flex; align-items:center; gap:6px; padding:7px 8px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--text-h); user-select:none; }
+.dp-list-row:hover { background:var(--accent-bg); }
+.dp-list-row.active { background:var(--accent-bg); color:var(--accent); font-weight:600; }
+.dp-twisty { width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; color:var(--text); }
+.dp-twisty svg { width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:2; transition:transform .15s; }
+.dp-twisty.open svg { transform:rotate(90deg); }
+.dp-twisty-placeholder { width:16px; height:16px; display:inline-block; }
+.dp-list-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dp-list-dept { font-size:11px; color:var(--text); }
+.dp-empty { padding:18px; text-align:center; color:var(--text); font-size:12px; }
+.dp-popover-footer { border-top:1px solid var(--border); padding:6px; display:flex; justify-content:flex-end; }
+.dp-link-btn { border:none; background:transparent; color:var(--accent); font-size:12px; cursor:pointer; padding:4px 8px; border-radius:4px; }
+.dp-link-btn:hover { background:var(--accent-bg); }
+.dp-breadcrumb { display:flex; flex-wrap:wrap; align-items:center; gap:2px; font-size:12px; color:var(--text); padding:2px 2px 0; }
+.dp-crumb { display:inline-flex; align-items:center; gap:2px; }
+.dp-sep { width:12px; height:12px; fill:none; stroke:var(--text); stroke-width:2; opacity:.6; }
+
+/* capability pool */
+.capability-pool { display:flex; flex-direction:column; height:100%; min-height:0; }
+.pool-search { position:relative; margin-bottom:8px; }
+.pool-search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); width:14px; height:14px; fill:none; stroke:var(--text); stroke-width:2; pointer-events:none; }
+.pool-search input { width:100%; box-sizing:border-box; padding:7px 10px 7px 30px; border:1px solid var(--border); border-radius:8px; background:var(--panel); font-size:12px; color:var(--text-h); outline:none; transition:border-color .15s, box-shadow .15s; }
+.pool-search input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+.pool-types { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+.pool-type-chip { border:1px solid var(--border); background:var(--panel); color:var(--text); font-size:12px; padding:3px 10px; border-radius:999px; cursor:pointer; transition:all .15s; }
+.pool-type-chip:hover { border-color:var(--accent-border); }
+.pool-batch { display:flex; align-items:center; gap:6px; margin-bottom:8px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--panel); }
+.pool-batch-summary { margin-right:auto; font-size:11px; color:var(--text); }
+.pool-batch-check { display:inline-flex; align-items:center; gap:5px; color:var(--text-h); font-size:11px; cursor:pointer; user-select:none; }
+.pool-batch-check input, .pool-card-check { width:14px; height:14px; margin:0; accent-color:var(--accent); cursor:pointer; flex-shrink:0; }
+.pool-batch-check input:disabled, .pool-card-check:disabled { cursor:not-allowed; }
+.pool-batch-btn { border:none; background:transparent; color:var(--accent); font:inherit; font-size:11px; cursor:pointer; padding:3px 5px; border-radius:4px; }
+.pool-batch-btn:hover:not(:disabled) { background:var(--accent-bg); }
+.pool-batch-btn:disabled { color:var(--text); opacity:.45; cursor:not-allowed; }
+.pool-list { flex:1; overflow-y:auto; min-height:0; padding-right:2px; }
+.pool-empty { padding:24px 8px; text-align:center; color:var(--text); font-size:12px; }
+.scope-ready-empty { padding:32px 14px; text-align:center; color:var(--text); }
+.scope-ready-icon { font-size:30px; opacity:.5; margin-bottom:8px; }
+.scope-ready-title { margin:0 0 4px; color:var(--text-h); font-size:12px; font-weight:600; }
+.scope-ready-sub { margin:0; font-size:11px; line-height:1.55; opacity:.85; }
+.pool-group { margin-bottom:10px; }
+.pool-group-head { display:flex; align-items:center; gap:6px; padding:4px 2px; font-size:11px; color:var(--text); }
+.pool-group-tag { width:16px; height:16px; border-radius:4px; color:#fff; font-size:10px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; }
+.pool-group-title { font-weight:600; color:var(--text-h); }
+.pool-group-count { margin-left:auto; }
+.pool-card { padding:8px 10px; margin-bottom:6px; background:var(--panel); border:1px solid var(--border); border-left-width:3px; border-radius:8px; cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .05s; }
+.pool-card:hover { border-color:var(--accent-border); box-shadow:0 4px 12px rgba(22,34,51,0.06); }
+.pool-card.is-selected { border-color:var(--accent); background:var(--accent-bg); }
+.pool-card.is-skill { border-left-color:var(--accent); }
+.pool-card.is-command { border-left-color:#16a34a; }
+.pool-card.is-agent { border-left-color:var(--accent-2); }
+.pool-card.is-offline { opacity:.5; }
+.pool-card.is-deprecated { opacity:.75; }
+.pool-card-head { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.pool-card-check { margin-right:1px; }
+.pool-card-icon { width:18px; height:18px; border-radius:4px; color:#fff; font-size:10px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pool-card-name { font-size:13px; font-weight:600; color:var(--text-h); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.pool-card-version { max-width:104px; font-size:10px; color:var(--text-h); background:var(--code-bg); padding:2px 4px; border:1px solid var(--border); border-radius:4px; flex-shrink:0; cursor:pointer; }
+.pool-card-version:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg); }
+.pool-card-ver-tag { font-size:10px; color:var(--text); background:var(--code-bg); padding:2px 5px; border-radius:4px; flex-shrink:0; }
+.pool-card-desc { margin:0; font-size:11px; color:var(--text); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.pool-card-meta { display:flex; align-items:center; gap:6px; margin-top:4px; font-size:10px; color:var(--text); }
+.pool-card-files { opacity:.8; }
+.pool-badge { padding:1px 5px; border-radius:4px; font-size:10px; font-weight:600; }
+.pool-badge.warn { color:#b45309; background:rgba(180,83,9,0.12); }
+.pool-badge.danger { color:#b91c1c; background:rgba(185,28,28,0.12); }
+.pool-card-action { margin-left:auto; font-size:10px; font-weight:600; color:var(--text); }
+.pool-card-action.active { color:var(--accent); }
+
+/* package folder view */
+.pkg-view { height:100%; overflow-y:auto; padding:16px 20px; }
+.pkg-tree-head { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+.pkg-root-name { font-size:16px; font-weight:700; color:var(--text-h); }
+.pkg-root-meta { font-size:12px; color:var(--text); }
+.pkg-root-level { color:var(--accent); background:var(--accent-bg); padding:1px 6px; border-radius:4px; font-size:11px; font-weight:600; margin-right:2px; }
+.pkg-root-ver { color:var(--text-h); font-weight:600; }
+.pkg-root-draft { color:var(--accent); background:var(--accent-bg); padding:1px 6px; border-radius:4px; font-size:11px; }
+.pkg-root-org { color:var(--accent-2); font-weight:600; }
+.pkg-root-scn { color:#15803d; font-weight:600; }
+.pkg-root-act { color:#b45309; font-weight:600; }
+.pkg-tree, .pkg-items, .pkg-files { list-style:none; margin:0; padding:0; }
+.pkg-folder-li { margin-bottom:8px; }
+.pkg-folder-row { display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:6px; cursor:pointer; user-select:none; font-size:13px; color:var(--text-h); background:var(--code-bg); }
+.pkg-folder-row:hover { background:var(--accent-bg); }
+.pkg-folder-icon { font-size:15px; }
+.pkg-folder-name { font-weight:600; flex:1; }
+.pkg-folder-count { font-size:11px; color:var(--text); background:var(--panel); padding:1px 7px; border-radius:999px; }
+.pkg-items { padding-left:22px; border-left:1px dashed var(--border); margin-left:14px; margin-top:4px; }
+.pkg-item-li { margin-bottom:2px; }
+.pkg-item-row { display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; font-size:12px; color:var(--text-h); }
+.pkg-item-row:hover { background:var(--bg); }
+.pkg-item-icon { width:18px; height:18px; border-radius:4px; color:#fff; font-size:10px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pkg-item-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.pkg-item-ver { font-size:10px; color:var(--text); background:var(--code-bg); padding:1px 5px; border-radius:4px; }
+.pkg-badge { font-size:10px; padding:1px 5px; border-radius:4px; font-weight:600; }
+.pkg-badge.warn { color:#b45309; background:rgba(180,83,9,0.12); }
+.pkg-item-del { border:none; background:transparent; color:var(--text); font-size:15px; line-height:1; cursor:pointer; width:18px; height:18px; border-radius:4px; opacity:0; transition:opacity .15s; }
+.pkg-item-row:hover .pkg-item-del { opacity:1; }
+.pkg-item-del:hover { background:rgba(185,28,28,0.12); color:#b91c1c; }
+.pkg-files { padding-left:22px; margin-left:14px; margin-top:2px; margin-bottom:4px; }
+.pkg-file-row { display:flex; align-items:center; gap:6px; padding:3px 8px; font-size:11px; color:var(--text); border-radius:4px; }
+.pkg-file-row.clickable { cursor:pointer; }
+.pkg-file-row.clickable:hover { background:var(--bg); color:var(--text-h); }
+.pkg-file-row.dir { font-weight:600; }
+.pkg-file-row:hover { background:var(--bg); }
+.pkg-file-icon { font-size:12px; }
+.pkg-file-name { font-family:var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.pkg-file-caret { width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:2; opacity:.5; transition:transform .15s; }
+.pkg-file-caret.open { transform:rotate(90deg); opacity:1; }
+.pkg-file-viewer { margin:2px 0 4px 22px; border:1px solid var(--border); border-radius:6px; background:var(--code-bg); overflow:hidden; }
+.pkg-file-loading, .pkg-file-error { padding:10px 12px; font-size:11px; color:var(--text); }
+.pkg-file-error { color:#b91c1c; }
+.pkg-file-viewer-head { display:flex; align-items:center; justify-content:space-between; padding:4px 10px; border-bottom:1px solid var(--border); background:var(--panel); }
+.pkg-file-viewer-path { font-family:var(--mono); font-size:10px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pkg-file-copy { border:none; background:transparent; color:var(--accent); font-size:10px; cursor:pointer; padding:1px 6px; border-radius:3px; }
+.pkg-file-copy:hover { background:var(--accent-bg); }
+.pkg-file-content { margin:0; padding:10px 12px; font-family:var(--mono); font-size:11px; line-height:1.55; color:var(--text-h); overflow-x:auto; white-space:pre; max-height:280px; overflow-y:auto; }
+.pkg-empty-folder { padding:6px 8px; font-size:11px; color:var(--text); opacity:.7; }
+.pkg-empty { margin-top:40px; text-align:center; color:var(--text); }
+.pkg-empty-icon { font-size:40px; opacity:.4; }
+.pkg-empty p { font-size:12px; margin:8px 0 0; max-width:360px; }
+
+/* dialog */
+.ext-overlay { position:fixed; inset:0; z-index:1000; background:rgba(22,34,51,0.45); display:flex; align-items:center; justify-content:center; padding:24px; }
+.ext-dialog { width:640px; max-width:100%; max-height:88vh; display:flex; flex-direction:column; background:var(--panel); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+.ext-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); font-size:15px; color:var(--text-h); }
+.ext-close { border:none; background:transparent; font-size:22px; line-height:1; color:var(--text); cursor:pointer; padding:0 4px; border-radius:4px; }
+.ext-close:hover { background:var(--code-bg); }
+.ext-stepper { display:flex; padding:12px 18px; border-bottom:1px solid var(--border); gap:4px; }
+.ext-step { flex:1; display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text); }
+.ext-step::after { content:''; flex:1; height:1px; background:var(--border); margin:0 6px; }
+.ext-step:last-child::after { display:none; }
+.ext-step-no { width:20px; height:20px; border-radius:50%; border:1px solid var(--border); display:inline-flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; }
+.ext-step.active { color:var(--accent); font-weight:600; }
+.ext-step.active .ext-step-no { border-color:var(--accent); background:var(--accent); color:#fff; }
+.ext-step.done .ext-step-no { background:var(--accent); border-color:var(--accent); color:#fff; }
+.ext-body { flex:1; overflow-y:auto; padding:18px; }
+.ext-step-panel { display:flex; flex-direction:column; gap:14px; }
+.ext-field { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--text-h); }
+.ext-field span em { color:#b91c1c; font-style:normal; margin-left:2px; }
+.ext-field input, .ext-field select, .ext-field textarea { padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; color:var(--text-h); background:var(--panel); outline:none; font-family:inherit; resize:vertical; }
+.ext-field input:focus, .ext-field select:focus, .ext-field textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+.ext-field-hint { margin:0; font-size:11px; color:var(--text); opacity:.8; }
+.ext-icon-row { display:flex; gap:6px; flex-wrap:wrap; }
+.ext-icon-opt { width:34px; height:34px; border:1px solid var(--border); background:var(--panel); border-radius:8px; font-size:18px; cursor:pointer; }
+.ext-icon-opt.active { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+.ext-pkg-preview { display:flex; align-items:center; gap:12px; padding:12px; background:var(--bg); border:1px solid var(--border); border-radius:8px; }
+.ext-pkg-preview-icon { width:44px; height:44px; border-radius:10px; background:var(--panel); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:22px; }
+.ext-pkg-preview h3 { margin:0; font-size:15px; color:var(--text-h); }
+.ext-pkg-preview p { margin:4px 0 0; font-size:11px; color:var(--text); }
+.ext-folders-preview { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.ext-folder-preview { border:1px solid var(--border); border-radius:8px; background:var(--panel); overflow:hidden; display:flex; flex-direction:column; }
+.ext-folder-preview-head { display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:var(--code-bg); font-size:12px; font-weight:600; color:var(--text-h); }
+.ext-folder-preview-count { font-size:10px; color:var(--text); background:var(--panel); padding:0 6px; border-radius:999px; }
+.ext-folder-preview-items { list-style:none; margin:0; padding:6px; max-height:140px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+.ext-folder-preview-items li { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-h); }
+.ext-folder-preview-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-cap-version-select { margin-left:auto; max-width:116px; padding:3px 5px; border:1px solid var(--border); border-radius:5px; background:var(--panel); color:var(--text-h); font:inherit; font-size:10px; }
+.ext-cap-version-select:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg); outline:none; }
+.ext-version-hint { margin:0; padding:8px 10px; border-radius:6px; background:var(--accent-bg); color:var(--text); font-size:11px; line-height:1.5; }
+.ext-mini-tag { width:16px; height:16px; border-radius:3px; color:#fff; font-size:9px; font-weight:700; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ext-mini-ver { font-size:9px; color:var(--text); background:var(--code-bg); padding:0 4px; border-radius:3px; margin-left:auto; }
+.ext-folder-preview-empty { padding:10px; text-align:center; font-size:11px; color:var(--text); }
+.ext-dep-section h4 { margin:0 0 8px; font-size:12px; color:var(--text); }
+.ext-ok { padding:10px 12px; background:rgba(22,163,74,0.1); color:#15803d; border-radius:6px; font-size:12px; }
+.ext-issues { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.ext-issues li { font-size:12px; padding:6px 8px; border-radius:6px; display:flex; align-items:center; gap:6px; }
+.ext-issues li.error { background:rgba(185,28,28,0.08); color:#b91c1c; }
+.ext-issues li.warn { background:rgba(180,83,9,0.08); color:#b45309; }
+.ext-issue-tag { font-size:10px; font-weight:700; padding:1px 5px; border-radius:4px; background:rgba(255,255,255,0.3); }
+.ext-publish-progress { text-align:center; }
+.ext-stages { list-style:none; margin:0 0 14px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.ext-stages li { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text); }
+.ext-stages li.active { color:var(--accent); font-weight:600; }
+.ext-stages li.done { color:#15803d; }
+.ext-stage-dot { width:12px; height:12px; border-radius:50%; border:2px solid var(--border); flex-shrink:0; }
+.ext-stages li.active .ext-stage-dot { border-color:var(--accent); background:var(--accent); animation:pulse 1.2s ease-in-out infinite; }
+.ext-stages li.done .ext-stage-dot { border-color:#15803d; background:#15803d; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+.ext-progress-bar { height:6px; background:var(--code-bg); border-radius:999px; overflow:hidden; }
+.ext-progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); transition:width .4s ease; }
+.ext-publish-error { text-align:center; padding:16px; }
+.ext-publish-error p { color:#b91c1c; font-size:13px; margin:0 0 12px; }
+.ext-publish-success { text-align:center; padding:12px; }
+.ext-success-icon { width:44px; height:44px; margin:0 auto 10px; border-radius:50%; background:rgba(22,163,74,0.12); color:#15803d; font-size:24px; display:flex; align-items:center; justify-content:center; }
+.ext-publish-success h3 { margin:0 0 6px; font-size:15px; color:var(--text-h); }
+.ext-publish-success p { margin:0 0 12px; font-size:12px; color:var(--text); }
+.ext-success-actions { display:flex; justify-content:center; gap:8px; margin-bottom:8px; }
+.ext-success-meta { font-size:11px !important; color:var(--text); opacity:.7; margin:0 !important; }
+.ext-actions { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border-top:1px solid var(--border); gap:8px; }
+.ext-actions-right { display:flex; gap:8px; }
+
+/* org select */
+.org-select { position:relative; }
+.org-btn { width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:var(--panel); border:1px solid var(--border); border-radius:8px; font-size:13px; color:var(--text-h); cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+.org-btn:hover { border-color:var(--accent-border); }
+.org-select.open .org-btn { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-bg); }
+.org-btn-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.org-caret { width:14px; height:14px; fill:none; stroke:var(--text); stroke-width:2; transition:transform .15s; }
+.org-select.open .org-caret { transform:rotate(180deg); }
+.org-popover { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; background:var(--panel); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); display:flex; flex-direction:column; max-height:320px; overflow:hidden; }
+.org-list { list-style:none; margin:0; padding:6px; overflow-y:auto; max-height:260px; }
+.org-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--text-h); user-select:none; }
+.org-row:hover { background:var(--accent-bg); }
+.org-row.active { background:var(--accent-bg); color:var(--accent); font-weight:600; }
+.org-row-icon { font-size:14px; }
+.org-row-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.org-popover-footer { border-top:1px solid var(--border); padding:6px; display:flex; justify-content:flex-end; }
+.org-link-btn { border:none; background:transparent; color:var(--accent); font-size:12px; cursor:pointer; padding:4px 8px; border-radius:4px; }
+.org-link-btn:hover { background:var(--accent-bg); }
+
+/* toast */
+.ext-toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--text-h); color:#fff; font-size:12px; padding:8px 16px; border-radius:999px; box-shadow:var(--shadow); z-index:2000; }
+.ext-toast-enter-active, .ext-toast-leave-active { transition:opacity .2s, transform .2s; }
+.ext-toast-enter-from, .ext-toast-leave-to { opacity:0; transform:translateX(-50%) translateY(-8px); }
+
+/* task history modal */
+.ext-replay-dialog { width:820px; max-width:96vw; height:76vh; display:flex; flex-direction:column; background:var(--panel); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+.ext-replay-body { flex:1; min-height:0; overflow:hidden; background:var(--bg); }
+.ext-replay-foot { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid var(--border); gap:12px; }
+.ext-replay-meta { font-size:11px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-replay-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+
+.task-modal { width:920px; max-width:96vw; max-height:84vh; display:flex; flex-direction:column; background:var(--panel); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+.task-toolbar { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); gap:12px; }
+.task-toolbar h3 { margin:0; font-size:14px; color:var(--text-h); }
+.task-toolbar .count { font-size:12px; color:var(--text); }
+.task-body { flex:1; overflow:auto; padding:12px 16px; }
+.task-table { width:100%; border-collapse:collapse; font-size:12px; }
+.task-table th, .task-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); }
+.task-table th { background:var(--bg); color:var(--text); font-weight:600; font-size:11px; white-space:nowrap; }
+.task-table tbody tr:hover { background:var(--bg); }
+.task-table .mono { font-family:var(--mono); color:var(--text); }
+.task-empty { padding:40px; text-align:center; color:var(--text); font-size:13px; }
+.task-modal-lg { width:1240px; max-width:96vw; max-height:90vh; }
+.task-toolbar { flex-wrap:wrap; gap:8px; }
+.task-user { color:var(--text); font-size:11px; }
+.task-table { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+.task-table th, .task-table td { padding:10px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top; }
+.task-table th { background:var(--bg); color:var(--text); font-weight:600; font-size:11px; }
+.task-table tbody tr:hover { background:var(--bg); }
+.task-table .col-ext { width:20%; }
+.task-table .col-publisher { width:9%; }
+.task-table .col-ver { width:6%; }
+.task-table .col-date { width:11%; }
+.task-table .col-status { width:6%; }
+.task-table .col-org { width:8%; }
+.task-table .col-dept { width:15%; }
+.task-table .col-sub { width:7%; }
+.task-table .col-actions { width:18%; }
+.task-table th.sortable { cursor:pointer; user-select:none; }
+.task-table th.sortable:hover { color:var(--accent); }
+.task-head-select { border:none; background:transparent; color:var(--text); font:inherit; font-size:11px; font-weight:600; cursor:pointer; padding:0; outline:none; }
+.task-head-select:hover { color:var(--accent); }
+.task-table th.sortable.active { color:var(--accent); }
+.sort-arrow { display:inline-block; width:0; height:0; margin-left:3px; vertical-align:middle; }
+.sort-arrow.desc { border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid currentColor; }
+.sort-arrow.asc { border-left:4px solid transparent; border-right:4px solid transparent; border-bottom:5px solid currentColor; }
+.sort-arrow:not(.desc):not(.asc) { border-left:4px solid transparent; border-right:4px solid transparent; border-top:5px solid var(--border); }
+.task-act-row { display:flex; gap:4px; align-items:center; }
+.task-icon-btn { width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:6px; background:var(--panel); color:var(--text-h); cursor:pointer; transition:all .15s; flex-shrink:0; }
+.task-icon-btn svg { width:14px; height:14px; }
+.task-icon-btn:hover:not(:disabled) { border-color:var(--accent-border); color:var(--accent); background:var(--accent-bg); }
+.task-icon-btn:disabled { opacity:.4; cursor:not-allowed; }
+.task-ext-icon { font-size:16px; vertical-align:middle; }
+.task-ext-main { display:inline-block; vertical-align:middle; margin-left:6px; min-width:0; max-width:calc(100% - 24px); }
+.task-ext-name { display:block; color:var(--text-h); font-weight:600; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.task-ext-desc { display:block; color:var(--text); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+.task-pub-name { color:var(--text-h); font-size:12px; }
+.task-no { color:var(--text); font:10px var(--mono); margin-top:2px; }
+.task-ver { color:var(--text-h); font:600 11px var(--mono); }
+.task-time { color:var(--text); font:10px var(--mono); margin-top:2px; }
+.task-dept { color:var(--text); font-size:11px; display:block; }
+.task-detail-row td { background:var(--code-bg); }
+.task-subitems { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.task-subitem { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--panel); font-size:11px; color:var(--text-h); }
+.task-sub-name { font-weight:600; }
+.task-sub-ver { color:var(--accent); font:10px var(--mono); }
+.task-fail-reason { color:#b91c1c; font-size:11px; padding:4px 8px; background:rgba(185,28,28,.08); border-radius:6px; }
+.task-pager { display:flex; align-items:center; gap:6px; padding:10px 16px; border-top:1px solid var(--border); flex-wrap:wrap; }
+.task-page-num { min-width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--border); border-radius:5px; font-size:11px; cursor:pointer; color:var(--text-h); }
+.task-page-num.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.task-page-num:hover:not(.active) { border-color:var(--accent-border); }
+.task-page-info { margin-left:auto; color:var(--text); font-size:11px; }
+.ext-row-actions { display:flex; gap:4px; flex-wrap:wrap; }
+.ext-link { border:none; background:transparent; color:var(--accent); font-size:11px; cursor:pointer; padding:2px 4px; border-radius:4px; }
+.ext-link:hover { background:var(--accent-bg); }
+.ext-status { padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+.ext-status.success { color:#15803d; background:rgba(22,163,74,0.12); }
+.ext-status.failed { color:#b91c1c; background:rgba(185,28,28,0.12); }
+.release-groups { display:flex; flex-direction:column; gap:10px; }
+.release-group { border:1px solid var(--border); border-radius:11px; background:var(--panel); overflow:hidden; box-shadow:0 1px 3px rgba(16,24,40,.03); }
+.release-group-head { display:flex; align-items:center; gap:11px; padding:11px 12px; background:#fbfcfd; }
+.release-group-icon { width:34px; height:34px; display:flex; align-items:center; justify-content:center; border:1px solid #e4e7ec; border-radius:9px; background:#fff; font-size:17px; }
+.release-group-main { min-width:0; flex:1; }
+.release-group-name { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-h); font-size:12px; font-weight:700; }
+.release-group-meta { display:block; margin-top:3px; color:var(--text); font-size:10px; }
+.release-latest { padding:3px 7px; border-radius:6px; background:var(--accent-bg); color:var(--accent); font:10px var(--mono); }
+.release-version-table { border-top:1px solid var(--border); }
+.release-version-row { display:grid; grid-template-columns:90px minmax(120px,1fr) 120px 80px 210px; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid #eef0f3; color:var(--text); font-size:10px; }
+.release-version-row:last-child { border-bottom:none; }
+.release-version-row:hover { background:#fafcff; }
+.release-version-row .version { color:var(--text-h); font:600 11px var(--mono); }
+.release-version-actions { display:flex; justify-content:flex-end; gap:4px; }
+
+.review-banner { padding:8px 20px; background:#fff7e6; border-bottom:1px solid #ffe7ba; color:#92611a; font-size:12px; text-align:center; flex-shrink:0; }
+
+/* visual redesign v2 — extension studio */
+:root {
+  --text:#667085;
+  --text-h:#101828;
+  --bg:#f3f5f9;
+  --panel:#ffffff;
+  --border:#e4e7ec;
+  --code-bg:#f7f8fa;
+  --accent:#2f7df6;
+  --accent-2:#2563eb;
+  --accent-bg:rgba(47,125,246,.09);
+  --accent-border:rgba(47,125,246,.28);
+  --shadow:0 12px 32px rgba(16,24,40,.08);
+  --shadow-sm:0 2px 8px rgba(16,24,40,.06);
+  --radius-sm:8px;
+  --radius-md:12px;
+  --radius-lg:16px;
+}
+body { background:var(--bg); letter-spacing:.002em; }
+.app { background:radial-gradient(circle at 78% -15%,rgba(47,125,246,.09),transparent 36%),var(--bg); }
+.review-banner { padding:6px 18px; background:#f7fbff; border-bottom:1px solid #e1edff; color:#4776ae; font-size:11px; text-align:left; }
+.ext-toolbar { min-height:66px; padding:10px 20px; border-bottom:1px solid var(--border); box-shadow:0 1px 0 rgba(16,24,40,.02); }
+.ext-toolbar-left { gap:12px; }
+.ext-brand-mark { width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:linear-gradient(145deg,#4290ff,#246fe5); color:#fff; font-size:12px; font-weight:800; letter-spacing:.04em; box-shadow:0 7px 18px rgba(47,125,246,.25); }
+.ext-title-stack { display:flex; flex-direction:column; gap:1px; padding-right:6px; }
+.ext-pkg-kicker { color:#98a2b3; font-size:9px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; }
+.ext-pkg-title { color:var(--text-h); font-size:14px; font-weight:700; }
+.ext-context { display:flex; align-items:center; gap:7px; padding-left:12px; border-left:1px solid var(--border); }
+.ext-level-select { height:28px; padding:4px 9px; border-color:#cfe0fb; border-radius:7px; background:#f2f7ff; color:#2868c7; }
+.ext-scope-text { max-width:180px; color:#475467; font-size:11px; }
+.ext-base-chip { max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 7px; border:1px solid #cfe0fb; border-radius:6px; background:#f2f7ff; color:#2868c7; font-size:9px; font-weight:700; }
+.ext-scn-chip { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:3px 7px; border:1px solid #b9d8c5; border-radius:6px; background:#f2faf5; color:#15803d; font-size:9px; font-weight:700; }
+.scope-toggle-btn { border:1px solid var(--border); background:var(--panel); color:var(--text); font:600 9px var(--sans); padding:2px 7px; border-radius:6px; cursor:pointer; transition:all .15s; }
+.scope-toggle-btn:hover { border-color:var(--accent-border); }
+.scope-toggle-btn.on { border-color:#b9d8c5; background:#f2faf5; color:#15803d; }
+.scope-toggle-btn:disabled { opacity:.45; cursor:not-allowed; }
+.ext-btn { min-height:32px; border-radius:8px; padding:6px 12px; font-weight:600; transition:transform .15s,box-shadow .15s,border-color .15s,background .15s; }
+.ext-btn:hover:not(:disabled) { transform:translateY(-1px); }
+.ext-btn-primary { background:linear-gradient(135deg,#3b87f7,#276fdf); box-shadow:0 4px 10px rgba(47,125,246,.18); }
+.ext-btn-primary:hover:not(:disabled) { background:linear-gradient(135deg,#2f7df6,#2164d0); box-shadow:0 6px 14px rgba(47,125,246,.24); }
+.ext-btn-ghost { border-color:#dfe3e8; }
+.work-tabs { gap:8px; padding:8px 20px; background:rgba(255,255,255,.86); backdrop-filter:blur(12px); }
+.work-tab { padding:7px 13px; border-radius:8px; font-size:12px; }
+.work-tab:hover { background:#f6f7f9; color:#344054; }
+.work-tab.active { background:var(--accent-bg); color:var(--accent); }
+.work-tab.active::after { display:none; }
+.work-tab-badge { background:rgba(255,255,255,.75); }
+.ext-col-left { width:336px; padding:14px; gap:10px; background:#f8f9fb; }
+.ext-pool-wrap { flex-direction:column; gap:6px; }
+.ext-pool-wrap .capability-pool { flex:1; height:auto; }
+.side-section-title { display:flex; align-items:center; justify-content:space-between; color:#667085; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.ext-col-center { background:linear-gradient(180deg,#f7f8fb,#f3f5f9); }
+.pkg-view { margin:14px; height:calc(100% - 28px); padding:20px 22px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--panel); box-shadow:var(--shadow-sm); }
+.pkg-tree-head { margin-bottom:18px; padding-bottom:13px; border-bottom:1px solid #eef0f3; }
+.pkg-root-name { font-size:18px; letter-spacing:-.02em; }
+.pkg-root-base { color:#2868c7; background:#f2f7ff; padding:2px 6px; border-radius:5px; font-size:10px; font-weight:600; }
+.pkg-folder-row { padding:9px 10px; border:1px solid #eaecf0; border-radius:9px; background:#fafbfc; }
+.pkg-folder-row:hover { border-color:var(--accent-border); background:#f8f8ff; }
+.pkg-items { margin-top:7px; }
+.pkg-item-row { min-height:34px; padding:7px 8px; }
+.ai-compose { border:1px solid #dce8f8; border-radius:10px; background:#fff; box-shadow:0 1px 3px rgba(16,24,40,.03); }
+.ai-compose-toggle { width:100%; display:flex; align-items:center; gap:8px; padding:8px 9px; border:none; background:transparent; text-align:left; cursor:pointer; }
+.ai-compose-toggle:hover { background:#f6f9ff; }
+.ai-compose-toggle .ai-compose-copy { flex:1; }
+.ai-compose-caret { color:#7d8da3; font-size:11px; transition:transform .18s ease; }
+.ai-compose.open .ai-compose-caret { transform:rotate(180deg); }
+.ai-compose-body { padding-bottom:1px; border-top:1px solid #edf2f8; }
+.ai-compose-compact-row { display:flex; align-items:flex-start; gap:8px; padding:9px 9px 5px; }
+.ai-compose-copy { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.ai-compose-title { color:var(--text-h); font-size:11px; font-weight:700; }
+.ai-compose-subtitle { color:var(--text); font-size:9px; line-height:1.4; }
+.ai-compose-mark { width:24px; height:24px; flex-shrink:0; background:linear-gradient(135deg,#4290ff,#2f7df6); box-shadow:0 4px 10px rgba(47,125,246,.18); }
+.ai-compose textarea { width:calc(100% - 18px); min-height:48px; max-height:84px; margin:0 9px; padding:8px 9px; border:1px solid #dce5f0; border-radius:7px; background:#f9fbfe; resize:vertical; font-size:11px; }
+.ai-compose textarea:focus { border-color:var(--accent-border); background:#fff; box-shadow:0 0 0 3px var(--accent-bg); }
+.ai-compose .ai-compose-actions { padding:6px 9px 9px; }
+.ai-plan { border-color:#dce8f8; box-shadow:var(--shadow-sm); }
+.dp-btn,.org-btn,.pool-search input { min-height:34px; border-color:#e0e4e9; border-radius:8px; box-shadow:0 1px 2px rgba(16,24,40,.02); }
+.pool-types { gap:5px; }
+.pool-type-chip { padding:4px 9px; border-radius:7px; }
+.pool-type-chip.active { border-color:var(--accent-border); background:var(--accent-bg); color:var(--accent); font-weight:700; }
+.pool-batch { border:none; border-radius:8px; background:#eef0f4; }
+.pool-card { padding:9px 10px; border:1px solid #e5e8ed; border-left-width:1px; border-radius:10px; box-shadow:0 1px 2px rgba(16,24,40,.02); }
+.pool-card:hover { border-color:var(--accent-border); box-shadow:0 6px 16px rgba(16,24,40,.07); transform:translateY(-1px); }
+.pool-card.is-selected { border-color:#b9d4fb; background:#f4f8ff; box-shadow:inset 3px 0 0 var(--accent); }
+.pool-card.is-matched { background:#f3fbf5; box-shadow:inset 3px 0 0 #16a34a, 0 6px 16px rgba(16,24,40,.07); }
+.pool-card.is-selected.is-matched { background:#eef7f2; box-shadow:inset 3px 0 0 #16a34a; }
+.pool-badge.match { color:#15803d; background:rgba(22,163,74,.12); border:1px solid rgba(22,163,74,.25); }
+.pool-card-icon,.pkg-item-icon { border-radius:6px; }
+.pool-card-version { height:25px; max-width:96px; background:#fff; }
+.ext-dialog,.task-modal,.ext-replay-dialog { border:1px solid rgba(255,255,255,.8); box-shadow:0 24px 70px rgba(16,24,40,.2); }
+.ext-overlay { background:rgba(15,23,42,.48); backdrop-filter:blur(4px); }
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[tabindex]:focus-visible { outline:3px solid rgba(47,125,246,.22); outline-offset:2px; }
+@media (max-width:1100px) { .ext-col-left{width:310px} }
+@media (max-width:760px) { .ext-toolbar{align-items:flex-start;flex-wrap:wrap}.ext-toolbar-right{width:100%;overflow-x:auto}.ext-context{margin-left:auto}.ext-cols{flex-direction:column;overflow:auto}.ext-col-left{width:100%;max-height:none;border-right:none}.ext-pool-wrap{min-height:420px}.pkg-view{min-height:480px}.review-banner{display:none} }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const { createApp, ref, computed, reactive, watch, onMounted, nextTick } = Vue;
+
+/* ---------- mock data ---------- */
+const mockDeptTree = [
+  { id:'dept-1', name:'研发体系', children:[
+    { id:'dept-1-1', name:'智能终端产品部', children:[
+      { id:'dept-1-1-1', name:'终端开发一部' },
+      { id:'dept-1-1-2', name:'终端开发二部' },
+    ]},
+    { id:'dept-1-2', name:'云平台产品部', children:[
+      { id:'dept-1-2-1', name:'基础服务开发部' },
+      { id:'dept-1-2-2', name:'数据中台开发部' },
+    ]},
+  ]},
+  { id:'dept-2', name:'质量与运维体系', children:[
+    { id:'dept-2-1', name:'测试中心' },
+    { id:'dept-2-2', name:'SRE与监控部' },
+  ]},
+];
+const mockProductTree = [
+  { id:'product-api', name:'API 网关产品线', deptPath:['研发体系','云平台产品部','基础服务开发部'], children:[
+    { id:'product-api-gw', name:'网关核心', deptPath:['研发体系','云平台产品部','基础服务开发部'] },
+    { id:'product-api-sdk', name:'SDK 工具', deptPath:['研发体系','云平台产品部','基础服务开发部'] },
+  ]},
+  { id:'product-mobile', name:'智能终端产品线', deptPath:['研发体系','智能终端产品部','终端开发一部'], children:[
+    { id:'product-mobile-app', name:'终端应用', deptPath:['研发体系','智能终端产品部','终端开发一部'] },
+    { id:'product-mobile-fw', name:'终端框架', deptPath:['研发体系','智能终端产品部','终端开发一部'] },
+  ]},
+  { id:'product-quality', name:'质量产品线', deptPath:['质量与运维体系','测试中心'] },
+  { id:'product-sre', name:'SRE 产品线', deptPath:['质量与运维体系','SRE与监控部'] },
+];
+const mockOrgs = [
+  { id:'org-fuyao', name:'扶摇组织', path:['扶摇组织'], ownerNo:'A0123', ownerName:'李扶摇' },
+  { id:'org-yunshan', name:'云山组织', path:['云山组织'], ownerNo:'B0456', ownerName:'王云山' },
+  { id:'org-haichuan', name:'海川组织', path:['海川组织'], ownerNo:'C0789', ownerName:'赵海川' },
+  { id:'org-lingnan', name:'岭南组织', path:['岭南组织'], ownerNo:'D0234', ownerName:'钱岭南' },
+];
+const currentUser = { no:'A0123', name:'李扶摇', ownerOrgId:'org-fuyao' };
+const mockScenarioTree = [
+  { id:'scn-rd', name:'研发交付', children:[
+    { id:'scn-rd-api', name:'接口开发' },
+    { id:'scn-rd-mobile', name:'终端开发' },
+    { id:'scn-rd-build', name:'构建发布' },
+  ]},
+  { id:'scn-qa', name:'质量保障', children:[
+    { id:'scn-qa-test', name:'测试执行' },
+    { id:'scn-qa-bug', name:'缺陷处理' },
+  ]},
+  { id:'scn-ops', name:'运维监控', children:[
+    { id:'scn-ops-log', name:'日志分析' },
+    { id:'scn-ops-incident', name:'故障应急' },
+  ]},
+];
+function cap(id, type, name, desc, dept, pid, pname, files, extra={}) {
+  const versions = extra.versions || ['1.2.0','1.1.0','1.0.0'];
+  return { id, type, name, description:desc, version:versions[0], versions, deptPath:dept, productId:pid, productName:pname, owner:extra.owner||'扶摇团队', status:extra.status||'active', fileTree:files, scenarios:extra.scenarios||[] };
+}
+const mockCapabilities = [
+  cap('cap-skill-1','skill','接口 Mock 生成','根据接口定义自动生成 Mock 数据与联调示例。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['SKILL.md','scripts/gen-mock.sh','templates/mock.json','README.md'],{scenarios:[['研发交付','接口开发']]}),
+  cap('cap-skill-2','skill','接口文档生成','解析代码与注释生成接口 Markdown 文档。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['SKILL.md','scripts/parse.py','output/api.md'],{scenarios:[['研发交付','接口开发']]}),
+  cap('cap-skill-3','skill','终端崩溃归因','聚合崩溃堆栈与版本信息定位根因。',['研发体系','智能终端产品部','终端开发一部'],'product-mobile','智能终端产品线',['SKILL.md','scripts/analyze.sh','rules/stack.patterns'],{scenarios:[['研发交付','终端开发'],['运维监控','故障应急']]}),
+  cap('cap-skill-4','skill','测试用例生成','围绕需求生成测试用例评审建议。',['质量与运维体系','测试中心'],'product-quality','质量产品线',['SKILL.md','templates/case.yaml','README.md'],{scenarios:[['质量保障','测试执行']]}),
+  cap('cap-skill-5','skill','会议纪要沉淀','从会议记录抽取决策与待办入库。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['SKILL.md','scripts/extract.py','README.md'],{scenarios:[]}),
+  cap('cap-command-1','command','拉取代码仓库','从 Git 拉取指定分支代码到工作区。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['command.yml','scripts/git-clone.sh','README.md'],{scenarios:[['研发交付','接口开发'],['研发交付','终端开发']]}),
+  cap('cap-command-2','command','执行单测','在工作目录执行单元测试并输出报告。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['command.yml','scripts/run-test.sh','report/junit.xml'],{scenarios:[['质量保障','测试执行']]}),
+  cap('cap-command-3','command','打包构建','执行构建流水线产出构建产物。',['研发体系','智能终端产品部','终端开发一部'],'product-mobile','智能终端产品线',['command.yml','scripts/build.sh','artifacts/'],{scenarios:[['研发交付','构建发布']]}),
+  cap('cap-command-4','command','发布到市场','将构建产物发布到 Skill 市场。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['command.yml','scripts/publish.sh'],{scenarios:[['研发交付','构建发布']]}),
+  cap('cap-agent-1','agent','代码评审 Agent','基于变更集执行代码评审并输出评审意见。',['研发体系','云平台产品部','基础服务开发部'],'product-api','API 网关产品线',['AGENT.md','prompts/review.md','scripts/lint.sh','README.md'],{scenarios:[['研发交付','接口开发']]}),
+  cap('cap-agent-2','agent','缺陷归因 Agent','对测试缺陷进行归因分析并给出处置建议。',['质量与运维体系','测试中心'],'product-quality','质量产品线',['AGENT.md','prompts/triage.md','README.md'],{scenarios:[['质量保障','缺陷处理']]}),
+  cap('cap-agent-3','agent','日志异常定位 Agent','汇总日志与调用链输出问题定位摘要。',['质量与运维体系','SRE与监控部'],'product-sre','SRE 产品线',['AGENT.md','prompts/log-analyze.md','scripts/collect.sh','README.md'],{scenarios:[['运维监控','日志分析'],['运维监控','故障应急']]}),
+];
+const typeColor = { skill:'var(--accent)', command:'#16a34a', agent:'var(--accent-2)' };
+const typeShort = { skill:'S', command:'C', agent:'A' };
+const typeLabel = { skill:'Skill', command:'Command', agent:'Agent' };
+
+function pathStartsWith(child, parent) {
+  if (parent.length > child.length) return false;
+  return parent.every((s,i)=>child[i]===s);
+}
+function fetchProductTree(deptPath) {
+  if (!deptPath.length) return JSON.parse(JSON.stringify(mockProductTree));
+  const m = mockProductTree.filter(p=>pathStartsWith(p.deptPath, deptPath));
+  return JSON.parse(JSON.stringify(m.length?m:mockProductTree));
+}
+function fetchCapabilities(opts) {
+  let list = mockCapabilities.slice();
+  if (opts.deptPath && opts.deptPath.length) list = list.filter(c=>pathStartsWith(c.deptPath, opts.deptPath));
+  if (opts.productId) list = list.filter(c=>c.productId===opts.productId);
+  if (opts.type) list = list.filter(c=>c.type===opts.type);
+  const kw = (opts.keyword||'').trim().toLowerCase();
+  if (kw) list = list.filter(c=>c.name.toLowerCase().includes(kw)||c.description.toLowerCase().includes(kw)||c.id.toLowerCase().includes(kw));
+  return list;
+}
+function generateFileContent(name, desc, filePath) {
+  const lower = filePath.toLowerCase();
+  const base = (filePath.split('/').pop()) || filePath;
+  if (lower.endsWith('.md')) {
+    return ['# '+name,'',desc,'','## 说明','','> 本文件 '+filePath+' 为「'+name+'」能力实体的描述文档。','','## 使用','','- 通过 Extension 编排将该能力加入 skills/、commands/ 或 agents/ 子文件夹。','- 目标组织市场安装后即可按本能力约定调用。',''].join('\n');
+  }
+  if (lower.endsWith('.sh')) {
+    return ['#!/bin/bash','# '+name+' - '+base,'# '+desc,'set -euo pipefail','','WORKDIR="${1:-.}"','echo "['+name+'] start at $WORKDIR"','','# TODO: 在此实现具体逻辑','exit 0',''].join('\n');
+  }
+  if (lower.endsWith('.py')) {
+    return ['"""'+name+' - '+base,'',desc,'"""','from __future__ import annotations','','','def run(*args, **kwargs):','    """入口：由 Extension 运行时调用。"""','    raise NotImplementedError',''].join('\n');
+  }
+  if (lower.endsWith('.yml')||lower.endsWith('.yaml')) {
+    return ['name: "'+name+'"','description: "'+desc+'"','inputs: {}','outputs: {}','entrypoint: ./scripts/run.sh',''].join('\n');
+  }
+  if (lower.endsWith('.json')) {
+    return JSON.stringify({name, description:desc, file:filePath, version:'1.0.0'}, null, 2);
+  }
+  return '# '+name+' - '+filePath+'\n# '+desc+'\n';
+}
+function fetchFileContent(capId, filePath) {
+  const c = mockCapabilities.find(x=>x.id===capId);
+  return generateFileContent(c?.name||capId, c?.description||'', filePath);
+}
+function validatePackage(pkg) {
+  const issues = [];
+  if (!pkg.name.trim()) issues.push({level:'error', message:'Extension 名称必填'});
+  if (!pkg.version.trim()) issues.push({level:'error', message:'版本号必填'});
+  if (!pkg.targetOrg?.id) issues.push({level:'error', message:'请选择发布目标组织'});
+  if (!pkg.scenario?.l1 || !pkg.scenario?.l2) issues.push({level:'error', message:'请选择一级场景与二级场景'});
+  const cnt = pkg.selection.commands.length + pkg.selection.skills.length + pkg.selection.agents.length;
+  if (cnt===0) issues.push({level:'error', message:'至少需要加入一个 command / skill / agent'});
+  const allIds = [...pkg.selection.commands, ...pkg.selection.skills, ...pkg.selection.agents];
+  for (const id of allIds) {
+    const c = mockCapabilities.find(x=>x.id===id);
+    if (!c) { issues.push({level:'error', message:'能力 '+id+' 不存在'}); continue; }
+    const selectedVersion = pkg.capabilityVersions?.[id] || c.version;
+    if (!(c.versions||[c.version]).includes(selectedVersion)) issues.push({level:'error', message:'能力「'+c.name+'」的版本 '+selectedVersion+' 不可用'});
+    if (c.status==='deprecated') issues.push({level:'warn', message:'能力「'+c.name+'」已废弃，建议替换'});
+    if (c.status==='offline') issues.push({level:'error', message:'能力「'+c.name+'」已下线，无法发布'});
+  }
+  return { ok: issues.filter(i=>i.level==='error').length===0, issues };
+}
+const taskStore = ref([]);
+function publishExtension(pkg, operator, operatorName, operatorNo) {
+  const selectionNames={};
+  for(const id of [...pkg.selection.commands, ...pkg.selection.skills, ...pkg.selection.agents]){
+    const c=mockCapabilities.find(x=>x.id===id);
+    if(c) selectionNames[id]={name:c.name, type:c.type};
+  }
+  const t = {
+    id: 'task-'+Math.random().toString(36).slice(2,10),
+    extensionName: pkg.name, version: pkg.version,
+    operator: operator||'anonymous', operatorName: operatorName||operator||'anonymous', operatorNo: operatorNo||'',
+    createdAt: new Date().toISOString(), status:'success', pkg: JSON.parse(JSON.stringify(pkg)),
+    selectionNames,
+  };
+  taskStore.value = [t, ...taskStore.value];
+  return t;
+}
+
+/* ---------- shared popover helper ---------- */
+function usePopover() {
+  const open = ref(false);
+  const refEl = ref(null);
+  function onDoc(e) {
+    if (refEl.value && !refEl.value.contains(e.target)) open.value=false;
+  }
+  onMounted(()=>document.addEventListener('mousedown', onDoc));
+  return { open, refEl };
+}
+
+/* ---------- DeptProductCascader ---------- */
+const DeptProductCascader = {
+  props: { deptPath:Array, productId:{type:String,default:''}, showProduct:{type:Boolean,default:true} },
+  emits: ['change','update:deptPath','update:productId'],
+  setup(props, { emit }) {
+    const deptTree = ref(mockDeptTree);
+    const productTree = ref([]);
+    const loading = ref(false);
+    const expanded = ref({});
+    const { open:deptOpen, refEl:deptTriggerRef } = usePopover();
+    const { open:productOpen, refEl:productTriggerRef } = usePopover();
+
+    async function loadProductTree() {
+      productTree.value = fetchProductTree(props.deptPath||[]);
+    }
+    function samePath(a,b){ return a.length===b.length && a.every((v,i)=>v===b[i]); }
+    const flatDept = computed(()=>{
+      const out=[];
+      (function walk(nodes, depth, parent){
+        for (const n of nodes) {
+          const path=[...parent, n.name];
+          const isOpen=!!expanded.value[n.id];
+          const hasChildren=!!(n.children&&n.children.length);
+          out.push({id:n.id,name:n.name,depth,path,hasChildren,expanded:isOpen,selected:samePath(path, props.deptPath||[])});
+          if (isOpen && hasChildren) walk(n.children, depth+1, path);
+        }
+      })(deptTree.value, 0, []);
+      return out;
+    });
+    const flatProduct = computed(()=>{
+      const out=[];
+      (function walk(nodes, depth){
+        for (const n of nodes) {
+          out.push({id:n.id,name:n.name,depth,deptLabel:n.deptPath.slice(-1)[0]||'',active:n.id===props.productId});
+          if (n.children) walk(n.children, depth+1);
+        }
+      })(productTree.value, 0);
+      return out;
+    });
+    const deptLabel = computed(()=> (props.deptPath&&props.deptPath.length)?props.deptPath.join(' / '):'全部部门');
+    const selectedProductName = computed(()=>{
+      if (!props.productId) return '全部产品';
+      const find = (nodes)=>{ for (const n of nodes){ if (n.id===props.productId) return n.name; if (n.children){const r=find(n.children); if(r) return r;} } return undefined; };
+      return find(productTree.value)||'全部产品';
+    });
+    const breadcrumb = computed(()=> props.showProduct ? [deptLabel.value, selectedProductName.value] : [deptLabel.value]);
+    function onDeptRowClick(row){ if (row.hasChildren && !row.expanded){ expanded.value[row.id]=true; return; } applyDept(row.path); }
+    function toggleDeptExpand(row){ expanded.value[row.id]=!row.expanded; }
+    function applyDept(path){ emit('update:deptPath', path); emit('update:productId',''); emit('change',{deptPath:path, productId:''}); deptOpen.value=false; loadProductTree(); }
+    function clearDept(){ expanded.value={}; applyDept([]); }
+    function selectProduct(row){ emit('update:productId', row.id); emit('change',{deptPath:props.deptPath, productId:row.id}); productOpen.value=false; }
+    function clearProduct(){ emit('update:productId',''); emit('change',{deptPath:props.deptPath, productId:''}); productOpen.value=false; }
+    onMounted(loadProductTree);
+    watch(()=>props.deptPath, loadProductTree);
+    return { deptTree, productTree, loading, expanded, deptOpen, deptTriggerRef, productOpen, productTriggerRef, flatDept, flatProduct, deptLabel, selectedProductName, breadcrumb, onDeptRowClick, toggleDeptExpand, clearDept, selectProduct, clearProduct };
+  },
+  template: `
+  <div class="dept-product-cascader">
+    <div class="dp-row"><div ref="deptTriggerRef" class="dp-trigger" :class="{open:deptOpen}">
+      <button type="button" class="dp-btn" @click="deptOpen=!deptOpen"><span class="dp-btn-label" :title="deptLabel">{{ deptLabel }}</span><svg class="dp-caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div v-if="deptOpen" class="dp-popover dept-popover"><ul class="dp-list">
+        <li v-for="row in flatDept" :key="row.id" class="dp-list-row" :class="{active:row.selected}" :style="{paddingLeft:(8+row.depth*14)+'px'}" @click="onDeptRowClick(row)">
+          <span v-if="row.hasChildren" class="dp-twisty" :class="{open:row.expanded}" @click.stop="toggleDeptExpand(row)"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+          <span v-else class="dp-twisty-placeholder"></span>
+          <span class="dp-list-name">{{ row.name }}</span>
+        </li>
+      </ul><div class="dp-popover-footer"><button type="button" class="dp-link-btn" @click="clearDept">清除</button></div></div>
+    </div></div>
+    <div v-if="showProduct" class="dp-row"><div ref="productTriggerRef" class="dp-trigger" :class="{open:productOpen}">
+      <button type="button" class="dp-btn" :disabled="loading" @click="productOpen=!productOpen"><span class="dp-btn-label" :title="selectedProductName">{{ selectedProductName }}</span><svg class="dp-caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div v-if="productOpen" class="dp-popover product-popover">
+        <ul v-if="flatProduct.length" class="dp-list">
+          <li v-for="row in flatProduct" :key="row.id" class="dp-list-row" :class="{active:row.active}" :style="{paddingLeft:(8+row.depth*14)+'px'}" @click="selectProduct(row)"><span class="dp-list-name">{{ row.name }}</span><span v-if="row.depth>0" class="dp-list-dept">{{ row.deptLabel }}</span></li>
+        </ul>
+        <div v-else class="dp-empty">{{ loading?'加载中…':'该部门下暂无产品' }}</div>
+        <div class="dp-popover-footer"><button type="button" class="dp-link-btn" @click="clearProduct">清除</button></div>
+      </div>
+    </div></div>
+  </div>`
+};
+
+/* ---------- ScenarioCascader ---------- */
+const ScenarioCascader = {
+  props: {
+    scenario: {type:Object, default:()=>({l1:'',l2:''})},
+  },
+  emits: ['update:scenario','change'],
+  setup(props, { emit }) {
+    const scenarioTree = ref(mockScenarioTree);
+    const scnExpanded = ref({});
+    const { open:scnOpen, refEl:scnTriggerRef } = usePopover();
+    function buildFlat(tree, expanded, sel){
+      const out=[];
+      (function walk(nodes, depth, parent){
+        for (const n of nodes) {
+          const isOpen=!!expanded.value[n.id];
+          const hasChildren=!!(n.children&&n.children.length);
+          const active = depth===0 ? sel.l1===n.name : (sel.l1===parent[0] && sel.l2===n.name);
+          out.push({id:n.id,name:n.name,depth,hasChildren,expanded:isOpen,active,parent});
+          if (isOpen && hasChildren) walk(n.children, depth+1, [...parent, n.name]);
+        }
+      })(tree.value, 0, []);
+      return out;
+    }
+    const flatScn = computed(()=>buildFlat(scenarioTree, scnExpanded, props.scenario));
+    const scnLabel = computed(()=> props.scenario.l1 ? (props.scenario.l2 ? props.scenario.l1+' / '+props.scenario.l2 : props.scenario.l1) : '请选择场景');
+    function onRowClick(row){
+      if (row.depth===0){
+        if (row.hasChildren){ scnExpanded.value[row.id]=!row.expanded; return; }
+        apply({l1:row.name, l2:''});
+      } else {
+        apply({l1:row.parent[0], l2:row.name});
+      }
+    }
+    function toggleExpand(row){ scnExpanded.value[row.id]=!row.expanded; }
+    function apply(val){ emit('update:scenario', val); emit('change', val); scnOpen.value=false; }
+    function clearScn(){ scnExpanded.value={}; apply({l1:'',l2:''}); }
+    return { flatScn, scnOpen, scnTriggerRef, scnLabel, onRowClick, toggleExpand, clearScn };
+  },
+  template: `
+  <div class="dept-product-cascader">
+    <div class="dp-row"><div ref="scnTriggerRef" class="dp-trigger" :class="{open:scnOpen}">
+      <button type="button" class="dp-btn" @click="scnOpen=!scnOpen"><span class="dp-btn-label" :title="scnLabel">{{ scnLabel }}</span><svg class="dp-caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div v-if="scnOpen" class="dp-popover dept-popover"><ul class="dp-list">
+        <li v-for="row in flatScn" :key="row.id" class="dp-list-row" :class="{active:row.active}" :style="{paddingLeft:(8+row.depth*14)+'px'}" @click="onRowClick(row)">
+          <span v-if="row.hasChildren" class="dp-twisty" :class="{open:row.expanded}" @click.stop="toggleExpand(row)"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+          <span v-else class="dp-twisty-placeholder"></span>
+          <span class="dp-list-name">{{ row.name }}</span>
+        </li>
+      </ul><div class="dp-popover-footer"><button type="button" class="dp-link-btn" @click="clearScn">清除</button></div></div>
+    </div></div>
+  </div>`
+};
+
+/* ---------- CapabilityPool ---------- */
+const CapabilityPool = {
+  props: { capabilities:Array, loading:Boolean, selectedIds:Array, scopeReady:{type:Boolean,default:false} },
+  emits: ['toggle','bulk-toggle'],
+  setup(props, { emit }) {
+    const keyword = ref('');
+    const activeType = ref('all');
+    const typeTabs = [{key:'all',label:'全部'},{key:'skill',label:'Skill'},{key:'command',label:'Command'},{key:'agent',label:'Agent'}];
+    const selectedSet = computed(()=> new Set(props.selectedIds||[]));
+    const filtered = computed(()=>{
+      const kw=keyword.value.trim().toLowerCase();
+      return props.capabilities.filter(c=>{
+        if (activeType.value!=='all' && c.type!==activeType.value) return false;
+        if (!kw) return true;
+        return c.name.toLowerCase().includes(kw)||c.description.toLowerCase().includes(kw)||c.id.toLowerCase().includes(kw);
+      });
+    });
+    const grouped = computed(()=>{
+      const order=['skill','command','agent'];
+      return order.map(t=>({type:t, items:filtered.value.filter(c=>c.type===t)})).filter(g=>g.items.length>0);
+    });
+    const selectableFiltered = computed(()=>filtered.value.filter(c=>c.status!=='offline'));
+    const selectedFilteredCount = computed(()=>selectableFiltered.value.filter(c=>selectedSet.value.has(c.id)).length);
+    const allFilteredSelected = computed(()=>selectableFiltered.value.length>0 && selectedFilteredCount.value===selectableFiltered.value.length);
+    const canBulkAdd = computed(()=>selectableFiltered.value.some(c=>!selectedSet.value.has(c.id)));
+    const canBulkRemove = computed(()=>selectableFiltered.value.some(c=>selectedSet.value.has(c.id)));
+    return { keyword, activeType, typeTabs, grouped, filtered, selectableFiltered, selectedFilteredCount, allFilteredSelected, canBulkAdd, canBulkRemove, selectedSet, typeColor, typeShort, typeLabel };
+  },
+  template: `
+  <div class="capability-pool">
+    <template v-if="scopeReady">
+    <div class="pool-search"><svg class="pool-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input v-model="keyword" type="search" placeholder="搜索能力名称 / 说明 / ID"/></div>
+    <div class="pool-types"><button v-for="t in typeTabs" :key="t.key" type="button" class="pool-type-chip" :class="{active:activeType===t.key}" :aria-pressed="activeType===t.key" @click="activeType=t.key">{{ t.label }}</button></div>
+    <div class="pool-batch">
+      <label class="pool-batch-check"><input type="checkbox" :checked="allFilteredSelected" :disabled="!selectableFiltered.length" @change="$emit('bulk-toggle',{items:selectableFiltered,mode:allFilteredSelected?'remove':'add'})"/><span>{{ allFilteredSelected?'取消全选':'全选当前' }}</span></label>
+      <span class="pool-batch-summary">当前 {{ selectableFiltered.length }} 项 · 已加入 {{ selectedFilteredCount }}</span>
+      <button type="button" class="pool-batch-btn" :disabled="!canBulkAdd" @click="$emit('bulk-toggle',{items:selectableFiltered,mode:'add'})">全部加入</button>
+      <button type="button" class="pool-batch-btn" :disabled="!canBulkRemove" @click="$emit('bulk-toggle',{items:selectableFiltered,mode:'remove'})">移除当前</button>
+    </div>
+    <div class="pool-list">
+      <div v-if="loading" class="pool-empty">加载中…</div>
+      <div v-else-if="!grouped.length" class="pool-empty">{{ keyword||activeType!=='all'?'没有匹配的能力':'当前部门/产品下暂无规划能力' }}</div>
+      <div v-for="g in grouped" :key="g.type" class="pool-group">
+        <div class="pool-group-head"><span class="pool-group-tag" :style="{background:typeColor[g.type]}">{{ typeShort[g.type] }}</span><span class="pool-group-title">{{ typeLabel[g.type] }}</span><span class="pool-group-count">{{ g.items.length }}</span></div>
+        <div v-for="cap in g.items" :key="cap.id" class="pool-card" :class="['is-'+cap.type,{ 'is-selected':selectedSet.has(cap.id),'is-offline':cap.status==='offline','is-deprecated':cap.status==='deprecated' }]" role="checkbox" tabindex="0" :aria-checked="selectedSet.has(cap.id)" @click="$emit('toggle', cap)" @keydown.enter.prevent="$emit('toggle',cap)" @keydown.space.prevent="$emit('toggle',cap)">
+          <div class="pool-card-head"><input type="checkbox" class="pool-card-check" :checked="selectedSet.has(cap.id)" :disabled="cap.status==='offline'" :aria-label="'选择 '+cap.name" @click.stop @change.stop="$emit('toggle', cap)"/><span class="pool-card-icon" :style="{background:typeColor[cap.type]}">{{ typeShort[cap.type] }}</span><span class="pool-card-name" :title="cap.name">{{ cap.name }}</span><span class="pool-card-ver-tag">v{{ cap.version }}</span></div>
+          <p class="pool-card-desc">{{ cap.description }}</p>
+          <div class="pool-card-meta">
+            <span v-if="cap.status==='deprecated'" class="pool-badge warn">已废弃</span>
+            <span v-else-if="cap.status==='offline'" class="pool-badge danger">已下线</span>
+            <span class="pool-card-action" :class="{active:selectedSet.has(cap.id)}">{{ selectedSet.has(cap.id)?'已加入 ✓':'加入 +' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </template>
+    <div v-else class="scope-ready-empty">
+      <div class="scope-ready-icon">🔒</div>
+      <p class="scope-ready-title">请先完成「部门/产品」选择</p>
+      <p class="scope-ready-sub">选择后将显示该范围内的能力，即可开始编排</p>
+    </div>
+  </div>`
+};
+
+/* ---------- PackageFolderView ---------- */
+const PackageFolderView = {
+  props: { pkg:Object, capabilities:Array, readonly:Boolean },
+  emits: ['remove'],
+  setup(props, { emit }) {
+    const expandedFolders = ref({commands:true, skills:true, agents:true});
+    const expandedItems = ref({});
+    const expandedFiles = ref({});
+    const fileState = ref({});
+    const capById = computed(()=>{ const m={}; (props.capabilities||[]).forEach(c=>m[c.id]=c); return m; });
+    const folders = computed(()=>[
+      {type:'command',folder:'commands',label:'commands',ids:props.pkg.selection.commands},
+      {type:'skill',folder:'skills',label:'skills',ids:props.pkg.selection.skills},
+      {type:'agent',folder:'agents',label:'agents',ids:props.pkg.selection.agents},
+    ]);
+    function itemsOf(folder){ return props.pkg.selection[folder].map(id=>capById.value[id]).filter(Boolean); }
+    function toggleFolder(f){ expandedFolders.value[f]=!expandedFolders.value[f]; }
+    function toggleItem(id){ expandedItems.value[id] = expandedItems.value[id]===false ? true : false; }
+    function isDir(p){ return p.endsWith('/'); }
+    function fileIcon(n){ if(n.endsWith('/'))return'📁'; if(n.endsWith('.md'))return'📄'; if(n.endsWith('.sh')||n.endsWith('.py'))return'📜'; if(n.endsWith('.yml')||n.endsWith('.yaml')||n.endsWith('.json'))return'🔧'; return'📄'; }
+    function fileKey(c,p){ return c+'::'+p; }
+    async function toggleFile(cap, path){
+      if (isDir(path)) return;
+      const key=fileKey(cap.id, path);
+      expandedFiles.value[key]=!expandedFiles.value[key];
+      if (!expandedFiles.value[key]) return;
+      if (fileState.value[key] && (fileState.value[key].content||fileState.value[key].error)) return;
+      fileState.value={...fileState.value, [key]:{loading:true, content:'', error:''}};
+      await new Promise(r=>setTimeout(r, 200));
+      try {
+        const content = fetchFileContent(cap.id, path);
+        fileState.value={...fileState.value, [key]:{loading:false, content, error:''}};
+      } catch(e){
+        fileState.value={...fileState.value, [key]:{loading:false, content:'', error:String(e)}};
+      }
+    }
+    function copyContent(t){ navigator.clipboard && navigator.clipboard.writeText(t); }
+    function mdFileName(cap){ return cap.name+'.md'; }
+    function mdFileKey(cap){ return fileKey(cap.id, cap.name+'.md'); }
+    const totalCount = computed(()=> props.pkg.selection.commands.length + props.pkg.selection.skills.length + props.pkg.selection.agents.length);
+    return { expandedFolders, expandedItems, expandedFiles, fileState, folders, itemsOf, toggleFolder, toggleItem, isDir, fileIcon, fileKey, toggleFile, copyContent, mdFileName, mdFileKey, totalCount, typeColor, typeShort };
+  },
+  template: `
+  <div class="pkg-view">
+    <div class="pkg-tree-head">
+      <span class="pkg-root-name">{{ pkg.name || '未命名 Extension' }}</span>
+      <span class="pkg-root-meta">
+        <span class="pkg-root-level">{{ pkg.level }}</span>
+        <span v-if="pkg.version" class="pkg-root-ver">v{{ pkg.version }}</span>
+        <span v-else class="pkg-root-draft">草稿</span>
+        <span v-if="pkg.baseRelease" class="pkg-root-base">基于 {{ pkg.baseRelease.name }}@{{ pkg.baseRelease.version }}</span>
+        · {{ totalCount }} 个条目
+        <template v-if="pkg.scenario && pkg.scenario.l1"> · 场景 <span class="pkg-root-scn">{{ pkg.scenario.l1 }}/{{ pkg.scenario.l2 }}</span></template>
+        <template v-if="pkg.targetOrg"> · <span class="pkg-root-org">{{ pkg.targetOrg.name }}</span></template>
+      </span>
+    </div>
+    <ul class="pkg-tree">
+      <li v-for="f in folders" :key="f.folder" class="pkg-folder-li">
+        <div class="pkg-folder-row" role="button" tabindex="0" :aria-expanded="!!expandedFolders[f.folder]" @click="toggleFolder(f.folder)" @keydown.enter.prevent="toggleFolder(f.folder)" @keydown.space.prevent="toggleFolder(f.folder)"><span class="dp-twisty" :class="{open:expandedFolders[f.folder]}"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span><span class="pkg-folder-icon">📁</span><span class="pkg-folder-name">{{ f.label }}/</span><span class="pkg-folder-count">{{ f.ids.length }}</span></div>
+        <ul v-show="expandedFolders[f.folder]" class="pkg-items">
+          <template v-if="f.folder==='skills'">
+            <li v-for="cap in itemsOf(f.folder)" :key="cap.id" class="pkg-item-li">
+              <div class="pkg-item-row">
+                <span v-if="cap.fileTree&&cap.fileTree.length" class="dp-twisty" :class="{open:expandedItems[cap.id]!==false}" @click.stop="toggleItem(cap.id)"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+                <span v-else class="dp-twisty-placeholder"></span>
+                <span class="pkg-item-icon" :style="{background:typeColor[cap.type]}">{{ typeShort[cap.type] }}</span>
+                <span class="pkg-item-name" :title="cap.name">{{ cap.name }}</span>
+                <span class="pkg-item-ver">v{{ pkg.capabilityVersions?.[cap.id] || cap.version }}</span>
+                <span v-if="cap.status==='deprecated'" class="pkg-badge warn">已废弃</span>
+                <button v-if="!readonly" type="button" class="pkg-item-del" title="从包中移除" @click.stop="$emit('remove',{type:cap.type,id:cap.id})">×</button>
+              </div>
+              <ul v-show="expandedItems[cap.id]!==false && cap.fileTree && cap.fileTree.length" class="pkg-files">
+                <template v-for="file in cap.fileTree" :key="file">
+                  <li class="pkg-file-row" :class="{dir:isDir(file),clickable:!isDir(file)}" :title="isDir(file)?file:'点击查看内容'" @click="!isDir(file)&&toggleFile(cap, file)">
+                    <span class="pkg-file-icon">{{ fileIcon(file) }}</span>
+                    <span class="pkg-file-name">{{ file }}</span>
+                    <svg v-if="!isDir(file)" class="pkg-file-caret" :class="{open:expandedFiles[fileKey(cap.id,file)]}" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+                  </li>
+                  <li v-if="!isDir(file)&&expandedFiles[fileKey(cap.id,file)]" class="pkg-file-viewer">
+                    <div v-if="fileState[fileKey(cap.id,file)]&&fileState[fileKey(cap.id,file)].loading" class="pkg-file-loading">加载中…</div>
+                    <div v-else-if="fileState[fileKey(cap.id,file)]&&fileState[fileKey(cap.id,file)].error" class="pkg-file-error">{{ fileState[fileKey(cap.id,file)].error }}</div>
+                    <template v-else-if="fileState[fileKey(cap.id,file)]">
+                      <div class="pkg-file-viewer-head"><span class="pkg-file-viewer-path">{{ file }}</span><button type="button" class="pkg-file-copy" @click.stop="copyContent(fileState[fileKey(cap.id,file)].content)">复制</button></div>
+                      <pre class="pkg-file-content">{{ fileState[fileKey(cap.id,file)].content }}</pre>
+                    </template>
+                  </li>
+                </template>
+              </ul>
+            </li>
+          </template>
+          <template v-else>
+            <template v-for="cap in itemsOf(f.folder)" :key="cap.id">
+              <li class="pkg-file-row clickable" title="点击查看内容" @click="toggleFile(cap, mdFileName(cap))">
+                <span class="pkg-file-icon">{{ fileIcon(mdFileName(cap)) }}</span>
+                <span class="pkg-file-name">{{ mdFileName(cap) }}</span>
+                <span class="pkg-item-ver">v{{ pkg.capabilityVersions?.[cap.id] || cap.version }}</span>
+                <span v-if="cap.status==='deprecated'" class="pkg-badge warn">已废弃</span>
+                <button v-if="!readonly" type="button" class="pkg-item-del" title="从包中移除" @click.stop="$emit('remove',{type:cap.type,id:cap.id})">×</button>
+                <svg class="pkg-file-caret" :class="{open:expandedFiles[mdFileKey(cap)]}" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+              </li>
+              <li v-if="expandedFiles[mdFileKey(cap)]" class="pkg-file-viewer">
+                <div v-if="fileState[mdFileKey(cap)]&&fileState[mdFileKey(cap)].loading" class="pkg-file-loading">加载中…</div>
+                <div v-else-if="fileState[mdFileKey(cap)]&&fileState[mdFileKey(cap)].error" class="pkg-file-error">{{ fileState[mdFileKey(cap)].error }}</div>
+                <template v-else-if="fileState[mdFileKey(cap)]">
+                  <div class="pkg-file-viewer-head"><span class="pkg-file-viewer-path">{{ mdFileName(cap) }}</span><button type="button" class="pkg-file-copy" @click.stop="copyContent(fileState[mdFileKey(cap)].content)">复制</button></div>
+                  <pre class="pkg-file-content">{{ fileState[mdFileKey(cap)].content }}</pre>
+                </template>
+              </li>
+            </template>
+          </template>
+          <li v-if="!f.ids.length" class="pkg-empty-folder">暂无条目，从左侧能力池选择加入</li>
+        </ul>
+      </li>
+    </ul>
+    <div v-if="!totalCount" class="pkg-empty"><div class="pkg-empty-icon">📦</div><p>从左侧能力池选择 command / skill / agent，加入后将自动归入对应子文件夹</p></div>
+  </div>`
+};
+
+/* ---------- OrgTreeSelect ---------- */
+const OrgTreeSelect = {
+  props: { modelValue:{type:Object, default:null} },
+  emits: ['update:modelValue','change'],
+  setup(props, { emit }) {
+    const { open, refEl } = usePopover();
+    const label = computed(()=> props.modelValue?.name || '请选择目标组织');
+    function select(node){ emit('update:modelValue', {id:node.id, name:node.name, path:node.path, ownerNo:node.ownerNo, ownerName:node.ownerName}); emit('change', {id:node.id, name:node.name, path:node.path, ownerNo:node.ownerNo, ownerName:node.ownerName}); open.value=false; }
+    function clear(){ emit('update:modelValue', null); emit('change', null); open.value=false; }
+    return { open, refEl, label, orgs: mockOrgs, select, clear };
+  },
+  template: `
+  <div ref="refEl" class="org-select" :class="{open}">
+    <button type="button" class="org-btn" @click="open=!open"><span class="org-btn-label" :title="label">{{ label }}</span><svg class="org-caret" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div v-if="open" class="org-popover"><ul class="org-list">
+      <li v-for="n in orgs" :key="n.id" class="org-row" :class="{active:modelValue&&modelValue.id===n.id}" @click="select(n)"><span class="org-row-icon">🏬</span><span class="org-row-name">{{ n.name }}</span></li>
+    </ul><div class="org-popover-footer"><button type="button" class="org-link-btn" @click="clear">清除</button></div></div>
+  </div>`
+};
+
+/* ---------- PublishExtensionDialog ---------- */
+const PublishExtensionDialog = {
+  components: { OrgTreeSelect, ScenarioCascader },
+  props: { modelValue:Boolean, pkg:Object, capabilities:Array, operator:String, operatorName:String, operatorNo:String },
+  emits: ['update:modelValue','published'],
+  setup(props, { emit }) {
+    const ICON_OPTIONS=['🧩','⚙️','🚀','📦','🔧','🛠️','✨','🤖'];
+    const step = ref(0);
+    const steps=['元信息','清单确认','发布'];
+    const validating=ref(false); const issues=ref(null);
+    const publishing=ref(false); const publishError=ref(''); const resultTask=ref(null);
+    const publishStage=ref(0); const publishStages=['生成包清单','上传至目标组织','生成组织市场条目']; const copied=ref(false);
+    const localPkg = ref(JSON.parse(JSON.stringify(props.pkg)));
+    const capById = computed(()=>{ const m={}; (props.capabilities||[]).forEach(c=>m[c.id]=c); return m; });
+    const folders = computed(()=>[
+      {label:'commands/', ids:localPkg.value.selection.commands},
+      {label:'skills/', ids:localPkg.value.selection.skills},
+      {label:'agents/', ids:localPkg.value.selection.agents},
+    ]);
+    const totalCount = computed(()=> localPkg.value.selection.commands.length+localPkg.value.selection.skills.length+localPkg.value.selection.agents.length);
+    const manifestJson = computed(()=> JSON.stringify({
+      name:localPkg.value.name, version:localPkg.value.version, description:localPkg.value.description, level:localPkg.value.level,
+      targetOrg: localPkg.value.targetOrg?{id:localPkg.value.targetOrg.id,name:localPkg.value.targetOrg.name}:null,
+      scenario: localPkg.value.scenario||{l1:'',l2:''},
+      structure:{
+        commands:localPkg.value.selection.commands.map(id=>({id,version:localPkg.value.capabilityVersions[id]})),
+        skills:localPkg.value.selection.skills.map(id=>({id,version:localPkg.value.capabilityVersions[id]})),
+        agents:localPkg.value.selection.agents.map(id=>({id,version:localPkg.value.capabilityVersions[id]})),
+      },
+    }, null, 2));
+    const canNext = computed(()=>{
+      if (step.value===0) return localPkg.value.name.trim().length>0 && localPkg.value.version.trim().length>0 && !!localPkg.value.targetOrg && !!localPkg.value.scenario?.l1 && !!localPkg.value.scenario?.l2;
+      if (step.value===1) return issues.value?.ok ?? false;
+      return true;
+    });
+    function onScnChange(scn){ localPkg.value={...localPkg.value, scenario:scn||{l1:'',l2:''}}; }
+    function close(){ if (publishing.value) return; emit('update:modelValue', false); }
+    function reset(){
+      step.value=0; issues.value=null; resultTask.value=null; publishError.value=''; publishStage.value=0; copied.value=false;
+      localPkg.value=JSON.parse(JSON.stringify(props.pkg));
+      if(!localPkg.value.version) localPkg.value.version='1.0.0';
+      const resolved={...(localPkg.value.capabilityVersions||{})};
+      const ids=[...localPkg.value.selection.commands,...localPkg.value.selection.skills,...localPkg.value.selection.agents];
+      ids.forEach(id=>{
+        const c=capById.value[id];
+        const available=c?.versions||[c?.version].filter(Boolean);
+        if(!resolved[id]||!available.includes(resolved[id])) resolved[id]=available[0]||'1.0.0';
+      });
+      localPkg.value.capabilityVersions=resolved;
+    }
+    function onOrgChange(org){ localPkg.value={...localPkg.value, targetOrg: org||undefined}; }
+    async function runValidation(){ validating.value=true; try { issues.value=validatePackage(localPkg.value); } finally { validating.value=false; } }
+    async function next(){ if(step.value===0){ step.value=1; await runValidation(); return; } if(step.value===1){ if(!issues.value?.ok) return; step.value=2; await doPublish(); return; } }
+    function prev(){ if(step.value>0 && !publishing.value) step.value-=1; }
+    async function doPublish(){
+      publishing.value=true; publishError.value=''; resultTask.value=null; publishStage.value=0;
+      for (let i=0;i<publishStages.length;i++){ publishStage.value=i; await new Promise(r=>setTimeout(r, 500+Math.random()*500)); }
+      try {
+        const t = publishExtension(localPkg.value, props.operator, props.operatorName, props.operatorNo);
+        resultTask.value=t; publishStage.value=publishStages.length; emit('published', t);
+      } catch(e){ publishError.value=String(e); } finally { publishing.value=false; }
+    }
+    async function retry(){ step.value=2; await doPublish(); }
+    function copyInstallCmd(){ const cmd='fuyao install '+localPkg.value.name+'@'+localPkg.value.version+' --org '+(localPkg.value.targetOrg?.id||''); navigator.clipboard&&navigator.clipboard.writeText(cmd); copied.value=true; setTimeout(()=>copied.value=false,1500); }
+    watch(()=>props.modelValue, (v)=>{ if(v) reset(); });
+    return { ICON_OPTIONS, step, steps, validating, issues, publishing, publishError, resultTask, publishStage, publishStages, copied, localPkg, capById, folders, totalCount, manifestJson, canNext, close, onOrgChange, onScnChange, next, prev, retry, copyInstallCmd, typeShort, typeColor };
+  },
+  template: `
+  <teleport to="body">
+    <div v-if="modelValue" class="ext-overlay" @click.self="close">
+      <div class="ext-dialog" role="dialog">
+        <div class="ext-head"><strong>打包并发布 Extension</strong><button type="button" class="ext-close" :disabled="publishing" @click="close">×</button></div>
+        <div class="ext-stepper">
+          <div v-for="(s,i) in steps" :key="s" class="ext-step" :class="{active:step===i, done:step>i||(step===i&&!!resultTask)}"><span class="ext-step-no">{{ i+1 }}</span><span>{{ s }}</span></div>
+        </div>
+        <div class="ext-body">
+          <section v-show="step===0" class="ext-step-panel">
+            <div class="ext-field"><span>图标</span><div class="ext-icon-row"><button v-for="emo in ICON_OPTIONS" :key="emo" type="button" class="ext-icon-opt" :class="{active:localPkg.icon===emo}" @click="localPkg.icon=emo">{{ emo }}</button></div></div>
+            <label class="ext-field"><span>名称 <em>*</em></span><input v-model="localPkg.name" type="text" placeholder="例如：接口研发提效套件" maxlength="40"/></label>
+            <label class="ext-field"><span>版本号</span><input v-model="localPkg.version" type="text" placeholder="1.0.0"/></label>
+            <label class="ext-field"><span>一句话描述</span><textarea v-model="localPkg.description" rows="2" placeholder="描述该 Extension 的用途与场景" maxlength="120"></textarea></label>
+            <div class="ext-field"><span>业务场景 <em>*</em></span><scenario-cascader :scenario="localPkg.scenario||{l1:'',l2:''}" @change="onScnChange"/><p class="ext-field-hint">Extension 将绑定所选场景（一级+二级），作为业务路由与检索标签</p></div>
+            <div class="ext-field"><span>目标组织 <em>*</em></span><org-tree-select :model-value="localPkg.targetOrg||null" @change="onOrgChange"/><p class="ext-field-hint">Extension 将发布到所选组织实体的市场</p></div>
+          </section>
+          <section v-show="step===1" class="ext-step-panel">
+            <div v-if="validating" class="ext-empty" style="padding:24px;text-align:center;color:var(--text)">校验中…</div>
+            <template v-else>
+              <div class="ext-pkg-preview"><div class="ext-pkg-preview-icon">{{ localPkg.icon }}</div><div><h3>{{ localPkg.name }}</h3><p>v{{ localPkg.version }} · {{ localPkg.level }} · {{ totalCount }} 个条目 · 场景：{{ localPkg.scenario?.l1||'未选择' }}/{{ localPkg.scenario?.l2||'' }} · 目标组织：{{ localPkg.targetOrg?.name||'未选择' }}</p></div></div>
+              <p class="ext-version-hint">能力始终使用当前最新版本，发布清单会固定该版本号。</p>
+              <div class="ext-folders-preview">
+                <div v-for="f in folders" :key="f.label" class="ext-folder-preview">
+                  <div class="ext-folder-preview-head"><span>{{ f.label }}</span><span class="ext-folder-preview-count">{{ f.ids.length }}</span></div>
+                  <ul v-if="f.ids.length" class="ext-folder-preview-items"><li v-for="id in f.ids" :key="id"><span class="ext-mini-tag" :style="{background:typeColor[capById[id]?.type]}">{{ typeShort[capById[id]?.type] }}</span><span class="ext-folder-preview-name" :title="capById[id]?.name||id">{{ capById[id]?.name||id }}</span><span class="ext-mini-ver">v{{ localPkg.capabilityVersions[id] || capById[id]?.version }}</span></li></ul>
+                  <div v-else class="ext-folder-preview-empty">（空）</div>
+                </div>
+              </div>
+              <div class="ext-dep-section"><h4>校验结果</h4><div v-if="!issues?.issues.length" class="ext-ok">✓ 全部检查通过，可发布</div><ul v-else class="ext-issues"><li v-for="(iss,i) in issues.issues" :key="i" :class="iss.level"><span class="ext-issue-tag">{{ iss.level==='error'?'错误':'警告' }}</span>{{ iss.message }}</li></ul></div>
+            </template>
+          </section>
+          <section v-show="step===2" class="ext-step-panel">
+            <div v-if="publishing" class="ext-publish-progress">
+              <ul class="ext-stages"><li v-for="(s,i) in publishStages" :key="s" :class="{done:i<publishStage, active:i===publishStage}"><span class="ext-stage-dot"></span><span>{{ s }}</span></li></ul>
+              <div class="ext-progress-bar"><div class="ext-progress-fill" :style="{width:(publishStage/publishStages.length*100)+'%'}"></div></div>
+            </div>
+            <div v-else-if="publishError" class="ext-publish-error"><p>发布失败：{{ publishError }}</p><button type="button" class="ext-btn ext-btn-ghost" @click="retry">重试</button></div>
+            <div v-else-if="resultTask" class="ext-publish-success">
+              <div class="ext-success-icon">✓</div><h3>发布成功</h3><p>Extension「{{ resultTask.extensionName }}@{{ resultTask.version }}」已发布到市场</p>
+              <div class="ext-success-actions"><button type="button" class="ext-btn ext-btn-ghost" @click="copyInstallCmd">{{ copied?'已复制':'复制安装命令' }}</button></div>
+              <p class="ext-success-meta">任务 ID：{{ resultTask.id }}</p>
+            </div>
+          </section>
+        </div>
+        <div class="ext-actions">
+          <button type="button" class="ext-btn ext-btn-ghost" :disabled="step===0||publishing" @click="prev">上一步</button>
+          <div class="ext-actions-right">
+            <button type="button" class="ext-btn ext-btn-ghost" @click="close">{{ resultTask?'完成':'取消' }}</button>
+            <button v-if="step<2" type="button" class="ext-btn ext-btn-primary" :disabled="!canNext||validating" @click="next">{{ step===1?'开始发布':'下一步' }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </teleport>`
+};
+
+/* ---------- App ---------- */
+const App = {
+  components: { DeptProductCascader, ScenarioCascader, CapabilityPool, PackageFolderView, OrgTreeSelect, PublishExtensionDialog },
+  setup() {
+    const deptPath = ref([]);
+    const productId = ref('');
+    const productName = ref('');
+    const scenario = ref({l1:'',l2:''});
+    const level = ref('产品级');
+    const allCapabilities = ref(mockCapabilities.slice());
+    const poolCapabilities = ref([]);
+    const poolLoading = ref(false);
+    const publishOpen = ref(false);
+    const taskModalOpen = ref(false);
+    const publishedKeyword = ref('');
+    const replayTask = ref(null);
+    const toastText = ref('');
+    let toastTimer=null;
+    const pkg = ref(createEmptyPackage());
+
+    function createEmptyPackage(){
+      return { name:'', version:'', description:'', icon:'🧩', level:'产品级', deptPath:[], productId:'', productName:'', scenario:{l1:'',l2:''}, baseRelease:null, capabilityVersions:{}, selection:{commands:[],skills:[],agents:[]} };
+    }
+    function folderOfType(t){ return t==='skill'?'skills':t==='command'?'commands':'agents'; }
+    const selectedIds = computed(()=>[...pkg.value.selection.commands, ...pkg.value.selection.skills, ...pkg.value.selection.agents]);
+    const totalCount = computed(()=> pkg.value.selection.commands.length+pkg.value.selection.skills.length+pkg.value.selection.agents.length);
+    const scopeText = computed(()=>{ if(level.value==='产品级') return productName.value || deptPath.value[deptPath.value.length-1] || ''; return deptPath.value[deptPath.value.length-1] || ''; });
+    const scopeScenarioText = computed(()=>{
+      if (!scenario.value.l1) return '';
+      return scenario.value.l2?scenario.value.l1+' / '+scenario.value.l2:scenario.value.l1;
+    });
+    const scopeReady = computed(()=>{
+      return level.value==='产品级' ? !!productId.value : deptPath.value.length>0;
+    });
+    const capById = computed(()=>{ const m={}; allCapabilities.value.forEach(c=>m[c.id]=c); return m; });
+    const publishedSortField = ref('date');
+    const publishedSortOrder = ref('desc');
+    function togglePublishedSort(field){
+      if(publishedSortField.value===field){
+        publishedSortOrder.value = publishedSortOrder.value==='desc'?'asc':'desc';
+      } else {
+        publishedSortField.value = field;
+        publishedSortOrder.value = 'desc';
+      }
+      resetPublishedPage();
+    }
+    const publishedStatusFilter = ref('all');
+    const publishedPage = ref(1);
+    const publishedPageSize = 4;
+    const publishedDetailId = ref(null);
+    const publishedList = computed(()=>{
+      const kw=publishedKeyword.value.trim().toLowerCase();
+      let list=taskStore.value.filter(t=>{
+        if(publishedStatusFilter.value!=='all' && t.status!==publishedStatusFilter.value) return false;
+        if(!kw) return true;
+        return (t.extensionName||'').toLowerCase().includes(kw)
+          || (t.pkg?.description||'').toLowerCase().includes(kw)
+          || (t.operatorName||'').toLowerCase().includes(kw)
+          || (t.operatorNo||'').toLowerCase().includes(kw)
+          || (t.pkg?.targetOrg?.name||'').toLowerCase().includes(kw);
+      }).slice();
+      list.sort((a,b)=>{
+        const f=publishedSortField.value;
+        const dir=publishedSortOrder.value==='desc'?-1:1;
+        let r=0;
+        if(f==='status') r=(a.status||'').localeCompare(b.status||'');
+        else r=a.createdAt<b.createdAt?-1:(a.createdAt>b.createdAt?1:0);
+        return r*dir;
+      });
+      return list;
+    });
+    const publishedTotalPages = computed(()=> Math.max(1, Math.ceil(publishedList.value.length/publishedPageSize)));
+    const publishedPaged = computed(()=>{
+      const start=(publishedPage.value-1)*publishedPageSize;
+      return publishedList.value.slice(start, start+publishedPageSize);
+    });
+    function gotoPublishedPage(p){ if(p>=1 && p<=publishedTotalPages.value) publishedPage.value=p; }
+    function publishedItemTotal(t){ return (t.pkg?.selection?.commands?.length||0)+(t.pkg?.selection?.skills?.length||0)+(t.pkg?.selection?.agents?.length||0); }
+    function publishedDept(t){ const dp=t.pkg?.deptPath||[]; return dp.length?dp.join(' / '):'-'; }
+    function publishedSubItems(t){
+      const out=[];
+      const m=capById.value;
+      for(const id of t.pkg?.selection?.commands||[]) { const c=m[id]; if(c) out.push({type:'command',name:c.name,version:t.pkg.capabilityVersions?.[id]||c.version}); }
+      for(const id of t.pkg?.selection?.skills||[]) { const c=m[id]; if(c) out.push({type:'skill',name:c.name,version:t.pkg.capabilityVersions?.[id]||c.version}); }
+      for(const id of t.pkg?.selection?.agents||[]) { const c=m[id]; if(c) out.push({type:'agent',name:c.name,version:t.pkg.capabilityVersions?.[id]||c.version}); }
+      return out;
+    }
+    function canRetry(t){ return t.status==='failed' && t.pkg?.targetOrg?.ownerNo===currentUser.no; }
+    function retryPublish(t){
+      if(!canRetry(t)) { showToast('仅目标组织的 owner 可重试'); return; }
+      t.status='success'; t.failReason='';
+      showToast('已重新发布「'+t.extensionName+'@'+t.version+'」');
+    }
+    function downloadPkg(t){
+      const manifest={
+        name:t.pkg.name, version:t.version, description:t.pkg.description, level:t.pkg.level,
+        targetOrg:t.pkg.targetOrg?{id:t.pkg.targetOrg.id,name:t.pkg.targetOrg.name}:null,
+        scenario:t.pkg.scenario||{l1:'',l2:''},
+        structure:{
+          commands:(t.pkg.selection.commands||[]).map(id=>({id,version:t.pkg.capabilityVersions?.[id]})),
+          skills:(t.pkg.selection.skills||[]).map(id=>({id,version:t.pkg.capabilityVersions?.[id]})),
+          agents:(t.pkg.selection.agents||[]).map(id=>({id,version:t.pkg.capabilityVersions?.[id]})),
+        },
+      };
+      const blob=new Blob([JSON.stringify(manifest,null,2)],{type:'application/json'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=(t.pkg.name||'extension')+'@'+t.version+'.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+      showToast('已下载「'+t.extensionName+'@'+t.version+'」清单');
+    }
+    function togglePublishedDetail(id){ publishedDetailId.value = publishedDetailId.value===id ? null : id; }
+    function resetPublishedPage(){ publishedPage.value=1; }
+
+    function loadPool(){
+      poolLoading.value=true;
+      setTimeout(()=>{
+        poolCapabilities.value = fetchCapabilities({
+          deptPath:deptPath.value,
+          productId:productId.value||undefined,
+        });
+        poolLoading.value=false;
+      }, 60);
+    }
+    function onScopeChange(p){
+      deptPath.value=p.deptPath; productId.value=p.productId;
+      const m = allCapabilities.value.find(c=>c.productId===p.productId); productName.value=m?.productName||'';
+      pkg.value.deptPath=p.deptPath; pkg.value.productId=p.productId; pkg.value.productName=productName.value;
+      loadPool();
+    }
+    function onScenarioChange(scn){
+      scenario.value=scn||{l1:'',l2:''};
+      pkg.value.scenario=scenario.value;
+    }
+    function onLevelChange(){
+      pkg.value.level=level.value;
+      if (level.value==='部门级'){ productId.value=''; pkg.value.productId=''; pkg.value.productName=''; }
+      loadPool();
+    }
+    function toggleCapability(cap){
+      if (cap.status==='offline'){ showToast('该能力已下线，不可加入'); return; }
+      const folder=folderOfType(cap.type);
+      const arr=pkg.value.selection[folder];
+      const exists=arr.includes(cap.id);
+      const next={...pkg.value.selection};
+      next[folder]=exists?arr.filter(id=>id!==cap.id):[...arr, cap.id];
+      const versions={...pkg.value.capabilityVersions};
+      if(!exists&&!versions[cap.id]) versions[cap.id]=cap.version;
+      pkg.value={...pkg.value, selection:next, capabilityVersions:versions};
+    }
+    function bulkToggleCapabilities(payload){
+      const next={commands:[...pkg.value.selection.commands],skills:[...pkg.value.selection.skills],agents:[...pkg.value.selection.agents]};
+      const versions={...pkg.value.capabilityVersions};
+      let changed=0;
+      for(const cap of payload.items||[]){
+        if(cap.status==='offline') continue;
+        const folder=folderOfType(cap.type);
+        const has=next[folder].includes(cap.id);
+        if(payload.mode==='add'&&!has){ next[folder].push(cap.id); if(!versions[cap.id]) versions[cap.id]=cap.version; changed++; }
+        if(payload.mode==='remove'&&has){ next[folder]=next[folder].filter(id=>id!==cap.id); changed++; }
+      }
+      pkg.value={...pkg.value,selection:next,capabilityVersions:versions};
+      showToast(payload.mode==='add'?'已批量加入 '+changed+' 项能力':'已批量移除 '+changed+' 项能力');
+    }
+    function onRemoveFromPackage(p){
+      const folder=folderOfType(p.type);
+      const next={...pkg.value.selection};
+      next[folder]=pkg.value.selection[folder].filter(id=>id!==p.id);
+      pkg.value={...pkg.value, selection:next};
+    }
+    function clearPackage(){
+      if(!totalCount.value) return;
+      if(!window.confirm('确认清空包内所有条目？')) return;
+      pkg.value={...pkg.value, capabilityVersions:{}, selection:{commands:[],skills:[],agents:[]}};
+    }
+    function openPublish(){
+      if(!totalCount.value){ showToast('包内为空，请先加入至少一个 command / skill / agent'); return; }
+      publishOpen.value=true;
+    }
+    function onPublished(task){ publishedPage.value=1; showToast('Extension「'+task.extensionName+'@'+task.version+'」已发布到 '+(task.pkg.targetOrg?.name||'')+'，任务 '+task.id); }
+    function openTaskHistory(){ taskModalOpen.value=true; }
+    function closeReplay(){ replayTask.value=null; }
+    function cloneTask(task){
+      deptPath.value=task.pkg.deptPath; productId.value=task.pkg.productId||''; productName.value=task.pkg.productName||'';
+      scenario.value=task.pkg.scenario||{l1:'',l2:''};
+      level.value=task.pkg.level;
+      const cloned=JSON.parse(JSON.stringify(task.pkg));
+      const parts=String(task.version||'1.0.0').split('.').map(Number);
+      cloned.version=parts.length===3&&parts.every(Number.isFinite)?[parts[0],parts[1],parts[2]+1].join('.'):'1.0.1';
+      cloned.baseRelease={taskId:task.id,name:task.extensionName,version:task.version};
+      const meta=task.selectionNames||{};
+      const rebuild={commands:[],skills:[],agents:[]};
+      const vers={};
+      const missing=[];
+      for(const id of [...(task.pkg.selection.commands||[]), ...(task.pkg.selection.skills||[]), ...(task.pkg.selection.agents||[])]){
+        const m=meta[id]||{};
+        if(!m.name){ missing.push(id); continue; }
+        const c=allCapabilities.value.find(x=>x.name===m.name);
+        if(!c){ missing.push(m.name); continue; }
+        const folder=folderOfType(c.type);
+        if(!rebuild[folder].includes(c.id)) rebuild[folder].push(c.id);
+        vers[c.id]=c.version;
+      }
+      cloned.selection=rebuild; cloned.capabilityVersions=vers;
+      pkg.value=cloned;
+      poolCapabilities.value = fetchCapabilities({deptPath:deptPath.value, productId:productId.value||undefined});
+      loadPool(); taskModalOpen.value=false; replayTask.value=null;
+      if(missing.length) showToast('已基于「'+task.extensionName+'@'+task.version+'」创建草稿，'+missing.length+' 项能力已不存在已跳过：'+missing.join('、'));
+      else showToast('已基于「'+task.extensionName+'@'+task.version+'」创建草稿，资产已按当前最新版本载入');
+    }
+    function showToast(text){ toastText.value=text; if(toastTimer) clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastText.value='',2200); }
+
+    function seedPublishedExtensions(){
+      if(taskStore.value.length) return;
+      taskStore.value=[
+        {id:'pub-api-130',extensionName:'接口研发提效套件',version:'1.3.0',operator:'fuyao-team',operatorName:'李扶摇',operatorNo:'A0123',createdAt:'2026-07-28T10:32:00.000Z',status:'success',pkg:{name:'接口研发提效套件',version:'1.3.0',description:'覆盖接口开发、Mock、文档与代码评审流程',icon:'🚀',level:'产品级',deptPath:['研发体系','云平台产品部','基础服务开发部'],productId:'product-api',productName:'API 网关产品线',targetOrg:{id:'org-fuyao',name:'扶摇组织',path:['扶摇组织'],ownerNo:'A0123',ownerName:'李扶摇'},baseRelease:null,scenario:{l1:'研发交付',l2:'接口开发'},capabilityVersions:{'cap-command-1':'1.2.0','cap-command-2':'1.1.0','cap-skill-1':'1.2.0','cap-skill-2':'1.1.0','cap-agent-1':'1.2.0'},selection:{commands:['cap-command-1','cap-command-2'],skills:['cap-skill-1','cap-skill-2'],agents:['cap-agent-1']}}},
+        {id:'pub-api-120',extensionName:'接口研发提效套件',version:'1.2.0',operator:'fuyao-team',operatorName:'李扶摇',operatorNo:'A0123',createdAt:'2026-06-16T09:20:00.000Z',status:'success',pkg:{name:'接口研发提效套件',version:'1.2.0',description:'接口开发、Mock 与文档生成基础流程',icon:'🚀',level:'产品级',deptPath:['研发体系','云平台产品部','基础服务开发部'],productId:'product-api',productName:'API 网关产品线',targetOrg:{id:'org-fuyao',name:'扶摇组织',path:['扶摇组织'],ownerNo:'A0123',ownerName:'李扶摇'},baseRelease:null,scenario:{l1:'研发交付',l2:'接口开发'},capabilityVersions:{'cap-command-1':'1.1.0','cap-skill-1':'1.1.0','cap-skill-2':'1.0.0','cap-agent-1':'1.1.0'},selection:{commands:['cap-command-1'],skills:['cap-skill-1','cap-skill-2'],agents:['cap-agent-1']}}},
+        {id:'pub-quality-210',extensionName:'质量缺陷闭环套件',version:'2.1.0',operator:'quality-team',operatorName:'王云山',operatorNo:'B0456',createdAt:'2026-07-18T15:08:00.000Z',status:'success',pkg:{name:'质量缺陷闭环套件',version:'2.1.0',description:'测试用例生成、缺陷归因与单测执行',icon:'✨',level:'产品级',deptPath:['质量与运维体系','测试中心'],productId:'product-quality',productName:'质量产品线',targetOrg:{id:'org-yunshan',name:'云山组织',path:['云山组织'],ownerNo:'B0456',ownerName:'王云山'},baseRelease:null,scenario:{l1:'质量保障',l2:'缺陷处理'},capabilityVersions:{'cap-command-2':'1.2.0','cap-skill-4':'1.2.0','cap-agent-2':'1.2.0'},selection:{commands:['cap-command-2'],skills:['cap-skill-4'],agents:['cap-agent-2']}}},
+        {id:'pub-api-140',extensionName:'接口研发提效套件',version:'1.4.0',operator:'fuyao-team',operatorName:'李扶摇',operatorNo:'A0123',createdAt:'2026-08-02T14:10:00.000Z',status:'failed',failReason:'上传至目标组织市场失败：远端鉴权超时',pkg:{name:'接口研发提效套件',version:'1.4.0',description:'接口开发、Mock、文档与评审流程（含单测执行）',icon:'🚀',level:'产品级',deptPath:['研发体系','云平台产品部','基础服务开发部'],productId:'product-api',productName:'API 网关产品线',targetOrg:{id:'org-fuyao',name:'扶摇组织',path:['扶摇组织'],ownerNo:'A0123',ownerName:'李扶摇'},baseRelease:null,scenario:{l1:'研发交付',l2:'接口开发'},capabilityVersions:{'cap-command-1':'1.2.0','cap-command-2':'1.2.0','cap-skill-1':'1.2.0','cap-skill-2':'1.1.0','cap-agent-1':'1.2.0'},selection:{commands:['cap-command-1','cap-command-2'],skills:['cap-skill-1','cap-skill-2'],agents:['cap-agent-1']}}},
+        {id:'pub-mobile-100',extensionName:'终端构建归因套件',version:'1.0.0',operator:'mobile-team',operatorName:'王云山',operatorNo:'B0456',createdAt:'2026-08-04T09:05:00.000Z',status:'failed',failReason:'生成包清单失败：cap-skill-3 文件校验未通过',pkg:{name:'终端构建归因套件',version:'1.0.0',description:'终端构建与崩溃归因',icon:'📦',level:'产品级',deptPath:['研发体系','智能终端产品部','终端开发一部'],productId:'product-mobile',productName:'智能终端产品线',targetOrg:{id:'org-yunshan',name:'云山组织',path:['云山组织'],ownerNo:'B0456',ownerName:'王云山'},baseRelease:null,scenario:{l1:'研发交付',l2:'终端开发'},capabilityVersions:{'cap-command-3':'1.2.0','cap-skill-3':'1.2.0'},selection:{commands:['cap-command-3'],skills:['cap-skill-3'],agents:[]}}}
+      ];
+      for(const t of taskStore.value){
+        if(t.selectionNames) continue;
+        t.selectionNames={};
+        for(const id of [...t.pkg.selection.commands, ...t.pkg.selection.skills, ...t.pkg.selection.agents]){
+          const c=mockCapabilities.find(x=>x.id===id);
+          if(c) t.selectionNames[id]={name:c.name, type:c.type};
+        }
+      }
+    }
+    onMounted(()=>{
+      deptPath.value=['研发体系','云平台产品部','基础服务开发部'];
+      productId.value='product-api';
+      productName.value='API 网关产品线';
+      scenario.value={l1:'研发交付',l2:'接口开发'};
+      pkg.value.deptPath=deptPath.value;
+      pkg.value.productId=productId.value;
+      pkg.value.productName=productName.value;
+      pkg.value.scenario=scenario.value;
+      level.value='产品级';
+      const starter=[['cap-command-1','command'],['cap-skill-1','skill'],['cap-agent-1','agent']];
+      const sel={commands:[],skills:[],agents:[]};
+      const vers={};
+      for(const [id,tp] of starter){
+        const c=allCapabilities.value.find(x=>x.id===id);
+        if(!c) continue;
+        const folder=tp==='skill'?'skills':tp==='command'?'commands':'agents';
+        sel[folder].push(id);
+        vers[id]=c.version;
+      }
+      pkg.value={...pkg.value,selection:sel,capabilityVersions:vers};
+      loadPool();
+      seedPublishedExtensions();
+    });
+
+    return { deptPath, productId, productName, scenario, level, allCapabilities, poolCapabilities, poolLoading, publishOpen, taskModalOpen, publishedKeyword, publishedSortField, publishedSortOrder, togglePublishedSort, publishedStatusFilter, publishedPage, publishedTotalPages, publishedPaged, publishedList, publishedDetailId, publishedItemTotal, publishedDept, publishedSubItems, canRetry, retryPublish, downloadPkg, togglePublishedDetail, resetPublishedPage, gotoPublishedPage, currentUser,       replayTask, toastText, pkg, selectedIds, totalCount, scopeText, scopeScenarioText, capById, taskStore,
+      onScopeChange, onScenarioChange, scopeReady, onLevelChange, toggleCapability, bulkToggleCapabilities, onRemoveFromPackage, clearPackage, openPublish, onPublished, openTaskHistory, closeReplay, cloneTask, typeColor, typeShort };
+  },
+  template: `
+  <div class="app">
+    <header class="ext-toolbar">
+      <div class="ext-toolbar-left">
+        <span class="ext-brand-mark">EX</span>
+        <span class="ext-title-stack"><span class="ext-pkg-kicker">Extension Studio</span><span class="ext-pkg-title">编排</span></span>
+        <span class="ext-context"><select v-model="level" class="ext-level-select" @change="onLevelChange"><option value="产品级">产品级</option><option value="部门级">部门级</option></select><span v-if="scopeText" class="ext-scope-text" :title="scopeText">{{ scopeText }}</span><span v-else class="ext-scope-text">未选择范围</span><span v-if="pkg.baseRelease" class="ext-base-chip" :title="'基于 '+pkg.baseRelease.name+'@'+pkg.baseRelease.version">基于 {{ pkg.baseRelease.name }}@{{ pkg.baseRelease.version }}</span><span v-if="scopeScenarioText" class="ext-scn-chip" :title="scopeScenarioText">{{ scopeScenarioText }}</span></span>
+      </div>
+      <div class="ext-toolbar-right">
+        <button type="button" class="ext-btn ext-btn-ghost" @click="clearPackage">清空</button>
+        <button type="button" class="ext-btn ext-btn-ghost" @click="openTaskHistory">历史发布记录</button>
+        <button type="button" class="ext-btn ext-btn-primary" @click="openPublish"><span class="ext-publish-plus">+</span> 打包并发布</button>
+      </div>
+    </header>
+    <div class="ext-cols">
+      <aside class="ext-col ext-col-left">
+        <div class="side-section-title"><span>资产范围</span><span>{{ level }}</span></div>
+        <dept-product-cascader v-model:dept-path="deptPath" v-model:product-id="productId" :show-product="level==='产品级'" @change="onScopeChange"/>
+        <div class="side-section-title"><span>业务场景</span><span>发布绑定</span></div>
+        <scenario-cascader v-model:scenario="scenario" @change="onScenarioChange"/>
+        <div class="ext-pool-wrap">
+          <div class="side-section-title"><span>能力库</span><span>{{ poolCapabilities.length }} 项</span></div>
+          <capability-pool :capabilities="poolCapabilities" :loading="poolLoading" :selected-ids="selectedIds" :scope-ready="scopeReady" @toggle="toggleCapability" @bulk-toggle="bulkToggleCapabilities"/>
+        </div>
+      </aside>
+      <main class="ext-col ext-col-center">
+        <package-folder-view :pkg="pkg" :capabilities="allCapabilities" @remove="onRemoveFromPackage"/>
+      </main>
+    </div>
+    <publish-extension-dialog v-model="publishOpen" :pkg="pkg" :capabilities="allCapabilities" :operator="currentUser.no" :operator-name="currentUser.name" :operator-no="currentUser.no" @published="onPublished"/>
+    <teleport to="body"><transition name="ext-toast"><div v-if="toastText" class="ext-toast">{{ toastText }}</div></transition></teleport>
+
+    <teleport to="body">
+      <div v-if="taskModalOpen" class="ext-overlay" @click.self="taskModalOpen=false">
+        <div class="task-modal task-modal-lg">
+          <div class="ext-head"><strong>Extension 历史发布记录</strong><button type="button" class="ext-close" aria-label="关闭" @click="taskModalOpen=false">×</button></div>
+          <div class="task-toolbar">
+            <input v-model="publishedKeyword" class="debug-input" style="width:300px" type="search" placeholder="搜索 Extension / 描述 / 发布人 / 工号 / 组织" @input="resetPublishedPage"/>
+            <span class="task-user">当前用户：{{ currentUser.name }}（{{ currentUser.no }}）· 仅可重试本组织失败记录</span>
+            <span class="count">{{ publishedList.length }} 条</span>
+          </div>
+          <div class="task-body">
+            <div v-if="!publishedPaged.length" class="task-empty">没有匹配的发布记录</div>
+            <table v-else class="task-table">
+              <thead><tr>
+                <th class="col-ext">Extension</th>
+                <th class="col-publisher">发布人</th>
+                <th class="col-ver">版本</th>
+                <th class="col-date sortable" :class="{active:publishedSortField==='date'}" @click="togglePublishedSort('date')">发布日期 <span class="sort-arrow" :class="publishedSortField==='date'?publishedSortOrder:''"></span></th>
+                <th class="col-status"><select v-model="publishedStatusFilter" class="task-head-select" @change="resetPublishedPage" title="按状态筛选"><option value="all">状态</option><option value="success">成功</option><option value="failed">失败</option></select></th>
+                <th class="col-org">目标组织</th>
+                <th class="col-dept">关联部门</th>
+                <th class="col-sub">子组件</th>
+                <th class="col-actions">操作</th>
+              </tr></thead>
+              <tbody>
+                <template v-for="t in publishedPaged" :key="t.id">
+                  <tr>
+                    <td class="col-ext"><span class="task-ext-icon">{{ t.pkg.icon||'🧩' }}</span><div class="task-ext-main"><span class="task-ext-name">{{ t.extensionName }}</span><span class="task-ext-desc" :title="t.pkg.description">{{ t.pkg.description }}</span></div></td>
+                    <td class="col-publisher"><div class="task-pub-name">{{ t.operatorName||t.operator }}</div><div class="task-no">{{ t.operatorNo||'-' }}</div></td>
+                    <td class="col-ver"><span class="task-ver">v{{ t.version }}</span></td>
+                    <td class="col-date"><span class="task-time">{{ t.createdAt.slice(0,19).replace('T',' ') }}</span></td>
+                    <td class="col-status"><span class="ext-status" :class="t.status">{{ t.status==='success'?'成功':'失败' }}</span></td>
+                    <td class="col-org">{{ t.pkg.targetOrg?.name||'-' }}</td>
+                    <td class="col-dept"><span class="task-dept" :title="publishedDept(t)">{{ publishedDept(t) }}</span></td>
+                    <td class="col-sub"><button type="button" class="ext-link" @click="togglePublishedDetail(t.id)">{{ publishedItemTotal(t) }} 项 <span class="ai-compose-caret" :style="{display:'inline-block',transform:publishedDetailId===t.id?'rotate(180deg)':'none'}">⌄</span></button></td>
+                    <td class="col-actions">
+                      <div class="task-act-row">
+                        <button type="button" class="task-icon-btn" title="下载 Extension 包" @click="downloadPkg(t)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg></button>
+                        <button type="button" class="task-icon-btn" title="查看内部内容" @click="replayTask=t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                        <button v-if="t.status==='failed'" type="button" class="task-icon-btn" :disabled="!canRetry(t)" :title="canRetry(t)?'重试发布':'仅目标组织 owner 可重试'" @click="retryPublish(t)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
+                        <button type="button" class="task-icon-btn" title="载入为新草稿" @click="cloneTask(t)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="publishedDetailId===t.id" class="task-detail-row"><td colspan="9">
+                    <div class="task-subitems">
+                      <span v-if="t.failReason" class="task-fail-reason">失败原因：{{ t.failReason }}</span>
+                      <span v-for="item in publishedSubItems(t)" :key="item.type+item.name" class="task-subitem"><span class="ext-mini-tag" :style="{background:typeColor[item.type]}">{{ typeShort[item.type] }}</span><span class="task-sub-name">{{ item.name }}</span><span class="task-sub-ver">@{{ item.version }}</span></span>
+                      <span v-if="!publishedSubItems(t).length" class="task-empty">无子组件</span>
+                    </div>
+                  </td></tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="publishedTotalPages>1" class="task-pager">
+            <button type="button" class="ext-link" :disabled="publishedPage===1" @click="gotoPublishedPage(publishedPage-1)">上一页</button>
+            <span v-for="p in publishedTotalPages" :key="p" class="task-page-num" :class="{active:p===publishedPage}" @click="gotoPublishedPage(p)">{{ p }}</span>
+            <button type="button" class="ext-link" :disabled="publishedPage===publishedTotalPages" @click="gotoPublishedPage(publishedPage+1)">下一页</button>
+            <span class="task-page-info">{{ publishedPage }} / {{ publishedTotalPages }} 页 · 共 {{ publishedList.length }} 条</span>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <teleport to="body">
+      <div v-if="replayTask" class="ext-overlay" @click.self="replayTask=null">
+        <div class="ext-replay-dialog">
+          <div class="ext-head"><strong>版本内容 · {{ replayTask.extensionName }}@{{ replayTask.version }}</strong><button type="button" class="ext-close" aria-label="返回历史发布列表" @click="replayTask=null">×</button></div>
+          <div class="ext-replay-body"><package-folder-view :pkg="replayTask.pkg" :capabilities="allCapabilities" readonly/></div>
+          <div class="ext-replay-foot">
+            <span class="ext-replay-meta">任务 {{ replayTask.id }} · {{ replayTask.operatorName||replayTask.operator }} · {{ replayTask.createdAt.slice(0,19).replace('T',' ') }}</span>
+            <div class="ext-replay-actions"><button type="button" class="ext-btn ext-btn-ghost" @click="replayTask=null">返回历史发布列表</button><button type="button" class="ext-btn ext-btn-primary" @click="cloneTask(replayTask)">载入此版本为新草稿</button></div>
+          </div>
+        </div>
+      </div>
+    </teleport>
+  </div>`
+};
+
+createApp(App).mount('#app');
+</script>
+</body>
+</html>

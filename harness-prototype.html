@@ -1,0 +1,1749 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Harness 管理 · 能力规划工作台（交互原型）</title>
+    <style>
+      /* =================================================================
+         Harness 管理工作台 · 高保真交互原型
+         说明：本文件从 fuyao-skill-market 项目的 harness 模块（Vue3 + Vite 源码）
+         手工还原为单文件 HTML，用于离线走查与用户交互体验迭代。
+         - 外壳（topbar/tabs/placeholder）CSS 与源码 HarnessManagementPage.vue 基本一致
+         - 内部面板（规划/任务/配置）按真实结构 + 设计语言还原，数据为示例
+         - 全部交互为原生 JS，可直接编辑本文件迭代 UX
+         ================================================================= */
+
+      :root {
+        --text: #626b7c;
+        --text-h: #15171d;
+        --heading: #07172f;
+        --muted: #52647d;
+        --muted-2: #7a879b;
+        --muted-3: #99a3b3;
+        --accent: #2f7df6;
+        --accent-2: #7552ff;
+        --indigo: #4054ce;
+        --indigo-2: #5063d8;
+        --indigo-3: #4266d5;
+        --border: #e9edf3;
+        --border-2: #dfe6f2;
+        --border-3: #d8e2f0;
+        --bg: #fbfcff;
+        --panel: #ffffff;
+        --code-bg: #f5f7fb;
+        --shadow-sm: 0 8px 24px rgba(35, 52, 84, 0.05);
+        --shadow-md: 0 10px 28px rgba(35, 52, 84, 0.06);
+        --shadow-lg: 0 18px 48px rgba(35, 52, 84, 0.08);
+        --shadow-pop: 0 18px 36px rgba(15, 23, 42, 0.14);
+        --radius: 11px;
+        --sans: 'HarmonyOS Sans SC', 'MiSans', 'Noto Sans SC', 'PingFang SC',
+          'Microsoft YaHei UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont,
+          'Segoe UI', sans-serif;
+        color-scheme: light;
+        font: 15px/1.5 var(--sans);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        min-width: 320px;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 11% -8%, rgba(105, 166, 255, 0.22), transparent 28%),
+          radial-gradient(circle at 88% -6%, rgba(117, 82, 255, 0.18), transparent 32%),
+          radial-gradient(circle at 48% 12%, rgba(255, 255, 255, 0.95), transparent 34%),
+          linear-gradient(180deg, #f2f7ff 0%, #fbfcff 44%, #fff 100%);
+        background-attachment: fixed;
+      }
+      button { font: inherit; cursor: pointer; }
+      input, select, textarea { font: inherit; }
+      h1, h2, h3 { margin: 0; color: var(--heading); font-weight: 900; }
+      p { margin: 0; }
+      a { color: var(--accent); }
+
+      /* ---------- 外壳（与 HarnessManagementPage.vue 一致） ---------- */
+      .harness-management-shell {
+        --harness-topbar-height: 66px;
+        position: relative;
+        isolation: isolate;
+        width: 100%;
+        min-width: 0;
+        min-height: 100vh;
+        padding-top: var(--harness-topbar-height);
+        overflow-x: hidden;
+        color: #0f172a;
+      }
+      .harness-management-shell::before {
+        content: '';
+        position: fixed;
+        inset: 0 0 auto;
+        z-index: -1;
+        height: 410px;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(96, 111, 136, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(96, 111, 136, 0.05) 1px, transparent 1px);
+        background-size: 34px 34px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.46), transparent 84%);
+      }
+      .harness-topbar {
+        position: fixed;
+        inset: 0 0 auto;
+        z-index: 80;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        width: 100%;
+        height: var(--harness-topbar-height);
+        padding: 10px 22px 0;
+        isolation: isolate;
+      }
+      .harness-topbar::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-bottom: 1px solid transparent;
+        background: rgba(247, 250, 255, 0.18);
+        transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      }
+      .is-topbar-elevated .harness-topbar::before {
+        border-bottom-color: rgba(224, 231, 243, 0.8);
+        background: rgba(247, 250, 255, 0.82);
+        box-shadow: 0 10px 28px rgba(35, 52, 84, 0.08);
+        backdrop-filter: blur(16px) saturate(1.12);
+        -webkit-backdrop-filter: blur(16px) saturate(1.12);
+      }
+      .harness-tabs {
+        display: flex;
+        align-self: stretch;
+        align-items: flex-end;
+        gap: 4px;
+        min-width: 0;
+        padding: 0 8px;
+        overflow-x: auto;
+      }
+      .harness-tab {
+        flex: 0 0 auto;
+        min-height: 48px;
+        padding: 12px 16px 10px;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+        color: rgba(0, 0, 0, 0.65);
+        font-size: 15px;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: color 160ms ease, border-color 160ms ease;
+      }
+      .harness-tab:hover,
+      .harness-tab.is-active { color: #1890ff; }
+      .harness-tab.is-active { border-bottom-color: #1890ff; }
+      .harness-tab:focus-visible {
+        border-radius: 5px 5px 0 0;
+        outline: 3px solid rgba(24, 144, 255, 0.2);
+        outline-offset: -3px;
+      }
+      .harness-topbar__identity {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex: 0 0 auto;
+        color: #253857;
+      }
+      .harness-topbar__identity > span:last-child { display: grid; gap: 1px; }
+      .harness-topbar__identity strong { font-size: 13px; font-weight: 900; }
+      .harness-topbar__identity small { color: #7c8ca3; font-size: 10px; }
+      .harness-topbar__mark {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, #2f7df6, #7552ff);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 950;
+        box-shadow: 0 8px 20px rgba(47, 125, 246, 0.22);
+      }
+      .harness-tab-panel {
+        width: 100%;
+        min-height: calc(100vh - var(--harness-topbar-height));
+        padding: 14px 50px 34px;
+      }
+      .harness-tab-panel--tasks { padding-inline: clamp(12px, 1.25vw, 24px); }
+      .harness-placeholder-panel {
+        display: grid;
+        place-items: start center;
+        padding-top: 72px;
+      }
+      .harness-placeholder {
+        width: min(720px, 100%);
+        padding: 46px 40px;
+        border: 1px solid rgba(224, 231, 243, 0.92);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: var(--shadow-lg);
+        text-align: center;
+        backdrop-filter: blur(14px);
+      }
+      .harness-placeholder__eyebrow {
+        display: inline-flex;
+        padding: 6px 11px;
+        border-radius: 999px;
+        background: rgba(47, 125, 246, 0.1);
+        color: #2563eb;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .harness-placeholder h1 { margin: 18px 0 0; font-size: 34px; }
+      .harness-placeholder p { margin: 12px 0 0; color: #52647d; font-size: 15px; line-height: 1.7; }
+      .harness-placeholder small { display: block; margin-top: 24px; color: #98a2b3; font-size: 12px; }
+      @media (max-width: 1180px) { .harness-tab-panel { padding: 12px 24px 30px; } }
+      @media (max-width: 640px) {
+        .harness-topbar { padding: 8px 14px 0; }
+        .harness-topbar__identity small { display: none; }
+        .harness-tab-panel { padding: 6px 14px 24px; }
+      }
+
+      /* ---------- 通用页面骨架 ---------- */
+      .page { display: grid; gap: 16px; width: 100%; min-width: 0; color: #17233d; }
+      .hero { padding: 28px 0 30px; }
+      .hero h2 { font-size: 42px; line-height: 1.18; }
+      .hero p { max-width: 820px; margin: 12px 0 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+      .eyebrow { color: var(--indigo-3); font-size: 10px; font-weight: 900; letter-spacing: 0.14em; }
+
+      /* 胶囊分段 tab（planning / configuration / task 通用，与源码一致） */
+      .seg-tabs {
+        display: inline-flex;
+        align-items: stretch;
+        gap: 4px;
+        width: fit-content;
+        padding: 4px;
+        border: 1px solid var(--border-2);
+        border-radius: var(--radius);
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: var(--shadow-sm);
+      }
+      .seg-tab {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 168px;
+        height: 54px;
+        padding: 0 16px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted-2);
+        text-align: left;
+        transition: 160ms ease;
+      }
+      .seg-tab:hover { background: #f6f8fc; color: #465570; }
+      .seg-tab.is-active { background: #eef2ff; color: var(--indigo); box-shadow: inset 0 0 0 1px #d6dcff; }
+      .seg-tab__icon {
+        display: grid;
+        place-items: center;
+        width: 27px;
+        height: 27px;
+        flex: 0 0 auto;
+        border-radius: 8px;
+        background: #f0f2f6;
+        color: #7d899b;
+        font-size: 10px;
+        font-weight: 900;
+      }
+      .seg-tab.is-active .seg-tab__icon { background: var(--indigo-2); color: #fff; }
+      .seg-tab > span:last-child { display: grid; gap: 2px; }
+      .seg-tab strong { font-size: 13px; font-weight: 900; }
+      .seg-tab small { color: var(--muted-3); font-size: 10px; }
+      @media (max-width: 820px) {
+        .seg-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+        .seg-tab { min-width: 0; padding: 0 10px; }
+      }
+
+      /* ---------- 表单控件 ---------- */
+      .card {
+        border: 1px solid rgba(224, 231, 243, 0.92);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: var(--shadow-md);
+      }
+      .filter-card { padding: 18px; }
+      .filter-grid {
+        display: grid;
+        grid-template-columns:
+          minmax(120px, 0.65fr) minmax(260px, 1.4fr) minmax(180px, 0.9fr) minmax(320px, 2fr) auto;
+        gap: 14px;
+        align-items: end;
+        min-width: 0;
+      }
+      .filter-grid.is-dept-level {
+        grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr) minmax(320px, 2fr) auto;
+      }
+      .field { display: grid; gap: 6px; min-width: 0; }
+      .field > span { color: var(--muted); font-size: 12px; font-weight: 800; }
+      .field em { color: #dc2626; font-style: normal; }
+      .field input, .field select, .field textarea,
+      .input, .select {
+        width: 100%;
+        min-width: 0;
+        height: 38px;
+        border: 1px solid var(--border-3);
+        border-radius: 6px;
+        background: #fff;
+        color: #253857;
+        font-size: 13px;
+        outline: none;
+        padding: 0 11px;
+      }
+      .field input:focus, .field select:focus, .input:focus, .select:focus { border-color: #9db8ff; }
+      .field--keyword { min-width: 0; }
+      .filter-actions { display: flex; gap: 8px; align-items: end; }
+
+      /* 部门级联触发器（模拟 MarketDeptCascader） */
+      .cascader {
+        position: relative;
+        width: 100%;
+        min-width: 0;
+      }
+      .cascader-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        height: 38px;
+        padding: 0 30px 0 11px;
+        border: 1px solid var(--border-3);
+        border-radius: 6px;
+        background: #fff;
+        color: #253857;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+      }
+      .cascader-trigger:hover { border-color: #c0ccdc; background: #f8fbff; }
+      .cascader-trigger::after {
+        content: '';
+        position: absolute;
+        right: 12px;
+        width: 8px;
+        height: 8px;
+        border-right: 1.5px solid #8a98ad;
+        border-bottom: 1.5px solid #8a98ad;
+        transform: rotate(45deg) translateY(-2px);
+      }
+      .cascader-trigger .ph { color: #9aa6ba; font-weight: 600; }
+
+      /* ---------- 按钮 ---------- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 38px;
+        padding: 0 16px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 800;
+        white-space: nowrap;
+        transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      }
+      .btn:disabled { cursor: not-allowed; opacity: 0.45; }
+      .btn--primary { border-color: #2563eb; background: linear-gradient(135deg, #2f7df6, #7552ff); color: #fff; box-shadow: 0 12px 24px rgba(47, 125, 246, 0.18); }
+      .btn--soft, .btn--ghost { border-color: #dbe5f2; background: #fff; color: #253857; }
+      .btn--soft:hover, .btn--ghost:hover { border-color: #b9ccff; background: #f6f9ff; }
+      .btn--danger-soft { border-color: #ffd7d7; background: #fff7f7; color: #dc2626; }
+      .btn--danger { border-color: #dc2626; background: #dc2626; color: #fff; box-shadow: 0 12px 24px rgba(220, 38, 38, 0.18); }
+      .btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .btn.is-link { background: transparent; border: 0; color: var(--accent); padding: 0; height: auto; font-size: 12px; }
+
+      /* ---------- 规划/清单看板 ---------- */
+      .board {
+        height: clamp(520px, calc(100vh - 395px), 880px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .board--auto { height: auto; min-height: 0; }
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 16px 18px;
+        border-bottom: 1px solid #edf2f7;
+      }
+      .toolbar__summary { display: grid; gap: 4px; }
+      .toolbar__summary strong { color: #101828; font-size: 17px; font-weight: 900; }
+      .toolbar__summary span { color: #64748b; font-size: 12px; font-weight: 700; }
+      .toolbar__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+      /* ---------- 表格 ---------- */
+      .table-wrap { flex: 1 1 auto; width: 100%; min-height: 0; overflow: auto; }
+      .table {
+        width: 100%;
+        min-width: 1180px;
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed;
+      }
+      .table--auto { min-width: 100%; }
+      .table th, .table td {
+        padding: 13px 12px;
+        border-bottom: 1px solid #edf2f7;
+        color: #334155;
+        font-size: 13px;
+        text-align: left;
+        vertical-align: middle;
+        word-break: break-word;
+      }
+      .table th {
+        position: sticky;
+        top: 0;
+        z-index: 21;
+        overflow: visible;
+        background: #f8fbff;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+      .table td.action-col, .table th.action-col { width: 120px; }
+      .table td.select-col, .table th.select-col { width: 40px; }
+      .table td.desc-col { color: #64748b; font-size: 12px; }
+      .table tbody tr:hover { background: #f8fbff; }
+      .row-actions { display: flex; gap: 6px; }
+      .row-actions .icon-btn {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid #e3eaf5;
+        border-radius: 7px;
+        background: #fff;
+        color: #52647d;
+      }
+      .row-actions .icon-btn:hover { border-color: #b9ccff; color: var(--accent); background: #f6f9ff; }
+      .row-actions .icon-btn.is-danger:hover { border-color: #ffc0c0; color: #dc2626; background: #fff5f5; }
+      .row-actions .icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+      /* 表头筛选下拉（与 planning-th-filter 一致） */
+      .th-filter { position: relative; min-width: 0; }
+      .th-filter.is-open { z-index: 40; }
+      .th-filter__trigger {
+        width: 100%;
+        min-height: 24px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+      }
+      .th-filter__trigger:hover { color: #1d4ed8; }
+      .th-filter.is-active .th-filter__trigger, .th-filter.is-open .th-filter__trigger { color: #1d4ed8; }
+      .th-filter__indicator { position: relative; width: 10px; height: 10px; flex-shrink: 0; opacity: 0.8; }
+      .th-filter__indicator::before {
+        content: '';
+        position: absolute;
+        top: 1px; left: 1px;
+        width: 7px; height: 7px;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: rotate(45deg);
+        transition: transform 0.16s ease;
+      }
+      .th-filter.is-open .th-filter__indicator::before { transform: translateY(1px) rotate(-135deg); }
+      .th-filter__indicator.is-filtered::before {
+        top: 0; left: 0; width: 0; height: 0; border: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-bottom: 6px solid currentColor;
+        transform: none;
+      }
+      .th-filter__indicator.is-filtered::after {
+        content: ''; position: absolute; top: 6px; left: 4px; width: 2px; height: 4px;
+        border-radius: 999px; background: currentColor;
+      }
+      .th-filter__menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 60;
+        width: 220px;
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #dbe5f2;
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: var(--shadow-pop);
+      }
+      .th-filter__menu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .th-filter__menu-head strong { color: #253857; font-size: 13px; font-weight: 900; }
+      .th-filter__clear {
+        min-height: 26px; padding: 0 8px;
+        border: 1px solid #dbe5f2; border-radius: 6px; background: #fff;
+        color: var(--muted); font-size: 12px; font-weight: 800;
+      }
+      .th-filter__clear:hover:not(:disabled) { border-color: #b9ccff; background: #f6f9ff; color: #1d4ed8; }
+      .th-filter__clear:disabled { cursor: not-allowed; opacity: 0.45; }
+      .th-filter__options { max-height: 240px; display: grid; gap: 6px; overflow-y: auto; }
+      .th-filter__option { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; color: #334155; font-size: 13px; font-weight: 600; }
+      .th-filter__option:hover { background: #f8fbff; }
+      .th-filter__empty { color: #98a2b3; font-size: 12px; }
+
+      .th-sort {
+        width: 100%; min-height: 24px; display: inline-flex; align-items: center; gap: 6px;
+        padding: 0; border: 0; background: transparent; color: inherit; text-align: left;
+      }
+      .th-sort:hover { color: #1d4ed8; }
+      .th-sort.is-active { color: #1d4ed8; }
+      .th-sort__symbol { width: 16px; text-align: center; font-weight: 900; }
+
+      /* 内联新增行 */
+      .inline-row td { background: #f7f9ff; padding: 10px 12px; }
+      .inline-control {
+        width: 100%; min-width: 0; height: 34px;
+        border: 1px solid #d8e2f0; border-radius: 6px; background: #fff;
+        color: #253857; font-size: 12px; padding: 0 9px;
+      }
+      .inline-control.has-error { border-color: #fca5a5; background: #fff7f7; }
+      .inline-error { display: block; margin-top: 3px; color: #dc2626; font-size: 11px; }
+
+      /* 状态徽标 */
+      .status {
+        display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px;
+        border-radius: 99px; font-size: 11px; font-weight: 800;
+      }
+      .status.is-planning { background: #eef2ff; color: #4054ce; }
+      .status.is-dev { background: #fff3df; color: #b06a18; }
+      .status.is-done { background: #eaf8f1; color: #27815d; }
+      .status.is-live { background: #e6f0ff; color: #1d4ed8; }
+      .status.is-neutral { background: #f1f3f7; color: #68778d; }
+      .count-pill {
+        display: inline-flex; min-width: 24px; padding: 0 7px; height: 22px; align-items: center;
+        justify-content: center; border-radius: 99px; background: #eef2ff; color: #4054ce;
+        font-size: 11px; font-weight: 800;
+      }
+
+      /* 分页 */
+      .pagination {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 12px 18px; border-top: 1px solid #edf2f7;
+      }
+      .pagination span { color: #64748b; font-size: 12px; font-weight: 700; }
+      .pagination__controls { display: flex; align-items: center; gap: 8px; }
+      .pagination__controls button {
+        min-height: 30px; padding: 0 10px; border: 1px solid #dbe5f2; border-radius: 7px;
+        background: #fff; color: #52647d; font-size: 12px; font-weight: 800;
+      }
+      .pagination__controls button:disabled { opacity: 0.45; cursor: not-allowed; }
+      .pagination__controls strong { color: #1d4ed8; }
+
+      /* ---------- 任务中心 ---------- */
+      .task-dashboard { display: grid; width: 100%; min-width: 0; gap: 18px; color: #17233d; }
+      .dashboard-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 20px 0 0; }
+      .dashboard-heading h3 { margin: 5px 0 5px; color: #101c34; font-size: 23px; font-weight: 900; }
+      .dashboard-heading p { color: #718097; font-size: 12px; }
+      .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+      .metric-card {
+        --metric-color: #6079df;
+        position: relative; display: grid; min-height: 118px; padding: 18px 20px; overflow: hidden;
+        border: 1px solid #dfe6f2; border-radius: 12px; background: #fff; color: #26344c;
+        box-shadow: 0 10px 28px rgba(34, 50, 81, 0.055); transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+      .metric-card::after {
+        content: ''; position: absolute; right: -18px; bottom: -30px; width: 94px; height: 94px;
+        border-radius: 50%; background: var(--metric-color); opacity: 0.09;
+      }
+      .metric-card:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(34, 50, 81, 0.1); }
+      .metric-card > span { color: #758197; font-size: 11px; font-weight: 800; }
+      .metric-card > strong { margin-top: 5px; color: var(--metric-color); font-size: 30px; line-height: 1; }
+      .metric-card > small { align-self: end; margin-top: 9px; color: #9aa4b2; font-size: 9px; }
+      .task-board { border: 1px solid #dfe6f1; border-radius: 12px; background: #fff; box-shadow: 0 12px 30px rgba(35, 52, 84, 0.06); overflow: hidden; }
+      .task-table { width: max(100%, 960px); border-collapse: collapse; table-layout: fixed; }
+      .task-table th { height: 42px; padding: 0 11px; border-bottom: 1px solid #e9eef5; background: #f8f9fc; color: #7f8b9e; font-size: 10px; font-weight: 800; text-align: left; }
+      .task-table td { height: 70px; padding: 8px 11px; border-bottom: 1px solid #eff2f7; color: #435169; font-size: 10px; }
+      .task-table th:last-child, .task-table td:last-child { text-align: right; }
+      .task-name-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+      .task-name-cell > span:first-child {
+        display: grid; width: 32px; height: 32px; place-items: center; flex: 0 0 auto;
+        border-radius: 8px; background: #edf3ff; color: #4469d1; font-weight: 900; font-size: 13px;
+      }
+      .task-name-cell > div { display: grid; gap: 3px; min-width: 0; }
+      .task-name-cell strong { color: #223149; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .task-name-cell small { color: #8b96a7; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .owner-cell { display: grid; gap: 3px; }
+      .owner-cell strong { color: #3c4a61; font-size: 10px; }
+      .owner-cell small { color: #8b96a7; font-size: 9px; }
+
+      /* ---------- 配置管理：分类工作区 ---------- */
+      .summary-strip {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 14px 16px; border: 1px solid #e6ebf2; border-radius: 10px; background: #fff;
+        box-shadow: var(--shadow-sm);
+      }
+      .summary-metrics { display: flex; gap: 28px; }
+      .summary-metrics > div { display: grid; gap: 2px; }
+      .summary-metrics strong { color: #1d4ed8; font-size: 22px; font-weight: 900; }
+      .summary-metrics span { color: #7a879b; font-size: 11px; font-weight: 700; }
+      .save-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; }
+      .save-state.dirty { color: #b06a18; }
+      .save-state .dot { width: 8px; height: 8px; border-radius: 50%; background: #27815d; }
+      .save-state.dirty .dot { background: #f59e0b; }
+
+      .taxonomy-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
+      @media (max-width: 980px) { .taxonomy-grid { grid-template-columns: 1fr; } }
+      .panel-card { border: 1px solid #e6ebf2; border-radius: 12px; background: #fff; box-shadow: var(--shadow-sm); overflow: hidden; }
+      .panel-heading {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 14px 16px; border-bottom: 1px solid #eef2f7;
+      }
+      .panel-heading h3 { font-size: 16px; }
+      .panel-heading p { color: #7a879b; font-size: 12px; margin-top: 3px; }
+      .step-badge {
+        display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 8px;
+        border-radius: 7px; background: #eef2ff; color: #4054ce; font-size: 11px; font-weight: 900; vertical-align: middle;
+      }
+      .add-button {
+        display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px;
+        border: 1px solid #dbe5f2; border-radius: 8px; background: #fff; color: #4054ce; font-size: 12px; font-weight: 800;
+      }
+      .add-button:hover { border-color: #b9ccff; background: #f6f9ff; }
+      .add-button.dark { background: #2f7df6; border-color: #2f7df6; color: #fff; }
+      .add-button.dark:hover { background: #1d6ef0; }
+      .add-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .primary-tree { display: grid; gap: 8px; padding: 12px; }
+      .primary-node {
+        border: 1px solid #e6ebf2; border-radius: 10px; background: #fff; overflow: hidden;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease;
+      }
+      .primary-node.active { border-color: #b9ccff; box-shadow: 0 8px 22px rgba(47, 125, 246, 0.12); }
+      .primary-row { display: flex; align-items: center; gap: 6px; padding: 10px 10px; }
+      .drag-handle { color: #b6c2d4; cursor: grab; font-size: 14px; }
+      .collapse-button { width: 22px; height: 22px; border: 0; background: transparent; color: #7a879b; font-size: 14px; }
+      .node-main { flex: 1; min-width: 0; display: grid; gap: 2px; background: transparent; border: 0; text-align: left; padding: 0; }
+      .node-main strong { color: #223149; font-size: 13px; }
+      .node-main small { color: #98a2b3; font-size: 10px; }
+      .icon-action { width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: #7a879b; font-size: 13px; }
+      .icon-action:hover { background: #eef2ff; color: #4054ce; }
+      .icon-action.danger:hover { background: #fff5f5; color: #dc2626; }
+      .tree-children { display: grid; gap: 4px; padding: 4px 12px 12px 40px; }
+      .tree-children button { text-align: left; padding: 7px 10px; border: 0; border-radius: 7px; background: #f6f8fc; color: #435169; font-size: 12px; }
+      .tree-children button:hover { background: #eef2ff; color: #4054ce; }
+      .empty-child, .empty-panel { color: #98a2b3; font-size: 12px; padding: 10px; }
+      .empty-panel.large { padding: 60px 16px; text-align: center; }
+
+      .list-table { width: 100%; border-collapse: collapse; }
+      .list-table th { padding: 10px 12px; background: #f8fbff; color: #52647d; font-size: 11px; font-weight: 800; text-align: left; border-bottom: 1px solid #edf2f7; }
+      .list-table td { padding: 11px 12px; border-bottom: 1px solid #edf2f7; color: #334155; font-size: 13px; }
+      .list-table .row-actions button { height: 28px; padding: 0 10px; border: 1px solid #e3eaf5; border-radius: 7px; background: #fff; color: #52647d; font-size: 12px; margin-right: 4px; }
+      .list-table .row-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+      .list-table .row-actions button.danger { color: #dc2626; border-color: #ffd7d7; }
+
+      /* ---------- 部门权限配置 ---------- */
+      .permission-hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 16px; border: 1px solid #e6ebf2; border-radius: 12px; background: #fff; box-shadow: var(--shadow-sm); }
+      .permission-department-field { display: grid; gap: 6px; min-width: 320px; }
+      .permission-metrics { display: flex; gap: 28px; }
+      .permission-note { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 12px 16px; border: 1px dashed #dbe5f2; border-radius: 10px; background: #f8fbff; }
+      .permission-note > span { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; background: #eef2ff; color: #4054ce; font-size: 11px; font-weight: 800; }
+      .permission-note p { color: #52647d; font-size: 12px; line-height: 1.6; }
+      .member-table { width: 100%; border-collapse: collapse; }
+      .member-table th { padding: 10px 12px; background: #f8fbff; color: #52647d; font-size: 11px; font-weight: 800; text-align: left; border-bottom: 1px solid #edf2f7; }
+      .member-table td { padding: 11px 12px; border-bottom: 1px solid #edf2f7; color: #334155; font-size: 13px; }
+      .member-cell { display: flex; align-items: center; gap: 8px; }
+      .member-cell > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #edf3ff; color: #4469d1; font-weight: 900; font-size: 12px; }
+      .member-cell strong { color: #223149; font-size: 13px; }
+      .revoke-btn { height: 28px; padding: 0 10px; border: 1px solid #ffd7d7; border-radius: 7px; background: #fff7f7; color: #dc2626; font-size: 12px; font-weight: 700; }
+      .revoke-btn:hover { background: #ffee; }
+
+      /* ---------- 弹窗 / Toast ---------- */
+      .overlay { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 24px; background: rgba(15, 23, 42, 0.46); backdrop-filter: blur(4px); }
+      .modal { width: min(560px, 100%); border-radius: 14px; background: #fff; box-shadow: 0 30px 70px rgba(15, 23, 42, 0.3); overflow: hidden; }
+      .modal--wide { width: min(720px, 100%); }
+      .modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px; border-bottom: 1px solid #edf2f7; }
+      .modal header small { color: var(--indigo-3); font-size: 10px; font-weight: 900; letter-spacing: 0.12em; }
+      .modal header strong { display: block; margin-top: 4px; color: #07172f; font-size: 18px; }
+      .modal header p { margin-top: 6px; color: #7a879b; font-size: 12px; }
+      .modal .x { width: 30px; height: 30px; border: 0; border-radius: 8px; background: #f1f5f9; color: #64748b; font-size: 18px; }
+      .modal .body { padding: 18px 22px; display: grid; gap: 14px; }
+      .modal .body label { display: grid; gap: 6px; }
+      .modal .body label > span { color: var(--muted); font-size: 12px; font-weight: 800; }
+      .modal .body input, .modal .body textarea, .modal .body select { width: 100%; border: 1px solid var(--border-3); border-radius: 7px; background: #fff; color: #253857; font-size: 13px; padding: 9px 11px; }
+      .modal .body textarea { min-height: 84px; resize: vertical; }
+      .modal footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid #edf2f7; background: #fafbfd; }
+      .modal-note { display: flex; gap: 10px; padding: 12px; border-radius: 9px; background: #f8fbff; border: 1px solid #e6ebf2; font-size: 12px; color: #52647d; }
+      .modal-note b { color: #4054ce; white-space: nowrap; }
+      .confirm-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #fff3df; color: #b06a18; font-size: 20px; font-weight: 900; margin: 0 auto; }
+      .confirm-d { text-align: center; padding: 22px; }
+      .confirm-d strong { display: block; margin: 12px 0 6px; color: #07172f; font-size: 17px; }
+      .confirm-d p { color: #7a879b; font-size: 13px; line-height: 1.6; }
+
+      .toast {
+        position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+        z-index: 20000; max-width: min(560px, 90vw);
+        padding: 12px 18px; border-radius: 10px; background: rgba(16, 24, 40, 0.92); color: #fff;
+        font-size: 13px; font-weight: 700; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.3);
+        opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+
+      .hidden { display: none !important; }
+      [data-panel] { display: none; }
+      [data-panel].is-active { display: grid; }
+      [data-subtab] { display: none; }
+      [data-subtab].is-active { display: grid; }
+    </style>
+  </head>
+  <body>
+    <main id="shell" class="harness-management-shell">
+      <header class="harness-topbar">
+        <nav class="harness-tabs" role="tablist" aria-label="Harness 管理分区">
+          <button class="harness-tab" data-tab="command" role="tab">Command 规划</button>
+          <button class="harness-tab is-active" data-tab="planning" role="tab" aria-selected="true">Skill 规划</button>
+          <button class="harness-tab" data-tab="agent" role="tab">Agent 规划</button>
+          <button class="harness-tab" data-tab="extension" role="tab">Extension 发布</button>
+          <button class="harness-tab" data-tab="settings" role="tab">配置管理</button>
+          <button class="harness-tab" data-tab="tasks" role="tab">任务管理</button>
+        </nav>
+        <div class="harness-topbar__identity" aria-label="当前工作台">
+          <span class="harness-topbar__mark" aria-hidden="true">H</span>
+          <span><strong>Harness 管理</strong><small>能力规划工作台</small></span>
+        </div>
+      </header>
+
+      <!-- Command 规划 / Skill 规划 / Agent 规划：同一规划页，按 capabilityLabel 区分 -->
+      <section class="harness-tab-panel" data-panel="command" role="tabpanel"></section>
+      <section class="harness-tab-panel is-active" data-panel="planning" role="tabpanel"></section>
+      <section class="harness-tab-panel" data-panel="agent" role="tabpanel"></section>
+
+      <!-- 任务管理 -->
+      <section class="harness-tab-panel harness-tab-panel--tasks" data-panel="tasks" role="tabpanel"></section>
+
+      <!-- 配置管理 -->
+      <section class="harness-tab-panel" data-panel="settings" role="tabpanel"></section>
+
+      <!-- Extension 发布（占位） -->
+      <section class="harness-tab-panel harness-placeholder-panel" data-panel="extension" role="tabpanel">
+        <div class="harness-placeholder">
+          <span class="harness-placeholder__eyebrow">Harness Management</span>
+          <h1>Extension 发布</h1>
+          <p>集中管理 Extension 的发布流程。当前页签内容待接入。</p>
+          <small>原型占位 · 可在此迭代该入口的交互</small>
+        </div>
+      </section>
+    </main>
+
+    <!-- 弹窗挂载点 -->
+    <div id="modal-root"></div>
+    <!-- Toast -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+      /* =====================================================================
+         数据层（示例数据，贴近真实字段）
+         ===================================================================== */
+      const DEPT_PATH = ['华为', 'ICT产品与解决方案', '云核心网产品线', 'PDU303'];
+
+      const SCENES = [
+        { id: 's1', name: '代码辅助', children: ['代码补全', '缺陷修复', '单测生成'] },
+        { id: 's2', name: '知识问答', children: ['领域知识', '流程问答'] },
+        { id: 's3', name: '流程自动化', children: ['构建发布', '环境巡检'] },
+        { id: 's4', name: '文档生成', children: ['周报生成', '接口文档'] },
+      ];
+      const ACTIVITIES = [
+        { id: 'a1', name: '研发提效', children: ['需求拆解', '代码评审'] },
+        { id: 'a2', name: '质量保障', children: ['静态扫描', '缺陷归因'] },
+        { id: 'a3', name: '知识沉淀', children: ['经验沉淀', '案例库'] },
+      ];
+
+      const PEOPLE = [
+        { id: '00312948', name: '张明远', dept: '云核心网产品线 / PDU303' },
+        { id: '00518723', name: '李清禾', dept: '云核心网产品线 / PDU305' },
+        { id: '00294471', name: '王致远', dept: '2012实验室 / 软件工程研究所' },
+        { id: '00762103', name: '赵思齐', dept: 'ICT产品与解决方案 / 平台工程部' },
+        { id: '00448910', name: '陈嘉树', dept: '云核心网产品线 / PDU303' },
+      ];
+      const devOwnerOf = (n) => PEOPLE.find((p) => p.name === n) || PEOPLE[3];
+
+      const PROGRESS = ['规划中', '开发中', '已交付', '已上线'];
+      const progressClass = (s) => ({ 规划中: 'is-planning', 开发中: 'is-dev', 已交付: 'is-done', 已上线: 'is-live' }[s] || 'is-neutral');
+
+      function buildRows(cap) {
+        const capName = (n) => (cap === 'Skill' ? n : `${cap}-${n}`);
+        return [
+          { id: 1, first: '代码辅助', second: '代码补全', act: '研发提效', sub: '需求拆解', name: capName('Git 上下文补全'), desc: '基于仓库上下文与依赖关系的代码补全能力。', owner: '张明远', dev: '陈嘉树', plan: '2026-09-30', status: '开发中' },
+          { id: 2, first: '代码辅助', second: '单测生成', act: '研发提效', sub: '代码评审', name: capName('单测骨架生成'), desc: '按函数签名自动生成可编译的单测骨架。', owner: '李清禾', dev: '王致远', plan: '2026-08-15', status: '已交付' },
+          { id: 3, first: '知识问答', second: '领域知识', act: '知识沉淀', sub: '经验沉淀', name: capName('领域知识检索问答'), desc: '面向产品域知识的检索增强问答。', owner: '王致远', dev: '赵思齐', plan: '2026-10-20', status: '规划中' },
+          { id: 4, first: '流程自动化', second: '构建发布', act: '研发提效', sub: '需求拆解', name: capName('构建流水线自愈'), desc: '构建失败自动定位与重试编排。', owner: '赵思齐', dev: '陈嘉树', plan: '2026-07-31', status: '已上线' },
+          { id: 5, first: '文档生成', second: '周报生成', act: '知识沉淀', sub: '案例库', name: capName('团队周报自动生成'), desc: '聚合迭代数据生成员队周报。', owner: '陈嘉树', dev: '张明远', plan: '2026-09-10', status: '开发中' },
+          { id: 6, first: '代码辅助', second: '缺陷修复', act: '质量保障', sub: '缺陷归因', name: capName('静态缺陷自动归因'), desc: '将静态扫描问题聚类并归因到模块。', owner: '李清禾', dev: '王致远', plan: '2026-11-15', status: '规划中' },
+          { id: 7, first: '知识问答', second: '流程问答', act: '知识沉淀', sub: '经验沉淀', name: capName('流程制度问答'), desc: '基于公司流程制度库的问答能力。', owner: '王致远', dev: '赵思齐', plan: '2026-08-30', status: '已交付' },
+          { id: 8, first: '文档生成', second: '接口文档', act: '研发提效', sub: '代码评审', name: capName('接口文档自动生成'), desc: '从代码注解生成接口文档与示例。', owner: '张明远', dev: '陈嘉树', plan: '2026-10-05', status: '开发中' },
+        ];
+      }
+
+      const TASKS = [
+        { id: 1, name: 'Git 上下文补全', desc: '基于仓库上下文与依赖关系的代码补全能力。', dept: '云核心网 / PDU303', owner: '张明远', ownerId: '00312948', status: '开发中', updated: '2026-08-06 14:22', plan: '2026-09-30', dim: '云核心网产品线 / PDU303' },
+        { id: 2, name: '团队周报自动生成', desc: '聚合迭代数据生成员队周报。', dept: '云核心网 / PDU303', owner: '陈嘉树', ownerId: '00448910', status: '开发中', updated: '2026-08-05 09:10', plan: '2026-09-10', dim: '云核心网产品线 / PDU303' },
+        { id: 3, name: '单测骨架生成', desc: '按函数签名自动生成可编译的单测骨架。', dept: '云核心网 / PDU305', owner: '李清禾', ownerId: '00518723', status: '已交付', updated: '2026-07-28 18:44', plan: '2026-08-15', dim: '云核心网产品线 / PDU305' },
+        { id: 4, name: '构建流水线自愈', desc: '构建失败自动定位与重试编排。', dept: 'ICT平台工程部', owner: '赵思齐', ownerId: '00762103', status: '已上线', updated: '2026-07-20 11:02', plan: '2026-07-31', dim: 'ICT产品与解决方案 / 平台工程部' },
+        { id: 5, name: '领域知识检索问答', desc: '面向产品域知识的检索增强问答。', dept: '2012实验室', owner: '王致远', ownerId: '00294471', status: '规划中', updated: '2026-08-06 10:35', plan: '2026-10-20', dim: '2012实验室 / 软件工程研究所' },
+        { id: 6, name: '接口文档自动生成', desc: '从代码注解生成接口文档与示例。', dept: '云核心网 / PDU303', owner: '张明远', ownerId: '00312948', status: '开发中', updated: '2026-08-04 16:58', plan: '2026-10-05', dim: '云核心网产品线 / PDU303' },
+      ];
+
+      const STATUS_CARDS = [
+        { status: '规划中', count: 1, color: '#6079df' },
+        { status: '开发中', count: 3, color: '#e08a2b' },
+        { status: '已交付', count: 1, color: '#27815d' },
+        { status: '已上线', count: 1, color: '#1d4ed8' },
+      ];
+
+      const PERMISSION_MEMBERS = [
+        { userId: '00312948', label: '张明远', employeeNo: '00312948', departmentName: '云核心网产品线 / PDU303' },
+        { userId: '00518723', label: '李清禾', employeeNo: '00518723', departmentName: '云核心网产品线 / PDU305' },
+        { userId: '00294471', label: '王致远', employeeNo: '00294471', departmentName: '2012实验室 / 软件工程研究所' },
+      ];
+
+      /* =====================================================================
+         工具
+         ===================================================================== */
+      const $ = (sel, root = document) => root.querySelector(sel);
+      const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+      const h = (tag, attrs = {}, html = '') => {
+        const el = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === 'class') el.className = v;
+          else if (k === 'html') el.innerHTML = v;
+          else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+          else if (v != null) el.setAttribute(k, v);
+        }
+        if (html) el.innerHTML = html;
+        return el;
+      };
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const svgPlus = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
+      const svgImport = '<svg viewBox="0 0 24 24"><path d="M12 4v10m0-10 4 4m-4-4-4 4M5 17v2h14v-2"/></svg>';
+      const svgExport = '<svg viewBox="0 0 24 24"><path d="M12 20V10m0 10 4-4m-4 4-4-4M5 7V5h14v2"/></svg>';
+      const svgTrash = '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9"/></svg>';
+      const svgEdit = '<svg viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16v4Z"/><path d="m13 7 4 4"/></svg>';
+
+      let toastTimer;
+      function toast(msg) {
+        const el = $('#toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+      }
+
+      /* =====================================================================
+         弹窗
+         ===================================================================== */
+      function openModal(html) {
+        const root = $('#modal-root');
+        root.innerHTML = '';
+        const ov = h('div', { class: 'overlay' });
+        ov.innerHTML = html;
+        root.appendChild(ov);
+        // 点击遮罩或 [data-close] 关闭
+        ov.addEventListener('click', (e) => {
+          if (e.target === ov || e.target.closest('[data-close]')) closeModal();
+        });
+        return ov;
+      }
+      function closeModal() { $('#modal-root').innerHTML = ''; }
+
+      /* =====================================================================
+         部门级联触发器（静态展示，点击仅提示）
+         ===================================================================== */
+      function cascader(label) {
+        return `<div class="cascader">
+          <button class="cascader-trigger" type="button" onclick="toast('部门级联：在真实页面为树形面板，可按层级多级选择')">
+            <span>${label || '<span class="ph">请选择部门</span>'}</span>
+          </button>
+        </div>`;
+      }
+
+      /* =====================================================================
+         规划页（Command / Skill / Agent 共用）
+         ===================================================================== */
+      function renderPlanning(panel, cap) {
+        const planningLabel = `${cap} 规划`;
+        const catalogLabel = `${cap} 清单`;
+        const rows = buildRows(cap.toLowerCase() === 'skill' ? 'Skill' : cap);
+        panel.innerHTML = `
+          <div class="page">
+            <header class="hero">
+              <div>
+                <h2>${planningLabel}</h2>
+                <p>用于统一管理各部门规划建设中的 ${cap} 清单，支持查询、新增、导入、导出和批量维护。</p>
+              </div>
+            </header>
+            <nav class="seg-tabs" data-planning-tabs="${cap}">
+              <button class="seg-tab is-active" data-sub="skills"><span class="seg-tab__icon">01</span><span><strong>${planningLabel}</strong></span></button>
+              <button class="seg-tab" data-sub="management"><span class="seg-tab__icon">02</span><span><strong>${catalogLabel}</strong></span></button>
+            </nav>
+
+            <div data-subtab="skills" class="is-active" style="gap:16px">
+              ${renderFilterCard(cap)}
+              ${renderBoard(cap, rows, planningLabel)}
+            </div>
+
+            <div data-subtab="management">
+              ${renderCatalogBoard(cap, rows, catalogLabel)}
+            </div>
+          </div>`;
+        wirePlanning(panel, cap, rows, planningLabel, catalogLabel);
+      }
+
+      function renderFilterCard(cap) {
+        return `<section class="card filter-card" aria-label="${cap}规划查询">
+          <div class="filter-grid" id="filter-grid">
+            <label class="field field--level">
+              <span>层级 <em>*</em></span>
+              <select id="filter-level">
+                <option>部门级</option>
+                <option>产品级</option>
+              </select>
+            </label>
+            <div class="field field--dept">
+              <span>归属部门 <em>*</em></span>
+              ${cascader(DEPT_PATH.join(' / '))}
+            </div>
+            <label class="field field--keyword">
+              <span>关键词</span>
+              <input type="search" placeholder="按 ${cap} 名称、描述、责任Owner、开发责任人查询" id="filter-kw" />
+            </label>
+            <div class="filter-actions" style="grid-column: span 2; justify-content: flex-end;">
+              <button class="btn btn--primary" id="filter-search">查询</button>
+              <button class="btn btn--ghost" id="filter-reset">重置</button>
+            </div>
+          </div>
+        </section>`;
+      }
+
+      function renderBoard(cap, rows, planningLabel) {
+        const headFilters = [
+          { key: 'first', label: '一级场景' },
+          { key: 'second', label: '二级场景' },
+          { key: 'act', label: '归属活动' },
+          { key: 'sub', label: '归属子活动' },
+        ];
+        const thFilters = headFilters.map((f) => `
+          <th><div class="th-filter" data-filter="${f.key}">
+            <button class="th-filter__trigger" type="button" data-open>
+              <span>${f.label}</span><span class="th-filter__indicator"></span>
+            </button>
+            <div class="th-filter__menu hidden" data-menu>
+              <div class="th-filter__menu-head"><strong>${f.label}</strong><button class="th-filter__clear" data-clear>清空</button></div>
+              <div class="th-filter__options" data-options></div>
+            </div>
+          </div></th>`).join('');
+        return `<section class="card board" aria-label="${planningLabel}清单">
+          <div class="toolbar">
+            <div class="toolbar__summary">
+              <strong>${planningLabel}清单</strong>
+              <span id="board-summary">已选 <b data-sel>0</b> 条 / 共 ${rows.length} 条</span>
+            </div>
+            <div class="toolbar__actions">
+              <button class="btn btn--primary" id="btn-add">${svgPlus}新增</button>
+              <button class="btn btn--soft" id="btn-import">${svgImport}导入</button>
+              <button class="btn btn--soft" id="btn-export">${svgExport}导出</button>
+              <button class="btn btn--danger-soft" id="btn-batchdel">${svgTrash}批量删除</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table" data-planning-table>
+              <thead><tr>
+                <th class="select-col"><input type="checkbox" data-checkall /></th>
+                ${thFilters}
+                <th>${cap}</th>
+                <th class="desc-col">描述</th>
+                <th>责任 Owner</th>
+                <th>开发责任人</th>
+                <th><button class="th-sort" data-sort><span>计划完成</span><span class="th-sort__symbol" data-symbol>↕</span></button></th>
+                <th>当前进展</th>
+                <th class="action-col">操作</th>
+              </tr></thead>
+              <tbody data-rows></tbody>
+            </table>
+          </div>
+        </section>`;
+      }
+
+      function rowCell(v) { return `<td>${esc(v || '—')}</td>`; }
+
+      function renderPlanningRows(tbody, rows, state) {
+        let list = rows.slice();
+        // 表头筛选
+        for (const k of Object.keys(state.filters)) {
+          const set = state.filters[k];
+          if (set.size) list = list.filter((r) => set.has(r[k]));
+        }
+        // 关键词
+        if (state.kw) {
+          const q = state.kw.toLowerCase();
+          list = list.filter((r) => (`${r.name} ${r.desc} ${r.owner} ${r.dev}`).toLowerCase().includes(q));
+        }
+        // 计划完成排序
+        if (state.sort) {
+          list.sort((a, b) => state.sort === 'asc' ? a.plan.localeCompare(b.plan) : b.plan.localeCompare(a.plan));
+        }
+        const rowsHtml = list.map((r) => `
+          <tr data-id="${r.id}">
+            <td class="select-col"><input type="checkbox" data-rowcheck /></td>
+            ${rowCell(r.first)}${rowCell(r.second)}${rowCell(r.act)}${rowCell(r.sub)}
+            <td><strong>${esc(r.name)}</strong></td>
+            <td class="desc-col">${esc(r.desc)}</td>
+            <td>${esc(r.owner)}</td>
+            <td>${esc(r.dev)}</td>
+            <td>${esc(r.plan)}</td>
+            <td><span class="status ${progressClass(r.status)}">${r.status}</span></td>
+            <td class="action-col"><div class="row-actions">
+              <button class="icon-btn" title="编辑" data-edit>${svgEdit}</button>
+              <button class="icon-btn is-danger" title="删除" data-del>${svgTrash}</button>
+            </div></td>
+          </tr>`).join('');
+        tbody.innerHTML = rowsHtml || `<tr><td colspan="11" style="color:#98a2b3;padding:32px;text-align:center;">暂无符合条件的记录</td></tr>`;
+        tbody._list = list;
+      }
+
+      function wirePlanning(panel, cap, rows, planningLabel, catalogLabel) {
+        const state = { filters: { first: new Set(), second: new Set(), act: new Set(), sub: new Set() }, kw: '', sort: '' };
+        const tbody = $('[data-rows]', panel);
+        const summarySel = $('[data-sel]', panel);
+
+        // 表头筛选：填充选项
+        const optMap = {
+          first: [...new Set(rows.map((r) => r.first))],
+          second: [...new Set(rows.map((r) => r.second))],
+          act: [...new Set(rows.map((r) => r.act))],
+          sub: [...new Set(rows.map((r) => r.sub))],
+        };
+        $$('.th-filter', panel).forEach((box) => {
+          const key = box.dataset.filter;
+          const optsEl = $('[data-options]', box);
+          optsEl.innerHTML = optMap[key].map((v) => `
+            <label class="th-filter__option"><input type="checkbox" value="${esc(v)}" /><span>${esc(v)}</span></label>`).join('') || '<p class="th-filter__empty">暂无可选项</p>';
+        });
+
+        function refresh() {
+          renderPlanningRows(tbody, rows, state);
+          // 选中计数
+          const checked = $$('[data-rowcheck]:checked', panel).length;
+          summarySel.textContent = checked;
+          // 指示器
+          $$('.th-filter', panel).forEach((box) => {
+            const key = box.dataset.filter;
+            const cnt = state.filters[key].size;
+            box.classList.toggle('is-active', cnt > 0);
+            $('.th-filter__indicator', box).classList.toggle('is-filtered', cnt > 0);
+            const clearBtn = $('[data-clear]', box);
+            clearBtn.disabled = cnt === 0;
+          });
+        }
+        refresh();
+        panel._refresh = refresh;
+
+        // 开关下拉
+        $$('.th-filter', panel).forEach((box) => {
+          const trigger = $('[data-open]', box);
+          const menu = $('[data-menu]', box);
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = !box.classList.contains('is-open');
+            $$('.th-filter', panel).forEach((b) => b.classList.remove('is-open'));
+            $$('.th-filter__menu', panel).forEach((m) => m.classList.add('hidden'));
+            if (open) { box.classList.add('is-open'); menu.classList.remove('hidden'); }
+          });
+          $('[data-clear]', box).addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.filters[box.dataset.filter].clear();
+            $$('input', $('[data-options]', box)).forEach((c) => (c.checked = false));
+            refresh();
+          });
+          $('[data-options]', box).addEventListener('change', (e) => {
+            const cb = e.target;
+            const set = state.filters[box.dataset.filter];
+            cb.checked ? set.add(cb.value) : set.delete(cb.value);
+            refresh();
+          });
+        });
+        document.addEventListener('click', () => {
+          $$('.th-filter', panel).forEach((b) => b.classList.remove('is-open'));
+          $$('.th-filter__menu', panel).forEach((m) => m.classList.add('hidden'));
+        });
+
+        // 排序
+        const sortBtn = $('[data-sort]', panel);
+        const symbol = $('[data-symbol]', panel);
+        sortBtn.addEventListener('click', () => {
+          state.sort = state.sort === 'asc' ? 'desc' : state.sort === 'desc' ? '' : 'asc';
+          sortBtn.classList.toggle('is-active', !!state.sort);
+          symbol.textContent = state.sort === 'asc' ? '↑' : state.sort === 'desc' ? '↓' : '↕';
+          refresh();
+        });
+
+        // 全选
+        $('[data-checkall]', panel).addEventListener('change', (e) => {
+          $$('[data-rowcheck]', panel).forEach((c) => (c.checked = e.target.checked));
+          refresh();
+        });
+        tbody.addEventListener('change', (e) => {
+          if (e.target.matches('[data-rowcheck]')) refresh();
+        });
+
+        // 行操作
+        tbody.addEventListener('click', (e) => {
+          const editBtn = e.target.closest('[data-edit]');
+          const delBtn = e.target.closest('[data-del]');
+          if (editBtn) toast(`${cap}规划：编辑该行（真实页面为内联编辑/抽屉）`);
+          if (delBtn) {
+            const tr = delBtn.closest('tr');
+            openDeleteConfirm(`删除 ${cap}规划`, `确认删除 “${$('td:nth-child(6) strong', tr).textContent}” 吗？删除后不可恢复。`, () => { tr.remove(); toast('已删除'); });
+          }
+        });
+
+        // 工具栏
+        $('#btn-add', panel).addEventListener('click', () => openInlineCreate(panel, cap, tbody, rows));
+        $('#btn-import', panel).addEventListener('click', () => toast(`${planningLabel}导入：选择 .xlsx 后校验并导入`));
+        $('#btn-export', panel).addEventListener('click', () => toast(`已开始导出 ${planningLabel}`));
+        $('#btn-batchdel', panel).addEventListener('click', () => {
+          const ids = $$('[data-rowcheck]:checked', panel).map((c) => c.closest('tr').dataset.id);
+          if (!ids.length) { toast('请先选择要删除的记录'); return; }
+          openDeleteConfirm(`批量删除 ${planningLabel}`, `确认删除已选 ${ids.length} 条记录吗？`, () => {
+            ids.forEach((id) => { const tr = tbody.querySelector(`tr[data-id="${id}"]`); if (tr) tr.remove(); });
+            toast(`已删除 ${ids.length} 条`);
+          });
+        });
+
+        // 筛选
+        $('#filter-search', panel).addEventListener('click', () => {
+          state.kw = $('#filter-kw', panel).value.trim();
+          refresh();
+        });
+        $('#filter-kw', panel).addEventListener('input', (e) => { state.kw = e.target.value.trim(); refresh(); });
+        $('#filter-reset', panel).addEventListener('click', () => {
+          $('#filter-kw', panel).value = ''; state.kw = '';
+          Object.keys(state.filters).forEach((k) => state.filters[k].clear());
+          $$('.th-filter', panel).forEach((box) => $$('input', $('[data-options]', box)).forEach((c) => (c.checked = false)));
+          refresh();
+        });
+
+        // 清单管理看板（management 子tab）交互
+        const mgmt = $('[data-subtab="management"]', panel);
+        const catAll = mgmt.querySelector('[data-checkall]');
+        if (catAll) catAll.addEventListener('change', (e) => {
+          $$('tbody input[type=checkbox]', mgmt).forEach((c) => (c.checked = e.target.checked));
+        });
+        mgmt.addEventListener('click', (e) => {
+          const add = e.target.closest('[data-cat-add]');
+          const imp = e.target.closest('[data-cat-import]');
+          const exp = e.target.closest('[data-cat-export]');
+          const batch = e.target.closest('[data-cat-batchdel]');
+          const edit = e.target.closest('[data-cat-edit]');
+          const del = e.target.closest('[data-cat-del]');
+          if (add) openCatalogEditor(cap, null, mgmt);
+          if (imp) toast(`${cap}清单导入：选择 .xlsx 后校验并导入`);
+          if (exp) toast(`已开始导出 ${cap}清单`);
+          if (batch) {
+            const sel = $$('tbody input[type=checkbox]:checked', mgmt).map((c) => c.closest('tr'));
+            if (!sel.length) { toast('请先选择要删除的记录'); return; }
+            openDeleteConfirm(`批量删除 ${cap}清单`, `确认删除已选 ${sel.length} 条原子能力吗？`, () => { sel.forEach((tr) => tr.remove()); toast(`已删除 ${sel.length} 条`); });
+          }
+          if (edit) { const tr = edit.closest('tr'); openCatalogEditor(cap, tr, mgmt, tr.querySelector('td:nth-child(2) strong').textContent); }
+          if (del) { const tr = del.closest('tr'); openDeleteConfirm(`删除 ${cap}`, `确认删除“${tr.querySelector('td:nth-child(2) strong').textContent}”吗？`, () => { tr.remove(); toast('已删除'); }); }
+        });
+
+        // 子 tab
+        $$('[data-planning-tabs] .seg-tab', panel).forEach((t) => {
+          t.addEventListener('click', () => {
+            $$('[data-planning-tabs] .seg-tab', panel).forEach((x) => x.classList.remove('is-active'));
+            t.classList.add('is-active');
+            $$('[data-subtab]', panel).forEach((p) => p.classList.remove('is-active'));
+            panel.querySelector(`[data-subtab="${t.dataset.sub}"]`).classList.add('is-active');
+          });
+        });
+      }
+
+      function openInlineCreate(panel, cap, tbody, rows) {
+        const tr = h('tr', { class: 'inline-row' });
+        tr.innerHTML = `
+          <td class="select-col"></td>
+          <td><select class="inline-control">${SCENES.map((s) => `<option>${s.name}</option>`).join('')}</select></td>
+          <td><select class="inline-control"><option>代码补全</option><option>单测生成</option></select></td>
+          <td><select class="inline-control">${ACTIVITIES.map((a) => `<option>${a.name}</option>`).join('')}</select></td>
+          <td><select class="inline-control"><option>需求拆解</option><option>代码评审</option></select></td>
+          <td><input class="inline-control" placeholder="${cap} 名称" /></td>
+          <td class="desc-col"><textarea class="inline-control" rows="1" placeholder="${cap} 说明"></textarea></td>
+          <td><select class="inline-control">${PEOPLE.map((p) => `<option>${p.name}</option>`).join('')}</select></td>
+          <td><select class="inline-control">${PEOPLE.map((p) => `<option>${p.name}</option>`).join('')}</select></td>
+          <td><input type="date" class="inline-control" /></td>
+          <td><select class="inline-control">${PROGRESS.map((s) => `<option>${s}</option>`).join('')}</select></td>
+          <td class="action-col"><div class="row-actions">
+            <button class="btn btn--primary" style="height:30px;padding:0 12px;font-size:12px;" data-save>保存</button>
+            <button class="btn btn--ghost" style="height:30px;padding:0 10px;font-size:12px;" data-cancel>取消</button>
+          </div></td>`;
+        tbody.prepend(tr);
+        tr.scrollIntoView({ block: 'nearest' });
+        $('[data-cancel]', tr).addEventListener('click', () => tr.remove());
+        $('[data-save]', tr).addEventListener('click', () => {
+          const inputs = $$('input,select,textarea', tr);
+          const name = inputs[4].value.trim();
+          if (!name) { inputs[4].classList.add('has-error'); toast('请输入名称'); return; }
+          toast(`已新增 ${cap}规划 “${name}”（原型：仅演示提交交互）`);
+          tr.remove();
+          panel._refresh && panel._refresh();
+        });
+      }
+
+      function openCatalogEditor(cap, tr, scope, name = '') {
+        openModal(`
+          <div class="modal modal--wide">
+            <header><div><small>${cap.toUpperCase()} MASTER</small><strong>${name ? '编辑' : '添加'} ${cap}</strong><p>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p></div><button class="x" data-close>×</button></header>
+            <form class="body" id="cat-form">
+              <div class="modal-note"><b>部门语义</b><span>Owner 所在部门是人员属性，不作为 ${cap} 的规划归属。</span></div>
+              <label><span>${cap} 名称 *</span><input id="ce-name" maxlength="80" value="${esc(name)}" placeholder="请输入 ${cap} 名称" /></label>
+              <label><span>${cap} 说明 *</span><textarea id="ce-desc" rows="4" maxlength="300" placeholder="请输入说明"></textarea></label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <label><span>责任 Owner *</span><select id="ce-owner">${PEOPLE.map((p) => `<option>${p.name}</option>`).join('')}</select></label>
+                <label><span>开发责任人 *</span><select id="ce-dev">${PEOPLE.map((p) => `<option>${p.name}</option>`).join('')}</select></label>
+              </div>
+              <label><span>计划完成时间 *</span><input id="ce-date" type="date" /></label>
+            </form>
+            <footer><button class="btn btn--ghost" data-close>取消</button><button class="btn btn--primary" id="ce-ok">${name ? '保存修改' : '保存'}</button></footer>
+          </div>`);
+        setTimeout(() => { const i = $('#ce-name'); i && i.focus(); }, 0);
+        $('#ce-ok').addEventListener('click', (e) => {
+          e.preventDefault();
+          const n = $('#ce-name').value.trim();
+          if (!n) { toast('请输入名称'); return; }
+          closeModal();
+          toast(`${name ? '已更新' : '已新增'} ${cap}“${n}”（原型：仅演示提交）`);
+        });
+        $('#cat-form').addEventListener('submit', (e) => { e.preventDefault(); $('#ce-ok').click(); });
+      }
+
+      /* =====================================================================
+         清单管理看板（Command/Agent 的 management 子tab；Skill 用母版）
+         ===================================================================== */
+      function renderCatalogBoard(cap, rows, catalogLabel) {
+        return `<section class="card board board--auto">
+          <div class="toolbar">
+            <div class="toolbar__summary">
+              <strong>${cap} 原子清单</strong>
+              <span>已选 <b data-sel>0</b> 条 / 共 ${rows.length} 条 · 可被不同部门的规划复用</span>
+            </div>
+            <div class="toolbar__actions">
+              <button class="btn btn--primary" data-cat-add>${svgPlus}新增</button>
+              <button class="btn btn--soft" data-cat-import>${svgImport}导入</button>
+              <button class="btn btn--soft" data-cat-export>${svgExport}导出</button>
+              <button class="btn btn--danger-soft" data-cat-batchdel>${svgTrash}批量删除</button>
+            </div>
+          </div>
+          <div class="table-wrap" style="max-height:560px;">
+            <table class="table table--auto" style="min-width:980px;">
+              <thead><tr>
+                <th class="select-col"><input type="checkbox" data-checkall /></th>
+                <th>${cap}</th>
+                <th class="desc-col">描述</th>
+                <th>责任 Owner</th>
+                <th>开发责任人</th>
+                <th>计划完成</th>
+                <th>当前进展</th>
+                <th class="action-col">操作</th>
+              </tr></thead>
+              <tbody>
+                ${rows.map((r) => `
+                  <tr data-id="${r.id}">
+                    <td class="select-col"><input type="checkbox" /></td>
+                    <td><strong>${esc(r.name)}</strong></td>
+                    <td class="desc-col">${esc(r.desc)}</td>
+                    <td>${esc(r.owner)}</td>
+                    <td>${esc(r.dev)}</td>
+                    <td>${esc(r.plan)}</td>
+                    <td><span class="status ${progressClass(r.status)}">${r.status}</span></td>
+                    <td class="action-col"><div class="row-actions">
+                      <button class="icon-btn" title="编辑" data-cat-edit>${svgEdit}</button>
+                      <button class="icon-btn is-danger" title="删除" data-cat-del>${svgTrash}</button>
+                    </div></td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <span>第 1-${rows.length} 条，共 ${rows.length} 条</span>
+            <div class="pagination__controls">
+              <select><option>10 条/页</option><option>20 条/页</option></select>
+              <button disabled>上一页</button><strong>1 / 1</strong><button disabled>下一页</button>
+            </div>
+          </div>
+        </section>`;
+      }
+
+      /* =====================================================================
+         任务管理页（SkillPlanningTaskPanel）
+         ===================================================================== */
+      function renderTasks(panel) {
+        panel.innerHTML = `
+          <div class="page">
+            <header class="hero">
+              <div>
+                <h2>任务管理</h2>
+                <p>集中查看当前用户负责的 Harness 任务，持续跟踪 Skill 建设状态与完成进度。</p>
+              </div>
+            </header>
+            <nav class="seg-tabs">
+              <button class="seg-tab is-active"><span class="seg-tab__icon">01</span><span><strong>Skill待办</strong><small>跟踪 Skill 规划任务</small></span></button>
+            </nav>
+            <section class="task-dashboard">
+              <header class="dashboard-heading">
+                <div>
+                  <span class="eyebrow">MY SKILL TODO CENTER</span>
+                  <h3>我的 Skill 待办中心</h3>
+                  <p>聚焦当前登录用户负责的 Skill 任务，完成启动、开发和进度跟踪。</p>
+                </div>
+              </header>
+              <div class="metric-grid">
+                ${STATUS_CARDS.map((c) => `
+                  <article class="metric-card" style="--metric-color:${c.color}">
+                    <span>${c.status}</span><strong>${c.count}</strong><small>后端状态统计</small>
+                  </article>`).join('')}
+              </div>
+              <div class="task-board">
+                <header class="toolbar">
+                  <div class="toolbar__summary">
+                    <strong>我的任务</strong>
+                    <small>当前用户 00312948 · ${TASKS.length} 项</small>
+                  </div>
+                  <div class="toolbar__actions">
+                    <input type="search" id="task-kw" placeholder="搜索 Skill 名称、部门或负责人" style="height:36px;width:clamp(260px,30vw,420px);padding:0 10px;border:1px solid #d9e1ed;border-radius:8px;background:#fff;color:#40506a;" />
+                  </div>
+                </header>
+                <div class="table-wrap">
+                  <table class="task-table">
+                    <colgroup>
+                      <col style="width:34%" /><col style="width:16%" /><col style="width:15%" />
+                      <col style="width:10%" /><col style="width:12%" /><col style="width:13%" />
+                    </colgroup>
+                    <thead><tr>
+                      <th>Skill 名称</th><th>规划部门</th><th>负责人</th><th>状态</th><th>更新时间</th><th>操作</th>
+                    </tr></thead>
+                    <tbody id="task-rows"></tbody>
+                  </table>
+                </div>
+                <footer class="pagination">
+                  <span id="task-pageinfo">第 1-${TASKS.length} 条，共 ${TASKS.length} 条</span>
+                  <div class="pagination__controls">
+                    <button disabled>上一页</button><strong>1 / 1</strong><button disabled>下一页</button>
+                  </div>
+                </footer>
+              </div>
+            </section>
+          </div>`;
+        const tbody = $('#task-rows', panel);
+        function paint(list) {
+          tbody.innerHTML = list.map((t) => `
+            <tr data-id="${t.id}">
+              <td><div class="task-name-cell">
+                <span>${t.name.slice(0, 1)}</span>
+                <div><strong>${esc(t.name)}</strong><small title="${esc(t.desc)}">${esc(t.desc)}</small></div>
+              </div></td>
+              <td>${esc(t.dept)}</td>
+              <td><div class="owner-cell"><strong>${esc(t.owner)}</strong><small>${esc(t.ownerId)}</small></div></td>
+              <td><span class="status ${progressClass(t.status)}">${t.status}</span></td>
+              <td>${esc(t.updated)}</td>
+              <td><div class="task-actions"><button class="btn is-link" data-view>查看 Skill</button></div></td>
+            </tr>`).join('') || `<tr><td colspan="6" style="padding:32px;text-align:center;color:#98a2b3;">当前没有符合条件的待办任务</td></tr>`;
+        }
+        paint(TASKS);
+        $('#task-kw', panel).addEventListener('input', (e) => {
+          const q = e.target.value.trim().toLowerCase();
+          paint(TASKS.filter((t) => (`${t.name} ${t.dept} ${t.owner}`).toLowerCase().includes(q)));
+        });
+        tbody.addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-view]');
+          if (!btn) return;
+          const tr = btn.closest('tr');
+          const t = TASKS.find((x) => x.id == tr.dataset.id);
+          openTaskDetail(t);
+        });
+      }
+
+      function openTaskDetail(t) {
+        openModal(`
+          <div class="modal modal--wide">
+            <header>
+              <div class="skill-detail-dialog__heading">
+                <small>SKILL TASK DETAIL</small>
+                <strong>${esc(t.name)}</strong>
+                <p>${esc(t.desc)}</p>
+              </div>
+              <div class="skill-detail-dialog__actions" style="display:flex;align-items:center;gap:10px;">
+                <span class="status ${progressClass(t.status)}">${t.status}</span>
+                <button class="x" data-close>×</button>
+              </div>
+            </header>
+            <dl style="margin:0;padding:18px 22px;display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;">
+              <div><dt style="color:#7a879b;font-size:11px;font-weight:800;">规划部门或产品</dt><dd style="margin:4px 0 0;color:#223149;font-size:14px;">${esc(t.dim)}</dd></div>
+              <div><dt style="color:#7a879b;font-size:11px;font-weight:800;">负责人</dt><dd style="margin:4px 0 0;color:#223149;font-size:14px;">${esc(t.owner)}（${esc(t.ownerId)}）</dd></div>
+              <div><dt style="color:#7a879b;font-size:11px;font-weight:800;">计划完成时间</dt><dd style="margin:4px 0 0;color:#223149;font-size:14px;">${esc(t.plan)}</dd></div>
+              <div><dt style="color:#7a879b;font-size:11px;font-weight:800;">更新时间</dt><dd style="margin:4px 0 0;color:#223149;font-size:14px;">${esc(t.updated)}</dd></div>
+            </dl>
+            <footer><button class="btn btn--ghost" data-close>关闭</button></footer>
+          </div>`);
+      }
+
+      /* =====================================================================
+         配置管理页（场景 / 活动 / 部门权限）
+         ===================================================================== */
+      function renderSettings(panel) {
+        panel.innerHTML = `
+          <div class="configuration-page page">
+            <header class="hero">
+              <div>
+                <h2>配置管理</h2>
+                <p>集中维护各项 Harness 规划能力共用的场景、活动体系及部门人员权限，保存后自动同步至相关规划页面。</p>
+              </div>
+            </header>
+            <nav class="seg-tabs">
+              <button class="seg-tab is-active" data-cfg="scenes"><span class="seg-tab__icon">01</span><span><strong>场景管理</strong></span></button>
+              <button class="seg-tab" data-cfg="activities"><span class="seg-tab__icon">02</span><span><strong>活动管理</strong></span></button>
+              <button class="seg-tab" data-cfg="permissions"><span class="seg-tab__icon">03</span><span><strong>部门权限配置</strong></span></button>
+            </nav>
+            <div data-cfgpanel="scenes" class="is-active"></div>
+            <div data-cfgpanel="activities" style="display:none"></div>
+            <div data-cfgpanel="permissions" style="display:none"></div>
+          </div>`;
+        renderTaxonomy($('[data-cfgpanel="scenes"]', panel), 'scene');
+        renderTaxonomy($('[data-cfgpanel="activities"]', panel), 'activity');
+        renderPermission($('[data-cfgpanel="permissions"]', panel));
+        $$('.seg-tab[data-cfg]', panel).forEach((t) => {
+          t.addEventListener('click', () => {
+            $$('.seg-tab[data-cfg]', panel).forEach((x) => x.classList.remove('is-active'));
+            t.classList.add('is-active');
+            $$('[data-cfgpanel]', panel).forEach((p) => (p.style.display = 'none'));
+            const target = panel.querySelector(`[data-cfgpanel="${t.dataset.cfg}"]`);
+            target.style.display = 'grid';
+          });
+        });
+      }
+
+      function renderTaxonomy(panel, kind) {
+        const labels = kind === 'scene'
+          ? { primary: '一级场景', secondary: '二级场景', item: '场景' }
+          : { primary: '一级活动', secondary: '二级活动', item: '活动' };
+        const data = kind === 'scene' ? SCENES : ACTIVITIES;
+        const totalSkills = data.reduce((a, s) => a + s.children.length, 0);
+        panel.innerHTML = `
+          <section class="taxonomy-workspace">
+            <header class="toolbar-card card" style="padding:14px 16px;border-radius:10px;">
+              <div class="toolbar-controls">
+                <div class="filter-grid is-dept-level" style="grid-template-columns:minmax(120px,.65fr) minmax(360px,1.75fr) auto;">
+                  <label class="field"><span>层级 <em>*</em></span><select><option>部门级</option><option>产品级</option></select></label>
+                  <div class="field"><span>归属部门 <em>*</em></span>${cascader(DEPT_PATH.join(' / '))}</div>
+                  <div class="filter-actions" style="align-self:end;">
+                    <button class="btn btn--ghost" data-tax-import>导入 JSON</button>
+                  </div>
+                </div>
+              </div>
+              <div class="save-state" style="margin-top:12px;"><span class="dot"></span><span>已保存</span><span style="color:#9aa4b2;"></span></div>
+            </header>
+            <div class="summary-strip">
+              <div class="summary-metrics">
+                <div><strong>${data.length}</strong><span>${labels.primary}</span></div>
+                <div><strong>${totalSkills}</strong><span>${labels.secondary}</span></div>
+                <div><strong>${totalSkills}</strong><span>关联规划项</span></div>
+              </div>
+              <button class="btn btn--primary" data-tax-save>确认更新</button>
+            </div>
+            <div class="taxonomy-grid">
+              <aside class="panel-card">
+                <div class="panel-heading">
+                  <div><span class="step-badge">01</span><h3 style="display:inline;">${labels.primary}</h3><p>支持折叠与拖拽排序</p></div>
+                  <button class="add-button" data-tax-add-primary>＋ 新增</button>
+                </div>
+                <div class="primary-tree" data-tax-tree></div>
+              </aside>
+              <section class="panel-card">
+                <div class="panel-heading">
+                  <div><span class="step-badge">02</span><h3 style="display:inline;">${labels.secondary}</h3><p data-tax-sel>请先选择或新增${labels.primary}</p></div>
+                  <button class="add-button dark" data-tax-add-secondary disabled>＋ 新增${labels.secondary}</button>
+                </div>
+                <div data-tax-list></div>
+              </section>
+            </div>
+          </section>`;
+        wireTaxonomy(panel, data, labels);
+      }
+
+      function wireTaxonomy(panel, data, labels) {
+        let selId = null;
+        const treeEl = $('[data-tax-tree]', panel);
+        const listEl = $('[data-tax-list]', panel);
+        const selEl = $('[data-tax-sel]', panel);
+        const addSecBtn = $('[data-tax-add-secondary]', panel);
+        const collapsed = new Set();
+
+        function paint() {
+          treeEl.innerHTML = data.map((p) => `
+            <article class="primary-node ${selId === p.id ? 'active' : ''}" data-id="${p.id}">
+              <div class="primary-row">
+                <span class="drag-handle">⠿</span>
+                <button class="collapse-button" data-collapse>${collapsed.has(p.id) ? '›' : '⌄'}</button>
+                <button class="node-main" data-select>
+                  <strong>${esc(p.name)}</strong>
+                  <small>${p.children.length} 个${labels.secondary} · ${p.children.length} 个规划项</small>
+                </button>
+                <button class="icon-action" title="编辑" data-edit-primary>✎</button>
+                <button class="icon-action danger" title="删除" data-del-primary>×</button>
+              </div>
+              ${collapsed.has(p.id) ? '' : `<div class="tree-children">
+                ${p.children.length ? p.children.map((c) => `<button data-child>${esc(c)}</button>`).join('') : '<span class="empty-child">暂无' + labels.secondary + '</span>'}
+              </div>`}
+            </article>`).join('') || '<div class="empty-panel">当前部门暂无' + labels.primary + '</div>';
+          const sel = data.find((p) => p.id === selId);
+          if (sel) {
+            selEl.innerHTML = `当前归属：<strong>${esc(sel.name)}</strong> · ${sel.children.length} 项`;
+            addSecBtn.disabled = false;
+            listEl.innerHTML = `<div class="table-wrap" style="max-height:520px;"><table class="list-table">
+              <thead><tr><th>排序</th><th>${labels.secondary}</th><th>关联规划项</th><th>操作</th></tr></thead>
+              <tbody>${sel.children.map((c, i) => `
+                <tr><td><span class="drag-handle">⠿</span><span class="count-pill">${i + 1}</span></td>
+                <td><strong>${esc(c)}</strong></td><td><span class="count-pill">${i + 1}</span></td>
+                <td class="row-actions"><button data-up ${i === 0 ? 'disabled' : ''}>↑</button><button data-down ${i === sel.children.length - 1 ? 'disabled' : ''}>↓</button><button data-edit-child>编辑</button><button class="danger" data-del-child>删除</button></td></tr>`).join('')
+              || `<tr><td colspan="4" class="empty-table" style="padding:24px;color:#98a2b3;">暂无${labels.secondary}，可从右上角新增</td></tr>`}</tbody></table></div>`;
+          } else {
+            selEl.innerHTML = `请先选择或新增${labels.primary}`;
+            addSecBtn.disabled = true;
+            listEl.innerHTML = '<div class="empty-panel large">选择左侧' + labels.primary + '后查看明细</div>';
+          }
+        }
+        paint();
+
+        treeEl.addEventListener('click', (e) => {
+          const sel = e.target.closest('[data-select]');
+          const col = e.target.closest('[data-collapse]');
+          const edit = e.target.closest('[data-edit-primary]');
+          const del = e.target.closest('[data-del-primary]');
+          const tr = e.target.closest('[data-id]');
+          if (!tr) return;
+          const p = data.find((x) => x.id == tr.dataset.id);
+          if (col) { collapsed.has(p.id) ? collapsed.delete(p.id) : collapsed.add(p.id); paint(); }
+          else if (edit) openEditor(labels, 'primary', p ? p.name : '', (v) => { p.name = v; setDirty(panel); paint(); });
+          else if (del) openDeleteConfirm(`删除${labels.item}“${p.name}”`, `该项暂无关联规划，删除将在确认更新后生效。`, () => {
+            const i = data.indexOf(p); data.splice(i, 1); if (selId === p.id) selId = null; setDirty(panel); paint();
+          });
+          else if (sel) { selId = p.id; paint(); }
+        });
+
+        listEl.addEventListener('click', (e) => {
+          const up = e.target.closest('[data-up]');
+          const down = e.target.closest('[data-down]');
+          const edit = e.target.closest('[data-edit-child]');
+          const del = e.target.closest('[data-del-child]');
+          const sel = data.find((p) => p.id === selId);
+          if (!sel) return;
+          const row = e.target.closest('tr');
+          const i = [...row.parentElement.children].indexOf(row);
+          if (up) { [sel.children[i - 1], sel.children[i]] = [sel.children[i], sel.children[i - 1]]; setDirty(panel); paint(); }
+          else if (down) { [sel.children[i + 1], sel.children[i]] = [sel.children[i], sel.children[i + 1]]; setDirty(panel); paint(); }
+          else if (edit) openEditor(labels, 'secondary', sel.children[i], (v) => { sel.children[i] = v; setDirty(panel); paint(); });
+          else if (del) openDeleteConfirm(`删除${labels.secondary}“${sel.children[i]}”`, `删除将在确认更新后生效。`, () => { sel.children.splice(i, 1); setDirty(panel); paint(); });
+        });
+
+        $('[data-tax-add-primary]', panel).addEventListener('click', () => openEditor(labels, 'primary', '', (v) => { data.push({ id: 'x' + Date.now(), name: v, children: [] }); setDirty(panel); paint(); }));
+        addSecBtn.addEventListener('click', () => {
+          const sel = data.find((p) => p.id === selId);
+          if (!sel) return;
+          openEditor(labels, 'secondary', '', (v) => { sel.children.push(v); setDirty(panel); paint(); });
+        });
+        $('[data-tax-import]', panel).addEventListener('click', () => toast('选择 JSON 文件导入分类体系'));
+        $('[data-tax-save]', panel).addEventListener('click', () => { setSaved(panel); toast('已确认更新，配置已同步至规划页'); });
+      }
+
+      function setDirty(panel) {
+        const ss = $('.save-state', panel);
+        if (!ss) return;
+        ss.classList.add('dirty');
+        ss.querySelector('span:nth-child(2)').textContent = '有未保存修改';
+      }
+      function setSaved(panel) {
+        const ss = $('.save-state', panel);
+        if (!ss) return;
+        ss.classList.remove('dirty');
+        ss.querySelector('span:nth-child(2)').textContent = '已保存';
+      }
+
+      function openEditor(labels, kind, name, onSave) {
+        const title = `${name ? '编辑' : '新增'}${kind === 'primary' ? labels.primary : labels.secondary}`;
+        openModal(`
+          <div class="modal">
+            <header><div><small>TAXONOMY EDITOR</small><strong>${title}</strong></div><button class="x" data-close>×</button></header>
+            <form class="body" id="tax-form"><label><span>名称</span><input id="tax-name" maxlength="40" value="${esc(name)}" autofocus /></label></form>
+            <footer><button class="btn btn--ghost" data-close>取消</button><button class="btn btn--primary" id="tax-ok">保存到草稿</button></footer>
+          </div>`);
+        setTimeout(() => { const i = $('#tax-name'); i && i.focus(); }, 0);
+        $('#tax-ok').addEventListener('click', (e) => {
+          e.preventDefault();
+          const v = $('#tax-name').value.trim();
+          if (!v) { toast('请输入名称'); return; }
+          onSave(v); closeModal(); toast('已保存到草稿，确认更新后生效');
+        });
+        $('#tax-form').addEventListener('submit', (e) => { e.preventDefault(); $('#tax-ok').click(); });
+      }
+
+      /* ---------- 部门权限配置 ---------- */
+      function renderPermission(panel) {
+        let members = PERMISSION_MEMBERS.slice();
+        panel.innerHTML = `
+          <section class="permission-panel">
+            <div class="permission-hero">
+              <div class="permission-department-field">
+                <span style="color:var(--muted);font-size:12px;font-weight:800;">选择配置部门</span>
+                ${cascader(DEPT_PATH.join(' / '))}
+              </div>
+              <div class="permission-metrics">
+                <div><strong>18</strong><span>可管理部门</span></div>
+                <div><strong id="perm-total">${members.length}</strong><span>授权关系</span></div>
+                <div><strong id="perm-cur">${members.length}</strong><span>当前部门管理员</span></div>
+              </div>
+            </div>
+            <div class="permission-workspace panel-card" style="overflow:visible;padding:0;">
+              <div class="panel-heading">
+                <div>
+                  <small style="color:#7a879b;font-size:11px;font-weight:800;">当前配置部门</small>
+                  <strong style="display:block;margin-top:4px;color:#07172f;font-size:16px;">PDU303</strong>
+                  <p style="color:#7a879b;font-size:12px;margin-top:4px;">${DEPT_PATH.join(' / ')}</p>
+                  <p style="color:#52647d;font-size:12px;margin-top:6px;">已授权 <b id="perm-cnt">${members.length}</b> 人管理此部门的 Harness 规划与配置。</p>
+                </div>
+                <div class="person-search" style="position:relative;">
+                  <input type="text" id="perm-search" placeholder="输入姓名或工号添加人员" style="height:36px;width:240px;border:1px solid #d9e1ed;border-radius:8px;background:#fff;color:#40506a;padding:0 10px;" />
+                  <div id="perm-pop" class="hidden" style="position:absolute;top:42px;right:0;width:280px;border:1px solid #dbe5f2;border-radius:10px;background:#fff;box-shadow:var(--shadow-pop);padding:6px;z-index:60;"></div>
+                </div>
+              </div>
+              <div class="permission-note" style="margin:0 16px 14px;">
+                <span>权限范围</span>
+                <p>覆盖 Command、Skill、Agent、Extension 的部门级规划能力，以及配置管理中的场景管理和活动管理。</p>
+              </div>
+              <div style="padding:0 16px 16px;">
+                <div class="member-table-head" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;"><strong style="font-size:13px;">管理员列表</strong><span style="color:#9aa4b2;font-size:11px;">仅展示当前所选部门已授权的 Harness 管理员</span></div>
+                <div class="table-wrap" style="max-height:none;">
+                  <table class="member-table">
+                    <thead><tr><th>人员</th><th>工号</th><th>人员归属部门</th><th>操作</th></tr></thead>
+                    <tbody id="perm-rows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>`;
+        function paint() {
+          $('#perm-rows', panel).innerHTML = members.map((m) => `
+            <tr data-id="${m.userId}">
+              <td><div class="member-cell"><span>${m.label.slice(0, 1)}</span><strong>${esc(m.label)}</strong></div></td>
+              <td>${esc(m.employeeNo)}</td>
+              <td>${esc(m.departmentName)}</td>
+              <td><button class="revoke-btn" data-revoke>移除</button></td>
+            </tr>`).join('') || '<tr><td colspan="4" style="padding:24px;color:#98a2b3;text-align:center;">该部门暂未配置 Harness 管理人员</td></tr>';
+          $('#perm-cur', panel).textContent = members.length;
+          $('#perm-cnt', panel).textContent = members.length;
+        }
+        paint();
+        $('#perm-rows', panel).addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-revoke]');
+          if (!btn) return;
+          const tr = btn.closest('tr');
+          const m = members.find((x) => x.userId == tr.dataset.id);
+          openDeleteConfirm(`移除 ${m.label} 的配置权限？`, `移除后，该人员将不能继续管理“PDU303”的规划与公共配置。`, () => {
+            members = members.filter((x) => x.userId !== m.userId); paint(); toast('已移除');
+          }, '确认移除', 'is-danger');
+        });
+        const pop = $('#perm-pop', panel);
+        const input = $('#perm-search', panel);
+        function openPop() {
+          const q = input.value.trim().toLowerCase();
+          const list = PEOPLE.filter((p) => !members.some((m) => m.userId === p.userId) && (!q || p.name.toLowerCase().includes(q) || p.id.includes(q)));
+          pop.innerHTML = list.length ? list.map((p) => `
+            <button data-add="${p.id}" style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:8px 10px;border:0;border-radius:8px;background:#fff;text-align:left;">
+              <span><strong style="font-size:13px;color:#223149;">${esc(p.name)}</strong><small style="display:block;color:#8b96a7;font-size:10px;">${esc(p.id)}</small></span>
+              <em style="color:#7a879b;font-size:11px;font-style:normal;">${esc(p.dept)}</em>
+            </button>`).join('') : '<p style="color:#98a2b3;font-size:12px;padding:8px;">无可添加人员</p>';
+          pop.classList.remove('hidden');
+        }
+        input.addEventListener('focus', openPop);
+        input.addEventListener('input', openPop);
+        pop.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-add]');
+          if (!b) return;
+          const p = PEOPLE.find((x) => x.id === b.dataset.add);
+          members.push({ userId: p.id, label: p.name, employeeNo: p.id, departmentName: p.dept });
+          input.value = ''; pop.classList.add('hidden'); paint(); toast(`已添加 ${p.name}`);
+        });
+        document.addEventListener('click', (e) => { if (!e.target.closest('.person-search')) pop.classList.add('hidden'); });
+      }
+
+      /* =====================================================================
+         通用删除确认弹窗
+         ===================================================================== */
+      function openDeleteConfirm(title, message, onConfirm, okText = '确认删除', okCls = 'is-danger') {
+        openModal(`
+          <div class="modal" style="width:min(440px,100%);">
+            <div class="confirm-d">
+              <div class="confirm-icon">!</div>
+              <strong>${esc(title)}</strong>
+              <p>${esc(message)}</p>
+            </div>
+            <footer style="justify-content:center;">
+              <button class="btn btn--ghost" data-close>取消</button>
+              <button class="btn ${okCls === 'is-danger' ? 'btn--danger' : 'btn--primary'}" id="confirm-ok">${okText}</button>
+            </footer>
+          </div>`);
+        $('#confirm-ok').addEventListener('click', () => { closeModal(); onConfirm && onConfirm(); });
+      }
+
+      /* =====================================================================
+         初始化
+         ===================================================================== */
+      const panels = {
+        command: $('[data-panel="command"]'),
+        planning: $('[data-panel="planning"]'),
+        agent: $('[data-panel="agent"]'),
+        tasks: $('[data-panel="tasks"]'),
+        settings: $('[data-panel="settings"]'),
+      };
+      renderPlanning(panels.command, 'Command');
+      renderPlanning(panels.planning, 'Skill');
+      renderPlanning(panels.agent, 'Agent');
+      renderTasks(panels.tasks);
+      renderSettings(panels.settings);
+
+      // 顶部 tab 切换
+      $$('.harness-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          $$('.harness-tab').forEach((t) => { t.classList.remove('is-active'); t.removeAttribute('aria-selected'); });
+          tab.classList.add('is-active'); tab.setAttribute('aria-selected', 'true');
+          const key = tab.dataset.tab;
+          $$('[data-panel]').forEach((p) => p.classList.remove('is-active'));
+          document.querySelector(`[data-panel="${key}"]`).classList.add('is-active');
+        });
+      });
+
+      // 顶栏滚动高亮
+      const shell = $('#shell');
+      function onScroll() { shell.classList.toggle('is-topbar-elevated', window.scrollY > 8); }
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    </script>
+  </body>
+</html>
