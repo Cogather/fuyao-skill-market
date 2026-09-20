@@ -77,5 +77,6 @@ test('Workflow Command 条目交换外层与内容区背景', async ({ page }) =
   await item.getByRole('button', { name: /Command \/devops-center/ }).click();
   const content = item.locator('.workflow-command-content');
   await expect(content).toContainText('# devops-center-v2-valid-code-review-run');
-  await expect(content).toHaveCSS('background-color', 'rgb(15, 23, 42)');
+  await expect(content).toHaveCSS('background-color', 'rgb(248, 250, 252)');
+  await expect(content).toHaveCSS('color', 'rgb(31, 41, 55)');
 });

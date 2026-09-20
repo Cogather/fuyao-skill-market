@@ -64,6 +64,10 @@
 
 ## 演进记录
 
+- 2026-09-20：Agent / Skill / Command 发布页（`AtomicAssetPublishPage.vue`）的「包含清单」不再显示 `agents/`、`skills/`、`commands/` 这类文件夹类型行（含黄色文件夹图标与数量徽标），清单默认常显、不再有折叠入口；清单行与 Skill 文件行取消树形缩进，改为 10px 左内边距，展开内容同列对齐（箭头不贴边）；两级箭头统一改为固定尺寸 SVG 图标（文字字形 `›` 的墨迹贴基线，行框居中后整颗偏低约 5px）。回归：`harness-assets-atomic-publish.spec.ts`。
+
+- 2026-09-20：Command 清单弹窗（`WorkflowCommandsDialog.vue`）展开后的文件内容面板由深色 `#0f172a` 改为浅灰白 `#f8fafc`、文字改为 `#1f2937`，占位与错误提示同步改为浅底；条目外壳保持深色 `#020617`。业务场景详情的 `.commands` 深蓝条目（`#0f172a` / `#7dd3fc`）不受影响。回归：`workflow-command-dialog-style.spec.ts`。
+
 - 2026-09-16：Harness 工作流行级「查看」调整为直接打开旧版 Extension 发布历史页，按维度与一级/二级场景调用 `/extensions/history`，不再请求 `/workflow/detail`；「发布」继续复用 Extension 发布页，并保留 canPublish/changed 控制、最近目标组织预填和发布后列表刷新。回归：`harness-workflow-list-http.spec.ts`、`tests/harness-workflow-list.tests.mjs`、`tests/harness-asset-history-http.tests.mjs`。
 
 - 2026-09-10：旧「资产清单」（`#harness-tab-capabilities`）的 Command / Skill / Agent 清单继续使用各自 `/api/harness/{commands|skills|agents}/management/query`。旧 Extension 发布工作区、发布与历史弹窗按 `e78abf5` 恢复为独立的 `LegacyExtensionPublishPage.vue` 和 `legacyExtensionPublishHttp.ts`：选场景查询 `/scenes/bindings` 与 `/extensions/history`，发布时查询 `/extensions/orgs` 并提交 `/extensions`，历史使用原时间线、默认三条、加载更多和失败重试 `/extensions/{id}/retry`。保留原名称、描述、通道、组织表单与弹窗样式。新资产页仍使用 `ExtensionPublishPage.vue` / `extensionPublishHttp.ts` 的现有逻辑，不与旧页恢复联动；不得将旧绑定查询换成新 `/extensions/detail`。回归：`extension-detail-http.spec.ts`、`tests/legacy-extension-bindings-http.tests.mjs`。

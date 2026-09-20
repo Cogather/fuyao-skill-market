@@ -494,10 +494,10 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 14px 16px;
   overflow: auto;
-  border: 1px solid #334155;
+  border: 1px solid #dbe3ee;
   border-radius: 8px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #f8fafc;
+  color: #1f2937;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.7;
@@ -546,16 +546,16 @@ onBeforeUnmount(() => {
 .workflow-command-content-error {
   margin: 0;
   padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 8px;
-  background: #0f172a;
-  color: #94a3b8;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 .workflow-command-content-error {
-  border-color: rgba(248, 113, 113, 0.28);
-  background: #321c25;
-  color: #fca5a5;
+  border-color: rgba(220, 38, 38, 0.28);
+  background: #fef2f2;
+  color: #b42318;
 }
 
 .workflow-command-spinner {

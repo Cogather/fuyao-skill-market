@@ -11,6 +11,8 @@ type CapturedAtomicRequests = {
   publishes: Request[];
   histories: Request[];
   retries: Request[];
+  packageTrees: Request[];
+  packageFiles: Request[];
 };
 
 function assetCard(page: Page, name: string): Locator {
@@ -26,6 +28,8 @@ async function prepareAtomicAssets(
     publishes: [],
     histories: [],
     retries: [],
+    packageTrees: [],
+    packageFiles: [],
   },
 ): Promise<CapturedAtomicRequests> {
   await page.addInitScript(() => {
@@ -157,6 +161,18 @@ async function prepareAtomicAssets(
     } else if (/\/assets\/publish\/[^/]+\/retry$/.test(path)) {
       captured.retries.push(request);
       data = 'retry-accepted';
+    } else if (path.endsWith('/packages/tree')) {
+      captured.packageTrees.push(request);
+      data = ['SKILL.md', 'references/usage.md'];
+    } else if (path.endsWith('/packages/file')) {
+      captured.packageFiles.push(request);
+      const filePath = new URL(request.url()).searchParams.get('filePath') ?? '';
+      data = {
+        content:
+          filePath === 'SKILL.md'
+            ? '# Skill 可发布资产\n\nSkill 文件内容 v1.2.3'
+            : '# 使用说明\n\n按需加载的文件内容',
+      };
     } else if (path.endsWith('/assets/publish')) {
       captured.publishes.push(request);
       const body = request.postDataJSON() as {
@@ -209,17 +225,82 @@ test.describe('Agent / Skill / Command 发布入口', () => {
 
       const publishPage = page.getByRole('region', { name: `发布 ${type} · ${publishableName}` });
       await expect(publishPage).toBeVisible();
+      // 对齐 Harness 工作流发布页版式：主标题固定为「发布」，类型作为标题行右侧小标签。
       await expect(
-        publishPage.getByRole('heading', { name: `发布 ${type}`, exact: true }),
+        publishPage.getByRole('heading', { name: '发布', exact: true }),
+      ).toBeVisible();
+      await expect(
+        publishPage.getByRole('heading', { name: `${type} 发布信息`, exact: true }),
       ).toBeVisible();
       await expect(publishPage).toContainText(publishableName);
       await expect(publishPage).toContainText('v1.2.3');
       await expect(publishPage).toContainText('交付平台');
+      await expect(publishPage).toContainText('包含清单（1 项）');
       await expect(publishPage.getByLabel('发布说明', { exact: true })).toHaveCount(0);
+      await expect(publishPage.getByText('归属范围', { exact: true })).toHaveCount(0);
+      await expect(publishPage.getByText('当前状态', { exact: true })).toHaveCount(0);
 
       await publishPage.getByRole('button', { name: '返回', exact: true }).click();
       await expect(assetCard(page, publishableName)).toBeVisible();
     }
+  });
+
+  test('包含清单可展开文件目录并点击文件加载内容', async ({ page }) => {
+    const captured = await prepareAtomicAssets(page);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await clickAssetCardAction(assetCard(page, 'Skill 可发布资产'), '发布');
+
+    const publishPage = page.getByRole('region', { name: '发布 Skill · Skill 可发布资产' });
+    const checklistRow = publishPage.locator('.atomic-publish__checklist-row');
+    await expect(checklistRow).toContainText('Skill 可发布资产');
+    await expect(checklistRow).toHaveAttribute('aria-expanded', 'false');
+    // 包含清单不再显示 skills/ 这类文件夹类型行；清单行保留适中左内边距，箭头不贴边。
+    await expect(publishPage.locator('.atomic-publish__folder-heading')).toHaveCount(0);
+    await expect(publishPage.locator('.atomic-publish__folder-caret')).toHaveCount(0);
+    await expect(checklistRow).toHaveCSS('padding-left', '10px');
+    // 箭头必须是固定尺寸 SVG 图标：文字字形 › 的墨迹贴基线，居中后会整体偏低。
+    await expect(publishPage.locator('.atomic-publish__checklist-caret svg')).toHaveCount(1);
+
+    await checklistRow.click();
+    await expect.poll(() => captured.packageTrees.length).toBe(1);
+    expect(Object.fromEntries(new URL(captured.packageTrees[0]!.url()).searchParams)).toEqual({
+      userId: 'publish-user',
+      componentType: 'skill',
+      componentName: 'Skill 可发布资产',
+      componentVersion: '1.2.3',
+    });
+
+    // 首个文件默认展开并加载内容
+    const firstFileRow = publishPage.locator('.atomic-publish__file-row').first();
+    await expect(firstFileRow).toContainText('SKILL.md');
+    await expect.poll(() => captured.packageFiles.length).toBe(1);
+    expect(Object.fromEntries(new URL(captured.packageFiles[0]!.url()).searchParams)).toEqual({
+      userId: 'publish-user',
+      componentType: 'skill',
+      componentName: 'Skill 可发布资产',
+      componentVersion: '1.2.3',
+      filePath: 'SKILL.md',
+    });
+    await expect(publishPage.locator('.atomic-publish__file-content pre').first()).toContainText(
+      'Skill 文件内容',
+    );
+
+    // 点击另一个文件按需加载其内容
+    await publishPage
+      .locator('.atomic-publish__file-row')
+      .filter({ hasText: 'references/usage.md' })
+      .click();
+    await expect.poll(() => captured.packageFiles.length).toBe(2);
+    expect(Object.fromEntries(new URL(captured.packageFiles[1]!.url()).searchParams)).toEqual({
+      userId: 'publish-user',
+      componentType: 'skill',
+      componentName: 'Skill 可发布资产',
+      componentVersion: '1.2.3',
+      filePath: 'references/usage.md',
+    });
+    await expect(publishPage.locator('.atomic-publish__file-content pre').last()).toContainText(
+      '使用说明',
+    );
   });
 
   test('提交最新版本后展示受理和拒绝结果，按 batchId 查看历史并限制失败重试', async ({ page }) => {
