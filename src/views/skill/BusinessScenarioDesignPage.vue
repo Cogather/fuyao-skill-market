@@ -1954,620 +1954,638 @@ async function createAsset() {
       >
     </section>
   </div>
-  <div v-if="wizard" class="modal">
-    <section
-      ref="wizardDialogElement"
-      class="dialog wizard"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Workflow 设计"
-      :inert="wizardBusy || structureDeleteTarget ? true : undefined"
-      :aria-hidden="structureDeleteTarget ? 'true' : undefined"
-      :aria-busy="wizardBusy"
-      tabindex="-1"
-      @keydown="handleWizardKeydown"
-      @wheel="handleWizardWheel"
-    >
-      <header>
-        <h2>Workflow 设计</h2>
-        <button
-          class="close"
-          type="button"
-          aria-label="关闭 Workflow 设计"
-          :disabled="wizardBusy"
-          @click="closeWizard"
-        >
-          ×
-        </button>
-      </header>
-      <nav aria-label="Workflow 设计步骤">
-        <template v-for="(label, i) in wizardSteps" :key="label"
-          ><i
-            v-if="i"
-            :class="{
-              reached: i <= wizard.maxReached || progress(wizard.workflow).states[i - 1] === 'done',
-            }"
-          ></i
-          ><button
-            :class="{ current: i === wizard.step }"
-            :aria-current="i === wizard.step ? 'step' : undefined"
-            :disabled="!canGoStep(i)"
-            @click="goStep(i)"
-          >
-            <b>{{ i + 1 }}</b
-            ><span>{{ label }}</span>
-          </button></template
-        >
-      </nav>
-      <section v-if="wizard.step === 0" class="wizard-page" aria-label="业务场景分析" tabindex="-1">
-        <p class="hint">
-          先对齐业务场景：明确场景目标、输入输出与业务边界，后续 Workflow 与资产都围绕它展开。带 *
-          为必填项。
-        </p>
-        <label
-          ><span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span
-          ><input v-model="wizard.form.scenarioName" required /><small
-            >与场景管理同步；改名会同步更新关联资产的场景名称。</small
-          ></label
-        ><label
-          ><span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span
-          ><input
-            v-model="wizard.form.code"
-            required
-            maxlength="64"
-            :readonly="!!currentScenario?.releaseCount"
-            :placeholder="`例如：${productCatalogItemPrefix}mml-dev`"
-          /><small v-if="currentScenario?.releaseCount"
-            >该场景已发布过版本，编码已锁定不可修改。</small
-          ><small v-else>
-            该编码将作为发布的 Extension 名称：{{
-              productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头、` : ''
-            }}全部小写、仅用连字符分隔。</small
-          ></label
-        ><label
-          >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
-        </label>
-      </section>
+  <Teleport to="body">
+    <div v-if="wizard" class="modal harness-workspace-overlay">
       <section
-        v-else-if="wizard.step === 1"
-        class="wizard-page"
-        aria-label="Workflow 规划"
+        ref="wizardDialogElement"
+        class="dialog wizard"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Workflow 设计"
+        :inert="wizardBusy || structureDeleteTarget ? true : undefined"
+        :aria-hidden="structureDeleteTarget ? 'true' : undefined"
+        :aria-busy="wizardBusy"
         tabindex="-1"
+        @keydown="handleWizardKeydown"
+        @wheel="handleWizardWheel"
       >
-        <p class="hint">
-          规划 Workflow 基本信息，并编排「环节 → 节点」：环节是逻辑分组，节点是绑定 Agent / Skill
-          的原子执行单元。
-        </p>
-        <div class="two">
-          <label
-            ><span>流程名称 <span class="required-mark" aria-hidden="true">*</span></span
-            ><input
-              v-model="wizard.form.name"
-              aria-label="流程名称"
-              required
-              :placeholder="`例如：${wizard.form.scenarioName.trim()}工作流`" /></label
-          ><label>流程说明<input v-model="wizard.form.description" /></label>
-        </div>
-        <h4>
-          环节与节点
-          <small
-            >{{ wizard.workflow.stages.length }} 个环节 ·
-            {{ wizard.workflow.stages.flatMap((s) => s.steps).length }} 个节点，按顺序执行</small
+        <header>
+          <h2>Workflow 设计</h2>
+          <button
+            class="close"
+            type="button"
+            aria-label="关闭 Workflow 设计"
+            :disabled="wizardBusy"
+            @click="closeWizard"
           >
-        </h4>
-        <p v-if="!wizard.workflow.stages.length && !wizard.stageDraft" class="hint">
-          尚未定义环节，点击下方“添加环节”开始编排。
-        </p>
-        <div
-          v-for="stage in [...wizard.workflow.stages].sort((a, b) => a.order - b.order)"
-          :key="stage.id"
-          class="edit-stage"
+            ×
+          </button>
+        </header>
+        <nav aria-label="Workflow 设计步骤">
+          <template v-for="(label, i) in wizardSteps" :key="label"
+            ><i
+              v-if="i"
+              :class="{
+                reached:
+                  i <= wizard.maxReached || progress(wizard.workflow).states[i - 1] === 'done',
+              }"
+            ></i
+            ><button
+              :class="{ current: i === wizard.step }"
+              :aria-current="i === wizard.step ? 'step' : undefined"
+              :disabled="!canGoStep(i)"
+              @click="goStep(i)"
+            >
+              <b>{{ i + 1 }}</b
+              ><span>{{ label }}</span>
+            </button></template
+          >
+        </nav>
+        <section
+          v-if="wizard.step === 0"
+          class="wizard-page"
+          aria-label="业务场景分析"
+          tabindex="-1"
         >
-          <header>
-            <div class="structure-heading">
-              <span
-                class="structure-icon stage-structure-icon"
-                data-structure-icon="stage"
-                aria-hidden="true"
-              >
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path d="m12 3 8 4-8 4-8-4 8-4Z" />
-                  <path d="m4 12 8 4 8-4M4 17l8 4 8-4" />
-                </svg>
-              </span>
-              <div class="structure-info">
-                <b :title="stage.name">{{ stage.name }}</b>
-                <small v-if="stage.description" :title="stage.description">{{
-                  stage.description
-                }}</small>
+          <p class="hint">
+            先对齐业务场景：明确场景目标、输入输出与业务边界，后续 Workflow 与资产都围绕它展开。带 *
+            为必填项。
+          </p>
+          <label
+            ><span>场景名称 <span class="required-mark" aria-hidden="true">*</span></span
+            ><input v-model="wizard.form.scenarioName" required /><small
+              >与场景管理同步；改名会同步更新关联资产的场景名称。</small
+            ></label
+          ><label
+            ><span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span
+            ><input
+              v-model="wizard.form.code"
+              required
+              maxlength="64"
+              :readonly="!!currentScenario?.releaseCount"
+              :placeholder="`例如：${productCatalogItemPrefix}mml-dev`"
+            /><small v-if="currentScenario?.releaseCount"
+              >该场景已发布过版本，编码已锁定不可修改。</small
+            ><small v-else>
+              该编码将作为发布的 Extension 名称：{{
+                productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头、` : ''
+              }}全部小写、仅用连字符分隔。</small
+            ></label
+          ><label
+            >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
+          </label>
+        </section>
+        <section
+          v-else-if="wizard.step === 1"
+          class="wizard-page"
+          aria-label="Workflow 规划"
+          tabindex="-1"
+        >
+          <p class="hint">
+            规划 Workflow 基本信息，并编排「环节 → 节点」：环节是逻辑分组，节点是绑定 Agent / Skill
+            的原子执行单元。
+          </p>
+          <div class="two">
+            <label
+              ><span>流程名称 <span class="required-mark" aria-hidden="true">*</span></span
+              ><input
+                v-model="wizard.form.name"
+                aria-label="流程名称"
+                required
+                :placeholder="`例如：${wizard.form.scenarioName.trim()}工作流`" /></label
+            ><label>流程说明<input v-model="wizard.form.description" /></label>
+          </div>
+          <h4>
+            环节与节点
+            <small
+              >{{ wizard.workflow.stages.length }} 个环节 ·
+              {{ wizard.workflow.stages.flatMap((s) => s.steps).length }} 个节点，按顺序执行</small
+            >
+          </h4>
+          <p v-if="!wizard.workflow.stages.length && !wizard.stageDraft" class="hint">
+            尚未定义环节，点击下方“添加环节”开始编排。
+          </p>
+          <div
+            v-for="stage in [...wizard.workflow.stages].sort((a, b) => a.order - b.order)"
+            :key="stage.id"
+            class="edit-stage"
+          >
+            <header>
+              <div class="structure-heading">
+                <span
+                  class="structure-icon stage-structure-icon"
+                  data-structure-icon="stage"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="m12 3 8 4-8 4-8-4 8-4Z" />
+                    <path d="m4 12 8 4 8-4M4 17l8 4 8-4" />
+                  </svg>
+                </span>
+                <div class="structure-info">
+                  <b :title="stage.name">{{ stage.name }}</b>
+                  <small v-if="stage.description" :title="stage.description">{{
+                    stage.description
+                  }}</small>
+                </div>
               </div>
-            </div>
-            <span
-              ><button @click="move(wizard.workflow.stages, stage.id, -1)">↑</button
-              ><button @click="move(wizard.workflow.stages, stage.id, 1)">↓</button
-              ><button
-                @click="
-                  wizard.stageDraft = {
-                    id: stage.id,
-                    name: stage.name,
-                    description: stage.description,
-                  };
-                  wizard.nodeDraft = null;
-                "
+              <span
+                ><button @click="move(wizard.workflow.stages, stage.id, -1)">↑</button
+                ><button @click="move(wizard.workflow.stages, stage.id, 1)">↓</button
+                ><button
+                  @click="
+                    wizard.stageDraft = {
+                      id: stage.id,
+                      name: stage.name,
+                      description: stage.description,
+                    };
+                    wizard.nodeDraft = null;
+                  "
+                >
+                  编辑</button
+                ><button @click="deleteStage(stage.id)">删除</button></span
               >
-                编辑</button
-              ><button @click="deleteStage(stage.id)">删除</button></span
-            >
-          </header>
-          <div class="nodes">
-            <div
-              v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)"
-              :key="node.id"
-              class="node-item"
-            >
-              <div class="node-row">
-                <div class="structure-heading">
+            </header>
+            <div class="nodes">
+              <div
+                v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)"
+                :key="node.id"
+                class="node-item"
+              >
+                <div class="node-row">
+                  <div class="structure-heading">
+                    <span
+                      class="structure-icon node-structure-icon"
+                      data-structure-icon="node"
+                      aria-hidden="true"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none">
+                        <circle cx="7" cy="7" r="2" />
+                        <circle cx="17" cy="12" r="2" />
+                        <circle cx="7" cy="17" r="2" />
+                        <path d="m9 8 6 3M9 16l6-3" />
+                      </svg>
+                    </span>
+                    <div class="structure-info">
+                      <b :title="node.name">{{ node.name }}</b>
+                      <small v-if="node.description" :title="node.description">{{
+                        node.description
+                      }}</small>
+                    </div>
+                  </div>
                   <span
-                    class="structure-icon node-structure-icon"
-                    data-structure-icon="node"
-                    aria-hidden="true"
+                    ><button @click="move(stage.steps, node.id, -1)">↑</button
+                    ><button @click="move(stage.steps, node.id, 1)">↓</button
+                    ><button
+                      @click="
+                        wizard.nodeDraft = {
+                          stageId: stage.id,
+                          id: node.id,
+                          name: node.name,
+                          description: node.description,
+                        };
+                        wizard.stageDraft = null;
+                      "
+                    >
+                      编辑</button
+                    ><button @click="deleteNode(stage.id, node.id)">删除</button></span
                   >
-                    <svg viewBox="0 0 24 24" fill="none">
-                      <circle cx="7" cy="7" r="2" />
-                      <circle cx="17" cy="12" r="2" />
-                      <circle cx="7" cy="17" r="2" />
-                      <path d="m9 8 6 3M9 16l6-3" />
-                    </svg>
-                  </span>
-                  <div class="structure-info">
-                    <b :title="node.name">{{ node.name }}</b>
-                    <small v-if="node.description" :title="node.description">{{
-                      node.description
-                    }}</small>
+                </div>
+                <div v-if="wizard.nodeDraft?.id === node.id" class="inline structure-draft">
+                  <input v-model="wizard.nodeDraft.name" placeholder="节点名称" /><input
+                    v-if="!props.workspace.isHttp"
+                    v-model="wizard.nodeDraft.description"
+                    placeholder="节点说明（可选）"
+                  />
+                  <div class="structure-draft-actions">
+                    <button class="primary" @click="saveNode">保存节点</button>
+                    <button @click="wizard.nodeDraft = null">取消</button>
                   </div>
                 </div>
-                <span
-                  ><button @click="move(stage.steps, node.id, -1)">↑</button
-                  ><button @click="move(stage.steps, node.id, 1)">↓</button
-                  ><button
-                    @click="
-                      wizard.nodeDraft = {
-                        stageId: stage.id,
-                        id: node.id,
-                        name: node.name,
-                        description: node.description,
-                      };
-                      wizard.stageDraft = null;
-                    "
-                  >
-                    编辑</button
-                  ><button @click="deleteNode(stage.id, node.id)">删除</button></span
-                >
               </div>
-              <div v-if="wizard.nodeDraft?.id === node.id" class="inline structure-draft">
+              <div
+                v-if="wizard.nodeDraft?.stageId === stage.id && !wizard.nodeDraft.id"
+                class="inline structure-draft"
+              >
                 <input v-model="wizard.nodeDraft.name" placeholder="节点名称" /><input
                   v-if="!props.workspace.isHttp"
                   v-model="wizard.nodeDraft.description"
                   placeholder="节点说明（可选）"
                 />
                 <div class="structure-draft-actions">
-                  <button class="primary" @click="saveNode">保存节点</button>
+                  <button class="primary" @click="saveNode">添加节点</button>
                   <button @click="wizard.nodeDraft = null">取消</button>
                 </div>
               </div>
+              <button
+                v-if="wizard.nodeDraft?.stageId !== stage.id"
+                @click="
+                  wizard.nodeDraft = { stageId: stage.id, name: '', description: '' };
+                  wizard.stageDraft = null;
+                "
+              >
+                + 添加节点
+              </button>
             </div>
-            <div
-              v-if="wizard.nodeDraft?.stageId === stage.id && !wizard.nodeDraft.id"
-              class="inline structure-draft"
-            >
-              <input v-model="wizard.nodeDraft.name" placeholder="节点名称" /><input
+            <div v-if="wizard.stageDraft?.id === stage.id" class="inline structure-draft">
+              <input
+                v-model="wizard.stageDraft.name"
+                placeholder="环节名称"
+                @keyup.enter="saveStage"
+              /><input
                 v-if="!props.workspace.isHttp"
-                v-model="wizard.nodeDraft.description"
-                placeholder="节点说明（可选）"
+                v-model="wizard.stageDraft.description"
+                placeholder="环节说明（可选）"
               />
               <div class="structure-draft-actions">
-                <button class="primary" @click="saveNode">添加节点</button>
-                <button @click="wizard.nodeDraft = null">取消</button>
+                <button class="primary" @click="saveStage">保存环节</button>
+                <button @click="wizard.stageDraft = null">取消</button>
               </div>
             </div>
-            <button
-              v-if="wizard.nodeDraft?.stageId !== stage.id"
-              @click="
-                wizard.nodeDraft = { stageId: stage.id, name: '', description: '' };
-                wizard.stageDraft = null;
-              "
-            >
-              + 添加节点
-            </button>
           </div>
-          <div v-if="wizard.stageDraft?.id === stage.id" class="inline structure-draft">
-            <input
-              v-model="wizard.stageDraft.name"
-              placeholder="环节名称"
-              @keyup.enter="saveStage"
-            /><input
+          <div v-if="wizard.stageDraft && !wizard.stageDraft.id" class="inline structure-draft">
+            <input v-model="wizard.stageDraft.name" placeholder="环节名称" /><input
               v-if="!props.workspace.isHttp"
               v-model="wizard.stageDraft.description"
               placeholder="环节说明（可选）"
             />
             <div class="structure-draft-actions">
-              <button class="primary" @click="saveStage">保存环节</button>
+              <button class="primary" @click="saveStage">添加环节</button>
               <button @click="wizard.stageDraft = null">取消</button>
             </div>
           </div>
-        </div>
-        <div v-if="wizard.stageDraft && !wizard.stageDraft.id" class="inline structure-draft">
-          <input v-model="wizard.stageDraft.name" placeholder="环节名称" /><input
-            v-if="!props.workspace.isHttp"
-            v-model="wizard.stageDraft.description"
-            placeholder="环节说明（可选）"
-          />
-          <div class="structure-draft-actions">
-            <button class="primary" @click="saveStage">添加环节</button>
-            <button @click="wizard.stageDraft = null">取消</button>
-          </div>
-        </div>
-        <button
-          v-if="!wizard.stageDraft"
-          class="primary add-stage-trigger"
-          @click="
-            wizard.stageDraft = { name: '', description: '' };
-            wizard.nodeDraft = null;
-          "
-        >
-          + 添加环节
-        </button>
-      </section>
-      <section
-        v-else-if="wizard.step === 2"
-        class="wizard-page"
-        aria-label="Command 入口"
-        tabindex="-1"
-      >
-        <p class="hint">
-          Command 在 Agent 中通过 / 触发；从资产清单中选择或新定义，参数与正文由流水线发布后回填。
-        </p>
-        <p class="main-hint">
-          <b>主入口建议：</b>建议选择一个包含 <code>e2e</code> 的 Command 作为流程主入口，例如
-          <code>/{{ productCatalogItemPrefix }}e2e-codec</code>。
-        </p>
-        <p
-          v-if="
-            wizard.workflow.commands.length &&
-            !hasMainEntry(wizard.workflow.commands, currentProduct?.name || '')
-          "
-          class="hint"
-          role="status"
-        >
-          建议添加 e2e 主入口 Command，当前配置仍可继续保存。
-        </p>
-        <p v-if="!wizard.workflow.commands.length" class="hint">尚未选择 Command 入口。</p>
-        <div v-for="command in wizard.workflow.commands" :key="command.id" class="command-row">
-          <div class="command-details">
-            <span class="command-name-line">
-              <code :title="command.name">{{ command.name }}</code>
-              <i
-                v-if="command.version?.trim()"
-                class="asset-package-status"
-                role="img"
-                :title="`已有发布版本：${command.version}`"
-                :aria-label="`已有发布版本：${command.version}`"
-                >✓</i
-              >
-            </span>
-            <p v-if="command.description?.trim()" :title="command.description">
-              {{ command.description }}
-            </p>
-          </div>
           <button
-            type="button"
-            class="command-remove"
+            v-if="!wizard.stageDraft"
+            class="primary add-stage-trigger"
             @click="
-              wizard.workflow.commands = wizard.workflow.commands.filter(
-                (c) => c.id !== command.id,
-              );
-              syncWizard();
+              wizard.stageDraft = { name: '', description: '' };
+              wizard.nodeDraft = null;
             "
           >
-            删除
+            + 添加环节
           </button>
-        </div>
-        <h4>从资产清单中选择或新定义</h4>
-        <WorkflowCapabilityPicker
-          :key="`command-${productId}`"
-          :types="['Command']"
-          :local-options="localCommandOptions"
-          :selected-ids="wizard.workflow.commands.map((item) => item.commandId)"
-          :query="props.workspace.queryCapabilityOptions"
-          @select="selectCapability"
-        />
-        <div v-if="wizard.commandDraft" class="inline form capability-create-form">
-          <div class="capability-create-heading">自定义 Command</div>
-          <div class="capability-create-fields">
-            <label>
-              Command 名称 *
-              <input
-                v-model="wizard.commandDraft.name"
-                :placeholder="`/${productCatalogItemPrefix}e2e-codec`"
-              />
-              <span class="capability-field-hint">
-                {{
-                  productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
-                }}仅使用小写字母、数字和连字符。
-              </span>
-            </label>
-            <label>
-              描述 *
-              <textarea v-model="wizard.commandDraft.description" placeholder="描述 *" rows="3" />
-            </label>
-            <WorkflowPersonPicker
-              :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
-              v-model="wizard.commandDraft.developer"
-              label="开发责任人 *"
-            />
-            <WorkflowPersonPicker
-              :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
-              v-model="wizard.commandDraft.owner"
-              label="责任人 *"
-            />
-            <label>
-              计划完成时间 *
-              <input v-model="wizard.commandDraft.dueDate" type="date" />
-            </label>
-            <p class="capability-field-hint">参数与正文由流水线发布后回填。</p>
-          </div>
-          <p v-if="wizard.error" class="capability-create-error" role="alert">{{ wizard.error }}</p>
-          <div class="capability-create-actions">
-            <button class="primary" @click="createCommand">创建并加入资产清单</button>
-            <button
-              @click="
-                wizard.commandDraft = null;
-                wizard.error = '';
-              "
-            >
-              取消
-            </button>
-          </div>
-        </div>
-        <button v-else class="create-command-trigger" @click="openCommandDraft">
-          + 新定义 Command
-        </button>
-      </section>
-      <section v-else class="wizard-page" aria-label="Skill / Agent 集成" tabindex="-1">
-        <p class="hint">
-          先圈定该 Workflow 可用的 Agent / Skill 资产池，再逐节点从池中分配执行资产。
-        </p>
-        <h4>
-          Workflow 资产池
-          <small>{{ wizard.poolIds.length }} 个已选 · 移出资产池会同时解除相关节点的绑定</small>
-        </h4>
-        <div class="chips">
-          <span
-            v-for="id in wizard.poolIds"
-            :key="id"
-            class="asset-chip"
-            :data-asset-type="assets.find((a) => a._id === id)?.assetType"
-            ><b class="asset-type-label" :data-type="assets.find((a) => a._id === id)?.assetType">{{
-              assets.find((a) => a._id === id)?.assetType
-            }}</b
-            >{{ assets.find((a) => a._id === id)?.name
-            }}<button @click="togglePool(id)">×</button></span
-          >
-        </div>
-        <WorkflowCapabilityPicker
-          :key="`asset-${productId}`"
-          :types="['Agent', 'Skill']"
-          :local-options="localAssetOptions"
-          :selected-ids="wizard.poolIds"
-          :query="props.workspace.queryCapabilityOptions"
-          @select="selectCapability"
-          @type-change="
-            (type) => {
-              if (type !== 'Command') wizard!.assetTypeTab = type;
-            }
-          "
-        />
-        <div v-if="wizard.assetDraft" class="inline form capability-create-form">
-          <div class="capability-create-heading">自定义 Agent / Skill</div>
-          <div class="capability-create-fields">
-            <div class="capability-type-field">
-              <span>资产类型</span>
-              <div class="capability-type-picker" role="group" aria-label="资产类型">
-                <button
-                  v-for="type in ['Agent', 'Skill'] as const"
-                  :key="type"
-                  type="button"
-                  :aria-pressed="wizard.assetDraft.assetType === type"
-                  @click="selectDraftAssetType(type)"
-                >
-                  {{ type }}
-                </button>
-              </div>
-            </div>
-            <label>
-              {{ wizard.assetDraft.assetType }} 名称 *
-              <input
-                v-model="wizard.assetDraft.name"
-                :placeholder="`${productCatalogItemPrefix}${wizard.assetDraft.assetType === 'Skill' ? 'codec-generator' : 'coding-agent'}`"
-              />
-              <span class="capability-field-hint">
-                {{
-                  productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
-                }}仅使用小写字母、数字和连字符。
-              </span>
-            </label>
-            <label>
-              描述 *
-              <textarea v-model="wizard.assetDraft.description" placeholder="描述 *" rows="3" />
-            </label>
-            <WorkflowPersonPicker
-              :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
-              :key="`developer-${wizard.assetDraft.assetType}`"
-              v-model="wizard.assetDraft.developer"
-              label="开发责任人 *"
-            />
-            <WorkflowPersonPicker
-              :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
-              :key="`owner-${wizard.assetDraft.assetType}`"
-              v-model="wizard.assetDraft.owner"
-              label="责任人 *"
-            />
-            <label>
-              计划完成时间 *
-              <input v-model="wizard.assetDraft.dueDate" type="date" />
-            </label>
-            <p class="capability-field-hint">资产内容由流水线发布后回填。</p>
-          </div>
-          <p v-if="wizard.error" class="capability-create-error" role="alert">{{ wizard.error }}</p>
-          <div class="capability-create-actions">
-            <button class="primary" @click="createAsset">创建并加入资产清单</button>
-            <button
-              @click="
-                wizard.assetDraft = null;
-                wizard.error = '';
-              "
-            >
-              取消
-            </button>
-          </div>
-        </div>
-        <div v-else class="capability-create-entry">
-          <button type="button" @click="openAssetDraft('Agent')">+ 自定义 Agent</button>
-          <button type="button" @click="openAssetDraft('Skill')">+ 自定义 Skill</button>
-        </div>
-        <h4>节点资产分配 <small>候选来自上方资产池的勾选结果</small></h4>
-        <p v-if="!wizard.workflow.stages.flatMap((s) => s.steps).length" class="hint">
-          该 Workflow 尚未定义节点。
-        </p>
-        <div
-          v-for="stage in [...wizard.workflow.stages].sort((a, b) => a.order - b.order)"
-          :key="stage.id"
-          class="assignment"
+        </section>
+        <section
+          v-else-if="wizard.step === 2"
+          class="wizard-page"
+          aria-label="Command 入口"
+          tabindex="-1"
         >
-          <b :title="stage.name">{{ stage.name }}</b>
-          <small
-            v-if="stage.description"
-            class="assignment-description"
-            :title="stage.description"
-            >{{ stage.description }}</small
-          >
-          <div v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)" :key="node.id">
-            <strong :title="node.name">{{ node.name }}</strong>
-            <small
-              v-if="node.description"
-              class="assignment-description"
-              :title="node.description"
-              >{{ node.description }}</small
-            >
-            <div class="chips">
-              <span
-                v-for="id in wizard.nodeAssetsMap[node.id] || []"
-                :key="id"
-                class="asset-chip"
-                :data-asset-type="assets.find((a) => a._id === id)?.assetType"
-                ><b
-                  class="asset-type-label"
-                  :data-type="assets.find((a) => a._id === id)?.assetType"
-                  >{{ assets.find((a) => a._id === id)?.assetType }}</b
-                >{{ assets.find((a) => a._id === id)?.name
-                }}<button @click="toggleNodeAsset(node.id, id)">×</button></span
-              >
-            </div>
-            <HarnessSelect
-              :aria-label="`为${node.name}分配资产`"
-              v-if="
-                wizard.poolIds.some((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
-              "
-              @change="toggleNodeAsset(node.id, $event)"
-              placeholder="+ 从资产池添加…"
-              :options="[
-                ...wizard.poolIds
-                  .filter((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
-                  .map((id) => ({
-                    value: id,
-                    label: assets.find((a) => a._id === id)?.name || '未找到资产',
-                    tag: assets.find((a) => a._id === id)?.assetType,
-                  })),
-              ]"
-            /><small v-else-if="!(wizard.nodeAssetsMap[node.id] || []).length">未分配资产</small>
-          </div>
-        </div>
-      </section>
-      <footer class="wizard-footer">
-        <button
-          v-if="props.workspace.isHttp && wizard.error"
-          type="button"
-          :disabled="wizardBusy"
-          @click="dismissWizard"
-        >
-          放弃未保存修改
-        </button>
-        <div class="wizard-save-feedback">
-          <span class="error">{{
-            (wizard.step === 2 && wizard.commandDraft) || (wizard.step === 3 && wizard.assetDraft)
-              ? ''
-              : wizard.error
-          }}</span>
-          <span
-            class="wizard-save-status"
-            :class="{ pending: wizardHasChanges || wizard.error }"
+          <p class="hint">
+            Command 在 Agent 中通过 / 触发；从资产清单中选择或新定义，参数与正文由流水线发布后回填。
+          </p>
+          <p class="main-hint">
+            <b>主入口建议：</b>建议选择一个包含 <code>e2e</code> 的 Command 作为流程主入口，例如
+            <code>/{{ productCatalogItemPrefix }}e2e-codec</code>。
+          </p>
+          <p
+            v-if="
+              wizard.workflow.commands.length &&
+              !hasMainEntry(wizard.workflow.commands, currentProduct?.name || '')
+            "
+            class="hint"
             role="status"
-            >{{ wizardSaveStatus }}</span
           >
-        </div>
-        <span>
-          <button type="button" :disabled="wizardBusy" @click="saveCurrentDesign">保存</button>
-          <button :disabled="wizardBusy || wizard.step === 0" @click="goStep(wizard.step - 1)">
-            上一步</button
-          ><button class="primary" :disabled="wizardBusy" @click="goNext">
-            {{ wizardBusy ? '正在保存…' : wizard.step === 3 ? '完成设计' : '下一步' }}
-          </button></span
-        >
-      </footer>
-    </section>
-  </div>
-  <div v-if="wizard && structureDeleteTarget" class="modal structure-delete-modal">
-    <section
-      ref="structureDeleteDialogElement"
-      class="dialog small structure-delete-dialog"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="structureDeleteTarget.nodeId ? '删除节点' : '删除环节'"
-      aria-describedby="structure-delete-description"
-      :aria-busy="structureDeleting"
-      tabindex="-1"
-      @keydown="handleStructureDeleteKeydown"
+            建议添加 e2e 主入口 Command，当前配置仍可继续保存。
+          </p>
+          <p v-if="!wizard.workflow.commands.length" class="hint">尚未选择 Command 入口。</p>
+          <div v-for="command in wizard.workflow.commands" :key="command.id" class="command-row">
+            <div class="command-details">
+              <span class="command-name-line">
+                <code :title="command.name">{{ command.name }}</code>
+                <i
+                  v-if="command.version?.trim()"
+                  class="asset-package-status"
+                  role="img"
+                  :title="`已有发布版本：${command.version}`"
+                  :aria-label="`已有发布版本：${command.version}`"
+                  >✓</i
+                >
+              </span>
+              <p v-if="command.description?.trim()" :title="command.description">
+                {{ command.description }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="command-remove"
+              @click="
+                wizard.workflow.commands = wizard.workflow.commands.filter(
+                  (c) => c.id !== command.id,
+                );
+                syncWizard();
+              "
+            >
+              删除
+            </button>
+          </div>
+          <h4>从资产清单中选择或新定义</h4>
+          <WorkflowCapabilityPicker
+            :key="`command-${productId}`"
+            :types="['Command']"
+            :local-options="localCommandOptions"
+            :selected-ids="wizard.workflow.commands.map((item) => item.commandId)"
+            :query="props.workspace.queryCapabilityOptions"
+            @select="selectCapability"
+          />
+          <div v-if="wizard.commandDraft" class="inline form capability-create-form">
+            <div class="capability-create-heading">自定义 Command</div>
+            <div class="capability-create-fields">
+              <label>
+                Command 名称 *
+                <input
+                  v-model="wizard.commandDraft.name"
+                  :placeholder="`/${productCatalogItemPrefix}e2e-codec`"
+                />
+                <span class="capability-field-hint">
+                  {{
+                    productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
+                  }}仅使用小写字母、数字和连字符。
+                </span>
+              </label>
+              <label>
+                描述 *
+                <textarea v-model="wizard.commandDraft.description" placeholder="描述 *" rows="3" />
+              </label>
+              <WorkflowPersonPicker
+                :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
+                v-model="wizard.commandDraft.developer"
+                label="开发责任人 *"
+              />
+              <WorkflowPersonPicker
+                :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
+                v-model="wizard.commandDraft.owner"
+                label="责任人 *"
+              />
+              <label>
+                计划完成时间 *
+                <input v-model="wizard.commandDraft.dueDate" type="date" />
+              </label>
+              <p class="capability-field-hint">参数与正文由流水线发布后回填。</p>
+            </div>
+            <p v-if="wizard.error" class="capability-create-error" role="alert">
+              {{ wizard.error }}
+            </p>
+            <div class="capability-create-actions">
+              <button class="primary" @click="createCommand">创建并加入资产清单</button>
+              <button
+                @click="
+                  wizard.commandDraft = null;
+                  wizard.error = '';
+                "
+              >
+                取消
+              </button>
+            </div>
+          </div>
+          <button v-else class="create-command-trigger" @click="openCommandDraft">
+            + 新定义 Command
+          </button>
+        </section>
+        <section v-else class="wizard-page" aria-label="Skill / Agent 集成" tabindex="-1">
+          <p class="hint">
+            先圈定该 Workflow 可用的 Agent / Skill 资产池，再逐节点从池中分配执行资产。
+          </p>
+          <h4>
+            Workflow 资产池
+            <small>{{ wizard.poolIds.length }} 个已选 · 移出资产池会同时解除相关节点的绑定</small>
+          </h4>
+          <div class="chips">
+            <span
+              v-for="id in wizard.poolIds"
+              :key="id"
+              class="asset-chip"
+              :data-asset-type="assets.find((a) => a._id === id)?.assetType"
+              ><b
+                class="asset-type-label"
+                :data-type="assets.find((a) => a._id === id)?.assetType"
+                >{{ assets.find((a) => a._id === id)?.assetType }}</b
+              >{{ assets.find((a) => a._id === id)?.name
+              }}<button @click="togglePool(id)">×</button></span
+            >
+          </div>
+          <WorkflowCapabilityPicker
+            :key="`asset-${productId}`"
+            :types="['Agent', 'Skill']"
+            :local-options="localAssetOptions"
+            :selected-ids="wizard.poolIds"
+            :query="props.workspace.queryCapabilityOptions"
+            @select="selectCapability"
+            @type-change="
+              (type) => {
+                if (type !== 'Command') wizard!.assetTypeTab = type;
+              }
+            "
+          />
+          <div v-if="wizard.assetDraft" class="inline form capability-create-form">
+            <div class="capability-create-heading">自定义 Agent / Skill</div>
+            <div class="capability-create-fields">
+              <div class="capability-type-field">
+                <span>资产类型</span>
+                <div class="capability-type-picker" role="group" aria-label="资产类型">
+                  <button
+                    v-for="type in ['Agent', 'Skill'] as const"
+                    :key="type"
+                    type="button"
+                    :aria-pressed="wizard.assetDraft.assetType === type"
+                    @click="selectDraftAssetType(type)"
+                  >
+                    {{ type }}
+                  </button>
+                </div>
+              </div>
+              <label>
+                {{ wizard.assetDraft.assetType }} 名称 *
+                <input
+                  v-model="wizard.assetDraft.name"
+                  :placeholder="`${productCatalogItemPrefix}${wizard.assetDraft.assetType === 'Skill' ? 'codec-generator' : 'coding-agent'}`"
+                />
+                <span class="capability-field-hint">
+                  {{
+                    productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
+                  }}仅使用小写字母、数字和连字符。
+                </span>
+              </label>
+              <label>
+                描述 *
+                <textarea v-model="wizard.assetDraft.description" placeholder="描述 *" rows="3" />
+              </label>
+              <WorkflowPersonPicker
+                :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
+                :key="`developer-${wizard.assetDraft.assetType}`"
+                v-model="wizard.assetDraft.developer"
+                label="开发责任人 *"
+              />
+              <WorkflowPersonPicker
+                :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
+                :key="`owner-${wizard.assetDraft.assetType}`"
+                v-model="wizard.assetDraft.owner"
+                label="责任人 *"
+              />
+              <label>
+                计划完成时间 *
+                <input v-model="wizard.assetDraft.dueDate" type="date" />
+              </label>
+              <p class="capability-field-hint">资产内容由流水线发布后回填。</p>
+            </div>
+            <p v-if="wizard.error" class="capability-create-error" role="alert">
+              {{ wizard.error }}
+            </p>
+            <div class="capability-create-actions">
+              <button class="primary" @click="createAsset">创建并加入资产清单</button>
+              <button
+                @click="
+                  wizard.assetDraft = null;
+                  wizard.error = '';
+                "
+              >
+                取消
+              </button>
+            </div>
+          </div>
+          <div v-else class="capability-create-entry">
+            <button type="button" @click="openAssetDraft('Agent')">+ 自定义 Agent</button>
+            <button type="button" @click="openAssetDraft('Skill')">+ 自定义 Skill</button>
+          </div>
+          <h4>节点资产分配 <small>候选来自上方资产池的勾选结果</small></h4>
+          <p v-if="!wizard.workflow.stages.flatMap((s) => s.steps).length" class="hint">
+            该 Workflow 尚未定义节点。
+          </p>
+          <div
+            v-for="stage in [...wizard.workflow.stages].sort((a, b) => a.order - b.order)"
+            :key="stage.id"
+            class="assignment"
+          >
+            <b :title="stage.name">{{ stage.name }}</b>
+            <small
+              v-if="stage.description"
+              class="assignment-description"
+              :title="stage.description"
+              >{{ stage.description }}</small
+            >
+            <div v-for="node in [...stage.steps].sort((a, b) => a.order - b.order)" :key="node.id">
+              <strong :title="node.name">{{ node.name }}</strong>
+              <small
+                v-if="node.description"
+                class="assignment-description"
+                :title="node.description"
+                >{{ node.description }}</small
+              >
+              <div class="chips">
+                <span
+                  v-for="id in wizard.nodeAssetsMap[node.id] || []"
+                  :key="id"
+                  class="asset-chip"
+                  :data-asset-type="assets.find((a) => a._id === id)?.assetType"
+                  ><b
+                    class="asset-type-label"
+                    :data-type="assets.find((a) => a._id === id)?.assetType"
+                    >{{ assets.find((a) => a._id === id)?.assetType }}</b
+                  >{{ assets.find((a) => a._id === id)?.name
+                  }}<button @click="toggleNodeAsset(node.id, id)">×</button></span
+                >
+              </div>
+              <HarnessSelect
+                :aria-label="`为${node.name}分配资产`"
+                v-if="
+                  wizard.poolIds.some((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
+                "
+                @change="toggleNodeAsset(node.id, $event)"
+                placeholder="+ 从资产池添加…"
+                :options="[
+                  ...wizard.poolIds
+                    .filter((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
+                    .map((id) => ({
+                      value: id,
+                      label: assets.find((a) => a._id === id)?.name || '未找到资产',
+                      tag: assets.find((a) => a._id === id)?.assetType,
+                    })),
+                ]"
+              /><small v-else-if="!(wizard.nodeAssetsMap[node.id] || []).length">未分配资产</small>
+            </div>
+          </div>
+        </section>
+        <footer class="wizard-footer">
+          <button
+            v-if="props.workspace.isHttp && wizard.error"
+            type="button"
+            :disabled="wizardBusy"
+            @click="dismissWizard"
+          >
+            放弃未保存修改
+          </button>
+          <div class="wizard-save-feedback">
+            <span class="error">{{
+              (wizard.step === 2 && wizard.commandDraft) || (wizard.step === 3 && wizard.assetDraft)
+                ? ''
+                : wizard.error
+            }}</span>
+            <span
+              class="wizard-save-status"
+              :class="{ pending: wizardHasChanges || wizard.error }"
+              role="status"
+              >{{ wizardSaveStatus }}</span
+            >
+          </div>
+          <span>
+            <button type="button" :disabled="wizardBusy" @click="saveCurrentDesign">保存</button>
+            <button :disabled="wizardBusy || wizard.step === 0" @click="goStep(wizard.step - 1)">
+              上一步</button
+            ><button class="primary" :disabled="wizardBusy" @click="goNext">
+              {{ wizardBusy ? '正在保存…' : wizard.step === 3 ? '完成设计' : '下一步' }}
+            </button></span
+          >
+        </footer>
+      </section>
+    </div>
+  </Teleport>
+  <Teleport to="body">
+    <div
+      v-if="wizard && structureDeleteTarget"
+      class="modal structure-delete-modal harness-workspace-overlay"
     >
-      <h2>{{ structureDeleteTarget.nodeId ? '删除节点' : '删除环节' }}</h2>
-      <p id="structure-delete-description">
-        确认删除{{ structureDeleteTarget.nodeId ? '节点' : '环节' }}「<b>{{
-          structureDeleteTarget.name
-        }}</b
-        >」？
-        {{
-          structureDeleteTarget.nodeId
-            ? '相关资产绑定和规划记录会一并删除，资产本身保留。'
-            : '其下节点及相关资产绑定、规划记录会一并删除，资产本身保留。'
-        }}
-      </p>
-      <p v-if="structureDeleteTarget.error" class="form-error" role="alert">
-        {{ structureDeleteTarget.error }}
-      </p>
-      <footer>
-        <button type="button" :disabled="structureDeleting" @click="closeStructureDeleteDialog">
-          取消
-        </button>
-        <button
-          class="danger-btn"
-          type="button"
-          :disabled="structureDeleting"
-          @click="confirmStructureDelete"
-        >
-          {{ structureDeleting ? '正在删除…' : '确认删除' }}
-        </button>
-      </footer>
-    </section>
-  </div>
+      <section
+        ref="structureDeleteDialogElement"
+        class="dialog small structure-delete-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="structureDeleteTarget.nodeId ? '删除节点' : '删除环节'"
+        aria-describedby="structure-delete-description"
+        :aria-busy="structureDeleting"
+        tabindex="-1"
+        @keydown="handleStructureDeleteKeydown"
+      >
+        <h2>{{ structureDeleteTarget.nodeId ? '删除节点' : '删除环节' }}</h2>
+        <p id="structure-delete-description">
+          确认删除{{ structureDeleteTarget.nodeId ? '节点' : '环节' }}「<b>{{
+            structureDeleteTarget.name
+          }}</b
+          >」？
+          {{
+            structureDeleteTarget.nodeId
+              ? '相关资产绑定和规划记录会一并删除，资产本身保留。'
+              : '其下节点及相关资产绑定、规划记录会一并删除，资产本身保留。'
+          }}
+        </p>
+        <p v-if="structureDeleteTarget.error" class="form-error" role="alert">
+          {{ structureDeleteTarget.error }}
+        </p>
+        <footer>
+          <button type="button" :disabled="structureDeleting" @click="closeStructureDeleteDialog">
+            取消
+          </button>
+          <button
+            class="danger-btn"
+            type="button"
+            :disabled="structureDeleting"
+            @click="confirmStructureDelete"
+          >
+            {{ structureDeleting ? '正在删除…' : '确认删除' }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -3357,11 +3375,12 @@ h4 small {
   background: #ef4444 !important;
   color: #fff !important;
 }
-.wizard {
+.dialog.wizard {
   display: flex;
   flex-direction: column;
-  width: min(1206px, calc(100vw - 32px));
-  height: 760px;
+  width: min(92vw, 1760px, calc(100vw - 32px));
+  height: min(88vh, 980px);
+  height: min(88dvh, 980px);
   min-height: 0;
   max-height: calc(100vh - 92px);
   max-height: calc(100dvh - 92px);
@@ -4459,7 +4478,7 @@ h4 small {
   }
 }
 @media (max-height: 760px) {
-  .wizard {
+  .dialog.wizard {
     height: calc(100vh - 84px);
     height: calc(100dvh - 84px);
     max-height: calc(100vh - 84px);
@@ -4542,7 +4561,7 @@ h4 small {
   .config-grid {
     grid-template-columns: 1fr;
   }
-  .wizard {
+  .dialog.wizard {
     min-width: 0;
     padding: 18px;
   }

@@ -74,6 +74,8 @@ test('Workflow 设计弹窗在共享逻辑下保持大尺寸', async ({ page }) 
   const wizard = page.getByRole('dialog', { name: 'Workflow 设计', exact: true });
   const box = await wizard.boundingBox();
   expect(box).not.toBeNull();
-  expect(box!.width).toBe(1206);
-  expect(box!.height).toBe(760);
+  // 大弹窗档位：宽度 min(92vw, 1760px)、高度 min(88dvh, 980px)
+  // 1440×1000 视口下应为 1324.8 × 880
+  expect(box!.width).toBeCloseTo(1324.8, 0);
+  expect(box!.height).toBeCloseTo(880, 0);
 });

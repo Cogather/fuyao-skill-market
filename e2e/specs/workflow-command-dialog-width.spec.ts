@@ -55,7 +55,7 @@ async function mountDialog(page: Page, isHttp: boolean): Promise<void> {
 }
 
 for (const isHttp of [false, true]) {
-  test(`${isHttp ? 'HTTP' : 'mock'} 模式的 Workflow Command 弹窗宽度为 1080px`, async ({
+  test(`${isHttp ? 'HTTP' : 'mock'} 模式的 Workflow Command 弹窗宽度按 92vw 自适应（1440 视口为 1324.8px）`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -65,9 +65,10 @@ for (const isHttp of [false, true]) {
       name: '合并请求自动评审流程 Command 清单',
       exact: true,
     });
-    await expect(dialog).toHaveCSS('width', '1080px');
     const box = await dialog.boundingBox();
     expect(box).not.toBeNull();
+    // 宽度 min(92vw, 1760px)：1440 视口下为 1324.8px，且保持水平居中
+    expect(box!.width).toBeCloseTo(1324.8, 0);
     expect(Math.abs(box!.x + box!.width / 2 - 720)).toBeLessThan(1);
   });
 }

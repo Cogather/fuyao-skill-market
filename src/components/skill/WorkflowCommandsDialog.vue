@@ -164,114 +164,125 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="open" class="workflow-command-overlay" @mousedown.self="close">
-    <section
-      class="workflow-command-dialog"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="dialogLabel"
+  <Teleport to="body">
+    <div
+      v-if="open"
+      class="workflow-command-overlay harness-workspace-overlay"
+      @mousedown.self="close"
     >
-      <header class="workflow-command-header">
-        <div>
-          <span class="workflow-command-eyebrow">WORKFLOW COMMANDS</span>
-          <h2>{{ workflowName }} <small>Command 清单</small></h2>
-          <p>共 {{ commands.length }} 个入口，展开可查看当前版本内容</p>
-        </div>
-        <button type="button" class="workflow-command-close" aria-label="关闭" @click="close">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="m7 7 10 10M17 7 7 17" />
-          </svg>
-        </button>
-      </header>
+      <section
+        class="workflow-command-dialog"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="dialogLabel"
+      >
+        <header class="workflow-command-header">
+          <div>
+            <span class="workflow-command-eyebrow">WORKFLOW COMMANDS</span>
+            <h2>{{ workflowName }} <small>Command 清单</small></h2>
+            <p>共 {{ commands.length }} 个入口，展开可查看当前版本内容</p>
+          </div>
+          <button type="button" class="workflow-command-close" aria-label="关闭" @click="close">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m7 7 10 10M17 7 7 17" />
+            </svg>
+          </button>
+        </header>
 
-      <div class="workflow-command-body">
-        <div v-if="loading" class="workflow-command-feedback" role="status">
-          <span class="workflow-command-spinner" aria-hidden="true"></span>
-          正在加载 Command 清单…
-        </div>
-        <div v-else-if="error" class="workflow-command-feedback is-error" role="alert">
-          <span>{{ error }}</span>
-          <button type="button" @click="loadCommands">重新加载</button>
-        </div>
-        <div v-else-if="!commands.length" class="workflow-command-empty" role="status">
-          当前工作流暂无 Command 入口
-        </div>
-        <ol v-else class="workflow-command-list">
-          <li
-            v-for="(command, index) in commands"
-            :key="commandKey(command, index)"
-            class="workflow-command-item"
-            :class="{ 'is-open': expandedKeys.has(commandKey(command, index)) }"
-          >
-            <button
-              type="button"
-              class="workflow-command-summary"
-              :aria-expanded="expandedKeys.has(commandKey(command, index))"
-              :aria-label="`${expandedKeys.has(commandKey(command, index)) ? '收起' : '展开'} Command ${command.name}`"
-              @click="toggleCommand(command, index)"
+        <div class="workflow-command-body">
+          <div v-if="loading" class="workflow-command-feedback" role="status">
+            <span class="workflow-command-spinner" aria-hidden="true"></span>
+            正在加载 Command 清单…
+          </div>
+          <div v-else-if="error" class="workflow-command-feedback is-error" role="alert">
+            <span>{{ error }}</span>
+            <button type="button" @click="loadCommands">重新加载</button>
+          </div>
+          <div v-else-if="!commands.length" class="workflow-command-empty" role="status">
+            当前工作流暂无 Command 入口
+          </div>
+          <ol v-else class="workflow-command-list">
+            <li
+              v-for="(command, index) in commands"
+              :key="commandKey(command, index)"
+              class="workflow-command-item"
+              :class="{ 'is-open': expandedKeys.has(commandKey(command, index)) }"
             >
-              <span class="workflow-command-info">
-                <span class="workflow-command-name">{{ command.name }}</span>
-                <span v-if="command.description" class="workflow-command-description">
-                  {{ command.description }}
+              <button
+                type="button"
+                class="workflow-command-summary"
+                :aria-expanded="expandedKeys.has(commandKey(command, index))"
+                :aria-label="`${expandedKeys.has(commandKey(command, index)) ? '收起' : '展开'} Command ${command.name}`"
+                @click="toggleCommand(command, index)"
+              >
+                <span class="workflow-command-info">
+                  <span class="workflow-command-name">{{ command.name }}</span>
+                  <span v-if="command.description" class="workflow-command-description">
+                    {{ command.description }}
+                  </span>
                 </span>
-              </span>
-              <span
-                class="workflow-command-version"
-                :class="{ 'is-empty': !command.version?.trim() }"
-              >
-                {{ command.version?.trim() ? `v${command.version.trim()}` : '暂无版本' }}
-              </span>
-              <svg
-                class="workflow-command-chevron"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-              >
-                <path d="m9 6 6 6-6 6" />
-              </svg>
-            </button>
-
-            <div
-              v-if="expandedKeys.has(commandKey(command, index))"
-              class="workflow-command-content-wrap"
-            >
-              <p v-if="!command.version?.trim()" class="workflow-command-unavailable">
-                暂无已发布版本，暂不能查看内容
-              </p>
-              <p
-                v-else-if="stateFor(commandKey(command, index)).loading"
-                class="workflow-command-content-status"
-                role="status"
-              >
-                正在加载 Command 内容…
-              </p>
-              <div
-                v-else-if="stateFor(commandKey(command, index)).error"
-                class="workflow-command-content-error"
-                role="alert"
-              >
-                <span>{{ stateFor(commandKey(command, index)).error }}</span>
-                <button
-                  type="button"
-                  :aria-label="`重新加载 ${command.name}`"
-                  @click="loadCommandContent(command, index)"
+                <span
+                  class="workflow-command-version"
+                  :class="{ 'is-empty': !command.version?.trim() }"
                 >
-                  重新加载
-                </button>
+                  {{ command.version?.trim() ? `v${command.version.trim()}` : '暂无版本' }}
+                </span>
+                <svg
+                  class="workflow-command-chevron"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </button>
+
+              <div
+                v-if="expandedKeys.has(commandKey(command, index))"
+                class="workflow-command-content-wrap"
+              >
+                <p v-if="!command.version?.trim()" class="workflow-command-unavailable">
+                  暂无已发布版本，暂不能查看内容
+                </p>
+                <p
+                  v-else-if="stateFor(commandKey(command, index)).loading"
+                  class="workflow-command-content-status"
+                  role="status"
+                >
+                  正在加载 Command 内容…
+                </p>
+                <div
+                  v-else-if="stateFor(commandKey(command, index)).error"
+                  class="workflow-command-content-error"
+                  role="alert"
+                >
+                  <span>{{ stateFor(commandKey(command, index)).error }}</span>
+                  <button
+                    type="button"
+                    :aria-label="`重新加载 ${command.name}`"
+                    @click="loadCommandContent(command, index)"
+                  >
+                    重新加载
+                  </button>
+                </div>
+                <pre v-else class="workflow-command-content">{{
+                  stateFor(commandKey(command, index)).content || '(空)'
+                }}</pre>
               </div>
-              <pre v-else class="workflow-command-content">{{
-                stateFor(commandKey(command, index)).content || '(空)'
-              }}</pre>
-            </div>
-          </li>
-        </ol>
-      </div>
-    </section>
-  </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+.workflow-command-overlay,
+.workflow-command-overlay * {
+  box-sizing: border-box;
+}
+
 .workflow-command-overlay {
   position: fixed;
   z-index: 1200;
@@ -285,8 +296,11 @@ onBeforeUnmount(() => {
 }
 
 .workflow-command-dialog {
-  width: min(1080px, 100%);
-  max-height: min(760px, calc(100vh - 56px));
+  box-sizing: border-box;
+  width: min(92vw, 1760px);
+  max-width: 100%;
+  max-height: min(88vh, 980px, calc(100vh - 56px));
+  max-height: min(88dvh, 980px, calc(100dvh - 56px));
   overflow: hidden;
   border: 1px solid #dfe5f1;
   border-radius: 16px;
@@ -364,7 +378,8 @@ onBeforeUnmount(() => {
 }
 
 .workflow-command-body {
-  max-height: calc(min(760px, 100vh - 56px) - 119px);
+  max-height: calc(min(88vh, 980px, calc(100vh - 56px)) - 119px);
+  max-height: calc(min(88dvh, 980px, calc(100dvh - 56px)) - 119px);
   padding: 18px 22px 22px;
   overflow-y: auto;
 }
