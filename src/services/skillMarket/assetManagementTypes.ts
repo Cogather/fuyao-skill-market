@@ -99,6 +99,8 @@ export type HarnessAsset = {
   dimName?: string | null;
   firstScene?: string | null;
   secondScene?: string | null;
+  /** 列表接口返回的原始最新版本；独立发布必须原样提交。 */
+  latestVersion?: string;
   currentVersion: string;
   nextPublishVersion?: string;
   versions: string[];

@@ -12,6 +12,7 @@ import HarnessVersionPicker from '../../components/skill/HarnessVersionPicker.vu
 import HarnessAssetEditDialog from '../../components/skill/HarnessAssetEditDialog.vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
+import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
 import {
@@ -27,7 +28,6 @@ import {
   type HarnessAssetPersonField,
   type HarnessAssetProduct,
   type HarnessAssetScope,
-  type HarnessAssetType,
   type DeleteHarnessAssetInput,
 } from '../../services/skillMarket/assetManagementTypes';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
@@ -118,6 +118,7 @@ const selectedVersion = ref('');
 const detailTab = ref<'content' | 'report' | 'history'>('content');
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
+const atomicPublishAsset = ref<HarnessAsset | null>(null);
 const extensionRelease = ref<{
   context: ExtensionReleaseContext;
   mode: 'publish' | 'history';
@@ -490,6 +491,12 @@ const extensionHasNoVersion = computed(
 );
 const isExtensionHistoryTab = computed(
   () => selectedAsset.value?.assetType === 'Extension' && detailTab.value === 'history',
+);
+const isAtomicHistoryTab = computed(
+  () => selectedAsset.value?.assetType !== 'Extension' && detailTab.value === 'history',
+);
+const isHistoryTab = computed(
+  () => isExtensionHistoryTab.value || isAtomicHistoryTab.value,
 );
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
@@ -927,6 +934,29 @@ function deleteCardAsset(asset: HarnessAsset): void {
     asset: { ...asset },
     userId: props.userId,
   };
+}
+
+function openAtomicPublish(asset: HarnessAsset): void {
+  closeCardMenu();
+  if (asset.assetType === 'Extension' || asset.canPublish !== true) return;
+  selectedAssetKey.value = assetKey(asset);
+  atomicPublishAsset.value = asset;
+  view.value = 'publish';
+}
+
+async function returnFromAtomicPublish(): Promise<void> {
+  atomicPublishAsset.value = null;
+  view.value = 'list';
+  await nextTick();
+  resetAssetScrollPosition();
+  if (assetsNeedRefresh) {
+    assetsNeedRefresh = false;
+    await reloadAssets();
+  }
+}
+
+function onAtomicPublished(): void {
+  assetsNeedRefresh = true;
 }
 
 async function returnToAssetList(): Promise<void> {
@@ -1425,6 +1455,14 @@ onBeforeUnmount(() => {
                 编辑信息
               </button>
               <button
+                v-if="asset.assetType !== 'Extension' && asset.canPublish === true"
+                type="button"
+                role="menuitem"
+                @click="openAtomicPublish(asset)"
+              >
+                发布
+              </button>
+              <button
                 v-if="asset.assetType !== 'Extension' && canAccessAsset(asset)"
                 type="button"
                 class="is-danger"
@@ -1605,7 +1643,7 @@ onBeforeUnmount(() => {
 
         <nav
           class="asset-subtabs asset-detail__tabs"
-          :class="{ 'has-version-panel': !isExtensionHistoryTab }"
+          :class="{ 'has-version-panel': !isHistoryTab }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
         >
@@ -1633,6 +1671,18 @@ onBeforeUnmount(() => {
             发布记录
           </button>
           <button
+            v-if="selectedAsset.assetType !== 'Extension'"
+            id="asset-detail-tab-history"
+            type="button"
+            role="tab"
+            :class="{ 'is-active': detailTab === 'history' }"
+            :aria-selected="detailTab === 'history'"
+            aria-controls="atomic-asset-history-panel"
+            @click="detailTab = 'history'"
+          >
+            发布记录
+          </button>
+          <button
             v-if="selectedAsset.assetType === 'Skill'"
             id="asset-detail-tab-report"
             type="button"
@@ -1648,7 +1698,7 @@ onBeforeUnmount(() => {
 
         <div class="asset-detail__content-scroll">
           <section
-            v-if="!isExtensionHistoryTab"
+            v-if="!isHistoryTab"
             class="asset-detail__version-panel"
             :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
             aria-label="版本信息"
@@ -1724,6 +1774,18 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </template>
+          <AtomicAssetPublishPage
+            v-else-if="isAtomicHistoryTab"
+            id="atomic-asset-history-panel"
+            :asset="selectedAsset"
+            :user-id="props.userId"
+            :user-name="props.userName"
+            initial-panel="history"
+            :release-chrome="false"
+            @close="detailTab = 'content'"
+            @notify="showToast"
+            @published="onAtomicPublished"
+          />
           <div v-else-if="detailLoading" class="asset-empty" role="status">
             正在加载资产内容…
           </div>
@@ -1762,6 +1824,16 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </template>
+
+    <AtomicAssetPublishPage
+      v-else-if="view === 'publish' && atomicPublishAsset"
+      :asset="atomicPublishAsset"
+      :user-id="props.userId"
+      :user-name="props.userName"
+      @close="returnFromAtomicPublish"
+      @notify="showToast"
+      @published="onAtomicPublished"
+    />
 
     <ExtensionPublishPage
       v-else-if="view === 'publish' && extensionRelease"

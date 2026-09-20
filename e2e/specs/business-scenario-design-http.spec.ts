@@ -394,7 +394,7 @@ test.describe('业务场景设计 HTTP', () => {
           .getByRole('button', { name: '+ 添加', exact: true })
           .click();
         await wizard.getByRole('searchbox', { name: '搜索 Skill' }).press('Escape');
-        await selectHarnessOption(wizard.getByRole('combobox'), { label: 'demo-coding（Skill）' });
+        await selectHarnessOption(wizard.getByRole('combobox'), { label: 'demo-coding Skill' });
       }
       await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
       await expect(wizard).toHaveCount(0);

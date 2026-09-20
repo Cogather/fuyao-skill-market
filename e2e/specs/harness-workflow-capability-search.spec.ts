@@ -347,7 +347,7 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
   );
   await selectHarnessOption(
     wizard.locator('.assignment').filter({ hasText: '检查代码' }).getByRole('combobox'),
-    { label: 'external-review-agent（Agent）' },
+    { label: 'external-review-agent Agent' },
   );
   await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
   await expect(wizard).toBeHidden();

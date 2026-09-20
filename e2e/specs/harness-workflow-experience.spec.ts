@@ -75,14 +75,14 @@ test('Mock 素材支持从空白二级场景完成设计并在刷新后恢复', 
   await expect(wizard).toBeVisible();
   await expect(assignmentTrigger).toBeFocused();
   await selectHarnessOption(generation.getByRole('combobox'), {
-    label: 'harness-demo-api-agent（Agent）',
+    label: 'harness-demo-api-agent Agent',
   });
   await selectHarnessOption(generation.getByRole('combobox'), {
-    label: 'harness-demo-code-generator（Skill）',
+    label: 'harness-demo-code-generator Skill',
   });
   await selectHarnessOption(
     wizard.locator('.assignment').filter({ hasText: '检查代码' }).getByRole('combobox'),
-    { label: 'harness-demo-code-review（Skill）' },
+    { label: 'harness-demo-code-review Skill' },
   );
   await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
   await expect(wizard).toBeHidden();

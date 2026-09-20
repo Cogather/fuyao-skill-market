@@ -348,7 +348,7 @@ export class HarnessManagementPage {
       hasText: options.nodeName,
     });
     await selectHarnessOption(assignment.getByRole('combobox'), {
-      label: `${options.assetName}（Agent）`,
+      label: `${options.assetName} Agent`,
     });
     await this.workflowDesignDialog.getByRole('button', { name: '完成设计', exact: true }).click();
     await this.workflowDesignDialog.waitFor({ state: 'hidden' });

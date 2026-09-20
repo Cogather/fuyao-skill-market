@@ -201,7 +201,12 @@ test('四步向导保留独立编辑行、说明和调序，并将节点顺序�
   const assetOption = (await openHarnessSelect(assignmentSelect)).getByRole('option').first();
   const assetId = await assetOption.getAttribute('data-value');
   expect(assetId).toBeTruthy();
-  await expect(assetOption).toHaveText(/.+（Agent）/);
+  const optionLabel = assetOption.locator('.harness-select-panel__option-label');
+  const optionTag = assetOption.locator('.harness-select-panel__option-tag');
+  await expect(optionLabel).not.toContainText('（Agent）');
+  await expect(optionTag).toHaveText('Agent');
+  await expect(optionTag).toHaveCSS('border-radius', '999px');
+  expect((await optionTag.boundingBox())!.x).toBeGreaterThan((await optionLabel.boundingBox())!.x);
   await selectHarnessOption(assignmentSelect, { value: assetId! });
   await expect(deliveryAssignment.locator('.chips > span')).toHaveCount(1);
   const assignedText = await deliveryAssignment.locator('.chips > span').innerText();

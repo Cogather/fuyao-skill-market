@@ -2485,11 +2485,8 @@ async function createAsset() {
                   .filter((id) => !(wizard?.nodeAssetsMap[node.id] || []).includes(id))
                   .map((id) => ({
                     value: id,
-                    label:
-                      assets.find((a) => a._id === id)?.name +
-                      '（' +
-                      assets.find((a) => a._id === id)?.assetType +
-                      '）',
+                    label: assets.find((a) => a._id === id)?.name || '未找到资产',
+                    tag: assets.find((a) => a._id === id)?.assetType,
                   })),
               ]"
             /><small v-else-if="!(wizard.nodeAssetsMap[node.id] || []).length">未分配资产</small>
@@ -3363,8 +3360,8 @@ h4 small {
 .wizard {
   display: flex;
   flex-direction: column;
-  width: min(1040px, 94vw);
-  height: min(720px, calc(100dvh - 48px));
+  width: min(1144px, 94vw);
+  height: min(780px, calc(100dvh - 48px));
   max-height: calc(100dvh - 48px);
   overflow: hidden;
   padding: 24px 32px;

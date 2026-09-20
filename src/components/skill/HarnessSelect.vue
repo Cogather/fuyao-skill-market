@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useId, watch } from
 const props = withDefaults(
   defineProps<{
     modelValue?: T;
-    options: { value: T; label: string; disabled?: boolean }[];
+    options: { value: T; label: string; tag?: string; disabled?: boolean }[];
     placeholder?: string;
     disabled?: boolean;
     searchable?: boolean;
@@ -29,11 +29,12 @@ const label = computed(
   () =>
     props.options.find((option) => option.value === props.modelValue)?.label ?? props.placeholder,
 );
-const filtered = computed(() =>
-  props.options.filter((option) =>
-    option.label.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase()),
-  ),
-);
+const filtered = computed(() => {
+  const keyword = query.value.trim().toLocaleLowerCase();
+  return props.options.filter((option) =>
+    [option.label, option.tag].some((text) => text?.toLocaleLowerCase().includes(keyword)),
+  );
+});
 const activeId = computed(() =>
   open.value && activeIndex.value >= 0 ? `${id}-${activeIndex.value}` : undefined,
 );
@@ -334,17 +335,28 @@ onBeforeUnmount(removeListeners);
             @pointermove="!option.disabled && (activeIndex = index)"
             @click="choose(index)"
           >
-            <span>{{ option.label }}</span>
-            <svg
-              v-if="option.value === modelValue"
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
+            <span class="harness-select-panel__option-label">{{ option.label }}</span>
+            <span
+              v-if="option.tag || option.value === modelValue"
+              class="harness-select-panel__option-side"
             >
-              <path d="m4 10 4 4 8-8" />
-            </svg>
+              <span
+                v-if="option.tag"
+                class="harness-select-panel__option-tag"
+                :data-tag="option.tag"
+                >{{ option.tag }}</span
+              >
+              <svg
+                v-if="option.value === modelValue"
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+              >
+                <path d="m4 10 4 4 8-8" />
+              </svg>
+            </span>
           </div>
         </div>
         <div v-if="!filtered.length" class="harness-select-panel__empty" role="status">
@@ -494,9 +506,41 @@ onBeforeUnmount(removeListeners);
   border-radius: 6px;
   cursor: pointer;
 }
-.harness-select-panel__option > span {
+.harness-select-panel__option-label {
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.harness-select-panel__option-side {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.harness-select-panel__option-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 1px 8px;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: #f4f6f8;
+  color: #5e6b7c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.harness-select-panel__option-tag[data-tag='Agent'] {
+  border-color: #bfd3ff;
+  background: #edf4ff;
+  color: #2563eb;
+}
+.harness-select-panel__option-tag[data-tag='Skill'] {
+  border-color: #d9c6ff;
+  background: #f5f0ff;
+  color: #7c3aed;
 }
 .harness-select-panel__option svg {
   flex: 0 0 16px;
