@@ -500,13 +500,18 @@ export async function queryHttpExtensionBindings(
   });
 }
 
-/** 资产内容按所选 Extension 版本读取发布时冻结的子资产清单。 */
-export async function queryHttpExtensionVersionCapabilities(
+export type ExtensionVersionSnapshot = {
+  releaseType: string;
+  capabilities: ExtensionScene['capabilities'];
+};
+
+/** 资产内容按所选 Extension 版本读取发布通道及发布时冻结的子资产清单。 */
+export async function queryHttpExtensionVersionSnapshot(
   userId: string,
   scope: ExtensionScope,
   identity: { name?: string | null },
   version: string,
-): Promise<ExtensionScene['capabilities']> {
+): Promise<ExtensionVersionSnapshot> {
   const extensionName = requiredText(identity.name, 'Extension 缺少名称，无法查看内容');
   const selectedVersion = requiredText(version, '请选择 Extension 版本');
   const response = await skillBaseService.queryExtensionVersionHistory({
@@ -525,9 +530,12 @@ export async function queryHttpExtensionVersionCapabilities(
   const mapFrozen = (type: ExtensionCapabilityType, rows: unknown[]) =>
     rows.map((item, index) => mapCapability(item, type, sceneKey, index));
   return {
-    skill: mapFrozen('skill', data.skills),
-    command: mapFrozen('command', data.commands),
-    agent: mapFrozen('agent', data.agents),
+    releaseType: normalizeText(data.releaseType),
+    capabilities: {
+      skill: mapFrozen('skill', data.skills),
+      command: mapFrozen('command', data.commands),
+      agent: mapFrozen('agent', data.agents),
+    },
   };
 }
 

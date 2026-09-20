@@ -140,6 +140,8 @@ export type HarnessAssetDetail = {
   versions: string[];
   files: HarnessAssetFile[];
   version?: string;
+  /** Extension 所选版本由 version-history 返回的发布通道。 */
+  releaseType?: string;
   component?: HarnessAssetComponentDetailDto;
   /** HTTP Extension 内容只加载组件清单，目录与文件由用户展开时读取。 */
   capabilities?: ExtensionScene['capabilities'];

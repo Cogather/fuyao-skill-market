@@ -1,5 +1,5 @@
 import { openHarnessSelect, selectHarnessOption } from '../helpers/selectHarnessOption';
-import { openAssetCardMenu } from '../helpers/assetCardActions';
+import { clickAssetCardAction, openAssetCardMenu } from '../helpers/assetCardActions';
 import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from '../fixtures/base';
@@ -55,6 +55,29 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => window.localStorage.clear());
     await openAssets(page);
+  });
+
+  test('发布页底部操作按钮保持常规高度', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByRole('button', { name: 'Agent', exact: true }).click();
+    await clickAssetCardAction(page.locator('.asset-card').first(), '发布');
+
+    const publishPage = page.locator('.atomic-publish-page');
+    await expect(publishPage).toBeVisible();
+    const footerBox = await publishPage.locator('.atomic-publish__footer').boundingBox();
+    const cancelBox = await publishPage
+      .getByRole('button', { name: '取消', exact: true })
+      .boundingBox();
+    const confirmBox = await publishPage
+      .getByRole('button', { name: '确认发布', exact: true })
+      .boundingBox();
+
+    expect(footerBox).not.toBeNull();
+    expect(cancelBox).not.toBeNull();
+    expect(confirmBox).not.toBeNull();
+    expect(footerBox!.height).toBeLessThanOrEqual(80);
+    expect(cancelBox!.height).toBeLessThanOrEqual(40);
+    expect(confirmBox!.height).toBeLessThanOrEqual(40);
   });
 
   test('部门级联选择确认后才刷新产品范围，清空和切换页签正确收起面板', async ({

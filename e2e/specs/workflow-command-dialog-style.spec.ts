@@ -1,7 +1,16 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from '../fixtures/base';
 
-test('Workflow Command 条目使用深色命令卡片展示', async ({ page }) => {
+async function mountDialog(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 800 });
+  await page.route('**/api/**', (route) =>
+    route.fulfill({
+      json: {
+        meta: { success: true },
+        data: { content: '# devops-center-v2-valid-code-review-run' },
+      },
+    }),
+  );
   await page.route('**/skill-market/workflow-command-style-test', (route) =>
     route.fulfill({ contentType: 'text/html', body: '<div id="test-host"></div>' }),
   );
@@ -28,13 +37,29 @@ test('Workflow Command 条目使用深色命令卡片展示', async ({ page }) =
               {
                 name: '/devops-center-v2-valid-code-review-run',
                 description: '合并请求自动评审流程的执行入口。',
-                version: null,
+                version: '1.0.0',
               },
             ],
           });
       },
     }).mount('#test-host');
   });
+}
+
+test('Workflow Command 条目不显示序号', async ({ page }) => {
+  await mountDialog(page);
+
+  const dialog = page.getByRole('dialog', {
+    name: '合并请求自动评审流程 Command 清单',
+    exact: true,
+  });
+  const item = dialog.locator('.workflow-command-item');
+
+  await expect(item.getByText('01', { exact: true })).toHaveCount(0);
+});
+
+test('Workflow Command 条目交换外层与内容区背景', async ({ page }) => {
+  await mountDialog(page);
 
   const dialog = page.getByRole('dialog', {
     name: '合并请求自动评审流程 Command 清单',
@@ -44,12 +69,13 @@ test('Workflow Command 条目使用深色命令卡片展示', async ({ page }) =
   const name = item.locator('.workflow-command-name');
   const description = item.locator('.workflow-command-description');
 
-  await expect(item).toHaveCSS('background-color', 'rgb(15, 23, 42)');
+  await expect(item).toHaveCSS('background-color', 'rgb(2, 6, 23)');
+  await expect(item).toHaveCSS('background-image', 'none');
   await expect(name).toHaveCSS('color', 'rgb(125, 211, 252)');
   await expect(description).toHaveCSS('color', 'rgb(203, 213, 225)');
 
   await item.getByRole('button', { name: /Command \/devops-center/ }).click();
-  const unavailable = item.getByText('暂无已发布版本，暂不能查看内容', { exact: true });
-  await expect(unavailable).toHaveCSS('background-color', 'rgb(30, 41, 59)');
-  await expect(unavailable).toHaveCSS('color', 'rgb(148, 163, 184)');
+  const content = item.locator('.workflow-command-content');
+  await expect(content).toContainText('# devops-center-v2-valid-code-review-run');
+  await expect(content).toHaveCSS('background-color', 'rgb(15, 23, 42)');
 });

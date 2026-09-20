@@ -210,7 +210,6 @@ onBeforeUnmount(() => {
               :aria-label="`${expandedKeys.has(commandKey(command, index)) ? '收起' : '展开'} Command ${command.name}`"
               @click="toggleCommand(command, index)"
             >
-              <span class="workflow-command-index">{{ String(index + 1).padStart(2, '0') }}</span>
               <span class="workflow-command-info">
                 <span class="workflow-command-name">{{ command.name }}</span>
                 <span v-if="command.description" class="workflow-command-description">
@@ -382,8 +381,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border: 1px solid #26354d;
   border-radius: 11px;
-  background-color: #0f172a;
-  background-image: linear-gradient(145deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0));
+  background: #020617;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
   transition:
     border-color 160ms ease,
@@ -404,7 +402,7 @@ onBeforeUnmount(() => {
 .workflow-command-summary {
   display: grid;
   width: 100%;
-  grid-template-columns: 36px minmax(0, 1fr) auto 20px;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
   align-items: center;
   gap: 12px;
   padding: 15px 16px;
@@ -417,21 +415,6 @@ onBeforeUnmount(() => {
 
 .workflow-command-summary:hover {
   background: rgba(59, 130, 246, 0.07);
-}
-
-.workflow-command-index {
-  display: inline-flex;
-  width: 34px;
-  height: 34px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(125, 211, 252, 0.16);
-  border-radius: 9px;
-  background: rgba(59, 130, 246, 0.16);
-  color: #93c5fd;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
 }
 
 .workflow-command-info {
@@ -488,7 +471,7 @@ onBeforeUnmount(() => {
 
 .workflow-command-content-wrap {
   border-top: 1px solid rgba(148, 163, 184, 0.14);
-  padding: 0 16px 16px 64px;
+  padding: 0 16px 16px;
 }
 
 .workflow-command-content {
@@ -498,7 +481,7 @@ onBeforeUnmount(() => {
   overflow: auto;
   border: 1px solid #334155;
   border-radius: 8px;
-  background: #020617;
+  background: #0f172a;
   color: #e2e8f0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
@@ -550,7 +533,7 @@ onBeforeUnmount(() => {
   padding: 12px 14px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
-  background: #1e293b;
+  background: #0f172a;
   color: #94a3b8;
 }
 
@@ -589,16 +572,16 @@ onBeforeUnmount(() => {
   }
 
   .workflow-command-summary {
-    grid-template-columns: 34px minmax(0, 1fr) 18px;
+    grid-template-columns: minmax(0, 1fr) 18px;
   }
 
   .workflow-command-version {
-    grid-column: 2;
+    grid-column: 1;
     justify-self: start;
   }
 
   .workflow-command-chevron {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1 / span 2;
   }
 

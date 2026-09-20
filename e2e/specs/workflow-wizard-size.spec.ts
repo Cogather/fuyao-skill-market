@@ -74,6 +74,6 @@ test('Workflow 设计弹窗在共享逻辑下保持大尺寸', async ({ page }) 
   const wizard = page.getByRole('dialog', { name: 'Workflow 设计', exact: true });
   const box = await wizard.boundingBox();
   expect(box).not.toBeNull();
-  expect(box!.width).toBe(1144);
-  expect(box!.height).toBe(780);
+  expect(box!.width).toBe(1206);
+  expect(box!.height).toBe(760);
 });

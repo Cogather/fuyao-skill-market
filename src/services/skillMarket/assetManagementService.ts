@@ -2,7 +2,7 @@ import {
   publishHttpExtension,
   queryHttpExtensionDetail,
   queryHttpExtensionHistory,
-  queryHttpExtensionVersionCapabilities,
+  queryHttpExtensionVersionSnapshot,
   queryHttpHydratedExtensionScenes,
   queryHttpPublishableOrganizations,
   type ExtensionScope,
@@ -71,6 +71,7 @@ type AtomicAssetQueryLane = {
   totalKnown: boolean;
   rawKeys: Set<string>;
   repeatedFullPageCount: number;
+  mockPublishableCount: number;
 };
 
 type ExtensionAssetQueryLane = {
@@ -196,25 +197,40 @@ function atomicAsset(
   record: SkillMasterRecord,
   scope: HarnessAssetScope,
   products: HarnessAssetProduct[],
+  canPublish = false,
 ): HarnessAsset {
-  const currentVersion = normalizeHarnessAssetVersion(
-    latestSkillMasterVersion(record)?.version ?? '',
-  );
+  const rawLatestVersion = latestSkillMasterVersion(record)?.version?.trim() ?? '';
+  const latestVersion = rawLatestVersion || (canPublish ? '0.1.0' : '');
+  const currentVersion = normalizeHarnessAssetVersion(latestVersion);
   const published = record.status === '已完成' && Boolean(currentVersion);
-  const versionDetails = (record.versions ?? [])
+  let versionDetails = (record.versions ?? [])
     .map((item) => ({
       version: normalizeHarnessAssetVersion(item.version),
       uploadedAt: item.uploadedAt || null,
       ...(published ? { status: '已发布' } : {}),
     }))
     .filter((item) => Boolean(item.version));
+  if (canPublish && versionDetails.length === 0) {
+    versionDetails = [{ version: currentVersion, uploadedAt: record.updatedAt || null }];
+  }
   const versions = versionDetails.map((item) => item.version);
   const product = products.find((item) => item.name === record.product);
+  const dimension = dimensionScope(scope);
+  const mockDimName =
+    dimension.dimName ||
+    record.product ||
+    record.department ||
+    scope.department.code ||
+    scope.department.id;
   return {
     id: record.id,
     name: record.name,
     description: record.description,
     assetType: type,
+    dimType: dimension.dimType,
+    dimCode: dimension.dimCode,
+    dimName: mockDimName,
+    ...(canPublish ? { latestVersion, canPublish: true } : {}),
     currentVersion,
     versions,
     versionDetails,
@@ -229,7 +245,7 @@ function atomicAsset(
     productName: product?.name ?? record.product,
     auto: false,
     marketplace: { rating: 0, downloads: 0, calls: 0 },
-    // 原子能力由 Extension 打包发布，规划服务没有独立的发布或历史接口。
+    // publishable 仅表示 Extension 的就绪状态；原子资产发布权限由 canPublish 控制。
     releases: [],
     publishable: false,
     ...(published ? { status: '已发布' } : {}),
@@ -742,6 +758,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
         totalKnown: false,
         rawKeys: new Set<string>(),
         repeatedFullPageCount: 0,
+        mockPublishableCount: 0,
       })),
     );
     if (requestedTypes.includes('Extension')) {
@@ -822,7 +839,11 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
 
     return result.list
       .filter((record) => recordMatchesScope(record, state.scope, state.products))
-      .map((record) => atomicAsset(lane.type, record, state.scope, state.products));
+      .map((record) => {
+        const canPublish = transport === 'mock' && lane.mockPublishableCount < 3;
+        if (transport === 'mock') lane.mockPublishableCount += 1;
+        return atomicAsset(lane.type, record, state.scope, state.products, canPublish);
+      });
   }
 
   function appendUniqueAssets(state: AssetQueryState, batches: HarnessAsset[][]): number {
@@ -1058,10 +1079,11 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
         const selectedVersion = versions.includes(version ?? '') ? version! : (versions[0] ?? '');
         let files: HarnessAssetFile[] = [];
         let capabilities: HarnessAssetDetail['capabilities'];
+        let releaseType: string | undefined;
         if (selectedVersion && options?.includeFiles !== false) {
           if (asset.assetType === 'Extension') {
             const queryScope = await resolveHttpExtensionScope(scope, asset, false);
-            capabilities = await queryHttpExtensionVersionCapabilities(
+            const snapshot = await queryHttpExtensionVersionSnapshot(
               scope.userId,
               dimensionScope(queryScope),
               {
@@ -1069,11 +1091,20 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
               },
               selectedVersion,
             );
+            capabilities = snapshot.capabilities;
+            releaseType = snapshot.releaseType;
           } else {
             files = (await atomicDetail(scope, asset, selectedVersion)).files;
           }
         }
-        return { component, versions, version: selectedVersion, files, capabilities };
+        return {
+          component,
+          versions,
+          version: selectedVersion,
+          files,
+          capabilities,
+          releaseType,
+        };
       }
       if (asset.assetType !== 'Extension')
         return atomicDetail(scope, asset, version ?? asset.currentVersion);

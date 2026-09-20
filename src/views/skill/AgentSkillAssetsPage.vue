@@ -583,6 +583,16 @@ const detailVersionStatuses = computed<Record<string, string>>(() =>
   ),
 );
 const selectedVersionStatus = computed(() => detailVersionStatus(selectedVersion.value));
+const selectedVersionReleaseType = computed(() => {
+  if (selectedAsset.value?.assetType !== 'Extension') return '';
+  if (
+    normalizeHarnessAssetVersion(detail.value?.version ?? '') !==
+    normalizeHarnessAssetVersion(selectedVersion.value)
+  ) {
+    return '';
+  }
+  return detail.value?.releaseType?.trim() ?? '';
+});
 const detailDescription = computed(
   () => (detailComponent.value?.description ?? selectedAsset.value?.description) || '暂无描述',
 );
@@ -1704,6 +1714,9 @@ onBeforeUnmount(() => {
             aria-label="版本信息"
           >
             <div class="asset-detail__version-row">
+              <span v-if="selectedVersionReleaseType" class="asset-detail__release-type">
+                {{ selectedVersionReleaseType }}
+              </span>
               <span class="asset-detail__version-label">版本</span>
               <HarnessVersionPicker
                 v-model="selectedVersion"
@@ -3009,6 +3022,21 @@ onBeforeUnmount(() => {
   color: #5a6478;
   font-size: 13px;
   line-height: 20px;
+}
+
+.asset-detail__release-type {
+  display: inline-flex;
+  min-height: 24px;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid #c7d7f5;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #315ea8;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
 }
 
 .asset-detail__version-row :deep(.harness-version-picker__trigger) {

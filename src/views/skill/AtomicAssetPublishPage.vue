@@ -517,8 +517,8 @@ onMounted(() => {
 }
 
 .atomic-publish__panel {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
   border: 1px solid #e1e6f0;
@@ -583,6 +583,7 @@ onMounted(() => {
 }
 
 .atomic-publish__body {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 22px;
@@ -726,6 +727,8 @@ onMounted(() => {
 
 .atomic-publish__footer {
   display: flex;
+  flex: 0 0 auto;
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px;
@@ -760,6 +763,7 @@ onMounted(() => {
 }
 
 .atomic-history {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 18px 20px 22px;

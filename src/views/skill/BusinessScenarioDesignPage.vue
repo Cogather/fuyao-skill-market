@@ -3360,9 +3360,11 @@ h4 small {
 .wizard {
   display: flex;
   flex-direction: column;
-  width: min(1144px, 94vw);
-  height: min(780px, calc(100dvh - 48px));
-  max-height: calc(100dvh - 48px);
+  width: min(1206px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
   overflow: hidden;
   padding: 24px 32px;
   color: #334155;
@@ -4456,6 +4458,14 @@ h4 small {
     padding-bottom: 14px;
   }
 }
+@media (max-height: 760px) {
+  .wizard {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+  }
+}
 @media (max-width: 650px) {
   .scenario-modal {
     padding: 12px;
@@ -4533,7 +4543,6 @@ h4 small {
     grid-template-columns: 1fr;
   }
   .wizard {
-    width: 100%;
     min-width: 0;
     padding: 18px;
   }
