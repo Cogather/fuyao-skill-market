@@ -42,7 +42,6 @@ export type HarnessAtomicPublishHistoryRecord = HarnessAtomicPublishItem & {
 };
 
 export type HarnessAtomicPublishHistoryQuery = {
-  batchId?: string;
   assetType: HarnessAtomicAssetApiType;
   assetName: string;
   operatorId: string;
@@ -261,7 +260,6 @@ export async function queryAtomicAssetPublishHistory(
     throw new Error('资产类型无效，无法查询发布历史');
   }
   const body = {
-    ...(text(query.batchId) ? { batchId: text(query.batchId) } : {}),
     assetType: assetType as HarnessAtomicAssetApiType,
     assetName: requiredText(query.assetName, '资产名称不能为空'),
     operatorId: requiredText(query.operatorId, '尚未获取当前用户工号'),

@@ -64,7 +64,6 @@ const organizationError = ref('');
 const publishSubmitting = ref(false);
 const publishError = ref('');
 const publishResult = ref<HarnessAtomicPublishResult | null>(null);
-const historyBatchId = ref('');
 const historyRecords = ref<HarnessAtomicPublishHistoryRecord[]>([]);
 const historyTotal = ref(0);
 const historyPageNum = ref(0);
@@ -256,7 +255,6 @@ async function submitPublish(): Promise<void> {
     });
     publishResult.value = result;
     if (result.accepted.length > 0) {
-      historyBatchId.value = result.batchId;
       emit('published', result);
       emit('notify', '发布任务已提交，请在发布记录中查看异步执行进度');
       activePanel.value = 'history';
@@ -300,7 +298,6 @@ function historyOrganizationLabel(record: HarnessAtomicPublishHistoryRecord): st
 
 function historyQuery(pageNum: number) {
   return {
-    ...(historyBatchId.value ? { batchId: historyBatchId.value } : {}),
     assetType: atomicAssetApiType(props.asset),
     assetName: props.asset.name,
     operatorId: props.userId,
@@ -622,7 +619,6 @@ onMounted(() => {
         <div class="atomic-history__toolbar">
           <div>
             <strong>发布记录</strong>
-            <span v-if="historyBatchId">本次提交：{{ historyBatchId }}</span>
             <span v-if="historyLoading" class="atomic-history__loading" role="status">
               正在加载…
             </span>

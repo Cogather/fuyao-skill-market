@@ -337,7 +337,7 @@ test.describe('Agent / Skill / Command 发布入口', () => {
     });
   }
 
-  test('提交最新版本后展示受理和拒绝结果，按 batchId 查看历史并限制失败重试', async ({ page }) => {
+  test('提交最新版本后展示受理和拒绝结果，按资产查看历史并限制失败重试', async ({ page }) => {
     const captured = await prepareAtomicAssets(page);
     await page.getByRole('button', { name: 'Skill', exact: true }).click();
     await clickAssetCardAction(assetCard(page, 'Skill 可发布资产'), '发布');
@@ -380,7 +380,6 @@ test.describe('Agent / Skill / Command 发布入口', () => {
 
     await expect.poll(() => captured.histories.length).toBe(1);
     expect(captured.histories[0]!.postDataJSON()).toEqual({
-      batchId: 'batch-atomic-1',
       assetType: 'SKILL',
       assetName: 'Skill 可发布资产',
       operatorId: 'publish-user',

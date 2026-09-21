@@ -23,15 +23,14 @@ try {
   request.harnessApi = async (config) => {
     if (config.url === '/assets/publish/history') {
       historyRequests.push(config);
-      const isBatchQuery = Boolean(config.data?.batchId);
       return {
         meta: { success: true, message: 'OK' },
         data: {
           records: [
             {
-              id: isBatchQuery ? 'backend-submitted-task' : 'backend-failed-task',
-              publishStatus: isBatchQuery ? '进行中' : historyStatus,
-              errorMessage: isBatchQuery || historyStatus !== '发布失败' ? '' : '后端校验失败',
+              id: 'backend-failed-task',
+              publishStatus: historyStatus,
+              errorMessage: historyStatus !== '发布失败' ? '' : '后端校验失败',
               source: '独立发布',
               targetOrgName: '后端组织',
               targetOrgCode: 'backend-org',
@@ -146,7 +145,6 @@ try {
   assert.equal(result.accepted.length, 1);
   assert.equal(result.rejected.length, 0);
   const submitted = await atomicPublish.queryAtomicAssetPublishHistory({
-    batchId: result.batchId,
     assetType: 'SKILL',
     assetName: asset.name,
     operatorId: scope.userId,
@@ -154,7 +152,6 @@ try {
   assert.equal(submitted.records.length, 1);
   assert.equal(submitted.records[0].publishStatus, '进行中');
   assert.deepEqual(historyRequests.at(-1).data, {
-    batchId: result.batchId,
     assetType: 'SKILL',
     assetName: asset.name,
     operatorId: scope.userId,
