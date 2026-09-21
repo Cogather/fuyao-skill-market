@@ -226,9 +226,7 @@ test.describe('Agent / Skill / Command 发布入口', () => {
       const publishPage = page.getByRole('region', { name: `发布 ${type} · ${publishableName}` });
       await expect(publishPage).toBeVisible();
       // 对齐 Harness 工作流发布页版式：主标题固定为「发布」，类型作为标题行右侧小标签。
-      await expect(
-        publishPage.getByRole('heading', { name: '发布', exact: true }),
-      ).toBeVisible();
+      await expect(publishPage.getByRole('heading', { name: '发布', exact: true })).toBeVisible();
       await expect(
         publishPage.getByRole('heading', { name: `${type} 发布信息`, exact: true }),
       ).toBeVisible();
@@ -301,6 +299,44 @@ test.describe('Agent / Skill / Command 发布入口', () => {
     await expect(publishPage.locator('.atomic-publish__file-content pre').last()).toContainText(
       '使用说明',
     );
+  });
+
+  test('Command 进入发布页自动展开包含清单并直接拉取文件内容', async ({ page }) => {
+    const captured = await prepareAtomicAssets(page);
+    await page.getByRole('button', { name: 'Command', exact: true }).click();
+    await clickAssetCardAction(assetCard(page, 'Command 可发布资产'), '发布');
+
+    const publishPage = page.getByRole('region', {
+      name: '发布 Command · Command 可发布资产',
+    });
+    const checklistRow = publishPage.locator('.atomic-publish__checklist-row');
+    // 进入发布页后「包含清单」自动展开，无需用户手动点击清单行。
+    await expect(checklistRow).toHaveAttribute('aria-expanded', 'true');
+
+    // 不经过 /packages/tree，直接调用 /packages/file 拉取默认文件（名称加 .md）。
+    await expect.poll(() => captured.packageFiles.length).toBe(1);
+    expect(captured.packageTrees).toHaveLength(0);
+    expect(Object.fromEntries(new URL(captured.packageFiles[0]!.url()).searchParams)).toEqual({
+      userId: 'publish-user',
+      componentType: 'command',
+      componentName: 'Command 可发布资产',
+      componentVersion: '1.2.3',
+      filePath: 'Command 可发布资产.md',
+    });
+    await expect(publishPage.locator('.atomic-publish__direct-content pre')).toContainText(
+      '按需加载的文件内容',
+    );
+
+    // 清单行仍可手动收起；再次展开不重复请求文件内容。
+    await checklistRow.click();
+    await expect(checklistRow).toHaveAttribute('aria-expanded', 'false');
+    await expect(publishPage.locator('.atomic-publish__direct-content')).toHaveCount(0);
+    await checklistRow.click();
+    await expect(checklistRow).toHaveAttribute('aria-expanded', 'true');
+    await expect(publishPage.locator('.atomic-publish__direct-content pre')).toContainText(
+      '按需加载的文件内容',
+    );
+    expect(captured.packageFiles).toHaveLength(1);
   });
 
   test('提交最新版本后展示受理和拒绝结果，按 batchId 查看历史并限制失败重试', async ({ page }) => {

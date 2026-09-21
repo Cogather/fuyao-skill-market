@@ -9,12 +9,54 @@ const server = await createServer({
 });
 
 try {
+  const { default: request } = await server.ssrLoadModule('/src/services/skillMarket/request.ts');
   const { getHarnessAssetApi } = await server.ssrLoadModule(
     '/src/services/skillMarket/assetManagementService.ts',
   );
   const atomicPublish = await server.ssrLoadModule(
     '/src/services/skillMarket/atomicAssetPublishHttp.ts',
   );
+
+  const historyRequests = [];
+  const retryRequests = [];
+  let historyStatus = '发布失败';
+  request.harnessApi = async (config) => {
+    if (config.url === '/assets/publish/history') {
+      historyRequests.push(config);
+      const isBatchQuery = Boolean(config.data?.batchId);
+      return {
+        meta: { success: true, message: 'OK' },
+        data: {
+          records: [
+            {
+              id: isBatchQuery ? 'backend-submitted-task' : 'backend-failed-task',
+              publishStatus: isBatchQuery ? '进行中' : historyStatus,
+              errorMessage: isBatchQuery || historyStatus !== '发布失败' ? '' : '后端校验失败',
+              source: '独立发布',
+              targetOrgName: '后端组织',
+              targetOrgCode: 'backend-org',
+              operatorName: 'Mock 发布人',
+              operatorId: 'mock-user',
+              assetType: 'SKILL',
+              assetName: 'Skill 可发布资产',
+              assetVersion: 'v1.0.0',
+              createdAt: '2026-09-21 09:00:00',
+              updatedAt: '2026-09-21 09:01:00',
+            },
+          ],
+          total: 1,
+          pageNum: 1,
+          pageSize: 20,
+        },
+      };
+    }
+    if (config.url === '/assets/publish/backend-failed-task/retry') {
+      retryRequests.push(config);
+      historyStatus = '进行中';
+      return { meta: { success: true, message: 'OK' }, data: 'accepted' };
+    }
+    throw new Error(`Unexpected request: ${config.url}`);
+  };
 
   const scope = {
     userId: 'mock-user',
@@ -80,6 +122,17 @@ try {
     afterRetry.records.find((record) => record.id === failed.id)?.publishStatus,
     '进行中',
   );
+  assert.deepEqual(historyRequests[0].data, {
+    assetType: 'SKILL',
+    assetName: asset.name,
+    pageNum: 1,
+    pageSize: 20,
+  });
+  assert.deepEqual(retryRequests[0], {
+    url: '/assets/publish/backend-failed-task/retry',
+    method: 'post',
+    params: { userId: scope.userId },
+  });
 
   const result = await atomicPublish.publishAtomicAsset({
     asset,
@@ -94,11 +147,13 @@ try {
   });
   assert.equal(submitted.records.length, 1);
   assert.equal(submitted.records[0].publishStatus, '进行中');
-  assert.equal(submitted.records[0].targetOrgCode, organizations[0].id);
+  assert.deepEqual(historyRequests.at(-1).data, {
+    batchId: result.batchId,
+    pageNum: 1,
+    pageSize: 20,
+  });
 
-  console.log(
-    'PASS atomic asset mock publishing supports the first three cards and full demo flow',
-  );
+  console.log('PASS atomic asset mock publishing keeps history and retry on the backend contracts');
 } finally {
   await server.close();
 }

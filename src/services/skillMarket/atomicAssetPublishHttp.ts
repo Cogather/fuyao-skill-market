@@ -72,86 +72,11 @@ const MOCK_ORGANIZATIONS: HarnessAssetOrganization[] = [
   { id: 'org-yunshan', name: '云山组织' },
   { id: 'org-haichuan', name: '海川组织' },
 ];
-type MockHistoryRecord = HarnessAtomicPublishHistoryRecord & { batchId?: string };
-
-const mockHistory: MockHistoryRecord[] = [];
 let mockTaskSequence = 0;
-
-function mockTimestamp(offsetMinutes = 0): string {
-  const date = new Date(Date.now() + offsetMinutes * 60_000);
-  const part = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())} ${part(date.getHours())}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
-}
 
 function nextMockId(prefix: string): string {
   mockTaskSequence += 1;
   return `mock-${prefix}-${Date.now()}-${mockTaskSequence}`;
-}
-
-function seedMockHistory(query: HarnessAtomicPublishHistoryQuery): void {
-  if (!query.assetType || !text(query.assetName) || text(query.batchId)) return;
-  const assetName = text(query.assetName);
-  if (
-    mockHistory.some(
-      (record) => record.assetType === query.assetType && record.assetName === assetName,
-    )
-  ) {
-    return;
-  }
-  mockHistory.push(
-    {
-      id: nextMockId('failed'),
-      assetType: query.assetType,
-      assetName,
-      assetVersion: 'v0.1.0',
-      publishStatus: '发布失败',
-      errorMessage: 'Mock 演示：目标组织校验失败',
-      source: '独立发布',
-      targetOrgName: MOCK_ORGANIZATIONS[1].name,
-      targetOrgCode: MOCK_ORGANIZATIONS[1].id,
-      operatorName: 'Mock 发布人',
-      operatorId: 'mock-user',
-      createdAt: mockTimestamp(-35),
-      updatedAt: mockTimestamp(-34),
-    },
-    {
-      id: nextMockId('success'),
-      assetType: query.assetType,
-      assetName,
-      assetVersion: 'v0.0.9',
-      publishStatus: '发布成功',
-      errorMessage: '',
-      source: '独立发布',
-      targetOrgName: MOCK_ORGANIZATIONS[0].name,
-      targetOrgCode: MOCK_ORGANIZATIONS[0].id,
-      operatorName: 'Mock 发布人',
-      operatorId: 'mock-user',
-      createdAt: mockTimestamp(-80),
-      updatedAt: mockTimestamp(-78),
-    },
-  );
-}
-
-function queryMockHistory(
-  query: HarnessAtomicPublishHistoryQuery,
-): HarnessAtomicPublishHistoryPage {
-  seedMockHistory(query);
-  const pageNum = positiveInteger(query.pageNum, 1);
-  const pageSize = positiveInteger(query.pageSize, 20);
-  const rows = mockHistory.filter(
-    (record) =>
-      (!text(query.batchId) || record.batchId === text(query.batchId)) &&
-      (!query.assetType || record.assetType === query.assetType) &&
-      (!text(query.assetName) || record.assetName === text(query.assetName)) &&
-      (!text(query.operatorId) || record.operatorId === text(query.operatorId)),
-  );
-  const start = (pageNum - 1) * pageSize;
-  return {
-    records: rows.slice(start, start + pageSize).map((record) => ({ ...record })),
-    total: rows.length,
-    pageNum,
-    pageSize,
-  };
 }
 
 function asRecord(value: unknown): RecordValue {
@@ -286,21 +211,6 @@ export async function publishAtomicAsset(input: {
     if (!organization) throw new Error('目标组织不存在');
     const batchId = nextMockId('batch');
     const taskId = nextMockId('task');
-    const timestamp = mockTimestamp();
-    mockHistory.unshift({
-      ...item,
-      id: taskId,
-      publishStatus: '进行中',
-      errorMessage: '',
-      source: '独立发布',
-      targetOrgName: organization.name,
-      targetOrgCode: organization.id,
-      operatorName: userName,
-      operatorId: userId,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      batchId,
-    });
     return { batchId, accepted: [{ ...item, taskId }], rejected: [] };
   }
   const response = await skillBaseService.publishHarnessAssets(
@@ -340,7 +250,7 @@ export async function publishAtomicAsset(input: {
 export async function queryAtomicAssetPublishHistory(
   query: HarnessAtomicPublishHistoryQuery,
 ): Promise<HarnessAtomicPublishHistoryPage> {
-  if (!transportIsHttp) return queryMockHistory(query);
+  // 发布历史由后端统一维护；即使页面其余功能运行在 mock 模式，也不能回退到本地记录。
   const pageNum = positiveInteger(query.pageNum, 1);
   const pageSize = positiveInteger(query.pageSize, 20);
   const body = {
@@ -372,17 +282,11 @@ export function canRetryAtomicPublish(record: HarnessAtomicPublishHistoryRecord)
 }
 
 export async function retryAtomicAssetPublish(taskId: string, userId: string): Promise<void> {
+  // 重试是后端任务的原地续跑，必须使用历史记录 id 调用真实接口。
   const requiredTaskId = requiredText(taskId, '发布记录缺少任务 ID');
-  requiredText(userId, '尚未获取当前用户工号');
-  if (!transportIsHttp) {
-    const record = mockHistory.find((item) => item.id === requiredTaskId);
-    if (!record) throw new Error('发布记录不存在');
-    if (!canRetryAtomicPublish(record)) throw new Error('该发布记录不可重试');
-    record.publishStatus = '进行中';
-    record.errorMessage = '';
-    record.updatedAt = mockTimestamp();
-    return;
-  }
-  const response = await skillBaseService.retryHarnessAssetPublish(requiredTaskId, { userId });
+  const requiredUserId = requiredText(userId, '尚未获取当前用户工号');
+  const response = await skillBaseService.retryHarnessAssetPublish(requiredTaskId, {
+    userId: requiredUserId,
+  });
   assertSuccess(response, '发布任务重试失败');
 }
