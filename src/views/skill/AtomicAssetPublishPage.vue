@@ -208,6 +208,16 @@ async function toggleChecklistFile(file: ChecklistFileState): Promise<void> {
   await loadChecklistFile(file);
 }
 
+// Agent / Command 资产进入发布页后直接展开「包含清单」，并直接通过 /packages/file 接口
+// 拉取并展开文件内容，无需用户再手动点击清单行。
+async function autoExpandDirectAssetChecklist(): Promise<void> {
+  if (checklistCapabilityType.value === 'skill') return;
+  checklistItemExpanded.value = true;
+  if (checklistFiles.value.length === 0 && !checklistDetailLoading.value) {
+    await loadChecklistFiles();
+  }
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -325,6 +335,7 @@ async function showHistory(): Promise<void> {
 async function showPublish(): Promise<void> {
   activePanel.value = 'publish';
   if (organizations.value.length === 0 && !organizationLoading.value) await loadOrganizations();
+  await autoExpandDirectAssetChecklist();
 }
 
 async function retryRecord(record: HarnessAtomicPublishHistoryRecord): Promise<void> {
@@ -344,7 +355,10 @@ async function retryRecord(record: HarnessAtomicPublishHistoryRecord): Promise<v
 
 onMounted(() => {
   if (activePanel.value === 'history') void loadHistory(true);
-  else void loadOrganizations();
+  else {
+    void loadOrganizations();
+    void autoExpandDirectAssetChecklist();
+  }
 });
 </script>
 
