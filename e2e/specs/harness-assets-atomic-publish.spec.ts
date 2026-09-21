@@ -389,9 +389,11 @@ test.describe('Agent / Skill / Command 发布入口', () => {
     const history = publishPage.getByRole('region', { name: 'Skill 发布记录' });
     await expect(history).toContainText('签名失败');
     await expect(history).toContainText('Extension 打包失败');
-    await expect(history.getByRole('button', { name: /重新加载：/ })).toHaveCount(1);
+    const retry = history.getByRole('button', { name: /重试：/ });
+    await expect(retry).toHaveCount(1);
+    await expect(retry).toHaveText('重试');
 
-    await history.getByRole('button', { name: '重新加载：Skill 可发布资产' }).click();
+    await history.getByRole('button', { name: '重试：Skill 可发布资产' }).click();
     await expect.poll(() => captured.retries.length).toBe(1);
     expect(new URL(captured.retries[0]!.url()).pathname).toBe(
       '/api/harness/assets/publish/task-independent/retry',

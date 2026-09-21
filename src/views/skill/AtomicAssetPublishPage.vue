@@ -690,12 +690,12 @@ onMounted(() => {
                   <button
                     type="button"
                     class="atomic-publish__button is-secondary is-compact"
-                    :aria-label="`重新加载：${record.assetName}`"
+                    :aria-label="`重试：${record.assetName}`"
                     :aria-busy="retryingTaskId === record.id"
                     :disabled="historyBusy"
                     @click="retryRecord(record)"
                   >
-                    {{ retryingTaskId === record.id ? '重试中…' : '↻ 重新加载' }}
+                    {{ retryingTaskId === record.id ? '重试中…' : '重试' }}
                   </button>
                 </div>
               </div>

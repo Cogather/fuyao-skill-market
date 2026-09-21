@@ -1099,6 +1099,13 @@ function personnelId(person: SkillPlanningUserOption | null) {
 function personnelLabel(person: SkillPlanningUserOption) {
   return [person.chName, personnelId(person)].filter(Boolean).join(' ') || person.label;
 }
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 async function createCommand() {
   const w = wizard.value;
   const d = w?.commandDraft;
@@ -1110,6 +1117,10 @@ async function createCommand() {
   }
   if (!d.description.trim() || !d.dueDate) {
     w.error = '请完整填写 Command 描述、开发责任人、责任人和完成时间';
+    return;
+  }
+  if (d.dueDate < currentLocalDate()) {
+    w.error = '计划完成时间不能早于当前日期';
     return;
   }
   const error = validateProductCatalogItemName(
@@ -1181,6 +1192,10 @@ async function createAsset() {
   }
   if (!d.description.trim() || !d.dueDate) {
     w.error = '请完整填写资产描述、开发责任人、责任人和完成时间';
+    return;
+  }
+  if (d.dueDate < currentLocalDate()) {
+    w.error = '计划完成时间不能早于当前日期';
     return;
   }
   const error = validateProductCatalogItemName(d.name, currentProduct.value?.name ?? '');
@@ -2319,7 +2334,11 @@ async function createAsset() {
               />
               <label>
                 计划完成时间 *
-                <input v-model="wizard.commandDraft.dueDate" type="date" />
+                <input
+                  v-model="wizard.commandDraft.dueDate"
+                  type="date"
+                  :min="currentLocalDate()"
+                />
               </label>
               <p class="capability-field-hint">参数与正文由流水线发布后回填。</p>
             </div>
@@ -2424,7 +2443,7 @@ async function createAsset() {
               />
               <label>
                 计划完成时间 *
-                <input v-model="wizard.assetDraft.dueDate" type="date" />
+                <input v-model="wizard.assetDraft.dueDate" type="date" :min="currentLocalDate()" />
               </label>
               <p class="capability-field-hint">资产内容由流水线发布后回填。</p>
             </div>

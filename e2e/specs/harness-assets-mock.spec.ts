@@ -209,6 +209,36 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     }
   });
 
+  test('原子资产详情在 Mock 模式展示匹配的发布记录并支持失败重试', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    const assetName = '流水线失败诊断 Skill';
+    await assetCard(page, assetName).click();
+
+    await page.getByRole('tab', { name: '发布记录', exact: true }).click();
+    const history = page.getByRole('region', { name: 'Skill 发布记录' });
+    await expect(history).toBeVisible();
+    await expect(history.getByRole('alert')).toHaveCount(0);
+    await expect(history.locator('.atomic-timeline__item')).toHaveCount(4);
+    await expect(history.locator('.atomic-timeline__name')).toHaveText(
+      Array.from({ length: 4 }, () => assetName),
+    );
+    await expect(history.locator('.atomic-timeline__status')).toHaveText([
+      '发布成功',
+      '进行中',
+      '发布失败',
+      '发布失败',
+    ]);
+
+    const retryRecord = history.locator('.atomic-timeline__item').nth(2);
+    const retry = retryRecord.getByRole('button', { name: `重试：${assetName}` });
+    await expect(retry).toHaveCount(1);
+    await expect(retry).toHaveText('重试');
+    await retry.click();
+    await expect(retryRecord.locator('.atomic-timeline__status')).toHaveText('进行中');
+    await expect(retryRecord.locator('.atomic-timeline__failure')).toHaveCount(0);
+  });
+
   test('新建和导入资产均在当前页签选择独立归属', async ({ page }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await selectHarnessOption(page.getByLabel('\u4ea7\u54c1\u7b5b\u9009'), {

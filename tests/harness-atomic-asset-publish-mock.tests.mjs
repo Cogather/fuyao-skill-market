@@ -17,43 +17,9 @@ try {
     '/src/services/skillMarket/atomicAssetPublishHttp.ts',
   );
 
-  const historyRequests = [];
-  const retryRequests = [];
-  let historyStatus = '发布失败';
+  const unexpectedHarnessRequests = [];
   request.harnessApi = async (config) => {
-    if (config.url === '/assets/publish/history') {
-      historyRequests.push(config);
-      return {
-        meta: { success: true, message: 'OK' },
-        data: {
-          records: [
-            {
-              id: 'backend-failed-task',
-              publishStatus: historyStatus,
-              errorMessage: historyStatus !== '发布失败' ? '' : '后端校验失败',
-              source: '独立发布',
-              targetOrgName: '后端组织',
-              targetOrgCode: 'backend-org',
-              operatorName: 'Mock 发布人',
-              operatorId: 'mock-user',
-              assetType: 'SKILL',
-              assetName: 'Skill 可发布资产',
-              assetVersion: 'v1.0.0',
-              createdAt: '2026-09-21 09:00:00',
-              updatedAt: '2026-09-21 09:01:00',
-            },
-          ],
-          total: 1,
-          pageNum: 1,
-          pageSize: 20,
-        },
-      };
-    }
-    if (config.url === '/assets/publish/backend-failed-task/retry') {
-      retryRequests.push(config);
-      historyStatus = '进行中';
-      return { meta: { success: true, message: 'OK' }, data: 'accepted' };
-    }
+    unexpectedHarnessRequests.push(config);
     throw new Error(`Unexpected request: ${config.url}`);
   };
 
@@ -111,6 +77,21 @@ try {
     assetName: asset.name,
     operatorId: scope.userId,
   });
+  assert.equal(beforeRetry.records.length, 4);
+  assert.equal(beforeRetry.total, 4);
+  assert.ok(
+    beforeRetry.records.every(
+      (record) =>
+        record.assetType === 'SKILL' &&
+        record.assetName === asset.name &&
+        record.operatorId === scope.userId,
+    ),
+    'mock history should match the selected asset and current user',
+  );
+  assert.deepEqual(
+    new Set(beforeRetry.records.map((record) => record.publishStatus)),
+    new Set(['发布成功', '进行中', '发布失败']),
+  );
   const failed = beforeRetry.records.find((record) => atomicPublish.canRetryAtomicPublish(record));
   assert.ok(failed, 'mock history should include a retryable independent publish failure');
   await atomicPublish.retryAtomicAssetPublish(failed.id, scope.userId);
@@ -123,18 +104,18 @@ try {
     afterRetry.records.find((record) => record.id === failed.id)?.publishStatus,
     '进行中',
   );
-  assert.deepEqual(historyRequests[0].data, {
+
+  const secondPage = await atomicPublish.queryAtomicAssetPublishHistory({
     assetType: 'SKILL',
     assetName: asset.name,
     operatorId: scope.userId,
-    pageNum: 1,
-    pageSize: 20,
+    pageNum: 2,
+    pageSize: 2,
   });
-  assert.deepEqual(retryRequests[0], {
-    url: '/assets/publish/backend-failed-task/retry',
-    method: 'post',
-    params: { userId: scope.userId },
-  });
+  assert.equal(secondPage.records.length, 2);
+  assert.equal(secondPage.total, 4);
+  assert.equal(secondPage.pageNum, 2);
+  assert.equal(secondPage.pageSize, 2);
 
   const result = await atomicPublish.publishAtomicAsset({
     asset,
@@ -149,17 +130,16 @@ try {
     assetName: asset.name,
     operatorId: scope.userId,
   });
-  assert.equal(submitted.records.length, 1);
-  assert.equal(submitted.records[0].publishStatus, '进行中');
-  assert.deepEqual(historyRequests.at(-1).data, {
-    assetType: 'SKILL',
-    assetName: asset.name,
-    operatorId: scope.userId,
-    pageNum: 1,
-    pageSize: 20,
-  });
+  const submittedRecord = submitted.records.find(
+    (record) => record.id === result.accepted[0].taskId,
+  );
+  assert.equal(submittedRecord?.publishStatus, '进行中');
+  assert.equal(submittedRecord?.targetOrgCode, organizations[0].id);
+  assert.equal(submittedRecord?.operatorName, scope.userName);
+  assert.equal(submitted.total, 5);
+  assert.deepEqual(unexpectedHarnessRequests, []);
 
-  console.log('PASS atomic asset mock publishing keeps history and retry on the backend contracts');
+  console.log('PASS atomic asset mock publishing keeps history and retry fully local');
 } finally {
   await server.close();
 }
