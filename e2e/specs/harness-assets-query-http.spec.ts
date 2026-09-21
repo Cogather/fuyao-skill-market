@@ -515,3 +515,77 @@ test('HTTP 资产筛选使用编码和 30 条分页，清空范围、切换类�
   await expect(cards).toHaveCount(1);
   await expect(cards.first().getByRole('heading')).toHaveText('SKILL-1');
 });
+
+test('离开当前资产页后迟到的产品响应不会继续触发资产查询', async ({ page }) => {
+  test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '验证当前资产页卸载竞态');
+  await page.addInitScript(() => {
+    sessionStorage.setItem(
+      '__skill_market_parent_context_v1__',
+      JSON.stringify({
+        type: 'Skill_Square_Init',
+        userId: 'asset-race-user',
+        userName: '卸载竞态用户',
+        departmentList: [
+          { deptId: 'department-id', deptCode: 'delivery-code', deptName: '交付部', deptLevel: 5 },
+        ],
+      }),
+    );
+  });
+
+  let releaseProducts: (() => void) | undefined;
+  let componentQueryCount = 0;
+  const success = (data: unknown) => ({ meta: { success: true, message: 'OK' }, data });
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (!path.startsWith('/api/')) return route.continue();
+    if (path.endsWith('/permission/user-depts')) {
+      return route.fulfill({
+        json: success({
+          ownedOrgs: [
+            { deptName: '交付部', deptCode: 'delivery-code', path: ['交付部'], levelNo: 5 },
+          ],
+          adminOrgs: [],
+        }),
+      });
+    }
+    if (path.endsWith('/smapi-product-by-dept')) {
+      await new Promise<void>((resolve) => {
+        releaseProducts = resolve;
+      });
+      return route.fulfill({
+        json: success([
+          { offeringId: 'pipeline-code', offeringName: '流水线', planningDeptName: '交付部' },
+        ]),
+      });
+    }
+    if (path.endsWith('/components/query')) {
+      componentQueryCount += 1;
+      return route.fulfill({
+        json: success({ records: [], total: 0, pageNo: 1, pageSize: 30 }),
+      });
+    }
+    return route.fulfill({ json: success([]) });
+  });
+
+  await page.goto(`${APP_BASE_PATH}/harness-management`);
+  await page.locator('#harness-tab-assets').click();
+  await expect.poll(() => Boolean(releaseProducts)).toBe(true);
+  await expect(page.locator('#harness-panel-assets')).toBeVisible();
+  await page.locator('#harness-tab-scenarios').click();
+  await expect(page.locator('#harness-panel-assets')).toHaveCount(0);
+
+  const productResponse = page.waitForResponse((response) =>
+    response.url().includes('/smapi-product-by-dept'),
+  );
+  releaseProducts!();
+  await productResponse;
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+
+  expect(componentQueryCount).toBe(0);
+  await expect(page.locator('#harness-panel-assets')).toHaveCount(0);
+});

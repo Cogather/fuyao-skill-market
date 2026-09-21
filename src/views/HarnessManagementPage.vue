@@ -26,7 +26,12 @@ import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marke
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
-import type { HarnessDepartmentSnapshot, HarnessScopeSnapshot } from '../types/harnessFilterMemory';
+import type {
+  HarnessCatalogScopeChange,
+  HarnessCatalogScopeSnapshots,
+  HarnessDepartmentSnapshot,
+  HarnessScopeSnapshot,
+} from '../types/harnessFilterMemory';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
@@ -113,6 +118,7 @@ const capabilityManagementActivated = ref(false);
 const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const assetCatalogScopeSnapshotsByUser = ref<Record<string, HarnessCatalogScopeSnapshots>>({});
 const extensionScopeSnapshot = ref<HarnessScopeSnapshot>();
 const capabilityScopeSnapshots = computed<
   Partial<Record<PlanningScopeChange['capabilityType'], HarnessScopeSnapshot>>
@@ -150,6 +156,9 @@ const userId = computed(() => {
 });
 
 const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
+const assetCatalogScopeSnapshots = computed<HarnessCatalogScopeSnapshots>(
+  () => assetCatalogScopeSnapshotsByUser.value[userId.value] ?? {},
+);
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
@@ -399,6 +408,24 @@ function updateCatalogScopeSnapshot(change: PlanningScopeChange): void {
   };
 }
 
+function updateAssetCatalogScopeSnapshot(change: HarnessCatalogScopeChange): void {
+  const memoryKey = userId.value;
+  if (!memoryKey) return;
+  assetCatalogScopeSnapshotsByUser.value = {
+    ...assetCatalogScopeSnapshotsByUser.value,
+    [memoryKey]: {
+      ...(assetCatalogScopeSnapshotsByUser.value[memoryKey] ?? {}),
+      [change.assetType]: {
+        ...(assetCatalogScopeSnapshotsByUser.value[memoryKey]?.[change.assetType] ?? {}),
+        [change.action]: {
+          ...change.snapshot,
+          departmentPath: [...change.snapshot.departmentPath],
+        },
+      },
+    },
+  };
+}
+
 function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
   extensionScopeSnapshot.value = {
     ...snapshot,
@@ -586,6 +613,8 @@ onBeforeRouteLeave(() => {
         :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :scope-snapshots="assetCatalogScopeSnapshots"
+        @scope-change="updateAssetCatalogScopeSnapshot"
       />
     </section>
 

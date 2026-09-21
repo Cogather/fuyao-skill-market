@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import { getHarnessCapabilityPlanningApi } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import { usesHttpHarnessAssetApi } from '../../services/skillMarket/assetManagementService';
@@ -22,7 +22,10 @@ const props = defineProps<{
   allowedDepartmentPaths: string[][];
   restrictToAllowedDepartments: boolean;
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{
+  close: [];
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+}>();
 const api = getHarnessCapabilityPlanningApi(
   props.assetType === 'Agent' ? 'agent' : props.assetType === 'Command' ? 'command' : 'skill',
 );
@@ -37,6 +40,7 @@ const downloading = ref(false);
 const downloadMessage = ref('');
 const error = ref('');
 let productSequence = 0;
+let dialogActive = true;
 const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
 const selectedDepartment = computed(() => {
@@ -73,7 +77,7 @@ const canDownload = computed(
   () => !scopeError.value && !productsLoading.value && !downloading.value,
 );
 
-async function loadProducts(preferredId = ''): Promise<void> {
+async function loadProducts(preferredId = '', preferredName = ''): Promise<void> {
   const sequence = ++productSequence;
   products.value = [];
   productName.value = '';
@@ -88,8 +92,11 @@ async function loadProducts(preferredId = ''): Promise<void> {
     if (sequence !== productSequence) return;
     products.value = options;
     productName.value =
-      (preferredId ? options.find((item) => item.offeringId === preferredId) : options[0])
-        ?.offeringName ?? '';
+      (
+        options.find((item) => Boolean(preferredId) && item.offeringId === preferredId) ??
+        options.find((item) => Boolean(preferredName) && item.offeringName === preferredName) ??
+        options[0]
+      )?.offeringName ?? '';
   } catch (cause) {
     if (sequence === productSequence)
       productError.value = cause instanceof Error ? cause.message : '产品列表加载失败';
@@ -98,13 +105,45 @@ async function loadProducts(preferredId = ''): Promise<void> {
   }
 }
 
-watch([level, departmentPath], () => {
-  void loadProducts();
-});
-watch([level, departmentPath, productName], () => {
+function emitScopeSnapshot(): void {
+  if (!dialogActive || !selectedDepartment.value) return;
+  emit('scope-change', {
+    level: level.value,
+    departmentPath: [...departmentPath.value],
+    offeringId: level.value === '产品级' ? (selectedProduct.value?.offeringId ?? '') : '',
+    offeringName: level.value === '产品级' ? productName.value.trim() : '',
+  });
+}
+
+async function refreshProductsAndEmit(preferredId = '', preferredName = ''): Promise<void> {
+  const pending = loadProducts(preferredId, preferredName);
+  emitScopeSnapshot();
+  await pending;
+  emitScopeSnapshot();
+}
+
+function clearScopeFeedback(): void {
   error.value = '';
   downloadMessage.value = '';
-});
+}
+
+function onLevelChange(nextLevel: HarnessScopeSnapshot['level']): void {
+  level.value = nextLevel;
+  clearScopeFeedback();
+  void refreshProductsAndEmit();
+}
+
+function onDepartmentChange(path: string[]): void {
+  departmentPath.value = [...path];
+  clearScopeFeedback();
+  void refreshProductsAndEmit();
+}
+
+function onProductChange(name: string): void {
+  productName.value = name;
+  clearScopeFeedback();
+  emitScopeSnapshot();
+}
 
 function close(): void {
   if (!downloading.value) emit('close');
@@ -172,9 +211,10 @@ async function downloadExistingData(): Promise<void> {
 
 onMounted(() => {
   dialogRef.value?.focus();
-  void loadProducts(props.initialScope.offeringId);
+  void refreshProductsAndEmit(props.initialScope.offeringId, props.initialScope.offeringName);
 });
 onBeforeUnmount(() => {
+  dialogActive = false;
   productSequence++;
   returnFocus?.focus();
 });
@@ -217,9 +257,9 @@ onBeforeUnmount(() => {
           :allowed-department-paths="allowedDepartmentPaths"
           scope-label="导出资产归属"
           department-aria-label="导出资产部门"
-          @level-change="level = $event"
-          @department-change="departmentPath = $event"
-          @product-change="productName = $event"
+          @level-change="onLevelChange"
+          @department-change="onDepartmentChange"
+          @product-change="onProductChange"
         />
         <p v-if="productError" class="catalog-export-error" role="alert">
           {{ productError }}

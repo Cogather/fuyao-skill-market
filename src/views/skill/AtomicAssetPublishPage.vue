@@ -115,10 +115,10 @@ const checklistItems = computed(() => [
   },
 ]);
 const checklistCapabilityType = computed<PlanningTaskCapabilityType>(() => {
-  switch (props.asset.assetType) {
-    case 'Agent':
+  switch (atomicAssetApiType(props.asset)) {
+    case 'AGENT':
       return 'agent';
-    case 'Command':
+    case 'COMMAND':
       return 'command';
     default:
       return 'skill';
@@ -126,9 +126,8 @@ const checklistCapabilityType = computed<PlanningTaskCapabilityType>(() => {
 });
 
 function checklistIdentity(): PlanningTaskDetailIdentity | null {
-  const version =
-    props.asset.currentVersion.trim() ||
-    normalizeHarnessAssetVersion(props.asset.latestVersion ?? '');
+  // 文件内容必须对应 components/query 返回的待发布版本，不能回退到当前版本。
+  const version = normalizeHarnessAssetVersion(props.asset.latestVersion ?? '');
   if (!version) return null;
   return {
     userId: props.userId,
@@ -175,8 +174,10 @@ async function loadChecklistFiles(): Promise<void> {
     }));
     expandedChecklistFilePaths.value = [];
     const firstFile = checklistFiles.value[0];
-    if (firstFile && checklistCapabilityType.value === 'skill') {
-      expandedChecklistFilePaths.value = [firstFile.path];
+    if (firstFile) {
+      if (checklistCapabilityType.value === 'skill') {
+        expandedChecklistFilePaths.value = [firstFile.path];
+      }
       await loadChecklistFile(firstFile);
     }
   } catch (error) {
@@ -208,8 +209,8 @@ async function toggleChecklistFile(file: ChecklistFileState): Promise<void> {
   await loadChecklistFile(file);
 }
 
-// Agent / Command 资产进入发布页后直接展开「包含清单」并展示约定文件名；
-// 文件内容仅在用户点击文件名后通过 /packages/file 按需加载。
+// Agent / Command 资产进入发布页后直接展开「包含清单」并加载约定文件内容；
+// Skill 展开清单后先读取目录，再自动加载第一个文件内容。
 async function autoExpandDirectAssetChecklist(): Promise<void> {
   if (checklistCapabilityType.value === 'skill') return;
   checklistItemExpanded.value = true;
@@ -300,14 +301,14 @@ function historyOrganizationLabel(record: HarnessAtomicPublishHistoryRecord): st
 }
 
 function historyQuery(pageNum: number) {
-  return historyBatchId.value
-    ? { batchId: historyBatchId.value, pageNum, pageSize: historyPageSize }
-    : {
-        assetType: atomicAssetApiType(props.asset.assetType),
-        assetName: props.asset.name,
-        pageNum,
-        pageSize: historyPageSize,
-      };
+  return {
+    ...(historyBatchId.value ? { batchId: historyBatchId.value } : {}),
+    assetType: atomicAssetApiType(props.asset),
+    assetName: props.asset.name,
+    operatorId: props.userId,
+    pageNum,
+    pageSize: historyPageSize,
+  };
 }
 
 async function loadHistory(reset = false): Promise<void> {
@@ -546,7 +547,7 @@ onMounted(() => {
                         暂无可展示的文件
                       </p>
 
-                      <template v-else>
+                      <template v-else-if="checklistCapabilityType === 'skill'">
                         <article
                           v-for="file in checklistFiles"
                           :key="file.path"
@@ -574,11 +575,7 @@ onMounted(() => {
                           </button>
                           <div
                             v-if="expandedChecklistFilePaths.includes(file.path)"
-                            :class="
-                              checklistCapabilityType === 'skill'
-                                ? 'atomic-publish__file-content'
-                                : 'atomic-publish__direct-content'
-                            "
+                            class="atomic-publish__file-content"
                           >
                             <p v-if="file.loading">正在加载文件内容…</p>
                             <div v-else-if="file.error" class="atomic-publish__file-state is-error">
@@ -589,6 +586,19 @@ onMounted(() => {
                           </div>
                         </article>
                       </template>
+                      <div v-else class="atomic-publish__direct-content">
+                        <p v-if="checklistFiles[0]?.loading">正在加载文件内容…</p>
+                        <div
+                          v-else-if="checklistFiles[0]?.error"
+                          class="atomic-publish__file-state is-error"
+                        >
+                          <span>{{ checklistFiles[0].error }}</span>
+                          <button type="button" @click="loadChecklistFile(checklistFiles[0])">
+                            重试
+                          </button>
+                        </div>
+                        <pre v-else>{{ checklistFiles[0]?.content }}</pre>
+                      </div>
                     </div>
                   </li>
                 </ul>
@@ -635,17 +645,18 @@ onMounted(() => {
           <button
             type="button"
             class="atomic-publish__button is-secondary"
+            aria-label="刷新发布记录"
             :aria-busy="historyLoading"
             :disabled="historyBusy"
             @click="loadHistory(true)"
           >
-            重新加载
+            刷新记录
           </button>
         </div>
 
         <div v-if="historyError" class="atomic-publish__error atomic-history__error" role="alert">
           <span>{{ historyError }}</span>
-          <button type="button" :disabled="historyBusy" @click="loadHistory(true)">重新加载</button>
+          <button type="button" :disabled="historyBusy" @click="loadHistory(true)">重新查询</button>
         </div>
         <div
           v-if="historyLoading && historyRecords.length === 0"
@@ -698,12 +709,12 @@ onMounted(() => {
                   <button
                     type="button"
                     class="atomic-publish__button is-secondary is-compact"
-                    :aria-label="`重试发布：${record.assetName}`"
+                    :aria-label="`重新加载：${record.assetName}`"
                     :aria-busy="retryingTaskId === record.id"
                     :disabled="historyBusy"
                     @click="retryRecord(record)"
                   >
-                    {{ retryingTaskId === record.id ? '重试中…' : '↻ 重试发布' }}
+                    {{ retryingTaskId === record.id ? '重试中…' : '↻ 重新加载' }}
                   </button>
                 </div>
               </div>

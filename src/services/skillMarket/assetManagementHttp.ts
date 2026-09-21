@@ -91,6 +91,7 @@ export async function queryHttpHarnessAssetPage(
       name: record.name,
       description: record.description,
       assetType,
+      type: record.type ?? API_TYPES[assetType],
       dimType: record.dimType ?? null,
       dimCode: record.dimCode ?? null,
       dimName: record.dimName ?? null,

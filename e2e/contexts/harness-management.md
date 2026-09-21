@@ -30,7 +30,7 @@
 - Agent、Skill、Command 的卡片「编辑信息」和详情右上角「编辑」统一打开资产信息弹框，视觉及字段布局对齐第一个资产清单的编辑弹框；详情页始终只读。弹框可修改名称、描述、责任人和开发责任人，人员使用搜索选择器，选中后输入区仍保持白底以提示可清除重选；点击保存才提交，取消恢复原值，失败保留草稿。保存期间禁止重复提交、关闭、返回、删除及版本切换。HTTP 先按原名称、归属和列表维度编码解析真实清单 ID，再调用对应 `/api/harness/{agents|skills|commands}/management/update`，一个 PUT 更新四项（未修改的人员字段省略）；成功后同步详情、卡片名称及身份，支持再次编辑。Mock 保存到原清单存储。实际改名复用清单名称格式和产品前缀规则，保留历史未改名及引用 Skill 的例外；Extension 暂无信息更新接口，不显示此编辑入口。回归为 `harness-assets-details-edit-http.spec.ts`、`harness-assets-details-edit-mock.spec.ts` 和 `tests/harness-asset-details-edit.tests.mjs`。
 - HTTP 资产列表使用 `httpRequest.api` 的 `POST /v1/harness/plans/components/query`，body 包含 `userId`、可选 `deptCode` / `productCode`、大写 `type`、`sortBy: updatedAt`、`sortOrder: desc`、`pageNo`、`pageSize: 30`。未选部门或产品时省略对应编码；清空部门后仍可查询列表。
 - HTTP 响应使用 `data.records`、`data.total`、`data.pageNo`、`data.pageSize`；记录类型来自当前筛选，展示 `name`、`description`、`latestVersion` 和原始 `status`，以类型 + `category` + 名称作为稳定身份。Agent、Skill、Command 卡片人员字段固定展示开发责任人，Extension 没有责任人或开发责任人，固定展示当前版本发布人（兼容列表的 `publisher` / `uploadedBy` 字段），不得相互回退或串用。
-- Agent、Skill、Command 和有版本的 Extension 卡片点击调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本保持接口上传时间顺序，默认选最新上传的第一项；原子资产继续按所选版本查询包文件。Extension 随后只调用一次 `POST /api/harness/scenes/bindings`，body 使用卡片记录的 `dimType/dimCode/dimName` 和所选 `version`，响应按卡片的一、二级场景精确过滤，仅展示对应 skills、commands、agents；切换版本重新获取绑定，清空旧文件内容。展开 Skill 时查询 `/packages/tree`；Command、Agent 使用绑定中的文件路径（缺省为名称加 `.md`）。点击具体文件才查询 `/packages/file`，参数使用该组件自身的名称、版本和文件路径；目录和文件加载失败支持局部重试。卡片内容不调用发布详情或发布历史接口，`includeFiles: false` 仅查询元信息。
+- Agent、Skill、Command 和有版本的 Extension 卡片点击调用 `GET /api/v1/harness/plans/components/detail`，Query 为 `userId/type/name`，`type` 大写。详情显示名字、描述、类别、责任人、开发责任人（Extension 无此项），版本保持接口上传时间顺序，默认选最新上传的第一项；原子资产继续按所选版本查询包文件。Extension 随后只调用一次 `POST /api/harness/scenes/bindings`，body 使用卡片记录的 `dimType/dimCode/dimName` 和所选 `version`，响应按卡片的一、二级场景精确过滤，仅展示对应 skills、commands、agents；切换版本重新获取绑定，清空旧文件内容。Skill 先查询 `/packages/tree`，再自动查询第一个文件的 `/packages/file` 并展开首文件；Command、Agent 使用约定文件路径（缺省为名称加 `.md`）直接查询 `/packages/file` 并展示正文，不渲染额外文件名行。文件参数使用组件自身的名称、版本和文件路径，失败支持重试。卡片内容不调用发布详情或发布历史接口，`includeFiles: false` 仅查询元信息。
 - Extension 列表项的 `canPublish` 控制当前用户的发布权限，与场景是否就绪独立。值为 `false` 时卡片及详情页的「发布 / 继续发布」保持可见但置灰禁用，发布准备和提交方法均拒绝调用接口；历史刷新保留权限标志。
 - Extension 列表项没有版本号时（`latestVersion` 为 null、空字符串或缺省），点击卡片或按 Enter 进入详情仅显示列表中的基本信息和「暂无版本，当前无法查看详情」，不请求组件详情、Extension 详情、历史或文件接口，也不显示重新加载按钮。有版本的 Extension 继续按正常流程加载详情。
 - Extension 点击「发布」后立即进入页面，再调用 `POST /api/harness/extensions/detail?userId=...` 获取当前场景组件、就绪状态和发布摘要；body 的 `dimType/dimCode/dimName/firstScene/secondScene` 均来自 `/harness/plans/components/query` 响应 `data.records` 中被点击的那条记录，并携带其名字作为 `extensionName`。记录维度优先于产品筛选和缓存，点击发布不调用 `/smapi-product-by-dept`；无编码的场景选择入口直接传 `firstScene/secondScene`。请求失败在页内显示原因并可重新加载，保留原记录参数；未配置、不完备或已有发布进行中时仍显示发布表单，禁止确认发布；HTTP 卡片发布入口不显示“场景不完备，无法发布”红字，保留重新加载和其他错误提示。加载期间返回后，迟到响应不能重新打开页面。详情返回后调用 `GET /api/harness/extensions/orgs`，Query 使用当前用户 `userId` 与卡片维度 `dimType/dimCode`，下拉选项只来自接口；即使场景不完备或发布中也查询组织，但保持发布禁用。组织加载中禁用选择；失败或空结果显示原因，可单独重试且保留表单。发布准备不调用 history，已发布名称、版本及状态直接使用详情中的 `publishedExtension`。提交发布仍走原 `/api/harness/extensions` 接口；HTTP 提交成功后刷新卡片并返回列表，不自动查询历史，点击「发布历史」才加载完整历史。
@@ -46,6 +46,8 @@
 - 「业务场景设计」与「Harness 工作流」共享同一个路由级 workspace；跨 tab 新建的 Workflow 和当前部门必须立即同步，两个面板用 `v-show` 保持自身筛选 UI 状态
 - HTTP「业务场景设计」的部门选择仅允许权限接口返回的可管理部门及其下级，上级路径只用于导航，不能确认为选择结果。「Harness 工作流」与资产页保留全量部门筛选；从工作流返回场景设计时，如果当前部门未授权，会自动切回首个授权部门。
 - Agent / Skill / Command 导入窗口与新增窗口使用相同的默认部门规则：优先首个授权部门，其次当前用户部门，不直接沿用列表的部门筛选。默认部门与列表部门不同时，重新加载默认部门的产品；打开导入不会改变列表筛选。
+- 业务场景设计，以及 Agent / Skill / Command 的新增、导入、导出窗口，在当前用户和当前 Harness 路由生命周期内记住各自最近一次部门/产品选择；资产弹窗按资产类型和操作分别记忆。切换 Harness 内部页签后恢复上次选择；首次打开、刷新页面或离开再返回路由时仍使用原有默认值，不写入 localStorage / sessionStorage。
+- Agent / Skill / Command 新增成功后弹窗保持打开并刷新后台清单：层级、部门、产品继续保留，名称（产品级回到必填前缀）、说明、责任人、开发责任人和计划完成时间清空，焦点回到名称。保存失败保留全部输入；仅右上角 × 或「取消」关闭。Skill 广场引入同样保持弹窗和查询结果，仅清空已选 Skill 与本次人员、日期，避免重复引入。
 - 删除叶子业务场景时会级联删除其 Workflow，只读清单切回后不得残留对应行
 - Harness 工作流不在清单内编辑配置；「查看」进入 Extension 发布历史页，「发布」进入 Extension 发布页，配置修改入口仍统一通过「前往场景设计 →」返回业务场景页。
 - 场景新建、标签、删除确认和 Workflow 设计弹窗仅通过显式操作按钮关闭（如取消、×、完成、完成设计）；点击遮罩或空白、拖动、滚动及 Esc 不关闭弹窗，也不会保存未提交的修改。Tab 焦点限制在弹窗内。
@@ -64,7 +66,8 @@
 
 ## 演进记录
 
-- 2026-09-21：Agent / Command 资产进入发布页（`AtomicAssetPublishPage.vue`）后，下半部分「包含清单」自动展开，不经过 `/packages/tree`，展示缺省文件名（名称加 `.md`，无名称时回退 `AGENT.md`/`COMMAND.md`）；用户点击文件名后才调用 `/packages/file` 拉取内容并展示在 `atomic-publish__direct-content` 区块。Skill 仍需手动展开清单并走 `/packages/tree`。文件内容加载后再次展开不重复请求。回归：`harness-assets-atomic-publish.spec.ts`。
+- 2026-09-21：Agent / Command 资产进入发布页（`AtomicAssetPublishPage.vue`）后，下半部分「包含清单」自动展开，不经过 `/packages/tree`，直接按约定文件路径调用 `/packages/file` 并展示正文，不渲染额外的文件名行；Skill 仍需手动展开清单，依次调用 `/packages/tree` 和目录中第一个文件的 `/packages/file`，默认展开首文件。回归：`harness-assets-atomic-publish.spec.ts`。
+- 2026-09-21：第二个资产清单详情中，Agent / Command 不渲染额外的文件名行，进入内容区后直接调用 `/packages/file` 并展示首文件正文；Skill 先调用 `/packages/tree`，随后自动调用第一个文件的 `/packages/file` 并展开首文件。切换版本会重新执行同一加载顺序。列表筛选、部门/产品范围、分页和请求竞态已从页面编排拆到 `useHarnessAssetCatalogList.ts`，页面卸载时同时失效产品与资产列表请求，避免迟到的产品响应继续触发查询。回归：`harness-assets-http.spec.ts`、`harness-assets-mock.spec.ts`、`harness-assets-query-http.spec.ts`。
 
 - 2026-09-20：Agent / Skill / Command 发布页（`AtomicAssetPublishPage.vue`）的「包含清单」不再显示 `agents/`、`skills/`、`commands/` 这类文件夹类型行（含黄色文件夹图标与数量徽标），清单默认常显、不再有折叠入口；清单行与 Skill 文件行取消树形缩进，改为 10px 左内边距，展开内容同列对齐（箭头不贴边）；两级箭头统一改为固定尺寸 SVG 图标（文字字形 `›` 的墨迹贴基线，行框居中后整颗偏低约 5px）。回归：`harness-assets-atomic-publish.spec.ts`。
 

@@ -93,6 +93,8 @@ export type HarnessAsset = {
   name: string;
   description: string;
   assetType: HarnessAssetType;
+  /** components/query 记录中的原始类型，独立发布时原样透传。 */
+  type?: 'AGENT' | 'SKILL' | 'COMMAND' | 'EXTENSION';
   /** 发布查询使用列表记录自身的维度，不从筛选项反推。 */
   dimType?: string | null;
   dimCode?: string | null;

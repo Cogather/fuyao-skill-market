@@ -656,4 +656,139 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
       skills: [{ name: 'HTTP 构建诊断 Skill', version: '1.0.0' }],
     });
   });
+
+  test('Agent、Command 详情直接展示首文件，Skill 先查目录再展示首文件', async ({ page }) => {
+    await page.addInitScript(() => {
+      sessionStorage.setItem(
+        '__skill_market_parent_context_v1__',
+        JSON.stringify({
+          type: 'Skill_Square_Init',
+          userId: 'lazy-file-user',
+          userName: '文件懒加载用户',
+          departmentList: [
+            { deptId: 'delivery-id', deptCode: 'delivery-code', deptName: '交付部', deptLevel: 5 },
+          ],
+        }),
+      );
+    });
+
+    const names = {
+      AGENT: '按需 Agent',
+      SKILL: '按需 Skill',
+      COMMAND: '按需 Command',
+    } as const;
+    const fileRequests: Request[] = [];
+    const treeRequests: Request[] = [];
+    const response = (data: unknown) => ({ meta: { success: true, message: 'OK' }, data });
+
+    await page.route('**/api/**', async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith('/permission/user-depts')) {
+        return route.fulfill({
+          json: response({
+            ownedOrgs: [
+              { deptName: '交付部', deptCode: 'delivery-code', path: ['交付部'], levelNo: 5 },
+            ],
+            adminOrgs: [],
+          }),
+        });
+      }
+      if (path.endsWith('/smapi-product-by-dept')) {
+        return route.fulfill({ json: response([]) });
+      }
+      if (path.endsWith('/components/query')) {
+        const type = request.postDataJSON().type as keyof typeof names;
+        return route.fulfill({
+          json: response({
+            records: [
+              {
+                name: names[type],
+                description: `${type} 详情`,
+                latestVersion: '1.2.3',
+                status: '待发布',
+                category: '部门级/交付部',
+                canEdit: true,
+              },
+            ],
+            total: 1,
+            pageNo: 1,
+            pageSize: 30,
+          }),
+        });
+      }
+      if (path.endsWith('/components/detail')) {
+        const query = new URL(request.url()).searchParams;
+        return route.fulfill({
+          json: response({
+            name: query.get('name'),
+            description: '组件详情',
+            category: '部门级/交付部',
+            ownerName: '张三',
+            ownerId: 'w001',
+            developerName: '李四',
+            developerId: 'w002',
+            type: query.get('type'),
+            versions: [{ version: '1.2.3', uploadedAt: '2026-09-21 10:00:00' }],
+          }),
+        });
+      }
+      if (path.endsWith('/packages/tree')) {
+        treeRequests.push(request);
+        return route.fulfill({ json: response(['SKILL.md']) });
+      }
+      if (path.endsWith('/packages/file')) {
+        fileRequests.push(request);
+        const query = new URL(request.url()).searchParams;
+        return route.fulfill({
+          json: response({ content: `${query.get('componentName')} 文件内容` }),
+        });
+      }
+      if (path.endsWith('/plans/skill/eval')) {
+        return route.fulfill({ json: response({}) });
+      }
+      return route.fallback();
+    });
+
+    await page.goto(`${APP_BASE_PATH}/harness-management`);
+    await page.locator('#harness-tab-assets').click();
+
+    for (const [label, apiType] of [
+      ['Agent', 'AGENT'],
+      ['Skill', 'SKILL'],
+      ['Command', 'COMMAND'],
+    ] as const) {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      const fileCount = fileRequests.length;
+      const treeCount = treeRequests.length;
+      await assetCard(page, names[apiType]).click();
+
+      const filePath = apiType === 'SKILL' ? 'SKILL.md' : `${names[apiType]}.md`;
+      await expect.poll(() => fileRequests.length).toBe(fileCount + 1);
+      expect(treeRequests).toHaveLength(treeCount + (apiType === 'SKILL' ? 1 : 0));
+      expect(Object.fromEntries(new URL(fileRequests.at(-1)!.url()).searchParams)).toEqual({
+        userId: 'lazy-file-user',
+        componentType: label.toLowerCase(),
+        componentName: names[apiType],
+        componentVersion: '1.2.3',
+        filePath,
+      });
+
+      if (apiType === 'SKILL') {
+        const fileRow = page
+          .locator('.asset-detail .catalog-detail-file-row')
+          .filter({ hasText: filePath });
+        await expect(fileRow).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('.asset-detail .catalog-detail-file-content pre')).toContainText(
+          `${names[apiType]} 文件内容`,
+        );
+      } else {
+        await expect(page.locator('.asset-detail .catalog-detail-file-row')).toHaveCount(0);
+        await expect(
+          page.locator('.asset-detail .catalog-detail-direct-content pre'),
+        ).toContainText(`${names[apiType]} 文件内容`);
+      }
+      await page.locator('.asset-back').click();
+    }
+  });
 });

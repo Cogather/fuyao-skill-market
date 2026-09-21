@@ -156,11 +156,21 @@ try {
 
   const history = await atomicPublish.queryAtomicAssetPublishHistory({
     batchId: 'batch-1',
+    assetType: 'SKILL',
+    assetName: asset.name,
+    operatorId: 'publish-user',
   });
   assert.equal(history.records[0].errorMessage, '签名失败');
   assert.equal(history.total, 1);
   const historyRequest = requests.find((item) => item.url === '/assets/publish/history');
-  assert.deepEqual(historyRequest.data, { batchId: 'batch-1', pageNum: 1, pageSize: 20 });
+  assert.deepEqual(historyRequest.data, {
+    batchId: 'batch-1',
+    assetType: 'SKILL',
+    assetName: asset.name,
+    operatorId: 'publish-user',
+    pageNum: 1,
+    pageSize: 20,
+  });
 
   await atomicPublish.retryAtomicAssetPublish('task/1', 'publish-user');
   const retryRequest = requests.find((item) => item.url.includes('/retry'));

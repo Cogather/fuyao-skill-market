@@ -14,43 +14,38 @@ import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabil
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
+import { atomicAssetApiType } from '../../services/skillMarket/atomicAssetPublishHttp';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
 import {
   getHarnessAssetApi,
   usesHttpHarnessAssetApi,
 } from '../../services/skillMarket/assetManagementService';
 import {
-  harnessAssetStatus,
   normalizeHarnessAssetVersion,
   type HarnessAsset,
   type HarnessAssetDetail,
-  type HarnessAssetFilter,
   type HarnessAssetPersonField,
-  type HarnessAssetProduct,
-  type HarnessAssetScope,
   type DeleteHarnessAssetInput,
 } from '../../services/skillMarket/assetManagementTypes';
-import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import type {
+  HarnessCatalogAction,
+  HarnessCatalogAssetType,
+  HarnessCatalogScopeChange,
+  HarnessCatalogScopeSnapshots,
+  HarnessScopeSnapshot,
+} from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
 import { firstNonBlankText, formatCompactDateTime } from '../../utils/common';
 import { getAssetCatalogItemNamePrefix } from '../../utils/catalogItemName';
-import { mergeUniquePage, shouldLoadNextPage } from '../../utils/infiniteScroll';
+import {
+  CATALOG_TYPES,
+  STATUS_FILTERS,
+  TYPE_FILTERS,
+  useHarnessAssetCatalogList,
+  type DepartmentTreeNode,
+} from './useHarnessAssetCatalogList';
 
 type PageView = 'list' | 'detail' | 'publish';
-type AssetStatusFilter = 'all' | 'developing' | 'pending' | 'published';
-type DepartmentTreeNode = {
-  id?: string;
-  deptCode?: string;
-  name: string;
-  children?: DepartmentTreeNode[];
-};
-type DepartmentRow = {
-  id: string;
-  code: string;
-  name: string;
-  path: string[];
-  hasChildren: boolean;
-};
 
 const props = withDefaults(
   defineProps<{
@@ -60,6 +55,7 @@ const props = withDefaults(
     currentUserDepartmentPath?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    scopeSnapshots?: HarnessCatalogScopeSnapshots;
   }>(),
   {
     userId: '',
@@ -68,51 +64,21 @@ const props = withDefaults(
     currentUserDepartmentPath: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    scopeSnapshots: () => ({}),
   },
 );
+const emit = defineEmits<{
+  'scope-change': [change: HarnessCatalogScopeChange];
+}>();
 
-const TYPE_FILTERS: Array<{ key: HarnessAssetFilter; label: string }> = [
-  { key: 'Agent', label: 'Agent' },
-  { key: 'Skill', label: 'Skill' },
-  { key: 'Command', label: 'Command' },
-  { key: 'Extension', label: 'Extension' },
-];
-const STATUS_FILTERS: Array<{ key: AssetStatusFilter; label: string }> = [
-  { key: 'all', label: '全部' },
-  { key: 'developing', label: '开发中' },
-  { key: 'pending', label: '待发布' },
-  { key: 'published', label: '已发布' },
-];
-const STATUS_QUERY_VALUES: Record<
-  Exclude<AssetStatusFilter, 'all'>,
-  '开发中' | '待发布' | '已发布'
-> = {
-  developing: '开发中',
-  pending: '待发布',
-  published: '已发布',
-};
-const CATALOG_TYPES = ['Agent', 'Skill', 'Command'] as const;
 const PERSON_FIELDS = [
   { field: 'owner', label: '责任人' },
   { field: 'developer', label: '开发责任人' },
 ] as const;
 const transportIsHttp = usesHttpHarnessAssetApi();
-const ASSET_PAGE_SIZE = transportIsHttp ? 30 : 24;
-const ASSET_SCROLL_THRESHOLD = 120;
-const MAX_EMPTY_PAGE_PROBES = 10;
 const api = getHarnessAssetApi();
 
 const view = ref<PageView>('list');
-const filter = ref<HarnessAssetFilter>('Agent');
-const assetSearchQuery = ref('');
-const appliedAssetSearchKeyword = ref('');
-const assetStatusFilter = ref<AssetStatusFilter>('all');
-const selectedDepartmentId = ref('');
-const selectedProductId = ref('');
-const assets = ref<HarnessAsset[]>([]);
-const assetTotal = ref(0);
-const products = ref<HarnessAssetProduct[]>([]);
-const selectedAssetKey = ref('');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
 const detailTab = ref<'content' | 'report' | 'history'>('content');
@@ -139,6 +105,7 @@ const cardMenuKey = ref('');
 const createAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
 const importAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
 const exportAssetType = ref<(typeof CATALOG_TYPES)[number] | null>(null);
+const createScope = ref<HarnessScopeSnapshot>();
 const importScope = ref<HarnessScopeSnapshot>({
   level: '产品级',
   departmentPath: [],
@@ -151,14 +118,6 @@ const exportScope = ref<HarnessScopeSnapshot>({
   offeringId: '',
   offeringName: '',
 });
-const listLoading = ref(false);
-const listLoadingMore = ref(false);
-const listError = ref('');
-const listAppendError = ref('');
-const assetPageNum = ref(0);
-const hasMoreAssets = ref(false);
-const assetBoardElement = ref<HTMLElement | null>(null);
-const productError = ref('');
 const detailLoading = ref(false);
 const detailError = ref('');
 const detailDraft = ref<{
@@ -172,18 +131,54 @@ const detailDraft = ref<{
 const detailSaving = ref(false);
 const detailEditError = ref('');
 const toastMessage = ref('');
-let listSequence = 0;
-let lastObservedAssetScrollTop = 0;
-let pendingAssetScrollPreviousTop = 0;
-let pendingAssetScrollTop = 0;
-let assetScrollFrame: number | undefined;
-let assetSearchTimer: number | undefined;
-let productSequence = 0;
 let detailSequence = 0;
 let extensionReleaseSequence = 0;
 let extensionHistorySequence = 0;
-let assetsNeedRefresh = false;
 let toastTimer: number | undefined;
+
+const {
+  filter,
+  assetSearchQuery,
+  assetStatusFilter,
+  selectedDepartmentId,
+  selectedProductId,
+  assets,
+  assetTotal,
+  products,
+  selectedAssetKey,
+  listLoading,
+  listLoadingMore,
+  listError,
+  listAppendError,
+  hasMoreAssets,
+  assetBoardElement,
+  productError,
+  assetsNeedRefresh,
+  listSequence,
+  normalizedAllowedPaths,
+  defaultCatalogDepartmentPath,
+  manageableDepartmentTree,
+  pickerDepartments,
+  selectedDepartment,
+  selectedProduct,
+  selectedCatalogType,
+  currentScope,
+  selectedAsset,
+  filteredAssets,
+  assetKey,
+  statusLabel,
+  resetAssetScrollPosition,
+  scheduleAssetSearch,
+  reloadAssets,
+  loadNextAssetPage,
+  handleAssetScroll,
+  handleAssetWheel,
+  selectDepartment,
+  selectFilter,
+  selectStatusFilter,
+  initializeList,
+  disposeList,
+} = useHarnessAssetCatalogList(props, { api, transportIsHttp });
 
 function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
   const component = detailComponent.value;
@@ -324,11 +319,7 @@ async function deleteCurrentAsset(): Promise<void> {
   const target = deleteTarget.value;
   if (!target) throw new Error('请重新打开删除确认窗口');
   const listAsset = assets.value.find((asset) => assetKey(asset) === assetKey(target.asset));
-  if (
-    target.userId !== props.userId ||
-    !listAsset ||
-    !canAccessAsset(listAsset)
-  ) {
+  if (target.userId !== props.userId || !listAsset || !canAccessAsset(listAsset)) {
     throw new Error('当前用户没有删除权限，请刷新后重试');
   }
   const detailCategory = detailComponent.value?.category?.trim();
@@ -355,134 +346,6 @@ async function onAssetDeleted(): Promise<void> {
   assetListHeading.value?.focus();
 }
 
-function normalizePath(path: string[]): string[] {
-  return path.map((segment) => segment.trim()).filter(Boolean);
-}
-
-function pathStartsWith(path: string[], prefix: string[]): boolean {
-  return prefix.length <= path.length && prefix.every((segment, index) => path[index] === segment);
-}
-
-const normalizedAllowedPaths = computed(() =>
-  props.allowedDepartmentPaths.map(normalizePath).filter((path) => path.length > 0),
-);
-const defaultCatalogDepartmentPath = computed(
-  () => normalizedAllowedPaths.value[0] ?? normalizePath(props.currentUserDepartmentPath),
-);
-
-function filterDepartmentTree(
-  nodes: DepartmentTreeNode[],
-  parentPath: string[] = [],
-): DepartmentTreeNode[] {
-  if (!props.restrictToAllowedDepartments) return nodes;
-  if (normalizedAllowedPaths.value.length === 0) return [];
-  return nodes.flatMap((node) => {
-    const path = [...parentPath, node.name];
-    const visible = normalizedAllowedPaths.value.some(
-      (allowed) => pathStartsWith(path, allowed) || pathStartsWith(allowed, path),
-    );
-    if (!visible) return [];
-    return [{ ...node, children: filterDepartmentTree(node.children ?? [], path) }];
-  });
-}
-
-const manageableDepartmentTree = computed(() => filterDepartmentTree(props.departmentTree));
-const allDepartmentRows = computed<DepartmentRow[]>(() => {
-  const rows: DepartmentRow[] = [];
-  const append = (nodes: DepartmentTreeNode[], parentPath: string[]): void => {
-    nodes.forEach((node, index) => {
-      const path = [...parentPath, node.name];
-      rows.push({
-        id: String(node.id || node.deptCode || `${path.join('/')}-${index}`),
-        code: String(node.deptCode || node.id || ''),
-        name: node.name,
-        path,
-        hasChildren: Boolean(node.children?.length),
-      });
-      append(node.children ?? [], path);
-    });
-  };
-  // 列表筛选使用完整部门树；新增与导入使用 manageableDepartmentTree。
-  append(props.departmentTree, []);
-  return rows;
-});
-
-const pickerDepartments = computed(() =>
-  allDepartmentRows.value.map((row) => ({
-    _id: row.id,
-    name: row.name,
-    deptCode: row.code,
-    parentId: null,
-    path: row.path,
-  })),
-);
-
-const selectedDepartment = computed(
-  () => allDepartmentRows.value.find((row) => row.id === selectedDepartmentId.value) ?? null,
-);
-const selectedProduct = computed(
-  () => products.value.find((product) => product.id === selectedProductId.value) ?? undefined,
-);
-const selectedCatalogType = computed<(typeof CATALOG_TYPES)[number] | null>(
-  () => CATALOG_TYPES.find((assetType) => assetType === filter.value) ?? null,
-);
-const currentScope = computed<HarnessAssetScope | null>(() => {
-  const department = selectedDepartment.value;
-  if (!department && !transportIsHttp) return null;
-  return {
-    userId: props.userId.trim(),
-    userName: props.userName.trim(),
-    department: {
-      id: department?.id ?? '',
-      code: department?.code ?? '',
-      name: department?.name ?? '',
-      path: [...(department?.path ?? [])],
-    },
-    product: selectedProduct.value
-      ? { ...selectedProduct.value, departmentPath: [...selectedProduct.value.departmentPath] }
-      : undefined,
-    assetType: filter.value,
-  };
-});
-const selectedAsset = computed(
-  () =>
-    assets.value.find((asset) => `${asset.assetType}:${asset.id}` === selectedAssetKey.value) ??
-    null,
-);
-const filteredAssets = computed(() => {
-  const query = transportIsHttp
-    ? ''
-    : assetSearchQuery.value.trim().toLocaleLowerCase('zh-CN');
-  const candidates = transportIsHttp
-    ? assets.value
-    : assets.value.filter(
-        (asset) =>
-          (filter.value === 'all' || asset.assetType === filter.value) &&
-          (!selectedProductId.value || asset.productId === selectedProductId.value),
-      );
-  return candidates.filter((asset) => {
-    const status = statusLabel(asset);
-    const matchesStatus =
-      transportIsHttp ||
-      assetStatusFilter.value === 'all' ||
-      (assetStatusFilter.value === 'developing' && ['未开发', '开发中'].includes(status)) ||
-      (assetStatusFilter.value === 'pending' && ['待发布', '可发布', '发布中'].includes(status)) ||
-      (assetStatusFilter.value === 'published' && status === '已发布');
-    if (!matchesStatus) return false;
-    if (!query) return true;
-    return [
-      asset.name,
-      asset.description,
-      asset.owner,
-      asset.developer,
-      asset.productName,
-      asset.departmentName,
-    ]
-      .join('\n')
-      .toLocaleLowerCase('zh-CN')
-      .includes(query);
-  });
-});
 const detailVersions = computed(
   () => detail.value?.versions ?? selectedAsset.value?.versions ?? [],
 );
@@ -495,9 +358,7 @@ const isExtensionHistoryTab = computed(
 const isAtomicHistoryTab = computed(
   () => selectedAsset.value?.assetType !== 'Extension' && detailTab.value === 'history',
 );
-const isHistoryTab = computed(
-  () => isExtensionHistoryTab.value || isAtomicHistoryTab.value,
-);
+const isHistoryTab = computed(() => isExtensionHistoryTab.value || isAtomicHistoryTab.value);
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
@@ -639,102 +500,6 @@ function showToast(message: string): void {
   }, 2600);
 }
 
-function defaultDepartmentRow(): DepartmentRow | null {
-  const preferredPaths = [
-    ...normalizedAllowedPaths.value,
-    normalizePath(props.currentUserDepartmentPath),
-  ].filter((path) => path.length > 0);
-  for (const path of preferredPaths) {
-    const match = allDepartmentRows.value.find(
-      (row) => row.path.join('\u0001') === path.join('\u0001'),
-    );
-    if (match) return match;
-  }
-  return (
-    [...allDepartmentRows.value].reverse().find((row) => !row.hasChildren) ??
-    allDepartmentRows.value[0] ??
-    null
-  );
-}
-
-function resetAssetScrollPosition(): void {
-  if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
-  assetScrollFrame = undefined;
-  lastObservedAssetScrollTop = 0;
-  pendingAssetScrollPreviousTop = 0;
-  pendingAssetScrollTop = 0;
-  if (assetBoardElement.value) assetBoardElement.value.scrollTop = 0;
-}
-
-function resetAssetListState(): number {
-  const sequence = ++listSequence;
-  assets.value = [];
-  assetTotal.value = 0;
-  assetPageNum.value = 0;
-  hasMoreAssets.value = false;
-  listError.value = '';
-  listAppendError.value = '';
-  listLoadingMore.value = false;
-  resetAssetScrollPosition();
-  return sequence;
-}
-
-function assetPageQuery(pageNum: number) {
-  const status =
-    assetStatusFilter.value === 'all'
-      ? undefined
-      : STATUS_QUERY_VALUES[assetStatusFilter.value];
-  return {
-    pageNum,
-    pageSize: ASSET_PAGE_SIZE,
-    ...(appliedAssetSearchKeyword.value
-      ? { keyword: appliedAssetSearchKeyword.value }
-      : {}),
-    ...(transportIsHttp && status ? { status } : {}),
-  };
-}
-
-function scheduleAssetSearch(event: Event): void {
-  assetSearchQuery.value = (event.target as HTMLInputElement).value;
-  if (assetSearchTimer !== undefined) window.clearTimeout(assetSearchTimer);
-  assetSearchTimer = window.setTimeout(() => {
-    assetSearchTimer = undefined;
-    appliedAssetSearchKeyword.value = assetSearchQuery.value.trim();
-    void reloadAssets();
-  }, 250);
-}
-
-async function reloadAssets(): Promise<void> {
-  assetsNeedRefresh = false;
-  const scope = currentScope.value;
-  const sequence = resetAssetListState();
-  if (!scope) {
-    listError.value = '暂无可用部门范围';
-    listLoading.value = false;
-    return;
-  }
-  listLoading.value = true;
-  try {
-    const result = await api.queryAssets(scope, assetPageQuery(1));
-    if (sequence !== listSequence) return;
-    assets.value = mergeUniquePage([], result.list, assetKey);
-    assetTotal.value = result.total;
-    assetPageNum.value = 1;
-    hasMoreAssets.value = result.hasMore;
-  } catch (error) {
-    if (sequence !== listSequence) return;
-    listError.value = errorMessage(error, '资产清单加载失败');
-  } finally {
-    if (sequence === listSequence) {
-      listLoading.value = false;
-    }
-  }
-}
-
-function assetKey(asset: HarnessAsset): string {
-  return `${asset.assetType}:${asset.id}`;
-}
-
 function toggleCardMenu(asset: HarnessAsset): void {
   const key = assetKey(asset);
   cardMenuKey.value = cardMenuKey.value === key ? '' : key;
@@ -752,114 +517,6 @@ function handleCardMenuPointerDown(event: PointerEvent): void {
 
 function handleCardMenuKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') closeCardMenu();
-}
-
-async function loadNextAssetPage(): Promise<void> {
-  const scope = currentScope.value;
-  if (!scope || listLoading.value || listLoadingMore.value || !hasMoreAssets.value) {
-    return;
-  }
-  const sequence = listSequence;
-  listLoadingMore.value = true;
-  listAppendError.value = '';
-  try {
-    let nextPage = assetPageNum.value + 1;
-    for (let probe = 0; probe < MAX_EMPTY_PAGE_PROBES; probe += 1) {
-      const result = await api.queryAssets(scope, assetPageQuery(nextPage));
-      if (sequence !== listSequence) return;
-      const beforeLength = assets.value.length;
-      assets.value = mergeUniquePage(assets.value, result.list, assetKey);
-      assetPageNum.value = nextPage;
-      hasMoreAssets.value = result.hasMore;
-      if (assets.value.length > beforeLength || !result.hasMore) break;
-      nextPage += 1;
-      if (probe === MAX_EMPTY_PAGE_PROBES - 1) {
-        listAppendError.value = '连续分页未返回新资产，请重试';
-      }
-    }
-  } catch (error) {
-    if (sequence !== listSequence) return;
-    listAppendError.value = errorMessage(error, '下一页资产加载失败');
-  } finally {
-    if (sequence === listSequence) {
-      listLoadingMore.value = false;
-    }
-  }
-}
-
-function handleAssetScroll(event: Event): void {
-  const element = event.currentTarget as HTMLElement;
-  const observedScrollTop = Math.max(0, element.scrollTop);
-  if (observedScrollTop === lastObservedAssetScrollTop) return;
-  pendingAssetScrollPreviousTop = lastObservedAssetScrollTop;
-  pendingAssetScrollTop = observedScrollTop;
-  lastObservedAssetScrollTop = observedScrollTop;
-  if (assetScrollFrame !== undefined) return;
-  assetScrollFrame = window.requestAnimationFrame(() => {
-    assetScrollFrame = undefined;
-    const shouldLoad = shouldLoadNextPage({
-      previousScrollTop: pendingAssetScrollPreviousTop,
-      scrollTop: pendingAssetScrollTop,
-      scrollHeight: element.scrollHeight,
-      clientHeight: element.clientHeight,
-      threshold: ASSET_SCROLL_THRESHOLD,
-      loading: listLoading.value || listLoadingMore.value,
-      hasMore: hasMoreAssets.value,
-    });
-    if (shouldLoad) void loadNextAssetPage();
-  });
-}
-
-function handleAssetWheel(event: WheelEvent): void {
-  if (event.deltaY <= 0) return;
-  const element = event.currentTarget as HTMLElement;
-  const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
-  if (remaining > ASSET_SCROLL_THRESHOLD) return;
-  void loadNextAssetPage();
-}
-
-async function reloadProductsAndAssets(): Promise<void> {
-  const sequence = ++productSequence;
-  const scope = currentScope.value;
-  resetAssetListState();
-  products.value = [];
-  selectedProductId.value = '';
-  productError.value = '';
-  if (!scope) {
-    await reloadAssets();
-    return;
-  }
-  listLoading.value = true;
-  try {
-    const nextProducts = await api.queryProducts(scope);
-    if (sequence !== productSequence) return;
-    products.value = nextProducts;
-  } catch (error) {
-    if (sequence !== productSequence) return;
-    productError.value = errorMessage(error, '产品列表加载失败');
-  }
-  if (sequence !== productSequence) return;
-  await reloadAssets();
-}
-
-async function selectDepartment(id: string): Promise<void> {
-  const target = allDepartmentRows.value.find((row) => row.id === id);
-  if (id && !target) return;
-  if (selectedDepartmentId.value === id) return;
-  selectedDepartmentId.value = id;
-  await reloadProductsAndAssets();
-}
-
-async function selectFilter(nextFilter: HarnessAssetFilter): Promise<void> {
-  filter.value = nextFilter;
-  assetStatusFilter.value = nextFilter === 'Extension' ? 'published' : 'all';
-  await reloadAssets();
-}
-
-async function selectStatusFilter(nextFilter: AssetStatusFilter): Promise<void> {
-  if (assetStatusFilter.value === nextFilter) return;
-  assetStatusFilter.value = nextFilter;
-  await reloadAssets();
 }
 
 async function loadDetail(): Promise<void> {
@@ -949,8 +606,25 @@ function deleteCardAsset(asset: HarnessAsset): void {
 function openAtomicPublish(asset: HarnessAsset): void {
   closeCardMenu();
   if (asset.assetType === 'Extension' || asset.canPublish !== true) return;
+  try {
+    atomicAssetApiType(asset);
+  } catch (error) {
+    showToast(errorMessage(error, '资产类型无效，请刷新列表后重试'));
+    return;
+  }
   selectedAssetKey.value = assetKey(asset);
-  atomicPublishAsset.value = asset;
+  // 发布页使用用户点击时 components/query 返回的卡片快照，避免列表刷新或详情
+  // 请求覆盖发布身份。name / assetType / latestVersion / dim* 均由该记录透传。
+  atomicPublishAsset.value = {
+    ...asset,
+    name: asset.name,
+    assetType: asset.assetType,
+    type: asset.type,
+    latestVersion: asset.latestVersion,
+    dimType: asset.dimType,
+    dimCode: asset.dimCode,
+    dimName: asset.dimName,
+  };
   view.value = 'publish';
 }
 
@@ -959,14 +633,14 @@ async function returnFromAtomicPublish(): Promise<void> {
   view.value = 'list';
   await nextTick();
   resetAssetScrollPosition();
-  if (assetsNeedRefresh) {
-    assetsNeedRefresh = false;
+  if (assetsNeedRefresh.value) {
+    assetsNeedRefresh.value = false;
     await reloadAssets();
   }
 }
 
 function onAtomicPublished(): void {
-  assetsNeedRefresh = true;
+  assetsNeedRefresh.value = true;
 }
 
 async function returnToAssetList(): Promise<void> {
@@ -976,16 +650,12 @@ async function returnToAssetList(): Promise<void> {
   view.value = 'list';
   await nextTick();
   resetAssetScrollPosition();
-  if (assetsNeedRefresh) await reloadAssets();
+  if (assetsNeedRefresh.value) await reloadAssets();
 }
 
 async function changeDetailVersion(): Promise<void> {
   if (detail.value?.component && selectedAsset.value?.assetType !== 'Extension') return;
   await loadDetail();
-}
-
-function statusLabel(asset: HarnessAsset): string {
-  return transportIsHttp ? (asset.status ?? '') : harnessAssetStatus(asset);
 }
 
 function assetPersonName(value: string | undefined, placeholder = '未指定'): string {
@@ -1014,7 +684,7 @@ async function openExtensionRelease(
     return;
   }
   const sequence = ++extensionReleaseSequence;
-  const currentListSequence = listSequence;
+  const currentListSequence = listSequence.value;
   if (view.value !== 'publish') {
     extensionReturnView.value = view.value === 'detail' ? 'detail' : 'list';
     extensionReturnNeedsDetail = view.value === 'detail' && detailLoading.value;
@@ -1031,7 +701,7 @@ async function openExtensionRelease(
     const context = await api.queryExtensionReleaseContext(scope, requestAsset, mode);
     if (
       sequence !== extensionReleaseSequence ||
-      currentListSequence !== listSequence ||
+      currentListSequence !== listSequence.value ||
       view.value !== 'publish'
     )
       return;
@@ -1088,7 +758,7 @@ async function onExtensionReleased(): Promise<void> {
     extensionReturnView.value = 'list';
   }
   if (view.value === 'detail') {
-    assetsNeedRefresh = true;
+    assetsNeedRefresh.value = true;
     return;
   }
   await reloadAssets();
@@ -1118,6 +788,7 @@ function statusClass(asset: HarnessAsset): string {
 function openCurrentCatalogCreate(): void {
   const assetType = selectedCatalogType.value;
   if (!assetType) return;
+  createScope.value = rememberedCatalogScope(assetType, 'create');
   createAssetType.value = assetType;
 }
 
@@ -1135,10 +806,49 @@ function currentTransferScope(): HarnessScopeSnapshot {
   };
 }
 
+function cloneScopeSnapshot(snapshot: HarnessScopeSnapshot): HarnessScopeSnapshot {
+  return {
+    ...snapshot,
+    departmentPath: [...snapshot.departmentPath],
+  };
+}
+
+function scopeDepartmentExists(path: string[]): boolean {
+  let nodes = manageableDepartmentTree.value;
+  for (const segment of path) {
+    const node = nodes.find((item) => item.name === segment);
+    if (!node) return false;
+    nodes = node.children ?? [];
+  }
+  return path.length > 0;
+}
+
+function rememberedCatalogScope(
+  assetType: HarnessCatalogAssetType,
+  action: HarnessCatalogAction,
+): HarnessScopeSnapshot | undefined {
+  const remembered = props.scopeSnapshots[assetType]?.[action];
+  return remembered && scopeDepartmentExists(remembered.departmentPath)
+    ? cloneScopeSnapshot(remembered)
+    : undefined;
+}
+
+function rememberCatalogScope(
+  assetType: HarnessCatalogAssetType,
+  action: HarnessCatalogAction,
+  snapshot: HarnessScopeSnapshot,
+): void {
+  emit('scope-change', {
+    assetType,
+    action,
+    snapshot: cloneScopeSnapshot(snapshot),
+  });
+}
+
 function openCatalogTransfer(action: 'import' | 'export'): void {
   const assetType = selectedCatalogType.value;
   if (!assetType) return;
-  const scope = currentTransferScope();
+  const scope = rememberedCatalogScope(assetType, action) ?? currentTransferScope();
   if (action === 'import') {
     importScope.value = scope;
     importAssetType.value = assetType;
@@ -1149,32 +859,22 @@ function openCatalogTransfer(action: 'import' | 'export'): void {
 }
 
 async function onAssetCreated(): Promise<void> {
-  createAssetType.value = null;
-  showToast('资产已新增');
   await reloadAssets();
 }
 
 onMounted(async () => {
   document.addEventListener('pointerdown', handleCardMenuPointerDown);
   document.addEventListener('keydown', handleCardMenuKeydown);
-  const row = defaultDepartmentRow();
-  if (!row) {
-    listError.value = '暂无可用部门范围';
-    return;
-  }
-  selectedDepartmentId.value = row.id;
-  await reloadProductsAndAssets();
+  await initializeList();
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleCardMenuPointerDown);
   document.removeEventListener('keydown', handleCardMenuKeydown);
-  listSequence += 1;
+  disposeList();
   detailSequence += 1;
   extensionReleaseSequence += 1;
   extensionHistorySequence += 1;
-  if (assetScrollFrame !== undefined) window.cancelAnimationFrame(assetScrollFrame);
-  if (assetSearchTimer !== undefined) window.clearTimeout(assetSearchTimer);
   window.clearTimeout(toastTimer);
 });
 </script>
@@ -1216,6 +916,7 @@ onBeforeUnmount(() => {
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
       @close="importAssetType = null"
       @imported="reloadAssets"
+      @scope-change="rememberCatalogScope(importAssetType, 'import', $event)"
     />
     <HarnessCatalogExportDialog
       v-if="exportAssetType"
@@ -1226,6 +927,7 @@ onBeforeUnmount(() => {
       :allowed-department-paths="normalizedAllowedPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
       @close="exportAssetType = null"
+      @scope-change="rememberCatalogScope(exportAssetType, 'export', $event)"
     />
     <SkillMasterManagementPanel
       v-if="createAssetType === 'Skill'"
@@ -1235,8 +937,10 @@ onBeforeUnmount(() => {
       :current-user-department-path="props.currentUserDepartmentPath"
       :allowed-department-paths="normalizedAllowedPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
+      :initial-scope="createScope"
       @close="createAssetType = null"
       @created="onAssetCreated"
+      @scope-change="rememberCatalogScope('Skill', 'create', $event)"
     />
     <HarnessCapabilityCatalogPanel
       v-else-if="createAssetType"
@@ -1247,9 +951,11 @@ onBeforeUnmount(() => {
       :department-tree="manageableDepartmentTree"
       :current-user-department-path="props.currentUserDepartmentPath"
       :default-department-path="defaultCatalogDepartmentPath"
+      :initial-scope="createScope"
       :allowed-department-paths="normalizedAllowedPaths"
       @close="createAssetType = null"
       @created="onAssetCreated"
+      @scope-change="rememberCatalogScope(createAssetType, 'create', $event)"
     />
     <template v-if="view === 'list'">
       <header class="asset-page__header harness-page-heading">
@@ -1449,13 +1155,7 @@ onBeforeUnmount(() => {
               :aria-label="`${asset.name} 操作`"
               @click.stop
             >
-              <button
-                type="button"
-                role="menuitem"
-                @click="openDetail(asset)"
-              >
-                查看详情
-              </button>
+              <button type="button" role="menuitem" @click="openDetail(asset)">查看详情</button>
               <button
                 v-if="asset.assetType !== 'Extension' && canAccessAsset(asset)"
                 type="button"
@@ -1757,11 +1457,7 @@ onBeforeUnmount(() => {
               role="alert"
             >
               <span>{{ extensionHistoryError }}</span>
-              <button
-                type="button"
-                class="asset-button is-secondary"
-                @click="loadExtensionHistory"
-              >
+              <button type="button" class="asset-button is-secondary" @click="loadExtensionHistory">
                 重新加载
               </button>
             </div>
@@ -1778,11 +1474,7 @@ onBeforeUnmount(() => {
             />
             <div v-else class="asset-empty">
               <span>发布记录暂未加载</span>
-              <button
-                type="button"
-                class="asset-button is-secondary"
-                @click="loadExtensionHistory"
-              >
+              <button type="button" class="asset-button is-secondary" @click="loadExtensionHistory">
                 重新加载
               </button>
             </div>
@@ -1799,9 +1491,7 @@ onBeforeUnmount(() => {
             @notify="showToast"
             @published="onAtomicPublished"
           />
-          <div v-else-if="detailLoading" class="asset-empty" role="status">
-            正在加载资产内容…
-          </div>
+          <div v-else-if="detailLoading" class="asset-empty" role="status">正在加载资产内容…</div>
           <div v-else-if="detailError" class="asset-empty asset-empty--error" role="alert">
             <span>{{ detailError }}</span>
             <button type="button" class="asset-button is-secondary" @click="loadDetail">
@@ -1827,7 +1517,10 @@ onBeforeUnmount(() => {
           <div v-else class="asset-file-tree">
             <strong>📁 {{ selectedAsset.name }}/</strong>
             <div v-if="detail?.files.length" class="asset-file-tree__branch">
-              <template v-for="file in detail.files" :key="`${file.category || 'root'}:${file.path}`">
+              <template
+                v-for="file in detail.files"
+                :key="`${file.category || 'root'}:${file.path}`"
+              >
                 <span>📄 {{ file.path }}</span>
                 <pre>{{ file.content || '暂无文件内容' }}</pre>
               </template>
@@ -1949,10 +1642,6 @@ onBeforeUnmount(() => {
   margin: 3.2px 0 0;
   color: #6b7280;
   font-size: 13.12px;
-}
-
-.asset-page__header--detail {
-  margin-top: 0;
 }
 
 .asset-page__actions {
@@ -2805,20 +2494,6 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.asset-detail__summary-field.is-category {
-  flex: 0 1 auto;
-  gap: 6px;
-  max-width: 40%;
-  margin: 0;
-  padding: 3px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 20px;
-}
-
 .asset-detail__summary-field.is-description {
   flex: 1;
 }
@@ -3100,10 +2775,6 @@ onBeforeUnmount(() => {
   padding-bottom: 0;
   margin-bottom: 12.8px;
   border-bottom: 1px solid #e5e7eb;
-}
-
-.asset-subtabs--outside {
-  margin: 0 0 12.8px;
 }
 
 .asset-file-tree {

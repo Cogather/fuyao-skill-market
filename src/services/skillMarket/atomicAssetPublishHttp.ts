@@ -43,9 +43,9 @@ export type HarnessAtomicPublishHistoryRecord = HarnessAtomicPublishItem & {
 
 export type HarnessAtomicPublishHistoryQuery = {
   batchId?: string;
-  assetType?: HarnessAtomicAssetApiType;
-  assetName?: string;
-  operatorId?: string;
+  assetType: HarnessAtomicAssetApiType;
+  assetName: string;
+  operatorId: string;
   pageNum?: number;
   pageSize?: number;
 };
@@ -129,11 +129,14 @@ function requiredText(value: unknown, message: string): string {
   return result;
 }
 
-export function atomicAssetApiType(
-  assetType: HarnessAsset['assetType'],
-): HarnessAtomicAssetApiType {
-  if (assetType === 'Extension') throw new Error('Extension 不支持独立资产发布接口');
-  return API_TYPES[assetType];
+export function atomicAssetApiType(asset: HarnessAsset): HarnessAtomicAssetApiType {
+  if (asset.assetType === 'Extension') throw new Error('Extension 不支持独立资产发布接口');
+  const expectedType = API_TYPES[asset.assetType];
+  const queryType = text(asset.type);
+  if (queryType && queryType !== expectedType) {
+    throw new Error('资产查询记录的类型与当前卡片不一致，请刷新列表后重试');
+  }
+  return (queryType || expectedType) as HarnessAtomicAssetApiType;
 }
 
 export function atomicAssetLatestVersion(asset: HarnessAsset): string {
@@ -174,7 +177,7 @@ export async function queryAtomicPublishOrganizations(
   asset: HarnessAsset,
   userId: string,
 ): Promise<HarnessAssetOrganization[]> {
-  atomicAssetApiType(asset.assetType);
+  atomicAssetApiType(asset);
   const dimType = requiredText(asset.dimType, '资产缺少维度类型，无法查询目标组织');
   if (dimType !== '产品级' && dimType !== '部门级') {
     throw new Error('资产维度类型无效，无法查询目标组织');
@@ -202,7 +205,7 @@ export async function publishAtomicAsset(input: {
   const userName = requiredText(input.userName, '尚未获取当前用户姓名');
   const organizationCode = requiredText(input.organizationCode, '请选择目标组织');
   const item: HarnessAtomicPublishItem = {
-    assetType: atomicAssetApiType(input.asset.assetType),
+    assetType: atomicAssetApiType(input.asset),
     assetName: requiredText(input.asset.name, '资产名称不能为空'),
     assetVersion: atomicAssetLatestVersion(input.asset),
   };
@@ -253,11 +256,15 @@ export async function queryAtomicAssetPublishHistory(
   // 发布历史由后端统一维护；即使页面其余功能运行在 mock 模式，也不能回退到本地记录。
   const pageNum = positiveInteger(query.pageNum, 1);
   const pageSize = positiveInteger(query.pageSize, 20);
+  const assetType = requiredText(query.assetType, '资产类型不能为空');
+  if (!Object.values(API_TYPES).includes(assetType as HarnessAtomicAssetApiType)) {
+    throw new Error('资产类型无效，无法查询发布历史');
+  }
   const body = {
     ...(text(query.batchId) ? { batchId: text(query.batchId) } : {}),
-    ...(text(query.assetType) ? { assetType: query.assetType } : {}),
-    ...(text(query.assetName) ? { assetName: text(query.assetName) } : {}),
-    ...(text(query.operatorId) ? { operatorId: text(query.operatorId) } : {}),
+    assetType: assetType as HarnessAtomicAssetApiType,
+    assetName: requiredText(query.assetName, '资产名称不能为空'),
+    operatorId: requiredText(query.operatorId, '尚未获取当前用户工号'),
     pageNum,
     pageSize,
   };

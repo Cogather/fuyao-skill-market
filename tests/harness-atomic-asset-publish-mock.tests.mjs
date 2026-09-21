@@ -110,6 +110,7 @@ try {
   const beforeRetry = await atomicPublish.queryAtomicAssetPublishHistory({
     assetType: 'SKILL',
     assetName: asset.name,
+    operatorId: scope.userId,
   });
   const failed = beforeRetry.records.find((record) => atomicPublish.canRetryAtomicPublish(record));
   assert.ok(failed, 'mock history should include a retryable independent publish failure');
@@ -117,6 +118,7 @@ try {
   const afterRetry = await atomicPublish.queryAtomicAssetPublishHistory({
     assetType: 'SKILL',
     assetName: asset.name,
+    operatorId: scope.userId,
   });
   assert.equal(
     afterRetry.records.find((record) => record.id === failed.id)?.publishStatus,
@@ -125,6 +127,7 @@ try {
   assert.deepEqual(historyRequests[0].data, {
     assetType: 'SKILL',
     assetName: asset.name,
+    operatorId: scope.userId,
     pageNum: 1,
     pageSize: 20,
   });
@@ -144,11 +147,17 @@ try {
   assert.equal(result.rejected.length, 0);
   const submitted = await atomicPublish.queryAtomicAssetPublishHistory({
     batchId: result.batchId,
+    assetType: 'SKILL',
+    assetName: asset.name,
+    operatorId: scope.userId,
   });
   assert.equal(submitted.records.length, 1);
   assert.equal(submitted.records[0].publishStatus, '进行中');
   assert.deepEqual(historyRequests.at(-1).data, {
     batchId: result.batchId,
+    assetType: 'SKILL',
+    assetName: asset.name,
+    operatorId: scope.userId,
     pageNum: 1,
     pageSize: 20,
   });

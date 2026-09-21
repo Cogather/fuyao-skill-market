@@ -66,6 +66,18 @@ async function prepareAssets(page: Page) {
         pageNo: request.postDataJSON().pageNo,
         pageSize: request.postDataJSON().pageSize,
       };
+    } else if (path.endsWith('/management/market-skills')) {
+      data = {
+        records: [
+          {
+            id: 'square-skill-1',
+            skillName: '广场测试 Skill',
+            skillDescription: '用于验证连续引入',
+            version: '1.2.3',
+          },
+        ],
+        total: 1,
+      };
     } else if (path.endsWith('/management/add')) {
       creates.push(request);
       data = { id: `created-${creates.length}` };
@@ -107,6 +119,17 @@ async function fillCreateForm(dialog: Locator, type: string, name: string) {
     await picker.locator('.person-search__panel button').first().click();
   }
   await dialog.locator('input[type="date"]').fill('2099-12-31');
+}
+
+async function expectCreateFormReset(dialog: Locator, expectedName: string) {
+  await expect(dialog.locator('input[maxlength="64"]')).toHaveValue(expectedName);
+  await expect(dialog.locator('input[maxlength="64"]')).toBeFocused();
+  await expect(dialog.locator('textarea').first()).toHaveValue('');
+  for (const picker of await dialog.locator('.person-search:visible').all()) {
+    await expect(picker.locator('input')).toHaveValue('');
+  }
+  await expect(dialog.locator('input[type="date"]')).toHaveValue('');
+  await expect(dialog.locator('.error')).toBeHidden();
 }
 
 test.describe('资产页新建 HTTP 归属', () => {
@@ -228,27 +251,29 @@ test.describe('资产页新建 HTTP 归属', () => {
       await page.getByRole('button', { name: type, exact: true }).click();
       await expect(page.locator('.asset-card')).toHaveCount(1);
       const originalListQuery = listRequests.at(-1)!.postDataJSON();
+      await page.getByRole('button', { name: '＋ 新增' }).click();
+      const dialog = page.getByRole('dialog', { name: `添加 ${type}` });
+      await expect(dialog).toBeVisible();
+      await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
+      const scope = dialog.getByRole('group', { name: '新增资产归属' });
+      await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(
+        'data-value',
+        'default-product',
+      );
+
       for (const level of ['产品级', '部门级']) {
-        await page.getByRole('button', { name: '＋ 新增' }).click();
-        const dialog = page.getByRole('dialog', { name: `添加 ${type}` });
-        await expect(dialog).toBeVisible();
-        await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
-        await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
-        const scope = dialog.getByRole('group', { name: '新增资产归属' });
-        await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(
-          'data-value',
-          'default-product',
-        );
         const nameInput = dialog.locator('input[maxlength="64"]');
-        await nameInput.fill('default-product-draft');
-        await selectHarnessOption(scope.getByLabel('层级'), level);
-        await selectTargetDepartment(page, dialog);
         if (level === '产品级') {
+          await nameInput.fill('default-product-draft');
+          await selectTargetDepartment(page, dialog);
           await selectHarnessOption(scope.getByLabel('产品', { exact: true }), 'target-product');
+          await expect(nameInput).toHaveValue('target-product-draft');
         } else {
+          await selectHarnessOption(scope.getByLabel('层级'), level);
+          await selectTargetDepartment(page, dialog);
           await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
         }
-        await expect(nameInput).toHaveValue(level === '产品级' ? 'target-product-draft' : 'draft');
         const name =
           level === '产品级'
             ? `target-product-${type.toLowerCase()}`
@@ -259,7 +284,8 @@ test.describe('资产页新建 HTTP 归属', () => {
         }
         const beforeListCount = listRequests.length;
         await dialog.getByRole('button', { name: '保存', exact: true }).click();
-        await expect(dialog).toBeHidden();
+        await expect(dialog).toBeVisible();
+        await expect(page.getByText(`${type} 已新增，可继续添加`, { exact: true })).toBeVisible();
         const request = creates.at(-1)!;
         expect(request.method()).toBe('POST');
         expect(new URL(request.url()).pathname).toBe(
@@ -281,9 +307,29 @@ test.describe('资产页新建 HTTP 归属', () => {
         expect(listRequests.at(-1)!.postDataJSON()).toEqual(originalListQuery);
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', 'list-product');
+        await expect(scope.getByLabel('层级')).toHaveAttribute('data-value', level);
+        await expect(
+          scope.getByRole('button', { name: '新增资产部门', exact: true }),
+        ).toContainText('团队B');
+        if (level === '产品级') {
+          await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(
+            'data-value',
+            'target-product',
+          );
+        } else {
+          await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
+        }
+        await expectCreateFormReset(dialog, level === '产品级' ? 'target-product-' : '');
       }
       expect(creates).toHaveLength(2);
       expect(catalogQueries).toHaveLength(0);
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(dialog).toBeHidden();
+
+      await page.getByRole('button', { name: '＋ 新增' }).click();
+      await expect(dialog).toBeVisible();
+      await dialog.locator('header > button').click();
+      await expect(dialog).toBeHidden();
     });
   }
 
@@ -310,12 +356,18 @@ test.describe('资产页新建 HTTP 归属', () => {
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog.getByText('名称已存在', { exact: true })).toBeVisible();
     await expect(dialog.locator('input[maxlength="64"]')).toHaveValue('default-product-retry');
+    await expect(dialog.locator('textarea').first()).toHaveValue('Skill 新增测试说明');
+    for (const picker of await dialog.locator('.person-search:visible').all()) {
+      await expect(picker.locator('input')).toHaveValue('张三 u1');
+    }
+    await expect(dialog.locator('input[type="date"]')).toHaveValue('2099-12-31');
     expect(listRequests).toHaveLength(beforeListCount);
     await selectHarnessOption(scope.getByLabel('层级'), '部门级');
     await selectTargetDepartment(page, dialog);
     await expect(dialog.locator('input[maxlength="64"]')).toHaveValue('retry');
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(dialog).toBeHidden();
+    await expect(dialog).toBeVisible();
+    await expectCreateFormReset(dialog, '');
     expect(creates).toHaveLength(1);
     expect(Object.fromEntries(new URL(creates[0]!.url()).searchParams)).toEqual({
       userId: 'create-user',
@@ -324,5 +376,55 @@ test.describe('资产页新建 HTTP 归属', () => {
       dimName: '团队B',
     });
     await expect(page.getByLabel('产品筛选')).toHaveAttribute('data-value', 'list-product');
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  test('Skill 广场引入成功后保留弹窗和归属，并清空本次引入字段', async ({ page }) => {
+    const { creates } = await prepareAssets(page);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增' }).click();
+    const dialog = page.getByRole('dialog', { name: '添加 Skill' });
+    const scope = dialog.getByRole('group', { name: '新增资产归属' });
+    await dialog.getByRole('tab', { name: '从 Skill 广场引入', exact: true }).click();
+    const squareRow = dialog.locator('.import-row').filter({ hasText: '广场测试 Skill' });
+    await squareRow.click();
+    await expect(squareRow).toHaveClass(/is-selected/);
+
+    const importForm = dialog.locator('.import-form-grid');
+    for (const picker of await importForm.locator('.person-search').all()) {
+      await picker.locator('input').fill('u1');
+      await picker.locator('.person-search__panel button').first().click();
+    }
+    await importForm.locator('input[type="date"]').fill('2099-12-31');
+    await dialog.getByRole('button', { name: '引入', exact: true }).click();
+
+    await expect(dialog).toBeVisible();
+    await expect(
+      page.getByText('已从 Skill 广场引入“广场测试 Skill”，可继续引入', { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByRole('tab', { name: '从 Skill 广场引入' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(scope.getByLabel('层级')).toHaveAttribute('data-value', '产品级');
+    await expect(scope.getByLabel('产品', { exact: true })).toHaveAttribute(
+      'data-value',
+      'default-product',
+    );
+    await expect(squareRow).not.toHaveClass(/is-selected/);
+    await expect(dialog.locator('.import-selected')).toBeHidden();
+    for (const picker of await importForm.locator('.person-search').all()) {
+      await expect(picker.locator('input')).toHaveValue('');
+    }
+    await expect(importForm.locator('input[type="date"]')).toHaveValue('');
+    expect(creates).toHaveLength(1);
+    expect(creates[0]!.postDataJSON()).toMatchObject({
+      skillName: '广场测试 Skill',
+      skillSource: '引用',
+    });
+
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
   });
 });

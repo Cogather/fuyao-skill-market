@@ -73,6 +73,7 @@ async function prepareAtomicAssets(
           {
             name: `${type} 可发布资产`,
             description: `${type} 发布说明`,
+            type: body.type,
             latestVersion: 'v1.2.3',
             status: '开发中',
             category: '产品级/交付平台',
@@ -86,6 +87,7 @@ async function prepareAtomicAssets(
           {
             name: `${type} 无发布权限资产`,
             description: '接口明确禁止发布',
+            type: body.type,
             latestVersion: '1.0.0',
             status: '待发布',
             category: '产品级/交付平台',
@@ -99,6 +101,7 @@ async function prepareAtomicAssets(
           {
             name: `${type} 未声明权限资产`,
             description: '接口未返回发布权限',
+            type: body.type,
             latestVersion: '0.9.0',
             status: '可发布',
             category: '产品级/交付平台',
@@ -268,9 +271,10 @@ test.describe('Agent / Skill / Command 发布入口', () => {
       componentVersion: '1.2.3',
     });
 
-    // 首个文件默认展开并加载内容
+    // Skill 先请求 /packages/tree，再自动请求并展开第一个文件。
     const firstFileRow = publishPage.locator('.atomic-publish__file-row').first();
     await expect(firstFileRow).toContainText('SKILL.md');
+    await expect(firstFileRow).toHaveAttribute('aria-expanded', 'true');
     await expect.poll(() => captured.packageFiles.length).toBe(1);
     expect(Object.fromEntries(new URL(captured.packageFiles[0]!.url()).searchParams)).toEqual({
       userId: 'publish-user',
@@ -302,7 +306,7 @@ test.describe('Agent / Skill / Command 发布入口', () => {
   });
 
   for (const type of ['Agent', 'Command'] as const) {
-    test(`${type} 进入发布页后点击文件名才拉取文件内容`, async ({ page }) => {
+    test(`${type} 进入发布页后直接加载文件内容且不显示文件名行`, async ({ page }) => {
       const captured = await prepareAtomicAssets(page);
       const assetName = `${type} 可发布资产`;
       await page.getByRole('button', { name: type, exact: true }).click();
@@ -312,17 +316,12 @@ test.describe('Agent / Skill / Command 发布入口', () => {
         name: `发布 ${type} · ${assetName}`,
       });
       const checklistRow = publishPage.locator('.atomic-publish__checklist-row');
-      // Agent / Command 直接展示约定文件名，不查询 /packages/tree，也不提前加载内容。
+      // Agent / Command 不查询 /packages/tree，也不渲染额外的文件名行。
       await expect(checklistRow).toHaveAttribute('aria-expanded', 'true');
       expect(captured.packageTrees).toHaveLength(0);
-      expect(captured.packageFiles).toHaveLength(0);
+      await expect(publishPage.locator('.atomic-publish__file-row')).toHaveCount(0);
 
-      const fileRow = publishPage.locator('.atomic-publish__file-row');
-      await expect(fileRow).toContainText(`${assetName}.md`);
-      await expect(fileRow).toHaveAttribute('aria-expanded', 'false');
-
-      // 用户点击文件名后才调用 /packages/file。
-      await fileRow.click();
+      // 页面自动调用 /packages/file 并直接展示正文。
       await expect.poll(() => captured.packageFiles.length).toBe(1);
       expect(Object.fromEntries(new URL(captured.packageFiles[0]!.url()).searchParams)).toEqual({
         userId: 'publish-user',
@@ -334,13 +333,6 @@ test.describe('Agent / Skill / Command 发布入口', () => {
       await expect(publishPage.locator('.atomic-publish__direct-content pre')).toContainText(
         '按需加载的文件内容',
       );
-
-      // 已加载文件再次展开时复用内容，不重复请求。
-      await fileRow.click();
-      await expect(fileRow).toHaveAttribute('aria-expanded', 'false');
-      await fileRow.click();
-      await expect(fileRow).toHaveAttribute('aria-expanded', 'true');
-      expect(captured.packageFiles).toHaveLength(1);
     });
   }
 
@@ -388,15 +380,18 @@ test.describe('Agent / Skill / Command 发布入口', () => {
     await expect.poll(() => captured.histories.length).toBe(1);
     expect(captured.histories[0]!.postDataJSON()).toEqual({
       batchId: 'batch-atomic-1',
+      assetType: 'SKILL',
+      assetName: 'Skill 可发布资产',
+      operatorId: 'publish-user',
       pageNum: 1,
       pageSize: 20,
     });
     const history = publishPage.getByRole('region', { name: 'Skill 发布记录' });
     await expect(history).toContainText('签名失败');
     await expect(history).toContainText('Extension 打包失败');
-    await expect(history.getByRole('button', { name: /重试发布/ })).toHaveCount(1);
+    await expect(history.getByRole('button', { name: /重新加载：/ })).toHaveCount(1);
 
-    await history.getByRole('button', { name: '重试发布：Skill 可发布资产' }).click();
+    await history.getByRole('button', { name: '重新加载：Skill 可发布资产' }).click();
     await expect.poll(() => captured.retries.length).toBe(1);
     expect(new URL(captured.retries[0]!.url()).pathname).toBe(
       '/api/harness/assets/publish/task-independent/retry',
@@ -419,6 +414,7 @@ test.describe('Agent / Skill / Command 发布入口', () => {
     expect(captured.histories[0]!.postDataJSON()).toEqual({
       assetType: 'SKILL',
       assetName: 'Skill 可发布资产',
+      operatorId: 'publish-user',
       pageNum: 1,
       pageSize: 20,
     });
