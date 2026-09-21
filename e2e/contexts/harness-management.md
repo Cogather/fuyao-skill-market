@@ -66,6 +66,8 @@
 
 ## 演进记录
 
+- 2026-09-21：Command 清单弹窗（`WorkflowCommandsDialog.vue`）由深色改为浅色体系：标题区去掉英文小标题「WORKFLOW COMMANDS」，条目外壳由 `#020617` 改为白底 `#FFFFFF` + 浅灰边框 `#E5E7EB` + 8px 圆角，展开项标题行用 `#F0F5FF`，正文与标题行共用同一容器、中间只留一条 `#E5E7EB` 细分隔线（去掉正文外围深色留边与内层卡片边框，不再「框里套框」），正文改为 `#F7F8FA` 底、14px/22px 等宽字；Command 名称用强调色 `#2563EB`，主/次文字为 `#1F2937`/`#6B7280`，版本号降级为无描边的浅灰标签 `#F3F4F6`（`is-empty` 更浅）。条目间距 8px、左右内边距 16px；弹窗改为 flex 纵向布局让正文区自适应滚动，去掉原先按固定头部高度写的 `calc(... - 119px)`。业务场景详情的 `.commands` 深蓝条目（`#0f172a` / `#7dd3fc`）不受影响。回归：`workflow-command-dialog-style.spec.ts`、`workflow-command-dialog-width.spec.ts`。
+
 - 2026-09-21：Agent / Command 资产进入发布页（`AtomicAssetPublishPage.vue`）后，下半部分「包含清单」自动展开，不经过 `/packages/tree`，直接按约定文件路径调用 `/packages/file` 并展示正文，不渲染额外的文件名行；Skill 仍需手动展开清单，依次调用 `/packages/tree` 和目录中第一个文件的 `/packages/file`，默认展开首文件。回归：`harness-assets-atomic-publish.spec.ts`。
 - 2026-09-21：第二个资产清单详情中，Agent / Command 不渲染额外的文件名行，进入内容区后直接调用 `/packages/file` 并展示首文件正文；Skill 先调用 `/packages/tree`，随后自动调用第一个文件的 `/packages/file` 并展开首文件。切换版本会重新执行同一加载顺序。列表筛选、部门/产品范围、分页和请求竞态已从页面编排拆到 `useHarnessAssetCatalogList.ts`，页面卸载时同时失效产品与资产列表请求，避免迟到的产品响应继续触发查询。回归：`harness-assets-http.spec.ts`、`harness-assets-mock.spec.ts`、`harness-assets-query-http.spec.ts`。
 

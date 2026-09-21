@@ -240,6 +240,7 @@ test.describe('Agent / Skill / Command 发布入口', () => {
       await expect(publishPage.getByLabel('发布说明', { exact: true })).toHaveCount(0);
       await expect(publishPage.getByText('归属范围', { exact: true })).toHaveCount(0);
       await expect(publishPage.getByText('当前状态', { exact: true })).toHaveCount(0);
+      await expect(publishPage.getByText('所属场景', { exact: true })).toHaveCount(0);
 
       await publishPage.getByRole('button', { name: '返回', exact: true }).click();
       await expect(assetCard(page, publishableName)).toBeVisible();

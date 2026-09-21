@@ -178,7 +178,6 @@ onBeforeUnmount(() => {
       >
         <header class="workflow-command-header">
           <div>
-            <span class="workflow-command-eyebrow">WORKFLOW COMMANDS</span>
             <h2>{{ workflowName }} <small>Command 清单</small></h2>
             <p>共 {{ commands.length }} 个入口，展开可查看当前版本内容</p>
           </div>
@@ -297,54 +296,49 @@ onBeforeUnmount(() => {
 
 .workflow-command-dialog {
   box-sizing: border-box;
+  display: flex;
   width: min(92vw, 1760px);
   max-width: 100%;
   max-height: min(88vh, 980px, calc(100vh - 56px));
   max-height: min(88dvh, 980px, calc(100dvh - 56px));
+  flex-direction: column;
   overflow: hidden;
-  border: 1px solid #dfe5f1;
+  border: 1px solid #e5e7eb;
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
 }
 
 .workflow-command-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  padding: 24px 26px 20px;
-  border-bottom: 1px solid #edf1f7;
-  background:
-    radial-gradient(circle at 92% 0%, rgba(80, 112, 255, 0.13), transparent 42%),
-    linear-gradient(135deg, #fbfcff 0%, #f5f8ff 100%);
-}
-
-.workflow-command-eyebrow {
-  color: #5675df;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
 }
 
 .workflow-command-header h2 {
-  margin: 5px 0 4px;
-  color: #172033;
-  font-size: 20px;
+  margin: 0 0 4px;
+  color: #1f2937;
+  font-size: 18px;
   line-height: 1.35;
 }
 
 .workflow-command-header h2 small {
   margin-left: 6px;
-  color: #667085;
+  color: #6b7280;
   font-size: 14px;
   font-weight: 600;
 }
 
 .workflow-command-header p {
   margin: 0;
-  color: #7a8498;
-  font-size: 12px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .workflow-command-close {
@@ -354,17 +348,17 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid #dce3ef;
+  border: 1px solid #e5e7eb;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.85);
-  color: #667085;
+  background: #fff;
+  color: #6b7280;
   cursor: pointer;
 }
 
 .workflow-command-close:hover {
-  border-color: #b9c7e6;
-  background: #fff;
-  color: #315de8;
+  border-color: #bfdbfe;
+  background: #f0f5ff;
+  color: #2563eb;
 }
 
 .workflow-command-close svg,
@@ -378,15 +372,15 @@ onBeforeUnmount(() => {
 }
 
 .workflow-command-body {
-  max-height: calc(min(88vh, 980px, calc(100vh - 56px)) - 119px);
-  max-height: calc(min(88dvh, 980px, calc(100dvh - 56px)) - 119px);
-  padding: 18px 22px 22px;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 16px;
   overflow-y: auto;
 }
 
 .workflow-command-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -394,24 +388,14 @@ onBeforeUnmount(() => {
 
 .workflow-command-item {
   overflow: hidden;
-  border: 1px solid #26354d;
-  border-radius: 11px;
-  background: #020617;
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
-  transition:
-    border-color 160ms ease,
-    transform 160ms ease,
-    box-shadow 160ms ease;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  transition: border-color 160ms ease;
 }
 
-.workflow-command-item:hover,
 .workflow-command-item.is-open {
-  border-color: #3b82f6;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2);
-}
-
-.workflow-command-item:hover {
-  transform: translateY(-1px);
+  border-color: #bfdbfe;
 }
 
 .workflow-command-summary {
@@ -420,16 +404,21 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) auto 20px;
   align-items: center;
   gap: 12px;
-  padding: 15px 16px;
+  padding: 12px 16px;
   border: 0;
   background: transparent;
-  color: #e2e8f0;
+  color: #1f2937;
   text-align: left;
   cursor: pointer;
+  transition: background-color 160ms ease;
 }
 
 .workflow-command-summary:hover {
-  background: rgba(59, 130, 246, 0.07);
+  background: #f7f8fa;
+}
+
+.workflow-command-item.is-open .workflow-command-summary {
+  background: #f0f5ff;
 }
 
 .workflow-command-info {
@@ -439,54 +428,53 @@ onBeforeUnmount(() => {
 .workflow-command-name {
   display: block;
   overflow: hidden;
-  color: #7dd3fc;
+  color: #2563eb;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .workflow-command-description {
   display: block;
-  margin-top: 3px;
+  margin-top: 4px;
   overflow: hidden;
-  color: #cbd5e1;
-  font-size: 12px;
+  color: #6b7280;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .workflow-command-version {
-  padding: 3px 9px;
-  border: 1px solid rgba(125, 211, 252, 0.32);
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.17);
-  color: #bfdbfe;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .workflow-command-version.is-empty {
-  border-color: rgba(148, 163, 184, 0.24);
-  background: rgba(148, 163, 184, 0.08);
-  color: #94a3b8;
+  background: #f9fafb;
+  color: #9ca3af;
 }
 
 .workflow-command-chevron {
-  color: #94a3b8;
+  color: #9ca3af;
   transition: transform 160ms ease;
 }
 
 .workflow-command-item.is-open .workflow-command-chevron {
   transform: rotate(90deg);
-  color: #7dd3fc;
+  color: #2563eb;
 }
 
 .workflow-command-content-wrap {
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
-  padding: 0 16px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f7f8fa;
 }
 
 .workflow-command-content {
@@ -494,13 +482,12 @@ onBeforeUnmount(() => {
   margin: 0;
   padding: 14px 16px;
   overflow: auto;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
-  background: #f8fafc;
+  border: 0;
+  background: #f7f8fa;
   color: #1f2937;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 22px;
   white-space: pre-wrap;
 }
 
@@ -509,8 +496,9 @@ onBeforeUnmount(() => {
 .workflow-command-unavailable,
 .workflow-command-content-status,
 .workflow-command-content-error {
-  color: #7a8498;
-  font-size: 13px;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .workflow-command-feedback,
@@ -520,9 +508,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 9px;
-  border: 1px dashed #dce3ef;
-  border-radius: 10px;
-  background: #fbfcfe;
+  border: 1px dashed #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
 }
 
 .workflow-command-feedback.is-error,
@@ -533,27 +521,30 @@ onBeforeUnmount(() => {
 .workflow-command-feedback button,
 .workflow-command-content-error button {
   margin-left: 8px;
-  padding: 4px 9px;
-  border: 1px solid #f1b4af;
+  padding: 4px 10px;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
   background: #fff;
-  color: #b42318;
+  color: #2563eb;
   cursor: pointer;
+}
+
+.workflow-command-feedback button:hover,
+.workflow-command-content-error button:hover {
+  border-color: #bfdbfe;
+  background: #f0f5ff;
 }
 
 .workflow-command-unavailable,
 .workflow-command-content-status,
 .workflow-command-content-error {
   margin: 0;
-  padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #64748b;
+  padding: 14px 16px;
+  background: #f7f8fa;
+  color: #6b7280;
 }
 
 .workflow-command-content-error {
-  border-color: rgba(220, 38, 38, 0.28);
   background: #fef2f2;
   color: #b42318;
 }
@@ -579,7 +570,7 @@ onBeforeUnmount(() => {
   }
 
   .workflow-command-header {
-    padding: 20px;
+    padding: 16px;
   }
 
   .workflow-command-body {
@@ -598,10 +589,6 @@ onBeforeUnmount(() => {
   .workflow-command-chevron {
     grid-column: 2;
     grid-row: 1 / span 2;
-  }
-
-  .workflow-command-content-wrap {
-    padding-left: 14px;
   }
 }
 </style>

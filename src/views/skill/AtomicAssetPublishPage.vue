@@ -105,8 +105,6 @@ const panelTitle = computed(() =>
     ? `${props.asset.assetType} 发布信息`
     : `${props.asset.assetType} 发布记录`,
 );
-const scenePrimaryLabel = computed(() => props.asset.firstScene?.trim() || '未提供一级场景');
-const sceneSecondaryLabel = computed(() => props.asset.secondScene?.trim() || '未提供二级场景');
 const checklistItems = computed(() => [
   {
     type: props.asset.assetType,
@@ -453,16 +451,6 @@ onMounted(() => {
                     <span class="atomic-publish__scope-tag">{{ scopeType }}</span>
                     <strong>{{ scopeLabel }}</strong>
                   </div>
-                </dd>
-              </div>
-              <div>
-                <dt>所属场景</dt>
-                <dd class="atomic-publish__scene">
-                  <span>{{ scenePrimaryLabel }}</span>
-                  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
-                    <path d="m6 4 4 4-4 4" />
-                  </svg>
-                  <strong>{{ sceneSecondaryLabel }}</strong>
                 </dd>
               </div>
             </dl>
@@ -996,9 +984,6 @@ onMounted(() => {
 }
 
 .atomic-publish__metadata {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
   margin: 22px 0 0;
   padding-top: 20px;
   border-top: 1px solid #e3e9f4;
@@ -1006,11 +991,6 @@ onMounted(() => {
 
 .atomic-publish__metadata > div {
   min-width: 0;
-}
-
-.atomic-publish__metadata > div + div {
-  padding-left: 24px;
-  border-left: 1px solid #e3e9f4;
 }
 
 .atomic-publish__metadata dt {
@@ -1033,8 +1013,7 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.atomic-publish__dimension-name,
-.atomic-publish__scene {
+.atomic-publish__dimension-name {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1051,16 +1030,6 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 500;
   line-height: 20px;
-}
-
-.atomic-publish__scene svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  stroke: #94a3b8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
 }
 
 .atomic-publish__field {
@@ -1635,16 +1604,5 @@ onMounted(() => {
   color: #98a2b3;
   font-size: 12px;
   text-align: center;
-}
-
-@media (max-width: 820px) {
-  .atomic-publish__metadata {
-    grid-template-columns: 1fr;
-  }
-
-  .atomic-publish__metadata > div + div {
-    padding-left: 0;
-    border-left: 0;
-  }
 }
 </style>
