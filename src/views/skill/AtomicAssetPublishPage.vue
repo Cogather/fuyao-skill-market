@@ -402,8 +402,6 @@ onMounted(() => {
 
       <div v-if="publishResult" class="atomic-publish__result" role="status" aria-label="提交结果">
         <div v-if="publishResult.accepted.length" class="is-accepted">
-          <strong>发布任务已受理</strong>
-          <span>任务正在异步执行，请通过发布记录查看最终状态。</span>
           <ul>
             <li v-for="item in publishResult.accepted" :key="item.taskId">
               {{ item.assetName }} {{ item.assetVersion }}
@@ -411,7 +409,6 @@ onMounted(() => {
           </ul>
         </div>
         <div v-if="publishResult.rejected.length" class="is-rejected">
-          <strong>未受理项</strong>
           <ul>
             <li
               v-for="item in publishResult.rejected"
