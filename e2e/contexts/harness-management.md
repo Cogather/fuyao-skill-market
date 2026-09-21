@@ -64,7 +64,7 @@
 
 ## 演进记录
 
-- 2026-09-21：Agent / Command 资产进入发布页（`AtomicAssetPublishPage.vue`）后，下半部分「包含清单」自动展开，不经过 `/packages/tree`，直接用缺省文件路径（名称加 `.md`，无名称时回退 `AGENT.md`/`COMMAND.md`）调用 `/packages/file` 拉取内容并展示在 `atomic-publish__direct-content` 区块；Skill 仍需手动展开清单并走 `/packages/tree`。清单行可手动收起，再次展开不重复请求。回归：`harness-assets-atomic-publish.spec.ts`。
+- 2026-09-21：Agent / Command 资产进入发布页（`AtomicAssetPublishPage.vue`）后，下半部分「包含清单」自动展开，不经过 `/packages/tree`，展示缺省文件名（名称加 `.md`，无名称时回退 `AGENT.md`/`COMMAND.md`）；用户点击文件名后才调用 `/packages/file` 拉取内容并展示在 `atomic-publish__direct-content` 区块。Skill 仍需手动展开清单并走 `/packages/tree`。文件内容加载后再次展开不重复请求。回归：`harness-assets-atomic-publish.spec.ts`。
 
 - 2026-09-20：Agent / Skill / Command 发布页（`AtomicAssetPublishPage.vue`）的「包含清单」不再显示 `agents/`、`skills/`、`commands/` 这类文件夹类型行（含黄色文件夹图标与数量徽标），清单默认常显、不再有折叠入口；清单行与 Skill 文件行取消树形缩进，改为 10px 左内边距，展开内容同列对齐（箭头不贴边）；两级箭头统一改为固定尺寸 SVG 图标（文字字形 `›` 的墨迹贴基线，行框居中后整颗偏低约 5px）。回归：`harness-assets-atomic-publish.spec.ts`。
 

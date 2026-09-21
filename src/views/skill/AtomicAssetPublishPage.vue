@@ -175,7 +175,7 @@ async function loadChecklistFiles(): Promise<void> {
     }));
     expandedChecklistFilePaths.value = [];
     const firstFile = checklistFiles.value[0];
-    if (firstFile) {
+    if (firstFile && checklistCapabilityType.value === 'skill') {
       expandedChecklistFilePaths.value = [firstFile.path];
       await loadChecklistFile(firstFile);
     }
@@ -208,8 +208,8 @@ async function toggleChecklistFile(file: ChecklistFileState): Promise<void> {
   await loadChecklistFile(file);
 }
 
-// Agent / Command 资产进入发布页后直接展开「包含清单」，并直接通过 /packages/file 接口
-// 拉取并展开文件内容，无需用户再手动点击清单行。
+// Agent / Command 资产进入发布页后直接展开「包含清单」并展示约定文件名；
+// 文件内容仅在用户点击文件名后通过 /packages/file 按需加载。
 async function autoExpandDirectAssetChecklist(): Promise<void> {
   if (checklistCapabilityType.value === 'skill') return;
   checklistItemExpanded.value = true;
@@ -546,7 +546,7 @@ onMounted(() => {
                         暂无可展示的文件
                       </p>
 
-                      <template v-else-if="checklistCapabilityType === 'skill'">
+                      <template v-else>
                         <article
                           v-for="file in checklistFiles"
                           :key="file.path"
@@ -574,7 +574,11 @@ onMounted(() => {
                           </button>
                           <div
                             v-if="expandedChecklistFilePaths.includes(file.path)"
-                            class="atomic-publish__file-content"
+                            :class="
+                              checklistCapabilityType === 'skill'
+                                ? 'atomic-publish__file-content'
+                                : 'atomic-publish__direct-content'
+                            "
                           >
                             <p v-if="file.loading">正在加载文件内容…</p>
                             <div v-else-if="file.error" class="atomic-publish__file-state is-error">
@@ -585,20 +589,6 @@ onMounted(() => {
                           </div>
                         </article>
                       </template>
-
-                      <div v-else class="atomic-publish__direct-content">
-                        <p v-if="checklistFiles[0]?.loading">正在加载文件内容…</p>
-                        <div
-                          v-else-if="checklistFiles[0]?.error"
-                          class="atomic-publish__file-state is-error"
-                        >
-                          <span>{{ checklistFiles[0].error }}</span>
-                          <button type="button" @click="loadChecklistFile(checklistFiles[0])">
-                            重试
-                          </button>
-                        </div>
-                        <pre v-else>{{ checklistFiles[0]?.content }}</pre>
-                      </div>
                     </div>
                   </li>
                 </ul>
