@@ -373,8 +373,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       `当前版本：${versions.at(-1)}`,
     );
 
-    await detail.getByRole('tab', { name: '质量报告' }).click();
-    const report = detail.getByRole('tabpanel', { name: '质量报告' });
+    await detail.getByRole('tab', { name: '评估报告' }).click();
+    const report = detail.getByRole('tabpanel', { name: '评估报告' });
     await expect(report.getByText('综合得分', { exact: true })).toBeVisible();
     await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText(
       /^\d+(?:\.\d+)?$/,
@@ -410,7 +410,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
         'background-color',
         'rgb(248, 250, 252)',
       );
-      await expect(detail.getByRole('tab', { name: '质量报告' })).toHaveCount(0);
+      await expect(detail.getByRole('tab', { name: '评估报告' })).toHaveCount(0);
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.locator('.asset-back').click();
     }

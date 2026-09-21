@@ -436,7 +436,7 @@ async function queryQualityReport(
     version,
   });
   if (response?.meta?.success !== true || !response.data) {
-    throw new Error(String(response?.meta?.message || 'Skill 质量报告加载失败'));
+    throw new Error(String(response?.meta?.message || 'Skill 评估报告加载失败'));
   }
   const report = response.data;
   const calculatedPercent = report.max ? ((report.total ?? 0) / report.max) * 100 : 0;

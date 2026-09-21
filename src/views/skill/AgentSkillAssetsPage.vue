@@ -1402,7 +1402,7 @@ onBeforeUnmount(() => {
             aria-controls="catalog-detail-panel-evaluation"
             @click="detailTab = 'report'"
           >
-            质量报告
+            评估报告
           </button>
         </nav>
 
