@@ -144,7 +144,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await page.route('**/api/harness/packages/file**', (route) =>
       route.fulfill({ json: envelope({ content: `# ${SKILL_NAME}` }) }),
     );
-    await page.route('**/api/v1/harness/plans/skill/behavior-eval**', (route) => {
+    await page.route('**/api/v1/harness/skill-eval/behavior-eval**', (route) => {
       const request = route.request();
       behaviorRequests.push(request);
       const url = new URL(request.url());

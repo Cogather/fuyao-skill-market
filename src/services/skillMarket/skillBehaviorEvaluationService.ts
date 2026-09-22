@@ -101,7 +101,7 @@ type ResponseObject<T> = {
 
 export class SkillBehaviorEvaluationNotFoundError extends Error {}
 
-const ENDPOINT = '/v1/harness/plans/skill/behavior-eval';
+const ENDPOINT = '/v1/harness/skill-eval/behavior-eval';
 const transportIsHttp =
   String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
 const mockRecords = new Map<string, SkillBehaviorEvaluationRecordDto>();

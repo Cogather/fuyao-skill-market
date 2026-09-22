@@ -401,7 +401,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
   test('Skill 详情按新顺序展示行为评测并支持核心交互', async ({ page }) => {
     const behaviorApiRequests: string[] = [];
     page.on('request', (request) => {
-      if (new URL(request.url()).pathname.startsWith('/api/v1/harness/plans/skill/behavior-eval')) {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/harness/skill-eval/behavior-eval')) {
         behaviorApiRequests.push(request.url());
       }
     });
