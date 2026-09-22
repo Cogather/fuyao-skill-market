@@ -69,6 +69,7 @@ let contextEpoch = 0;
 let pollingTimer: number | undefined;
 const trendLoaded = ref(false);
 
+const hasAvailableVersion = computed(() => Boolean(props.version.trim() && props.versions.length));
 const currentState = computed(() => modeStates[activeKind.value]);
 const currentRecord = computed(() => currentState.value.record);
 const triggerReport = computed<SkillTriggerEvaluationReportDto | null>(() => {
@@ -242,6 +243,9 @@ const behaviorVersionStatuses = computed<Record<string, string>>(() => {
     }),
   );
 });
+const behaviorKindTabsDisabled = computed(
+  () => !hasAvailableVersion.value || behaviorVersionStatuses.value[props.version] === '未评测',
+);
 function matchesFilter(passed: boolean, filter: SkillBehaviorCaseFilter): boolean {
   return filter === 'all' || (filter === 'passed' ? passed : !passed);
 }
@@ -381,8 +385,13 @@ async function loadMode(
   silent = false,
   epoch = contextEpoch,
 ): Promise<void> {
-  if (!props.assetName || !props.version) return;
   const state = modeStates[kind];
+  if (!props.assetName || !props.version) {
+    state.loading = false;
+    state.record = null;
+    state.error = '';
+    return;
+  }
   if (!silent) state.loading = true;
   state.error = '';
   try {
@@ -521,7 +530,7 @@ onBeforeUnmount(() => {
           :versions="versions"
           :statuses="behaviorVersionStatuses"
           status-kind="evaluation"
-          :disabled="currentState.loading || submittingTypes.length > 0"
+          :disabled="!hasAvailableVersion || currentState.loading || submittingTypes.length > 0"
           @update:model-value="selectVersion"
         />
       </div>
@@ -557,6 +566,7 @@ onBeforeUnmount(() => {
               :class="{ 'is-active': activeKind === 'trigger' }"
               :aria-selected="activeKind === 'trigger'"
               aria-controls="behavior-panel-trigger"
+              :disabled="behaviorKindTabsDisabled"
               @click="activeKind = 'trigger'"
             >
               <span class="behavior-kind-tabs__dot is-trigger" aria-hidden="true" />触发评测
@@ -568,6 +578,7 @@ onBeforeUnmount(() => {
               :class="{ 'is-active': activeKind === 'quality' }"
               :aria-selected="activeKind === 'quality'"
               aria-controls="behavior-panel-quality"
+              :disabled="behaviorKindTabsDisabled"
               @click="activeKind = 'quality'"
             >
               <span class="behavior-kind-tabs__dot is-quality" aria-hidden="true" />质量评测
@@ -578,6 +589,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="behavior-button is-secondary"
+            :disabled="!hasAvailableVersion"
             @click="openDialog('trend', $event)"
           >
             <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -597,9 +609,13 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="behavior-button is-primary"
-            :disabled="isModeBusy('trigger') && isModeBusy('quality')"
+            :disabled="!hasAvailableVersion || (isModeBusy('trigger') && isModeBusy('quality'))"
             :title="
-              isModeBusy('trigger') && isModeBusy('quality') ? '两类评测均在进行中' : undefined
+              !hasAvailableVersion
+                ? '当前 Skill 暂无可用版本'
+                : isModeBusy('trigger') && isModeBusy('quality')
+                  ? '两类评测均在进行中'
+                  : undefined
             "
             @click="openDialog('trigger', $event)"
           >
@@ -608,7 +624,13 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section v-if="currentState.loading" class="behavior-state" role="status">
+      <section v-if="!hasAvailableVersion" class="behavior-empty" role="status">
+        <span class="behavior-empty__icon" aria-hidden="true">i</span>
+        <strong>当前 Skill 暂无可用版本</strong>
+        <p>完成开发并上传版本包后，才能发起行为评测。</p>
+      </section>
+
+      <section v-else-if="currentState.loading" class="behavior-state" role="status">
         <span class="behavior-state__spinner" aria-hidden="true" />
         <strong>正在加载{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}记录</strong>
       </section>
@@ -1327,11 +1349,11 @@ onBeforeUnmount(() => {
   color: #667085;
   font-size: 11px;
   font-weight: 800;
+  line-height: 20px;
 }
 .behavior-version-picker :deep(.harness-version-picker__trigger) {
   min-width: 158px;
   min-height: 40px;
-  padding-left: 2px;
   border: 0;
   box-shadow: none;
 }
@@ -1430,7 +1452,7 @@ onBeforeUnmount(() => {
   font-size: 13.5px;
   cursor: pointer;
 }
-.behavior-kind-tabs button:hover {
+.behavior-kind-tabs button:hover:not(:disabled) {
   color: #1f2329;
 }
 .behavior-kind-tabs button.is-active {
@@ -1438,6 +1460,10 @@ onBeforeUnmount(() => {
   color: #1f2329;
   font-weight: 600;
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+.behavior-kind-tabs button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .behavior-kind-tabs__dot {
   width: 7px;

@@ -346,9 +346,7 @@ export async function querySkillBehaviorEvaluationTrend(
     const availableVersions = mockVersions.filter(
       (version) => !isMockUnevaluatedVersion(skillName, version),
     );
-    const merged = getSkillBehaviorTrendMock(
-      mockVersions.length ? availableVersions : ['0.9.0', '1.0.0', '1.10.0'],
-    );
+    const merged = getSkillBehaviorTrendMock(availableVersions);
     return {
       quality: merged.map((point) => ({
         version: point.version,

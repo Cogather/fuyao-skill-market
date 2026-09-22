@@ -203,6 +203,8 @@ function atomicAsset(
   const latestVersion = rawLatestVersion || (canPublish ? '0.1.0' : '');
   const currentVersion = normalizeHarnessAssetVersion(latestVersion);
   const published = record.status === '已完成' && Boolean(currentVersion);
+  const developingWithoutVersion =
+    !currentVersion && ['未开始', '开发中', '进行中', '联调中'].includes(record.status);
   let versionDetails = (record.versions ?? [])
     .map((item) => ({
       version: normalizeHarnessAssetVersion(item.version),
@@ -248,7 +250,7 @@ function atomicAsset(
     // publishable 仅表示 Extension 的就绪状态；原子资产发布权限由 canPublish 控制。
     releases: [],
     publishable: false,
-    ...(published ? { status: '已发布' } : {}),
+    ...(published ? { status: '已发布' } : developingWithoutVersion ? { status: '开发中' } : {}),
   };
 }
 
@@ -471,13 +473,11 @@ async function atomicDetail(
   };
   const paths = await queryPlanningTaskDetailFilePaths(identity);
   const files = await Promise.all(
-    paths.map(
-      async (path): Promise<HarnessAssetFile> => ({
-        path,
-        content: await queryPlanningTaskDetailFileContent(identity, path),
-        category: capabilityType,
-      }),
-    ),
+    paths.map(async (path): Promise<HarnessAssetFile> => ({
+      path,
+      content: await queryPlanningTaskDetailFileContent(identity, path),
+      category: capabilityType,
+    })),
   );
   return { versions: [...asset.versions], files };
 }
@@ -840,8 +840,11 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     return result.list
       .filter((record) => recordMatchesScope(record, state.scope, state.products))
       .map((record) => {
-        const canPublish = transport === 'mock' && lane.mockPublishableCount < 3;
-        if (transport === 'mock') lane.mockPublishableCount += 1;
+        const canPublish =
+          transport === 'mock' &&
+          Boolean(latestSkillMasterVersion(record)?.version?.trim()) &&
+          lane.mockPublishableCount < 3;
+        if (canPublish) lane.mockPublishableCount += 1;
         return atomicAsset(lane.type, record, state.scope, state.products, canPublish);
       });
   }

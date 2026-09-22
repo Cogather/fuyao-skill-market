@@ -277,6 +277,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .harness-version-picker {
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
 }
 .harness-version-picker .harness-version-picker__trigger {

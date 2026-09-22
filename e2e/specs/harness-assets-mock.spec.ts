@@ -432,6 +432,24 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(panel.getByText('评测触发时间', { exact: true })).toBeVisible();
     await expect(panel.getByText('触发结果构成', { exact: true })).toBeVisible();
     const behaviorVersion = panel.getByRole('combobox', { name: '版本', exact: true });
+    const behaviorVersionPicker = panel.locator('.behavior-version-picker');
+    const pickerElementCenters = await behaviorVersionPicker.evaluate((element) => {
+      const selectors = [
+        '.behavior-version-picker__label',
+        '.harness-version-picker__value',
+        '.harness-version-picker__status-dot',
+        '.harness-version-picker__chevron',
+      ];
+      return selectors.map((selector) => {
+        const rect = element.querySelector(selector)?.getBoundingClientRect();
+        if (!rect) throw new Error(`Missing version picker element: ${selector}`);
+        return rect.top + rect.height / 2;
+      });
+    });
+    expect(
+      Math.max(...pickerElementCenters) - Math.min(...pickerElementCenters),
+    ).toBeLessThanOrEqual(1);
+    await expect(behaviorVersion).toHaveCSS('padding-left', '12px');
     await behaviorVersion.click();
     const behaviorVersionOptions = page
       .getByRole('listbox', { name: '可用版本' })
@@ -504,9 +522,20 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
     const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
     const versionSelect = detail.getByRole('combobox', { name: '版本' });
+    const triggerTab = panel.getByRole('tab', { name: '触发评测', exact: true });
+    const qualityTab = panel.getByRole('tab', { name: '质量评测', exact: true });
     await expect(versionSelect).toContainText('1.1.0');
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v1\.1\.0 尚未发起该模式评测/)).toBeVisible();
+    await expect(triggerTab).toBeDisabled();
+    await expect(qualityTab).toBeDisabled();
+    await expect(panel.getByRole('button', { name: '版本趋势', exact: true })).toBeEnabled();
+    await expect(
+      panel.locator('.behavior-card__actions').getByRole('button', {
+        name: '发起评测',
+        exact: true,
+      }),
+    ).toBeEnabled();
 
     await versionSelect.click();
     await expect(page.getByRole('option', { name: '1.1.0 未评测', exact: true })).toBeVisible();
@@ -514,8 +543,27 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
 
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v0\.9\.0 尚未发起该模式评测/)).toBeVisible();
+    await expect(triggerTab).toBeDisabled();
+    await expect(qualityTab).toBeDisabled();
     await panel.getByRole('status').getByRole('button', { name: '发起评测', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '发起行为评测', exact: true })).toBeVisible();
+  });
+
+  test('Skill 无可用版本时禁用全部行为评测操作', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await assetCard(page, '发布回滚预案校验 Skill').click();
+
+    const detail = page.locator('.asset-detail');
+    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
+    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+
+    await expect(panel.getByRole('combobox', { name: '版本', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('tab', { name: '触发评测', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('tab', { name: '质量评测', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: '版本趋势', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: '发起评测', exact: true })).toBeDisabled();
+    await expect(panel.getByText('当前 Skill 暂无可用版本', { exact: true })).toBeVisible();
   });
 
   test('Agent 和 Command 详情复用清单中的正文展示', async ({ page }) => {
@@ -576,7 +624,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     ]);
   });
 
-  test('\u6ca1\u6709\u53ef\u53d1\u5e03\u7248\u672c\u7684\u8d44\u4ea7\u6807\u8bb0\u4e3a\u672a\u5f00\u53d1\u4e14\u4e0d\u63d0\u4f9b\u53d1\u5e03\u5165\u53e3', async ({
+  test('\u5f00\u53d1\u4e2d Skill \u6ca1\u6709\u53ef\u7528\u7248\u672c\u4e14\u4e0d\u63d0\u4f9b\u53d1\u5e03\u5165\u53e3', async ({
     page,
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
@@ -584,20 +632,48 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       label: 'harness-pipeline',
     });
     await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: '\u5f00\u53d1\u4e2d', exact: true }).click();
 
-    const card = assetCard(page, '\u6d41\u6c34\u7ebf\u914d\u7f6e\u5de1\u68c0 Skill');
-    await expect(
-      card.locator('.asset-badge').getByText('\u672a\u5f00\u53d1', { exact: true }),
-    ).toBeVisible();
+    const developingSkillNames = [
+      '\u6d41\u6c34\u7ebf\u914d\u7f6e\u5de1\u68c0 Skill',
+      '\u53d1\u5e03\u56de\u6eda\u9884\u6848\u6821\u9a8c Skill',
+      '\u53d8\u66f4\u7a97\u53e3\u51b2\u7a81\u68c0\u6d4b Skill',
+      '\u4f9d\u8d56\u670d\u52a1\u5065\u5eb7\u9884\u68c0 Skill',
+    ];
+    await expect(page.getByText('\u5171 4 \u4e2a\u8d44\u4ea7', { exact: true })).toBeVisible();
+    for (const name of developingSkillNames) {
+      const developingCard = assetCard(page, name);
+      await expect(developingCard).toBeVisible();
+      await expect(developingCard.getByText('\u5f00\u53d1\u4e2d', { exact: true })).toBeVisible();
+      await expect(developingCard.locator('.asset-card__version')).toHaveCount(0);
+    }
+
+    const card = assetCard(page, '\u53d1\u5e03\u56de\u6eda\u9884\u6848\u6821\u9a8c Skill');
     const cardMenu = await openAssetCardMenu(card);
     await expect(cardMenu.getByRole('menuitem', { name: '\u53d1\u5e03', exact: true })).toHaveCount(
       0,
     );
 
     await card.click();
-    await expect(page.locator('.asset-detail')).toBeVisible();
+    const detail = page.locator('.asset-detail');
+    await expect(detail).toBeVisible();
+    await expect(detail.getByRole('combobox', { name: '\u7248\u672c' })).toContainText(
+      '\u65e0\u53ef\u7528\u7248\u672c',
+    );
     await expect(
-      page.locator('.asset-detail').getByRole('button', { name: '\u53d1\u5e03' }),
-    ).toHaveCount(0);
+      detail.getByText('\u6682\u65e0\u53ef\u5c55\u793a\u7684\u6587\u4ef6', { exact: true }),
+    ).toBeVisible();
+    await expect(detail.getByRole('button', { name: '\u53d1\u5e03' })).toHaveCount(0);
+
+    await detail.getByRole('tab', { name: '\u884c\u4e3a\u8bc4\u6d4b', exact: true }).click();
+    await expect(
+      detail.getByText('\u5f53\u524d Skill \u6682\u65e0\u53ef\u7528\u7248\u672c', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      detail.getByRole('button', { name: '\u53d1\u8d77\u8bc4\u6d4b', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      detail.getByRole('button', { name: '\u7248\u672c\u8d8b\u52bf', exact: true }),
+    ).toBeDisabled();
   });
 });
