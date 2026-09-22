@@ -360,6 +360,12 @@ const isAtomicHistoryTab = computed(
   () => selectedAsset.value?.assetType !== 'Extension' && detailTab.value === 'history',
 );
 const isHistoryTab = computed(() => isExtensionHistoryTab.value || isAtomicHistoryTab.value);
+const showDetailVersionPanel = computed(() => {
+  const asset = selectedAsset.value;
+  if (!asset || isHistoryTab.value) return false;
+  // Skill 内容页在 HTTP / Mock 两种 transport 下始终保留版本信息区。
+  return asset.assetType !== 'Skill' || detailTab.value === 'content';
+});
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
@@ -1368,8 +1374,7 @@ onBeforeUnmount(() => {
         <nav
           class="asset-subtabs asset-detail__tabs"
           :class="{
-            'has-version-panel':
-              !isHistoryTab && (selectedAsset.assetType !== 'Skill' || detailTab === 'content'),
+            'has-version-panel': showDetailVersionPanel,
           }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
@@ -1437,7 +1442,7 @@ onBeforeUnmount(() => {
 
         <div class="asset-detail__content-scroll">
           <section
-            v-if="!isHistoryTab && (selectedAsset.assetType !== 'Skill' || detailTab === 'content')"
+            v-if="showDetailVersionPanel"
             class="asset-detail__version-panel"
             :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
             aria-label="版本信息"
