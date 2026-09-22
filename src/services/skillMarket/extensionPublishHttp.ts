@@ -500,13 +500,18 @@ export async function queryHttpExtensionBindings(
   });
 }
 
-/** 资产内容按所选 Extension 版本读取发布时冻结的子资产清单。 */
-export async function queryHttpExtensionVersionCapabilities(
+export type ExtensionVersionSnapshot = {
+  releaseType: string;
+  capabilities: ExtensionScene['capabilities'];
+};
+
+/** 资产内容按所选 Extension 版本读取发布通道及发布时冻结的子资产清单。 */
+export async function queryHttpExtensionVersionSnapshot(
   userId: string,
   scope: ExtensionScope,
   identity: { name?: string | null },
   version: string,
-): Promise<ExtensionScene['capabilities']> {
+): Promise<ExtensionVersionSnapshot> {
   const extensionName = requiredText(identity.name, 'Extension 缺少名称，无法查看内容');
   const selectedVersion = requiredText(version, '请选择 Extension 版本');
   const response = await skillBaseService.queryExtensionVersionHistory({
@@ -523,14 +528,14 @@ export async function queryHttpExtensionVersionCapabilities(
   }
   const sceneKey = stableId([scope.dimCode, extensionName, selectedVersion]);
   const mapFrozen = (type: ExtensionCapabilityType, rows: unknown[]) =>
-    rows.map((item, index) => ({
-      ...mapCapability(item, type, sceneKey, index),
-      files: [],
-    }));
+    rows.map((item, index) => mapCapability(item, type, sceneKey, index));
   return {
-    skill: mapFrozen('skill', data.skills),
-    command: mapFrozen('command', data.commands),
-    agent: mapFrozen('agent', data.agents),
+    releaseType: normalizeText(data.releaseType),
+    capabilities: {
+      skill: mapFrozen('skill', data.skills),
+      command: mapFrozen('command', data.commands),
+      agent: mapFrozen('agent', data.agents),
+    },
   };
 }
 
@@ -573,13 +578,24 @@ export async function queryHttpExtensionDetail(
     scope,
     releases,
   )[0]!;
-  const publishCheck = asRecord(data.publishCheck);
-  if (typeof publishCheck.canPublish === 'boolean') {
-    detail.publishCheck = {
-      canPublish: publishCheck.canPublish,
-      message: typeof publishCheck.message === 'string' ? publishCheck.message : '',
-    };
-  }
+  const publishChecks = asRecord(data.publishChecks);
+  const mappedPublishChecks = Object.fromEntries(
+    (['beta', 'product'] as const).flatMap((channel) => {
+      const publishCheck = asRecord(publishChecks[channel]);
+      return typeof publishCheck.canPublish === 'boolean'
+        ? [
+            [
+              channel,
+              {
+                canPublish: publishCheck.canPublish,
+                message: typeof publishCheck.message === 'string' ? publishCheck.message : '',
+              },
+            ],
+          ]
+        : [];
+    }),
+  );
+  if (Object.keys(mappedPublishChecks).length > 0) detail.publishChecks = mappedPublishChecks;
   detail.extension.name ||= extensionName;
   return detail;
 }
@@ -623,8 +639,9 @@ function componentBody(
 }
 
 export async function publishHttpExtension(input: PublishExtensionInput): Promise<void> {
-  if (input.scene.publishCheck?.canPublish === false) {
-    throw new Error(input.scene.publishCheck.message);
+  const publishCheck = input.scene.publishChecks?.[input.channel];
+  if (publishCheck?.canPublish === false) {
+    throw new Error(publishCheck.message);
   }
   const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
   if (!isCatalogItemNameValid(extensionName)) {

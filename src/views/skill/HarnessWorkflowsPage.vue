@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from '../../components/skill/HarnessSelect.vue';
+import WorkflowCommandsDialog from '../../components/skill/WorkflowCommandsDialog.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import HarnessDepartmentPicker from '@/components/skill/HarnessDepartmentPicker.vue';
 import ExtensionPublishPage from '@/views/skill/ExtensionPublishPage.vue';
@@ -8,6 +9,7 @@ import { getHarnessAssetApi } from '@/services/skillMarket/assetManagementServic
 import type { HarnessAsset, HarnessAssetScope } from '@/services/skillMarket/assetManagementTypes';
 import {
   queryHarnessWorkflowPage,
+  type HarnessWorkflowCommand,
   type HarnessWorkflowListQuery,
   type HarnessWorkflowListRow,
 } from '@/services/skillMarket/harnessWorkflowListService';
@@ -62,6 +64,7 @@ type WorkflowDisplayRow = {
   targetOrgName?: string | null;
   latestPublishTime?: string | null;
   latestVersion?: string | null;
+  commands: HarnessWorkflowCommand[];
 };
 const view = ref<WorkflowPageView>('list');
 const pageSize = ref(10);
@@ -72,6 +75,7 @@ const jumpPage = ref<string | number>('1');
 const inventoryLoading = ref(false);
 const inventoryError = ref('');
 const selectedWorkflow = ref<WorkflowDisplayRow | null>(null);
+const selectedCommandWorkflow = ref<WorkflowDisplayRow | null>(null);
 const workflowRelease = ref<{
   context: ExtensionReleaseContext;
   mode: 'publish' | 'history';
@@ -180,6 +184,7 @@ const visibleRows = computed<WorkflowDisplayRow[]>(() => {
       targetOrgName: row.targetOrgName,
       latestPublishTime: row.latestPublishTime,
       latestVersion: row.latestVersion,
+      commands: [],
     }));
   }
   return filteredWorkflows.value
@@ -216,6 +221,11 @@ const visibleRows = computed<WorkflowDisplayRow[]>(() => {
         targetOrgName: null,
         latestPublishTime: null,
         latestVersion: null,
+        commands: (workflow.commands ?? []).map((command) => ({
+          name: command.name,
+          description: command.description || '',
+          version: command.version?.trim() || null,
+        })),
       };
     });
 });
@@ -223,6 +233,15 @@ const visibleRows = computed<WorkflowDisplayRow[]>(() => {
 function shouldShowPublish(row: (typeof visibleRows.value)[number]): boolean {
   if (row.status === '待发布') return row.canPublish === true;
   return row.status === '已发布' && row.canPublish === true && row.changed === true;
+}
+
+function openWorkflowCommands(row: WorkflowDisplayRow): void {
+  if ((row.commandCount ?? 0) <= 0) return;
+  selectedCommandWorkflow.value = row;
+}
+
+function closeWorkflowCommands(): void {
+  selectedCommandWorkflow.value = null;
 }
 
 function workflowScope(row: WorkflowDisplayRow): HarnessAssetScope {
@@ -596,22 +615,51 @@ onBeforeUnmount(() => {
                     </td>
                     <td :title="row.scenarioDescription">{{ row.scenarioPath }}</td>
                     <td>
-                      <span class="wf-count-pill">{{
-                        row.commandCount === null ? '-' : `${row.commandCount} 个`
-                      }}</span>
+                      <div class="wf-command-entry">
+                        <span class="wf-count-pill">{{
+                          row.commandCount === null ? '-' : `${row.commandCount} 个`
+                        }}</span>
+                        <button
+                          v-if="(row.commandCount ?? 0) > 0"
+                          type="button"
+                          class="wf-icon-action wf-icon-action--commands"
+                          aria-label="查看 Command"
+                          title="查看 Command"
+                          @click="openWorkflowCommands(row)"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+                            <path d="m7.5 9 3 3-3 3M13 15h3.5" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <div class="wf-actions">
-                        <button type="button" @click="openWorkflowRelease(row, 'history')">
-                          查看发布历史
+                        <button
+                          type="button"
+                          class="wf-icon-action wf-icon-action--history"
+                          aria-label="查看发布历史"
+                          title="查看发布历史"
+                          @click="openWorkflowRelease(row, 'history')"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8.25" />
+                            <path d="M12 7.5V12l3.25 2" />
+                          </svg>
                         </button>
                         <button
                           v-if="shouldShowPublish(row)"
                           type="button"
-                          class="is-publish"
+                          class="wf-icon-action is-publish"
+                          aria-label="发布"
+                          title="发布"
                           @click="openWorkflowRelease(row, 'publish')"
                         >
-                          发布
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="m21 3-7.1 18-3.2-7.7L3 10.1 21 3Z" />
+                            <path d="m10.7 13.3 4.6-4.6" />
+                          </svg>
                         </button>
                       </div>
                     </td>
@@ -741,6 +789,21 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </template>
+
+    <WorkflowCommandsDialog
+      v-if="selectedCommandWorkflow"
+      :open="true"
+      :workflow-name="selectedCommandWorkflow.name"
+      :is-http="isHttp"
+      :user-id="workflowListScope?.userId || ''"
+      :dim-type="selectedCommandWorkflow.dimType"
+      :dim-code="selectedCommandWorkflow.dimCode"
+      :dim-name="selectedCommandWorkflow.dimName"
+      :first-scene="selectedCommandWorkflow.firstScene"
+      :second-scene="selectedCommandWorkflow.secondScene"
+      :initial-commands="selectedCommandWorkflow.commands"
+      @close="closeWorkflowCommands"
+    />
   </div>
 </template>
 
@@ -965,6 +1028,11 @@ onBeforeUnmount(() => {
   background: #f3f4f6;
   color: var(--muted);
 }
+.wf-command-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .wf-actions {
   display: flex;
   align-items: center;
@@ -984,6 +1052,47 @@ onBeforeUnmount(() => {
 .workflows-page .wf-actions button:hover {
   border-color: #b9c2d4;
   background: #f8fafc;
+}
+.workflows-page .wf-actions .wf-icon-action {
+  display: inline-flex;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.workflows-page .wf-command-entry .wf-icon-action {
+  display: inline-flex;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #d9deea;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  cursor: pointer;
+}
+.wf-icon-action svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+.workflows-page .wf-actions .wf-icon-action--history:hover {
+  border-color: #93b4f8;
+  background: #f3f7ff;
+  color: var(--blue);
+}
+.workflows-page .wf-command-entry .wf-icon-action--commands:hover {
+  border-color: #9fb4f3;
+  background: #f2f6ff;
+  color: #315de8;
 }
 .workflows-page .wf-actions .is-publish {
   border-color: var(--blue);

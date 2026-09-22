@@ -52,8 +52,6 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
   <Teleport to="body">
     <div
       class="asset-master-overlay harness-workspace-overlay"
-      @click.self="close"
-      @keydown.esc="close"
     >
       <form
         class="asset-master-dialog"
@@ -132,7 +130,7 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
 
         <footer>
           <button type="button" :disabled="submitting" @click="close">取消</button>
-          <button type="submit" class="is-primary" :disabled="submitting">
+          <button type="submit" class="is-primary" formnovalidate :disabled="submitting">
             {{ submitting ? '保存中…' : '保存' }}
           </button>
         </footer>

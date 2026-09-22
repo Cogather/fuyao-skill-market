@@ -776,6 +776,8 @@ export type QueryHarnessAssetComponentsBody = {
 export type HarnessAssetComponentDto = {
   name: string;
   description: string;
+  /** 组件查询记录返回的资产类型。 */
+  type?: QueryHarnessAssetComponentsBody['type'];
   latestVersion: string | null;
   status: string;
   skillId?: string | null;

@@ -30,6 +30,31 @@ test.describe('资产卡片 Extension 发布页面', () => {
     );
   });
 
+  test('Extension 详情文件默认折叠并按点击展开内容', async ({ page }) => {
+    const card = page
+      .locator('.asset-card')
+      .filter({ has: page.getByRole('heading', { name: '问题分析 Extension', exact: true }) });
+    await card.getByRole('heading', { name: '问题分析 Extension', exact: true }).click();
+
+    const tree = page.locator('.asset-extension-content');
+    await expect(tree).toBeVisible();
+    await expect(tree.getByRole('button', { name: /skills\// })).toBeVisible();
+    await expect(tree.getByRole('button', { name: /commands\// })).toBeVisible();
+    await expect(tree.getByRole('button', { name: /agents\// })).toBeVisible();
+    await expect(tree.locator('pre')).toHaveCount(0);
+
+    await tree.getByRole('button', { name: /异常归因Skill/ }).click();
+    const skillFile = tree.getByRole('button', { name: 'SKILL.md', exact: true });
+    await expect(skillFile).toBeVisible();
+    await expect(tree.locator('pre')).toHaveCount(0);
+    await skillFile.click();
+    await expect(tree.locator('pre')).toContainText('异常归因Skill');
+
+    await tree.getByRole('button', { name: /缺陷归因Agent/ }).click();
+    await expect(tree.locator('pre')).toHaveCount(2);
+    await expect(tree.locator('pre').last()).toContainText('缺陷归因Agent');
+  });
+
   test('已发布 Extension 详情内切换发布记录页签展示历史并保持详情页', async ({
     page,
   }, testInfo) => {
@@ -38,6 +63,10 @@ test.describe('资产卡片 Extension 发布页面', () => {
       .filter({ has: page.getByRole('heading', { name: '问题分析 Extension', exact: true }) });
     await card.getByRole('heading', { name: '问题分析 Extension', exact: true }).click();
     await expect(page.locator('.asset-detail')).toBeVisible();
+    await expect(page.locator('.asset-detail__actions')).toHaveCount(0);
+    await expect(
+      page.locator('.asset-detail').getByRole('button', { name: '发布', exact: true }),
+    ).toHaveCount(0);
     await expect(page.locator('.asset-detail__version-panel')).toBeVisible();
 
     await page.locator('#asset-detail-tab-history').click();

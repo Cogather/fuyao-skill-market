@@ -214,8 +214,12 @@ try {
   );
   assert.equal(latestDetail.capabilities.skill[0].name, 'selected-skill');
   assert.equal(latestDetail.capabilities.skill[0].version, '0.9.0');
-  assert.deepEqual(latestDetail.capabilities.command[0].files, []);
-  assert.deepEqual(latestDetail.capabilities.agent[0].files, []);
+  assert.deepEqual(latestDetail.capabilities.command[0].files, [
+    { name: 'selected-command.md', content: '' },
+  ]);
+  assert.deepEqual(latestDetail.capabilities.agent[0].files, [
+    { name: 'selected-agent.md', content: '' },
+  ]);
   const otherVersion = await api.queryDetail(scope, extensionAsset, '2.0.0');
   assert.equal(versionHistoryCalls.length, 2, 'one frozen-history request per selected version');
   assert.equal(versionHistoryCalls[1].params.version, '2.0.0');

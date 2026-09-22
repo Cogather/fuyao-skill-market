@@ -191,6 +191,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   let workflowLoadSequence = 0;
   const error = ref('');
   const recordsByProduct = new Map<string, TaxonomyRecord[]>();
+  const workflowDetails = new Map<string, WorkflowDetail>();
   let loadSequence = 0;
   let storageKey = '';
   let loadingStorage = false;
@@ -274,6 +275,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     scenarioId: string,
     selectedProductId: string,
   ) {
+    workflowDetails.set(scenarioId, clone(data));
     const mapped = mapDesignDetail(scope, data, scenarioId, selectedProductId);
     for (const item of mapped.assets) {
       const existing = assets.find((asset) => asset._id === item._id);
@@ -308,6 +310,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     if (source)
       Object.assign(source, { flowName: data.flowName, flowDescription: data.flowDescription });
     return mapped.workflow;
+  }
+  function hasLoadedWorkflowDetail(id = selectedScenarioId.value) {
+    return workflowDetails.has(id);
   }
   async function loadSelectedWorkflow() {
     const sequence = ++workflowLoadSequence;
@@ -377,7 +382,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     };
     saving.value = true;
     try {
-      let before = await loadDesignDetail(scope);
+      const cached = workflowDetails.get(draft.scenarioId);
+      let before = cached ? clone(cached) : await loadDesignDetail(scope);
       assertScope();
       if (renamed) {
         await renameScenarioRecord(product, scenario, scenarioDraft.name);
@@ -409,6 +415,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       const saved = await loadDesignDetail(scope);
       assertScope();
       return applyWorkflowDetail(scope, saved, draft.scenarioId, selectedProduct);
+    } catch (cause) {
+      workflowDetails.delete(draft.scenarioId);
+      throw cause;
     } finally {
       saving.value = false;
     }
@@ -459,27 +468,10 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       return item;
     }
     if (saving.value) throw new Error('正在保存，请稍候');
-    const scope = sceneContext();
-    const scenarioId = selectedScenarioId.value;
     saving.value = true;
     try {
       const created = await createDesignCapability(type, item, dimensionFor(product));
       onCreated?.(created);
-      try {
-        assertCanManageDepartment();
-        if (
-          !available.value ||
-          productId.value !== product._id ||
-          selectedScenarioId.value !== scenarioId ||
-          context().userId !== scope.userId
-        )
-          throw new Error('场景范围已切换，请回到原场景重新选择');
-        await attachDesignCapability(scope, type, created);
-      } catch (cause) {
-        throw new Error(
-          `${type} 已创建，但${type === 'Command' ? '场景绑定' : '入池'}失败：${cause instanceof Error ? cause.message : '请求失败'}。请从资产清单重新选择，无需重复创建`,
-        );
-      }
       return created;
     } finally {
       saving.value = false;
@@ -520,6 +512,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     loadingStorage = true;
     storageKey = nextKey;
     workflows.splice(0);
+    workflowDetails.clear();
     assets.splice(0);
     commands.splice(0);
     mockWorkflowSeededDepartments.splice(0);
@@ -584,6 +577,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
     for (const id of Object.keys(details))
       if (belongsToProduct(id) && !ids.has(id)) delete details[id];
+    for (const id of workflowDetails.keys())
+      if (belongsToProduct(id) && !ids.has(id)) workflowDetails.delete(id);
     for (let i = scenarios.length - 1; i >= 0; i--)
       if (scenarios[i]?.productId === product._id) scenarios.splice(i, 1);
     const roots = records.filter((item) => !item.parentId).sort((a, b) => a.sort - b.sort);
@@ -818,6 +813,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         products.splice(0);
         scenarios.splice(0);
         recordsByProduct.clear();
+        workflowDetails.clear();
         return;
       }
       const userChanged = contextUser !== value.userId;
@@ -828,6 +824,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         products.splice(0);
         scenarios.splice(0);
         recordsByProduct.clear();
+        workflowDetails.clear();
       }
       restore(value.userId);
       const flattened: Department[] = [];
@@ -1385,6 +1382,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   return {
     isHttp,
     workflowLoading,
+    hasLoadedWorkflowDetail,
     loadSelectedWorkflow,
     saveWorkflow,
     createCapability,

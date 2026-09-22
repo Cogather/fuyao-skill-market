@@ -290,8 +290,8 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     expect(publishes).toHaveLength(1);
   });
 
-  test('已发布的 Extension 卡片隐藏发布，详情按权限保留发布按钮', async ({ page }) => {
-    const { detailQueries } = await prepare(page, true);
+  test('已发布的 Extension 卡片与详情均隐藏发布入口', async ({ page }) => {
+    await prepare(page, true);
     const records = [true, false, undefined].map((canPublish, index) => ({
       name: index === 0 ? 'product-b-build-extension' : `published-extension-${index}`,
       description: '已发布的 Extension',
@@ -325,7 +325,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     await page.getByRole('button', { name: 'Extension', exact: true }).click();
     await expect(page.locator('.asset-card')).toHaveCount(3);
 
-    for (const [index, record] of records.entries()) {
+    for (const record of records) {
       const card = page.locator('.asset-card').filter({
         has: page.getByRole('heading', { name: record.name, exact: true }),
       });
@@ -338,22 +338,10 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       const facts = page.locator('.asset-detail__facts.is-extension');
       await expect(facts.getByText('归属产品', { exact: true })).toBeVisible();
       await expect(facts.getByText('归属 dim', { exact: true })).toHaveCount(0);
-      const detailPublish = page
-        .locator('.asset-detail__actions')
-        .getByRole('button', { name: '发布', exact: true });
-      if (index === 0) {
-        await expect(detailPublish).toBeEnabled();
-        await detailPublish.click();
-        await expect(page.getByRole('region', { name: /发布 Extension/ })).toBeVisible();
-        expect(detailQueries.at(-1)?.postDataJSON()).toMatchObject({
-          dimCode: 'product-b-id',
-          firstScene: '开发',
-          secondScene: '构建诊断',
-        });
-        await page.getByRole('button', { name: '取消', exact: true }).click();
-      } else {
-        await expect(detailPublish).toHaveCount(0);
-      }
+      await expect(page.locator('.asset-detail__actions')).toHaveCount(0);
+      await expect(
+        page.locator('.asset-detail').getByRole('button', { name: '发布', exact: true }),
+      ).toHaveCount(0);
       await page.getByRole('button', { name: '返回列表', exact: true }).click();
     }
   });
@@ -550,7 +538,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     expect(detailQueries).toHaveLength(1);
   });
 
-  test('有版本卡片先查询组件详情和场景绑定，点击具体文件才加载内容', async ({ page }) => {
+  test('有版本卡片先查询组件详情和冻结清单，点击具体文件才加载内容', async ({ page }) => {
     const { detailQueries, historyQueries, organizationQueries, publishes } = await prepare(
       page,
       false,
@@ -558,7 +546,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       true,
     );
     const metadataQueries: Request[] = [];
-    const bindingQueries: Request[] = [];
+    const versionContentQueries: Request[] = [];
     const treeQueries: Request[] = [];
     const fileQueries: Request[] = [];
     const requestOrder: string[] = [];
@@ -586,40 +574,17 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
         }),
       });
     });
-    await page.route('**/api/harness/scenes/bindings**', (route) => {
-      bindingQueries.push(route.request());
-      requestOrder.push('bindings');
+    await page.route('**/api/harness/extensions/version-history**', (route) => {
+      versionContentQueries.push(route.request());
+      requestOrder.push('content');
       return route.fulfill({
-        json: envelope([
-          {
-            firstScene: '其他一级场景',
-            secondScenes: [
-              {
-                secondScene: '构建诊断',
-                components: { skills: [{ name: '不应显示的 Skill', version: '9.0' }] },
-              },
-            ],
-          },
-          {
-            firstScene: '开发',
-            secondScenes: [
-              {
-                secondScene: '其他二级场景',
-                components: { commands: [{ name: '不应显示的 Command', version: '9.0' }] },
-              },
-              {
-                secondScene: '构建诊断',
-                components: {
-                  skills: [{ name: '分析 Skill', version: '1.2.0' }],
-                  commands: [
-                    { name: '执行 Command', version: '2.1.0', filePath: 'commands/run.md' },
-                  ],
-                  agents: [{ name: '诊断 Agent', version: '3.0.0' }],
-                },
-              },
-            ],
-          },
-        ]),
+        json: envelope({
+          skills: [{ name: '分析 Skill', version: '1.2.0' }],
+          commands: [
+            { name: '执行 Command', version: '2.1.0', filePath: 'commands/run.md' },
+          ],
+          agents: [{ name: '诊断 Agent', version: '3.0.0' }],
+        }),
       });
     });
     await page.route('**/api/harness/packages/tree**', (route) => {
@@ -632,16 +597,18 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     });
     // Click the article's padding, outside its title and action buttons.
     await page.locator('.asset-card').click({ position: { x: 10, y: 10 } });
-    await expect(page.locator('.asset-detail__description')).toHaveText(
-      '接口返回的 Extension 详情',
-    );
+    await expect(page.locator('.asset-detail')).toBeVisible();
     const tree = page.locator('.asset-extension-content');
     await expect(tree).toContainText('分析 Skill');
     await expect(tree).toContainText('执行 Command');
     await expect(tree).toContainText('诊断 Agent');
     await expect(tree).not.toContainText('不应显示');
+    await expect(tree.getByRole('button', { name: /skills\// })).toBeVisible();
+    await expect(tree.getByRole('button', { name: /commands\// })).toBeVisible();
+    await expect(tree.getByRole('button', { name: /agents\// })).toBeVisible();
+    await expect(tree.locator('pre')).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: '版本', exact: true })).toContainText('0.5');
-    expect(requestOrder).toEqual(['detail', 'bindings']);
+    expect(requestOrder).toEqual(['detail', 'content']);
     expect(treeQueries).toHaveLength(0);
     expect(fileQueries).toHaveLength(0);
     await tree.getByRole('button', { name: /分析 Skill/ }).click();
@@ -667,10 +634,10 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     ]) {
       const previous = fileQueries.length;
       await tree.getByRole('button', { name: new RegExp(name!) }).click();
-      await expect(tree.getByRole('button', { name: filePath, exact: true })).toBeVisible();
-      expect(fileQueries).toHaveLength(previous);
-      await tree.getByRole('button', { name: filePath, exact: true }).click();
+      await expect(tree.getByRole('button', { name: filePath, exact: true })).toHaveCount(0);
       await expect(tree.locator('pre')).toHaveCount(previous + 1);
+      await expect(tree.locator('pre').last()).toHaveText('来自接口的组件文件内容');
+      expect(fileQueries).toHaveLength(previous + 1);
       expect(Object.fromEntries(new URL(fileQueries.at(-1)!.url()).searchParams)).toEqual({
         userId: 'release-user',
         componentType: type,
@@ -686,11 +653,14 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       type: 'EXTENSION',
       name: 'product-b-build-extension',
     });
-    expect(bindingQueries).toHaveLength(1);
-    expect(bindingQueries[0]!.postDataJSON()).toMatchObject({
+    expect(versionContentQueries).toHaveLength(1);
+    expect(
+      Object.fromEntries(new URL(versionContentQueries[0]!.url()).searchParams),
+    ).toEqual({
+      userId: 'release-user',
       dimType: '产品级',
       dimCode: 'product-b-id',
-      dimName: 'product-b',
+      name: 'product-b-build-extension',
       version: '0.5',
     });
     expect(detailQueries).toHaveLength(0);

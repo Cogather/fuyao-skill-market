@@ -71,7 +71,8 @@ export async function queryHttpHarnessAssetPage(
     throw new Error('资产清单响应格式不正确');
   }
   const list = data.records.map((record): HarnessAsset => {
-    const currentVersion = normalizeHarnessAssetVersion(record.latestVersion);
+    const latestVersion = String(record.latestVersion ?? '').trim();
+    const currentVersion = normalizeHarnessAssetVersion(latestVersion);
     const publisher = assetType === 'Extension' ? String(record.publisher ?? '').trim() : '';
     const category = String(record.category ?? '');
     const [level, ...names] = category.split('/');
@@ -90,11 +91,13 @@ export async function queryHttpHarnessAssetPage(
       name: record.name,
       description: record.description,
       assetType,
+      type: record.type ?? API_TYPES[assetType],
       dimType: record.dimType ?? null,
       dimCode: record.dimCode ?? null,
       dimName: record.dimName ?? null,
       firstScene: record.firstScene ?? null,
       secondScene: record.secondScene ?? null,
+      latestVersion,
       canPublish: record.canPublish,
       canEdit: record.canEdit,
       currentVersion,

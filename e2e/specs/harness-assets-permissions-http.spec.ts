@@ -154,6 +154,29 @@ test.describe('资产详情权限 HTTP', () => {
     await expect(page.getByRole('button', { name: '返回列表', exact: true })).toBeVisible();
   });
 
+  test('编辑弹窗仅通过关闭或操作按钮退出', async ({ page }) => {
+    const { card } = await prepare(page, 'Agent', {
+      canEdit: true,
+      listCanEdit: true,
+      ownerId: 'current-user',
+      enterDetail: false,
+    });
+    await card.getByRole('button', { name: /^更多操作：/ }).click();
+    await card.getByRole('menuitem', { name: '编辑信息', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '编辑 Agent', exact: true });
+    await expect(dialog).toBeVisible();
+
+    await page.locator('.asset-master-overlay').click({ position: { x: 6, y: 6 } });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('heading', { name: '编辑 Agent', exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   for (const listCanEdit of [false, undefined, null, 'true', 1]) {
     test(`列表 canEdit=${typeof listCanEdit}:${String(listCanEdit)} 时仅禁用编辑信息，查看详情仍可用`, async ({
       page,

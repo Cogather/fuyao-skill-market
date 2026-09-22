@@ -26,7 +26,12 @@ import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marke
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
-import type { HarnessDepartmentSnapshot, HarnessScopeSnapshot } from '../types/harnessFilterMemory';
+import type {
+  HarnessCatalogScopeChange,
+  HarnessCatalogScopeSnapshots,
+  HarnessDepartmentSnapshot,
+  HarnessScopeSnapshot,
+} from '../types/harnessFilterMemory';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
@@ -103,6 +108,8 @@ const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }
   { key: 'tasks', label: '待办任务', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
 const showLegacyPlanningTabs = false;
+const publicHarnessTabKeys = new Set<HarnessTab>(['workflows', 'capabilities', 'assets', 'tasks']);
+const legacyPlanningTabKeys = new Set<HarnessTab>(['command', 'planning', 'agent', 'extension']);
 
 const activeHarnessTab = ref<HarnessTab>('scenarios');
 const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
@@ -111,6 +118,7 @@ const capabilityManagementActivated = ref(false);
 const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const assetCatalogScopeSnapshotsByUser = ref<Record<string, HarnessCatalogScopeSnapshots>>({});
 const extensionScopeSnapshot = ref<HarnessScopeSnapshot>();
 const capabilityScopeSnapshots = computed<
   Partial<Record<PlanningScopeChange['capabilityType'], HarnessScopeSnapshot>>
@@ -148,6 +156,9 @@ const userId = computed(() => {
 });
 
 const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
+const assetCatalogScopeSnapshots = computed<HarnessCatalogScopeSnapshots>(
+  () => assetCatalogScopeSnapshotsByUser.value[userId.value] ?? {},
+);
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
@@ -313,9 +324,16 @@ const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
 });
 
 const visibleHarnessTabs = computed(() =>
-  harnessAccessLevel.value === 'task-only'
-    ? harnessTabs.filter((tab) => tab.key === 'tasks')
-    : harnessTabs,
+  harnessTabs.filter((tab) => {
+    if (tab.key === 'scenarios') return harnessAccessLevel.value !== 'task-only';
+    if (tab.key === 'settings') return harnessAccessLevel.value === 'owner';
+    if (publicHarnessTabKeys.has(tab.key)) return true;
+    return (
+      showLegacyPlanningTabs &&
+      harnessAccessLevel.value !== 'task-only' &&
+      legacyPlanningTabKeys.has(tab.key)
+    );
+  }),
 );
 
 async function loadHarnessDepartmentScope(): Promise<void> {
@@ -390,6 +408,24 @@ function updateCatalogScopeSnapshot(change: PlanningScopeChange): void {
   };
 }
 
+function updateAssetCatalogScopeSnapshot(change: HarnessCatalogScopeChange): void {
+  const memoryKey = userId.value;
+  if (!memoryKey) return;
+  assetCatalogScopeSnapshotsByUser.value = {
+    ...assetCatalogScopeSnapshotsByUser.value,
+    [memoryKey]: {
+      ...(assetCatalogScopeSnapshotsByUser.value[memoryKey] ?? {}),
+      [change.assetType]: {
+        ...(assetCatalogScopeSnapshotsByUser.value[memoryKey]?.[change.assetType] ?? {}),
+        [change.action]: {
+          ...change.snapshot,
+          departmentPath: [...change.snapshot.departmentPath],
+        },
+      },
+    },
+  };
+}
+
 function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
   extensionScopeSnapshot.value = {
     ...snapshot,
@@ -433,7 +469,7 @@ onMounted(async () => {
   try {
     if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
-    activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'scenarios';
+    activeHarnessTab.value = visibleHarnessTabs.value[0]?.key ?? 'workflows';
   } finally {
     permissionContextReady.value = true;
   }
@@ -461,8 +497,9 @@ onBeforeRouteLeave(() => {
         <template v-for="tab in visibleHarnessTabs" :key="tab.key">
           <button
             v-if="
-              showLegacyPlanningTabs ||
-              !['command', 'planning', 'agent', 'extension'].includes(tab.key)
+              tab.key !== 'capabilities' &&
+              (showLegacyPlanningTabs ||
+                !['command', 'planning', 'agent', 'extension'].includes(tab.key))
             "
             :id="`harness-tab-${tab.key}`"
             type="button"
@@ -510,7 +547,7 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-if="permissionContextReady && harnessAccessLevel !== 'task-only'"
+      v-if="permissionContextReady"
       v-show="activeHarnessTab === 'scenarios'"
       id="harness-panel-scenarios"
       class="harness-tab-panel"
@@ -547,7 +584,7 @@ onBeforeRouteLeave(() => {
     </section>
 
     <section
-      v-if="permissionContextReady && harnessAccessLevel !== 'task-only'"
+      v-if="permissionContextReady"
       v-show="activeHarnessTab === 'workflows'"
       id="harness-panel-workflows"
       class="harness-tab-panel"
@@ -576,6 +613,8 @@ onBeforeRouteLeave(() => {
         :current-user-department-path="currentUserDepartmentPermission.path"
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :scope-snapshots="assetCatalogScopeSnapshots"
+        @scope-change="updateAssetCatalogScopeSnapshot"
       />
     </section>
 

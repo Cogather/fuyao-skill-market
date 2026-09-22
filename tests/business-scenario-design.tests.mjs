@@ -213,10 +213,10 @@ try {
       ['queryActivitiesByScene', [context], 'GET', '/scene-activity/activity', context, undefined],
       [
         'refreshActivities',
-        [scope, { activities: [] }],
+        [context, { activities: [] }],
         'POST',
         '/scene-activity/activity',
-        scope,
+        context,
         { activities: [] },
       ],
       [
@@ -366,6 +366,41 @@ try {
     assert.equal(mapped.workflow.commands[0].name, '/demo-start');
     assert.equal(mapped.workflow.stages[0].steps[0].assets[0].assetId, mapped.assets[0]._id);
     assert.equal(mapped.assets[0].packageReady, true);
+  });
+  await test('detail mapping preserves a nonempty Command version and ignores blank versions', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        commands: [
+          { commandName: '/demo-versioned', description: '已发布入口', version: ' 1.2.3 ' },
+          { commandName: '/demo-draft', description: '未发布入口', version: '   ' },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.equal(mapped.workflow.commands[0].version, '1.2.3');
+    assert.equal(mapped.workflow.commands[1].version, null);
+  });
+  await test('detail mapping treats a null child name as a stage placeholder, not a blank node', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        stages: [
+          {
+            activityNodeName: '编码',
+            sort: 0,
+            steps: [{ subActivityNodeName: null, sort: 0, boundAssets: [] }],
+          },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.equal(mapped.workflow.stages.length, 1);
+    assert.deepEqual(mapped.workflow.stages[0].steps, []);
   });
   await test('detail mapping tolerates null Command names and uses a nonempty name alias', async () => {
     const mapped = repository.mapDesignDetail(
@@ -592,53 +627,29 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('activity refresh loads the dimension once and preserves every other scene', async () => {
+  await test('activity refresh writes only the current scene with scene-scoped params', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
     mapped.workflow.stages[0].steps.push({ id: 'new', name: '新节点', order: 1, assets: [] });
-    const activityQueries = [];
-    const activityRows = [
-      {
-        ...scene,
-        activityNodeName: '编码',
-        subActivityNodeName: '生成',
-        sort: 0,
-      },
-      {
-        firstScene: '研发',
-        secondScene: '保留场景一',
-        activityNodeName: '其他环节一',
-        subActivityNodeName: '其他节点一',
-        sort: 0,
-      },
-      {
-        firstScene: '测试',
-        secondScene: '保留场景二',
-        activityNodeName: '其他环节二',
-        subActivityNodeName: '其他节点二',
-        sort: 0,
-      },
-    ];
-    api.queryActivitiesByScene = async (params) => {
-      activityQueries.push(structuredClone(params));
-      return success(
-        params.firstScene
-          ? activityRows.filter(
-              (row) =>
-                row.firstScene === params.firstScene && row.secondScene === params.secondScene,
-            )
-          : activityRows,
-      );
+    api.querySceneList = async () => {
+      throw new Error('activity save must not query the scene list');
     };
+    api.queryActivitiesByScene = async () => {
+      throw new Error('activity save must not read other scene activities');
+    };
+    let refreshedParams;
     let refreshed;
-    api.refreshActivities = async (_params, body) => {
+    api.refreshActivities = async (params, body) => {
+      refreshedParams = structuredClone(params);
       refreshed = body;
       return success(null);
     };
     await repository.saveDesignActivities(context, mapped.workflow, detail);
-    assert.deepEqual(activityQueries, [scope]);
-    assert.deepEqual(
-      refreshed.activities.slice(0, 2).map((row) => row.secondScene),
-      ['保留场景一', '保留场景二'],
+    assert.deepEqual(refreshedParams, context);
+    assert.equal(refreshed.activities.length, 2);
+    assert.ok(
+      refreshed.activities.every(
+        (row) => row.firstScene === scene.firstScene && row.secondScene === scene.secondScene,
+      ),
     );
     assert.equal(refreshed.activities.at(-1).subActivityNodeName, '新节点');
   });

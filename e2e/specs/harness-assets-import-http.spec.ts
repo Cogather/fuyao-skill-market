@@ -123,6 +123,34 @@ async function selectTargetDepartment(
 test.describe('资产页导入导出弹窗 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
+  test('导入和导出弹窗仅通过显式按钮关闭', async ({ page }) => {
+    await prepareAssets(page);
+
+    const importDialog = await openImport(page, 'Agent');
+    await page.locator('.catalog-import-mask').click({ position: { x: 6, y: 6 } });
+    await expect(importDialog).toBeVisible();
+    await importDialog.getByRole('heading', { name: '导入 Agent', exact: true }).click();
+    await expect(importDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(importDialog).toBeVisible();
+    await importDialog.getByRole('button', { name: '关闭导入窗口', exact: true }).click();
+    await expect(importDialog).toBeHidden();
+
+    const exportDialog = await openExport(page, 'Agent');
+    await page.locator('.catalog-export-mask').click({ position: { x: 6, y: 6 } });
+    await expect(exportDialog).toBeVisible();
+    await exportDialog.getByRole('heading', { name: '导出 Agent', exact: true }).click();
+    await expect(exportDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(exportDialog).toBeVisible();
+    await expect(exportDialog.locator('footer').getByRole('button')).toHaveText(['取消', '下载']);
+    const download = exportDialog.getByRole('button', { name: '下载', exact: true });
+    await expect(download).toHaveCSS('background-color', 'rgb(37, 99, 235)');
+    await expect(download).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await exportDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(exportDialog).toBeHidden();
+  });
+
   for (const type of ['Agent', 'Skill', 'Command']) {
     for (const level of ['产品级', '部门级']) {
       test(`${type} ${level} 独立导出弹窗使用当前类型和弹窗归属`, async ({
@@ -321,6 +349,7 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
     await download.click();
     await expect.poll(() => attempts).toBe(1);
     await expect(dialog.getByRole('button', { name: '下载中…', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
     await expect(dialog.getByLabel('层级')).toBeDisabled();
     await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toHaveCount(0);
     releaseResponse();

@@ -5,6 +5,7 @@ const props = defineProps<{
   modelValue: string;
   versions: string[];
   statuses?: Record<string, string>;
+  statusKind?: 'release' | 'evaluation';
   disabled?: boolean;
 }>();
 const emit = defineEmits<{
@@ -22,15 +23,30 @@ const displayVersion = computed(() => props.modelValue || '无可用版本');
 let search = '';
 let searchTime = 0;
 
-type VersionStatusTone = 'developing' | 'pending' | 'published';
+type VersionStatusTone = 'developing' | 'pending' | 'published' | 'partial' | 'failed';
 
 function versionStatus(status: string | undefined): {
-  label: '开发中' | '待发布' | '已发布';
+  label: string;
   tone: VersionStatusTone;
 } {
   const normalized = String(status ?? '')
     .trim()
     .toLocaleLowerCase();
+  if (props.statusKind === 'evaluation') {
+    if (['已评测', 'completed', 'evaluated'].includes(normalized)) {
+      return { label: '已评测', tone: 'published' };
+    }
+    if (['部分评测', 'partial'].includes(normalized)) {
+      return { label: '部分评测', tone: 'partial' };
+    }
+    if (['进行中', 'queuing', 'pending', 'running'].includes(normalized)) {
+      return { label: '进行中', tone: 'pending' };
+    }
+    if (['失败', 'failed'].includes(normalized)) {
+      return { label: '失败', tone: 'failed' };
+    }
+    return { label: '未评测', tone: 'developing' };
+  }
   if (['已发布', '发布成功', '成功', 'published', 'released', 'success'].includes(normalized)) {
     return { label: '已发布', tone: 'published' };
   }
@@ -383,6 +399,12 @@ onBeforeUnmount(() => {
 }
 .harness-version-picker__status-dot.is-published {
   background: #18b26a;
+}
+.harness-version-picker__status-dot.is-partial {
+  background: #6677f7;
+}
+.harness-version-picker__status-dot.is-failed {
+  background: #dc2626;
 }
 .harness-version-picker__option[aria-selected='true'] {
   background: #eef2ff;

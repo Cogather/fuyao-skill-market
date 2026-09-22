@@ -1,0 +1,2390 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useId, watch } from 'vue';
+
+import HarnessVersionPicker from './HarnessVersionPicker.vue';
+import type {
+  SkillBehaviorCaseFilter,
+  SkillBehaviorEvaluationKind,
+  SkillQualityEvaluationCase,
+  SkillTriggerEvaluationCase,
+} from '../../services/skillMarket/mock/skillBehaviorEvaluation';
+import {
+  isSkillBehaviorEvaluationInProgress,
+  querySkillBehaviorEvaluation,
+  querySkillBehaviorEvaluationTrend,
+  triggerSkillBehaviorEvaluation,
+  type SkillBehaviorEvaluationMode,
+  type SkillBehaviorEvaluationRecordDto,
+  type SkillBehaviorEvaluationTrendDto,
+  type SkillQualityEvaluationReportDto,
+  type SkillTriggerEvaluationReportDto,
+} from '../../services/skillMarket/skillBehaviorEvaluationService';
+
+const props = defineProps<{
+  assetName: string;
+  version: string;
+  versions: string[];
+  userId?: string;
+  userName?: string;
+}>();
+
+const emit = defineEmits<{
+  notify: [message: string];
+  changeVersion: [version: string];
+}>();
+
+const instanceId = useId();
+const activeKind = ref<SkillBehaviorEvaluationKind>('trigger');
+const triggerFilter = ref<SkillBehaviorCaseFilter>('all');
+const qualityFilter = ref<SkillBehaviorCaseFilter>('all');
+const expandedTriggerCases = ref<string[]>([]);
+const expandedQualityCases = ref<string[]>([]);
+const activeDialog = ref<'trigger' | 'trend' | null>(null);
+const selectedTypes = ref<SkillBehaviorEvaluationKind[]>([]);
+const submittingTypes = ref<SkillBehaviorEvaluationKind[]>([]);
+const returnFocus = ref<HTMLElement | null>(null);
+const triggerDialog = ref<HTMLElement | null>(null);
+const trendDialog = ref<HTMLElement | null>(null);
+const triggerDialogClose = ref<HTMLButtonElement | null>(null);
+const trendDialogClose = ref<HTMLButtonElement | null>(null);
+const modeStates = reactive<
+  Record<
+    SkillBehaviorEvaluationKind,
+    { loading: boolean; record: SkillBehaviorEvaluationRecordDto | null; error: string }
+  >
+>({
+  trigger: { loading: true, record: null, error: '' },
+  quality: { loading: true, record: null, error: '' },
+});
+const trendState = reactive<{
+  loading: boolean;
+  data: SkillBehaviorEvaluationTrendDto;
+  error: string;
+}>({
+  loading: false,
+  data: { quality: [], trigger: [] },
+  error: '',
+});
+let contextEpoch = 0;
+let pollingTimer: number | undefined;
+const trendLoaded = ref(false);
+
+const currentState = computed(() => modeStates[activeKind.value]);
+const currentRecord = computed(() => currentState.value.record);
+const triggerReport = computed<SkillTriggerEvaluationReportDto | null>(() => {
+  const record = modeStates.trigger.record;
+  return record?.mode === 'TRIGGER' && record.state === 'completed'
+    ? (record.report as SkillTriggerEvaluationReportDto | null)
+    : null;
+});
+const qualityReport = computed<SkillQualityEvaluationReportDto | null>(() => {
+  const record = modeStates.quality.record;
+  return record?.mode === 'QUALITY' && record.state === 'completed'
+    ? (record.report as SkillQualityEvaluationReportDto | null)
+    : null;
+});
+const currentReport = computed(() =>
+  activeKind.value === 'trigger' ? triggerReport.value : qualityReport.value,
+);
+const currentRate = computed(() => {
+  const raw =
+    activeKind.value === 'trigger' ? triggerReport.value?.accuracy : qualityReport.value?.pass_rate;
+  return Number.parseFloat(raw ?? '0') || 0;
+});
+const rateRingStyle = computed(() => ({
+  background: `conic-gradient(#6677f7 0 ${currentRate.value}%, #e8ecf7 ${currentRate.value}% 100%)`,
+}));
+const triggerCases = computed<SkillTriggerEvaluationCase[]>(() =>
+  (triggerReport.value?.results ?? []).map((item) => ({
+    id: item.case_id,
+    task: item.task,
+    type: item.type === 'positive' ? '正向' : '反向',
+    expected: item.expect_trigger,
+    actual: item.actual_trigger,
+    passed: item.passed,
+    details: [
+      { label: '期望', content: item.expect_trigger ? '应触发当前 Skill' : '不应触发当前 Skill' },
+      { label: '实际', content: item.actual_trigger ? '已触发当前 Skill' : '未触发当前 Skill' },
+    ],
+  })),
+);
+const qualityCases = computed<SkillQualityEvaluationCase[]>(() =>
+  (qualityReport.value?.results ?? []).map((item) => ({
+    id: item.case_id,
+    task: item.task,
+    score: item.score,
+    duration: `${item.cost_time}s`,
+    passed: item.passed,
+    details: [
+      { label: '期望结果', content: item.expect },
+      { label: '实际输出', content: item.output },
+      { label: '评分分析', content: item.reason },
+    ],
+  })),
+);
+const filteredTriggerCases = computed(() => {
+  return triggerCases.value.filter((item) => matchesFilter(item.passed, triggerFilter.value));
+});
+const filteredQualityCases = computed(() => {
+  return qualityCases.value.filter((item) => matchesFilter(item.passed, qualityFilter.value));
+});
+const triggerPassed = computed(() => triggerCases.value.filter((item) => item.passed).length);
+const qualityPassed = computed(() => qualityCases.value.filter((item) => item.passed).length);
+const currentPassed = computed(() =>
+  activeKind.value === 'trigger' ? triggerPassed.value : qualityPassed.value,
+);
+const currentTotal = computed(() =>
+  activeKind.value === 'trigger' ? triggerCases.value.length : qualityCases.value.length,
+);
+const triggerComposition = computed(() => [
+  {
+    key: 'positive-hit',
+    type: '正向' as const,
+    label: '命中',
+    value: triggerCases.value.filter((item) => item.type === '正向' && item.actual).length,
+    description: '应触发且已正确触发',
+    tone: 'blue',
+  },
+  {
+    key: 'positive-miss',
+    type: '正向' as const,
+    label: '漏触发',
+    value: triggerCases.value.filter((item) => item.type === '正向' && !item.actual).length,
+    description: '应触发但未触发',
+    tone: 'orange',
+  },
+  {
+    key: 'negative-false',
+    type: '反向' as const,
+    label: '误触发',
+    value: triggerCases.value.filter((item) => item.type === '反向' && item.actual).length,
+    description: '不应触发却触发',
+    tone: 'red',
+  },
+  {
+    key: 'negative-correct',
+    type: '反向' as const,
+    label: '正确不触发',
+    value: triggerCases.value.filter((item) => item.type === '反向' && !item.actual).length,
+    description: '不应触发且未触发',
+    tone: 'green',
+  },
+]);
+const triggerChart = computed(() => {
+  const positive = triggerCases.value.filter((item) => item.type === '正向');
+  const negative = triggerCases.value.filter((item) => item.type === '反向');
+  return {
+    positiveExpected: positive.length,
+    positivePassed: positive.filter((item) => item.passed).length,
+    negativeExpected: negative.length,
+    negativePassed: negative.filter((item) => item.passed).length,
+    max: Math.max(1, positive.length, negative.length),
+  };
+});
+const durationDistribution = computed(() => {
+  const bins = [
+    { label: '<1s', value: 0 },
+    { label: '1-3s', value: 0 },
+    { label: '3-10s', value: 0 },
+    { label: '≥10s', value: 0 },
+  ];
+  for (const item of qualityReport.value?.results ?? []) {
+    const index = item.cost_time < 1 ? 0 : item.cost_time < 3 ? 1 : item.cost_time < 10 ? 2 : 3;
+    bins[index]!.value += 1;
+  }
+  return bins;
+});
+const scoreDistribution = computed(() => {
+  const bins = [
+    { label: '<60', value: 0 },
+    { label: '60-70', value: 0 },
+    { label: '70-80', value: 0 },
+    { label: '80-90', value: 0 },
+    { label: '90-100', value: 0 },
+  ];
+  for (const item of qualityReport.value?.results ?? []) {
+    const index =
+      item.score < 60 ? 0 : item.score < 70 ? 1 : item.score < 80 ? 2 : item.score < 90 ? 3 : 4;
+    bins[index]!.value += 1;
+  }
+  return bins;
+});
+const maxDurationDistribution = computed(() =>
+  Math.max(1, ...durationDistribution.value.map((item) => item.value)),
+);
+const maxScoreDistribution = computed(() =>
+  Math.max(1, ...scoreDistribution.value.map((item) => item.value)),
+);
+const behaviorVersionStatuses = computed<Record<string, string>>(() => {
+  const completedQuality = new Set(
+    trendState.data.quality.map((point) => normalizedVersion(point.version)),
+  );
+  const completedTrigger = new Set(
+    trendState.data.trigger.map((point) => normalizedVersion(point.version)),
+  );
+  return Object.fromEntries(
+    props.versions.map((version) => {
+      const normalized = normalizedVersion(version);
+      if (normalized === normalizedVersion(props.version)) {
+        const records = [modeStates.trigger.record, modeStates.quality.record];
+        if (records.some((record) => isSkillBehaviorEvaluationInProgress(record?.state))) {
+          return [version, '进行中'];
+        }
+        const completed = records.filter((record) => record?.state === 'completed').length;
+        if (completed === 2) return [version, '已评测'];
+        if (completed === 1) return [version, '部分评测'];
+        if (records.some((record) => record?.state === 'failed')) return [version, '失败'];
+        return [version, '未评测'];
+      }
+      const completed =
+        Number(completedQuality.has(normalized)) + Number(completedTrigger.has(normalized));
+      return [version, completed === 2 ? '已评测' : completed === 1 ? '部分评测' : '未评测'];
+    }),
+  );
+});
+function matchesFilter(passed: boolean, filter: SkillBehaviorCaseFilter): boolean {
+  return filter === 'all' || (filter === 'passed' ? passed : !passed);
+}
+
+function normalizedVersion(version: string): string {
+  return version.replace(/^v/i, '');
+}
+
+function selectVersion(version: string): void {
+  if (version !== props.version) emit('changeVersion', version);
+}
+
+function apiMode(kind: SkillBehaviorEvaluationKind): SkillBehaviorEvaluationMode {
+  return kind === 'trigger' ? 'TRIGGER' : 'QUALITY';
+}
+
+function isModeBusy(kind: SkillBehaviorEvaluationKind): boolean {
+  return (
+    submittingTypes.value.includes(kind) ||
+    isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state)
+  );
+}
+
+function stateLabel(record: SkillBehaviorEvaluationRecordDto | null): string {
+  if (!record) return '未评测';
+  if (isSkillBehaviorEvaluationInProgress(record.state)) return '进行中';
+  return record.state === 'completed' ? '已完成' : '失败';
+}
+
+function toggleCase(kind: SkillBehaviorEvaluationKind, id: string): void {
+  const target = kind === 'trigger' ? expandedTriggerCases : expandedQualityCases;
+  target.value = target.value.includes(id)
+    ? target.value.filter((value) => value !== id)
+    : [...target.value, id];
+}
+
+function isCaseExpanded(kind: SkillBehaviorEvaluationKind, id: string): boolean {
+  return (kind === 'trigger' ? expandedTriggerCases.value : expandedQualityCases.value).includes(
+    id,
+  );
+}
+
+function openDialog(kind: 'trigger' | 'trend', event?: Event): void {
+  returnFocus.value = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  if (kind === 'trigger') selectedTypes.value = [];
+  activeDialog.value = kind;
+  if (kind === 'trend') void loadTrend();
+  nextTick(() => (kind === 'trigger' ? triggerDialogClose.value : trendDialogClose.value)?.focus());
+}
+
+function closeDialog(restoreFocus = true): void {
+  activeDialog.value = null;
+  if (restoreFocus) nextTick(() => returnFocus.value?.focus());
+}
+
+async function confirmTrigger(): Promise<void> {
+  if (!selectedTypes.value.length) return;
+  const kinds = [...selectedTypes.value];
+  submittingTypes.value = [...new Set([...submittingTypes.value, ...kinds])];
+  const results = await Promise.allSettled(
+    kinds.map(async (kind) => {
+      const accepted = await triggerSkillBehaviorEvaluation({
+        skillName: props.assetName,
+        version: props.version,
+        mode: apiMode(kind),
+        userId: props.userId ?? '',
+        userName: props.userName ?? '',
+      });
+      const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      modeStates[kind].record = {
+        id: accepted.taskId,
+        skillName: accepted.skillName,
+        version: accepted.version,
+        mode: accepted.mode,
+        creator: props.userId ?? '',
+        creatorName: props.userName ?? '',
+        taskId: accepted.taskId,
+        state: accepted.state,
+        report: null,
+        error: null,
+        createTime: now,
+        updateTime: now,
+      };
+      modeStates[kind].error = '';
+      return kind;
+    }),
+  );
+  submittingTypes.value = submittingTypes.value.filter((kind) => !kinds.includes(kind));
+  const succeeded = results
+    .filter(
+      (result): result is PromiseFulfilledResult<SkillBehaviorEvaluationKind> =>
+        result.status === 'fulfilled',
+    )
+    .map((result) => result.value);
+  const failures = results.filter(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  );
+  if (succeeded.length) {
+    emit(
+      'notify',
+      `已发起${succeeded.map((kind) => (kind === 'trigger' ? '触发评测' : '质量评测')).join('、')}`,
+    );
+    closeDialog();
+    schedulePolling();
+  }
+  for (const failure of failures) {
+    emit('notify', failure.reason instanceof Error ? failure.reason.message : '发起评测失败');
+  }
+}
+
+function chartHeight(value: number, max: number): string {
+  return `${Math.max(8, (value / max) * 100)}%`;
+}
+
+function trendX(index: number, length: number): number {
+  if (length <= 1) return 320;
+  return 60 + (index * 520) / (length - 1);
+}
+
+function trendY(rate: number): number {
+  return 180 - Math.max(0, Math.min(100, rate)) * 1.6;
+}
+
+function trendPoints(points: SkillBehaviorEvaluationTrendDto['quality']): string {
+  return points
+    .map((point, index) => `${trendX(index, points.length)},${trendY(point.value)}`)
+    .join(' ');
+}
+
+function trendArea(points: SkillBehaviorEvaluationTrendDto['quality']): string {
+  if (!points.length) return '';
+  return `${trendX(0, points.length)},140 ${trendPoints(points)} ${trendX(points.length - 1, points.length)},140`;
+}
+
+async function loadMode(
+  kind: SkillBehaviorEvaluationKind,
+  silent = false,
+  epoch = contextEpoch,
+): Promise<void> {
+  if (!props.assetName || !props.version) return;
+  const state = modeStates[kind];
+  if (!silent) state.loading = true;
+  state.error = '';
+  try {
+    const record = await querySkillBehaviorEvaluation({
+      skillName: props.assetName,
+      version: props.version,
+      mode: apiMode(kind),
+    });
+    if (epoch !== contextEpoch) return;
+    state.record = record;
+  } catch (error) {
+    if (epoch !== contextEpoch) return;
+    state.error = error instanceof Error ? error.message : '评测记录加载失败';
+  } finally {
+    if (epoch === contextEpoch) state.loading = false;
+  }
+}
+
+async function loadAllModes(): Promise<void> {
+  contextEpoch += 1;
+  const epoch = contextEpoch;
+  clearPolling();
+  await Promise.all([loadMode('trigger', false, epoch), loadMode('quality', false, epoch)]);
+  if (epoch === contextEpoch) schedulePolling();
+}
+
+async function refreshCurrentMode(): Promise<void> {
+  await loadMode(activeKind.value);
+  schedulePolling();
+}
+
+function clearPolling(): void {
+  if (pollingTimer !== undefined) window.clearTimeout(pollingTimer);
+  pollingTimer = undefined;
+}
+
+function schedulePolling(): void {
+  clearPolling();
+  const pending = (['trigger', 'quality'] as const).filter((kind) =>
+    isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state),
+  );
+  if (!pending.length) return;
+  pollingTimer = window.setTimeout(async () => {
+    const epoch = contextEpoch;
+    await Promise.all(pending.map((kind) => loadMode(kind, true, epoch)));
+    if (epoch === contextEpoch) schedulePolling();
+  }, 30_000);
+}
+
+async function loadTrend(force = false): Promise<void> {
+  if (trendState.loading || (trendLoaded.value && !force)) return;
+  trendState.loading = true;
+  trendState.error = '';
+  try {
+    trendState.data = await querySkillBehaviorEvaluationTrend(props.assetName, props.versions);
+    trendLoaded.value = true;
+  } catch (error) {
+    trendState.error = error instanceof Error ? error.message : '版本趋势加载失败';
+  } finally {
+    trendState.loading = false;
+  }
+}
+
+function onDocumentKeydown(event: KeyboardEvent): void {
+  if (!activeDialog.value) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDialog();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const dialog = activeDialog.value === 'trigger' ? triggerDialog.value : trendDialog.value;
+  const focusable = Array.from(
+    dialog?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+    ) ?? [],
+  ).filter((element) => element.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+}
+
+watch(
+  () => [props.assetName, props.version],
+  () => {
+    activeKind.value = 'trigger';
+    triggerFilter.value = 'all';
+    qualityFilter.value = 'all';
+    expandedTriggerCases.value = [];
+    expandedQualityCases.value = [];
+    activeDialog.value = null;
+    modeStates.trigger.record = null;
+    modeStates.quality.record = null;
+    void loadAllModes();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.assetName,
+  () => {
+    trendLoaded.value = false;
+    trendState.data = { quality: [], trigger: [] };
+    void loadTrend();
+  },
+  { immediate: true },
+);
+
+onMounted(() => document.addEventListener('keydown', onDocumentKeydown));
+onBeforeUnmount(() => {
+  contextEpoch += 1;
+  clearPolling();
+  document.removeEventListener('keydown', onDocumentKeydown);
+});
+</script>
+
+<template>
+  <section
+    id="asset-detail-panel-behavior"
+    class="behavior-evaluation"
+    role="tabpanel"
+    aria-labelledby="asset-detail-tab-behavior"
+  >
+    <div class="behavior-evaluation__toolbar">
+      <div class="behavior-version-picker">
+        <span class="behavior-version-picker__label">版本</span>
+        <HarnessVersionPicker
+          :model-value="version"
+          :versions="versions"
+          :statuses="behaviorVersionStatuses"
+          status-kind="evaluation"
+          :disabled="currentState.loading || submittingTypes.length > 0"
+          @update:model-value="selectVersion"
+        />
+      </div>
+      <div v-if="currentRecord" class="behavior-evaluation__meta" aria-label="评测触发信息">
+        <span
+          ><small>触发人</small><strong>{{ currentRecord.creatorName || '—' }}</strong></span
+        >
+        <span class="behavior-evaluation__user-id">{{ currentRecord.creator }}</span>
+        <span
+          ><small>触发时间</small><strong>{{ currentRecord.createTime }}</strong></span
+        >
+        <span
+          ><small>评测模型</small><strong>{{ currentReport?.model_name || '—' }}</strong></span
+        >
+      </div>
+    </div>
+
+    <section class="behavior-card" aria-label="行为评测结果">
+      <header class="behavior-card__header">
+        <div class="behavior-card__heading">
+          <strong>
+            行为评测
+            <span :class="`is-${activeKind}`">
+              - {{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}
+            </span>
+          </strong>
+          <span class="behavior-card__divider" aria-hidden="true" />
+          <div class="behavior-kind-tabs" role="tablist" aria-label="评测类型">
+            <button
+              id="behavior-kind-trigger"
+              type="button"
+              role="tab"
+              :class="{ 'is-active': activeKind === 'trigger' }"
+              :aria-selected="activeKind === 'trigger'"
+              aria-controls="behavior-panel-trigger"
+              @click="activeKind = 'trigger'"
+            >
+              <span class="behavior-kind-tabs__dot is-trigger" aria-hidden="true" />触发评测
+            </button>
+            <button
+              id="behavior-kind-quality"
+              type="button"
+              role="tab"
+              :class="{ 'is-active': activeKind === 'quality' }"
+              :aria-selected="activeKind === 'quality'"
+              aria-controls="behavior-panel-quality"
+              @click="activeKind = 'quality'"
+            >
+              <span class="behavior-kind-tabs__dot is-quality" aria-hidden="true" />质量评测
+            </button>
+          </div>
+        </div>
+        <div class="behavior-card__actions">
+          <button
+            type="button"
+            class="behavior-button is-secondary"
+            @click="openDialog('trend', $event)"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 16V4m0 12h14M5.5 12.5l3-3 2.5 2 4-5" />
+            </svg>
+            版本趋势
+          </button>
+          <button
+            v-if="currentRecord && isSkillBehaviorEvaluationInProgress(currentRecord.state)"
+            type="button"
+            class="behavior-button"
+            :disabled="currentState.loading"
+            @click="refreshCurrentMode"
+          >
+            {{ currentState.loading ? '刷新中…' : '刷新状态' }}
+          </button>
+          <button
+            type="button"
+            class="behavior-button is-primary"
+            :disabled="isModeBusy('trigger') && isModeBusy('quality')"
+            :title="
+              isModeBusy('trigger') && isModeBusy('quality') ? '两类评测均在进行中' : undefined
+            "
+            @click="openDialog('trigger', $event)"
+          >
+            <span aria-hidden="true">▶</span>发起评测
+          </button>
+        </div>
+      </header>
+
+      <section v-if="currentState.loading" class="behavior-state" role="status">
+        <span class="behavior-state__spinner" aria-hidden="true" />
+        <strong>正在加载{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}记录</strong>
+      </section>
+
+      <section v-else-if="currentState.error" class="behavior-state is-error" role="alert">
+        <strong>评测记录加载失败</strong>
+        <p>{{ currentState.error }}</p>
+        <button type="button" class="behavior-button" @click="refreshCurrentMode">重新加载</button>
+      </section>
+
+      <section v-else-if="!currentRecord" class="behavior-empty" role="status">
+        <span class="behavior-empty__icon" aria-hidden="true">i</span>
+        <strong>当前版本暂无{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}数据</strong>
+        <p>v{{ normalizedVersion(version) }} 尚未发起该模式评测，触发后将在此生成报告。</p>
+        <button
+          type="button"
+          class="behavior-button is-primary"
+          @click="openDialog('trigger', $event)"
+        >
+          <span aria-hidden="true">▶</span>发起评测
+        </button>
+        <small>两种评测模式互相独立，可分别发起和查看结果。</small>
+      </section>
+
+      <section
+        v-else-if="isSkillBehaviorEvaluationInProgress(currentRecord.state)"
+        class="behavior-state is-running"
+        role="status"
+      >
+        <span class="behavior-state__spinner" aria-hidden="true" />
+        <strong>{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}进行中</strong>
+        <p>任务正在排队或执行，页面每 30 秒自动刷新；也可以手动刷新状态。</p>
+        <small>任务 ID：{{ currentRecord.taskId }}</small>
+        <button type="button" class="behavior-button" @click="refreshCurrentMode">刷新状态</button>
+      </section>
+
+      <section
+        v-else-if="currentRecord.state === 'failed'"
+        class="behavior-state is-error"
+        role="alert"
+      >
+        <strong>{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}失败</strong>
+        <p>{{ currentRecord.error || '评测任务执行失败，请重新发起。' }}</p>
+        <button
+          type="button"
+          class="behavior-button is-primary"
+          @click="openDialog('trigger', $event)"
+        >
+          重新发起
+        </button>
+      </section>
+
+      <template v-else-if="currentReport">
+        <div class="behavior-summary" aria-label="评测概要">
+          <article class="behavior-summary__item is-rate">
+            <div>
+              <small>{{ activeKind === 'trigger' ? '准确率' : '通过率' }}</small>
+              <div class="behavior-summary__value">
+                <strong>{{ currentRate }}</strong
+                ><span>%</span>
+              </div>
+              <p>{{ currentPassed }} / {{ currentTotal }} 用例通过</p>
+            </div>
+            <div class="behavior-summary__ring" :style="rateRingStyle" aria-hidden="true">
+              <b>{{ currentRate }}%</b>
+            </div>
+          </article>
+          <article class="behavior-summary__item">
+            <small>{{ activeKind === 'trigger' ? '正向触发率' : '总耗时' }}</small>
+            <div class="behavior-summary__value is-text">
+              <strong>{{
+                activeKind === 'trigger'
+                  ? triggerReport?.positive_trigger_rate
+                  : qualityReport?.total_cost_time
+              }}</strong>
+            </div>
+            <p>
+              {{ activeKind === 'trigger' ? '正确触发数 / 正向用例数' : '全部用例累计执行时间' }}
+            </p>
+          </article>
+          <article class="behavior-summary__item">
+            <small>{{ activeKind === 'trigger' ? '反向误触发率' : '任务完成状态' }}</small>
+            <div class="behavior-summary__value is-text">
+              <strong>{{
+                activeKind === 'trigger'
+                  ? triggerReport?.negative_false_trigger_rate
+                  : stateLabel(currentRecord)
+              }}</strong>
+            </div>
+            <p>
+              {{
+                activeKind === 'trigger'
+                  ? '误触发数 / 反向用例数'
+                  : `由 ${currentRecord.creatorName || currentRecord.creator} 触发`
+              }}
+            </p>
+          </article>
+          <article class="behavior-summary__item">
+            <small>评测触发时间</small>
+            <div class="behavior-summary__value is-text">
+              <strong>{{ currentRecord.createTime.slice(11) }}</strong>
+            </div>
+            <p>{{ currentRecord.createTime.slice(0, 10) }} · {{ currentReport.model_name }}</p>
+          </article>
+        </div>
+
+        <div
+          v-show="activeKind === 'trigger'"
+          id="behavior-panel-trigger"
+          class="behavior-panel is-trigger"
+          role="tabpanel"
+          aria-labelledby="behavior-kind-trigger"
+        >
+          <header class="behavior-section-heading">
+            <div>
+              <h3>触发结果构成</h3>
+              <p>按正向 / 反向用例统计命中、漏触发、误触发情况</p>
+            </div>
+          </header>
+          <div class="behavior-composition">
+            <article v-for="item in triggerComposition" :key="item.key" :class="`is-${item.tone}`">
+              <span
+                class="behavior-composition__type"
+                :class="item.type === '正向' ? 'is-positive' : 'is-negative'"
+              >
+                {{ item.type }}
+              </span>
+              <strong class="behavior-composition__name">{{ item.label }}</strong>
+              <div>
+                <b>{{ item.value }}</b
+                ><span>条</span>
+              </div>
+              <p>{{ item.description }}</p>
+            </article>
+          </div>
+
+          <section class="behavior-chart" aria-labelledby="trigger-chart-title">
+            <header><h4 id="trigger-chart-title">期望触发 vs 实际通过（用例数）</h4></header>
+            <div
+              class="behavior-grouped-bars"
+              role="img"
+              :aria-label="`正向期望 ${triggerChart.positiveExpected} 条，实际通过 ${triggerChart.positivePassed} 条；反向期望 ${triggerChart.negativeExpected} 条，实际通过 ${triggerChart.negativePassed} 条`"
+            >
+              <div class="behavior-bar-axis" aria-hidden="true">
+                <span>{{ triggerChart.max }}</span
+                ><span>{{ Math.round(triggerChart.max * 0.75) }}</span
+                ><span>{{ Math.round(triggerChart.max * 0.5) }}</span
+                ><span>{{ Math.round(triggerChart.max * 0.25) }}</span
+                ><span>0</span>
+              </div>
+              <div class="behavior-bar-plot">
+                <div class="behavior-bar-group">
+                  <div
+                    class="behavior-bar is-expected"
+                    :style="{
+                      height: chartHeight(triggerChart.positiveExpected, triggerChart.max),
+                    }"
+                  >
+                    <b>{{ triggerChart.positiveExpected }}</b>
+                  </div>
+                  <div
+                    class="behavior-bar is-positive"
+                    :style="{ height: chartHeight(triggerChart.positivePassed, triggerChart.max) }"
+                  >
+                    <b>{{ triggerChart.positivePassed }}</b>
+                  </div>
+                  <span>正向（应触发）</span>
+                </div>
+                <div class="behavior-bar-group">
+                  <div
+                    class="behavior-bar is-expected"
+                    :style="{
+                      height: chartHeight(triggerChart.negativeExpected, triggerChart.max),
+                    }"
+                  >
+                    <b>{{ triggerChart.negativeExpected }}</b>
+                  </div>
+                  <div
+                    class="behavior-bar is-negative"
+                    :style="{ height: chartHeight(triggerChart.negativePassed, triggerChart.max) }"
+                  >
+                    <b>{{ triggerChart.negativePassed }}</b>
+                  </div>
+                  <span>反向（不应触发）</span>
+                </div>
+              </div>
+            </div>
+            <div class="behavior-chart__legend" aria-hidden="true">
+              <span><i class="is-expected" />期望数量</span>
+              <span><i class="is-positive" />正向实际</span>
+              <span><i class="is-negative" />反向实际</span>
+            </div>
+          </section>
+
+          <header class="behavior-section-heading">
+            <div>
+              <h3>用例明细</h3>
+              <p>展开用例查看期望与实际描述</p>
+            </div>
+          </header>
+          <div class="behavior-case-filters" aria-label="触发评测用例筛选">
+            <button
+              type="button"
+              :aria-pressed="triggerFilter === 'all'"
+              @click="triggerFilter = 'all'"
+            >
+              全部 {{ triggerCases.length }}
+            </button>
+            <button
+              type="button"
+              :aria-pressed="triggerFilter === 'passed'"
+              @click="triggerFilter = 'passed'"
+            >
+              通过 {{ triggerPassed }}
+            </button>
+            <button
+              type="button"
+              :aria-pressed="triggerFilter === 'failed'"
+              @click="triggerFilter = 'failed'"
+            >
+              不通过 {{ triggerCases.length - triggerPassed }}
+            </button>
+          </div>
+          <div class="behavior-table-scroll">
+            <table class="behavior-case-table">
+              <thead>
+                <tr>
+                  <th>用例 ID</th>
+                  <th>任务描述</th>
+                  <th>类型</th>
+                  <th>期望触发</th>
+                  <th>实际触发</th>
+                  <th>结果</th>
+                  <th><span class="sr-only">操作</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="item in filteredTriggerCases" :key="item.id">
+                  <tr>
+                    <td class="behavior-case-id">{{ item.id }}</td>
+                    <td class="behavior-case-task">{{ item.task }}</td>
+                    <td>
+                      <span
+                        class="behavior-case-type"
+                        :class="item.type === '正向' ? 'is-positive' : 'is-negative'"
+                        >{{ item.type }}</span
+                      >
+                    </td>
+                    <td>
+                      <span :class="item.expected ? 'is-yes' : 'is-no'">{{
+                        item.expected ? '是' : '否'
+                      }}</span>
+                    </td>
+                    <td>
+                      <span :class="item.actual ? 'is-yes' : 'is-no'">{{
+                        item.actual ? '是' : '否'
+                      }}</span>
+                    </td>
+                    <td>
+                      <span class="behavior-result" :class="item.passed ? 'is-pass' : 'is-fail'">{{
+                        item.passed ? '通过' : '不通过'
+                      }}</span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        class="behavior-case-toggle"
+                        :aria-expanded="isCaseExpanded('trigger', item.id)"
+                        :aria-controls="`${instanceId}-trigger-${item.id}`"
+                        :aria-label="`${isCaseExpanded('trigger', item.id) ? '收起' : '展开'}用例 ${item.id}`"
+                        @click="toggleCase('trigger', item.id)"
+                      >
+                        {{ isCaseExpanded('trigger', item.id) ? '收起' : '展开' }}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr
+                    v-if="isCaseExpanded('trigger', item.id)"
+                    :id="`${instanceId}-trigger-${item.id}`"
+                    class="behavior-case-detail"
+                  >
+                    <td colspan="7">
+                      <div class="behavior-case-detail__grid">
+                        <article v-for="detail in item.details" :key="detail.label">
+                          <strong>{{ detail.label }}</strong>
+                          <p>{{ detail.content }}</p>
+                        </article>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          v-show="activeKind === 'quality'"
+          id="behavior-panel-quality"
+          class="behavior-panel is-quality"
+          role="tabpanel"
+          aria-labelledby="behavior-kind-quality"
+        >
+          <header class="behavior-section-heading">
+            <div>
+              <h3>评测画像</h3>
+              <p>按耗时区间与得分区间统计用例分布</p>
+            </div>
+          </header>
+          <div class="behavior-distributions">
+            <section class="behavior-chart" aria-labelledby="duration-chart-title">
+              <header><h4 id="duration-chart-title">耗时分布</h4></header>
+              <div
+                class="behavior-distribution"
+                role="img"
+                :aria-label="
+                  durationDistribution.map((item) => `${item.label} ${item.value} 条`).join('；')
+                "
+              >
+                <div
+                  v-for="item in durationDistribution"
+                  :key="item.label"
+                  class="behavior-distribution__column"
+                >
+                  <div
+                    class="behavior-distribution__bar is-time"
+                    :style="{ height: chartHeight(item.value, maxDurationDistribution) }"
+                  >
+                    <b>{{ item.value }}</b>
+                  </div>
+                  <span>{{ item.label }}</span>
+                </div>
+              </div>
+            </section>
+            <section class="behavior-chart" aria-labelledby="score-chart-title">
+              <header><h4 id="score-chart-title">得分分布</h4></header>
+              <div
+                class="behavior-distribution"
+                role="img"
+                :aria-label="
+                  scoreDistribution.map((item) => `${item.label} 分 ${item.value} 条`).join('；')
+                "
+              >
+                <div
+                  v-for="item in scoreDistribution"
+                  :key="item.label"
+                  class="behavior-distribution__column"
+                >
+                  <div
+                    class="behavior-distribution__bar is-score"
+                    :style="{ height: chartHeight(item.value, maxScoreDistribution) }"
+                  >
+                    <b>{{ item.value }}</b>
+                  </div>
+                  <span>{{ item.label }}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <header class="behavior-section-heading">
+            <div>
+              <h3>用例明细</h3>
+              <p>展开用例查看期望结果、实际输出与评分分析</p>
+            </div>
+          </header>
+          <div class="behavior-case-filters" aria-label="质量评测用例筛选">
+            <button
+              type="button"
+              :aria-pressed="qualityFilter === 'all'"
+              @click="qualityFilter = 'all'"
+            >
+              全部 {{ qualityCases.length }}
+            </button>
+            <button
+              type="button"
+              :aria-pressed="qualityFilter === 'passed'"
+              @click="qualityFilter = 'passed'"
+            >
+              通过 {{ qualityPassed }}
+            </button>
+            <button
+              type="button"
+              :aria-pressed="qualityFilter === 'failed'"
+              @click="qualityFilter = 'failed'"
+            >
+              不通过 {{ qualityCases.length - qualityPassed }}
+            </button>
+          </div>
+          <div class="behavior-table-scroll">
+            <table class="behavior-case-table">
+              <thead>
+                <tr>
+                  <th>用例 ID</th>
+                  <th>任务描述</th>
+                  <th>得分</th>
+                  <th>耗时</th>
+                  <th>结果</th>
+                  <th><span class="sr-only">操作</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="item in filteredQualityCases" :key="item.id">
+                  <tr>
+                    <td class="behavior-case-id is-quality">{{ item.id }}</td>
+                    <td class="behavior-case-task">{{ item.task }}</td>
+                    <td>
+                      <strong
+                        class="behavior-score"
+                        :class="
+                          item.score >= 80 ? 'is-high' : item.score >= 60 ? 'is-medium' : 'is-low'
+                        "
+                        >{{ item.score }}</strong
+                      >
+                    </td>
+                    <td class="behavior-duration">{{ item.duration }}</td>
+                    <td>
+                      <span class="behavior-result" :class="item.passed ? 'is-pass' : 'is-fail'">{{
+                        item.passed ? '通过' : '不通过'
+                      }}</span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        class="behavior-case-toggle"
+                        :aria-expanded="isCaseExpanded('quality', item.id)"
+                        :aria-controls="`${instanceId}-quality-${item.id}`"
+                        :aria-label="`${isCaseExpanded('quality', item.id) ? '收起' : '展开'}用例 ${item.id}`"
+                        @click="toggleCase('quality', item.id)"
+                      >
+                        {{ isCaseExpanded('quality', item.id) ? '收起' : '展开' }}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr
+                    v-if="isCaseExpanded('quality', item.id)"
+                    :id="`${instanceId}-quality-${item.id}`"
+                    class="behavior-case-detail is-quality"
+                  >
+                    <td colspan="6">
+                      <div class="behavior-case-detail__grid">
+                        <article v-for="detail in item.details" :key="detail.label">
+                          <strong>{{ detail.label }}</strong>
+                          <p>{{ detail.content }}</p>
+                        </article>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+      <section v-else class="behavior-state is-error" role="alert">
+        <strong>评测报告格式不完整</strong>
+        <p>任务已完成，但接口未返回当前模式的有效报告，请刷新后重试。</p>
+        <button type="button" class="behavior-button" @click="refreshCurrentMode">刷新报告</button>
+      </section>
+    </section>
+
+    <Teleport to="body">
+      <div
+        v-if="activeDialog === 'trigger'"
+        class="behavior-dialog-overlay"
+        @mousedown.self="closeDialog()"
+      >
+        <section
+          ref="triggerDialog"
+          class="behavior-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="behavior-trigger-title"
+        >
+          <header class="behavior-dialog__header">
+            <div>
+              <h2 id="behavior-trigger-title">发起行为评测</h2>
+              <p>选择要触发的评测类型（可单选 / 多选），两种模式互相独立</p>
+            </div>
+            <button
+              ref="triggerDialogClose"
+              type="button"
+              class="behavior-dialog__close"
+              aria-label="关闭发起评测弹窗"
+              @click="closeDialog()"
+            >
+              ×
+            </button>
+          </header>
+          <div class="behavior-dialog__body">
+            <div class="behavior-options">
+              <label
+                :class="{
+                  'is-selected is-trigger': selectedTypes.includes('trigger'),
+                  'is-disabled': isModeBusy('trigger'),
+                }"
+              >
+                <input
+                  v-model="selectedTypes"
+                  type="checkbox"
+                  value="trigger"
+                  :disabled="isModeBusy('trigger')"
+                />
+                <span class="behavior-options__tag is-trigger">触发评测</span>
+                <strong>检验触发准确性</strong><b>Skill 是否在正确场景被触发</b>
+                <p>
+                  在各类对话输入下，检验本 Skill
+                  是否被正确激活，并统计误触发与漏触发。关注路由准确率，不评估输出内容质量。
+                </p>
+                <small>用例构成 <em>正向 + 反向</em>　关注 <em>路由命中</em></small>
+                <span v-if="isModeBusy('trigger')" class="behavior-options__disabled-copy"
+                  >当前评测进行中</span
+                >
+              </label>
+              <label
+                :class="{
+                  'is-selected is-quality': selectedTypes.includes('quality'),
+                  'is-disabled': isModeBusy('quality'),
+                }"
+              >
+                <input
+                  v-model="selectedTypes"
+                  type="checkbox"
+                  value="quality"
+                  :disabled="isModeBusy('quality')"
+                />
+                <span class="behavior-options__tag is-quality">质量评测</span>
+                <strong>检验输出质量</strong><b>被触发后输出是否正确、完整</b>
+                <p>
+                  在已触发的前提下，检验 Skill
+                  输出的准确性、完整性与合规性，对每个用例打分并给出评分分析。
+                </p>
+                <small>用例输出 <em>逐条打分</em>　关注 <em>内容正确性</em></small>
+                <span v-if="isModeBusy('quality')" class="behavior-options__disabled-copy"
+                  >当前评测进行中</span
+                >
+              </label>
+            </div>
+            <p class="behavior-dialog__hint">
+              同一版本、同一模式已有进行中任务时不可重复发起；已完成或失败后可重新评测。
+            </p>
+          </div>
+          <footer class="behavior-dialog__footer">
+            <button type="button" class="behavior-button" @click="closeDialog()">取消</button>
+            <button
+              type="button"
+              class="behavior-button is-primary"
+              :disabled="!selectedTypes.length || submittingTypes.length > 0"
+              @click="confirmTrigger"
+            >
+              {{ submittingTypes.length ? '发起中…' : '触发' }}
+            </button>
+          </footer>
+        </section>
+      </div>
+
+      <div
+        v-if="activeDialog === 'trend'"
+        class="behavior-dialog-overlay"
+        @mousedown.self="closeDialog()"
+      >
+        <section
+          ref="trendDialog"
+          class="behavior-dialog is-trend"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="behavior-trend-title"
+        >
+          <header class="behavior-dialog__header">
+            <div>
+              <h2 id="behavior-trend-title">版本通过率趋势</h2>
+              <p>{{ assetName }} · 全部版本</p>
+            </div>
+            <button
+              ref="trendDialogClose"
+              type="button"
+              class="behavior-dialog__close"
+              aria-label="关闭版本趋势弹窗"
+              @click="closeDialog()"
+            >
+              ×
+            </button>
+          </header>
+          <div class="behavior-dialog__body behavior-trends">
+            <p v-if="trendState.loading" class="behavior-trends__empty" role="status">
+              正在加载版本趋势…
+            </p>
+            <div v-else-if="trendState.error" class="behavior-state is-error" role="alert">
+              <strong>版本趋势加载失败</strong>
+              <p>{{ trendState.error }}</p>
+              <button type="button" class="behavior-button" @click="loadTrend(true)">
+                重新加载
+              </button>
+            </div>
+            <template v-else>
+              <figure
+                v-for="series in [
+                  {
+                    key: 'quality',
+                    label: '质量评测通过率',
+                    color: '#7168f4',
+                    fill: 'rgba(113,104,244,0.1)',
+                    points: trendState.data.quality,
+                  },
+                  {
+                    key: 'trigger',
+                    label: '触发评测准确率',
+                    color: '#2f7df6',
+                    fill: 'rgba(47,125,246,0.1)',
+                    points: trendState.data.trigger,
+                  },
+                ] as const"
+                :key="series.key"
+              >
+                <figcaption>{{ series.label }}</figcaption>
+                <div v-if="series.points.length" class="behavior-trend-chart">
+                  <svg viewBox="0 0 640 180" aria-hidden="true">
+                    <line
+                      v-for="y in [20, 60, 100, 140]"
+                      :key="y"
+                      x1="45"
+                      :y1="y"
+                      x2="615"
+                      :y2="y"
+                      class="behavior-trend-grid"
+                    />
+                    <text
+                      v-for="(label, index) in [100, 75, 50, 25]"
+                      :key="label"
+                      x="35"
+                      :y="24 + index * 40"
+                      text-anchor="end"
+                    >
+                      {{ label }}
+                    </text>
+                    <polygon :points="trendArea(series.points)" :fill="series.fill" />
+                    <polyline
+                      :points="trendPoints(series.points)"
+                      fill="none"
+                      :stroke="series.color"
+                      stroke-width="2.5"
+                    />
+                    <g v-for="(point, index) in series.points" :key="point.version">
+                      <circle
+                        :cx="trendX(index, series.points.length)"
+                        :cy="trendY(point.value)"
+                        :r="index === series.points.length - 1 ? 4.5 : 3.5"
+                        :fill="series.color"
+                        :stroke="index === series.points.length - 1 ? '#fff' : 'none'"
+                        stroke-width="2"
+                      />
+                      <text
+                        :x="trendX(index, series.points.length)"
+                        y="162"
+                        text-anchor="middle"
+                        :fill="index === series.points.length - 1 ? series.color : undefined"
+                        :font-weight="index === series.points.length - 1 ? 800 : undefined"
+                      >
+                        v{{ normalizedVersion(point.version) }}
+                      </text>
+                      <text
+                        :x="trendX(index, series.points.length)"
+                        :y="trendY(point.value) - 9"
+                        text-anchor="middle"
+                        :fill="index === series.points.length - 1 ? series.color : undefined"
+                        :font-weight="index === series.points.length - 1 ? 800 : undefined"
+                      >
+                        {{ point.value }}%
+                      </text>
+                    </g>
+                  </svg>
+                  <ul class="sr-only">
+                    <li v-for="point in series.points" :key="point.version">
+                      v{{ normalizedVersion(point.version) }}：{{ point.value }}%
+                    </li>
+                  </ul>
+                </div>
+                <p v-else class="behavior-trends__empty">暂无已完成评测的版本</p>
+              </figure>
+              <p class="behavior-dialog__hint">每个版本展示该模式下最新一次已完成评测。</p>
+            </template>
+          </div>
+        </section>
+      </div>
+    </Teleport>
+  </section>
+</template>
+
+<style scoped>
+.behavior-evaluation {
+  color: #111827;
+}
+.behavior-evaluation :where(*) {
+  box-sizing: border-box;
+}
+.behavior-evaluation__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-bottom: 18px;
+}
+.behavior-version-picker {
+  display: inline-flex;
+  min-width: 220px;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+  border: 1px solid #d7dee9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(31 58 138 / 7%);
+}
+.behavior-version-picker__label {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+}
+.behavior-version-picker :deep(.harness-version-picker__trigger) {
+  min-width: 158px;
+  min-height: 40px;
+  padding-left: 2px;
+  border: 0;
+  box-shadow: none;
+}
+.behavior-version-picker :deep(.harness-version-picker__trigger[aria-expanded='true']) {
+  box-shadow: none;
+}
+.behavior-evaluation__meta {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #52647d;
+  font-size: 12.5px;
+  box-shadow: 0 4px 14px rgb(31 58 138 / 7%);
+}
+.behavior-evaluation__meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.behavior-evaluation__meta small {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+.behavior-evaluation__meta strong {
+  color: #1f2329;
+}
+.behavior-evaluation__user-id {
+  margin-left: -16px;
+  color: #2456e6;
+  font-family: ui-monospace, monospace;
+}
+.behavior-card {
+  overflow: hidden;
+  border: 1px solid #eef0f3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(73 87 156 / 8%);
+}
+.behavior-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #eef0f3;
+  background: linear-gradient(180deg, #fbfdff, #fff);
+}
+.behavior-card__heading,
+.behavior-card__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.behavior-card__heading > strong {
+  color: #1f2329;
+  font-size: 15px;
+}
+.behavior-card__heading > strong span {
+  color: #2f7df6;
+}
+.behavior-card__heading > strong span.is-quality {
+  color: #7168f4;
+}
+.behavior-card__divider {
+  width: 1px;
+  height: 18px;
+  background: #d7dee9;
+}
+.behavior-kind-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e9ecf3;
+}
+.behavior-kind-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #52647d;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.behavior-kind-tabs button:hover {
+  color: #1f2329;
+}
+.behavior-kind-tabs button.is-active {
+  background: #fff;
+  color: #1f2329;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+.behavior-kind-tabs__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2f7df6;
+}
+.behavior-kind-tabs__dot.is-quality {
+  background: #7168f4;
+}
+.behavior-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  border: 1px solid #dbe1ea;
+  border-radius: 9px;
+  background: #fff;
+  color: #3c4457;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 160ms,
+    border-color 160ms;
+}
+.behavior-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+.behavior-button:hover:not(:disabled) {
+  border-color: #b9c2d4;
+  background: #f7f8fb;
+}
+.behavior-button.is-primary {
+  border-color: #2456e6;
+  background: #2456e6;
+  color: #fff;
+}
+.behavior-button.is-primary:hover:not(:disabled) {
+  background: #1d48c7;
+}
+.behavior-button.is-secondary {
+  border-color: #cfdcf5;
+  color: #2456e6;
+}
+.behavior-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.behavior-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #eef0f3;
+  background: linear-gradient(180deg, #fff, #fbfcff);
+}
+.behavior-summary__item {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.behavior-summary__item.is-rate {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-color: rgb(93 115 240 / 20%);
+  background: linear-gradient(145deg, rgb(102 119 247 / 7%), #fff 60%);
+}
+.behavior-summary__item small {
+  color: #52647d;
+  font-size: 11px;
+  font-weight: 700;
+}
+.behavior-summary__item p {
+  margin: 6px 0 0;
+  color: #667085;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.behavior-summary__value {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 6px;
+}
+.behavior-summary__value strong {
+  color: #1f2329;
+  font-size: 24px;
+  line-height: 1;
+}
+.behavior-summary__value.is-text strong {
+  font-size: 20px;
+}
+.behavior-summary__value span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+.behavior-summary__ring {
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  place-items: center;
+  margin-left: auto;
+  border-radius: 50%;
+}
+.behavior-summary__ring::before {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  content: '';
+}
+.behavior-summary__ring b {
+  position: relative;
+  color: #3b4a8f;
+  font-size: 12px;
+}
+.behavior-panel {
+  padding: 22px;
+}
+.behavior-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.behavior-section-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #25314f;
+  font-size: 15px;
+}
+.behavior-section-heading h3::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f7df6;
+  box-shadow: 0 0 0 5px rgb(47 125 246 / 10%);
+  content: '';
+}
+.behavior-panel.is-quality .behavior-section-heading h3::before {
+  background: #7168f4;
+  box-shadow: 0 0 0 5px rgb(113 104 244 / 10%);
+}
+.behavior-section-heading p {
+  margin: 5px 0 0 17px;
+  color: #667085;
+  font-size: 11px;
+}
+.behavior-composition {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.behavior-composition article {
+  --tone: 47 125 246;
+  padding: 14px 16px 16px;
+  border: 1px solid #e2e8f0;
+  border-top: 3px solid rgb(var(--tone));
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgb(31 58 138 / 7%);
+}
+.behavior-composition article.is-orange {
+  --tone: 199 106 16;
+}
+.behavior-composition article.is-red {
+  --tone: 220 38 38;
+}
+.behavior-composition article.is-green {
+  --tone: 20 148 85;
+}
+.behavior-composition__type,
+.behavior-case-type {
+  display: inline-flex;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: #eaf1ff;
+  color: #2456e6;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.behavior-composition__type.is-negative,
+.behavior-case-type.is-negative {
+  background: #f1f5f9;
+  color: #52647d;
+}
+.behavior-composition__name {
+  display: block;
+  margin: 8px 0 4px;
+  color: #1f2329;
+  font-size: 13px;
+}
+.behavior-composition article > div {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: rgb(var(--tone));
+}
+.behavior-composition article > div b {
+  font-size: 26px;
+  line-height: 1;
+}
+.behavior-composition article > div span,
+.behavior-composition article p {
+  color: #667085;
+  font-size: 11px;
+}
+.behavior-composition article p {
+  margin: 6px 0 0;
+}
+.behavior-chart {
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid rgb(170 183 220 / 42%);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(73 87 156 / 7%);
+}
+.behavior-chart header h4 {
+  margin: 0 0 16px;
+  color: #25314f;
+  font-size: 13px;
+}
+.behavior-grouped-bars {
+  display: flex;
+  min-height: 205px;
+}
+.behavior-bar-axis {
+  display: flex;
+  width: 30px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0 6px 22px 0;
+  color: #667085;
+  font-size: 10px;
+  text-align: right;
+}
+.behavior-bar-plot {
+  display: flex;
+  flex: 1;
+  justify-content: space-around;
+  gap: 24px;
+  padding: 0 20px;
+  border-bottom: 1.5px solid #94a3b8;
+  border-left: 1.5px solid #cbd5e1;
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0,
+    transparent calc(25% - 1px),
+    #eef2f7 calc(25% - 1px),
+    #eef2f7 25%
+  );
+}
+.behavior-bar-group {
+  display: grid;
+  height: 182px;
+  flex: 1;
+  grid-template-columns: 34px 34px;
+  grid-template-rows: 1fr 22px;
+  align-items: end;
+  justify-content: center;
+  gap: 8px;
+}
+.behavior-bar-group > span {
+  grid-column: 1 / -1;
+  color: #52647d;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+.behavior-bar {
+  position: relative;
+  min-height: 8px;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+}
+.behavior-bar.is-positive {
+  background: linear-gradient(180deg, #5fa2ff, #2f7df6);
+}
+.behavior-bar.is-negative {
+  background: linear-gradient(180deg, #3fc88e, #18a66a);
+}
+.behavior-bar b {
+  position: absolute;
+  top: -20px;
+  width: 100%;
+  color: #1f2329;
+  font-size: 11px;
+  text-align: center;
+}
+.behavior-chart__legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+  color: #52647d;
+  font-size: 11px;
+}
+.behavior-chart__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.behavior-chart__legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #94a3b8;
+}
+.behavior-chart__legend i.is-positive {
+  background: #2f7df6;
+}
+.behavior-chart__legend i.is-negative {
+  background: #18a66a;
+}
+.behavior-distributions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.behavior-distribution {
+  display: flex;
+  height: 190px;
+  align-items: end;
+  gap: 12px;
+  padding: 24px 14px 0;
+  border-bottom: 1.5px solid #94a3b8;
+  border-left: 1.5px solid #cbd5e1;
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0,
+    transparent calc(25% - 1px),
+    #eef2f7 calc(25% - 1px),
+    #eef2f7 25%
+  );
+}
+.behavior-distribution__column {
+  display: grid;
+  height: 100%;
+  flex: 1;
+  grid-template-rows: 1fr 30px;
+  align-items: end;
+  justify-items: center;
+  gap: 6px;
+}
+.behavior-distribution__column > span {
+  color: #52647d;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.behavior-distribution__bar {
+  position: relative;
+  width: min(38px, 75%);
+  min-height: 8px;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, #5fa2ff, #2f7df6);
+}
+.behavior-distribution__bar.is-score {
+  background: linear-gradient(180deg, #9b6af1, #7168f4);
+}
+.behavior-distribution__bar b {
+  position: absolute;
+  top: -20px;
+  width: 100%;
+  color: #1f2329;
+  font-size: 11px;
+  text-align: center;
+}
+.behavior-case-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.behavior-case-filters button {
+  min-height: 28px;
+  padding: 5px 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+  color: #52647d;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.behavior-case-filters button[aria-pressed='true'] {
+  border-color: #1f2329;
+  background: #1f2329;
+  color: #fff;
+}
+.behavior-table-scroll {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+.behavior-case-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.behavior-case-table th {
+  padding: 10px 14px;
+  background: #f8fafc;
+  color: #52647d;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+.behavior-case-table td {
+  padding: 11px 14px;
+  border-top: 1px solid #f0f2f7;
+  color: #334155;
+  vertical-align: top;
+}
+.behavior-case-table tbody tr:not(.behavior-case-detail):hover {
+  background: #f9fbff;
+}
+.behavior-case-id {
+  color: #2f7df6;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.behavior-case-id.is-quality {
+  color: #7168f4;
+}
+.behavior-case-task {
+  min-width: 230px;
+  max-width: 340px;
+  line-height: 1.55;
+}
+.is-yes {
+  color: #149455;
+  font-weight: 700;
+}
+.is-no {
+  color: #dc2626;
+  font-weight: 700;
+}
+.behavior-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.behavior-result::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+.behavior-result.is-pass {
+  background: #e6f7ef;
+  color: #117a47;
+}
+.behavior-result.is-fail {
+  background: #fef2f2;
+  color: #c52222;
+}
+.behavior-score.is-high {
+  color: #117a47;
+}
+.behavior-score.is-medium {
+  color: #a9580d;
+}
+.behavior-score.is-low {
+  color: #c52222;
+}
+.behavior-duration {
+  color: #667085;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.behavior-case-toggle {
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #2456e6;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.behavior-case-detail td {
+  padding: 14px 14px 16px 48px;
+  background: #fbfcfe;
+}
+.behavior-case-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.behavior-case-detail.is-quality .behavior-case-detail__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.behavior-case-detail article strong {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eaf1ff;
+  color: #2456e6;
+  font-size: 10.5px;
+}
+.behavior-case-detail.is-quality article:nth-child(2) strong {
+  background: #f3eaff;
+  color: #6d55d9;
+}
+.behavior-case-detail.is-quality article:nth-child(3) strong {
+  background: #fff7e6;
+  color: #a9580d;
+}
+.behavior-case-detail article p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 11.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.behavior-state {
+  display: flex;
+  min-height: 240px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 36px 24px;
+  color: #52647d;
+  text-align: center;
+}
+.behavior-state strong {
+  color: #1f2329;
+  font-size: 15px;
+}
+.behavior-state p,
+.behavior-state small {
+  max-width: 600px;
+  margin: 0;
+  line-height: 1.6;
+}
+.behavior-state p {
+  font-size: 12.5px;
+}
+.behavior-state small {
+  color: #667085;
+  font:
+    11px ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.behavior-state.is-error strong {
+  color: #b42318;
+}
+.behavior-state__spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #dbe5f7;
+  border-top-color: #2f7df6;
+  border-radius: 50%;
+  animation: behavior-spin 0.8s linear infinite;
+}
+.behavior-empty {
+  padding: 56px 24px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #fbfcfe;
+  text-align: center;
+}
+.behavior-empty__icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #eef2ff, #f5f3ff);
+  color: #667085;
+  font-size: 26px;
+  font-style: italic;
+  font-weight: 700;
+}
+.behavior-empty strong {
+  display: block;
+  color: #1f2329;
+  font-size: 15px;
+}
+.behavior-empty p {
+  margin: 8px 0 16px;
+  color: #52647d;
+  font-size: 12.5px;
+}
+.behavior-empty small {
+  display: block;
+  margin-top: 10px;
+  color: #667085;
+  font-size: 11px;
+}
+.behavior-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1980;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgb(31 42 68 / 46%);
+  backdrop-filter: blur(3px);
+}
+.behavior-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  color: #17233c;
+  box-shadow: 0 22px 60px rgb(30 45 78 / 28%);
+}
+.behavior-dialog.is-trend {
+  width: min(720px, calc(100vw - 32px));
+}
+.behavior-dialog__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #eef0f3;
+  background: linear-gradient(180deg, #fbfdff, #fff);
+}
+.behavior-dialog__header h2 {
+  margin: 0;
+  color: #1f2329;
+  font-size: 16px;
+}
+.behavior-dialog__header p {
+  margin: 4px 0 0;
+  color: #52647d;
+  font-size: 12px;
+}
+.behavior-dialog__close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #52647d;
+  font-size: 22px;
+  cursor: pointer;
+}
+.behavior-dialog__close:hover {
+  background: #f2f4f9;
+  color: #1f2329;
+}
+.behavior-dialog__body {
+  padding: 20px 22px;
+}
+.behavior-dialog__footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid #eef0f3;
+  background: #fbfcfe;
+}
+.behavior-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.behavior-options label {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+.behavior-options label:hover {
+  border-color: #c3d2f7;
+  background: #f7faff;
+}
+.behavior-options label.is-selected.is-trigger {
+  border-color: #2f7df6;
+  background: linear-gradient(145deg, #f0f6ff, #fff);
+}
+.behavior-options label.is-selected.is-quality {
+  border-color: #7168f4;
+  background: linear-gradient(145deg, #f5f0ff, #fff);
+}
+.behavior-options label.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.behavior-options input {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: #2456e6;
+}
+.behavior-options__tag {
+  width: fit-content;
+  padding: 3px 10px;
+  border-radius: 7px;
+  background: rgb(47 125 246 / 12%);
+  color: #2f7df6;
+  font-size: 11px;
+  font-weight: 700;
+}
+.behavior-options__tag.is-quality {
+  background: rgb(113 104 244 / 12%);
+  color: #6d55d9;
+}
+.behavior-options label > strong {
+  margin-top: 4px;
+  color: #1f2329;
+  font-size: 15px;
+}
+.behavior-options label > b {
+  color: #1f2329;
+  font-size: 12.5px;
+}
+.behavior-options label > p {
+  margin: 4px 0 0;
+  color: #52647d;
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+.behavior-options label > small {
+  color: #667085;
+  font-size: 10.5px;
+}
+.behavior-options label > small em {
+  color: #1f2329;
+  font-style: normal;
+  font-weight: 700;
+}
+.behavior-options__disabled-copy {
+  color: #a9580d;
+  font-size: 11px;
+}
+.behavior-dialog__hint {
+  margin: 12px 0 0;
+  color: #52647d;
+  font-size: 11.5px;
+}
+.behavior-trends figure {
+  margin: 0;
+}
+.behavior-trends figure + figure {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eef0f3;
+}
+.behavior-trends figcaption {
+  margin-bottom: 10px;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 700;
+}
+.behavior-trend-chart {
+  overflow-x: auto;
+}
+.behavior-trend-chart svg {
+  display: block;
+  width: 100%;
+  min-width: 520px;
+  height: 180px;
+}
+.behavior-trend-chart text {
+  fill: #667085;
+  font-size: 10px;
+}
+.behavior-trend-grid {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+.behavior-trends__empty {
+  padding: 24px;
+  color: #667085;
+  text-align: center;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.behavior-kind-tabs button:focus-visible,
+.behavior-button:focus-visible,
+.behavior-case-filters button:focus-visible,
+.behavior-case-toggle:focus-visible,
+.behavior-dialog__close:focus-visible,
+.behavior-options input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+@media (max-width: 980px) {
+  .behavior-summary,
+  .behavior-composition {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .behavior-distributions,
+  .behavior-options {
+    grid-template-columns: 1fr;
+  }
+  .behavior-case-detail__grid,
+  .behavior-case-detail.is-quality .behavior-case-detail__grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 620px) {
+  .behavior-card__header,
+  .behavior-summary,
+  .behavior-panel {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+  .behavior-card__heading,
+  .behavior-card__actions {
+    width: 100%;
+  }
+  .behavior-card__divider {
+    display: none;
+  }
+  .behavior-kind-tabs,
+  .behavior-card__actions .behavior-button {
+    flex: 1;
+  }
+  .behavior-kind-tabs button {
+    flex: 1;
+    justify-content: center;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+  .behavior-summary,
+  .behavior-composition {
+    grid-template-columns: 1fr;
+  }
+  .behavior-evaluation__toolbar,
+  .behavior-version-picker,
+  .behavior-evaluation__meta {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .behavior-version-picker {
+    align-items: center;
+    flex-direction: row;
+  }
+  .behavior-version-picker :deep(.harness-version-picker) {
+    flex: 1;
+  }
+  .behavior-version-picker :deep(.harness-version-picker__trigger) {
+    width: 100%;
+  }
+  .behavior-evaluation__user-id {
+    margin-left: 0;
+  }
+  .behavior-dialog-overlay {
+    padding: 16px;
+  }
+  .behavior-dialog__body,
+  .behavior-dialog__header,
+  .behavior-dialog__footer {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .behavior-button {
+    transition: none;
+  }
+  .behavior-state__spinner {
+    animation: none;
+  }
+}
+@keyframes behavior-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (forced-colors: active) {
+  .behavior-kind-tabs button:focus-visible,
+  .behavior-button:focus-visible,
+  .behavior-case-filters button:focus-visible,
+  .behavior-case-toggle:focus-visible,
+  .behavior-dialog__close:focus-visible,
+  .behavior-options input:focus-visible {
+    outline-color: Highlight;
+  }
+  .behavior-kind-tabs__dot,
+  .behavior-section-heading h3::before,
+  .behavior-result::before {
+    background: CanvasText;
+  }
+}
+</style>

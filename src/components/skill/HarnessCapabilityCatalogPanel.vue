@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import HarnessSelect from './HarnessSelect.vue';
 import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
 import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
@@ -632,7 +632,7 @@ function hydratePersonPicker(picker: PersonPickerState, label: string, departmen
   };
 }
 
-function resetEditor(): void {
+function resetEditor(options: { preserveSubmitting?: boolean } = {}): void {
   Object.assign(editor, {
     id: '',
     name: '',
@@ -644,7 +644,7 @@ function resetEditor(): void {
     plannedCompleteDate: '',
     status: '未开始' as SkillMasterStatus,
     error: '',
-    submitting: false,
+    submitting: options.preserveSubmitting ? editor.submitting : false,
   });
   initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
@@ -699,6 +699,15 @@ function openCreate(): void {
   editor.mode = 'create';
   editor.name = requiredCapabilityNamePrefix.value;
   editor.open = true;
+}
+
+async function prepareNextCreate(): Promise<void> {
+  resetEditor({ preserveSubmitting: true });
+  editor.mode = 'create';
+  editor.name = requiredCapabilityNamePrefix.value;
+  editor.open = true;
+  await nextTick();
+  editorFormRef.value?.querySelector<HTMLInputElement>('input[maxlength="64"]')?.focus();
 }
 
 function openDetail(record: SkillMasterRecord): void {
@@ -803,6 +812,8 @@ async function submitEditor(): Promise<void> {
       await api.value.createCatalog(editorPayload(), scope);
       if (props.createOnly) {
         emit('created');
+        showToast(`${capabilityLabel.value} 已新增，可继续添加`);
+        await prepareNextCreate();
         return;
       }
       showToast(`已新增 ${capabilityLabel.value}`);

@@ -1,4 +1,6 @@
 import { harnessWorkflowService } from './businessScenarioDesignService';
+import type { WorkflowSceneContext } from './businessScenarioDesignService';
+import { loadDesignDetail } from './businessScenarioDesignRepository';
 
 export type HarnessWorkflowListQuery = Parameters<
   typeof harnessWorkflowService.queryHarnessWorkflowList
@@ -31,6 +33,12 @@ export interface HarnessWorkflowListPage {
   list: HarnessWorkflowListRow[];
 }
 
+export interface HarnessWorkflowCommand {
+  name: string;
+  description: string;
+  version: string | null;
+}
+
 export async function queryHarnessWorkflowPage(
   query: HarnessWorkflowListQuery,
 ): Promise<HarnessWorkflowListPage> {
@@ -52,4 +60,15 @@ export async function queryHarnessWorkflowPage(
     throw new Error('工作流列表响应缺少有效的分页信息');
   }
   return data;
+}
+
+export async function queryHarnessWorkflowCommands(
+  scope: WorkflowSceneContext,
+): Promise<HarnessWorkflowCommand[]> {
+  const detail = await loadDesignDetail(scope);
+  return detail.commands.map((command) => ({
+    name: command.commandName,
+    description: command.description || '',
+    version: command.version?.trim() || null,
+  }));
 }

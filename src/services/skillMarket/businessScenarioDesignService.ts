@@ -41,7 +41,7 @@ export interface WorkflowDetail {
   flowDescription: string | null;
   sceneExtensionCode: string | null;
   secondSceneDescription: string | null;
-  commands: { commandName: string; description: string }[];
+  commands: { commandName: string; description: string; version?: string | null }[];
   assetPool: WorkflowPoolItem[];
   stages: {
     activityNodeName: string;
@@ -245,12 +245,12 @@ export const harnessWorkflowService = {
     httpRequest.harnessApi({ url: '/scene-activity/activity', method: 'DELETE', params }),
 
   /**
-   * 全量刷新活动
+   * 全量刷新当前场景的活动
    * @param params
    * @returns
    */
   refreshActivities: (
-    params: SceneTagDimContext,
+    params: WorkflowSceneContext,
     body: { activities: WorkflowActivityRow[] },
   ): Promise<any> => {
     return httpRequest.harnessApi({

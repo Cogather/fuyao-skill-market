@@ -60,7 +60,7 @@ onBeforeUnmount(() => {
         :aria-describedby="descriptionId"
         :aria-busy="submitting"
         tabindex="-1"
-        @cancel.prevent="close"
+        @cancel.prevent
       >
         <header>
           <h2 :id="titleId">删除 {{ assetType }} 资产</h2>

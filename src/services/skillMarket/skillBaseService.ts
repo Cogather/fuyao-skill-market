@@ -966,6 +966,34 @@ export const skillBaseService = {
     });
   },
 
+  // Agent / Skill / Command 独立发布
+  publishHarnessAssets: (params: { userId: string; userName: string }, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/assets/publish',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+
+  // Agent / Skill / Command 发布历史
+  queryHarnessAssetPublishHistory: (body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/assets/publish/history',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // Agent / Skill / Command 独立发布失败重试
+  retryHarnessAssetPublish: (taskId: string, params: { userId: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: `/assets/publish/${encodeURIComponent(taskId)}/retry`,
+      method: 'post',
+      params,
+    });
+  },
+
   // harness 查询接口
 
   // 查询当前用户的部门管理权限（有哪些部门可以管理）

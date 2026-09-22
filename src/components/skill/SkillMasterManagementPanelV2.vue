@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import HarnessSelect from './HarnessSelect.vue';
 import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
 import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
@@ -1343,6 +1343,20 @@ function resetImportTab(): void {
   importSelectedId.value = '';
 }
 
+async function prepareNextCreate(tab: CreateSkillTab): Promise<void> {
+  resetEditor();
+  editor.mode = 'create';
+  applyCurrentScopeToEditor();
+  editor.name = tab === 'direct' ? requiredSkillNamePrefix.value : '';
+  createTab.value = tab;
+  if (tab === 'import') importSelectedId.value = '';
+  editor.open = true;
+  await nextTick();
+  if (tab === 'direct') {
+    editorFormRef.value?.querySelector<HTMLInputElement>('input[maxlength="64"]')?.focus();
+  }
+}
+
 const importTotalPages = computed(() =>
   Math.max(1, Math.ceil(importTotal.value / importPageSize.value)),
 );
@@ -1412,6 +1426,8 @@ async function importFromSquare(): Promise<void> {
     }
     if (props.createOnly) {
       emit('created');
+      showToast(`已从 Skill 广场引入“${skill.name}”，可继续引入`);
+      await prepareNextCreate('import');
       return;
     }
     closeEditor();
@@ -1582,6 +1598,8 @@ async function submitEditor(): Promise<void> {
       }
       if (props.createOnly) {
         emit('created');
+        showToast('Skill 已新增，可继续添加');
+        await prepareNextCreate('direct');
         return;
       }
       closeEditor();

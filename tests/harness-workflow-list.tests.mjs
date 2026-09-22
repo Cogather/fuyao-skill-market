@@ -440,6 +440,25 @@ try {
     assert.ok(state.visibleRows.value.every((item) => item.status === '设计中'));
     assert.equal(requests, 0);
   });
+
+  await test('Publish actions require explicit workflow permission and a publishable status', async () => {
+    api.queryHarnessWorkflowList = async () =>
+      success({ total: 1, pageNo: 1, pageSize: 10, list: [row('权限测试')] });
+    const { state } = mount();
+    await settle();
+    const pending = state.visibleRows.value[0];
+    assert.equal(state.shouldShowPublish({ ...pending, canPublish: true }), true);
+    assert.equal(state.shouldShowPublish({ ...pending, canPublish: false }), false);
+    assert.equal(state.shouldShowPublish({ ...pending, canPublish: null }), false);
+    assert.equal(
+      state.shouldShowPublish({ ...pending, status: '已发布', canPublish: true, changed: true }),
+      true,
+    );
+    assert.equal(
+      state.shouldShowPublish({ ...pending, status: '已发布', canPublish: true, changed: false }),
+      false,
+    );
+  });
 } finally {
   app?.unmount();
   await server.close();

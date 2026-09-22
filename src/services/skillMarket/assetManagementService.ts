@@ -2,7 +2,7 @@ import {
   publishHttpExtension,
   queryHttpExtensionDetail,
   queryHttpExtensionHistory,
-  queryHttpExtensionVersionCapabilities,
+  queryHttpExtensionVersionSnapshot,
   queryHttpHydratedExtensionScenes,
   queryHttpPublishableOrganizations,
   type ExtensionScope,
@@ -12,6 +12,7 @@ import {
   MOCK_EXTENSION_ORGANIZATIONS,
   MOCK_EXTENSION_PRODUCTS,
   getSharedMockExtensionScenes,
+  type ExtensionCapability,
   type ExtensionCapabilityType,
   type ExtensionProduct,
   type ExtensionRelease,
@@ -70,6 +71,7 @@ type AtomicAssetQueryLane = {
   totalKnown: boolean;
   rawKeys: Set<string>;
   repeatedFullPageCount: number;
+  mockPublishableCount: number;
 };
 
 type ExtensionAssetQueryLane = {
@@ -195,25 +197,40 @@ function atomicAsset(
   record: SkillMasterRecord,
   scope: HarnessAssetScope,
   products: HarnessAssetProduct[],
+  canPublish = false,
 ): HarnessAsset {
-  const currentVersion = normalizeHarnessAssetVersion(
-    latestSkillMasterVersion(record)?.version ?? '',
-  );
+  const rawLatestVersion = latestSkillMasterVersion(record)?.version?.trim() ?? '';
+  const latestVersion = rawLatestVersion || (canPublish ? '0.1.0' : '');
+  const currentVersion = normalizeHarnessAssetVersion(latestVersion);
   const published = record.status === '已完成' && Boolean(currentVersion);
-  const versionDetails = (record.versions ?? [])
+  let versionDetails = (record.versions ?? [])
     .map((item) => ({
       version: normalizeHarnessAssetVersion(item.version),
       uploadedAt: item.uploadedAt || null,
       ...(published ? { status: '已发布' } : {}),
     }))
     .filter((item) => Boolean(item.version));
+  if (canPublish && versionDetails.length === 0) {
+    versionDetails = [{ version: currentVersion, uploadedAt: record.updatedAt || null }];
+  }
   const versions = versionDetails.map((item) => item.version);
   const product = products.find((item) => item.name === record.product);
+  const dimension = dimensionScope(scope);
+  const mockDimName =
+    dimension.dimName ||
+    record.product ||
+    record.department ||
+    scope.department.code ||
+    scope.department.id;
   return {
     id: record.id,
     name: record.name,
     description: record.description,
     assetType: type,
+    dimType: dimension.dimType,
+    dimCode: dimension.dimCode,
+    dimName: mockDimName,
+    ...(canPublish ? { latestVersion, canPublish: true } : {}),
     currentVersion,
     versions,
     versionDetails,
@@ -228,7 +245,7 @@ function atomicAsset(
     productName: product?.name ?? record.product,
     auto: false,
     marketplace: { rating: 0, downloads: 0, calls: 0 },
-    // 原子能力由 Extension 打包发布，规划服务没有独立的发布或历史接口。
+    // publishable 仅表示 Extension 的就绪状态；原子资产发布权限由 canPublish 控制。
     releases: [],
     publishable: false,
     ...(published ? { status: '已发布' } : {}),
@@ -419,7 +436,7 @@ async function queryQualityReport(
     version,
   });
   if (response?.meta?.success !== true || !response.data) {
-    throw new Error(String(response?.meta?.message || 'Skill 质量报告加载失败'));
+    throw new Error(String(response?.meta?.message || 'Skill 评估报告加载失败'));
   }
   const report = response.data;
   const calculatedPercent = report.max ? ((report.total ?? 0) / report.max) * 100 : 0;
@@ -472,13 +489,22 @@ async function extensionDetail(
   version: string,
   useCurrentBindings = true,
 ): Promise<HarnessAssetDetail> {
-  if (!scene) return { versions: [...asset.versions], files: [] };
+  const emptyCapabilities = (): ExtensionScene['capabilities'] => ({
+    skill: [],
+    command: [],
+    agent: [],
+  });
+  if (!scene) {
+    return { versions: [...asset.versions], files: [], capabilities: emptyCapabilities() };
+  }
   const normalizedVersion = normalizeHarnessAssetVersion(version);
   const release = sceneReleases(scene).find(
     (item) => normalizeHarnessAssetVersion(item.version) === normalizedVersion,
   );
   // 历史版本缺少快照时，不能把当前场景内容当成该历史版本展示。
-  if (!release && !useCurrentBindings) return { versions: [...asset.versions], files: [] };
+  if (!release && !useCurrentBindings) {
+    return { versions: [...asset.versions], files: [], capabilities: emptyCapabilities() };
+  }
   const capabilityItems = release
     ? release.items
     : (['skill', 'command', 'agent'] as ExtensionCapabilityType[]).flatMap((type) =>
@@ -488,31 +514,40 @@ async function extensionDetail(
           version: capability.version,
         })),
       );
-  const files = await Promise.all(
-    capabilityItems.flatMap((capability) => {
-      if (!capability.version) return [];
-      const category = capability.type;
+  const capabilities = emptyCapabilities();
+  const mappedCapabilities = await Promise.all(
+    capabilityItems.map(async (item, index) => {
+      const source = scene.capabilities[item.type].find(
+        (capability) => capability.name === item.name && capability.version === item.version,
+      );
+      const capability: ExtensionCapability = {
+        id: source?.id ?? `extension-detail-${item.type}-${index}-${item.name}-${item.version}`,
+        name: item.name,
+        version: item.version,
+        publishDate: source?.publishDate ?? release?.publishedAt.slice(0, 10) ?? '',
+        ready: Boolean(item.name && item.version),
+        files: [],
+      };
+      if (!item.version) return { type: item.type, capability };
+
       const identity = {
         userId: scope.userId,
-        capabilityType: category,
-        capabilityName: capability.name,
-        version: capability.version,
+        capabilityType: item.type,
+        capabilityName: item.name,
+        version: item.version,
       };
-      return [
-        (async (): Promise<HarnessAssetFile[]> => {
-          const paths = await queryPlanningTaskDetailFilePaths(identity);
-          return Promise.all(
-            paths.map(async (path) => ({
-              path: `${category}s/${capability.name}/${path}`,
-              content: await queryPlanningTaskDetailFileContent(identity, path),
-              category,
-            })),
-          );
-        })(),
-      ];
+      const paths = await queryPlanningTaskDetailFilePaths(identity);
+      capability.files = await Promise.all(
+        paths.map(async (path) => ({
+          name: path,
+          content: await queryPlanningTaskDetailFileContent(identity, path),
+        })),
+      );
+      return { type: item.type, capability };
     }),
   );
-  return { versions: [...asset.versions], files: files.flat() };
+  mappedCapabilities.forEach(({ type, capability }) => capabilities[type].push(capability));
+  return { versions: [...asset.versions], files: [], capabilities };
 }
 
 function toHarnessOrganization(organization: PublishableOrganization): HarnessAssetOrganization {
@@ -723,6 +758,7 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
         totalKnown: false,
         rawKeys: new Set<string>(),
         repeatedFullPageCount: 0,
+        mockPublishableCount: 0,
       })),
     );
     if (requestedTypes.includes('Extension')) {
@@ -803,7 +839,11 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
 
     return result.list
       .filter((record) => recordMatchesScope(record, state.scope, state.products))
-      .map((record) => atomicAsset(lane.type, record, state.scope, state.products));
+      .map((record) => {
+        const canPublish = transport === 'mock' && lane.mockPublishableCount < 3;
+        if (transport === 'mock') lane.mockPublishableCount += 1;
+        return atomicAsset(lane.type, record, state.scope, state.products, canPublish);
+      });
   }
 
   function appendUniqueAssets(state: AssetQueryState, batches: HarnessAsset[][]): number {
@@ -1039,10 +1079,11 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
         const selectedVersion = versions.includes(version ?? '') ? version! : (versions[0] ?? '');
         let files: HarnessAssetFile[] = [];
         let capabilities: HarnessAssetDetail['capabilities'];
+        let releaseType: string | undefined;
         if (selectedVersion && options?.includeFiles !== false) {
           if (asset.assetType === 'Extension') {
             const queryScope = await resolveHttpExtensionScope(scope, asset, false);
-            capabilities = await queryHttpExtensionVersionCapabilities(
+            const snapshot = await queryHttpExtensionVersionSnapshot(
               scope.userId,
               dimensionScope(queryScope),
               {
@@ -1050,11 +1091,20 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
               },
               selectedVersion,
             );
+            capabilities = snapshot.capabilities;
+            releaseType = snapshot.releaseType;
           } else {
             files = (await atomicDetail(scope, asset, selectedVersion)).files;
           }
         }
-        return { component, versions, version: selectedVersion, files, capabilities };
+        return {
+          component,
+          versions,
+          version: selectedVersion,
+          files,
+          capabilities,
+          releaseType,
+        };
       }
       if (asset.assetType !== 'Extension')
         return atomicDetail(scope, asset, version ?? asset.currentVersion);

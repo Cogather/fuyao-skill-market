@@ -93,12 +93,16 @@ export type HarnessAsset = {
   name: string;
   description: string;
   assetType: HarnessAssetType;
+  /** components/query 记录中的原始类型，独立发布时原样透传。 */
+  type?: 'AGENT' | 'SKILL' | 'COMMAND' | 'EXTENSION';
   /** 发布查询使用列表记录自身的维度，不从筛选项反推。 */
   dimType?: string | null;
   dimCode?: string | null;
   dimName?: string | null;
   firstScene?: string | null;
   secondScene?: string | null;
+  /** 列表接口返回的原始最新版本；独立发布必须原样提交。 */
+  latestVersion?: string;
   currentVersion: string;
   nextPublishVersion?: string;
   versions: string[];
@@ -138,6 +142,8 @@ export type HarnessAssetDetail = {
   versions: string[];
   files: HarnessAssetFile[];
   version?: string;
+  /** Extension 所选版本由 version-history 返回的发布通道。 */
+  releaseType?: string;
   component?: HarnessAssetComponentDetailDto;
   /** HTTP Extension 内容只加载组件清单，目录与文件由用户展开时读取。 */
   capabilities?: ExtensionScene['capabilities'];

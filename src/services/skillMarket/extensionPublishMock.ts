@@ -37,14 +37,21 @@ export type ExtensionRelease = {
   failReason?: string;
 };
 
+export type ExtensionPublishCheck = {
+  canPublish: boolean;
+  message: string;
+};
+
+export type ExtensionPublishChecks = Partial<Record<'beta' | 'product', ExtensionPublishCheck>>;
+
 export type ExtensionScene = {
   id: string;
   productId: string;
   primary: string;
   name: string;
   publishable: boolean;
-  /** 发布详情接口的检查结果，与场景就绪状态独立。 */
-  publishCheck?: { canPublish: boolean; message: string };
+  /** 发布详情接口按通道返回的检查结果，与场景就绪状态独立。 */
+  publishChecks?: ExtensionPublishChecks;
   extension: { name: string; description: string; version?: string };
   capabilities: Record<ExtensionCapabilityType, ExtensionCapability[]>;
   releases: ExtensionRelease[];
