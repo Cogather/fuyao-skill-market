@@ -398,6 +398,126 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(detail.locator('.catalog-detail-file-content')).toHaveCount(1);
   });
 
+  test('Skill 详情按新顺序展示行为评测并支持核心交互', async ({ page }) => {
+    const behaviorApiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/harness/plans/skill/behavior-eval')) {
+        behaviorApiRequests.push(request.url());
+      }
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await assetCard(page, '发布风险扫描 Skill').click();
+
+    const detail = page.locator('.asset-detail');
+    const detailTabs = detail.getByRole('tablist', { name: '资产详情分区' }).getByRole('tab');
+    await expect(detailTabs).toHaveText(['内容', '评估报告', '行为评测', '发布记录']);
+    await expect(detail.locator('.asset-detail__version')).toBeVisible();
+    await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
+    await detail.getByRole('tab', { name: '评估报告', exact: true }).click();
+    await expect(detail.locator('.catalog-evaluation-panel')).toBeVisible();
+    await expect(detail.locator('.asset-detail__version')).toBeVisible();
+    await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
+
+    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
+    await expect(detail.getByRole('tab', { name: '行为评测', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
+    await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
+    await expect(detail.locator('.catalog-detail-capability')).toBeHidden();
+    await expect(panel.getByText('评测触发时间', { exact: true })).toBeVisible();
+    await expect(panel.getByText('触发结果构成', { exact: true })).toBeVisible();
+    const behaviorVersion = panel.getByRole('combobox', { name: '版本', exact: true });
+    await behaviorVersion.click();
+    const behaviorVersionOptions = page
+      .getByRole('listbox', { name: '可用版本' })
+      .getByRole('option');
+    expect(
+      (await behaviorVersionOptions.allTextContents()).every((label) =>
+        /(已评测|部分评测|进行中|失败|未评测)$/.test(label.trim()),
+      ),
+    ).toBe(true);
+    await behaviorVersion.press('Escape');
+
+    await panel.getByRole('button', { name: '不通过 2', exact: true }).click();
+    await expect(panel.getByText('TC-T-007', { exact: true })).toBeVisible();
+    await expect(panel.getByText('TC-T-001', { exact: true })).toBeHidden();
+    const triggerCaseToggle = panel.getByRole('button', { name: '展开用例 TC-T-007' });
+    await triggerCaseToggle.click();
+    const expandedTriggerCaseToggle = panel.getByRole('button', { name: '收起用例 TC-T-007' });
+    await expect(expandedTriggerCaseToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(panel.getByText('未触发当前 Skill', { exact: true })).toBeVisible();
+    await expandedTriggerCaseToggle.click();
+
+    await panel.getByRole('tab', { name: '质量评测', exact: true }).click();
+    await expect(panel.getByText('评测画像', { exact: true })).toBeVisible();
+    const qualityCaseToggle = panel.getByRole('button', { name: '展开用例 TC-Q-001' });
+    await qualityCaseToggle.click();
+    await expect(panel.getByText('期望结果', { exact: true })).toBeVisible();
+    await expect(panel.getByText('实际输出', { exact: true })).toBeVisible();
+    await expect(panel.getByText('评分分析', { exact: true })).toBeVisible();
+
+    await panel.getByRole('button', { name: '发起评测', exact: true }).click();
+    let dialog = page.getByRole('dialog', { name: '发起行为评测', exact: true });
+    const confirm = dialog.getByRole('button', { name: '触发', exact: true });
+    await expect(confirm).toBeDisabled();
+    const options = dialog.getByRole('checkbox');
+    await expect(options).toHaveCount(2);
+    await options.first().check();
+    await expect(confirm).toBeEnabled();
+    await options.nth(1).check();
+    await expect(options.first()).toBeChecked();
+    await expect(options.nth(1)).toBeChecked();
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
+
+    await panel.getByRole('button', { name: '发起评测', exact: true }).click();
+    dialog = page.getByRole('dialog', { name: '发起行为评测', exact: true });
+    await expect(dialog.getByRole('checkbox').first()).not.toBeChecked();
+    await expect(dialog.getByRole('checkbox').nth(1)).not.toBeChecked();
+    await dialog.getByRole('checkbox').first().check();
+    await dialog.getByRole('button', { name: '触发', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await panel.getByRole('tab', { name: '触发评测' }).click();
+    await expect(panel.getByText('触发评测进行中', { exact: true })).toBeVisible();
+
+    await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
+    const trendDialog = page.getByRole('dialog', { name: '版本通过率趋势', exact: true });
+    await expect(trendDialog.getByText('质量评测通过率', { exact: true })).toBeVisible();
+    await expect(trendDialog.getByText('触发评测准确率', { exact: true })).toBeVisible();
+    await expect(trendDialog.getByText(/v1\.10\.0/).first()).toBeVisible();
+    await trendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
+    await expect(trendDialog).toBeHidden();
+    expect(behaviorApiRequests).toHaveLength(0);
+  });
+
+  test('Skill 行为评测随版本切换展示未评测空态', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await assetCard(page, '流水线失败诊断 Skill').click();
+
+    const detail = page.locator('.asset-detail');
+    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
+    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    const versionSelect = detail.getByRole('combobox', { name: '版本' });
+    await expect(versionSelect).toContainText('1.1.0');
+    await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
+    await expect(panel.getByText(/v1\.1\.0 尚未发起该模式评测/)).toBeVisible();
+
+    await versionSelect.click();
+    await expect(page.getByRole('option', { name: '1.1.0 未评测', exact: true })).toBeVisible();
+    await page.getByRole('option', { name: /^0\.9\.0 / }).click();
+
+    await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
+    await expect(panel.getByText(/v0\.9\.0 尚未发起该模式评测/)).toBeVisible();
+    await panel.getByRole('status').getByRole('button', { name: '发起评测', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '发起行为评测', exact: true })).toBeVisible();
+  });
+
   test('Agent 和 Command 详情复用清单中的正文展示', async ({ page }) => {
     const detail = page.locator('.asset-detail');
     for (const type of ['Agent', 'Command']) {
@@ -411,6 +531,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
         'rgb(248, 250, 252)',
       );
       await expect(detail.getByRole('tab', { name: '评估报告' })).toHaveCount(0);
+      await expect(detail.getByRole('tab', { name: '行为评测' })).toHaveCount(0);
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.locator('.asset-back').click();
     }

@@ -9,6 +9,7 @@ import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImp
 import HarnessCatalogExportDialog from '../../components/skill/HarnessCatalogExportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import HarnessVersionPicker from '../../components/skill/HarnessVersionPicker.vue';
+import SkillBehaviorEvaluationPanel from '../../components/skill/SkillBehaviorEvaluationPanel.vue';
 import HarnessAssetEditDialog from '../../components/skill/HarnessAssetEditDialog.vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
@@ -81,7 +82,7 @@ const api = getHarnessAssetApi();
 const view = ref<PageView>('list');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
-const detailTab = ref<'content' | 'report' | 'history'>('content');
+const detailTab = ref<'content' | 'report' | 'behavior' | 'history'>('content');
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
 const atomicPublishAsset = ref<HarnessAsset | null>(null);
@@ -1351,9 +1352,25 @@ onBeforeUnmount(() => {
           </dl>
         </div>
 
+        <div
+          v-if="
+            selectedAsset.assetType === 'Skill' &&
+            detailTab !== 'behavior' &&
+            detailTab !== 'history'
+          "
+          class="asset-detail__version"
+        >
+          <HarnessVersionPicker
+            v-model="selectedVersion"
+            :versions="detailVersions"
+            :statuses="detailVersionStatuses"
+            :disabled="detailLoading || detailSaving"
+            @change="changeDetailVersion"
+          />
+        </div>
+
         <nav
           class="asset-subtabs asset-detail__tabs"
-          :class="{ 'has-version-panel': !isHistoryTab }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
         >
@@ -1369,6 +1386,30 @@ onBeforeUnmount(() => {
             @click="detailTab = 'content'"
           >
             {{ selectedAsset.assetType === 'Extension' ? '版本内容' : '内容' }}
+          </button>
+          <button
+            v-if="selectedAsset.assetType === 'Skill'"
+            id="asset-detail-tab-report"
+            type="button"
+            role="tab"
+            :class="{ 'is-active': detailTab === 'report' }"
+            :aria-selected="detailTab === 'report'"
+            aria-controls="catalog-detail-panel-evaluation"
+            @click="detailTab = 'report'"
+          >
+            评估报告
+          </button>
+          <button
+            v-if="selectedAsset.assetType === 'Skill'"
+            id="asset-detail-tab-behavior"
+            type="button"
+            role="tab"
+            :class="{ 'is-active': detailTab === 'behavior' }"
+            :aria-selected="detailTab === 'behavior'"
+            aria-controls="asset-detail-panel-behavior"
+            @click="detailTab = 'behavior'"
+          >
+            行为评测
           </button>
           <button
             v-if="selectedAsset.assetType === 'Extension' && canViewAssetHistory(selectedAsset)"
@@ -1392,23 +1433,11 @@ onBeforeUnmount(() => {
           >
             发布记录
           </button>
-          <button
-            v-if="selectedAsset.assetType === 'Skill'"
-            id="asset-detail-tab-report"
-            type="button"
-            role="tab"
-            :class="{ 'is-active': detailTab === 'report' }"
-            :aria-selected="detailTab === 'report'"
-            aria-controls="catalog-detail-panel-evaluation"
-            @click="detailTab = 'report'"
-          >
-            评估报告
-          </button>
         </nav>
 
         <div class="asset-detail__content-scroll">
           <section
-            v-if="!isHistoryTab"
+            v-if="!isHistoryTab && selectedAsset.assetType !== 'Skill'"
             class="asset-detail__version-panel"
             :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
             aria-label="版本信息"
@@ -1499,7 +1528,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <HarnessCatalogDetailDialog
-            v-else-if="catalogDetailRecord"
+            v-else-if="catalogDetailRecord && detailTab !== 'behavior'"
             open
             embedded
             :record="catalogDetailRecord"
@@ -1507,6 +1536,16 @@ onBeforeUnmount(() => {
             :capability-type="catalogCapabilityType"
             :version="selectedVersion"
             :tab="detailTab === 'report' ? 'evaluation' : 'detail'"
+          />
+          <SkillBehaviorEvaluationPanel
+            v-else-if="catalogDetailRecord && selectedAsset.assetType === 'Skill'"
+            :asset-name="selectedAsset.name"
+            :version="selectedVersion"
+            :versions="detailVersions"
+            :user-id="props.userId"
+            :user-name="props.userName"
+            @change-version="selectedVersion = $event"
+            @notify="showToast"
           />
           <HarnessExtensionDetailContent
             v-else-if="detail?.capabilities"
@@ -2612,10 +2651,6 @@ onBeforeUnmount(() => {
   gap: 4px;
   margin: 16px 0 20px;
   padding: 0;
-}
-
-.asset-detail .asset-detail__tabs.has-version-panel {
-  margin-bottom: 0;
 }
 
 .asset-detail__content-scroll {
