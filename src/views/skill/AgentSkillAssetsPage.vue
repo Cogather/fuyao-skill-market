@@ -1353,11 +1353,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-          v-if="
-            selectedAsset.assetType === 'Skill' &&
-            detailTab !== 'behavior' &&
-            detailTab !== 'history'
-          "
+          v-if="selectedAsset.assetType === 'Skill' && detailTab === 'report'"
           class="asset-detail__version"
         >
           <HarnessVersionPicker
@@ -1371,6 +1367,10 @@ onBeforeUnmount(() => {
 
         <nav
           class="asset-subtabs asset-detail__tabs"
+          :class="{
+            'has-version-panel':
+              !isHistoryTab && (selectedAsset.assetType !== 'Skill' || detailTab === 'content'),
+          }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
         >
@@ -1437,7 +1437,7 @@ onBeforeUnmount(() => {
 
         <div class="asset-detail__content-scroll">
           <section
-            v-if="!isHistoryTab && selectedAsset.assetType !== 'Skill'"
+            v-if="!isHistoryTab && (selectedAsset.assetType !== 'Skill' || detailTab === 'content')"
             class="asset-detail__version-panel"
             :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
             aria-label="版本信息"
@@ -2651,6 +2651,10 @@ onBeforeUnmount(() => {
   gap: 4px;
   margin: 16px 0 20px;
   padding: 0;
+}
+
+.asset-detail .asset-detail__tabs.has-version-panel {
+  margin-bottom: 0;
 }
 
 .asset-detail__content-scroll {

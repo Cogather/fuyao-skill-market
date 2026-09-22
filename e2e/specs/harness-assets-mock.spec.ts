@@ -413,8 +413,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     const detail = page.locator('.asset-detail');
     const detailTabs = detail.getByRole('tablist', { name: '资产详情分区' }).getByRole('tab');
     await expect(detailTabs).toHaveText(['内容', '评估报告', '行为评测', '发布记录']);
-    await expect(detail.locator('.asset-detail__version')).toBeVisible();
-    await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
+    await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
+    await expect(detail.locator('.asset-detail__version-panel')).toBeVisible();
     await detail.getByRole('tab', { name: '评估报告', exact: true }).click();
     await expect(detail.locator('.catalog-evaluation-panel')).toBeVisible();
     await expect(detail.locator('.asset-detail__version')).toBeVisible();

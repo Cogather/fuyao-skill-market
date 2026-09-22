@@ -282,8 +282,8 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
       .filter({ has: page.getByRole('heading', { name: SKILL_NAME, exact: true }) })
       .click();
 
-    await expect(page.locator('.asset-detail__version')).toBeVisible();
-    await expect(page.locator('.asset-detail__version-panel')).toHaveCount(0);
+    await expect(page.locator('.asset-detail__version')).toHaveCount(0);
+    await expect(page.locator('.asset-detail__version-panel')).toBeVisible();
     await page.getByRole('tab', { name: '行为评测' }).click();
     const panel = page.getByRole('tabpanel', { name: '行为评测' });
     await expect(page.locator('.asset-detail__version')).toHaveCount(0);
