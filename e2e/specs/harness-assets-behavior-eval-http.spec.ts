@@ -362,9 +362,9 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await expect(panel.getByText('66.67', { exact: true }).first()).toBeVisible();
     const versionSelect = panel.getByRole('combobox', { name: '版本', exact: true });
     await versionSelect.click();
-    await expect(page.getByRole('option', { name: '1.10.0 已评测', exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: '0.9.0 未评测', exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: '0.8.0 未评测', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: '1.10.0', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: '0.9.0', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: '0.8.0', exact: true })).toBeVisible();
     await versionSelect.press('Escape');
     await panel.getByRole('tab', { name: '质量评测' }).click();
     await expect(panel.getByText('quality-model-from-report', { exact: true })).toBeVisible();
@@ -493,11 +493,11 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     expect(new URL(trend!.url()).searchParams.get('skillName')).toBe(SKILL_NAME);
 
     await versionSelect.click();
-    await page.getByRole('option', { name: '0.9.0 未评测', exact: true }).click();
+    await page.getByRole('option', { name: '0.9.0', exact: true }).click();
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
 
     await versionSelect.click();
-    await page.getByRole('option', { name: /^0\.7\.0 / }).click();
+    await page.getByRole('option', { name: '0.7.0', exact: true }).click();
     await expect(panel.getByText('触发评测进行中', { exact: true })).toBeVisible();
     await expect(panel.getByText('评测报告格式不完整', { exact: true })).toHaveCount(0);
     await expect(
@@ -505,7 +505,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     ).toBeVisible();
 
     await versionSelect.click();
-    await page.getByRole('option', { name: /^0\.8\.0 / }).click();
+    await page.getByRole('option', { name: '0.8.0', exact: true }).click();
     await expect(panel.getByText('触发评测失败', { exact: true })).toBeVisible();
     await expect(panel.getByText('外部评测服务执行失败', { exact: true })).toBeVisible();
     await panel.getByRole('button', { name: '重新发起', exact: true }).click();

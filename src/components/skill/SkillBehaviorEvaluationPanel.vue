@@ -24,6 +24,7 @@ const props = defineProps<{
   assetName: string;
   version: string;
   versions: string[];
+  versionStatuses?: Record<string, string>;
   userId?: string;
   userName?: string;
 }>();
@@ -218,33 +219,6 @@ const maxScoreDistribution = computed(() =>
 );
 const durationDistributionAxis = computed(() => distributionAxis(maxDurationDistribution.value));
 const scoreDistributionAxis = computed(() => distributionAxis(maxScoreDistribution.value));
-const behaviorVersionStatuses = computed<Record<string, string>>(() => {
-  const completedQuality = new Set(
-    trendState.data.quality.map((point) => normalizedVersion(point.version)),
-  );
-  const completedTrigger = new Set(
-    trendState.data.trigger.map((point) => normalizedVersion(point.version)),
-  );
-  return Object.fromEntries(
-    props.versions.map((version) => {
-      const normalized = normalizedVersion(version);
-      if (normalized === normalizedVersion(props.version)) {
-        const records = [modeStates.trigger.record, modeStates.quality.record];
-        if (isModePending('trigger') || isModePending('quality')) {
-          return [version, '进行中'];
-        }
-        const completed = records.filter((record) => record?.state === 'completed').length;
-        if (completed === 2) return [version, '已评测'];
-        if (completed === 1) return [version, '部分评测'];
-        if (records.some((record) => record?.state === 'failed')) return [version, '失败'];
-        return [version, '未评测'];
-      }
-      const completed =
-        Number(completedQuality.has(normalized)) + Number(completedTrigger.has(normalized));
-      return [version, completed === 2 ? '已评测' : completed === 1 ? '部分评测' : '未评测'];
-    }),
-  );
-});
 function matchesFilter(passed: boolean, filter: SkillBehaviorCaseFilter): boolean {
   return filter === 'all' || (filter === 'passed' ? passed : !passed);
 }
@@ -516,13 +490,12 @@ onBeforeUnmount(() => {
     aria-labelledby="asset-detail-tab-behavior"
   >
     <div class="behavior-evaluation__toolbar">
-      <div class="behavior-version-picker">
+      <div class="behavior-version-picker" data-version-picker-anchor>
         <span class="behavior-version-picker__label">版本</span>
         <HarnessVersionPicker
           :model-value="version"
           :versions="versions"
-          :statuses="behaviorVersionStatuses"
-          status-kind="evaluation"
+          :statuses="versionStatuses"
           :disabled="!hasAvailableVersion || currentState.loading || submittingTypes.length > 0"
           @update:model-value="selectVersion"
         />
@@ -1318,7 +1291,8 @@ onBeforeUnmount(() => {
 .behavior-version-picker {
   display: inline-flex;
   height: 42px;
-  min-width: 220px;
+  width: 200px;
+  min-width: 200px;
   align-items: center;
   gap: 8px;
   padding-left: 14px;
@@ -1337,12 +1311,15 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .behavior-version-picker :deep(.harness-version-picker) {
+  min-width: 0;
+  flex: 1;
   height: 40px;
   align-items: center;
 }
 .behavior-version-picker :deep(.harness-version-picker__trigger) {
+  width: 100%;
   height: 40px;
-  min-width: 158px;
+  min-width: 0;
   min-height: 40px;
   align-items: center;
   padding-top: 0;
@@ -1356,7 +1333,6 @@ onBeforeUnmount(() => {
   align-items: center;
   line-height: 1;
 }
-.behavior-version-picker :deep(.harness-version-picker__status-dot),
 .behavior-version-picker :deep(.harness-version-picker__chevron) {
   align-self: center;
 }

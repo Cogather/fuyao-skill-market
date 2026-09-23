@@ -423,9 +423,49 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(detailTabs).toHaveText(['内容', '静态评估', '动态评估', '发布记录']);
     await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
     await expect(detail.locator('.asset-detail__version-panel')).toBeVisible();
+    const contentVersionWidth = await detail
+      .locator('.asset-detail__version-row .harness-version-picker__trigger')
+      .evaluate((element) => element.getBoundingClientRect().width);
     await detail.getByRole('tab', { name: '静态评估', exact: true }).click();
     await expect(detail.locator('.catalog-evaluation-panel')).toBeVisible();
-    await expect(detail.locator('.asset-detail__version')).toBeVisible();
+    const staticEvaluationVersion = detail.locator(
+      '.asset-detail__content-scroll > .asset-detail__version',
+    );
+    await expect(staticEvaluationVersion).toBeVisible();
+    await expect(staticEvaluationVersion.locator('.asset-detail__version-picker-label')).toHaveText(
+      '版本',
+    );
+    await expect(staticEvaluationVersion).toHaveCSS('height', '42px');
+    await expect(staticEvaluationVersion).toHaveCSS('width', '200px');
+    expect(
+      await staticEvaluationVersion.evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(contentVersionWidth);
+    await expect(staticEvaluationVersion.locator('.harness-version-picker__trigger')).toHaveCSS(
+      'border-top-width',
+      '0px',
+    );
+    await staticEvaluationVersion.getByRole('combobox', { name: '版本' }).click();
+    const staticVersionOptions = page.getByRole('listbox', { name: '可用版本' });
+    const staticVersionAlignment = await Promise.all([
+      staticEvaluationVersion.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+      staticVersionOptions.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+    ]);
+    expect(
+      Math.abs(staticVersionAlignment[0].left - staticVersionAlignment[1].left),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(staticVersionAlignment[0].width - staticVersionAlignment[1].width),
+    ).toBeLessThanOrEqual(1);
+    const staticVersionOptionLabels = await staticVersionOptions
+      .getByRole('option')
+      .allTextContents();
+    await staticEvaluationVersion.getByRole('combobox', { name: '版本' }).press('Escape');
     await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
 
     await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
@@ -441,11 +481,13 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(panel.getByText('触发结果构成', { exact: true })).toBeVisible();
     const behaviorVersion = panel.getByRole('combobox', { name: '版本', exact: true });
     const behaviorVersionPicker = panel.locator('.behavior-version-picker');
+    expect(
+      await behaviorVersionPicker.evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(contentVersionWidth);
     const pickerElementCenters = await behaviorVersionPicker.evaluate((element) => {
       const selectors = [
         '.behavior-version-picker__label',
         '.harness-version-picker__value',
-        '.harness-version-picker__status-dot',
         '.harness-version-picker__chevron',
       ];
       return selectors.map((selector) => {
@@ -462,11 +504,28 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     const behaviorVersionOptions = page
       .getByRole('listbox', { name: '可用版本' })
       .getByRole('option');
+    const behaviorVersionMenu = page.getByRole('listbox', { name: '可用版本' });
+    const behaviorVersionAlignment = await Promise.all([
+      behaviorVersionPicker.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+      behaviorVersionMenu.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+    ]);
     expect(
-      (await behaviorVersionOptions.allTextContents()).every((label) =>
-        /(已评测|部分评测|进行中|失败|未评测)$/.test(label.trim()),
-      ),
-    ).toBe(true);
+      Math.abs(behaviorVersionAlignment[0].left - behaviorVersionAlignment[1].left),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(behaviorVersionAlignment[0].width - behaviorVersionAlignment[1].width),
+    ).toBeLessThanOrEqual(1);
+    await expect(behaviorVersion.locator('.harness-version-picker__status-dot')).toHaveCount(1);
+    await expect(
+      behaviorVersionOptions.locator('.harness-version-picker__option-status'),
+    ).toHaveCount(await behaviorVersionOptions.count());
+    expect(await behaviorVersionOptions.allTextContents()).toEqual(staticVersionOptionLabels);
     await behaviorVersion.press('Escape');
 
     await panel.getByRole('button', { name: '不通过 2', exact: true }).click();
@@ -565,9 +624,9 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await emptyTrendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
 
     await versionSelect.click();
-    await expect(page.getByRole('option', { name: '1.1.0 未评测', exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: '1.0.0 未评测', exact: true })).toBeVisible();
-    await page.getByRole('option', { name: /^0\.9\.0 / }).click();
+    await expect(page.getByRole('option', { name: '1.1.0', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: '1.0.0', exact: true })).toBeVisible();
+    await page.getByRole('option', { name: '0.9.0', exact: true }).click();
 
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v0\.9\.0 尚未发起该模式评测/)).toBeVisible();

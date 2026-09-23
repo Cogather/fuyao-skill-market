@@ -73,6 +73,7 @@ const versionOptions = computed(() =>
     ...versionStatus(props.statuses?.[version]),
   })),
 );
+const showStatuses = computed(() => props.statuses !== undefined);
 const selectedStatus = computed(() => versionStatus(props.statuses?.[props.modelValue]));
 
 function revealActive(): void {
@@ -85,7 +86,9 @@ function revealActive(): void {
 
 function positionMenu(): void {
   if (!trigger.value) return;
-  const rect = trigger.value.getBoundingClientRect();
+  const anchor =
+    trigger.value.closest<HTMLElement>('[data-version-picker-anchor]') ?? trigger.value;
+  const rect = anchor.getBoundingClientRect();
   const width = Math.min(Math.max(rect.width, 200), window.innerWidth - 24);
   const below = window.innerHeight - rect.bottom - 12;
   const above = rect.top - 12;
@@ -226,7 +229,7 @@ onBeforeUnmount(() => {
     >
       <span class="harness-version-picker__value">{{ displayVersion }}</span>
       <span
-        v-if="modelValue"
+        v-if="modelValue && showStatuses"
         class="harness-version-picker__status-dot"
         :class="`is-${selectedStatus.tone}`"
         aria-hidden="true"
@@ -253,15 +256,15 @@ onBeforeUnmount(() => {
           type="button"
           role="option"
           :aria-selected="option.version === modelValue"
-          :aria-label="`${option.version} ${option.label}`"
-          :title="`${option.version} ${option.label}`"
+          :aria-label="showStatuses ? `${option.version} ${option.label}` : option.version"
+          :title="showStatuses ? `${option.version} ${option.label}` : option.version"
           tabindex="-1"
           @pointerdown.prevent
           @pointermove="activeIndex = index"
           @click="choose(index)"
         >
           <span class="harness-version-picker__option-version">{{ option.version }}</span>
-          <span class="harness-version-picker__option-status">
+          <span v-if="showStatuses" class="harness-version-picker__option-status">
             <span
               class="harness-version-picker__status-dot"
               :class="`is-${option.tone}`"

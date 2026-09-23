@@ -1369,19 +1369,6 @@ onBeforeUnmount(() => {
           </dl>
         </div>
 
-        <div
-          v-if="selectedAsset.assetType === 'Skill' && detailTab === 'report'"
-          class="asset-detail__version"
-        >
-          <HarnessVersionPicker
-            v-model="selectedVersion"
-            :versions="detailVersions"
-            :statuses="detailVersionStatuses"
-            :disabled="detailLoading || detailSaving"
-            @change="changeDetailVersion"
-          />
-        </div>
-
         <nav
           class="asset-subtabs asset-detail__tabs"
           :class="{
@@ -1452,6 +1439,20 @@ onBeforeUnmount(() => {
         </nav>
 
         <div class="asset-detail__content-scroll">
+          <div
+            v-if="selectedAsset.assetType === 'Skill' && detailTab === 'report'"
+            class="asset-detail__version"
+            data-version-picker-anchor
+          >
+            <span class="asset-detail__version-picker-label">版本</span>
+            <HarnessVersionPicker
+              v-model="selectedVersion"
+              :versions="detailVersions"
+              :statuses="detailVersionStatuses"
+              :disabled="detailLoading || detailSaving"
+              @change="changeDetailVersion"
+            />
+          </div>
           <section
             v-if="showDetailVersionPanel"
             class="asset-detail__version-panel"
@@ -1568,6 +1569,7 @@ onBeforeUnmount(() => {
             :asset-name="selectedAsset.name"
             :version="selectedVersion"
             :versions="detailVersions"
+            :version-statuses="detailVersionStatuses"
             :user-id="props.userId"
             :user-name="props.userName"
             @change-version="selectedVersion = $event"
@@ -2668,9 +2670,64 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail__version {
-  display: flex;
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 42px;
+  width: 200px;
+  min-width: 200px;
   align-items: center;
-  margin-top: 16px;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding-left: 14px;
+  border: 1px solid #d7dee9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(31 58 138 / 7%);
+}
+
+.asset-detail__version-picker-label {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.asset-detail__version :deep(.harness-version-picker) {
+  min-width: 0;
+  flex: 1;
+  height: 40px;
+  align-items: center;
+}
+
+.asset-detail__version :deep(.harness-version-picker__trigger) {
+  width: 100%;
+  height: 40px;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.asset-detail__version :deep(.harness-version-picker__value) {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  line-height: 1;
+}
+
+.asset-detail__version :deep(.harness-version-picker__status-dot),
+.asset-detail__version :deep(.harness-version-picker__chevron) {
+  align-self: center;
+}
+
+.asset-detail__version :deep(.harness-version-picker__trigger[aria-expanded='true']) {
+  box-shadow: none;
 }
 
 .asset-detail .asset-detail__tabs {
