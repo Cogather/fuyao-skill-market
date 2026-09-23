@@ -66,7 +66,6 @@ const trendState = reactive<{
   error: '',
 });
 let contextEpoch = 0;
-let pollingTimer: number | undefined;
 const trendLoaded = ref(false);
 
 const hasAvailableVersion = computed(() => Boolean(props.version.trim() && props.versions.length));
@@ -184,13 +183,14 @@ const triggerChart = computed(() => {
 });
 const durationDistribution = computed(() => {
   const bins = [
-    { label: '<1s', value: 0 },
-    { label: '1-3s', value: 0 },
-    { label: '3-10s', value: 0 },
-    { label: '≥10s', value: 0 },
+    { label: '<60s', value: 0 },
+    { label: '60-120s', value: 0 },
+    { label: '120-300s', value: 0 },
+    { label: '>300s', value: 0 },
   ];
   for (const item of qualityReport.value?.results ?? []) {
-    const index = item.cost_time < 1 ? 0 : item.cost_time < 3 ? 1 : item.cost_time < 10 ? 2 : 3;
+    const index =
+      item.cost_time < 60 ? 0 : item.cost_time < 120 ? 1 : item.cost_time <= 300 ? 2 : 3;
     bins[index]!.value += 1;
   }
   return bins;
@@ -216,6 +216,8 @@ const maxDurationDistribution = computed(() =>
 const maxScoreDistribution = computed(() =>
   Math.max(1, ...scoreDistribution.value.map((item) => item.value)),
 );
+const durationDistributionAxis = computed(() => distributionAxis(maxDurationDistribution.value));
+const scoreDistributionAxis = computed(() => distributionAxis(maxScoreDistribution.value));
 const behaviorVersionStatuses = computed<Record<string, string>>(() => {
   const completedQuality = new Set(
     trendState.data.quality.map((point) => normalizedVersion(point.version)),
@@ -349,7 +351,6 @@ async function confirmTrigger(): Promise<void> {
       `已发起${succeeded.map((kind) => (kind === 'trigger' ? '触发评测' : '质量评测')).join('、')}`,
     );
     closeDialog();
-    schedulePolling();
   }
   for (const failure of failures) {
     emit('notify', failure.reason instanceof Error ? failure.reason.message : '发起评测失败');
@@ -360,9 +361,18 @@ function chartHeight(value: number, max: number): string {
   return `${Math.max(8, (value / max) * 100)}%`;
 }
 
+function distributionAxis(maxValue: number): { max: number; labels: number[] } {
+  const step = Math.max(1, Math.ceil(maxValue / 4));
+  const max = step * 4;
+  return {
+    max,
+    labels: Array.from({ length: 5 }, (_, index) => max - index * step),
+  };
+}
+
 function trendX(index: number, length: number): number {
   if (length <= 1) return 320;
-  return 60 + (index * 520) / (length - 1);
+  return 80 + (index * 480) / (length - 1);
 }
 
 function trendY(rate: number): number {
@@ -380,11 +390,7 @@ function trendArea(points: SkillBehaviorEvaluationTrendDto['quality']): string {
   return `${trendX(0, points.length)},140 ${trendPoints(points)} ${trendX(points.length - 1, points.length)},140`;
 }
 
-async function loadMode(
-  kind: SkillBehaviorEvaluationKind,
-  silent = false,
-  epoch = contextEpoch,
-): Promise<void> {
+async function loadMode(kind: SkillBehaviorEvaluationKind, epoch = contextEpoch): Promise<void> {
   const state = modeStates[kind];
   if (!props.assetName || !props.version) {
     state.loading = false;
@@ -392,7 +398,7 @@ async function loadMode(
     state.error = '';
     return;
   }
-  if (!silent) state.loading = true;
+  state.loading = true;
   state.error = '';
   try {
     const record = await querySkillBehaviorEvaluation({
@@ -413,32 +419,11 @@ async function loadMode(
 async function loadAllModes(): Promise<void> {
   contextEpoch += 1;
   const epoch = contextEpoch;
-  clearPolling();
-  await Promise.all([loadMode('trigger', false, epoch), loadMode('quality', false, epoch)]);
-  if (epoch === contextEpoch) schedulePolling();
+  await Promise.all([loadMode('trigger', epoch), loadMode('quality', epoch)]);
 }
 
 async function refreshCurrentMode(): Promise<void> {
   await loadMode(activeKind.value);
-  schedulePolling();
-}
-
-function clearPolling(): void {
-  if (pollingTimer !== undefined) window.clearTimeout(pollingTimer);
-  pollingTimer = undefined;
-}
-
-function schedulePolling(): void {
-  clearPolling();
-  const pending = (['trigger', 'quality'] as const).filter((kind) =>
-    isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state),
-  );
-  if (!pending.length) return;
-  pollingTimer = window.setTimeout(async () => {
-    const epoch = contextEpoch;
-    await Promise.all(pending.map((kind) => loadMode(kind, true, epoch)));
-    if (epoch === contextEpoch) schedulePolling();
-  }, 30_000);
 }
 
 async function loadTrend(force = false): Promise<void> {
@@ -510,7 +495,6 @@ watch(
 onMounted(() => document.addEventListener('keydown', onDocumentKeydown));
 onBeforeUnmount(() => {
   contextEpoch += 1;
-  clearPolling();
   document.removeEventListener('keydown', onDocumentKeydown);
 });
 </script>
@@ -543,7 +527,7 @@ onBeforeUnmount(() => {
           ><small>触发时间</small><strong>{{ currentRecord.createTime }}</strong></span
         >
         <span
-          ><small>评测模型</small><strong>{{ currentReport?.model_name || '—' }}</strong></span
+          ><small>评测模型</small><strong>{{ currentReport?.model || '—' }}</strong></span
         >
       </div>
     </div>
@@ -652,7 +636,7 @@ onBeforeUnmount(() => {
         >
           <span aria-hidden="true">▶</span>发起评测
         </button>
-        <small>两种评测模式互相独立，可分别发起和查看结果。</small>
+        <small>每个版本每种评测仅可触发一次；评测模型与用例集由底层按版本决定。</small>
       </section>
 
       <section
@@ -662,7 +646,6 @@ onBeforeUnmount(() => {
       >
         <span class="behavior-state__spinner" aria-hidden="true" />
         <strong>{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}进行中</strong>
-        <p>任务正在排队或执行，页面每 30 秒自动刷新；也可以手动刷新状态。</p>
         <small>任务 ID：{{ currentRecord.taskId }}</small>
         <button type="button" class="behavior-button" @click="refreshCurrentMode">刷新状态</button>
       </section>
@@ -699,41 +682,25 @@ onBeforeUnmount(() => {
             </div>
           </article>
           <article class="behavior-summary__item">
-            <small>{{ activeKind === 'trigger' ? '正向触发率' : '总耗时' }}</small>
+            <small>总耗时</small>
             <div class="behavior-summary__value is-text">
-              <strong>{{
-                activeKind === 'trigger'
-                  ? triggerReport?.positive_trigger_rate
-                  : qualityReport?.total_cost_time
-              }}</strong>
+              <strong>{{ currentReport.total_cost_time }}</strong>
             </div>
-            <p>
-              {{ activeKind === 'trigger' ? '正确触发数 / 正向用例数' : '全部用例累计执行时间' }}
-            </p>
+            <p>全部用例累计执行时间</p>
           </article>
           <article class="behavior-summary__item">
-            <small>{{ activeKind === 'trigger' ? '反向误触发率' : '任务完成状态' }}</small>
+            <small>任务完成状态</small>
             <div class="behavior-summary__value is-text">
-              <strong>{{
-                activeKind === 'trigger'
-                  ? triggerReport?.negative_false_trigger_rate
-                  : stateLabel(currentRecord)
-              }}</strong>
+              <strong>{{ stateLabel(currentRecord) }}</strong>
             </div>
-            <p>
-              {{
-                activeKind === 'trigger'
-                  ? '误触发数 / 反向用例数'
-                  : `由 ${currentRecord.creatorName || currentRecord.creator} 触发`
-              }}
-            </p>
+            <p>由 {{ currentRecord.creatorName || currentRecord.creator }} 触发</p>
           </article>
           <article class="behavior-summary__item">
             <small>评测触发时间</small>
             <div class="behavior-summary__value is-text">
               <strong>{{ currentRecord.createTime.slice(11) }}</strong>
             </div>
-            <p>{{ currentRecord.createTime.slice(0, 10) }} · {{ currentReport.model_name }}</p>
+            <p>{{ currentRecord.createTime.slice(0, 10) }} · {{ currentReport.model }}</p>
           </article>
         </div>
 
@@ -950,18 +917,40 @@ onBeforeUnmount(() => {
                   durationDistribution.map((item) => `${item.label} ${item.value} 条`).join('；')
                 "
               >
-                <div
-                  v-for="item in durationDistribution"
-                  :key="item.label"
-                  class="behavior-distribution__column"
-                >
-                  <div
-                    class="behavior-distribution__bar is-time"
-                    :style="{ height: chartHeight(item.value, maxDurationDistribution) }"
-                  >
-                    <b>{{ item.value }}</b>
+                <div class="behavior-distribution__body">
+                  <div class="behavior-distribution__axis" aria-hidden="true">
+                    <span v-for="label in durationDistributionAxis.labels" :key="label">{{
+                      label
+                    }}</span>
                   </div>
-                  <span>{{ item.label }}</span>
+                  <div class="behavior-distribution__plot">
+                    <div class="behavior-distribution__columns">
+                      <div
+                        v-for="item in durationDistribution"
+                        :key="item.label"
+                        class="behavior-distribution__column"
+                      >
+                        <div
+                          class="behavior-distribution__bar is-time"
+                          :style="{
+                            height: chartHeight(item.value, durationDistributionAxis.max),
+                          }"
+                        >
+                          <b>{{ item.value }}</b>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="behavior-distribution__x"
+                  :style="{
+                    gridTemplateColumns: `repeat(${durationDistribution.length}, minmax(0, 1fr))`,
+                  }"
+                >
+                  <span v-for="item in durationDistribution" :key="item.label">{{
+                    item.label
+                  }}</span>
                 </div>
               </div>
             </section>
@@ -974,18 +963,36 @@ onBeforeUnmount(() => {
                   scoreDistribution.map((item) => `${item.label} 分 ${item.value} 条`).join('；')
                 "
               >
-                <div
-                  v-for="item in scoreDistribution"
-                  :key="item.label"
-                  class="behavior-distribution__column"
-                >
-                  <div
-                    class="behavior-distribution__bar is-score"
-                    :style="{ height: chartHeight(item.value, maxScoreDistribution) }"
-                  >
-                    <b>{{ item.value }}</b>
+                <div class="behavior-distribution__body">
+                  <div class="behavior-distribution__axis" aria-hidden="true">
+                    <span v-for="label in scoreDistributionAxis.labels" :key="label">{{
+                      label
+                    }}</span>
                   </div>
-                  <span>{{ item.label }}</span>
+                  <div class="behavior-distribution__plot">
+                    <div class="behavior-distribution__columns">
+                      <div
+                        v-for="item in scoreDistribution"
+                        :key="item.label"
+                        class="behavior-distribution__column"
+                      >
+                        <div
+                          class="behavior-distribution__bar is-score"
+                          :style="{ height: chartHeight(item.value, scoreDistributionAxis.max) }"
+                        >
+                          <b>{{ item.value }}</b>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="behavior-distribution__x"
+                  :style="{
+                    gridTemplateColumns: `repeat(${scoreDistribution.length}, minmax(0, 1fr))`,
+                  }"
+                >
+                  <span v-for="item in scoreDistribution" :key="item.label">{{ item.label }}</span>
                 </div>
               </div>
             </section>
@@ -1107,8 +1114,8 @@ onBeforeUnmount(() => {
         >
           <header class="behavior-dialog__header">
             <div>
-              <h2 id="behavior-trigger-title">发起行为评测</h2>
-              <p>选择要触发的评测类型（可单选 / 多选），两种模式互相独立</p>
+              <h2 id="behavior-trigger-title">发起质量评测</h2>
+              <p>选择要触发的评测类型（可单选 / 多选），结果一次性全量返回</p>
             </div>
             <button
               ref="triggerDialogClose"
@@ -1138,12 +1145,9 @@ onBeforeUnmount(() => {
                 <strong>检验触发准确性</strong><b>Skill 是否在正确场景被触发</b>
                 <p>
                   在各类对话输入下，检验本 Skill
-                  是否被正确激活，并统计误触发与漏触发。关注路由准确率，不评估输出内容质量。
+                  是否被正确激活，并统计误触发（不应触发却触发）与漏触发（应触发却未触发）。关注路由准确率，不评估输出内容质量。
                 </p>
                 <small>用例构成 <em>正向 + 反向</em>　关注 <em>路由命中</em></small>
-                <span v-if="isModeBusy('trigger')" class="behavior-options__disabled-copy"
-                  >当前评测进行中</span
-                >
               </label>
               <label
                 :class="{
@@ -1161,16 +1165,13 @@ onBeforeUnmount(() => {
                 <strong>检验输出质量</strong><b>被触发后输出是否正确、完整</b>
                 <p>
                   在已触发的前提下，检验 Skill
-                  输出的准确性、完整性与合规性，对每个用例打分并给出评分分析。
+                  输出的准确性、完整性与合规性，对每个用例打分并给出评分分析。关注内容质量，不评估触发路由。
                 </p>
                 <small>用例输出 <em>逐条打分</em>　关注 <em>内容正确性</em></small>
-                <span v-if="isModeBusy('quality')" class="behavior-options__disabled-copy"
-                  >当前评测进行中</span
-                >
               </label>
             </div>
             <p class="behavior-dialog__hint">
-              同一版本、同一模式已有进行中任务时不可重复发起；已完成或失败后可重新评测。
+              🔒 每个版本每种评测仅可触发一次；已成功的不允许重复，仅上次失败时可重试。
             </p>
           </div>
           <footer class="behavior-dialog__footer">
@@ -1232,13 +1233,15 @@ onBeforeUnmount(() => {
                     key: 'quality',
                     label: '质量评测通过率',
                     color: '#7168f4',
+                    lastColor: '#9b6af1',
                     fill: 'rgba(113,104,244,0.1)',
                     points: trendState.data.quality,
                   },
                   {
                     key: 'trigger',
-                    label: '触发评测准确率',
+                    label: '触发准确率',
                     color: '#2f7df6',
+                    lastColor: '#5fa2ff',
                     fill: 'rgba(47,125,246,0.1)',
                     points: trendState.data.trigger,
                   },
@@ -1251,16 +1254,16 @@ onBeforeUnmount(() => {
                     <line
                       v-for="y in [20, 60, 100, 140]"
                       :key="y"
-                      x1="45"
+                      x1="40"
                       :y1="y"
-                      x2="615"
+                      x2="620"
                       :y2="y"
                       class="behavior-trend-grid"
                     />
                     <text
                       v-for="(label, index) in [100, 75, 50, 25]"
                       :key="label"
-                      x="35"
+                      x="30"
                       :y="24 + index * 40"
                       text-anchor="end"
                     >
@@ -1278,13 +1281,13 @@ onBeforeUnmount(() => {
                         :cx="trendX(index, series.points.length)"
                         :cy="trendY(point.value)"
                         :r="index === series.points.length - 1 ? 4.5 : 3.5"
-                        :fill="series.color"
+                        :fill="index === series.points.length - 1 ? series.lastColor : series.color"
                         :stroke="index === series.points.length - 1 ? '#fff' : 'none'"
                         stroke-width="2"
                       />
                       <text
                         :x="trendX(index, series.points.length)"
-                        y="162"
+                        y="158"
                         text-anchor="middle"
                         :fill="index === series.points.length - 1 ? series.color : undefined"
                         :font-weight="index === series.points.length - 1 ? 800 : undefined"
@@ -1293,7 +1296,7 @@ onBeforeUnmount(() => {
                       </text>
                       <text
                         :x="trendX(index, series.points.length)"
-                        :y="trendY(point.value) - 9"
+                        :y="trendY(point.value) - 8"
                         text-anchor="middle"
                         :fill="index === series.points.length - 1 ? series.color : undefined"
                         :font-weight="index === series.points.length - 1 ? 800 : undefined"
@@ -1310,7 +1313,6 @@ onBeforeUnmount(() => {
                 </div>
                 <p v-else class="behavior-trends__empty">暂无已完成评测的版本</p>
               </figure>
-              <p class="behavior-dialog__hint">每个版本展示该模式下最新一次已完成评测。</p>
             </template>
           </div>
         </section>
@@ -1335,8 +1337,8 @@ onBeforeUnmount(() => {
 }
 .behavior-version-picker {
   display: inline-flex;
+  height: 42px;
   min-width: 220px;
-  min-height: 42px;
   align-items: center;
   gap: 8px;
   padding-left: 14px;
@@ -1346,16 +1348,37 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 14px rgb(31 58 138 / 7%);
 }
 .behavior-version-picker__label {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
   color: #667085;
   font-size: 11px;
   font-weight: 800;
-  line-height: 20px;
+  line-height: 1;
+}
+.behavior-version-picker :deep(.harness-version-picker) {
+  height: 40px;
+  align-items: center;
 }
 .behavior-version-picker :deep(.harness-version-picker__trigger) {
+  height: 40px;
   min-width: 158px;
   min-height: 40px;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
   border: 0;
   box-shadow: none;
+}
+.behavior-version-picker :deep(.harness-version-picker__value) {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  line-height: 1;
+}
+.behavior-version-picker :deep(.harness-version-picker__status-dot),
+.behavior-version-picker :deep(.harness-version-picker__chevron) {
+  align-self: center;
 }
 .behavior-version-picker :deep(.harness-version-picker__trigger[aria-expanded='true']) {
   box-shadow: none;
@@ -1810,11 +1833,32 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 .behavior-distribution {
+  min-width: 0;
+}
+.behavior-distribution__body {
   display: flex;
   height: 190px;
-  align-items: end;
-  gap: 12px;
-  padding: 24px 14px 0;
+}
+.behavior-distribution__axis {
+  display: flex;
+  width: 30px;
+  flex: 0 0 30px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0 6px 1px 0;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: right;
+}
+.behavior-distribution__plot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-end;
+  padding: 0 12px;
   border-bottom: 1.5px solid #94a3b8;
   border-left: 1.5px solid #cbd5e1;
   background: repeating-linear-gradient(
@@ -1825,18 +1869,33 @@ onBeforeUnmount(() => {
     #eef2f7 25%
   );
 }
+.behavior-distribution__columns {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 12px;
+}
 .behavior-distribution__column {
-  display: grid;
+  display: flex;
   height: 100%;
   flex: 1;
-  grid-template-rows: 1fr 30px;
-  align-items: end;
-  justify-items: center;
-  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-direction: column;
 }
-.behavior-distribution__column > span {
+.behavior-distribution__x {
+  display: grid;
+  gap: 12px;
+  padding: 6px 12px 0 42px;
+}
+.behavior-distribution__x span {
   color: #52647d;
   font-size: 10.5px;
+  text-align: center;
   white-space: nowrap;
 }
 .behavior-distribution__bar {
@@ -1983,7 +2042,8 @@ onBeforeUnmount(() => {
 }
 .behavior-case-detail td {
   padding: 14px 14px 16px 48px;
-  background: #fbfcfe;
+  border-top-color: #e1e7f0;
+  background: #f3f6fb;
 }
 .behavior-case-detail__grid {
   display: grid;
@@ -2097,18 +2157,17 @@ onBeforeUnmount(() => {
 .behavior-dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1980;
+  z-index: 980;
   display: grid;
   place-items: center;
   padding: 24px;
-  overflow-y: auto;
   background: rgb(31 42 68 / 46%);
   backdrop-filter: blur(3px);
 }
 .behavior-dialog {
+  position: relative;
   width: min(680px, calc(100vw - 32px));
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
+  overflow: hidden;
   border-radius: 16px;
   background: #fff;
   color: #17233c;
@@ -2118,9 +2177,6 @@ onBeforeUnmount(() => {
   width: min(720px, calc(100vw - 32px));
 }
 .behavior-dialog__header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2133,35 +2189,25 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #1f2329;
   font-size: 16px;
+  font-weight: 700;
 }
 .behavior-dialog__header p {
   margin: 4px 0 0;
-  color: #52647d;
+  color: #6b7280;
   font-size: 12px;
 }
 .behavior-dialog__close {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
   border: 0;
-  border-radius: 8px;
   background: transparent;
-  color: #52647d;
+  color: #6b7280;
   font-size: 22px;
+  line-height: 1;
   cursor: pointer;
-}
-.behavior-dialog__close:hover {
-  background: #f2f4f9;
-  color: #1f2329;
 }
 .behavior-dialog__body {
   padding: 20px 22px;
 }
 .behavior-dialog__footer {
-  position: sticky;
-  bottom: 0;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -2248,10 +2294,6 @@ onBeforeUnmount(() => {
   font-style: normal;
   font-weight: 700;
 }
-.behavior-options__disabled-copy {
-  color: #a9580d;
-  font-size: 11px;
-}
 .behavior-dialog__hint {
   margin: 12px 0 0;
   color: #52647d;
@@ -2259,6 +2301,7 @@ onBeforeUnmount(() => {
 }
 .behavior-trends figure {
   margin: 0;
+  padding: 6px 0 10px;
 }
 .behavior-trends figure + figure {
   margin-top: 16px;
@@ -2271,21 +2314,17 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 700;
 }
-.behavior-trend-chart {
-  overflow-x: auto;
-}
 .behavior-trend-chart svg {
   display: block;
   width: 100%;
-  min-width: 520px;
-  height: 180px;
+  height: 170px;
 }
 .behavior-trend-chart text {
-  fill: #667085;
+  fill: #94a3b8;
   font-size: 10px;
 }
 .behavior-trend-grid {
-  stroke: #e2e8f0;
+  stroke: #eef2f7;
   stroke-width: 1;
 }
 .behavior-trends__empty {

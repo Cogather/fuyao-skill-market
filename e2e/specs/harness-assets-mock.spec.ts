@@ -480,7 +480,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(panel.getByText('评分分析', { exact: true })).toBeVisible();
 
     await panel.getByRole('button', { name: '发起评测', exact: true }).click();
-    let dialog = page.getByRole('dialog', { name: '发起行为评测', exact: true });
+    let dialog = page.getByRole('dialog', { name: '发起质量评测', exact: true });
     const confirm = dialog.getByRole('button', { name: '触发', exact: true });
     await expect(confirm).toBeDisabled();
     const options = dialog.getByRole('checkbox');
@@ -494,7 +494,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(dialog).toBeHidden();
 
     await panel.getByRole('button', { name: '发起评测', exact: true }).click();
-    dialog = page.getByRole('dialog', { name: '发起行为评测', exact: true });
+    dialog = page.getByRole('dialog', { name: '发起质量评测', exact: true });
     await expect(dialog.getByRole('checkbox').first()).not.toBeChecked();
     await expect(dialog.getByRole('checkbox').nth(1)).not.toBeChecked();
     await dialog.getByRole('checkbox').first().check();
@@ -506,7 +506,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
     const trendDialog = page.getByRole('dialog', { name: '版本通过率趋势', exact: true });
     await expect(trendDialog.getByText('质量评测通过率', { exact: true })).toBeVisible();
-    await expect(trendDialog.getByText('触发评测准确率', { exact: true })).toBeVisible();
+    await expect(trendDialog.getByText('触发准确率', { exact: true })).toBeVisible();
     await expect(trendDialog.getByText(/v1\.10\.0/).first()).toBeVisible();
     await trendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
     await expect(trendDialog).toBeHidden();
@@ -537,8 +537,20 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       }),
     ).toBeEnabled();
 
+    await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
+    const emptyTrendDialog = page.getByRole('dialog', {
+      name: '版本通过率趋势',
+      exact: true,
+    });
+    await expect(emptyTrendDialog.locator('.behavior-trend-chart')).toHaveCount(0);
+    await expect(emptyTrendDialog.getByText('暂无已完成评测的版本', { exact: true })).toHaveCount(
+      2,
+    );
+    await emptyTrendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
+
     await versionSelect.click();
     await expect(page.getByRole('option', { name: '1.1.0 未评测', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: '1.0.0 未评测', exact: true })).toBeVisible();
     await page.getByRole('option', { name: /^0\.9\.0 / }).click();
 
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
@@ -546,7 +558,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(triggerTab).toBeDisabled();
     await expect(qualityTab).toBeDisabled();
     await panel.getByRole('status').getByRole('button', { name: '发起评测', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '发起行为评测', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '发起质量评测', exact: true })).toBeVisible();
   });
 
   test('Skill 无可用版本时禁用全部行为评测操作', async ({ page }) => {

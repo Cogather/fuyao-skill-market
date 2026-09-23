@@ -71,6 +71,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
 
   test('按 mode 独立查询、加载趋势并携带当前用户发起评测', async ({ page }) => {
     await installUserContext(page);
+    await page.clock.install({ time: new Date('2026-09-23T00:00:00Z') });
     const behaviorRequests: Request[] = [];
     let qualityWasTriggered = false;
 
@@ -226,10 +227,11 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
             mode === 'TRIGGER'
               ? {
                   agent_name: 'CodeAgent',
-                  model_name: 'fuyao/GLM4.7',
+                  model: 'trigger-model-from-report',
                   positive_trigger_rate: '1/2',
                   negative_false_trigger_rate: '0/1',
                   accuracy: '66.67%',
+                  total_cost_time: '4.80s',
                   results: [
                     {
                       case_id: 'T-001',
@@ -251,7 +253,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
                 }
               : {
                   agent_name: 'CodeAgent',
-                  model_name: 'fuyao/GLM4.7',
+                  model: 'quality-model-from-report',
                   pass_rate: '100.00%',
                   total_cost_time: '3.20s',
                   results: [
@@ -312,6 +314,11 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     ]);
 
     await expect(panel.getByText('触发结果构成', { exact: true })).toBeVisible();
+    await expect(panel.getByText('trigger-model-from-report', { exact: true })).toBeVisible();
+    await expect(panel.getByText('4.80s', { exact: true })).toBeVisible();
+    await expect(panel.getByText('已完成', { exact: true })).toBeVisible();
+    await expect(panel.getByText('正向触发率', { exact: true })).toHaveCount(0);
+    await expect(panel.getByText('反向误触发率', { exact: true })).toHaveCount(0);
     await expect(panel.getByText('66.67', { exact: true }).first()).toBeVisible();
     const versionSelect = panel.getByRole('combobox', { name: '版本', exact: true });
     await versionSelect.click();
@@ -320,13 +327,49 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await expect(page.getByRole('option', { name: '0.8.0 未评测', exact: true })).toBeVisible();
     await versionSelect.press('Escape');
     await panel.getByRole('tab', { name: '质量评测' }).click();
+    await expect(panel.getByText('quality-model-from-report', { exact: true })).toBeVisible();
     await expect(panel.getByText('3.20s', { exact: true })).toBeVisible();
+    const distributionAxes = panel.locator('.behavior-distribution__axis');
+    await expect(distributionAxes).toHaveCount(2);
+    await expect(distributionAxes.nth(0).locator('span')).toHaveText(['4', '3', '2', '1', '0']);
+    await expect(distributionAxes.nth(1).locator('span')).toHaveText(['4', '3', '2', '1', '0']);
+    await expect(panel.locator('.behavior-distribution__x').nth(0).locator('span')).toHaveText([
+      '<60s',
+      '60-120s',
+      '120-300s',
+      '>300s',
+    ]);
+    const distributionAlignmentOffsets = await panel
+      .locator('.behavior-distribution')
+      .evaluateAll((charts) =>
+        charts.flatMap((chart) => {
+          const bars = [...chart.querySelectorAll<HTMLElement>('.behavior-distribution__bar')];
+          const labels = [...chart.querySelectorAll<HTMLElement>('.behavior-distribution__x span')];
+          return bars.map((bar, index) => {
+            const barBox = bar.getBoundingClientRect();
+            const labelBox = labels[index]!.getBoundingClientRect();
+            return Math.abs(barBox.left + barBox.width / 2 - (labelBox.left + labelBox.width / 2));
+          });
+        }),
+      );
+    expect(Math.max(...distributionAlignmentOffsets)).toBeLessThanOrEqual(1);
     await panel.getByRole('button', { name: /展开用例 Q-001/ }).click();
     await expect(panel.getByText('风险识别准确', { exact: true })).toBeVisible();
 
     await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
     const trendDialog = page.getByRole('dialog', { name: '版本通过率趋势' });
-    await expect(trendDialog.getByText('触发评测准确率', { exact: true })).toBeVisible();
+    await expect(trendDialog.getByText(`${SKILL_NAME} · 全部版本`, { exact: true })).toBeVisible();
+    await expect(trendDialog.getByText('触发准确率', { exact: true })).toBeVisible();
+    await expect(trendDialog).toHaveCSS('width', '720px');
+    await expect(trendDialog).toHaveCSS('overflow', 'hidden');
+    await expect(trendDialog.locator('.behavior-dialog__header')).toHaveCSS('padding', '18px 22px');
+    const trendCharts = trendDialog.locator('.behavior-trend-chart svg');
+    await expect(trendCharts).toHaveCount(2);
+    await expect(trendCharts.nth(0)).toHaveCSS('height', '170px');
+    await expect(trendCharts.nth(1)).toHaveCSS('height', '170px');
+    await expect(
+      trendDialog.getByText('每个版本展示该模式下最新一次已完成评测。', { exact: true }),
+    ).toHaveCount(0);
     await expect(trendDialog.getByText(/v0\.7\.0/).first()).toBeVisible();
     await trendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
     expect(
@@ -334,21 +377,53 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     ).toHaveLength(1);
 
     await panel.getByRole('button', { name: '发起评测', exact: true }).click();
-    const triggerDialog = page.getByRole('dialog', { name: '发起行为评测' });
+    const triggerDialog = page.getByRole('dialog', { name: '发起质量评测' });
+    await expect(
+      triggerDialog.getByText('选择要触发的评测类型（可单选 / 多选），结果一次性全量返回', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      triggerDialog.getByText(
+        '在各类对话输入下，检验本 Skill 是否被正确激活，并统计误触发（不应触发却触发）与漏触发（应触发却未触发）。关注路由准确率，不评估输出内容质量。',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      triggerDialog.getByText(
+        '在已触发的前提下，检验 Skill 输出的准确性、完整性与合规性，对每个用例打分并给出评分分析。关注内容质量，不评估触发路由。',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      triggerDialog.getByText(
+        '🔒 每个版本每种评测仅可触发一次；已成功的不允许重复，仅上次失败时可重试。',
+        { exact: true },
+      ),
+    ).toBeVisible();
     await triggerDialog.getByRole('checkbox', { name: /检验输出质量/ }).check();
     await triggerDialog.getByRole('button', { name: '触发', exact: true }).click();
     await expect(panel.getByText('质量评测进行中', { exact: true })).toBeVisible();
+    await expect(panel.getByText(/页面每 30 秒自动刷新/)).toHaveCount(0);
 
     await panel.getByRole('button', { name: '发起评测', exact: true }).click();
-    const duplicateDialog = page.getByRole('dialog', { name: '发起行为评测' });
+    const duplicateDialog = page.getByRole('dialog', { name: '发起质量评测' });
     await expect(duplicateDialog.getByRole('checkbox', { name: /检验输出质量/ })).toBeDisabled();
     await expect(duplicateDialog.getByRole('checkbox', { name: /检验触发准确性/ })).toBeEnabled();
+    await expect(duplicateDialog.getByText('当前评测进行中', { exact: true })).toHaveCount(0);
     await duplicateDialog.getByRole('button', { name: '取消', exact: true }).click();
 
     const qualityQueryCountBeforeRefresh = behaviorRequests.filter((request) => {
       const url = new URL(request.url());
       return request.method() === 'GET' && url.searchParams.get('mode') === 'QUALITY';
     }).length;
+    await page.clock.fastForward(30_000);
+    expect(
+      behaviorRequests.filter((request) => {
+        const url = new URL(request.url());
+        return request.method() === 'GET' && url.searchParams.get('mode') === 'QUALITY';
+      }),
+    ).toHaveLength(qualityQueryCountBeforeRefresh);
     await panel
       .locator('.behavior-state.is-running')
       .getByRole('button', { name: '刷新状态' })
@@ -386,7 +461,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await expect(panel.getByText('触发评测失败', { exact: true })).toBeVisible();
     await expect(panel.getByText('外部评测服务执行失败', { exact: true })).toBeVisible();
     await panel.getByRole('button', { name: '重新发起', exact: true }).click();
-    const retryDialog = page.getByRole('dialog', { name: '发起行为评测' });
+    const retryDialog = page.getByRole('dialog', { name: '发起质量评测' });
     await expect(retryDialog.getByRole('checkbox', { name: /检验触发准确性/ })).toBeEnabled();
     await retryDialog.getByRole('button', { name: '取消', exact: true }).click();
   });
