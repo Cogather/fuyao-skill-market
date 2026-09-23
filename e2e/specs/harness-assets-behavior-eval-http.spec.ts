@@ -315,7 +315,12 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
 
     await expect(panel.getByText('触发结果构成', { exact: true })).toBeVisible();
     await expect(panel.getByText('trigger-model-from-report', { exact: true })).toBeVisible();
-    await expect(panel.getByText('4.80s', { exact: true })).toBeVisible();
+    const triggerCaseTotalSummary = panel.locator('.behavior-summary__item').nth(1);
+    await expect(triggerCaseTotalSummary.getByText('用例总数', { exact: true })).toBeVisible();
+    await expect(triggerCaseTotalSummary.locator('strong')).toHaveText('2');
+    await expect(triggerCaseTotalSummary.locator('.behavior-summary__value span')).toHaveText('条');
+    await expect(triggerCaseTotalSummary.locator('p')).toHaveCount(0);
+    await expect(panel.getByText('4.80s', { exact: true })).toHaveCount(0);
     await expect(panel.getByText('已完成', { exact: true })).toBeVisible();
     await expect(panel.getByText('正向触发率', { exact: true })).toHaveCount(0);
     await expect(panel.getByText('反向误触发率', { exact: true })).toHaveCount(0);

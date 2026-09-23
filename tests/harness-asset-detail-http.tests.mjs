@@ -14,8 +14,18 @@ const scope = {
   product: { id: 'product-1', name: 'udm', departmentPath: ['研发部'] },
 };
 const versions = [
-  { version: '1.0.0', uploadedAt: '2026-09-02 12:00:00', uploadedBy: 'u007' },
-  { version: '2.0.0', uploadedAt: null, uploadedBy: 'u002' },
+  {
+    version: '1.0.0',
+    uploadedAt: '2026-09-02 12:00:00',
+    uploadedBy: 'u007',
+    reportUrl: 'https://git.example.com/udm/source?version=1.0.0',
+  },
+  {
+    version: '2.0.0',
+    uploadedAt: null,
+    uploadedBy: 'u002',
+    reportUrl: 'https://git.example.com/udm/source?version=2.0.0',
+  },
 ];
 
 try {
@@ -93,7 +103,7 @@ try {
     const detail = await api.queryDetail(scope, currentAsset, undefined, { includeFiles: false });
     assert.deepEqual(calls, [
       {
-        url: '/components/detail',
+        url: '/v1/harness/plans/components/detail',
         method: 'get',
         params: { userId: 'user-001', type: type.toUpperCase(), name: currentAsset.name },
       },
@@ -194,7 +204,7 @@ try {
   assert.equal(latestDetail.version, '1.0.0', 'select latest upload from fresh component detail');
   assert.deepEqual(
     calls.map((call) => call.url),
-    ['/components/detail', '/extensions/version-history'],
+    ['/v1/harness/plans/components/detail', '/extensions/version-history'],
   );
   assert.deepEqual(versionHistoryCalls[0], {
     url: '/extensions/version-history',

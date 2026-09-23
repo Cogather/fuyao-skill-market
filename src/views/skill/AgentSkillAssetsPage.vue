@@ -432,6 +432,16 @@ const selectedVersionDetail = computed(() => {
 const selectedVersionUploadedAt = computed(() => {
   return formatCompactDateTime(selectedVersionDetail.value?.uploadedAt);
 });
+const selectedVersionReportUrl = computed(() => {
+  const value = selectedVersionDetail.value?.reportUrl?.trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+});
 const selectedVersionPublisher = computed(
   () => firstNonBlankText([selectedAsset.value?.publisher]) || '—',
 );
@@ -1474,6 +1484,16 @@ onBeforeUnmount(() => {
               </span>
               <span class="asset-detail__uploaded-at">
                 上传时间：<strong>{{ selectedVersionUploadedAt }}</strong>
+              </span>
+              <span v-if="selectedVersionReportUrl" class="asset-detail__source-repository">
+                来源仓：
+                <a
+                  :href="selectedVersionReportUrl"
+                  :title="selectedVersionReportUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >{{ selectedVersionReportUrl }}</a
+                >
               </span>
             </div>
           </section>
@@ -2797,6 +2817,33 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.asset-detail__source-repository {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.asset-detail__source-repository a {
+  max-width: min(420px, 35vw);
+  overflow: hidden;
+  color: #356ae6;
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-detail__source-repository a:hover {
+  text-decoration: underline;
+}
+
+.asset-detail__source-repository a:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid #8bb8ff;
+  outline-offset: 2px;
+}
+
 .asset-field {
   display: block;
   margin-bottom: 12.8px;
@@ -2940,6 +2987,10 @@ onBeforeUnmount(() => {
   .asset-detail__version-meta {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .asset-detail__source-repository a {
+    max-width: 100%;
   }
 
   .asset-detail__version-row :deep(.harness-version-picker__trigger) {

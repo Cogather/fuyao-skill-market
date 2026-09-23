@@ -682,11 +682,14 @@ onBeforeUnmount(() => {
             </div>
           </article>
           <article class="behavior-summary__item">
-            <small>总耗时</small>
+            <small>{{ activeKind === 'trigger' ? '用例总数' : '总耗时' }}</small>
             <div class="behavior-summary__value is-text">
-              <strong>{{ currentReport.total_cost_time }}</strong>
+              <strong>{{
+                activeKind === 'trigger' ? currentTotal : currentReport.total_cost_time
+              }}</strong>
+              <span v-if="activeKind === 'trigger'">条</span>
             </div>
-            <p>全部用例累计执行时间</p>
+            <p v-if="activeKind === 'quality'">全部用例累计执行时间</p>
           </article>
           <article class="behavior-summary__item">
             <small>任务完成状态</small>

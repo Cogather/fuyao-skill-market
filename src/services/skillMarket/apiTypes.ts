@@ -830,7 +830,13 @@ export type HarnessAssetComponentDetailDto = {
   type: QueryHarnessAssetComponentsBody['type'];
   firstScene: string | null;
   secondScene: string | null;
-  versions: Array<{ version: string; uploadedAt: string | null; uploadedBy: string }>;
+  versions: Array<{
+    version: string;
+    uploadedAt: string | null;
+    uploadedBy: string;
+    /** 当前版本对应的来源仓地址。 */
+    reportUrl?: string | null;
+  }>;
 };
 
 export type QueryExtensionVersionHistoryParams = {

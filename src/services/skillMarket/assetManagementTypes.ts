@@ -83,6 +83,7 @@ export type HarnessAssetVersionDetail = {
   uploadedAt: string | null;
   uploadedBy?: string;
   status?: string;
+  reportUrl?: string | null;
 };
 
 export type HarnessAsset = {
@@ -192,9 +193,7 @@ export type PublishHarnessAssetInput = {
 
 export interface HarnessAssetApi {
   updateDetails(input: UpdateHarnessAssetDetailsInput): Promise<HarnessAssetDetailsUpdate>;
-  fetchPlannedCompleteDate(
-    input: FetchHarnessAssetPlannedCompleteDateInput,
-  ): Promise<string>;
+  fetchPlannedCompleteDate(input: FetchHarnessAssetPlannedCompleteDateInput): Promise<string>;
   deleteAsset(input: DeleteHarnessAssetInput): Promise<void>;
   updatePerson(input: UpdateHarnessAssetPersonInput): Promise<string>;
   queryProducts(
