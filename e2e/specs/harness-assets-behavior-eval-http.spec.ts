@@ -135,6 +135,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
             { version: '1.10.0', uploadedAt: '2026-09-20 12:00:00', uploadedBy: 'u002' },
             { version: '0.9.0', uploadedAt: '2026-09-18 12:00:00', uploadedBy: 'u002' },
             { version: '0.8.0', uploadedAt: '2026-09-17 12:00:00', uploadedBy: 'u002' },
+            { version: '0.7.0', uploadedAt: '2026-09-16 12:00:00', uploadedBy: 'u002' },
           ],
         }),
       }),
@@ -202,11 +203,37 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
             creator: 'http-user-001',
             creatorName: 'HTTP 测试用户',
             taskId: 'failed-trigger',
-            state: 'failed',
+            state: 'completed',
             report: null,
             error: '外部评测服务执行失败',
             createTime: '2026-09-17 13:00:00',
             updateTime: '2026-09-17 13:01:00',
+          }),
+        });
+      }
+      if (url.searchParams.get('version') === '0.7.0') {
+        if (mode === 'QUALITY') {
+          return route.fulfill({
+            json: {
+              meta: { success: false, message: '未找到该版本的评测记录' },
+              data: null,
+            },
+          });
+        }
+        return route.fulfill({
+          json: envelope({
+            id: 4,
+            skillName: SKILL_NAME,
+            version: '0.7.0',
+            mode: 'TRIGGER',
+            creator: 'http-user-001',
+            creatorName: 'HTTP 测试用户',
+            taskId: 'report-pending-trigger',
+            state: 'completed',
+            report: null,
+            error: null,
+            createTime: '2026-09-16 13:00:00',
+            updateTime: '2026-09-16 13:01:00',
           }),
         });
       }
@@ -460,6 +487,14 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await versionSelect.click();
     await page.getByRole('option', { name: '0.9.0 未评测', exact: true }).click();
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
+
+    await versionSelect.click();
+    await page.getByRole('option', { name: /^0\.7\.0 / }).click();
+    await expect(panel.getByText('触发评测进行中', { exact: true })).toBeVisible();
+    await expect(panel.getByText('评测报告格式不完整', { exact: true })).toHaveCount(0);
+    await expect(
+      panel.locator('.behavior-state.is-running').getByRole('button', { name: '刷新状态' }),
+    ).toBeVisible();
 
     await versionSelect.click();
     await page.getByRole('option', { name: /^0\.8\.0 / }).click();

@@ -9,7 +9,6 @@ import type {
   SkillTriggerEvaluationCase,
 } from '../../services/skillMarket/mock/skillBehaviorEvaluation';
 import {
-  isSkillBehaviorEvaluationInProgress,
   querySkillBehaviorEvaluation,
   querySkillBehaviorEvaluationTrend,
   triggerSkillBehaviorEvaluation,
@@ -73,13 +72,13 @@ const currentState = computed(() => modeStates[activeKind.value]);
 const currentRecord = computed(() => currentState.value.record);
 const triggerReport = computed<SkillTriggerEvaluationReportDto | null>(() => {
   const record = modeStates.trigger.record;
-  return record?.mode === 'TRIGGER' && record.state === 'completed'
+  return record?.mode === 'TRIGGER' && record.report
     ? (record.report as SkillTriggerEvaluationReportDto | null)
     : null;
 });
 const qualityReport = computed<SkillQualityEvaluationReportDto | null>(() => {
   const record = modeStates.quality.record;
-  return record?.mode === 'QUALITY' && record.state === 'completed'
+  return record?.mode === 'QUALITY' && record.report
     ? (record.report as SkillQualityEvaluationReportDto | null)
     : null;
 });
@@ -230,13 +229,14 @@ const behaviorVersionStatuses = computed<Record<string, string>>(() => {
       const normalized = normalizedVersion(version);
       if (normalized === normalizedVersion(props.version)) {
         const records = [modeStates.trigger.record, modeStates.quality.record];
-        if (records.some((record) => isSkillBehaviorEvaluationInProgress(record?.state))) {
+        if (isModePending('trigger') || isModePending('quality')) {
           return [version, '进行中'];
         }
-        const completed = records.filter((record) => record?.state === 'completed').length;
+        const completed =
+          Number(Boolean(triggerReport.value)) + Number(Boolean(qualityReport.value));
         if (completed === 2) return [version, '已评测'];
         if (completed === 1) return [version, '部分评测'];
-        if (records.some((record) => record?.state === 'failed')) return [version, '失败'];
+        if (records.some((record) => hasEvaluationError(record))) return [version, '失败'];
         return [version, '未评测'];
       }
       const completed =
@@ -265,16 +265,23 @@ function apiMode(kind: SkillBehaviorEvaluationKind): SkillBehaviorEvaluationMode
 }
 
 function isModeBusy(kind: SkillBehaviorEvaluationKind): boolean {
-  return (
-    submittingTypes.value.includes(kind) ||
-    isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state)
-  );
+  return submittingTypes.value.includes(kind) || isModePending(kind);
+}
+
+function hasEvaluationError(record: SkillBehaviorEvaluationRecordDto | null): boolean {
+  return record?.error !== null && record?.error !== undefined;
+}
+
+function isModePending(kind: SkillBehaviorEvaluationKind): boolean {
+  const record = modeStates[kind].record;
+  const report = kind === 'trigger' ? triggerReport.value : qualityReport.value;
+  return Boolean(record && !report && !hasEvaluationError(record));
 }
 
 function stateLabel(record: SkillBehaviorEvaluationRecordDto | null): string {
   if (!record) return '未评测';
-  if (isSkillBehaviorEvaluationInProgress(record.state)) return '进行中';
-  return record.state === 'completed' ? '已完成' : '失败';
+  if (hasEvaluationError(record)) return '失败';
+  return record.report ? '已完成' : '进行中';
 }
 
 function toggleCase(kind: SkillBehaviorEvaluationKind, id: string): void {
@@ -582,7 +589,7 @@ onBeforeUnmount(() => {
             版本趋势
           </button>
           <button
-            v-if="currentRecord && isSkillBehaviorEvaluationInProgress(currentRecord.state)"
+            v-if="isModePending(activeKind)"
             type="button"
             class="behavior-button"
             :disabled="currentState.loading"
@@ -640,7 +647,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
-        v-else-if="isSkillBehaviorEvaluationInProgress(currentRecord.state)"
+        v-else-if="isModePending(activeKind)"
         class="behavior-state is-running"
         role="status"
       >
@@ -651,7 +658,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
-        v-else-if="currentRecord.state === 'failed'"
+        v-else-if="hasEvaluationError(currentRecord)"
         class="behavior-state is-error"
         role="alert"
       >
@@ -1095,11 +1102,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </template>
-      <section v-else class="behavior-state is-error" role="alert">
-        <strong>评测报告格式不完整</strong>
-        <p>任务已完成，但接口未返回当前模式的有效报告，请刷新后重试。</p>
-        <button type="button" class="behavior-button" @click="refreshCurrentMode">刷新报告</button>
-      </section>
     </section>
 
     <Teleport to="body">
