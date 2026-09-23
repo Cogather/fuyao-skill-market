@@ -37,7 +37,6 @@ const instanceId = useId();
 const activeKind = ref<SkillBehaviorEvaluationKind>('trigger');
 const triggerFilter = ref<SkillBehaviorCaseFilter>('all');
 const qualityFilter = ref<SkillBehaviorCaseFilter>('all');
-const expandedTriggerCases = ref<string[]>([]);
 const expandedQualityCases = ref<string[]>([]);
 const activeDialog = ref<'trigger' | 'trend' | null>(null);
 const selectedTypes = ref<SkillBehaviorEvaluationKind[]>([]);
@@ -276,17 +275,14 @@ function stateLabel(record: SkillBehaviorEvaluationRecordDto | null): string {
   return record.state === 'completed' ? '已完成' : '失败';
 }
 
-function toggleCase(kind: SkillBehaviorEvaluationKind, id: string): void {
-  const target = kind === 'trigger' ? expandedTriggerCases : expandedQualityCases;
-  target.value = target.value.includes(id)
-    ? target.value.filter((value) => value !== id)
-    : [...target.value, id];
+function toggleQualityCase(id: string): void {
+  expandedQualityCases.value = expandedQualityCases.value.includes(id)
+    ? expandedQualityCases.value.filter((value) => value !== id)
+    : [...expandedQualityCases.value, id];
 }
 
-function isCaseExpanded(kind: SkillBehaviorEvaluationKind, id: string): boolean {
-  return (kind === 'trigger' ? expandedTriggerCases.value : expandedQualityCases.value).includes(
-    id,
-  );
+function isQualityCaseExpanded(id: string): boolean {
+  return expandedQualityCases.value.includes(id);
 }
 
 function openDialog(kind: 'trigger' | 'trend', event?: Event): void {
@@ -486,7 +482,6 @@ watch(
     activeKind.value = 'trigger';
     triggerFilter.value = 'all';
     qualityFilter.value = 'all';
-    expandedTriggerCases.value = [];
     expandedQualityCases.value = [];
     activeDialog.value = null;
     modeStates.trigger.record = null;
@@ -810,7 +805,7 @@ onBeforeUnmount(() => {
           <header class="behavior-section-heading">
             <div>
               <h3>用例明细</h3>
-              <p>展开用例查看期望与实际描述</p>
+              <p>查看各用例的期望触发、实际触发与结果</p>
             </div>
           </header>
           <div class="behavior-case-filters" aria-label="触发评测用例筛选">
@@ -846,64 +841,35 @@ onBeforeUnmount(() => {
                   <th>期望触发</th>
                   <th>实际触发</th>
                   <th>结果</th>
-                  <th><span class="sr-only">操作</span></th>
                 </tr>
               </thead>
               <tbody>
-                <template v-for="item in filteredTriggerCases" :key="item.id">
-                  <tr>
-                    <td class="behavior-case-id">{{ item.id }}</td>
-                    <td class="behavior-case-task">{{ item.task }}</td>
-                    <td>
-                      <span
-                        class="behavior-case-type"
-                        :class="item.type === '正向' ? 'is-positive' : 'is-negative'"
-                        >{{ item.type }}</span
-                      >
-                    </td>
-                    <td>
-                      <span :class="item.expected ? 'is-yes' : 'is-no'">{{
-                        item.expected ? '是' : '否'
-                      }}</span>
-                    </td>
-                    <td>
-                      <span :class="item.actual ? 'is-yes' : 'is-no'">{{
-                        item.actual ? '是' : '否'
-                      }}</span>
-                    </td>
-                    <td>
-                      <span class="behavior-result" :class="item.passed ? 'is-pass' : 'is-fail'">{{
-                        item.passed ? '通过' : '不通过'
-                      }}</span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="behavior-case-toggle"
-                        :aria-expanded="isCaseExpanded('trigger', item.id)"
-                        :aria-controls="`${instanceId}-trigger-${item.id}`"
-                        :aria-label="`${isCaseExpanded('trigger', item.id) ? '收起' : '展开'}用例 ${item.id}`"
-                        @click="toggleCase('trigger', item.id)"
-                      >
-                        {{ isCaseExpanded('trigger', item.id) ? '收起' : '展开' }}
-                      </button>
-                    </td>
-                  </tr>
-                  <tr
-                    v-if="isCaseExpanded('trigger', item.id)"
-                    :id="`${instanceId}-trigger-${item.id}`"
-                    class="behavior-case-detail"
-                  >
-                    <td colspan="7">
-                      <div class="behavior-case-detail__grid">
-                        <article v-for="detail in item.details" :key="detail.label">
-                          <strong>{{ detail.label }}</strong>
-                          <p>{{ detail.content }}</p>
-                        </article>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
+                <tr v-for="item in filteredTriggerCases" :key="item.id">
+                  <td class="behavior-case-id">{{ item.id }}</td>
+                  <td class="behavior-case-task">{{ item.task }}</td>
+                  <td>
+                    <span
+                      class="behavior-case-type"
+                      :class="item.type === '正向' ? 'is-positive' : 'is-negative'"
+                      >{{ item.type }}</span
+                    >
+                  </td>
+                  <td>
+                    <span :class="item.expected ? 'is-yes' : 'is-no'">{{
+                      item.expected ? '是' : '否'
+                    }}</span>
+                  </td>
+                  <td>
+                    <span :class="item.actual ? 'is-yes' : 'is-no'">{{
+                      item.actual ? '是' : '否'
+                    }}</span>
+                  </td>
+                  <td>
+                    <span class="behavior-result" :class="item.passed ? 'is-pass' : 'is-fail'">{{
+                      item.passed ? '通过' : '不通过'
+                    }}</span>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1078,17 +1044,17 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="behavior-case-toggle"
-                        :aria-expanded="isCaseExpanded('quality', item.id)"
+                        :aria-expanded="isQualityCaseExpanded(item.id)"
                         :aria-controls="`${instanceId}-quality-${item.id}`"
-                        :aria-label="`${isCaseExpanded('quality', item.id) ? '收起' : '展开'}用例 ${item.id}`"
-                        @click="toggleCase('quality', item.id)"
+                        :aria-label="`${isQualityCaseExpanded(item.id) ? '收起' : '展开'}用例 ${item.id}`"
+                        @click="toggleQualityCase(item.id)"
                       >
-                        {{ isCaseExpanded('quality', item.id) ? '收起' : '展开' }}
+                        {{ isQualityCaseExpanded(item.id) ? '收起' : '展开' }}
                       </button>
                     </td>
                   </tr>
                   <tr
-                    v-if="isCaseExpanded('quality', item.id)"
+                    v-if="isQualityCaseExpanded(item.id)"
                     :id="`${instanceId}-quality-${item.id}`"
                     class="behavior-case-detail is-quality"
                   >

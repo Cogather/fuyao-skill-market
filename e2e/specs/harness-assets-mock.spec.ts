@@ -472,12 +472,17 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await panel.getByRole('button', { name: '不通过 2', exact: true }).click();
     await expect(panel.getByText('TC-T-007', { exact: true })).toBeVisible();
     await expect(panel.getByText('TC-T-001', { exact: true })).toBeHidden();
-    const triggerCaseToggle = panel.getByRole('button', { name: '展开用例 TC-T-007' });
-    await triggerCaseToggle.click();
-    const expandedTriggerCaseToggle = panel.getByRole('button', { name: '收起用例 TC-T-007' });
-    await expect(expandedTriggerCaseToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(panel.getByText('未触发当前 Skill', { exact: true })).toBeVisible();
-    await expandedTriggerCaseToggle.click();
+    const triggerTable = panel.locator('#behavior-panel-trigger .behavior-case-table');
+    await expect(triggerTable.locator('th')).toHaveText([
+      '用例 ID',
+      '任务描述',
+      '类型',
+      '期望触发',
+      '实际触发',
+      '结果',
+    ]);
+    await expect(triggerTable.locator('.behavior-case-toggle')).toHaveCount(0);
+    await expect(panel.getByText('未触发当前 Skill', { exact: true })).toHaveCount(0);
 
     await panel.getByRole('tab', { name: '质量评测', exact: true }).click();
     await expect(panel.getByText('评测画像', { exact: true })).toBeVisible();
