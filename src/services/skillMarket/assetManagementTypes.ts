@@ -84,6 +84,7 @@ export type HarnessAssetVersionDetail = {
   uploadedBy?: string;
   status?: string;
   reportUrl?: string | null;
+  repoUrl?: string | null;
 };
 
 export type HarnessAsset = {

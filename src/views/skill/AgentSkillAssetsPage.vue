@@ -433,7 +433,8 @@ const selectedVersionUploadedAt = computed(() => {
   return formatCompactDateTime(selectedVersionDetail.value?.uploadedAt);
 });
 const selectedVersionReportUrl = computed(() => {
-  const value = selectedVersionDetail.value?.reportUrl?.trim();
+  const value =
+    selectedVersionDetail.value?.reportUrl?.trim() || selectedVersionDetail.value?.repoUrl?.trim();
   if (!value) return '';
   try {
     const url = new URL(value);

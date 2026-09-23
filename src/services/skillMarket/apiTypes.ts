@@ -836,6 +836,8 @@ export type HarnessAssetComponentDetailDto = {
     uploadedBy: string;
     /** 当前版本对应的来源仓地址。 */
     reportUrl?: string | null;
+    /** 兼容部分环境返回的来源仓字段名。 */
+    repoUrl?: string | null;
   }>;
 };
 

@@ -43,12 +43,19 @@ try {
           uploadedAt: '2026-09-23 10:00:00',
           uploadedBy: 'u001',
           reportUrl: ' https://git.example.com/team/source?version=1.2.0 ',
+          repoUrl: 'https://git.example.com/team/wrong-fallback?version=1.2.0',
         },
         {
           version: '1.1.0',
           uploadedAt: null,
           uploadedBy: 'u001',
           reportUrl: 'javascript:alert(1)',
+        },
+        {
+          version: '1.0.0',
+          uploadedAt: null,
+          uploadedBy: 'u001',
+          repoUrl: ' https://git.example.com/team/source?version=1.0.0 ',
         },
       ],
     },
@@ -64,6 +71,12 @@ try {
     bindings.selectedVersionReportUrl.value,
     '',
     'unsafe source repository protocols are not rendered as links',
+  );
+  bindings.selectedVersion.value = '1.0.0';
+  assert.equal(
+    bindings.selectedVersionReportUrl.value,
+    'https://git.example.com/team/source?version=1.0.0',
+    'repoUrl remains compatible when reportUrl is absent',
   );
   console.log('PASS asset detail source repository follows the selected version safely');
 } finally {
