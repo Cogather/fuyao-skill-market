@@ -195,6 +195,14 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       await expect(card.getByText('已发布', { exact: true })).toBeVisible();
       await card.click();
 
+      const sourceRepository = page.locator('.asset-detail__source-repository a');
+      await expect(sourceRepository).toBeVisible();
+      await expect(sourceRepository).toHaveAttribute(
+        'href',
+        new RegExp(`^https://git\\.example\\.com/fuyao/${sample.type.toLocaleLowerCase()}/`),
+      );
+      await expect(sourceRepository).toHaveAttribute('target', '_blank');
+
       const versionSelect = page
         .locator('.asset-detail')
         .getByRole('combobox', { name: '版本', exact: true });

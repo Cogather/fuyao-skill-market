@@ -192,6 +192,10 @@ function recordMatchesScope(
   return record.department === scope.department.name || path.includes(record.department);
 }
 
+function mockSourceRepositoryUrl(type: HarnessAssetType, assetId: string, version: string): string {
+  return `https://git.example.com/fuyao/${type.toLocaleLowerCase()}/${encodeURIComponent(assetId)}?ref=${encodeURIComponent(version)}`;
+}
+
 function atomicAsset(
   type: HarnessAtomicAssetType,
   record: SkillMasterRecord,
@@ -206,14 +210,24 @@ function atomicAsset(
   const developingWithoutVersion =
     !currentVersion && ['未开始', '开发中', '进行中', '联调中'].includes(record.status);
   let versionDetails = (record.versions ?? [])
-    .map((item) => ({
-      version: normalizeHarnessAssetVersion(item.version),
-      uploadedAt: item.uploadedAt || null,
-      ...(published ? { status: '已发布' } : {}),
-    }))
+    .map((item) => {
+      const version = normalizeHarnessAssetVersion(item.version);
+      return {
+        version,
+        uploadedAt: item.uploadedAt || null,
+        reportUrl: item.repoUrl?.trim() || mockSourceRepositoryUrl(type, record.id, version),
+        ...(published ? { status: '已发布' } : {}),
+      };
+    })
     .filter((item) => Boolean(item.version));
   if (canPublish && versionDetails.length === 0) {
-    versionDetails = [{ version: currentVersion, uploadedAt: record.updatedAt || null }];
+    versionDetails = [
+      {
+        version: currentVersion,
+        uploadedAt: record.updatedAt || null,
+        reportUrl: mockSourceRepositoryUrl(type, record.id, currentVersion),
+      },
+    ];
   }
   const versions = versionDetails.map((item) => item.version);
   const product = products.find((item) => item.name === record.product);
@@ -376,6 +390,7 @@ function extensionAsset(scene: ExtensionScene, product: HarnessAssetProduct): Ha
     return {
       version,
       uploadedAt: release?.publishedAt ?? null,
+      reportUrl: mockSourceRepositoryUrl('Extension', scene.id, version),
       ...(release
         ? {
             uploadedBy: `${release.operator.name} ${release.operator.no}`.trim(),
