@@ -1413,7 +1413,7 @@ onBeforeUnmount(() => {
             aria-controls="catalog-detail-panel-evaluation"
             @click="detailTab = 'report'"
           >
-            评估报告
+            静态评估
           </button>
           <button
             v-if="selectedAsset.assetType === 'Skill'"
@@ -1425,7 +1425,7 @@ onBeforeUnmount(() => {
             aria-controls="asset-detail-panel-behavior"
             @click="detailTab = 'behavior'"
           >
-            行为评测
+            动态评估
           </button>
           <button
             v-if="selectedAsset.assetType === 'Extension' && canViewAssetHistory(selectedAsset)"

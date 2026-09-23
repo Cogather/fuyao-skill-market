@@ -381,8 +381,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       `当前版本：${versions.at(-1)}`,
     );
 
-    await detail.getByRole('tab', { name: '评估报告' }).click();
-    const report = detail.getByRole('tabpanel', { name: '评估报告' });
+    await detail.getByRole('tab', { name: '静态评估' }).click();
+    const report = detail.getByRole('tabpanel', { name: '静态评估' });
     await expect(report.getByText('综合得分', { exact: true })).toBeVisible();
     await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText(
       /^\d+(?:\.\d+)?$/,
@@ -420,20 +420,20 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
 
     const detail = page.locator('.asset-detail');
     const detailTabs = detail.getByRole('tablist', { name: '资产详情分区' }).getByRole('tab');
-    await expect(detailTabs).toHaveText(['内容', '评估报告', '行为评测', '发布记录']);
+    await expect(detailTabs).toHaveText(['内容', '静态评估', '动态评估', '发布记录']);
     await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
     await expect(detail.locator('.asset-detail__version-panel')).toBeVisible();
-    await detail.getByRole('tab', { name: '评估报告', exact: true }).click();
+    await detail.getByRole('tab', { name: '静态评估', exact: true }).click();
     await expect(detail.locator('.catalog-evaluation-panel')).toBeVisible();
     await expect(detail.locator('.asset-detail__version')).toBeVisible();
     await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
 
-    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
-    await expect(detail.getByRole('tab', { name: '行为评测', exact: true })).toHaveAttribute(
+    await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
+    await expect(detail.getByRole('tab', { name: '动态评估', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    const panel = detail.getByRole('tabpanel', { name: '动态评估', exact: true });
     await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
     await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
     await expect(detail.locator('.catalog-detail-capability')).toBeHidden();
@@ -527,16 +527,19 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await assetCard(page, '流水线失败诊断 Skill').click();
 
     const detail = page.locator('.asset-detail');
-    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
-    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
+    const panel = detail.getByRole('tabpanel', { name: '动态评估', exact: true });
     const versionSelect = detail.getByRole('combobox', { name: '版本' });
     const triggerTab = panel.getByRole('tab', { name: '触发评测', exact: true });
     const qualityTab = panel.getByRole('tab', { name: '质量评测', exact: true });
     await expect(versionSelect).toContainText('1.1.0');
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v1\.1\.0 尚未发起该模式评测/)).toBeVisible();
-    await expect(triggerTab).toBeDisabled();
-    await expect(qualityTab).toBeDisabled();
+    await expect(triggerTab).toBeEnabled();
+    await expect(qualityTab).toBeEnabled();
+    await qualityTab.click();
+    await expect(panel.getByText('当前版本暂无质量评测数据', { exact: true })).toBeVisible();
+    await triggerTab.click();
     await expect(panel.getByRole('button', { name: '版本趋势', exact: true })).toBeEnabled();
     await expect(
       panel.locator('.behavior-card__actions').getByRole('button', {
@@ -563,24 +566,24 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
 
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v0\.9\.0 尚未发起该模式评测/)).toBeVisible();
-    await expect(triggerTab).toBeDisabled();
-    await expect(qualityTab).toBeDisabled();
+    await expect(triggerTab).toBeEnabled();
+    await expect(qualityTab).toBeEnabled();
     await panel.getByRole('status').getByRole('button', { name: '发起评测', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '发起质量评测', exact: true })).toBeVisible();
   });
 
-  test('Skill 无可用版本时禁用全部行为评测操作', async ({ page }) => {
+  test('Skill 无可用版本时保留评测类型切换并禁用数据操作', async ({ page }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
     await page.getByRole('button', { name: 'Skill', exact: true }).click();
     await assetCard(page, '发布回滚预案校验 Skill').click();
 
     const detail = page.locator('.asset-detail');
-    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
-    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
+    const panel = detail.getByRole('tabpanel', { name: '动态评估', exact: true });
 
     await expect(panel.getByRole('combobox', { name: '版本', exact: true })).toBeDisabled();
-    await expect(panel.getByRole('tab', { name: '触发评测', exact: true })).toBeDisabled();
-    await expect(panel.getByRole('tab', { name: '质量评测', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('tab', { name: '触发评测', exact: true })).toBeEnabled();
+    await expect(panel.getByRole('tab', { name: '质量评测', exact: true })).toBeEnabled();
     await expect(panel.getByRole('button', { name: '版本趋势', exact: true })).toBeDisabled();
     await expect(panel.getByRole('button', { name: '发起评测', exact: true })).toBeDisabled();
     await expect(panel.getByText('当前 Skill 暂无可用版本', { exact: true })).toBeVisible();
@@ -598,8 +601,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
         'background-color',
         'rgb(248, 250, 252)',
       );
-      await expect(detail.getByRole('tab', { name: '评估报告' })).toHaveCount(0);
-      await expect(detail.getByRole('tab', { name: '行为评测' })).toHaveCount(0);
+      await expect(detail.getByRole('tab', { name: '静态评估' })).toHaveCount(0);
+      await expect(detail.getByRole('tab', { name: '动态评估' })).toHaveCount(0);
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.locator('.asset-back').click();
     }

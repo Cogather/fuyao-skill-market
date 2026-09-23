@@ -6,7 +6,7 @@ import {
 
 export type SkillBehaviorEvaluationMode = 'TRIGGER' | 'QUALITY';
 export type SkillBehaviorEvaluationState =
-  'queuing' | 'pending' | 'running' | 'completed' | 'failed';
+  'queuing' | 'executing' | 'pending' | 'running' | 'completed' | 'failed';
 
 export interface SkillTriggerEvaluationResultDto {
   case_id: string;
@@ -242,7 +242,7 @@ function completedMockRecord(
 export function isSkillBehaviorEvaluationInProgress(
   state: SkillBehaviorEvaluationState | undefined,
 ): boolean {
-  return state === 'queuing' || state === 'pending' || state === 'running';
+  return Boolean(state && state !== 'completed' && state !== 'failed');
 }
 
 export function isSkillBehaviorEvaluationNotFound(error: unknown): boolean {

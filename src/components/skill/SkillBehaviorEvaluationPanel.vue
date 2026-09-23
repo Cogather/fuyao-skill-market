@@ -9,6 +9,7 @@ import type {
   SkillTriggerEvaluationCase,
 } from '../../services/skillMarket/mock/skillBehaviorEvaluation';
 import {
+  isSkillBehaviorEvaluationInProgress,
   querySkillBehaviorEvaluation,
   querySkillBehaviorEvaluationTrend,
   triggerSkillBehaviorEvaluation,
@@ -41,6 +42,7 @@ const expandedQualityCases = ref<string[]>([]);
 const activeDialog = ref<'trigger' | 'trend' | null>(null);
 const selectedTypes = ref<SkillBehaviorEvaluationKind[]>([]);
 const submittingTypes = ref<SkillBehaviorEvaluationKind[]>([]);
+const triggerDialogError = ref('');
 const returnFocus = ref<HTMLElement | null>(null);
 const triggerDialog = ref<HTMLElement | null>(null);
 const trendDialog = ref<HTMLElement | null>(null);
@@ -72,13 +74,13 @@ const currentState = computed(() => modeStates[activeKind.value]);
 const currentRecord = computed(() => currentState.value.record);
 const triggerReport = computed<SkillTriggerEvaluationReportDto | null>(() => {
   const record = modeStates.trigger.record;
-  return record?.mode === 'TRIGGER' && record.report
+  return record?.mode === 'TRIGGER' && record.state === 'completed'
     ? (record.report as SkillTriggerEvaluationReportDto | null)
     : null;
 });
 const qualityReport = computed<SkillQualityEvaluationReportDto | null>(() => {
   const record = modeStates.quality.record;
-  return record?.mode === 'QUALITY' && record.report
+  return record?.mode === 'QUALITY' && record.state === 'completed'
     ? (record.report as SkillQualityEvaluationReportDto | null)
     : null;
 });
@@ -232,11 +234,10 @@ const behaviorVersionStatuses = computed<Record<string, string>>(() => {
         if (isModePending('trigger') || isModePending('quality')) {
           return [version, '进行中'];
         }
-        const completed =
-          Number(Boolean(triggerReport.value)) + Number(Boolean(qualityReport.value));
+        const completed = records.filter((record) => record?.state === 'completed').length;
         if (completed === 2) return [version, '已评测'];
         if (completed === 1) return [version, '部分评测'];
-        if (records.some((record) => hasEvaluationError(record))) return [version, '失败'];
+        if (records.some((record) => record?.state === 'failed')) return [version, '失败'];
         return [version, '未评测'];
       }
       const completed =
@@ -245,9 +246,6 @@ const behaviorVersionStatuses = computed<Record<string, string>>(() => {
     }),
   );
 });
-const behaviorKindTabsDisabled = computed(
-  () => !hasAvailableVersion.value || behaviorVersionStatuses.value[props.version] === '未评测',
-);
 function matchesFilter(passed: boolean, filter: SkillBehaviorCaseFilter): boolean {
   return filter === 'all' || (filter === 'passed' ? passed : !passed);
 }
@@ -268,20 +266,14 @@ function isModeBusy(kind: SkillBehaviorEvaluationKind): boolean {
   return submittingTypes.value.includes(kind) || isModePending(kind);
 }
 
-function hasEvaluationError(record: SkillBehaviorEvaluationRecordDto | null): boolean {
-  return record?.error !== null && record?.error !== undefined;
-}
-
 function isModePending(kind: SkillBehaviorEvaluationKind): boolean {
-  const record = modeStates[kind].record;
-  const report = kind === 'trigger' ? triggerReport.value : qualityReport.value;
-  return Boolean(record && !report && !hasEvaluationError(record));
+  return isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state);
 }
 
 function stateLabel(record: SkillBehaviorEvaluationRecordDto | null): string {
   if (!record) return '未评测';
-  if (hasEvaluationError(record)) return '失败';
-  return record.report ? '已完成' : '进行中';
+  if (isSkillBehaviorEvaluationInProgress(record.state)) return '进行中';
+  return record.state === 'completed' ? '已完成' : '失败';
 }
 
 function toggleCase(kind: SkillBehaviorEvaluationKind, id: string): void {
@@ -299,7 +291,10 @@ function isCaseExpanded(kind: SkillBehaviorEvaluationKind, id: string): boolean 
 
 function openDialog(kind: 'trigger' | 'trend', event?: Event): void {
   returnFocus.value = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  if (kind === 'trigger') selectedTypes.value = [];
+  if (kind === 'trigger') {
+    selectedTypes.value = [];
+    triggerDialogError.value = '';
+  }
   activeDialog.value = kind;
   if (kind === 'trend') void loadTrend();
   nextTick(() => (kind === 'trigger' ? triggerDialogClose.value : trendDialogClose.value)?.focus());
@@ -312,6 +307,7 @@ function closeDialog(restoreFocus = true): void {
 
 async function confirmTrigger(): Promise<void> {
   if (!selectedTypes.value.length) return;
+  triggerDialogError.value = '';
   const kinds = [...selectedTypes.value];
   submittingTypes.value = [...new Set([...submittingTypes.value, ...kinds])];
   const results = await Promise.allSettled(
@@ -349,18 +345,29 @@ async function confirmTrigger(): Promise<void> {
         result.status === 'fulfilled',
     )
     .map((result) => result.value);
-  const failures = results.filter(
-    (result): result is PromiseRejectedResult => result.status === 'rejected',
-  );
-  if (succeeded.length) {
+  const failures = results.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return [];
+    return [
+      {
+        kind: kinds[index]!,
+        message: result.reason instanceof Error ? result.reason.message : '发起评测失败',
+      },
+    ];
+  });
+  if (!failures.length && succeeded.length) {
     emit(
       'notify',
       `已发起${succeeded.map((kind) => (kind === 'trigger' ? '触发评测' : '质量评测')).join('、')}`,
     );
     closeDialog();
   }
-  for (const failure of failures) {
-    emit('notify', failure.reason instanceof Error ? failure.reason.message : '发起评测失败');
+  if (failures.length) {
+    selectedTypes.value = failures.map((failure) => failure.kind);
+    triggerDialogError.value = failures
+      .map(
+        (failure) => `${failure.kind === 'trigger' ? '触发评测' : '质量评测'}：${failure.message}`,
+      )
+      .join('；');
   }
 }
 
@@ -557,7 +564,6 @@ onBeforeUnmount(() => {
               :class="{ 'is-active': activeKind === 'trigger' }"
               :aria-selected="activeKind === 'trigger'"
               aria-controls="behavior-panel-trigger"
-              :disabled="behaviorKindTabsDisabled"
               @click="activeKind = 'trigger'"
             >
               <span class="behavior-kind-tabs__dot is-trigger" aria-hidden="true" />触发评测
@@ -569,7 +575,6 @@ onBeforeUnmount(() => {
               :class="{ 'is-active': activeKind === 'quality' }"
               :aria-selected="activeKind === 'quality'"
               aria-controls="behavior-panel-quality"
-              :disabled="behaviorKindTabsDisabled"
               @click="activeKind = 'quality'"
             >
               <span class="behavior-kind-tabs__dot is-quality" aria-hidden="true" />质量评测
@@ -658,7 +663,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
-        v-else-if="hasEvaluationError(currentRecord)"
+        v-else-if="currentRecord.state === 'failed'"
         class="behavior-state is-error"
         role="alert"
       >
@@ -1178,6 +1183,10 @@ onBeforeUnmount(() => {
             <p class="behavior-dialog__hint">
               🔒 每个版本每种评测仅可触发一次；已成功的不允许重复，仅上次失败时可重试。
             </p>
+            <div v-if="triggerDialogError" class="behavior-dialog__error" role="alert">
+              <strong>发起评测失败</strong>
+              <p>{{ triggerDialogError }}</p>
+            </div>
           </div>
           <footer class="behavior-dialog__footer">
             <button type="button" class="behavior-button" @click="closeDialog()">取消</button>
@@ -2303,6 +2312,23 @@ onBeforeUnmount(() => {
   margin: 12px 0 0;
   color: #52647d;
   font-size: 11.5px;
+}
+.behavior-dialog__error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f3b9b9;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #c62828;
+  font-size: 12px;
+}
+.behavior-dialog__error strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.behavior-dialog__error p {
+  margin: 0;
+  line-height: 1.5;
 }
 .behavior-trends figure {
   margin: 0;

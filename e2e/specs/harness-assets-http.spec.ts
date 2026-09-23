@@ -468,8 +468,8 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await runScript.click();
     expect(fileRequests).toHaveLength(3);
 
-    await page.getByRole('tab', { name: '评估报告' }).click();
-    const report = page.getByRole('tabpanel', { name: '评估报告' });
+    await page.getByRole('tab', { name: '静态评估' }).click();
+    const report = page.getByRole('tabpanel', { name: '静态评估' });
     await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText('94');
     await expect(report.locator('.catalog-evaluation-dimensions article')).toHaveCount(2);
     await expect(report).toContainText('安全扫描');

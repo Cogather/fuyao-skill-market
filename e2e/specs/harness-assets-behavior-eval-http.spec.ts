@@ -163,6 +163,14 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
       }
       if (request.method() === 'POST') {
         const body = request.postDataJSON();
+        if (body.version === '0.8.0' && body.mode === 'TRIGGER') {
+          return route.fulfill({
+            json: {
+              meta: { success: false, message: '触发评测服务暂时不可用' },
+              data: null,
+            },
+          });
+        }
         if (body.mode === 'QUALITY') qualityWasTriggered = true;
         return route.fulfill({
           json: envelope({
@@ -203,7 +211,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
             creator: 'http-user-001',
             creatorName: 'HTTP 测试用户',
             taskId: 'failed-trigger',
-            state: 'completed',
+            state: 'failed',
             report: null,
             error: '外部评测服务执行失败',
             createTime: '2026-09-17 13:00:00',
@@ -229,7 +237,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
             creator: 'http-user-001',
             creatorName: 'HTTP 测试用户',
             taskId: 'report-pending-trigger',
-            state: 'completed',
+            state: 'executing',
             report: null,
             error: null,
             createTime: '2026-09-16 13:00:00',
@@ -313,8 +321,8 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
 
     await expect(page.locator('.asset-detail__version')).toHaveCount(0);
     await expect(page.locator('.asset-detail__version-panel')).toBeVisible();
-    await page.getByRole('tab', { name: '行为评测' }).click();
-    const panel = page.getByRole('tabpanel', { name: '行为评测' });
+    await page.getByRole('tab', { name: '动态评估' }).click();
+    const panel = page.getByRole('tabpanel', { name: '动态评估' });
     await expect(page.locator('.asset-detail__version')).toHaveCount(0);
     await expect(page.locator('.asset-detail__version-panel')).toHaveCount(0);
     await expect
@@ -503,6 +511,11 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await panel.getByRole('button', { name: '重新发起', exact: true }).click();
     const retryDialog = page.getByRole('dialog', { name: '发起质量评测' });
     await expect(retryDialog.getByRole('checkbox', { name: /检验触发准确性/ })).toBeEnabled();
-    await retryDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await retryDialog.getByRole('checkbox', { name: /检验触发准确性/ }).check();
+    await retryDialog.getByRole('button', { name: '触发', exact: true }).click();
+    const triggerError = retryDialog.getByRole('alert');
+    await expect(triggerError).toContainText('发起评测失败');
+    await expect(triggerError).toContainText('触发评测：触发评测服务暂时不可用');
+    await expect(retryDialog).toBeVisible();
   });
 });
