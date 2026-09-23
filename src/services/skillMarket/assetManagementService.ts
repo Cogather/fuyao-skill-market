@@ -209,13 +209,20 @@ function atomicAsset(
   const published = record.status === '已完成' && Boolean(currentVersion);
   const developingWithoutVersion =
     !currentVersion && ['未开始', '开发中', '进行中', '联调中'].includes(record.status);
-  let versionDetails = (record.versions ?? [])
+  const versionItems = (record.versions ?? []).map((item) => {
+    const version = normalizeHarnessAssetVersion(item.version);
+    return {
+      ...item,
+      version,
+      reportUrl: item.reportUrl?.trim() || mockSourceRepositoryUrl(type, record.id, version),
+    };
+  });
+  let versionDetails = versionItems
     .map((item) => {
-      const version = normalizeHarnessAssetVersion(item.version);
       return {
-        version,
+        version: item.version,
         uploadedAt: item.uploadedAt || null,
-        reportUrl: item.repoUrl?.trim() || mockSourceRepositoryUrl(type, record.id, version),
+        reportUrl: item.reportUrl,
         ...(published ? { status: '已发布' } : {}),
       };
     })
@@ -390,7 +397,8 @@ function extensionAsset(scene: ExtensionScene, product: HarnessAssetProduct): Ha
     return {
       version,
       uploadedAt: release?.publishedAt ?? null,
-      reportUrl: mockSourceRepositoryUrl('Extension', scene.id, version),
+      reportUrl:
+        release?.reportUrl?.trim() || mockSourceRepositoryUrl('Extension', scene.id, version),
       ...(release
         ? {
             uploadedBy: `${release.operator.name} ${release.operator.no}`.trim(),

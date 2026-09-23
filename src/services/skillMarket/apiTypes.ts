@@ -891,6 +891,7 @@ export type SkillMasterManagementVersionDto = {
   uploadedAt?: string | null;
   mrId?: string | null;
   repoUrl?: string | null;
+  reportUrl?: string | null;
   tagName?: string | null;
 };
 

@@ -159,6 +159,7 @@ type MockSkillMasterManagementRecord = {
     uploadedAt: string;
     mrId?: string;
     repoUrl?: string;
+    reportUrl?: string;
     tagName?: string | null;
   }>;
 };
@@ -258,7 +259,12 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [
       { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
       { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
-      { version: '1.1.0', uploadedAt: '2026-09-01 10:00:00' },
+      {
+        version: '1.1.0',
+        uploadedAt: '2026-09-01 10:00:00',
+        repoUrl: 'https://git.example.com/fuyao/skill/504',
+        reportUrl: 'https://git.example.com/fuyao/skill/504?ref=1.1.0',
+      },
     ],
   },
   {
