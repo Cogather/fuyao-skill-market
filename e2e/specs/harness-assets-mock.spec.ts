@@ -267,9 +267,52 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(
       createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
     ).toHaveValue('harness-pipeline-');
+    await selectHarnessOption(scope.getByLabel('产品', { exact: true }), {
+      label: 'DevOps 自动化工具箱',
+    });
+    await expect(
+      createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
+    ).toHaveValue('');
+    await expect(createDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '产品名称不符合命名规范，建议使用“devops-”作为名称前缀',
+    );
     await selectHarnessOption(scope.getByLabel('层级'), '部门级');
     await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
     await createDialog.locator('header button').click();
+
+    await page.getByRole('button', { name: 'Agent', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
+    const agentDialog = page.getByRole('dialog', { name: '添加 Agent' });
+    const agentScope = agentDialog.getByRole('group', { name: '新增资产归属' });
+    await selectHarnessOption(agentScope.getByLabel('产品', { exact: true }), {
+      label: '智能交付 Agent 平台',
+    });
+    await expect(agentDialog.getByPlaceholder('请输入 Agent 名称')).toHaveValue('');
+    await expect(agentDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '产品名称不符合命名规范，建议使用“agent-”作为名称前缀',
+    );
+    await selectHarnessOption(agentScope.getByLabel('产品', { exact: true }), {
+      label: '发布风险分析中心',
+    });
+    await expect(agentDialog.getByPlaceholder('请输入 Agent 名称')).toHaveValue('');
+    await expect(agentDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '产品名称不符合命名规范，建议使用“product-e65546-”作为名称前缀',
+    );
+    await agentDialog.locator('header button').click();
+
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
+    const skillDialog = page.getByRole('dialog', { name: '添加 Skill' });
+    const skillScope = skillDialog.getByRole('group', { name: '新增资产归属' });
+    await selectHarnessOption(skillScope.getByLabel('产品', { exact: true }), {
+      label: 'Harness 流水线平台',
+    });
+    await expect(skillDialog.getByPlaceholder('请输入 Skill 名称')).toHaveValue('');
+    await expect(skillDialog.locator('.field-hint')).toHaveText(
+      '产品名称不符合命名规范，建议使用“harness-”作为名称前缀',
+    );
+    await skillDialog.locator('header button').click();
+
     await expect(page.getByLabel('产品筛选')).toHaveText('Harness-Pipeline-Pro');
     await expect(
       page.locator('#harness-panel-assets').getByRole('heading', { name: '资产清单', exact: true }),

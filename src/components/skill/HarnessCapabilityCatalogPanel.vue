@@ -26,6 +26,7 @@ import {
 } from '../../services/skillMarket/skillMasterManagementService';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
@@ -201,6 +202,10 @@ const selectedProduct = computed(() =>
 
 const requiredCapabilityNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
+});
+const suggestedCapabilityNamePrefix = computed(() => {
+  if (filterForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(filterForm.product);
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -1412,6 +1417,9 @@ onMounted(async () => {
                   requiredCapabilityNamePrefix +
                   '\u201d\u5f00\u5934'
                 }}
+              </small>
+              <small v-else-if="suggestedCapabilityNamePrefix" class="capability-name-prefix-hint">
+                产品名称不符合命名规范，建议使用“{{ suggestedCapabilityNamePrefix }}”作为名称前缀
               </small>
             </label>
             <label class="is-wide">
