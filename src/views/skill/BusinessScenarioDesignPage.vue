@@ -1766,11 +1766,11 @@ async function createAsset() {
           <small>
             该编码将作为发布的 Extension 名称：{{
               productCatalogItemPrefix
-                ? `以 ${productCatalogItemPrefix} 开头、`
+                ? `以 ${productCatalogItemPrefix} 开头，`
                 : suggestedProductCatalogItemPrefix
-                  ? `产品名称不符合命名规范，建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀；`
+                  ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
                   : ''
-            }}全部小写、仅用连字符分隔。
+            }}仅使用小写字母、数字和连字符。
           </small>
         </label>
         <fieldset v-else-if="!scenarioDialog.editingScenario" class="editor-tags">
@@ -2054,11 +2054,11 @@ async function createAsset() {
             ><small v-else>
               该编码将作为发布的 Extension 名称：{{
                 productCatalogItemPrefix
-                  ? `以 ${productCatalogItemPrefix} 开头、`
+                  ? `以 ${productCatalogItemPrefix} 开头，`
                   : suggestedProductCatalogItemPrefix
-                    ? `产品名称不符合命名规范，建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀；`
+                    ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
                     : ''
-              }}全部小写、仅用连字符分隔。</small
+              }}仅使用小写字母、数字和连字符。</small
             ></label
           ><label
             >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
@@ -2331,7 +2331,7 @@ async function createAsset() {
                     productCatalogItemPrefix
                       ? `以 ${productCatalogItemPrefix} 开头，`
                       : suggestedProductCatalogItemPrefix
-                        ? `产品名称不符合命名规范，建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
+                        ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
                         : ''
                   }}仅使用小写字母、数字和连字符。
                 </span>
@@ -2442,7 +2442,7 @@ async function createAsset() {
                     productCatalogItemPrefix
                       ? `以 ${productCatalogItemPrefix} 开头，`
                       : suggestedProductCatalogItemPrefix
-                        ? `产品名称不符合命名规范，建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
+                        ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
                         : ''
                   }}仅使用小写字母、数字和连字符。
                 </span>

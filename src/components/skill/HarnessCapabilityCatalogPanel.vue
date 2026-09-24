@@ -1419,7 +1419,7 @@ onMounted(async () => {
                 }}
               </small>
               <small v-else-if="suggestedCapabilityNamePrefix" class="capability-name-prefix-hint">
-                产品名称不符合命名规范，建议使用“{{ suggestedCapabilityNamePrefix }}”作为名称前缀
+                建议使用“{{ suggestedCapabilityNamePrefix }}”作为名称前缀，仅使用小写字母、数字和连字符。
               </small>
             </label>
             <label class="is-wide">

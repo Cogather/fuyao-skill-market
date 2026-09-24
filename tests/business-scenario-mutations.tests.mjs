@@ -75,6 +75,11 @@ try {
     );
     return [html, ...Object.values(context.teleports ?? {})].join('\n');
   }
+  function assertSuggestedPrefixCopy(html, suggestion) {
+    assert.match(html, new RegExp(`建议使用“${suggestion}”作为名称前缀`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
+    assert.doesNotMatch(html, /产品名称不符合命名规范/);
+  }
   async function fixture({
     bound = false,
     commandVersion,
@@ -495,7 +500,7 @@ try {
       const suggestion = getSuggestedProductCatalogItemNamePrefix(productName);
       assert.ok(suggestion);
       const suggestionHtml = await renderMountedScenarioPage(state, f.workspace);
-      assert.match(suggestionHtml, new RegExp(`建议使用“${suggestion}”作为名称前缀`));
+      assertSuggestedPrefixCopy(suggestionHtml, suggestion);
       state.scenarioForm.name = '新增下级场景';
       for (const code of ['INVALID', 'invalid_code', 'invalid--code', 'invalid-', 'a'.repeat(65)]) {
         state.scenarioForm.code = code;
@@ -527,7 +532,7 @@ try {
     const html = await renderMountedScenarioPage(state, f.workspace);
     assert.match(html, /placeholder="例如：mml-dev"/);
     assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
-    assert.match(html, /建议使用“harness-pipeline-”作为名称前缀/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
   });
   await test('Workflow wizard accepts a valid standalone code when the product name is invalid', async () => {
     const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
@@ -548,7 +553,7 @@ try {
     const html = await renderMountedScenarioPage(state, f.workspace);
     assert.match(html, /placeholder="\/e2e-codec"/);
     assert.doesNotMatch(html, /\/product-demo-e2e-codec|以 product-demo- 开头/);
-    assert.match(html, /建议使用“harness-pipeline-”作为名称前缀/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
     Object.assign(wizard.commandDraft, {
       name: '/invalid command',
       description: '自定义 Command',
@@ -582,7 +587,7 @@ try {
       const html = await renderMountedScenarioPage(state, f.workspace);
       assert.match(html, new RegExp(`placeholder="${example}"`));
       assert.doesNotMatch(html, new RegExp(`product-demo-${example}|以 product-demo- 开头`));
-      assert.match(html, /建议使用“harness-pipeline-”作为名称前缀/);
+      assertSuggestedPrefixCopy(html, 'harness-pipeline-');
       Object.assign(wizard.assetDraft, {
         name: `invalid ${assetType.toLowerCase()}`,
         description: `自定义 ${assetType}`,

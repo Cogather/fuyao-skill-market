@@ -274,7 +274,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
     ).toHaveValue('');
     await expect(createDialog.locator('.capability-name-prefix-hint')).toHaveText(
-      '产品名称不符合命名规范，建议使用“devops-”作为名称前缀',
+      '建议使用“devops-”作为名称前缀，仅使用小写字母、数字和连字符。',
     );
     await selectHarnessOption(scope.getByLabel('层级'), '部门级');
     await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
@@ -289,14 +289,14 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     });
     await expect(agentDialog.getByPlaceholder('请输入 Agent 名称')).toHaveValue('');
     await expect(agentDialog.locator('.capability-name-prefix-hint')).toHaveText(
-      '产品名称不符合命名规范，建议使用“agent-”作为名称前缀',
+      '建议使用“agent-”作为名称前缀，仅使用小写字母、数字和连字符。',
     );
     await selectHarnessOption(agentScope.getByLabel('产品', { exact: true }), {
       label: '发布风险分析中心',
     });
     await expect(agentDialog.getByPlaceholder('请输入 Agent 名称')).toHaveValue('');
     await expect(agentDialog.locator('.capability-name-prefix-hint')).toHaveText(
-      '产品名称不符合命名规范，建议使用“product-e65546-”作为名称前缀',
+      '建议使用“product-e65546-”作为名称前缀，仅使用小写字母、数字和连字符。',
     );
     await agentDialog.locator('header button').click();
 
@@ -309,7 +309,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     });
     await expect(skillDialog.getByPlaceholder('请输入 Skill 名称')).toHaveValue('');
     await expect(skillDialog.locator('.field-hint')).toHaveText(
-      '产品名称不符合命名规范，建议使用“harness-”作为名称前缀',
+      '建议使用“harness-”作为名称前缀，仅使用小写字母、数字和连字符。',
     );
     await skillDialog.locator('header button').click();
 

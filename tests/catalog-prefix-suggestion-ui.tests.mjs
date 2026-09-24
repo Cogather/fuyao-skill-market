@@ -76,21 +76,26 @@ try {
     assert.equal(state.editor.name, '', `${capabilityType} 不应自动填入建议前缀`);
     assert.match(
       html,
-      /产品名称不符合命名规范，建议使用“agent-”作为名称前缀/,
+      /建议使用“agent-”作为名称前缀，仅使用小写字母、数字和连字符。/,
       `${capabilityType} 弹窗应在名称框下方显示建议`,
     );
+    assert.doesNotMatch(html, /产品名称不符合命名规范/);
   }
 
   const pureChineseAgent = await renderCapabilityDialog('agent', '发布风险分析中心');
   assert.equal(pureChineseAgent.state.editor.name, '');
-  assert.match(pureChineseAgent.html, /建议使用“product-e65546-”作为名称前缀/);
+  assert.match(
+    pureChineseAgent.html,
+    /建议使用“product-e65546-”作为名称前缀，仅使用小写字母、数字和连字符。/,
+  );
 
   const skill = await renderSkillDialog('Harness 流水线平台');
   assert.equal(skill.state.editor.name, '', 'Skill 不应自动填入建议前缀');
   assert.match(
     skill.html,
-    /产品名称不符合命名规范，建议使用“harness-”作为名称前缀/,
+    /建议使用“harness-”作为名称前缀，仅使用小写字母、数字和连字符。/,
   );
+  assert.doesNotMatch(skill.html, /产品名称不符合命名规范/);
 
   for (const createOnly of [true, false]) {
     const capability = await renderCapabilityDialog(

@@ -2528,9 +2528,9 @@ onMounted(() => {
                 ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
                   >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
                 ><small v-else-if="suggestedSkillNamePrefix" class="field-hint"
-                  >产品名称不符合命名规范，建议使用“{{
+                  >建议使用“{{
                     suggestedSkillNamePrefix
-                  }}”作为名称前缀</small
+                  }}”作为名称前缀，仅使用小写字母、数字和连字符。</small
                 ></label
               >
               <label class="wide"
