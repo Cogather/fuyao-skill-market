@@ -65,6 +65,19 @@ export function getAssetCatalogItemNamePrefix(
   fallbackLevel = '',
   fallbackProductName = '',
 ): string {
+  const { level, productName } = getAssetCatalogProductContext(
+    asset,
+    fallbackLevel,
+    fallbackProductName,
+  );
+  return getProductCatalogItemNamePrefix(level, productName);
+}
+
+function getAssetCatalogProductContext(
+  asset: { dimType?: unknown; category?: unknown; productName?: unknown },
+  fallbackLevel = '',
+  fallbackProductName = '',
+): { level: string; productName: string } {
   const [categoryLevel = '', ...categoryNames] = String(asset.category ?? '').split('/');
   const assetProductName = String(asset.productName ?? '');
   const level =
@@ -73,5 +86,20 @@ export function getAssetCatalogItemNamePrefix(
     (assetProductName ? '产品级' : fallbackLevel);
   const productName =
     assetProductName || (level === '产品级' ? categoryNames.join('/') : '') || fallbackProductName;
-  return getProductCatalogItemNamePrefix(level, productName);
+  return { level, productName };
+}
+
+/** 资产编辑时仅提供非法产品名的前缀建议，不改写已有资产名称。 */
+export function getSuggestedAssetCatalogItemNamePrefix(
+  asset: { dimType?: unknown; category?: unknown; productName?: unknown },
+  fallbackLevel = '',
+  fallbackProductName = '',
+): string {
+  const { level, productName } = getAssetCatalogProductContext(
+    asset,
+    fallbackLevel,
+    fallbackProductName,
+  );
+  if (level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(productName);
 }

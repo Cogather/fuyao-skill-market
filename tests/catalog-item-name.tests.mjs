@@ -5,6 +5,7 @@ const server = await createServer({ appType: 'custom', server: { middlewareMode:
 
 try {
   const {
+    getSuggestedAssetCatalogItemNamePrefix,
     getProductCatalogItemNamePrefix,
     getSuggestedProductCatalogItemNamePrefix,
     isCatalogItemNameValid,
@@ -67,6 +68,27 @@ try {
     '',
   );
   assert.equal(getSuggestedProductCatalogItemNamePrefix(''), '');
+  assert.equal(
+    getSuggestedAssetCatalogItemNamePrefix({
+      dimType: '产品级',
+      productName: '智能交付 Agent 平台',
+    }),
+    'agent-',
+    '资产编辑应使用资产本身的非法产品名生成建议',
+  );
+  assert.equal(
+    getSuggestedAssetCatalogItemNamePrefix({ category: '产品级/发布风险分析中心' }),
+    'product-e65546-',
+    '资产编辑在仅有 category 时也能解析产品名',
+  );
+  assert.equal(
+    getSuggestedAssetCatalogItemNamePrefix({
+      dimType: '部门级',
+      productName: '智能交付 Agent 平台',
+    }),
+    '',
+    '部门级资产不应显示产品前缀建议',
+  );
 
   console.log(
     'PASS invalid product names receive legal suggestion-only prefixes while valid names keep existing behavior',

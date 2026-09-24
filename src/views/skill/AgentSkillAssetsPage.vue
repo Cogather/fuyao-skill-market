@@ -37,7 +37,10 @@ import type {
 } from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
 import { firstNonBlankText, formatCompactDateTime } from '../../utils/common';
-import { getAssetCatalogItemNamePrefix } from '../../utils/catalogItemName';
+import {
+  getAssetCatalogItemNamePrefix,
+  getSuggestedAssetCatalogItemNamePrefix,
+} from '../../utils/catalogItemName';
 import {
   CATALOG_TYPES,
   STATUS_FILTERS,
@@ -369,6 +372,9 @@ const showDetailVersionPanel = computed(() => {
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
+);
+const detailSuggestedNamePrefix = computed(() =>
+  selectedAsset.value ? getSuggestedAssetCatalogItemNamePrefix(selectedAsset.value) : '',
 );
 const detailPermissionsReady = computed(
   () =>
@@ -917,6 +923,7 @@ onBeforeUnmount(() => {
       :submitting="detailSaving"
       :error="detailEditError"
       :required-name-prefix="detailRequiredNamePrefix"
+      :suggested-name-prefix="detailSuggestedNamePrefix"
       @update:name="detailDraft.name = $event"
       @update:description="detailDraft.description = $event"
       @update:planned-complete-date="detailDraft.plannedCompleteDate = $event"
