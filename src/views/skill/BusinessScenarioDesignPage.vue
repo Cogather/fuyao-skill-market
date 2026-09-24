@@ -6,7 +6,10 @@ import WorkflowCapabilityPicker from '../../components/skill/WorkflowCapabilityP
 import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningService';
 import type { WorkflowCapabilityOption } from '../../services/skillMarket/workflowCapabilitySearchService';
-import { getProductCatalogItemNamePrefix } from '../../utils/catalogItemName';
+import {
+  getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
+} from '../../utils/catalogItemName';
 import { validateProductCatalogItemName } from '../../utils/scenarioCreationCode';
 import type {
   Asset,
@@ -169,6 +172,9 @@ const uid = (prefix: string) => `${prefix}${Date.now()}${Math.random().toString(
 const currentProduct = computed(() => products.find((item) => item._id === productId.value));
 const productCatalogItemPrefix = computed(() =>
   getProductCatalogItemNamePrefix('产品级', currentProduct.value?.name ?? ''),
+);
+const suggestedProductCatalogItemPrefix = computed(() =>
+  getSuggestedProductCatalogItemNamePrefix(currentProduct.value?.name ?? ''),
 );
 function isLocalProductOption(item: { sourceId?: string; productId?: string; name: string }) {
   if (item.sourceId) return false;
@@ -1759,8 +1765,12 @@ async function createAsset() {
           />
           <small>
             该编码将作为发布的 Extension 名称：{{
-              productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头、` : ''
-            }}全部小写、仅用连字符分隔。
+              productCatalogItemPrefix
+                ? `以 ${productCatalogItemPrefix} 开头，`
+                : suggestedProductCatalogItemPrefix
+                  ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
+                  : ''
+            }}仅使用小写字母、数字和连字符。
           </small>
         </label>
         <fieldset v-else-if="!scenarioDialog.editingScenario" class="editor-tags">
@@ -2043,8 +2053,12 @@ async function createAsset() {
               >该场景已发布过版本，编码已锁定不可修改。</small
             ><small v-else>
               该编码将作为发布的 Extension 名称：{{
-                productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头、` : ''
-              }}全部小写、仅用连字符分隔。</small
+                productCatalogItemPrefix
+                  ? `以 ${productCatalogItemPrefix} 开头，`
+                  : suggestedProductCatalogItemPrefix
+                    ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
+                    : ''
+              }}仅使用小写字母、数字和连字符。</small
             ></label
           ><label
             >场景说明与目标<textarea v-model="wizard.form.scenarioDesc" rows="5"></textarea>
@@ -2314,7 +2328,11 @@ async function createAsset() {
                 />
                 <span class="capability-field-hint">
                   {{
-                    productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
+                    productCatalogItemPrefix
+                      ? `以 ${productCatalogItemPrefix} 开头，`
+                      : suggestedProductCatalogItemPrefix
+                        ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
+                        : ''
                   }}仅使用小写字母、数字和连字符。
                 </span>
               </label>
@@ -2421,7 +2439,11 @@ async function createAsset() {
                 />
                 <span class="capability-field-hint">
                   {{
-                    productCatalogItemPrefix ? `以 ${productCatalogItemPrefix} 开头，` : ''
+                    productCatalogItemPrefix
+                      ? `以 ${productCatalogItemPrefix} 开头，`
+                      : suggestedProductCatalogItemPrefix
+                        ? `建议使用“${suggestedProductCatalogItemPrefix}”作为名称前缀，`
+                        : ''
                   }}仅使用小写字母、数字和连字符。
                 </span>
               </label>

@@ -159,6 +159,7 @@ type MockSkillMasterManagementRecord = {
     uploadedAt: string;
     mrId?: string;
     repoUrl?: string;
+    reportUrl?: string;
     tagName?: string | null;
   }>;
 };
@@ -258,7 +259,12 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [
       { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
       { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
-      { version: '1.1.0', uploadedAt: '2026-09-01 10:00:00' },
+      {
+        version: '1.1.0',
+        uploadedAt: '2026-09-01 10:00:00',
+        repoUrl: 'https://git.example.com/fuyao/skill/504',
+        reportUrl: 'https://git.example.com/fuyao/skill/504?ref=1.1.0',
+      },
     ],
   },
   {
@@ -322,6 +328,66 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     planFinishDate: '2026-09-28',
     createdAt: [2026, 8, 10, 11, 0, 0, 0],
     updatedAt: [2026, 8, 20, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '508',
+    skillName: '发布回滚预案校验 Skill',
+    skillDescription: '校验发布单中的回滚步骤、依赖备份和恢复验证项是否完整',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '孙睿',
+    ownerId: 'w30000010',
+    developOwnerName: '林晓',
+    developOwnerId: 'w30000011',
+    status: '开发中',
+    planFinishDate: '2026-09-30',
+    createdAt: [2026, 8, 18, 9, 20, 0, 0],
+    updatedAt: [2026, 8, 31, 17, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '509',
+    skillName: '变更窗口冲突检测 Skill',
+    skillDescription: '识别同一服务、集群或共享依赖上的发布时间冲突与冻结期风险',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '陈宇',
+    ownerId: 'w30000012',
+    developOwnerName: '郑宁',
+    developOwnerId: 'w30000013',
+    status: '开发中',
+    planFinishDate: '2026-10-03',
+    createdAt: [2026, 8, 19, 10, 0, 0, 0],
+    updatedAt: [2026, 8, 30, 16, 10, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '510',
+    skillName: '依赖服务健康预检 Skill',
+    skillDescription: '在发布前检查上下游服务、关键接口与基础资源健康状态',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '郭文',
+    ownerId: 'w30000014',
+    developOwnerName: '高远',
+    developOwnerId: 'w30000015',
+    status: '开发中',
+    planFinishDate: '2026-10-08',
+    createdAt: [2026, 8, 20, 14, 30, 0, 0],
+    updatedAt: [2026, 8, 29, 15, 45, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
     skillSource: 'created',
@@ -423,7 +489,13 @@ if (typeof window !== 'undefined') {
         skillName: patch.skillName,
         skillDescription: patch.skillDescription,
       };
-      for (const key of ['ownerName', 'ownerId', 'developOwnerName', 'developOwnerId', 'planFinishDate'] as const) {
+      for (const key of [
+        'ownerName',
+        'ownerId',
+        'developOwnerName',
+        'developOwnerId',
+        'planFinishDate',
+      ] as const) {
         if (typeof patch[key] === 'string') clean[key] = patch[key];
       }
       Object.assign(record, clean);

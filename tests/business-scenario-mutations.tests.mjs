@@ -43,6 +43,9 @@ try {
   const { default: ScenarioPage } = await server.ssrLoadModule(
     '/src/views/skill/BusinessScenarioDesignPage.vue',
   );
+  const { getSuggestedProductCatalogItemNamePrefix } = await server.ssrLoadModule(
+    '/src/utils/catalogItemName.ts',
+  );
   globalThis.document = { activeElement: null };
   globalThis.HTMLElement = class {};
   async function mountScenarioPage(workspace) {
@@ -58,7 +61,8 @@ try {
     return state;
   }
   async function renderMountedScenarioPage(state, workspace) {
-    return renderToString(
+    const context = {};
+    const html = await renderToString(
       createSSRApp(
         {
           props: ScenarioPage.props,
@@ -67,7 +71,14 @@ try {
         },
         { workspace, active: true },
       ),
+      context,
     );
+    return [html, ...Object.values(context.teleports ?? {})].join('\n');
+  }
+  function assertSuggestedPrefixCopy(html, suggestion) {
+    assert.match(html, new RegExp(`建议使用“${suggestion}”作为名称前缀`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
+    assert.doesNotMatch(html, /产品名称不符合命名规范/);
   }
   async function fixture({
     bound = false,
@@ -486,6 +497,10 @@ try {
       const state = await mountScenarioPage(f.workspace);
       state.openScenario(f.scenario.parentId);
       assert.equal(state.scenarioForm.code, '');
+      const suggestion = getSuggestedProductCatalogItemNamePrefix(productName);
+      assert.ok(suggestion);
+      const suggestionHtml = await renderMountedScenarioPage(state, f.workspace);
+      assertSuggestedPrefixCopy(suggestionHtml, suggestion);
       state.scenarioForm.name = '新增下级场景';
       for (const code of ['INVALID', 'invalid_code', 'invalid--code', 'invalid-', 'a'.repeat(65)]) {
         state.scenarioForm.code = code;
@@ -517,6 +532,7 @@ try {
     const html = await renderMountedScenarioPage(state, f.workspace);
     assert.match(html, /placeholder="例如：mml-dev"/);
     assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
   });
   await test('Workflow wizard accepts a valid standalone code when the product name is invalid', async () => {
     const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
@@ -537,6 +553,7 @@ try {
     const html = await renderMountedScenarioPage(state, f.workspace);
     assert.match(html, /placeholder="\/e2e-codec"/);
     assert.doesNotMatch(html, /\/product-demo-e2e-codec|以 product-demo- 开头/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
     Object.assign(wizard.commandDraft, {
       name: '/invalid command',
       description: '自定义 Command',
@@ -570,6 +587,7 @@ try {
       const html = await renderMountedScenarioPage(state, f.workspace);
       assert.match(html, new RegExp(`placeholder="${example}"`));
       assert.doesNotMatch(html, new RegExp(`product-demo-${example}|以 product-demo- 开头`));
+      assertSuggestedPrefixCopy(html, 'harness-pipeline-');
       Object.assign(wizard.assetDraft, {
         name: `invalid ${assetType.toLowerCase()}`,
         description: `自定义 ${assetType}`,

@@ -153,6 +153,12 @@ test.describe('资产弹框统一编辑 HTTP', () => {
       const save = dialog.getByRole('button', { name: '保存', exact: true });
       await expect(save).toBeVisible();
       await expect(page.locator('.asset-detail').getByRole('textbox')).toHaveCount(0);
+      await expect(dialog.getByRole('textbox', { name: '名称', exact: true })).toHaveValue(
+        `asset-${type.toLowerCase()}`,
+      );
+      await expect(dialog.locator('.asset-master-name-hint')).toHaveText(
+        '建议使用“product-1l0peo-”作为名称前缀，仅使用小写字母、数字和连字符。',
+      );
       await dialog.getByRole('textbox', { name: '名称', exact: true }).fill('renamed-asset');
       await dialog.getByRole('textbox', { name: '描述', exact: true }).fill('新的资产描述');
       for (const label of ['责任人', '开发责任人']) {

@@ -11,6 +11,7 @@ export interface SkillMasterVersion {
   uploadedAt: string;
   mrId?: string;
   repoUrl?: string;
+  reportUrl?: string;
   tagName?: string | null;
 }
 
@@ -166,6 +167,7 @@ export function normalizeSkillMasterVersions(value: unknown): SkillMasterVersion
         uploadedAt: normalize(record.uploadedAt),
         mrId: normalize(record.mrId),
         repoUrl: normalize(record.repoUrl),
+        reportUrl: normalize(record.reportUrl),
         tagName: record.tagName == null ? null : normalize(record.tagName),
       };
     })

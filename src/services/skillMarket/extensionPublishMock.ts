@@ -31,6 +31,7 @@ export type ExtensionRelease = {
   channel: 'Beta' | 'Product';
   operator: { no: string; name: string };
   publishedAt: string;
+  reportUrl?: string;
   status: '成功' | '失败' | '进行中';
   organization: string;
   items: ExtensionReleaseItem[];
@@ -331,6 +332,7 @@ const scenes: ExtensionScene[] = [
         channel: 'Beta',
         operator: { no: 'A0123', name: '李扶摇' },
         publishedAt: '2026-08-02 14:00',
+        reportUrl: 'https://git.example.com/fuyao/extension/scene-pipeline-mml?ref=0.2.1',
         status: '成功',
         organization: '扶摇组织',
         items: [

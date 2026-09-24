@@ -224,10 +224,29 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
                     : '0.1',
               uploadedAt: '2026-09-02 12:00:00',
               uploadedBy: 'u002',
+              reportUrl: `https://git.example.com/${type?.toLocaleLowerCase()}/source?version=${
+                type === 'SKILL'
+                  ? '1.10.0'
+                  : query.get('name') === 'harness-pipeline-denied-extension'
+                    ? '1.0.0'
+                    : '0.1'
+              }`,
             },
-            { version: '0.0.9', uploadedAt: null, uploadedBy: 'u001' },
+            {
+              version: '0.0.9',
+              uploadedAt: null,
+              uploadedBy: 'u001',
+              reportUrl: `https://git.example.com/${type?.toLocaleLowerCase()}/source?version=0.0.9`,
+            },
             ...(type === 'EXTENSION'
-              ? [{ version: '0.0.8', uploadedAt: null, uploadedBy: 'u001' }]
+              ? [
+                  {
+                    version: '0.0.8',
+                    uploadedAt: null,
+                    uploadedBy: 'u001',
+                    reportUrl: 'https://git.example.com/extension/source?version=0.0.8',
+                  },
+                ]
               : []),
           ],
         }),
@@ -417,6 +436,16 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await expect(page.locator('.asset-detail__description')).toHaveText('组件详情返回的描述');
     await expect(page.locator('.asset-detail__people')).toContainText('张三（u001）');
     await expect(page.locator('.asset-detail__people')).toContainText('李四（u002）');
+    const sourceRepository = page.locator('.asset-detail__source-repository a');
+    await expect(sourceRepository).toHaveText(
+      'https://git.example.com/skill/source?version=1.10.0',
+    );
+    await expect(sourceRepository).toHaveAttribute(
+      'href',
+      'https://git.example.com/skill/source?version=1.10.0',
+    );
+    await expect(sourceRepository).toHaveAttribute('target', '_blank');
+    await expect(sourceRepository).toHaveAttribute('rel', 'noopener noreferrer');
     await page.getByRole('combobox', { name: '版本', exact: true }).click();
     await expect(page.getByRole('listbox', { name: '可用版本' }).getByRole('option')).toHaveText([
       '1.10.0待发布',
@@ -439,8 +468,8 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await runScript.click();
     expect(fileRequests).toHaveLength(3);
 
-    await page.getByRole('tab', { name: '评估报告' }).click();
-    const report = page.getByRole('tabpanel', { name: '评估报告' });
+    await page.getByRole('tab', { name: '静态评估' }).click();
+    const report = page.getByRole('tabpanel', { name: '静态评估' });
     await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText('94');
     await expect(report.locator('.catalog-evaluation-dimensions article')).toHaveCount(2);
     await expect(report).toContainText('安全扫描');
@@ -482,6 +511,10 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await page.getByRole('option', { name: '0.0.9 待发布', exact: true }).click();
     await page.getByRole('tab', { name: '内容', exact: true }).click();
     await expect(page.locator('.asset-detail')).toContainText('current version: 0.0.9');
+    await expect(sourceRepository).toHaveAttribute(
+      'href',
+      'https://git.example.com/skill/source?version=0.0.9',
+    );
 
     for (const [type, name] of [
       ['Agent', 'HTTP 发布风险 Agent'],
@@ -528,6 +561,12 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     await expect(page.getByRole('tab', { name: '版本记录', exact: true })).toHaveCount(0);
     await expect(page.locator('.asset-version-history')).toHaveCount(0);
     await expect(page.locator('.asset-detail__badges')).not.toContainText('自动生成');
+    const extensionSourceRepository = page.locator('.asset-detail__source-repository a');
+    await expect(extensionSourceRepository).toHaveAttribute(
+      'href',
+      'https://git.example.com/extension/source?version=0.1',
+    );
+    await expect(extensionSourceRepository).toHaveAttribute('target', '_blank');
     const extensionVersion = page.getByRole('combobox', { name: '版本', exact: true });
     await expect(page.getByRole('combobox')).toHaveCount(1);
     await extensionVersion.click();
@@ -549,6 +588,10 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     const versionBindingCount = bindingRequests.length;
     await extensionVersion.click();
     await page.getByRole('option', { name: '0.0.9 已发布', exact: true }).click();
+    await expect(extensionSourceRepository).toHaveAttribute(
+      'href',
+      'https://git.example.com/extension/source?version=0.0.9',
+    );
     await expect(extensionTree).toContainText('HTTP 历史诊断 Skill');
     await expect(extensionTree.locator('pre')).toHaveCount(0);
     await readExtensionSkill('HTTP 历史诊断 Skill', '0.9.0');
@@ -558,6 +601,10 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     expect(publishDetailRequests).toHaveLength(0);
     await extensionVersion.click();
     await page.getByRole('option', { name: '0.0.8 已发布', exact: true }).click();
+    await expect(extensionSourceRepository).toHaveAttribute(
+      'href',
+      'https://git.example.com/extension/source?version=0.0.8',
+    );
     await expect(extensionTree).toContainText('该版本在当前场景下暂无绑定组件');
     historicalSnapshotAvailable = true;
     await extensionVersion.click();

@@ -41,6 +41,7 @@ import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import {
@@ -355,6 +356,10 @@ const selectedMasterProduct = computed(() =>
 
 const requiredSkillNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(masterScopeForm.level, masterScopeForm.offeringName);
+});
+const suggestedSkillNamePrefix = computed(() => {
+  if (masterScopeForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(masterScopeForm.offeringName);
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -2522,6 +2527,10 @@ onMounted(() => {
                   >从 Skill 广场引入的 Skill 名称不可修改</small
                 ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
                   >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
+                ><small v-else-if="suggestedSkillNamePrefix" class="field-hint"
+                  >建议使用“{{
+                    suggestedSkillNamePrefix
+                  }}”作为名称前缀，仅使用小写字母、数字和连字符。</small
                 ></label
               >
               <label class="wide"

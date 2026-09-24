@@ -830,7 +830,15 @@ export type HarnessAssetComponentDetailDto = {
   type: QueryHarnessAssetComponentsBody['type'];
   firstScene: string | null;
   secondScene: string | null;
-  versions: Array<{ version: string; uploadedAt: string | null; uploadedBy: string }>;
+  versions: Array<{
+    version: string;
+    uploadedAt: string | null;
+    uploadedBy: string;
+    /** 当前版本对应的来源仓地址。 */
+    reportUrl?: string | null;
+    /** 兼容部分环境返回的来源仓字段名。 */
+    repoUrl?: string | null;
+  }>;
 };
 
 export type QueryExtensionVersionHistoryParams = {
@@ -885,6 +893,7 @@ export type SkillMasterManagementVersionDto = {
   uploadedAt?: string | null;
   mrId?: string | null;
   repoUrl?: string | null;
+  reportUrl?: string | null;
   tagName?: string | null;
 };
 

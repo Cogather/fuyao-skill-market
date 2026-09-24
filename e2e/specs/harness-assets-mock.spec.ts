@@ -195,6 +195,14 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       await expect(card.getByText('已发布', { exact: true })).toBeVisible();
       await card.click();
 
+      const sourceRepository = page.locator('.asset-detail__source-repository a');
+      await expect(sourceRepository).toBeVisible();
+      await expect(sourceRepository).toHaveAttribute(
+        'href',
+        new RegExp(`^https://git\\.example\\.com/fuyao/${sample.type.toLocaleLowerCase()}/`),
+      );
+      await expect(sourceRepository).toHaveAttribute('target', '_blank');
+
       const versionSelect = page
         .locator('.asset-detail')
         .getByRole('combobox', { name: '版本', exact: true });
@@ -259,9 +267,52 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(
       createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
     ).toHaveValue('harness-pipeline-');
+    await selectHarnessOption(scope.getByLabel('产品', { exact: true }), {
+      label: 'DevOps 自动化工具箱',
+    });
+    await expect(
+      createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
+    ).toHaveValue('');
+    await expect(createDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '建议使用“devops-”作为名称前缀，仅使用小写字母、数字和连字符。',
+    );
     await selectHarnessOption(scope.getByLabel('层级'), '部门级');
     await expect(scope.getByLabel('产品', { exact: true })).toHaveCount(0);
     await createDialog.locator('header button').click();
+
+    await page.getByRole('button', { name: 'Agent', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
+    const agentDialog = page.getByRole('dialog', { name: '添加 Agent' });
+    const agentScope = agentDialog.getByRole('group', { name: '新增资产归属' });
+    await selectHarnessOption(agentScope.getByLabel('产品', { exact: true }), {
+      label: '智能交付 Agent 平台',
+    });
+    await expect(agentDialog.getByPlaceholder('请输入 Agent 名称')).toHaveValue('');
+    await expect(agentDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '建议使用“agent-”作为名称前缀，仅使用小写字母、数字和连字符。',
+    );
+    await selectHarnessOption(agentScope.getByLabel('产品', { exact: true }), {
+      label: '发布风险分析中心',
+    });
+    await expect(agentDialog.getByPlaceholder('请输入 Agent 名称')).toHaveValue('');
+    await expect(agentDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '建议使用“product-e65546-”作为名称前缀，仅使用小写字母、数字和连字符。',
+    );
+    await agentDialog.locator('header button').click();
+
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: '＋ 新增', exact: true }).click();
+    const skillDialog = page.getByRole('dialog', { name: '添加 Skill' });
+    const skillScope = skillDialog.getByRole('group', { name: '新增资产归属' });
+    await selectHarnessOption(skillScope.getByLabel('产品', { exact: true }), {
+      label: 'Harness 流水线平台',
+    });
+    await expect(skillDialog.getByPlaceholder('请输入 Skill 名称')).toHaveValue('');
+    await expect(skillDialog.locator('.field-hint')).toHaveText(
+      '建议使用“harness-”作为名称前缀，仅使用小写字母、数字和连字符。',
+    );
+    await skillDialog.locator('header button').click();
+
     await expect(page.getByLabel('产品筛选')).toHaveText('Harness-Pipeline-Pro');
     await expect(
       page.locator('#harness-panel-assets').getByRole('heading', { name: '资产清单', exact: true }),
@@ -373,8 +424,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       `当前版本：${versions.at(-1)}`,
     );
 
-    await detail.getByRole('tab', { name: '评估报告' }).click();
-    const report = detail.getByRole('tabpanel', { name: '评估报告' });
+    await detail.getByRole('tab', { name: '静态评估' }).click();
+    const report = detail.getByRole('tabpanel', { name: '静态评估' });
     await expect(report.getByText('综合得分', { exact: true })).toBeVisible();
     await expect(report.locator('.catalog-evaluation-score-ring strong')).toHaveText(
       /^\d+(?:\.\d+)?$/,
@@ -401,7 +452,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
   test('Skill 详情按新顺序展示行为评测并支持核心交互', async ({ page }) => {
     const behaviorApiRequests: string[] = [];
     page.on('request', (request) => {
-      if (new URL(request.url()).pathname.startsWith('/api/v1/harness/plans/skill/behavior-eval')) {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/harness/skill-eval/behavior-eval')) {
         behaviorApiRequests.push(request.url());
       }
     });
@@ -412,46 +463,128 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
 
     const detail = page.locator('.asset-detail');
     const detailTabs = detail.getByRole('tablist', { name: '资产详情分区' }).getByRole('tab');
-    await expect(detailTabs).toHaveText(['内容', '评估报告', '行为评测', '发布记录']);
-    await expect(detail.locator('.asset-detail__version')).toBeVisible();
-    await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
-    await detail.getByRole('tab', { name: '评估报告', exact: true }).click();
+    await expect(detailTabs).toHaveText(['内容', '静态评估', '动态评估', '发布记录']);
+    await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
+    await expect(detail.locator('.asset-detail__version-panel')).toBeVisible();
+    const contentVersionWidth = await detail
+      .locator('.asset-detail__version-row .harness-version-picker__trigger')
+      .evaluate((element) => element.getBoundingClientRect().width);
+    await detail.getByRole('tab', { name: '静态评估', exact: true }).click();
     await expect(detail.locator('.catalog-evaluation-panel')).toBeVisible();
-    await expect(detail.locator('.asset-detail__version')).toBeVisible();
+    const staticEvaluationVersion = detail.locator(
+      '.asset-detail__content-scroll > .asset-detail__version',
+    );
+    await expect(staticEvaluationVersion).toBeVisible();
+    await expect(staticEvaluationVersion.locator('.asset-detail__version-picker-label')).toHaveText(
+      '版本',
+    );
+    await expect(staticEvaluationVersion).toHaveCSS('height', '42px');
+    await expect(staticEvaluationVersion).toHaveCSS('width', '200px');
+    expect(
+      await staticEvaluationVersion.evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(contentVersionWidth);
+    await expect(staticEvaluationVersion.locator('.harness-version-picker__trigger')).toHaveCSS(
+      'border-top-width',
+      '0px',
+    );
+    await staticEvaluationVersion.getByRole('combobox', { name: '版本' }).click();
+    const staticVersionOptions = page.getByRole('listbox', { name: '可用版本' });
+    const staticVersionAlignment = await Promise.all([
+      staticEvaluationVersion.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+      staticVersionOptions.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+    ]);
+    expect(
+      Math.abs(staticVersionAlignment[0].left - staticVersionAlignment[1].left),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(staticVersionAlignment[0].width - staticVersionAlignment[1].width),
+    ).toBeLessThanOrEqual(1);
+    const staticVersionOptionLabels = await staticVersionOptions
+      .getByRole('option')
+      .allTextContents();
+    await staticEvaluationVersion.getByRole('combobox', { name: '版本' }).press('Escape');
     await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
 
-    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
-    await expect(detail.getByRole('tab', { name: '行为评测', exact: true })).toHaveAttribute(
+    await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
+    await expect(detail.getByRole('tab', { name: '动态评估', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    const panel = detail.getByRole('tabpanel', { name: '动态评估', exact: true });
     await expect(detail.locator('.asset-detail__version')).toHaveCount(0);
     await expect(detail.locator('.asset-detail__version-panel')).toHaveCount(0);
     await expect(detail.locator('.catalog-detail-capability')).toBeHidden();
     await expect(panel.getByText('评测触发时间', { exact: true })).toBeVisible();
     await expect(panel.getByText('触发结果构成', { exact: true })).toBeVisible();
     const behaviorVersion = panel.getByRole('combobox', { name: '版本', exact: true });
+    const behaviorVersionPicker = panel.locator('.behavior-version-picker');
+    expect(
+      await behaviorVersionPicker.evaluate((element) => element.getBoundingClientRect().width),
+    ).toBe(contentVersionWidth);
+    const pickerElementCenters = await behaviorVersionPicker.evaluate((element) => {
+      const selectors = [
+        '.behavior-version-picker__label',
+        '.harness-version-picker__value',
+        '.harness-version-picker__chevron',
+      ];
+      return selectors.map((selector) => {
+        const rect = element.querySelector(selector)?.getBoundingClientRect();
+        if (!rect) throw new Error(`Missing version picker element: ${selector}`);
+        return rect.top + rect.height / 2;
+      });
+    });
+    expect(
+      Math.max(...pickerElementCenters) - Math.min(...pickerElementCenters),
+    ).toBeLessThanOrEqual(1);
+    await expect(behaviorVersion).toHaveCSS('padding-left', '12px');
     await behaviorVersion.click();
     const behaviorVersionOptions = page
       .getByRole('listbox', { name: '可用版本' })
       .getByRole('option');
+    const behaviorVersionMenu = page.getByRole('listbox', { name: '可用版本' });
+    const behaviorVersionAlignment = await Promise.all([
+      behaviorVersionPicker.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+      behaviorVersionMenu.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, width: rect.width };
+      }),
+    ]);
     expect(
-      (await behaviorVersionOptions.allTextContents()).every((label) =>
-        /(已评测|部分评测|进行中|失败|未评测)$/.test(label.trim()),
-      ),
-    ).toBe(true);
+      Math.abs(behaviorVersionAlignment[0].left - behaviorVersionAlignment[1].left),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(behaviorVersionAlignment[0].width - behaviorVersionAlignment[1].width),
+    ).toBeLessThanOrEqual(1);
+    await expect(behaviorVersion.locator('.harness-version-picker__status-dot')).toHaveCount(1);
+    await expect(
+      behaviorVersionOptions.locator('.harness-version-picker__option-status'),
+    ).toHaveCount(await behaviorVersionOptions.count());
+    expect(await behaviorVersionOptions.allTextContents()).toEqual(staticVersionOptionLabels);
     await behaviorVersion.press('Escape');
 
     await panel.getByRole('button', { name: '不通过 2', exact: true }).click();
     await expect(panel.getByText('TC-T-007', { exact: true })).toBeVisible();
     await expect(panel.getByText('TC-T-001', { exact: true })).toBeHidden();
-    const triggerCaseToggle = panel.getByRole('button', { name: '展开用例 TC-T-007' });
-    await triggerCaseToggle.click();
-    const expandedTriggerCaseToggle = panel.getByRole('button', { name: '收起用例 TC-T-007' });
-    await expect(expandedTriggerCaseToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(panel.getByText('未触发当前 Skill', { exact: true })).toBeVisible();
-    await expandedTriggerCaseToggle.click();
+    const triggerTable = panel.locator('#behavior-panel-trigger .behavior-case-table');
+    await expect(triggerTable.locator('th')).toHaveText([
+      '用例 ID',
+      '任务描述',
+      '类型',
+      '期望触发',
+      '实际触发',
+      '结果',
+    ]);
+    await expect(triggerTable.locator('.behavior-case-toggle')).toHaveCount(0);
+    await expect(panel.getByText('未触发当前 Skill', { exact: true })).toHaveCount(0);
 
     await panel.getByRole('tab', { name: '质量评测', exact: true }).click();
     await expect(panel.getByText('评测画像', { exact: true })).toBeVisible();
@@ -462,7 +595,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(panel.getByText('评分分析', { exact: true })).toBeVisible();
 
     await panel.getByRole('button', { name: '发起评测', exact: true }).click();
-    let dialog = page.getByRole('dialog', { name: '发起行为评测', exact: true });
+    let dialog = page.getByRole('dialog', { name: '发起质量评测', exact: true });
     const confirm = dialog.getByRole('button', { name: '触发', exact: true });
     await expect(confirm).toBeDisabled();
     const options = dialog.getByRole('checkbox');
@@ -476,7 +609,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(dialog).toBeHidden();
 
     await panel.getByRole('button', { name: '发起评测', exact: true }).click();
-    dialog = page.getByRole('dialog', { name: '发起行为评测', exact: true });
+    dialog = page.getByRole('dialog', { name: '发起质量评测', exact: true });
     await expect(dialog.getByRole('checkbox').first()).not.toBeChecked();
     await expect(dialog.getByRole('checkbox').nth(1)).not.toBeChecked();
     await dialog.getByRole('checkbox').first().check();
@@ -488,7 +621,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
     const trendDialog = page.getByRole('dialog', { name: '版本通过率趋势', exact: true });
     await expect(trendDialog.getByText('质量评测通过率', { exact: true })).toBeVisible();
-    await expect(trendDialog.getByText('触发评测准确率', { exact: true })).toBeVisible();
+    await expect(trendDialog.getByText('触发准确率', { exact: true })).toBeVisible();
     await expect(trendDialog.getByText(/v1\.10\.0/).first()).toBeVisible();
     await trendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
     await expect(trendDialog).toBeHidden();
@@ -501,21 +634,66 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await assetCard(page, '流水线失败诊断 Skill').click();
 
     const detail = page.locator('.asset-detail');
-    await detail.getByRole('tab', { name: '行为评测', exact: true }).click();
-    const panel = detail.getByRole('tabpanel', { name: '行为评测', exact: true });
+    await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
+    const panel = detail.getByRole('tabpanel', { name: '动态评估', exact: true });
     const versionSelect = detail.getByRole('combobox', { name: '版本' });
+    const triggerTab = panel.getByRole('tab', { name: '触发评测', exact: true });
+    const qualityTab = panel.getByRole('tab', { name: '质量评测', exact: true });
     await expect(versionSelect).toContainText('1.1.0');
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v1\.1\.0 尚未发起该模式评测/)).toBeVisible();
+    await expect(triggerTab).toBeEnabled();
+    await expect(qualityTab).toBeEnabled();
+    await qualityTab.click();
+    await expect(panel.getByText('当前版本暂无质量评测数据', { exact: true })).toBeVisible();
+    await triggerTab.click();
+    await expect(panel.getByRole('button', { name: '版本趋势', exact: true })).toBeEnabled();
+    await expect(
+      panel.locator('.behavior-card__actions').getByRole('button', {
+        name: '发起评测',
+        exact: true,
+      }),
+    ).toBeEnabled();
+
+    await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
+    const emptyTrendDialog = page.getByRole('dialog', {
+      name: '版本通过率趋势',
+      exact: true,
+    });
+    await expect(emptyTrendDialog.locator('.behavior-trend-chart')).toHaveCount(0);
+    await expect(emptyTrendDialog.getByText('暂无已完成评测的版本', { exact: true })).toHaveCount(
+      2,
+    );
+    await emptyTrendDialog.getByRole('button', { name: '关闭版本趋势弹窗' }).click();
 
     await versionSelect.click();
-    await expect(page.getByRole('option', { name: '1.1.0 未评测', exact: true })).toBeVisible();
-    await page.getByRole('option', { name: /^0\.9\.0 / }).click();
+    await expect(page.getByRole('option', { name: '1.1.0', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: '1.0.0', exact: true })).toBeVisible();
+    await page.getByRole('option', { name: '0.9.0', exact: true }).click();
 
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
     await expect(panel.getByText(/v0\.9\.0 尚未发起该模式评测/)).toBeVisible();
+    await expect(triggerTab).toBeEnabled();
+    await expect(qualityTab).toBeEnabled();
     await panel.getByRole('status').getByRole('button', { name: '发起评测', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '发起行为评测', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '发起质量评测', exact: true })).toBeVisible();
+  });
+
+  test('Skill 无可用版本时保留评测类型切换并禁用数据操作', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await assetCard(page, '发布回滚预案校验 Skill').click();
+
+    const detail = page.locator('.asset-detail');
+    await detail.getByRole('tab', { name: '动态评估', exact: true }).click();
+    const panel = detail.getByRole('tabpanel', { name: '动态评估', exact: true });
+
+    await expect(panel.getByRole('combobox', { name: '版本', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('tab', { name: '触发评测', exact: true })).toBeEnabled();
+    await expect(panel.getByRole('tab', { name: '质量评测', exact: true })).toBeEnabled();
+    await expect(panel.getByRole('button', { name: '版本趋势', exact: true })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: '发起评测', exact: true })).toBeDisabled();
+    await expect(panel.getByText('当前 Skill 暂无可用版本', { exact: true })).toBeVisible();
   });
 
   test('Agent 和 Command 详情复用清单中的正文展示', async ({ page }) => {
@@ -530,8 +708,8 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
         'background-color',
         'rgb(248, 250, 252)',
       );
-      await expect(detail.getByRole('tab', { name: '评估报告' })).toHaveCount(0);
-      await expect(detail.getByRole('tab', { name: '行为评测' })).toHaveCount(0);
+      await expect(detail.getByRole('tab', { name: '静态评估' })).toHaveCount(0);
+      await expect(detail.getByRole('tab', { name: '动态评估' })).toHaveCount(0);
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.locator('.asset-back').click();
     }
@@ -576,7 +754,7 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     ]);
   });
 
-  test('\u6ca1\u6709\u53ef\u53d1\u5e03\u7248\u672c\u7684\u8d44\u4ea7\u6807\u8bb0\u4e3a\u672a\u5f00\u53d1\u4e14\u4e0d\u63d0\u4f9b\u53d1\u5e03\u5165\u53e3', async ({
+  test('\u5f00\u53d1\u4e2d Skill \u6ca1\u6709\u53ef\u7528\u7248\u672c\u4e14\u4e0d\u63d0\u4f9b\u53d1\u5e03\u5165\u53e3', async ({
     page,
   }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
@@ -584,20 +762,48 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       label: 'harness-pipeline',
     });
     await page.getByRole('button', { name: 'Skill', exact: true }).click();
+    await page.getByRole('button', { name: '\u5f00\u53d1\u4e2d', exact: true }).click();
 
-    const card = assetCard(page, '\u6d41\u6c34\u7ebf\u914d\u7f6e\u5de1\u68c0 Skill');
-    await expect(
-      card.locator('.asset-badge').getByText('\u672a\u5f00\u53d1', { exact: true }),
-    ).toBeVisible();
+    const developingSkillNames = [
+      '\u6d41\u6c34\u7ebf\u914d\u7f6e\u5de1\u68c0 Skill',
+      '\u53d1\u5e03\u56de\u6eda\u9884\u6848\u6821\u9a8c Skill',
+      '\u53d8\u66f4\u7a97\u53e3\u51b2\u7a81\u68c0\u6d4b Skill',
+      '\u4f9d\u8d56\u670d\u52a1\u5065\u5eb7\u9884\u68c0 Skill',
+    ];
+    await expect(page.getByText('\u5171 4 \u4e2a\u8d44\u4ea7', { exact: true })).toBeVisible();
+    for (const name of developingSkillNames) {
+      const developingCard = assetCard(page, name);
+      await expect(developingCard).toBeVisible();
+      await expect(developingCard.getByText('\u5f00\u53d1\u4e2d', { exact: true })).toBeVisible();
+      await expect(developingCard.locator('.asset-card__version')).toHaveCount(0);
+    }
+
+    const card = assetCard(page, '\u53d1\u5e03\u56de\u6eda\u9884\u6848\u6821\u9a8c Skill');
     const cardMenu = await openAssetCardMenu(card);
     await expect(cardMenu.getByRole('menuitem', { name: '\u53d1\u5e03', exact: true })).toHaveCount(
       0,
     );
 
     await card.click();
-    await expect(page.locator('.asset-detail')).toBeVisible();
+    const detail = page.locator('.asset-detail');
+    await expect(detail).toBeVisible();
+    await expect(detail.getByRole('combobox', { name: '\u7248\u672c' })).toContainText(
+      '\u65e0\u53ef\u7528\u7248\u672c',
+    );
     await expect(
-      page.locator('.asset-detail').getByRole('button', { name: '\u53d1\u5e03' }),
-    ).toHaveCount(0);
+      detail.getByText('\u6682\u65e0\u53ef\u5c55\u793a\u7684\u6587\u4ef6', { exact: true }),
+    ).toBeVisible();
+    await expect(detail.getByRole('button', { name: '\u53d1\u5e03' })).toHaveCount(0);
+
+    await detail.getByRole('tab', { name: '\u884c\u4e3a\u8bc4\u6d4b', exact: true }).click();
+    await expect(
+      detail.getByText('\u5f53\u524d Skill \u6682\u65e0\u53ef\u7528\u7248\u672c', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      detail.getByRole('button', { name: '\u53d1\u8d77\u8bc4\u6d4b', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      detail.getByRole('button', { name: '\u7248\u672c\u8d8b\u52bf', exact: true }),
+    ).toBeDisabled();
   });
 });

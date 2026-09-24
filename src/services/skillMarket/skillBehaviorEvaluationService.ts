@@ -6,7 +6,7 @@ import {
 
 export type SkillBehaviorEvaluationMode = 'TRIGGER' | 'QUALITY';
 export type SkillBehaviorEvaluationState =
-  'queuing' | 'pending' | 'running' | 'completed' | 'failed';
+  'queuing' | 'executing' | 'pending' | 'running' | 'completed' | 'failed';
 
 export interface SkillTriggerEvaluationResultDto {
   case_id: string;
@@ -19,10 +19,11 @@ export interface SkillTriggerEvaluationResultDto {
 
 export interface SkillTriggerEvaluationReportDto {
   agent_name: string;
-  model_name: string;
+  model: string;
   positive_trigger_rate: string;
   negative_false_trigger_rate: string;
   accuracy: string;
+  total_cost_time: string;
   results: SkillTriggerEvaluationResultDto[];
 }
 
@@ -39,7 +40,7 @@ export interface SkillQualityEvaluationResultDto {
 
 export interface SkillQualityEvaluationReportDto {
   agent_name: string;
-  model_name: string;
+  model: string;
   pass_rate: string;
   total_cost_time: string;
   results: SkillQualityEvaluationResultDto[];
@@ -101,22 +102,18 @@ type ResponseObject<T> = {
 
 export class SkillBehaviorEvaluationNotFoundError extends Error {}
 
-const ENDPOINT = '/v1/harness/plans/skill/behavior-eval';
+const ENDPOINT = '/v1/harness/skill-eval/behavior-eval';
 const transportIsHttp =
   String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
 const mockRecords = new Map<string, SkillBehaviorEvaluationRecordDto>();
 const MOCK_UNEVALUATED_SKILL_NAME = '流水线失败诊断 Skill';
-const MOCK_UNEVALUATED_VERSION = '1.1.0';
 
 function mockKey(skillName: string, version: string, mode: SkillBehaviorEvaluationMode): string {
   return `${skillName}\u0000${version}\u0000${mode}`;
 }
 
-function isMockUnevaluatedVersion(skillName: string, version: string): boolean {
-  return (
-    skillName === MOCK_UNEVALUATED_SKILL_NAME &&
-    version.trim().replace(/^v/i, '') === MOCK_UNEVALUATED_VERSION
-  );
+function isMockUnevaluatedSkill(skillName: string): boolean {
+  return skillName === MOCK_UNEVALUATED_SKILL_NAME;
 }
 
 function responseMessage(value: unknown, fallback: string): string {
@@ -161,20 +158,21 @@ function mockRecord(
 ): SkillBehaviorEvaluationRecordDto | null {
   const overridden = mockRecords.get(mockKey(skillName, version, mode));
   if (overridden) return structuredClone(overridden);
-  if (isMockUnevaluatedVersion(skillName, version)) return null;
+  if (isMockUnevaluatedSkill(skillName)) return null;
   const evaluation = getSkillBehaviorEvaluationMock({ version });
   if (!evaluation) return null;
   const report: SkillBehaviorEvaluationReportDto =
     mode === 'TRIGGER'
       ? {
           agent_name: 'CodeAgent',
-          model_name: evaluation.model,
+          model: evaluation.model,
           positive_trigger_rate: `${evaluation.triggerCases.filter((item) => item.type === '正向' && item.actual).length}/${evaluation.triggerCases.filter((item) => item.type === '正向').length}`,
           negative_false_trigger_rate: `${evaluation.triggerCases.filter((item) => item.type === '反向' && item.actual).length}/${evaluation.triggerCases.filter((item) => item.type === '反向').length}`,
           accuracy: percent(
             evaluation.triggerCases.filter((item) => item.passed).length,
             evaluation.triggerCases.length,
           ),
+          total_cost_time: `${evaluation.summaries.trigger.durationSeconds.toFixed(2)}s`,
           results: evaluation.triggerCases.map((item) => ({
             case_id: item.id,
             task: item.task,
@@ -186,7 +184,7 @@ function mockRecord(
         }
       : {
           agent_name: 'CodeAgent',
-          model_name: evaluation.model,
+          model: evaluation.model,
           pass_rate: percent(
             evaluation.qualityCases.filter((item) => item.passed).length,
             evaluation.qualityCases.length,
@@ -244,7 +242,7 @@ function completedMockRecord(
 export function isSkillBehaviorEvaluationInProgress(
   state: SkillBehaviorEvaluationState | undefined,
 ): boolean {
-  return state === 'queuing' || state === 'pending' || state === 'running';
+  return Boolean(state && state !== 'completed' && state !== 'failed');
 }
 
 export function isSkillBehaviorEvaluationNotFound(error: unknown): boolean {
@@ -343,12 +341,8 @@ export async function querySkillBehaviorEvaluationTrend(
   mockVersions: string[] = [],
 ): Promise<SkillBehaviorEvaluationTrendDto> {
   if (!transportIsHttp) {
-    const availableVersions = mockVersions.filter(
-      (version) => !isMockUnevaluatedVersion(skillName, version),
-    );
-    const merged = getSkillBehaviorTrendMock(
-      mockVersions.length ? availableVersions : ['0.9.0', '1.0.0', '1.10.0'],
-    );
+    const availableVersions = isMockUnevaluatedSkill(skillName) ? [] : mockVersions;
+    const merged = getSkillBehaviorTrendMock(availableVersions);
     return {
       quality: merged.map((point) => ({
         version: point.version,
