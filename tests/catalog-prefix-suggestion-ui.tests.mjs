@@ -67,7 +67,10 @@ async function renderSkillDialog(productName, createOnly = true) {
   }
 }
 
-async function renderAssetEditDialog(assetType) {
+async function renderAssetEditDialog(
+  assetType,
+  { requiredNamePrefix = '', suggestedNamePrefix = 'agent-' } = {},
+) {
   const { default: Component } = await server.ssrLoadModule(
     '/src/components/skill/HarnessAssetEditDialog.vue',
   );
@@ -82,7 +85,8 @@ async function renderAssetEditDialog(assetType) {
       plannedCompleteDate: '',
       submitting: false,
       error: '',
-      suggestedNamePrefix: 'agent-',
+      requiredNamePrefix,
+      suggestedNamePrefix,
     }),
     context,
   );
@@ -119,6 +123,21 @@ try {
   );
   assert.doesNotMatch(skill.html, /产品名称不符合命名规范/);
 
+  for (const capabilityType of ['agent', 'command']) {
+    const valid = await renderCapabilityDialog(capabilityType, 'harness-pipeline');
+    assert.equal(valid.state.editor.name, 'harness-pipeline-');
+    assert.match(
+      valid.html,
+      /需以产品名称“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/,
+    );
+  }
+  const validSkill = await renderSkillDialog('harness-pipeline');
+  assert.equal(validSkill.state.editor.name, 'harness-pipeline-');
+  assert.match(
+    validSkill.html,
+    /需以产品名称的小写形式“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/,
+  );
+
   for (const createOnly of [true, false]) {
     const capability = await renderCapabilityDialog(
       'agent',
@@ -142,6 +161,19 @@ try {
       editDialog.html,
       /建议使用“agent-”作为名称前缀，仅使用小写字母、数字和连字符。/,
       `编辑 ${assetType} 弹窗应显示同样的前缀建议`,
+    );
+
+    const validEditDialog = await renderAssetEditDialog(assetType, {
+      requiredNamePrefix: 'harness-pipeline-',
+      suggestedNamePrefix: '',
+    });
+    const validNameInput =
+      validEditDialog.html.match(/<input(?=[^>]*aria-label="名称")[^>]*>/)?.[0] ?? '';
+    assert.match(validNameInput, new RegExp(`value="${validEditDialog.name}"`));
+    assert.match(
+      validEditDialog.html,
+      /需以产品名称的小写形式“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/,
+      `编辑合法产品下的 ${assetType} 时应补齐名称规则提示`,
     );
   }
 

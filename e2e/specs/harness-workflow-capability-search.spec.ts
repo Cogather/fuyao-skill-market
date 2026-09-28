@@ -269,7 +269,7 @@ test('真实向导搜索跨产品 Agent 后可分配节点，保存刷新仍保�
     sessionStorage.setItem('workflow-search-seeded', '1');
     localStorage.clear();
     localStorage.setItem(
-      'skill-market-harness-capability-planning-v4-agent',
+      'skill-market-harness-capability-planning-v5-agent',
       JSON.stringify({
         catalog: [
           {

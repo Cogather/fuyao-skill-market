@@ -80,6 +80,10 @@ try {
     assert.match(html, /仅使用小写字母、数字和连字符。/);
     assert.doesNotMatch(html, /产品名称不符合命名规范/);
   }
+  function assertRequiredPrefixCopy(html, prefix) {
+    assert.match(html, new RegExp(`以 ${prefix} 开头`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
+  }
   async function fixture({
     bound = false,
     commandVersion,
@@ -616,13 +620,31 @@ try {
     await test(`custom capabilities retain the lowercase valid product-name prefix: ${productName}`, async () => {
       const f = await fixture({ productName });
       const state = await mountScenarioPage(f.workspace);
+      await state.openWizard(f.workflow);
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      state.closeWizard();
       await state.openWizard(f.workflow, 2);
       state.openCommandDraft();
       assert.equal(state.wizard.value.commandDraft.name, '/harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       state.openAssetDraft('Agent');
       assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       state.openAssetDraft('Skill');
       assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       const common = {
         description: '能力说明',
         owner: '责任人 u1',
@@ -665,6 +687,10 @@ try {
       const state = await mountScenarioPage(f.workspace);
       state.openScenario(f.scenario.parentId);
       assert.equal(state.scenarioForm.code, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       state.scenarioForm.name = '新增下级场景';
       for (const code of ['custom-extension', 'product-demo-extension', 'harness-pipeline-']) {
         state.scenarioForm.code = code;

@@ -4,7 +4,7 @@ import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
 
 const DEPARTMENT_PATH = ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'];
-const MOCK_AGENT_STORAGE = 'skill-market-harness-capability-planning-v4-agent';
+const MOCK_AGENT_STORAGE = 'skill-market-harness-capability-planning-v5-agent';
 
 async function selectDepartmentPath(page: Page, path: string[]): Promise<void> {
   await page

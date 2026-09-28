@@ -91,7 +91,7 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
                 @input="emit('update:name', ($event.target as HTMLInputElement).value)"
               />
               <small v-if="requiredNamePrefix" class="asset-master-name-hint">
-                需以产品名称的小写形式“{{ requiredNamePrefix }}”开头
+                需以产品名称的小写形式“{{ requiredNamePrefix }}”开头，仅使用小写字母、数字和连字符。
               </small>
               <small v-else-if="suggestedNamePrefix" class="asset-master-name-hint">
                 建议使用“{{ suggestedNamePrefix }}”作为名称前缀，仅使用小写字母、数字和连字符。

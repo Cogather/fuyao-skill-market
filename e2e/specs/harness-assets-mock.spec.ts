@@ -176,6 +176,35 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
       .toEqual(['Extension']);
   });
 
+  test('Harness 流水线平台展示四类 Mock 资产', async ({ page }) => {
+    await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
+    await selectHarnessOption(page.getByLabel('产品筛选'), {
+      label: 'Harness 流水线平台',
+    });
+
+    for (const sample of [
+      { type: 'Agent', minimum: 3 },
+      { type: 'Skill', minimum: 4 },
+      { type: 'Command', minimum: 3 },
+      { type: 'Extension', minimum: 2 },
+    ]) {
+      await page.getByRole('button', { name: sample.type, exact: true }).click();
+      await expect
+        .poll(async () => page.locator('.asset-card').count())
+        .toBeGreaterThanOrEqual(sample.minimum);
+      await expect(page.getByText(/^共 \d+ 个资产$/)).toBeVisible();
+      await expect
+        .poll(async () => [
+          ...new Set(
+            (await page.locator('.asset-card .asset-badge.is-type').allTextContents()).map(
+              (label) => label.trim(),
+            ),
+          ),
+        ])
+        .toEqual([sample.type]);
+    }
+  });
+
   test('四类资产都有已发布 Mock 数据和多个已发布版本', async ({ page }) => {
     await selectDepartmentPath(page, CONTINUOUS_DELIVERY_PATH);
 
@@ -267,6 +296,9 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     await expect(
       createDialog.getByPlaceholder('\u8bf7\u8f93\u5165 Command \u540d\u79f0'),
     ).toHaveValue('harness-pipeline-');
+    await expect(createDialog.locator('.capability-name-prefix-hint')).toHaveText(
+      '需以产品名称“harness-pipeline-”开头，仅使用小写字母、数字和连字符。',
+    );
     await selectHarnessOption(scope.getByLabel('产品', { exact: true }), {
       label: 'DevOps 自动化工具箱',
     });

@@ -328,6 +328,9 @@ test.describe('第二个资产清单参考稿样式', () => {
     await expect(editDialog.getByRole('textbox', { name: '名称', exact: true })).toHaveValue(
       '流水线异常分析 Agent',
     );
+    await expect(editDialog.locator('.asset-master-name-hint')).toHaveText(
+      '需以产品名称的小写形式“harness-pipeline-”开头，仅使用小写字母、数字和连字符。',
+    );
     await editDialog.getByRole('button', { name: '取消', exact: true }).click();
 
     await firstMore.click();

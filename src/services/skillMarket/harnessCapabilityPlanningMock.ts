@@ -32,11 +32,18 @@ interface CapabilityState {
   planningSeed: number;
 }
 
-const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v4';
+const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v5';
+const LEGACY_STORAGE_PREFIX = 'skill-market-harness-capability-planning-v4';
 const now = '2026-08-01T08:00:00.000Z';
+const HARNESS_PIPELINE_OFFERING = {
+  offeringId: 'offering-harness-pipeline',
+  offeringName: 'Harness 流水线平台',
+  planningDeptName: '持续交付组',
+} satisfies ProductPlanningOption;
 
 const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPlanningOption[]> = {
   command: [
+    HARNESS_PIPELINE_OFFERING,
     {
       offeringId: 'command-product-harness-pipeline',
       offeringName: 'harness-pipeline',
@@ -69,6 +76,7 @@ const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPla
     },
   ],
   agent: [
+    HARNESS_PIPELINE_OFFERING,
     {
       offeringId: 'agent-product-harness-pipeline',
       offeringName: 'harness-pipeline',
@@ -162,6 +170,10 @@ function planning(
   >,
 ): SkillPlanningItem {
   const productLevel = record.level === '产品级' && Boolean(record.product);
+  const offeringId =
+    record.product === HARNESS_PIPELINE_OFFERING.offeringName
+      ? HARNESS_PIPELINE_OFFERING.offeringId
+      : record.product;
   return {
     id,
     skillId: capabilityId,
@@ -171,7 +183,7 @@ function planning(
     name: record.name,
     description: record.description,
     level: productLevel ? '产品级' : '部门级',
-    offeringId: productLevel ? record.product : '',
+    offeringId: productLevel ? offeringId : '',
     offeringName: productLevel ? record.product : '',
     owner: record.owner,
     deptCode: 'dept-continuous-delivery',
@@ -183,6 +195,53 @@ function planning(
     status: record.status,
   };
 }
+
+const harnessCommandCatalogSeeds = [
+  master(
+    'command-master-harness-1201',
+    '流水线失败诊断 Command',
+    '聚合 Harness 步骤日志、执行耗时和错误栈，快速定位流水线失败节点并给出修复建议。',
+    '张三 w30000001',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '李明 w30000006',
+    '2026-08-20',
+    '已完成',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'command-master-harness-1202',
+    '发布门禁校验 Command',
+    '在 Harness 部署前校验测试结果、安全扫描、变更窗口和审批条件，输出可解释的门禁结论。',
+    '李四 w30000002',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '周扬 w30000007',
+    '2026-10-10',
+    '进行中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'command-master-harness-1203',
+    '运行日志采集 Command',
+    '按流水线执行 ID 采集步骤日志、服务输出和变更元数据，生成可检索的故障上下文包。',
+    '郑欣 w30000015',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '马可 w30000016',
+    '2026-10-25',
+    '开发中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'command-master-harness-1204',
+    '一键回滚 Command',
+    '根据 Harness 部署历史选择稳定版本，执行环境回滚、健康检查与结果回写。',
+    '王五 w30000003',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '陈七 w30000008',
+    '2026-11-12',
+    '未开始',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+];
 
 const commandCatalog = [
   master(
@@ -247,6 +306,54 @@ const commandCatalog = [
     '李明 w30000022',
     '2026-09-05',
     '未开始',
+  ),
+  ...harnessCommandCatalogSeeds,
+];
+
+const harnessAgentCatalogSeeds = [
+  master(
+    'agent-master-harness-1201',
+    '失败根因分析 Agent',
+    '持续分析 Harness 流水线失败记录，关联代码变更与环境异常，输出根因和恢复路径。',
+    '张三 w30000001',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '李明 w30000006',
+    '2026-08-28',
+    '已完成',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'agent-master-harness-1202',
+    '发布门禁决策 Agent',
+    '结合变更风险、质量指标和审批策略，动态给出 Harness 发布放行、阻断或人工复核建议。',
+    '李四 w30000002',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '周扬 w30000007',
+    '2026-10-15',
+    '进行中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'agent-master-harness-1203',
+    '日志关联分析 Agent',
+    '对齐流水线步骤日志、服务告警与调用链时间线，自动发现异常传播路径。',
+    '郑欣 w30000015',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '马可 w30000016',
+    '2026-10-30',
+    '开发中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'agent-master-harness-1204',
+    '智能回滚编排 Agent',
+    '评估异常影响面和版本依赖，为 Harness 生成分阶段回滚方案并跟踪恢复验证。',
+    '王五 w30000003',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '陈七 w30000008',
+    '2026-11-18',
+    '未开始',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
   ),
 ];
 
@@ -314,12 +421,108 @@ const agentCatalog = [
     '2026-09-16',
     '进行中',
   ),
+  ...harnessAgentCatalogSeeds,
+];
+
+const harnessCommandPlanningSeeds = [
+  planning(
+    'command-plan-harness-1201',
+    harnessCommandCatalogSeeds[0]!.id,
+    harnessCommandCatalogSeeds[0]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '失败诊断',
+      activityNodeName: '流水线执行',
+      subActivityNodeName: '异常定位',
+    },
+  ),
+  planning(
+    'command-plan-harness-1202',
+    harnessCommandCatalogSeeds[1]!.id,
+    harnessCommandCatalogSeeds[1]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '变更管控',
+      activityNodeName: '版本发布',
+      subActivityNodeName: '发布门禁',
+    },
+  ),
+  planning(
+    'command-plan-harness-1203',
+    harnessCommandCatalogSeeds[2]!.id,
+    harnessCommandCatalogSeeds[2]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '可观测性',
+      activityNodeName: '运行监控',
+      subActivityNodeName: '日志采集',
+    },
+  ),
+  planning(
+    'command-plan-harness-1204',
+    harnessCommandCatalogSeeds[3]!.id,
+    harnessCommandCatalogSeeds[3]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '故障恢复',
+      activityNodeName: '版本回退',
+      subActivityNodeName: '一键回滚',
+    },
+  ),
+];
+
+const harnessAgentPlanningSeeds = [
+  planning(
+    'agent-plan-harness-1201',
+    harnessAgentCatalogSeeds[0]!.id,
+    harnessAgentCatalogSeeds[0]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '失败诊断',
+      activityNodeName: '问题闭环',
+      subActivityNodeName: '根因分析',
+    },
+  ),
+  planning(
+    'agent-plan-harness-1202',
+    harnessAgentCatalogSeeds[1]!.id,
+    harnessAgentCatalogSeeds[1]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '变更管控',
+      activityNodeName: '版本发布',
+      subActivityNodeName: '门禁决策',
+    },
+  ),
+  planning(
+    'agent-plan-harness-1203',
+    harnessAgentCatalogSeeds[2]!.id,
+    harnessAgentCatalogSeeds[2]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '可观测性',
+      activityNodeName: '运行监控',
+      subActivityNodeName: '日志分析',
+    },
+  ),
+  planning(
+    'agent-plan-harness-1204',
+    harnessAgentCatalogSeeds[3]!.id,
+    harnessAgentCatalogSeeds[3]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '故障恢复',
+      activityNodeName: '版本回退',
+      subActivityNodeName: '回滚编排',
+    },
+  ),
 ];
 
 const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
   command: {
     catalog: commandCatalog,
     planning: [
+      ...harnessCommandPlanningSeeds,
       planning('command-plan-1001', commandCatalog[0]!.id, commandCatalog[0]!, {
         firstScene: '发布运维',
         secondScene: '变更管控',
@@ -345,6 +548,7 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
   agent: {
     catalog: agentCatalog,
     planning: [
+      ...harnessAgentPlanningSeeds,
       planning('agent-plan-1001', agentCatalog[0]!.id, agentCatalog[0]!, {
         firstScene: '质量保障',
         secondScene: '测试设计',
@@ -391,8 +595,42 @@ function cloneState(state: CapabilityState): CapabilityState {
   };
 }
 
-function storageKey(type: MockHarnessCapabilityType): string {
-  return `${STORAGE_PREFIX}-${type}`;
+function storageKey(type: MockHarnessCapabilityType, prefix = STORAGE_PREFIX): string {
+  return `${prefix}-${type}`;
+}
+
+function parseStoredState(raw: string | null): CapabilityState | null {
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as Partial<CapabilityState>;
+  if (!Array.isArray(parsed.catalog) || !Array.isArray(parsed.planning)) return null;
+  return {
+    catalog: parsed.catalog.map(cloneRecord),
+    planning: parsed.planning.map(clonePlanningItem),
+    catalogSeed: Number(parsed.catalogSeed) || 2000,
+    planningSeed: Number(parsed.planningSeed) || 2000,
+  };
+}
+
+function mergeHarnessSeeds(
+  type: MockHarnessCapabilityType,
+  state: CapabilityState,
+): CapabilityState {
+  const catalogSeeds = type === 'command' ? harnessCommandCatalogSeeds : harnessAgentCatalogSeeds;
+  const planningSeeds =
+    type === 'command' ? harnessCommandPlanningSeeds : harnessAgentPlanningSeeds;
+  const catalogIds = new Set(state.catalog.map((record) => record.id));
+  const planningIds = new Set(state.planning.map((item) => item.id));
+  return {
+    ...state,
+    catalog: [
+      ...catalogSeeds.filter((record) => !catalogIds.has(record.id)).map(cloneRecord),
+      ...state.catalog,
+    ],
+    planning: [
+      ...planningSeeds.filter((item) => !planningIds.has(item.id)).map(clonePlanningItem),
+      ...state.planning,
+    ],
+  };
 }
 
 function readState(type: MockHarnessCapabilityType): CapabilityState {
@@ -400,19 +638,20 @@ function readState(type: MockHarnessCapabilityType): CapabilityState {
   if (cached) return cached;
   if (typeof window !== 'undefined') {
     try {
-      const raw = window.localStorage.getItem(storageKey(type));
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<CapabilityState>;
-        if (Array.isArray(parsed.catalog) && Array.isArray(parsed.planning)) {
-          const state: CapabilityState = {
-            catalog: parsed.catalog.map(cloneRecord),
-            planning: parsed.planning.map(clonePlanningItem),
-            catalogSeed: Number(parsed.catalogSeed) || 2000,
-            planningSeed: Number(parsed.planningSeed) || 2000,
-          };
-          memoryStates.set(type, state);
-          return state;
-        }
+      const state = parseStoredState(window.localStorage.getItem(storageKey(type)));
+      if (state) {
+        memoryStates.set(type, state);
+        return state;
+      }
+
+      const legacyState = parseStoredState(
+        window.localStorage.getItem(storageKey(type, LEGACY_STORAGE_PREFIX)),
+      );
+      if (legacyState) {
+        const migratedState = mergeHarnessSeeds(type, legacyState);
+        memoryStates.set(type, migratedState);
+        window.localStorage.setItem(storageKey(type), JSON.stringify(migratedState));
+        return migratedState;
       }
     } catch {
       // Invalid local mock data falls back to the bundled examples.

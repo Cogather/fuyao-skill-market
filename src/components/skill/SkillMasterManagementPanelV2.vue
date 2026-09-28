@@ -2526,7 +2526,7 @@ onMounted(() => {
                   class="field-hint"
                   >从 Skill 广场引入的 Skill 名称不可修改</small
                 ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
-                  >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
+                  >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头，仅使用小写字母、数字和连字符。</small
                 ><small v-else-if="suggestedSkillNamePrefix" class="field-hint"
                   >建议使用“{{
                     suggestedSkillNamePrefix
