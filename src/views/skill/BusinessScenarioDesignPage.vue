@@ -2338,7 +2338,7 @@ async function createAsset() {
               </label>
               <label>
                 描述 *
-                <textarea v-model="wizard.commandDraft.description" placeholder="描述 *" rows="3" />
+                <textarea v-model="wizard.commandDraft.description" placeholder="请输入描述" rows="3" />
               </label>
               <WorkflowPersonPicker
                 :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
@@ -2449,7 +2449,7 @@ async function createAsset() {
               </label>
               <label>
                 描述 *
-                <textarea v-model="wizard.assetDraft.description" placeholder="描述 *" rows="3" />
+                <textarea v-model="wizard.assetDraft.description" placeholder="请输入描述" rows="3" />
               </label>
               <WorkflowPersonPicker
                 :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
