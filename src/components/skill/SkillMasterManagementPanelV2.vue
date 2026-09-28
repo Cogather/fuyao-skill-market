@@ -2519,7 +2519,7 @@ onMounted(() => {
                   v-model.trim="editor.name"
                   maxlength="64"
                   :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
-                  :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
+                  placeholder="请输入 Skill 名称"
                 />
                 <small
                   v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"

@@ -95,11 +95,12 @@ async function renderAssetEditDialog(
 
 try {
   for (const capabilityType of ['agent', 'command']) {
-    const { html, state } = await renderCapabilityDialog(
-      capabilityType,
-      '智能交付 Agent 平台',
-    );
+    const { html, state } = await renderCapabilityDialog(capabilityType, '智能交付 Agent 平台');
     assert.equal(state.editor.name, '', `${capabilityType} 不应自动填入建议前缀`);
+    assert.match(
+      html,
+      new RegExp(`placeholder="请输入 ${capabilityType === 'agent' ? 'Agent' : 'Command'} 名称"`),
+    );
     assert.match(
       html,
       /建议使用“agent-”作为名称前缀，仅使用小写字母、数字和连字符。/,
@@ -117,10 +118,8 @@ try {
 
   const skill = await renderSkillDialog('Harness 流水线平台');
   assert.equal(skill.state.editor.name, '', 'Skill 不应自动填入建议前缀');
-  assert.match(
-    skill.html,
-    /建议使用“harness-”作为名称前缀，仅使用小写字母、数字和连字符。/,
-  );
+  assert.match(skill.html, /placeholder="请输入 Skill 名称"/);
+  assert.match(skill.html, /建议使用“harness-”作为名称前缀，仅使用小写字母、数字和连字符。/);
   assert.doesNotMatch(skill.html, /产品名称不符合命名规范/);
 
   for (const capabilityType of ['agent', 'command']) {
@@ -128,22 +127,20 @@ try {
     assert.equal(valid.state.editor.name, 'harness-pipeline-');
     assert.match(
       valid.html,
-      /需以产品名称“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/,
+      new RegExp(`placeholder="请输入 ${capabilityType === 'agent' ? 'Agent' : 'Command'} 名称"`),
     );
+    assert.match(valid.html, /需以产品名称“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/);
   }
   const validSkill = await renderSkillDialog('harness-pipeline');
   assert.equal(validSkill.state.editor.name, 'harness-pipeline-');
+  assert.match(validSkill.html, /placeholder="请输入 Skill 名称"/);
   assert.match(
     validSkill.html,
     /需以产品名称的小写形式“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/,
   );
 
   for (const createOnly of [true, false]) {
-    const capability = await renderCapabilityDialog(
-      'agent',
-      '智能交付 Agent 平台',
-      createOnly,
-    );
+    const capability = await renderCapabilityDialog('agent', '智能交付 Agent 平台', createOnly);
     assert.equal(capability.state.suggestedCapabilityNamePrefix.value, 'agent-');
     const skillState = await renderSkillDialog('Harness 流水线平台', createOnly);
     assert.equal(skillState.state.suggestedSkillNamePrefix.value, 'harness-');
@@ -157,6 +154,7 @@ try {
       new RegExp(`value="${editDialog.name}"`),
       `编辑 ${assetType} 时不应改写已有名称`,
     );
+    assert.match(nameInput, new RegExp(`placeholder="请输入 ${assetType} 名称"`));
     assert.match(
       editDialog.html,
       /建议使用“agent-”作为名称前缀，仅使用小写字母、数字和连字符。/,
@@ -170,6 +168,7 @@ try {
     const validNameInput =
       validEditDialog.html.match(/<input(?=[^>]*aria-label="名称")[^>]*>/)?.[0] ?? '';
     assert.match(validNameInput, new RegExp(`value="${validEditDialog.name}"`));
+    assert.match(validNameInput, new RegExp(`placeholder="请输入 ${assetType} 名称"`));
     assert.match(
       validEditDialog.html,
       /需以产品名称的小写形式“harness-pipeline-”开头，仅使用小写字母、数字和连字符。/,

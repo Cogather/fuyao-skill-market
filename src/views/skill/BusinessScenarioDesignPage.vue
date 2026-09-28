@@ -1761,7 +1761,7 @@ async function createAsset() {
             v-model="scenarioForm.code"
             maxlength="64"
             required
-            :placeholder="`例如：${productCatalogItemPrefix}mml-dev`"
+            placeholder="请输入场景编码"
           />
           <small>
             该编码将作为发布的 Extension 名称：{{
@@ -2048,7 +2048,7 @@ async function createAsset() {
               required
               maxlength="64"
               :readonly="!!currentScenario?.releaseCount"
-              :placeholder="`例如：${productCatalogItemPrefix}mml-dev`"
+              placeholder="请输入场景编码"
             /><small v-if="currentScenario?.releaseCount"
               >该场景已发布过版本，编码已锁定不可修改。</small
             ><small v-else>
@@ -2324,7 +2324,7 @@ async function createAsset() {
                 Command 名称 *
                 <input
                   v-model="wizard.commandDraft.name"
-                  :placeholder="`/${productCatalogItemPrefix}e2e-codec`"
+                  placeholder="请输入 Command 名称"
                 />
                 <span class="capability-field-hint">
                   {{
@@ -2435,7 +2435,7 @@ async function createAsset() {
                 {{ wizard.assetDraft.assetType }} 名称 *
                 <input
                   v-model="wizard.assetDraft.name"
-                  :placeholder="`${productCatalogItemPrefix}${wizard.assetDraft.assetType === 'Skill' ? 'codec-generator' : 'coding-agent'}`"
+                  :placeholder="`请输入 ${wizard.assetDraft.assetType} 名称`"
                 />
                 <span class="capability-field-hint">
                   {{

@@ -87,7 +87,7 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
                 type="text"
                 maxlength="64"
                 aria-label="名称"
-                :placeholder="requiredNamePrefix || `请输入 ${assetType} 名称`"
+                :placeholder="`请输入 ${assetType} 名称`"
                 @input="emit('update:name', ($event.target as HTMLInputElement).value)"
               />
               <small v-if="requiredNamePrefix" class="asset-master-name-hint">

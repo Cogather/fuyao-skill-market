@@ -504,6 +504,7 @@ try {
       const suggestion = getSuggestedProductCatalogItemNamePrefix(productName);
       assert.ok(suggestion);
       const suggestionHtml = await renderMountedScenarioPage(state, f.workspace);
+      assert.match(suggestionHtml, /placeholder="请输入场景编码"/);
       assertSuggestedPrefixCopy(suggestionHtml, suggestion);
       state.scenarioForm.name = '新增下级场景';
       for (const code of ['INVALID', 'invalid_code', 'invalid--code', 'invalid-', 'a'.repeat(65)]) {
@@ -534,7 +535,7 @@ try {
     assert.equal(f.calls.filter(([op]) => op === 'detail').length, 0);
     assert.equal(state.wizard.value.form.code, '');
     const html = await renderMountedScenarioPage(state, f.workspace);
-    assert.match(html, /placeholder="例如：mml-dev"/);
+    assert.match(html, /placeholder="请输入场景编码"/);
     assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
     assertSuggestedPrefixCopy(html, 'harness-pipeline-');
   });
@@ -555,7 +556,7 @@ try {
     const wizard = state.wizard.value;
     assert.equal(wizard.commandDraft.name, '');
     const html = await renderMountedScenarioPage(state, f.workspace);
-    assert.match(html, /placeholder="\/e2e-codec"/);
+    assert.match(html, /placeholder="请输入 Command 名称"/);
     assert.doesNotMatch(html, /\/product-demo-e2e-codec|以 product-demo- 开头/);
     assertSuggestedPrefixCopy(html, 'harness-pipeline-');
     Object.assign(wizard.commandDraft, {
@@ -587,10 +588,9 @@ try {
       state.openAssetDraft(assetType);
       const wizard = state.wizard.value;
       assert.equal(wizard.assetDraft.name, '');
-      const example = assetType === 'Agent' ? 'coding-agent' : 'codec-generator';
       const html = await renderMountedScenarioPage(state, f.workspace);
-      assert.match(html, new RegExp(`placeholder="${example}"`));
-      assert.doesNotMatch(html, new RegExp(`product-demo-${example}|以 product-demo- 开头`));
+      assert.match(html, new RegExp(`placeholder="请输入 ${assetType} 名称"`));
+      assert.doesNotMatch(html, /以 product-demo- 开头/);
       assertSuggestedPrefixCopy(html, 'harness-pipeline-');
       Object.assign(wizard.assetDraft, {
         name: `invalid ${assetType.toLowerCase()}`,
