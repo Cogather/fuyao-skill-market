@@ -219,12 +219,14 @@ const deletingMySkillId = ref<string | null>(null);
 const mockUpgradeSubmittingId = ref<string | null>(null);
 const deleteConfirmRow = ref<SkillListRecordDto | null>(null);
 const deleteConfirmStyle = ref<CSSProperties>({});
+const deleteConfirmPopoverRef = ref<HTMLElement | null>(null);
 let deleteConfirmListenersBound = false;
 const detailPanelSkill = ref<any>(null);
 /** 市场卡片进入的详情不展示删除；我的发布等入口为 true */
 const detailShowDelete = ref(true);
 const detailDeleteConfirmOpen = ref(false);
 const detailDeleteConfirmStyle = ref<CSSProperties>({});
+const detailDeleteConfirmPopoverRef = ref<HTMLElement | null>(null);
 const detailDeletePendingId = ref<string | null>(null);
 const detailDeletePendingTitle = ref('');
 let detailDeleteConfirmListenersBound = false;
@@ -232,19 +234,30 @@ let detailDeleteConfirmListenersBound = false;
 const deletePopoverWidth = 232;
 const deletePopoverGap = 8;
 const deletePopoverViewportMargin = 8;
-const deletePopoverPreferredHeight = 148;
+const deletePopoverFallbackHeight = 148;
+
+function deletePopoverNaturalHeight(popover: HTMLElement | null): number {
+  if (!popover) {
+    return deletePopoverFallbackHeight;
+  }
+  const borderHeight = Math.max(0, popover.offsetHeight - popover.clientHeight);
+  const naturalHeight = popover.scrollHeight + borderHeight;
+  return naturalHeight > 0 ? naturalHeight : deletePopoverFallbackHeight;
+}
 
 /**
  * 将删除确认框固定在触发按钮附近，并在视口底部空间不足时自动翻到按钮上方。
  * 使用 bottom 锚定上方弹框，内容因 Skill 名称换行而变高时也不会掉出视口。
  */
-function deletePopoverStyleFor(trigger: HTMLElement): CSSProperties {
+function deletePopoverStyleFor(
+  trigger: HTMLElement,
+  popoverHeight = deletePopoverFallbackHeight,
+): CSSProperties {
   const rect = trigger.getBoundingClientRect();
   const availableBelow =
     window.innerHeight - rect.bottom - deletePopoverGap - deletePopoverViewportMargin;
   const availableAbove = rect.top - deletePopoverGap - deletePopoverViewportMargin;
-  const placeAbove =
-    availableBelow < deletePopoverPreferredHeight && availableAbove > availableBelow;
+  const placeAbove = availableBelow < popoverHeight && availableAbove > availableBelow;
   const availableHeight = placeAbove ? availableAbove : availableBelow;
   const idealLeft = rect.left + rect.width / 2 - deletePopoverWidth / 2;
   const left = Math.max(
@@ -1762,6 +1775,12 @@ function openDetailDeleteConfirm(evt: MouseEvent): void {
     detailDeleteConfirmStyle.value = deletePopoverStyleFor(el);
   }
   void nextTick(() => {
+    if (el && detailDeleteConfirmOpen.value) {
+      detailDeleteConfirmStyle.value = deletePopoverStyleFor(
+        el,
+        deletePopoverNaturalHeight(detailDeleteConfirmPopoverRef.value),
+      );
+    }
     setTimeout(() => {
       if (!detailDeleteConfirmOpen.value) {
         return;
@@ -1836,6 +1855,12 @@ function openDeleteConfirm(row: SkillListRecordDto, evt: MouseEvent): void {
     deleteConfirmStyle.value = deletePopoverStyleFor(el);
   }
   void nextTick(() => {
+    if (el && deleteConfirmRow.value) {
+      deleteConfirmStyle.value = deletePopoverStyleFor(
+        el,
+        deletePopoverNaturalHeight(deleteConfirmPopoverRef.value),
+      );
+    }
     setTimeout(() => {
       if (!deleteConfirmRow.value) {
         return;
@@ -3534,6 +3559,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <Teleport to="body">
       <div
         v-if="deleteConfirmRow"
+        ref="deleteConfirmPopoverRef"
         class="my-delete-popconfirm"
         :style="deleteConfirmStyle"
         role="dialog"
@@ -3559,6 +3585,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <Teleport to="body">
       <div
         v-if="detailDeleteConfirmOpen"
+        ref="detailDeleteConfirmPopoverRef"
         class="my-delete-popconfirm"
         :style="detailDeleteConfirmStyle"
         role="dialog"
