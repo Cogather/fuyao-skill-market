@@ -26,6 +26,7 @@ import {
 } from '../../services/skillMarket/skillMasterManagementService';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
@@ -201,6 +202,10 @@ const selectedProduct = computed(() =>
 
 const requiredCapabilityNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
+});
+const suggestedCapabilityNamePrefix = computed(() => {
+  if (filterForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(filterForm.product);
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -1410,8 +1415,11 @@ onMounted(async () => {
                 {{
                   '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c' +
                   requiredCapabilityNamePrefix +
-                  '\u201d\u5f00\u5934'
+                  '\u201d\u5f00\u5934\uff0c\u4ec5\u4f7f\u7528\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u8fde\u5b57\u7b26\u3002'
                 }}
+              </small>
+              <small v-else-if="suggestedCapabilityNamePrefix" class="capability-name-prefix-hint">
+                建议使用“{{ suggestedCapabilityNamePrefix }}”作为名称前缀，仅使用小写字母、数字和连字符。
               </small>
             </label>
             <label class="is-wide">

@@ -58,7 +58,7 @@ try {
       const key =
         type === 'Skill'
           ? 'skill-market-master-records-v5'
-          : `skill-market-harness-capability-planning-v4-${type.toLowerCase()}`;
+          : `skill-market-harness-capability-planning-v5-${type.toLowerCase()}`;
       const stored = JSON.parse(storage.get(key));
       const persisted = (Array.isArray(stored) ? stored : stored.catalog).find(
         (item) => item.id === original.id,

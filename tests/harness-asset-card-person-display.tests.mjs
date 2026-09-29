@@ -33,6 +33,24 @@ try {
   await renderToString(createSSRApp(TestHost));
 
   assert.equal(bindings.assetPersonName('  周扬 w30000007  '), '周扬 w30000007');
+  for (const assetType of ['Agent', 'Command', 'Skill']) {
+    const id = `invalid-product-${assetType.toLowerCase()}`;
+    bindings.assets.value = [
+      {
+        id,
+        assetType,
+        name: `existing-${assetType.toLowerCase()}`,
+        dimType: '产品级',
+        productName: '智能交付 Agent 平台',
+      },
+    ];
+    bindings.selectedAssetKey.value = `${assetType}:${id}`;
+    assert.equal(
+      bindings.detailSuggestedNamePrefix.value,
+      'agent-',
+      `${assetType} 资产编辑应从当前资产归属生成建议前缀`,
+    );
+  }
   bindings.assets.value = [
     {
       id: 'extension-1',

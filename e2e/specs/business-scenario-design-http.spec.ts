@@ -345,7 +345,7 @@ test.describe('业务场景设计 HTTP', () => {
             .getByRole('option', { name: /u1/ })
             .click();
         }
-        await form.getByPlaceholder('描述 *').fill('HTTP 创建能力');
+        await form.getByPlaceholder('请输入描述').fill('HTTP 创建能力');
         await form.locator('input[type="date"]').fill('2026-12-31');
       }
       if (missingCommandName) {

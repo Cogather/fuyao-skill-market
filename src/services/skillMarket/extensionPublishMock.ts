@@ -31,6 +31,7 @@ export type ExtensionRelease = {
   channel: 'Beta' | 'Product';
   operator: { no: string; name: string };
   publishedAt: string;
+  reportUrl?: string;
   status: '成功' | '失败' | '进行中';
   organization: string;
   items: ExtensionReleaseItem[];
@@ -72,6 +73,11 @@ export const MOCK_EXTENSION_ORGANIZATIONS = [
 
 export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
   {
+    id: 'offering-harness-pipeline',
+    name: 'Harness 流水线平台',
+    departmentPath: ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'],
+  },
+  {
     id: 'harness-pipeline',
     name: 'harness-pipeline',
     departmentPath: ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'],
@@ -99,6 +105,172 @@ export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
 ];
 
 const scenes: ExtensionScene[] = [
+  {
+    id: 'scene-harness-pipeline-failure-diagnosis',
+    productId: 'offering-harness-pipeline',
+    primary: '版本发布',
+    name: '失败定位',
+    publishable: true,
+    extension: {
+      name: 'Harness 流水线失败诊断 Extension',
+      description: '聚合 Harness 流水线执行日志、失败节点与运行上下文，输出定位结论和恢复建议。',
+      version: '1.0.0',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-harness-pipeline-failure-diagnosis',
+          name: '流水线失败诊断 Skill',
+          version: '1.1.0',
+          publishDate: '2026-09-01',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content:
+                '# 流水线失败诊断 Skill\n\n分析 Harness 流水线日志、失败节点和上下游依赖，输出根因与恢复建议。',
+            },
+          ],
+        },
+      ],
+      command: [
+        {
+          id: 'command-harness-pipeline-diagnosis',
+          name: '发布流水线诊断 Command',
+          version: '1.0.0',
+          publishDate: '2026-09-03',
+          ready: true,
+          files: [
+            {
+              name: '发布流水线诊断 Command.md',
+              content:
+                '# 发布流水线诊断 Command\n\n采集指定 Harness 执行实例的阶段、步骤、日志和失败上下文。',
+            },
+          ],
+        },
+      ],
+      agent: [
+        {
+          id: 'agent-harness-pipeline-anomaly-analysis',
+          name: '流水线异常分析 Agent',
+          version: '1.0.0',
+          publishDate: '2026-09-05',
+          ready: true,
+          files: [
+            {
+              name: '流水线异常分析 Agent.md',
+              content:
+                '# 流水线异常分析 Agent\n\n关联日志、步骤状态和历史失败模式，生成可执行的诊断与恢复方案。',
+            },
+          ],
+        },
+      ],
+    },
+    releases: [
+      {
+        id: 'release-harness-pipeline-failure-diagnosis-1.0.0',
+        version: '1.0.0',
+        extensionName: 'Harness 流水线失败诊断 Extension',
+        description: '首个正式版本，提供流水线日志采集、失败根因分析和恢复建议。',
+        channel: 'Product',
+        operator: { no: 'A0123', name: '张三' },
+        publishedAt: '2026-09-06 10:30:00',
+        reportUrl:
+          'https://git.example.com/fuyao/extension/scene-harness-pipeline-failure-diagnosis?ref=1.0.0',
+        status: '成功',
+        organization: '扶摇组织',
+        items: [
+          { type: 'skill', name: '流水线失败诊断 Skill', version: '1.1.0' },
+          { type: 'command', name: '发布流水线诊断 Command', version: '1.0.0' },
+          { type: 'agent', name: '流水线异常分析 Agent', version: '1.0.0' },
+        ],
+      },
+    ],
+    publishing: null,
+  },
+  {
+    id: 'scene-harness-pipeline-release-guard',
+    productId: 'offering-harness-pipeline',
+    primary: '变更评估',
+    name: '风险扫描',
+    publishable: true,
+    extension: {
+      name: 'Harness 发布风险守护 Extension',
+      description: '在 Harness 发布前扫描代码、配置、依赖和历史事故，生成风险分级与门禁建议。',
+      version: '1.1.0',
+    },
+    capabilities: {
+      skill: [
+        {
+          id: 'skill-harness-release-risk-scan',
+          name: '发布风险扫描 Skill',
+          version: '1.0.0',
+          publishDate: '2026-09-08',
+          ready: true,
+          files: [
+            {
+              name: 'SKILL.md',
+              content:
+                '# 发布风险扫描 Skill\n\n扫描发布变更、依赖服务、变更窗口和历史事故，生成风险检查清单。',
+            },
+          ],
+        },
+      ],
+      command: [
+        {
+          id: 'command-harness-pre-release-check',
+          name: '发布前检查 Command',
+          version: '1.1.0',
+          publishDate: '2026-09-09',
+          ready: true,
+          files: [
+            {
+              name: '发布前检查 Command.md',
+              content:
+                '# 发布前检查 Command\n\n执行 Harness 发布门禁，校验变更窗口、依赖健康度和回滚预案。',
+            },
+          ],
+        },
+      ],
+      agent: [
+        {
+          id: 'agent-harness-release-risk-assessment',
+          name: '发布风险评估 Agent',
+          version: '1.0.0',
+          publishDate: '2026-09-10',
+          ready: true,
+          files: [
+            {
+              name: '发布风险评估 Agent.md',
+              content:
+                '# 发布风险评估 Agent\n\n综合变更范围、服务依赖与历史事故，输出风险等级和发布准入建议。',
+            },
+          ],
+        },
+      ],
+    },
+    releases: [
+      {
+        id: 'release-harness-pipeline-release-guard-1.1.0',
+        version: '1.1.0',
+        extensionName: 'Harness 发布风险守护 Extension',
+        description: '正式版本，支持发布风险扫描、依赖健康预检和发布门禁建议。',
+        channel: 'Product',
+        operator: { no: 'A0456', name: '李四' },
+        publishedAt: '2026-09-12 16:20:00',
+        reportUrl:
+          'https://git.example.com/fuyao/extension/scene-harness-pipeline-release-guard?ref=1.1.0',
+        status: '成功',
+        organization: '扶摇组织',
+        items: [
+          { type: 'skill', name: '发布风险扫描 Skill', version: '1.0.0' },
+          { type: 'command', name: '发布前检查 Command', version: '1.1.0' },
+          { type: 'agent', name: '发布风险评估 Agent', version: '1.0.0' },
+        ],
+      },
+    ],
+    publishing: null,
+  },
   {
     id: 'scene-uppercase-product-build',
     productId: 'harness-pipeline-uppercase',
@@ -331,6 +503,7 @@ const scenes: ExtensionScene[] = [
         channel: 'Beta',
         operator: { no: 'A0123', name: '李扶摇' },
         publishedAt: '2026-08-02 14:00',
+        reportUrl: 'https://git.example.com/fuyao/extension/scene-pipeline-mml?ref=0.2.1',
         status: '成功',
         organization: '扶摇组织',
         items: [

@@ -43,7 +43,7 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
   await expect(commandDueDate).toHaveAttribute('min', today);
   await expect(form.getByPlaceholder(/e2e-codec$/)).toHaveValue('/harness-pipeline-');
   await form.getByPlaceholder(/e2e-codec$/).fill('  /harness-pipeline-e2e-people  ');
-  await form.getByPlaceholder('描述 *').fill('研发入口');
+  await form.getByPlaceholder('请输入描述').fill('研发入口');
   await commandDueDate.fill(futureDate);
   await form.getByRole('combobox', { name: '开发责任人 *', exact: true }).fill('随意填写的姓名');
   await form.getByRole('button', { name: '创建并加入资产清单', exact: true }).click();
@@ -85,7 +85,7 @@ test('Workflow 自定义 Command、Skill、Agent 必须选择查询人员并保�
     await form
       .getByRole('textbox', { name: new RegExp(`${type} 名称`) })
       .fill(`  harness-pipeline-personnel-${type.toLowerCase()}  `);
-    await form.getByPlaceholder('描述 *').fill(`${type} 研发执行能力`);
+    await form.getByPlaceholder('请输入描述').fill(`${type} 研发执行能力`);
     await choosePeople();
     await form
       .getByRole('button', { name: type === 'Agent' ? 'Skill' : 'Agent', exact: true })

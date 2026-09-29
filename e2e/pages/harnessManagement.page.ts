@@ -318,7 +318,7 @@ export class HarnessManagementPage {
       .click();
     const commandEditor = this.workflowDesignDialog.locator('.inline.form');
     await commandEditor.getByPlaceholder(/e2e-codec$/).fill(options.commandName);
-    await commandEditor.getByPlaceholder('描述 *').fill('端到端协议开发入口');
+    await commandEditor.getByPlaceholder('请输入描述').fill('端到端协议开发入口');
     await commandEditor
       .getByRole('combobox', { name: '开发责任人 *', exact: true })
       .fill('w30000001');
@@ -334,7 +334,7 @@ export class HarnessManagementPage {
       .click();
     const assetEditor = this.workflowDesignDialog.locator('.inline.form');
     await assetEditor.getByPlaceholder(/coding-agent$/).fill(options.assetName);
-    await assetEditor.getByPlaceholder('描述 *').fill('执行协议开发节点');
+    await assetEditor.getByPlaceholder('请输入描述').fill('执行协议开发节点');
     await assetEditor
       .getByRole('combobox', { name: '开发责任人 *', exact: true })
       .fill('w30000001');

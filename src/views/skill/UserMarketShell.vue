@@ -216,6 +216,7 @@ const versionPreviewSkill = ref<any>(null);
 /** 市场进入的版本管理不展示「操作」列；与详情是否展示删除同源（我的发布为 true） */
 const versionManageShowOperations = ref(true);
 const deletingMySkillId = ref<string | null>(null);
+const mockUpgradeSubmittingId = ref<string | null>(null);
 const deleteConfirmRow = ref<SkillListRecordDto | null>(null);
 const deleteConfirmStyle = ref<CSSProperties>({});
 let deleteConfirmListenersBound = false;
@@ -227,6 +228,50 @@ const detailDeleteConfirmStyle = ref<CSSProperties>({});
 const detailDeletePendingId = ref<string | null>(null);
 const detailDeletePendingTitle = ref('');
 let detailDeleteConfirmListenersBound = false;
+
+const deletePopoverWidth = 232;
+const deletePopoverGap = 8;
+const deletePopoverViewportMargin = 8;
+const deletePopoverPreferredHeight = 148;
+
+/**
+ * 将删除确认框固定在触发按钮附近，并在视口底部空间不足时自动翻到按钮上方。
+ * 使用 bottom 锚定上方弹框，内容因 Skill 名称换行而变高时也不会掉出视口。
+ */
+function deletePopoverStyleFor(trigger: HTMLElement): CSSProperties {
+  const rect = trigger.getBoundingClientRect();
+  const availableBelow =
+    window.innerHeight - rect.bottom - deletePopoverGap - deletePopoverViewportMargin;
+  const availableAbove = rect.top - deletePopoverGap - deletePopoverViewportMargin;
+  const placeAbove =
+    availableBelow < deletePopoverPreferredHeight && availableAbove > availableBelow;
+  const availableHeight = placeAbove ? availableAbove : availableBelow;
+  const idealLeft = rect.left + rect.width / 2 - deletePopoverWidth / 2;
+  const left = Math.max(
+    deletePopoverViewportMargin,
+    Math.min(
+      idealLeft,
+      window.innerWidth - deletePopoverWidth - deletePopoverViewportMargin,
+    ),
+  );
+
+  return {
+    position: 'fixed',
+    left: `${Math.round(left)}px`,
+    width: `${deletePopoverWidth}px`,
+    maxWidth: `calc(100vw - ${deletePopoverViewportMargin * 2}px)`,
+    maxHeight: `${Math.max(0, Math.floor(availableHeight))}px`,
+    overflowY: 'auto',
+    zIndex: 5000,
+    ...(placeAbove
+      ? {
+          bottom: `${Math.round(window.innerHeight - rect.top + deletePopoverGap)}px`,
+        }
+      : {
+          top: `${Math.round(rect.bottom + deletePopoverGap)}px`,
+        }),
+  };
+}
 
 function formatYmd(date: Date): string {
   const y = date.getFullYear();
@@ -1564,28 +1609,44 @@ function myPublishReleaseOp(row: SkillListRecordDto): 'upgraded' | 'upgrade' | '
   return 'upgrade';
 }
 
-const releaseToOrganization = async (row: any) => {
-  let orgObj = {
-    pluginType: 4,
-    pluginId: '',
-    publishLevel: 1,
-    publisherId: '',
-  };
-  await skillBaseService.queryOrganizationList({ userId: userId.value }).then((res: any) => {
-    if (res.meta.success && Array.isArray(res.data) && res.data.length) {
-      const obj = res.data[0];
-      orgObj.publisherId = obj?.orgCode || '';
-      orgObj.pluginId = obj?.id || '';
+async function releaseToOrganization(row: SkillListRecordDto, index: number): Promise<void> {
+  if (
+    transportIsHttp ||
+    index !== myPublishedSkills.value.length - 1 ||
+    mockUpgradeSubmittingId.value
+  ) {
+    return;
+  }
+
+  const rowId = String(row.id);
+  mockUpgradeSubmittingId.value = rowId;
+  try {
+    const organizationResponse = await skillBaseService.queryOrganizationList({
+      userId: userId.value,
+    });
+    const organizations = organizationResponse.meta.success
+      ? (organizationResponse.data as OrganizationDto[] | undefined)
+      : undefined;
+    const targetOrgId = Number(organizations?.[0]?.id ?? 1);
+    const response = await skillBaseService.syncSkillToAgentCenter(
+      {
+        reason: 'Mock 模式升级试用',
+        targetOrgId,
+      },
+      rowId,
+    );
+    if (!serviceSucceeded(response)) {
+      showToast(serviceMessage(response, '升级申请提交失败'));
+      return;
     }
-  });
-  await skillBaseService.syncSkillToAgentCenter(
-    {
-      reason: '测试',
-      targetOrgId: 13,
-    },
-    row.id,
-  );
-};
+    row.status = String(response.data?.skillStatus ?? '组织审核中');
+    showToast('已提交组织级升级申请');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '升级申请提交失败');
+  } finally {
+    mockUpgradeSubmittingId.value = null;
+  }
+}
 
 async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean): Promise<void> {
   versionManageShowOperations.value = true;
@@ -1698,17 +1759,7 @@ function openDetailDeleteConfirm(evt: MouseEvent): void {
   detailDeleteConfirmOpen.value = true;
   const el = evt.currentTarget as HTMLElement | null;
   if (el) {
-    const rect = el.getBoundingClientRect();
-    const panelW = 232;
-    const idealLeft = rect.left + rect.width / 2 - panelW / 2;
-    const left = Math.max(8, Math.min(idealLeft, window.innerWidth - panelW - 8));
-    detailDeleteConfirmStyle.value = {
-      position: 'fixed',
-      top: `${Math.round(rect.bottom + 6)}px`,
-      left: `${Math.round(left)}px`,
-      width: `${panelW}px`,
-      zIndex: 5000,
-    };
+    detailDeleteConfirmStyle.value = deletePopoverStyleFor(el);
   }
   void nextTick(() => {
     setTimeout(() => {
@@ -1782,17 +1833,7 @@ function openDeleteConfirm(row: SkillListRecordDto, evt: MouseEvent): void {
   deleteConfirmRow.value = row;
   const el = evt.currentTarget as HTMLElement | null;
   if (el) {
-    const rect = el.getBoundingClientRect();
-    const panelW = 232;
-    const idealLeft = rect.left + rect.width / 2 - panelW / 2;
-    const left = Math.max(8, Math.min(idealLeft, window.innerWidth - panelW - 8));
-    deleteConfirmStyle.value = {
-      position: 'fixed',
-      top: `${Math.round(rect.bottom + 6)}px`,
-      left: `${Math.round(left)}px`,
-      width: `${panelW}px`,
-      zIndex: 5000,
-    };
+    deleteConfirmStyle.value = deletePopoverStyleFor(el);
   }
   void nextTick(() => {
     setTimeout(() => {
@@ -4569,10 +4610,23 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                           v-else-if="myPublishReleaseOp(row) === 'upgrade'"
                           type="button"
                           class="btn primary sm my-rel-upgrade-btn"
-                          disabled
-                          title="建设中"
+                          :disabled="
+                            transportIsHttp ||
+                            index !== myPublishedSkills.length - 1 ||
+                            mockUpgradeSubmittingId === String(row.id)
+                          "
+                          :title="
+                            !transportIsHttp && index === myPublishedSkills.length - 1
+                              ? '试用 Mock 升级流程'
+                              : '建设中'
+                          "
+                          @click.stop="releaseToOrganization(row, index)"
                         >
-                          升级为组织级
+                          {{
+                            mockUpgradeSubmittingId === String(row.id)
+                              ? '提交中…'
+                              : '升级为组织级'
+                          }}
                         </button>
                         <button v-else type="button" class="mini my-rel-pending-btn" disabled>
                           升级中

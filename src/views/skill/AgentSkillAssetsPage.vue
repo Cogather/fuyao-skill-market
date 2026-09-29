@@ -37,7 +37,10 @@ import type {
 } from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
 import { firstNonBlankText, formatCompactDateTime } from '../../utils/common';
-import { getAssetCatalogItemNamePrefix } from '../../utils/catalogItemName';
+import {
+  getAssetCatalogItemNamePrefix,
+  getSuggestedAssetCatalogItemNamePrefix,
+} from '../../utils/catalogItemName';
 import {
   CATALOG_TYPES,
   STATUS_FILTERS,
@@ -360,9 +363,18 @@ const isAtomicHistoryTab = computed(
   () => selectedAsset.value?.assetType !== 'Extension' && detailTab.value === 'history',
 );
 const isHistoryTab = computed(() => isExtensionHistoryTab.value || isAtomicHistoryTab.value);
+const showDetailVersionPanel = computed(() => {
+  const asset = selectedAsset.value;
+  if (!asset || isHistoryTab.value) return false;
+  // Skill 内容页在 HTTP / Mock 两种 transport 下始终保留版本信息区。
+  return asset.assetType !== 'Skill' || detailTab.value === 'content';
+});
 const detailComponent = computed(() => detail.value?.component);
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
+);
+const detailSuggestedNamePrefix = computed(() =>
+  selectedAsset.value ? getSuggestedAssetCatalogItemNamePrefix(selectedAsset.value) : '',
 );
 const detailPermissionsReady = computed(
   () =>
@@ -425,6 +437,17 @@ const selectedVersionDetail = computed(() => {
 });
 const selectedVersionUploadedAt = computed(() => {
   return formatCompactDateTime(selectedVersionDetail.value?.uploadedAt);
+});
+const selectedVersionReportUrl = computed(() => {
+  const value =
+    selectedVersionDetail.value?.reportUrl?.trim() || selectedVersionDetail.value?.repoUrl?.trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
 });
 const selectedVersionPublisher = computed(
   () => firstNonBlankText([selectedAsset.value?.publisher]) || '—',
@@ -900,6 +923,7 @@ onBeforeUnmount(() => {
       :submitting="detailSaving"
       :error="detailEditError"
       :required-name-prefix="detailRequiredNamePrefix"
+      :suggested-name-prefix="detailSuggestedNamePrefix"
       @update:name="detailDraft.name = $event"
       @update:description="detailDraft.description = $event"
       @update:planned-complete-date="detailDraft.plannedCompleteDate = $event"
@@ -1352,25 +1376,11 @@ onBeforeUnmount(() => {
           </dl>
         </div>
 
-        <div
-          v-if="
-            selectedAsset.assetType === 'Skill' &&
-            detailTab !== 'behavior' &&
-            detailTab !== 'history'
-          "
-          class="asset-detail__version"
-        >
-          <HarnessVersionPicker
-            v-model="selectedVersion"
-            :versions="detailVersions"
-            :statuses="detailVersionStatuses"
-            :disabled="detailLoading || detailSaving"
-            @change="changeDetailVersion"
-          />
-        </div>
-
         <nav
           class="asset-subtabs asset-detail__tabs"
+          :class="{
+            'has-version-panel': showDetailVersionPanel,
+          }"
           :role="selectedAsset.assetType === 'Extension' ? undefined : 'tablist'"
           aria-label="资产详情分区"
         >
@@ -1397,7 +1407,7 @@ onBeforeUnmount(() => {
             aria-controls="catalog-detail-panel-evaluation"
             @click="detailTab = 'report'"
           >
-            评估报告
+            静态评估
           </button>
           <button
             v-if="selectedAsset.assetType === 'Skill'"
@@ -1409,7 +1419,7 @@ onBeforeUnmount(() => {
             aria-controls="asset-detail-panel-behavior"
             @click="detailTab = 'behavior'"
           >
-            行为评测
+            动态评估
           </button>
           <button
             v-if="selectedAsset.assetType === 'Extension' && canViewAssetHistory(selectedAsset)"
@@ -1436,8 +1446,22 @@ onBeforeUnmount(() => {
         </nav>
 
         <div class="asset-detail__content-scroll">
+          <div
+            v-if="selectedAsset.assetType === 'Skill' && detailTab === 'report'"
+            class="asset-detail__version"
+            data-version-picker-anchor
+          >
+            <span class="asset-detail__version-picker-label">版本</span>
+            <HarnessVersionPicker
+              v-model="selectedVersion"
+              :versions="detailVersions"
+              :statuses="detailVersionStatuses"
+              :disabled="detailLoading || detailSaving"
+              @change="changeDetailVersion"
+            />
+          </div>
           <section
-            v-if="!isHistoryTab && selectedAsset.assetType !== 'Skill'"
+            v-if="showDetailVersionPanel"
             class="asset-detail__version-panel"
             :class="{ 'is-extension': selectedAsset.assetType === 'Extension' }"
             aria-label="版本信息"
@@ -1469,6 +1493,16 @@ onBeforeUnmount(() => {
               </span>
               <span class="asset-detail__uploaded-at">
                 上传时间：<strong>{{ selectedVersionUploadedAt }}</strong>
+              </span>
+              <span v-if="selectedVersionReportUrl" class="asset-detail__source-repository">
+                来源仓：
+                <a
+                  :href="selectedVersionReportUrl"
+                  :title="selectedVersionReportUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >{{ selectedVersionReportUrl }}</a
+                >
               </span>
             </div>
           </section>
@@ -1542,6 +1576,7 @@ onBeforeUnmount(() => {
             :asset-name="selectedAsset.name"
             :version="selectedVersion"
             :versions="detailVersions"
+            :version-statuses="detailVersionStatuses"
             :user-id="props.userId"
             :user-name="props.userName"
             @change-version="selectedVersion = $event"
@@ -2642,15 +2677,74 @@ onBeforeUnmount(() => {
 }
 
 .asset-detail__version {
-  display: flex;
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 42px;
+  width: 200px;
+  min-width: 200px;
   align-items: center;
-  margin-top: 16px;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding-left: 14px;
+  border: 1px solid #d7dee9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgb(31 58 138 / 7%);
+}
+
+.asset-detail__version-picker-label {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.asset-detail__version :deep(.harness-version-picker) {
+  min-width: 0;
+  flex: 1;
+  height: 40px;
+  align-items: center;
+}
+
+.asset-detail__version :deep(.harness-version-picker__trigger) {
+  width: 100%;
+  height: 40px;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.asset-detail__version :deep(.harness-version-picker__value) {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  line-height: 1;
+}
+
+.asset-detail__version :deep(.harness-version-picker__status-dot),
+.asset-detail__version :deep(.harness-version-picker__chevron) {
+  align-self: center;
+}
+
+.asset-detail__version :deep(.harness-version-picker__trigger[aria-expanded='true']) {
+  box-shadow: none;
 }
 
 .asset-detail .asset-detail__tabs {
   gap: 4px;
   margin: 16px 0 20px;
   padding: 0;
+}
+
+.asset-detail .asset-detail__tabs.has-version-panel {
+  margin-bottom: 0;
 }
 
 .asset-detail__content-scroll {
@@ -2786,6 +2880,33 @@ onBeforeUnmount(() => {
 .asset-detail__uploaded-at strong {
   color: #1f2329;
   font-weight: 600;
+}
+
+.asset-detail__source-repository {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.asset-detail__source-repository a {
+  max-width: min(420px, 35vw);
+  overflow: hidden;
+  color: #356ae6;
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-detail__source-repository a:hover {
+  text-decoration: underline;
+}
+
+.asset-detail__source-repository a:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid #8bb8ff;
+  outline-offset: 2px;
 }
 
 .asset-field {
@@ -2931,6 +3052,10 @@ onBeforeUnmount(() => {
   .asset-detail__version-meta {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .asset-detail__source-repository a {
+    max-width: 100%;
   }
 
   .asset-detail__version-row :deep(.harness-version-picker__trigger) {

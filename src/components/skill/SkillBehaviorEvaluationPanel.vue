@@ -24,6 +24,7 @@ const props = defineProps<{
   assetName: string;
   version: string;
   versions: string[];
+  versionStatuses?: Record<string, string>;
   userId?: string;
   userName?: string;
 }>();
@@ -37,11 +38,11 @@ const instanceId = useId();
 const activeKind = ref<SkillBehaviorEvaluationKind>('trigger');
 const triggerFilter = ref<SkillBehaviorCaseFilter>('all');
 const qualityFilter = ref<SkillBehaviorCaseFilter>('all');
-const expandedTriggerCases = ref<string[]>([]);
 const expandedQualityCases = ref<string[]>([]);
 const activeDialog = ref<'trigger' | 'trend' | null>(null);
 const selectedTypes = ref<SkillBehaviorEvaluationKind[]>([]);
 const submittingTypes = ref<SkillBehaviorEvaluationKind[]>([]);
+const triggerDialogError = ref('');
 const returnFocus = ref<HTMLElement | null>(null);
 const triggerDialog = ref<HTMLElement | null>(null);
 const trendDialog = ref<HTMLElement | null>(null);
@@ -66,9 +67,9 @@ const trendState = reactive<{
   error: '',
 });
 let contextEpoch = 0;
-let pollingTimer: number | undefined;
 const trendLoaded = ref(false);
 
+const hasAvailableVersion = computed(() => Boolean(props.version.trim() && props.versions.length));
 const currentState = computed(() => modeStates[activeKind.value]);
 const currentRecord = computed(() => currentState.value.record);
 const triggerReport = computed<SkillTriggerEvaluationReportDto | null>(() => {
@@ -183,13 +184,14 @@ const triggerChart = computed(() => {
 });
 const durationDistribution = computed(() => {
   const bins = [
-    { label: '<1s', value: 0 },
-    { label: '1-3s', value: 0 },
-    { label: '3-10s', value: 0 },
-    { label: '≥10s', value: 0 },
+    { label: '<60s', value: 0 },
+    { label: '60-120s', value: 0 },
+    { label: '120-300s', value: 0 },
+    { label: '>300s', value: 0 },
   ];
   for (const item of qualityReport.value?.results ?? []) {
-    const index = item.cost_time < 1 ? 0 : item.cost_time < 3 ? 1 : item.cost_time < 10 ? 2 : 3;
+    const index =
+      item.cost_time < 60 ? 0 : item.cost_time < 120 ? 1 : item.cost_time <= 300 ? 2 : 3;
     bins[index]!.value += 1;
   }
   return bins;
@@ -215,33 +217,8 @@ const maxDurationDistribution = computed(() =>
 const maxScoreDistribution = computed(() =>
   Math.max(1, ...scoreDistribution.value.map((item) => item.value)),
 );
-const behaviorVersionStatuses = computed<Record<string, string>>(() => {
-  const completedQuality = new Set(
-    trendState.data.quality.map((point) => normalizedVersion(point.version)),
-  );
-  const completedTrigger = new Set(
-    trendState.data.trigger.map((point) => normalizedVersion(point.version)),
-  );
-  return Object.fromEntries(
-    props.versions.map((version) => {
-      const normalized = normalizedVersion(version);
-      if (normalized === normalizedVersion(props.version)) {
-        const records = [modeStates.trigger.record, modeStates.quality.record];
-        if (records.some((record) => isSkillBehaviorEvaluationInProgress(record?.state))) {
-          return [version, '进行中'];
-        }
-        const completed = records.filter((record) => record?.state === 'completed').length;
-        if (completed === 2) return [version, '已评测'];
-        if (completed === 1) return [version, '部分评测'];
-        if (records.some((record) => record?.state === 'failed')) return [version, '失败'];
-        return [version, '未评测'];
-      }
-      const completed =
-        Number(completedQuality.has(normalized)) + Number(completedTrigger.has(normalized));
-      return [version, completed === 2 ? '已评测' : completed === 1 ? '部分评测' : '未评测'];
-    }),
-  );
-});
+const durationDistributionAxis = computed(() => distributionAxis(maxDurationDistribution.value));
+const scoreDistributionAxis = computed(() => distributionAxis(maxScoreDistribution.value));
 function matchesFilter(passed: boolean, filter: SkillBehaviorCaseFilter): boolean {
   return filter === 'all' || (filter === 'passed' ? passed : !passed);
 }
@@ -259,10 +236,11 @@ function apiMode(kind: SkillBehaviorEvaluationKind): SkillBehaviorEvaluationMode
 }
 
 function isModeBusy(kind: SkillBehaviorEvaluationKind): boolean {
-  return (
-    submittingTypes.value.includes(kind) ||
-    isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state)
-  );
+  return submittingTypes.value.includes(kind) || isModePending(kind);
+}
+
+function isModePending(kind: SkillBehaviorEvaluationKind): boolean {
+  return isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state);
 }
 
 function stateLabel(record: SkillBehaviorEvaluationRecordDto | null): string {
@@ -271,22 +249,22 @@ function stateLabel(record: SkillBehaviorEvaluationRecordDto | null): string {
   return record.state === 'completed' ? '已完成' : '失败';
 }
 
-function toggleCase(kind: SkillBehaviorEvaluationKind, id: string): void {
-  const target = kind === 'trigger' ? expandedTriggerCases : expandedQualityCases;
-  target.value = target.value.includes(id)
-    ? target.value.filter((value) => value !== id)
-    : [...target.value, id];
+function toggleQualityCase(id: string): void {
+  expandedQualityCases.value = expandedQualityCases.value.includes(id)
+    ? expandedQualityCases.value.filter((value) => value !== id)
+    : [...expandedQualityCases.value, id];
 }
 
-function isCaseExpanded(kind: SkillBehaviorEvaluationKind, id: string): boolean {
-  return (kind === 'trigger' ? expandedTriggerCases.value : expandedQualityCases.value).includes(
-    id,
-  );
+function isQualityCaseExpanded(id: string): boolean {
+  return expandedQualityCases.value.includes(id);
 }
 
 function openDialog(kind: 'trigger' | 'trend', event?: Event): void {
   returnFocus.value = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-  if (kind === 'trigger') selectedTypes.value = [];
+  if (kind === 'trigger') {
+    selectedTypes.value = [];
+    triggerDialogError.value = '';
+  }
   activeDialog.value = kind;
   if (kind === 'trend') void loadTrend();
   nextTick(() => (kind === 'trigger' ? triggerDialogClose.value : trendDialogClose.value)?.focus());
@@ -299,6 +277,7 @@ function closeDialog(restoreFocus = true): void {
 
 async function confirmTrigger(): Promise<void> {
   if (!selectedTypes.value.length) return;
+  triggerDialogError.value = '';
   const kinds = [...selectedTypes.value];
   submittingTypes.value = [...new Set([...submittingTypes.value, ...kinds])];
   const results = await Promise.allSettled(
@@ -336,19 +315,29 @@ async function confirmTrigger(): Promise<void> {
         result.status === 'fulfilled',
     )
     .map((result) => result.value);
-  const failures = results.filter(
-    (result): result is PromiseRejectedResult => result.status === 'rejected',
-  );
-  if (succeeded.length) {
+  const failures = results.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return [];
+    return [
+      {
+        kind: kinds[index]!,
+        message: result.reason instanceof Error ? result.reason.message : '发起评测失败',
+      },
+    ];
+  });
+  if (!failures.length && succeeded.length) {
     emit(
       'notify',
       `已发起${succeeded.map((kind) => (kind === 'trigger' ? '触发评测' : '质量评测')).join('、')}`,
     );
     closeDialog();
-    schedulePolling();
   }
-  for (const failure of failures) {
-    emit('notify', failure.reason instanceof Error ? failure.reason.message : '发起评测失败');
+  if (failures.length) {
+    selectedTypes.value = failures.map((failure) => failure.kind);
+    triggerDialogError.value = failures
+      .map(
+        (failure) => `${failure.kind === 'trigger' ? '触发评测' : '质量评测'}：${failure.message}`,
+      )
+      .join('；');
   }
 }
 
@@ -356,9 +345,18 @@ function chartHeight(value: number, max: number): string {
   return `${Math.max(8, (value / max) * 100)}%`;
 }
 
+function distributionAxis(maxValue: number): { max: number; labels: number[] } {
+  const step = Math.max(1, Math.ceil(maxValue / 4));
+  const max = step * 4;
+  return {
+    max,
+    labels: Array.from({ length: 5 }, (_, index) => max - index * step),
+  };
+}
+
 function trendX(index: number, length: number): number {
   if (length <= 1) return 320;
-  return 60 + (index * 520) / (length - 1);
+  return 80 + (index * 480) / (length - 1);
 }
 
 function trendY(rate: number): number {
@@ -376,14 +374,15 @@ function trendArea(points: SkillBehaviorEvaluationTrendDto['quality']): string {
   return `${trendX(0, points.length)},140 ${trendPoints(points)} ${trendX(points.length - 1, points.length)},140`;
 }
 
-async function loadMode(
-  kind: SkillBehaviorEvaluationKind,
-  silent = false,
-  epoch = contextEpoch,
-): Promise<void> {
-  if (!props.assetName || !props.version) return;
+async function loadMode(kind: SkillBehaviorEvaluationKind, epoch = contextEpoch): Promise<void> {
   const state = modeStates[kind];
-  if (!silent) state.loading = true;
+  if (!props.assetName || !props.version) {
+    state.loading = false;
+    state.record = null;
+    state.error = '';
+    return;
+  }
+  state.loading = true;
   state.error = '';
   try {
     const record = await querySkillBehaviorEvaluation({
@@ -404,32 +403,11 @@ async function loadMode(
 async function loadAllModes(): Promise<void> {
   contextEpoch += 1;
   const epoch = contextEpoch;
-  clearPolling();
-  await Promise.all([loadMode('trigger', false, epoch), loadMode('quality', false, epoch)]);
-  if (epoch === contextEpoch) schedulePolling();
+  await Promise.all([loadMode('trigger', epoch), loadMode('quality', epoch)]);
 }
 
 async function refreshCurrentMode(): Promise<void> {
   await loadMode(activeKind.value);
-  schedulePolling();
-}
-
-function clearPolling(): void {
-  if (pollingTimer !== undefined) window.clearTimeout(pollingTimer);
-  pollingTimer = undefined;
-}
-
-function schedulePolling(): void {
-  clearPolling();
-  const pending = (['trigger', 'quality'] as const).filter((kind) =>
-    isSkillBehaviorEvaluationInProgress(modeStates[kind].record?.state),
-  );
-  if (!pending.length) return;
-  pollingTimer = window.setTimeout(async () => {
-    const epoch = contextEpoch;
-    await Promise.all(pending.map((kind) => loadMode(kind, true, epoch)));
-    if (epoch === contextEpoch) schedulePolling();
-  }, 30_000);
 }
 
 async function loadTrend(force = false): Promise<void> {
@@ -478,7 +456,6 @@ watch(
     activeKind.value = 'trigger';
     triggerFilter.value = 'all';
     qualityFilter.value = 'all';
-    expandedTriggerCases.value = [];
     expandedQualityCases.value = [];
     activeDialog.value = null;
     modeStates.trigger.record = null;
@@ -501,7 +478,6 @@ watch(
 onMounted(() => document.addEventListener('keydown', onDocumentKeydown));
 onBeforeUnmount(() => {
   contextEpoch += 1;
-  clearPolling();
   document.removeEventListener('keydown', onDocumentKeydown);
 });
 </script>
@@ -514,14 +490,13 @@ onBeforeUnmount(() => {
     aria-labelledby="asset-detail-tab-behavior"
   >
     <div class="behavior-evaluation__toolbar">
-      <div class="behavior-version-picker">
+      <div class="behavior-version-picker" data-version-picker-anchor>
         <span class="behavior-version-picker__label">版本</span>
         <HarnessVersionPicker
           :model-value="version"
           :versions="versions"
-          :statuses="behaviorVersionStatuses"
-          status-kind="evaluation"
-          :disabled="currentState.loading || submittingTypes.length > 0"
+          :statuses="versionStatuses"
+          :disabled="!hasAvailableVersion || currentState.loading || submittingTypes.length > 0"
           @update:model-value="selectVersion"
         />
       </div>
@@ -534,7 +509,7 @@ onBeforeUnmount(() => {
           ><small>触发时间</small><strong>{{ currentRecord.createTime }}</strong></span
         >
         <span
-          ><small>评测模型</small><strong>{{ currentReport?.model_name || '—' }}</strong></span
+          ><small>评测模型</small><strong>{{ currentReport?.model || '—' }}</strong></span
         >
       </div>
     </div>
@@ -578,6 +553,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="behavior-button is-secondary"
+            :disabled="!hasAvailableVersion"
             @click="openDialog('trend', $event)"
           >
             <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -586,7 +562,7 @@ onBeforeUnmount(() => {
             版本趋势
           </button>
           <button
-            v-if="currentRecord && isSkillBehaviorEvaluationInProgress(currentRecord.state)"
+            v-if="isModePending(activeKind)"
             type="button"
             class="behavior-button"
             :disabled="currentState.loading"
@@ -597,9 +573,13 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="behavior-button is-primary"
-            :disabled="isModeBusy('trigger') && isModeBusy('quality')"
+            :disabled="!hasAvailableVersion || (isModeBusy('trigger') && isModeBusy('quality'))"
             :title="
-              isModeBusy('trigger') && isModeBusy('quality') ? '两类评测均在进行中' : undefined
+              !hasAvailableVersion
+                ? '当前 Skill 暂无可用版本'
+                : isModeBusy('trigger') && isModeBusy('quality')
+                  ? '两类评测均在进行中'
+                  : undefined
             "
             @click="openDialog('trigger', $event)"
           >
@@ -608,7 +588,13 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <section v-if="currentState.loading" class="behavior-state" role="status">
+      <section v-if="!hasAvailableVersion" class="behavior-empty" role="status">
+        <span class="behavior-empty__icon" aria-hidden="true">i</span>
+        <strong>当前 Skill 暂无可用版本</strong>
+        <p>完成开发并上传版本包后，才能发起行为评测。</p>
+      </section>
+
+      <section v-else-if="currentState.loading" class="behavior-state" role="status">
         <span class="behavior-state__spinner" aria-hidden="true" />
         <strong>正在加载{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}记录</strong>
       </section>
@@ -630,17 +616,16 @@ onBeforeUnmount(() => {
         >
           <span aria-hidden="true">▶</span>发起评测
         </button>
-        <small>两种评测模式互相独立，可分别发起和查看结果。</small>
+        <small>每个版本每种评测仅可触发一次；评测模型与用例集由底层按版本决定。</small>
       </section>
 
       <section
-        v-else-if="isSkillBehaviorEvaluationInProgress(currentRecord.state)"
+        v-else-if="isModePending(activeKind)"
         class="behavior-state is-running"
         role="status"
       >
         <span class="behavior-state__spinner" aria-hidden="true" />
         <strong>{{ activeKind === 'trigger' ? '触发评测' : '质量评测' }}进行中</strong>
-        <p>任务正在排队或执行，页面每 30 秒自动刷新；也可以手动刷新状态。</p>
         <small>任务 ID：{{ currentRecord.taskId }}</small>
         <button type="button" class="behavior-button" @click="refreshCurrentMode">刷新状态</button>
       </section>
@@ -677,41 +662,28 @@ onBeforeUnmount(() => {
             </div>
           </article>
           <article class="behavior-summary__item">
-            <small>{{ activeKind === 'trigger' ? '正向触发率' : '总耗时' }}</small>
+            <small>{{ activeKind === 'trigger' ? '用例总数' : '总耗时' }}</small>
             <div class="behavior-summary__value is-text">
               <strong>{{
-                activeKind === 'trigger'
-                  ? triggerReport?.positive_trigger_rate
-                  : qualityReport?.total_cost_time
+                activeKind === 'trigger' ? currentTotal : currentReport.total_cost_time
               }}</strong>
+              <span v-if="activeKind === 'trigger'">条</span>
             </div>
-            <p>
-              {{ activeKind === 'trigger' ? '正确触发数 / 正向用例数' : '全部用例累计执行时间' }}
-            </p>
+            <p v-if="activeKind === 'quality'">全部用例累计执行时间</p>
           </article>
           <article class="behavior-summary__item">
-            <small>{{ activeKind === 'trigger' ? '反向误触发率' : '任务完成状态' }}</small>
+            <small>任务完成状态</small>
             <div class="behavior-summary__value is-text">
-              <strong>{{
-                activeKind === 'trigger'
-                  ? triggerReport?.negative_false_trigger_rate
-                  : stateLabel(currentRecord)
-              }}</strong>
+              <strong>{{ stateLabel(currentRecord) }}</strong>
             </div>
-            <p>
-              {{
-                activeKind === 'trigger'
-                  ? '误触发数 / 反向用例数'
-                  : `由 ${currentRecord.creatorName || currentRecord.creator} 触发`
-              }}
-            </p>
+            <p>由 {{ currentRecord.creatorName || currentRecord.creator }} 触发</p>
           </article>
           <article class="behavior-summary__item">
             <small>评测触发时间</small>
             <div class="behavior-summary__value is-text">
               <strong>{{ currentRecord.createTime.slice(11) }}</strong>
             </div>
-            <p>{{ currentRecord.createTime.slice(0, 10) }} · {{ currentReport.model_name }}</p>
+            <p>{{ currentRecord.createTime.slice(0, 10) }} · {{ currentReport.model }}</p>
           </article>
         </div>
 
@@ -806,7 +778,7 @@ onBeforeUnmount(() => {
           <header class="behavior-section-heading">
             <div>
               <h3>用例明细</h3>
-              <p>展开用例查看期望与实际描述</p>
+              <p>查看各用例的期望触发、实际触发与结果</p>
             </div>
           </header>
           <div class="behavior-case-filters" aria-label="触发评测用例筛选">
@@ -842,64 +814,35 @@ onBeforeUnmount(() => {
                   <th>期望触发</th>
                   <th>实际触发</th>
                   <th>结果</th>
-                  <th><span class="sr-only">操作</span></th>
                 </tr>
               </thead>
               <tbody>
-                <template v-for="item in filteredTriggerCases" :key="item.id">
-                  <tr>
-                    <td class="behavior-case-id">{{ item.id }}</td>
-                    <td class="behavior-case-task">{{ item.task }}</td>
-                    <td>
-                      <span
-                        class="behavior-case-type"
-                        :class="item.type === '正向' ? 'is-positive' : 'is-negative'"
-                        >{{ item.type }}</span
-                      >
-                    </td>
-                    <td>
-                      <span :class="item.expected ? 'is-yes' : 'is-no'">{{
-                        item.expected ? '是' : '否'
-                      }}</span>
-                    </td>
-                    <td>
-                      <span :class="item.actual ? 'is-yes' : 'is-no'">{{
-                        item.actual ? '是' : '否'
-                      }}</span>
-                    </td>
-                    <td>
-                      <span class="behavior-result" :class="item.passed ? 'is-pass' : 'is-fail'">{{
-                        item.passed ? '通过' : '不通过'
-                      }}</span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="behavior-case-toggle"
-                        :aria-expanded="isCaseExpanded('trigger', item.id)"
-                        :aria-controls="`${instanceId}-trigger-${item.id}`"
-                        :aria-label="`${isCaseExpanded('trigger', item.id) ? '收起' : '展开'}用例 ${item.id}`"
-                        @click="toggleCase('trigger', item.id)"
-                      >
-                        {{ isCaseExpanded('trigger', item.id) ? '收起' : '展开' }}
-                      </button>
-                    </td>
-                  </tr>
-                  <tr
-                    v-if="isCaseExpanded('trigger', item.id)"
-                    :id="`${instanceId}-trigger-${item.id}`"
-                    class="behavior-case-detail"
-                  >
-                    <td colspan="7">
-                      <div class="behavior-case-detail__grid">
-                        <article v-for="detail in item.details" :key="detail.label">
-                          <strong>{{ detail.label }}</strong>
-                          <p>{{ detail.content }}</p>
-                        </article>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
+                <tr v-for="item in filteredTriggerCases" :key="item.id">
+                  <td class="behavior-case-id">{{ item.id }}</td>
+                  <td class="behavior-case-task">{{ item.task }}</td>
+                  <td>
+                    <span
+                      class="behavior-case-type"
+                      :class="item.type === '正向' ? 'is-positive' : 'is-negative'"
+                      >{{ item.type }}</span
+                    >
+                  </td>
+                  <td>
+                    <span :class="item.expected ? 'is-yes' : 'is-no'">{{
+                      item.expected ? '是' : '否'
+                    }}</span>
+                  </td>
+                  <td>
+                    <span :class="item.actual ? 'is-yes' : 'is-no'">{{
+                      item.actual ? '是' : '否'
+                    }}</span>
+                  </td>
+                  <td>
+                    <span class="behavior-result" :class="item.passed ? 'is-pass' : 'is-fail'">{{
+                      item.passed ? '通过' : '不通过'
+                    }}</span>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -928,18 +871,40 @@ onBeforeUnmount(() => {
                   durationDistribution.map((item) => `${item.label} ${item.value} 条`).join('；')
                 "
               >
-                <div
-                  v-for="item in durationDistribution"
-                  :key="item.label"
-                  class="behavior-distribution__column"
-                >
-                  <div
-                    class="behavior-distribution__bar is-time"
-                    :style="{ height: chartHeight(item.value, maxDurationDistribution) }"
-                  >
-                    <b>{{ item.value }}</b>
+                <div class="behavior-distribution__body">
+                  <div class="behavior-distribution__axis" aria-hidden="true">
+                    <span v-for="label in durationDistributionAxis.labels" :key="label">{{
+                      label
+                    }}</span>
                   </div>
-                  <span>{{ item.label }}</span>
+                  <div class="behavior-distribution__plot">
+                    <div class="behavior-distribution__columns">
+                      <div
+                        v-for="item in durationDistribution"
+                        :key="item.label"
+                        class="behavior-distribution__column"
+                      >
+                        <div
+                          class="behavior-distribution__bar is-time"
+                          :style="{
+                            height: chartHeight(item.value, durationDistributionAxis.max),
+                          }"
+                        >
+                          <b>{{ item.value }}</b>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="behavior-distribution__x"
+                  :style="{
+                    gridTemplateColumns: `repeat(${durationDistribution.length}, minmax(0, 1fr))`,
+                  }"
+                >
+                  <span v-for="item in durationDistribution" :key="item.label">{{
+                    item.label
+                  }}</span>
                 </div>
               </div>
             </section>
@@ -952,18 +917,36 @@ onBeforeUnmount(() => {
                   scoreDistribution.map((item) => `${item.label} 分 ${item.value} 条`).join('；')
                 "
               >
-                <div
-                  v-for="item in scoreDistribution"
-                  :key="item.label"
-                  class="behavior-distribution__column"
-                >
-                  <div
-                    class="behavior-distribution__bar is-score"
-                    :style="{ height: chartHeight(item.value, maxScoreDistribution) }"
-                  >
-                    <b>{{ item.value }}</b>
+                <div class="behavior-distribution__body">
+                  <div class="behavior-distribution__axis" aria-hidden="true">
+                    <span v-for="label in scoreDistributionAxis.labels" :key="label">{{
+                      label
+                    }}</span>
                   </div>
-                  <span>{{ item.label }}</span>
+                  <div class="behavior-distribution__plot">
+                    <div class="behavior-distribution__columns">
+                      <div
+                        v-for="item in scoreDistribution"
+                        :key="item.label"
+                        class="behavior-distribution__column"
+                      >
+                        <div
+                          class="behavior-distribution__bar is-score"
+                          :style="{ height: chartHeight(item.value, scoreDistributionAxis.max) }"
+                        >
+                          <b>{{ item.value }}</b>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="behavior-distribution__x"
+                  :style="{
+                    gridTemplateColumns: `repeat(${scoreDistribution.length}, minmax(0, 1fr))`,
+                  }"
+                >
+                  <span v-for="item in scoreDistribution" :key="item.label">{{ item.label }}</span>
                 </div>
               </div>
             </section>
@@ -1034,17 +1017,17 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="behavior-case-toggle"
-                        :aria-expanded="isCaseExpanded('quality', item.id)"
+                        :aria-expanded="isQualityCaseExpanded(item.id)"
                         :aria-controls="`${instanceId}-quality-${item.id}`"
-                        :aria-label="`${isCaseExpanded('quality', item.id) ? '收起' : '展开'}用例 ${item.id}`"
-                        @click="toggleCase('quality', item.id)"
+                        :aria-label="`${isQualityCaseExpanded(item.id) ? '收起' : '展开'}用例 ${item.id}`"
+                        @click="toggleQualityCase(item.id)"
                       >
-                        {{ isCaseExpanded('quality', item.id) ? '收起' : '展开' }}
+                        {{ isQualityCaseExpanded(item.id) ? '收起' : '展开' }}
                       </button>
                     </td>
                   </tr>
                   <tr
-                    v-if="isCaseExpanded('quality', item.id)"
+                    v-if="isQualityCaseExpanded(item.id)"
                     :id="`${instanceId}-quality-${item.id}`"
                     class="behavior-case-detail is-quality"
                   >
@@ -1063,11 +1046,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </template>
-      <section v-else class="behavior-state is-error" role="alert">
-        <strong>评测报告格式不完整</strong>
-        <p>任务已完成，但接口未返回当前模式的有效报告，请刷新后重试。</p>
-        <button type="button" class="behavior-button" @click="refreshCurrentMode">刷新报告</button>
-      </section>
     </section>
 
     <Teleport to="body">
@@ -1085,8 +1063,8 @@ onBeforeUnmount(() => {
         >
           <header class="behavior-dialog__header">
             <div>
-              <h2 id="behavior-trigger-title">发起行为评测</h2>
-              <p>选择要触发的评测类型（可单选 / 多选），两种模式互相独立</p>
+              <h2 id="behavior-trigger-title">发起质量评测</h2>
+              <p>选择要触发的评测类型（可单选 / 多选），结果一次性全量返回</p>
             </div>
             <button
               ref="triggerDialogClose"
@@ -1116,12 +1094,9 @@ onBeforeUnmount(() => {
                 <strong>检验触发准确性</strong><b>Skill 是否在正确场景被触发</b>
                 <p>
                   在各类对话输入下，检验本 Skill
-                  是否被正确激活，并统计误触发与漏触发。关注路由准确率，不评估输出内容质量。
+                  是否被正确激活，并统计误触发（不应触发却触发）与漏触发（应触发却未触发）。关注路由准确率，不评估输出内容质量。
                 </p>
                 <small>用例构成 <em>正向 + 反向</em>　关注 <em>路由命中</em></small>
-                <span v-if="isModeBusy('trigger')" class="behavior-options__disabled-copy"
-                  >当前评测进行中</span
-                >
               </label>
               <label
                 :class="{
@@ -1139,17 +1114,18 @@ onBeforeUnmount(() => {
                 <strong>检验输出质量</strong><b>被触发后输出是否正确、完整</b>
                 <p>
                   在已触发的前提下，检验 Skill
-                  输出的准确性、完整性与合规性，对每个用例打分并给出评分分析。
+                  输出的准确性、完整性与合规性，对每个用例打分并给出评分分析。关注内容质量，不评估触发路由。
                 </p>
                 <small>用例输出 <em>逐条打分</em>　关注 <em>内容正确性</em></small>
-                <span v-if="isModeBusy('quality')" class="behavior-options__disabled-copy"
-                  >当前评测进行中</span
-                >
               </label>
             </div>
             <p class="behavior-dialog__hint">
-              同一版本、同一模式已有进行中任务时不可重复发起；已完成或失败后可重新评测。
+              🔒 每个版本每种评测仅可触发一次；已成功的不允许重复，仅上次失败时可重试。
             </p>
+            <div v-if="triggerDialogError" class="behavior-dialog__error" role="alert">
+              <strong>发起评测失败</strong>
+              <p>{{ triggerDialogError }}</p>
+            </div>
           </div>
           <footer class="behavior-dialog__footer">
             <button type="button" class="behavior-button" @click="closeDialog()">取消</button>
@@ -1210,13 +1186,15 @@ onBeforeUnmount(() => {
                     key: 'quality',
                     label: '质量评测通过率',
                     color: '#7168f4',
+                    lastColor: '#9b6af1',
                     fill: 'rgba(113,104,244,0.1)',
                     points: trendState.data.quality,
                   },
                   {
                     key: 'trigger',
-                    label: '触发评测准确率',
+                    label: '触发准确率',
                     color: '#2f7df6',
+                    lastColor: '#5fa2ff',
                     fill: 'rgba(47,125,246,0.1)',
                     points: trendState.data.trigger,
                   },
@@ -1229,16 +1207,16 @@ onBeforeUnmount(() => {
                     <line
                       v-for="y in [20, 60, 100, 140]"
                       :key="y"
-                      x1="45"
+                      x1="40"
                       :y1="y"
-                      x2="615"
+                      x2="620"
                       :y2="y"
                       class="behavior-trend-grid"
                     />
                     <text
                       v-for="(label, index) in [100, 75, 50, 25]"
                       :key="label"
-                      x="35"
+                      x="30"
                       :y="24 + index * 40"
                       text-anchor="end"
                     >
@@ -1256,13 +1234,13 @@ onBeforeUnmount(() => {
                         :cx="trendX(index, series.points.length)"
                         :cy="trendY(point.value)"
                         :r="index === series.points.length - 1 ? 4.5 : 3.5"
-                        :fill="series.color"
+                        :fill="index === series.points.length - 1 ? series.lastColor : series.color"
                         :stroke="index === series.points.length - 1 ? '#fff' : 'none'"
                         stroke-width="2"
                       />
                       <text
                         :x="trendX(index, series.points.length)"
-                        y="162"
+                        y="158"
                         text-anchor="middle"
                         :fill="index === series.points.length - 1 ? series.color : undefined"
                         :font-weight="index === series.points.length - 1 ? 800 : undefined"
@@ -1271,7 +1249,7 @@ onBeforeUnmount(() => {
                       </text>
                       <text
                         :x="trendX(index, series.points.length)"
-                        :y="trendY(point.value) - 9"
+                        :y="trendY(point.value) - 8"
                         text-anchor="middle"
                         :fill="index === series.points.length - 1 ? series.color : undefined"
                         :font-weight="index === series.points.length - 1 ? 800 : undefined"
@@ -1288,7 +1266,6 @@ onBeforeUnmount(() => {
                 </div>
                 <p v-else class="behavior-trends__empty">暂无已完成评测的版本</p>
               </figure>
-              <p class="behavior-dialog__hint">每个版本展示该模式下最新一次已完成评测。</p>
             </template>
           </div>
         </section>
@@ -1313,8 +1290,9 @@ onBeforeUnmount(() => {
 }
 .behavior-version-picker {
   display: inline-flex;
-  min-width: 220px;
-  min-height: 42px;
+  height: 42px;
+  width: 200px;
+  min-width: 200px;
   align-items: center;
   gap: 8px;
   padding-left: 14px;
@@ -1324,16 +1302,39 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 14px rgb(31 58 138 / 7%);
 }
 .behavior-version-picker__label {
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
   color: #667085;
   font-size: 11px;
   font-weight: 800;
+  line-height: 1;
+}
+.behavior-version-picker :deep(.harness-version-picker) {
+  min-width: 0;
+  flex: 1;
+  height: 40px;
+  align-items: center;
 }
 .behavior-version-picker :deep(.harness-version-picker__trigger) {
-  min-width: 158px;
+  width: 100%;
+  height: 40px;
+  min-width: 0;
   min-height: 40px;
-  padding-left: 2px;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
   border: 0;
   box-shadow: none;
+}
+.behavior-version-picker :deep(.harness-version-picker__value) {
+  display: inline-flex;
+  height: 100%;
+  align-items: center;
+  line-height: 1;
+}
+.behavior-version-picker :deep(.harness-version-picker__chevron) {
+  align-self: center;
 }
 .behavior-version-picker :deep(.harness-version-picker__trigger[aria-expanded='true']) {
   box-shadow: none;
@@ -1430,7 +1431,7 @@ onBeforeUnmount(() => {
   font-size: 13.5px;
   cursor: pointer;
 }
-.behavior-kind-tabs button:hover {
+.behavior-kind-tabs button:hover:not(:disabled) {
   color: #1f2329;
 }
 .behavior-kind-tabs button.is-active {
@@ -1438,6 +1439,10 @@ onBeforeUnmount(() => {
   color: #1f2329;
   font-weight: 600;
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+.behavior-kind-tabs button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .behavior-kind-tabs__dot {
   width: 7px;
@@ -1784,11 +1789,32 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 .behavior-distribution {
+  min-width: 0;
+}
+.behavior-distribution__body {
   display: flex;
   height: 190px;
-  align-items: end;
-  gap: 12px;
-  padding: 24px 14px 0;
+}
+.behavior-distribution__axis {
+  display: flex;
+  width: 30px;
+  flex: 0 0 30px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0 6px 1px 0;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: right;
+}
+.behavior-distribution__plot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-end;
+  padding: 0 12px;
   border-bottom: 1.5px solid #94a3b8;
   border-left: 1.5px solid #cbd5e1;
   background: repeating-linear-gradient(
@@ -1799,18 +1825,33 @@ onBeforeUnmount(() => {
     #eef2f7 25%
   );
 }
+.behavior-distribution__columns {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 12px;
+}
 .behavior-distribution__column {
-  display: grid;
+  display: flex;
   height: 100%;
   flex: 1;
-  grid-template-rows: 1fr 30px;
-  align-items: end;
-  justify-items: center;
-  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-direction: column;
 }
-.behavior-distribution__column > span {
+.behavior-distribution__x {
+  display: grid;
+  gap: 12px;
+  padding: 6px 12px 0 42px;
+}
+.behavior-distribution__x span {
   color: #52647d;
   font-size: 10.5px;
+  text-align: center;
   white-space: nowrap;
 }
 .behavior-distribution__bar {
@@ -1957,7 +1998,8 @@ onBeforeUnmount(() => {
 }
 .behavior-case-detail td {
   padding: 14px 14px 16px 48px;
-  background: #fbfcfe;
+  border-top-color: #e1e7f0;
+  background: #f3f6fb;
 }
 .behavior-case-detail__grid {
   display: grid;
@@ -2071,18 +2113,17 @@ onBeforeUnmount(() => {
 .behavior-dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1980;
+  z-index: 980;
   display: grid;
   place-items: center;
   padding: 24px;
-  overflow-y: auto;
   background: rgb(31 42 68 / 46%);
   backdrop-filter: blur(3px);
 }
 .behavior-dialog {
+  position: relative;
   width: min(680px, calc(100vw - 32px));
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
+  overflow: hidden;
   border-radius: 16px;
   background: #fff;
   color: #17233c;
@@ -2092,9 +2133,6 @@ onBeforeUnmount(() => {
   width: min(720px, calc(100vw - 32px));
 }
 .behavior-dialog__header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2107,35 +2145,25 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #1f2329;
   font-size: 16px;
+  font-weight: 700;
 }
 .behavior-dialog__header p {
   margin: 4px 0 0;
-  color: #52647d;
+  color: #6b7280;
   font-size: 12px;
 }
 .behavior-dialog__close {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
   border: 0;
-  border-radius: 8px;
   background: transparent;
-  color: #52647d;
+  color: #6b7280;
   font-size: 22px;
+  line-height: 1;
   cursor: pointer;
-}
-.behavior-dialog__close:hover {
-  background: #f2f4f9;
-  color: #1f2329;
 }
 .behavior-dialog__body {
   padding: 20px 22px;
 }
 .behavior-dialog__footer {
-  position: sticky;
-  bottom: 0;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -2222,17 +2250,31 @@ onBeforeUnmount(() => {
   font-style: normal;
   font-weight: 700;
 }
-.behavior-options__disabled-copy {
-  color: #a9580d;
-  font-size: 11px;
-}
 .behavior-dialog__hint {
   margin: 12px 0 0;
   color: #52647d;
   font-size: 11.5px;
 }
+.behavior-dialog__error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f3b9b9;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #c62828;
+  font-size: 12px;
+}
+.behavior-dialog__error strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.behavior-dialog__error p {
+  margin: 0;
+  line-height: 1.5;
+}
 .behavior-trends figure {
   margin: 0;
+  padding: 6px 0 10px;
 }
 .behavior-trends figure + figure {
   margin-top: 16px;
@@ -2245,21 +2287,17 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 700;
 }
-.behavior-trend-chart {
-  overflow-x: auto;
-}
 .behavior-trend-chart svg {
   display: block;
   width: 100%;
-  min-width: 520px;
-  height: 180px;
+  height: 170px;
 }
 .behavior-trend-chart text {
-  fill: #667085;
+  fill: #94a3b8;
   font-size: 10px;
 }
 .behavior-trend-grid {
-  stroke: #e2e8f0;
+  stroke: #eef2f7;
   stroke-width: 1;
 }
 .behavior-trends__empty {

@@ -43,6 +43,9 @@ try {
   const { default: ScenarioPage } = await server.ssrLoadModule(
     '/src/views/skill/BusinessScenarioDesignPage.vue',
   );
+  const { getSuggestedProductCatalogItemNamePrefix } = await server.ssrLoadModule(
+    '/src/utils/catalogItemName.ts',
+  );
   globalThis.document = { activeElement: null };
   globalThis.HTMLElement = class {};
   async function mountScenarioPage(workspace) {
@@ -58,7 +61,8 @@ try {
     return state;
   }
   async function renderMountedScenarioPage(state, workspace) {
-    return renderToString(
+    const context = {};
+    const html = await renderToString(
       createSSRApp(
         {
           props: ScenarioPage.props,
@@ -67,7 +71,18 @@ try {
         },
         { workspace, active: true },
       ),
+      context,
     );
+    return [html, ...Object.values(context.teleports ?? {})].join('\n');
+  }
+  function assertSuggestedPrefixCopy(html, suggestion) {
+    assert.match(html, new RegExp(`建议使用“${suggestion}”作为名称前缀`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
+    assert.doesNotMatch(html, /产品名称不符合命名规范/);
+  }
+  function assertRequiredPrefixCopy(html, prefix) {
+    assert.match(html, new RegExp(`以 ${prefix} 开头`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
   }
   async function fixture({
     bound = false,
@@ -486,6 +501,11 @@ try {
       const state = await mountScenarioPage(f.workspace);
       state.openScenario(f.scenario.parentId);
       assert.equal(state.scenarioForm.code, '');
+      const suggestion = getSuggestedProductCatalogItemNamePrefix(productName);
+      assert.ok(suggestion);
+      const suggestionHtml = await renderMountedScenarioPage(state, f.workspace);
+      assert.match(suggestionHtml, /placeholder="请输入场景编码"/);
+      assertSuggestedPrefixCopy(suggestionHtml, suggestion);
       state.scenarioForm.name = '新增下级场景';
       for (const code of ['INVALID', 'invalid_code', 'invalid--code', 'invalid-', 'a'.repeat(65)]) {
         state.scenarioForm.code = code;
@@ -515,8 +535,9 @@ try {
     assert.equal(f.calls.filter(([op]) => op === 'detail').length, 0);
     assert.equal(state.wizard.value.form.code, '');
     const html = await renderMountedScenarioPage(state, f.workspace);
-    assert.match(html, /placeholder="例如：mml-dev"/);
+    assert.match(html, /placeholder="请输入场景编码"/);
     assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
   });
   await test('Workflow wizard accepts a valid standalone code when the product name is invalid', async () => {
     const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
@@ -535,8 +556,9 @@ try {
     const wizard = state.wizard.value;
     assert.equal(wizard.commandDraft.name, '');
     const html = await renderMountedScenarioPage(state, f.workspace);
-    assert.match(html, /placeholder="\/e2e-codec"/);
+    assert.match(html, /placeholder="请输入 Command 名称"/);
     assert.doesNotMatch(html, /\/product-demo-e2e-codec|以 product-demo- 开头/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
     Object.assign(wizard.commandDraft, {
       name: '/invalid command',
       description: '自定义 Command',
@@ -566,10 +588,10 @@ try {
       state.openAssetDraft(assetType);
       const wizard = state.wizard.value;
       assert.equal(wizard.assetDraft.name, '');
-      const example = assetType === 'Agent' ? 'coding-agent' : 'codec-generator';
       const html = await renderMountedScenarioPage(state, f.workspace);
-      assert.match(html, new RegExp(`placeholder="${example}"`));
-      assert.doesNotMatch(html, new RegExp(`product-demo-${example}|以 product-demo- 开头`));
+      assert.match(html, new RegExp(`placeholder="请输入 ${assetType} 名称"`));
+      assert.doesNotMatch(html, /以 product-demo- 开头/);
+      assertSuggestedPrefixCopy(html, 'harness-pipeline-');
       Object.assign(wizard.assetDraft, {
         name: `invalid ${assetType.toLowerCase()}`,
         description: `自定义 ${assetType}`,
@@ -598,13 +620,31 @@ try {
     await test(`custom capabilities retain the lowercase valid product-name prefix: ${productName}`, async () => {
       const f = await fixture({ productName });
       const state = await mountScenarioPage(f.workspace);
+      await state.openWizard(f.workflow);
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      state.closeWizard();
       await state.openWizard(f.workflow, 2);
       state.openCommandDraft();
       assert.equal(state.wizard.value.commandDraft.name, '/harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       state.openAssetDraft('Agent');
       assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       state.openAssetDraft('Skill');
       assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       const common = {
         description: '能力说明',
         owner: '责任人 u1',
@@ -647,6 +687,10 @@ try {
       const state = await mountScenarioPage(f.workspace);
       state.openScenario(f.scenario.parentId);
       assert.equal(state.scenarioForm.code, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
       state.scenarioForm.name = '新增下级场景';
       for (const code of ['custom-extension', 'product-demo-extension', 'harness-pipeline-']) {
         state.scenarioForm.code = code;
