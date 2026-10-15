@@ -1,6 +1,7 @@
 import { reactive, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { managerUserService } from '@/api/user';
+import { buildDeptTreeFromUserInfo } from '@/services/skillMarket/marketDeptTreeFromApi';
 
 interface UserInfo {
   w3Id: string;
@@ -12,6 +13,8 @@ interface UserInfo {
   nameAndId: string;
   avatar?: string;
   role?: string;
+  tenantId?: string;
+  tenantName?: string;
 }
 
 interface UserPermission {
@@ -44,6 +47,13 @@ export const useProfileStore = defineStore('userProfile', () => {
     role: '',
   });
 
+  // 用户部门树（由getUserDepartment 接口获取，buildDeptTreeFromUserInfo 转换）
+  const departmentList = ref<unknown[]>([]);
+
+  function updateDept(list: unknown[]): void {
+    departmentList.value = [...list];
+  }
+
   // 子页面状态
   const isSubPage = reactive({ status: false });
 
@@ -67,32 +77,68 @@ export const useProfileStore = defineStore('userProfile', () => {
     isSubPage.status = val;
   }
 
+  // 防重入锁：避免 initUserInfo 被并发调用导致多次跳转
+  let initUserInfoPromise: Promise<void> | null = null;
+
   // 初始化用户信息
   const initUserInfo = async (): Promise<void> => {
+    if (initUserInfoPromise) return initUserInfoPromise;
+    initUserInfoPromise = (async () => {
+      try {
+        const result = await managerUserService.getUserInfo();
+        if (result) {
+          const info = {
+            id: result.uid,
+            w3Id: result.uid,
+            uid: result.uid,
+            name: result.displayNameEN,
+            nameCn: result.displayNameCN,
+            nameAndId: result.displayNameEN,
+            dept: '',
+            email: result.mail || '',
+            createTime: '',
+            tenantId: result?.tenantId,
+            tenantName: result?.tenantName,
+          };
+          updateUserInfo(info);
+          // 通过接口获取用户部门信息，构建部门树
+          await initUserDepartment(info.w3Id);
+
+          await getAdminInfo(info.w3Id);
+        } else {
+          clearUserInfo();
+        }
+      } catch (error) {
+        // 网络错误不跳登录页，避免短暂网络波动导致死循环
+        // 只有 validate 接口明确返回未登录（result 为 false）才跳转
+        console.error('Failed to initialize user info:', error);
+      } finally {
+        initUserInfoPromise = null;
+      }
+    })();
+    return initUserInfoPromise;
+  };
+
+  /**
+   * 获取用户部门信息并写入 departmentList 
+   */
+  async function initUserDepartment(userId: string): Promise<void> {
+    if (!userId) return;
     try {
-      const result = await managerUserService.getUserInfo();
-      if (result) {
-        const info = {
-          id: result.uid,
-          w3Id: result.uid,
-          uid: result.uid,
-          name: result.displayNameEN,
-          nameCn: result.displayNameCN,
-          nameAndId: result.displayNameEN,
-          dept: '',
-          email: result.mail || '',
-          createTime: '',
-        };
-        updateUserInfo(info);
-        await getAdminInfo(info.w3Id);
-      } else {
-        clearUserInfo();
+      const res = await managerUserService.getUserDepartment(userId);
+      // 接口返回 { code: 200, data: [{hwDepartName1-6, hwDepartCode1-6, ... }]}
+      const deptInfo = Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null;
+      const deptTree = buildDeptTreeFromUserInfo(deptInfo);
+      if (deptTree.length > 0) {
+        updateDept(deptTree)
       }
     } catch (error) {
-      console.error('Failed to initialize user info:', error);
-      clearUserInfo();
+      console.error('Failed to fetch user department:', error)
     }
-  };
+  }
+
+
+
 
   // 获取管理员信息
   const getAdminInfo = async (userId: string): Promise<void> => {
@@ -155,10 +201,19 @@ export const useProfileStore = defineStore('userProfile', () => {
       avatar: '',
     });
     updateAdminUserInfo('');
+    updateDept([]);
     localStorage.setItem('userPermission', JSON.stringify({ isAdmin: false, owner: false }));
 
     const currHref = document.location.href;
-    window.location.href = `https://login.huawei.com/login1/?redirect=${currHref}`;
+    const loginUrl = `https://login.huawei.com/login1/?redirect=${currHref}`
+
+    // 在 iframe 中：让父页面跳转登录页，避免iframe自身反复重载导致死循环
+    if(window.self !== window.top) {
+      window.top!.location.href = loginUrl;
+      return;
+    }
+    // 非 iframe: 直接跳转
+    window.location.href = loginUrl;
   }
 
   const checkUserToken = (): void => {
@@ -173,16 +228,18 @@ export const useProfileStore = defineStore('userProfile', () => {
         }
       })
       .catch((err) => {
+        // 网络错误不跳登录页，等下次定时校验重试
         console.error(err);
-        clearUserInfo();
       });
   };
 
   return {
     userInfo,
+    departmentList,
     isSubPage,
     loginStatus,
     initUserInfo,
+    initUserDepartment,
     updateUserInfo,
     updateAdminUserInfo,
     updateSubPageStatus,
@@ -191,5 +248,6 @@ export const useProfileStore = defineStore('userProfile', () => {
     updateCheckLoginStatus,
     getAdminInfo,
     checkUserToken,
+    updateDept,
   };
 });

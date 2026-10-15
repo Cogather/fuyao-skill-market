@@ -162,6 +162,20 @@ const httpRequest = {
     };
     return tryMockThenAxios<T>('direct', requestConfig);
   },
+  getWithCookie: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    return tryMockThenAxios<T>('direct', {
+      ...config,
+      method: 'get',
+      withCredentials: true,
+    });
+  },
+  postWithCookie: <T = null>(config: AxiosRequestConfig): Promise<T> => {
+    return tryMockThenAxios<T>('direct', {
+      ...config,
+      method: 'post',
+      withCredentials: true,
+    });
+  },
 };
 
 export default httpRequest;

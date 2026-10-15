@@ -45,17 +45,14 @@ import {
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 
-import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
-const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
 
-/** 操作者工号只接受父应用注入，不再通过角色接口或 Profile 回填。 */
-const userId = computed(() => String(skillMarketStore.userId ?? '').trim());
-const userName = computed(
-  () => skillMarketStore.userName || userStore.userInfo?.nameCn || userStore.userInfo?.name || '',
+/** 操作者工号由 w3 SSO 登录信息提供 */
+const userId = computed(() => String(userStore.userInfo?.w3Id ?? '').trim());
+const userName = computed(() => userStore.userInfo?.nameCn || userStore.userInfo?.name || '',
 );
-const departmentList = computed(() => skillMarketStore.departmentList);
+const departmentList = computed(() => userStore.departmentList);
 
 const skills = ref<any[]>([]);
 const newSkills = ref<any[]>([]);
@@ -842,13 +839,13 @@ const tabPanelFillStyle = computed(() => {
 // userId 和部门树都由父页面通过 Skill_Square_Init 注入。
 function waitUserIdAndDepartmentList(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value && departmentList.value.length > 0) {
+    if (userId.value) {
       resolve();
       return;
     }
     const start = Date.now();
     const timer = setInterval(() => {
-      if (userId.value && departmentList.value.length > 0) {
+      if (userId.value) {
         clearInterval(timer);
         resolve();
         return;
@@ -912,7 +909,7 @@ async function loadBusinessDimensions(params: any = { format: 'tree' }): Promise
   }
 }
 
-/** 工号与父应用注入的 userId 同源。 */
+/** 当前用户工号，由 w3 SSO 登录信息提供。 */
 function effectiveSkillUserId(): string {
   return userId.value?.trim() || '';
 }
