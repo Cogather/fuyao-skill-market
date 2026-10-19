@@ -19,7 +19,7 @@ export const managerUserService = {
    */
   getUserDepartment: (userId: string): Promise<any> =>
     request.getWithCookie({
-      url: `config-service/config-center/hw-userinfo?info=${userId}`,
+      url: `/config-service/config-center/hw-userinfo?info=${userId}`,
     }),
 
   // 获取登录用户信息（扶摇平台）

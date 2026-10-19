@@ -242,7 +242,6 @@ function selectUpgradeOrg(org: {
 function showUpgradeOrgDropdown(): void {
   upgradeOrgDropdownOpen.value = true;
 }
-const mockUpgradeSubmittingId = ref<string | null>(null);
 const deleteConfirmRow = ref<SkillListRecordDto | null>(null);
 const deleteConfirmStyle = ref<CSSProperties>({});
 const deleteConfirmPopoverRef = ref<HTMLElement | null>(null);
@@ -269,7 +268,7 @@ function formatCommentTime(ts: string | number | undefined): string {
   if (!ts) return '';
   const d = new Date(Number(ts));
   if (Number.isNaN(d.getTime())) return String(ts);
-  return d.toLocaleDateString('zh-CN', {
+  return d.toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -1797,7 +1796,7 @@ async function loadPublishOrganizations(): Promise<void> {
     const list = [];
     if (res.meta?.success && res.data && Array.isArray(res.data)) {
       list.push(
-        ...MarketDeptCascader(res.data as any[]).map((o: any) => ({
+        ...(res.data as any[]).map((o: any) => ({
           id: String(o.orgCode),
           orgName: o.orgName ?? '',
           owner: o.admins ?? o.owner ?? '',
@@ -1820,7 +1819,7 @@ async function openUpgradePublishDialog(skill: SkillListRecordDto): Promise<void
   await loadPublishOrganizations();
 }
 
-async function closeUpgradePublishDialog() {
+function closeUpgradePublishDialog(): void {
   upgradePublishOpen.value = false;
   upgradePublishSkill.value = null;
   selectedUpgradeOrg.value = null;
@@ -4675,6 +4674,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </button>
           </div>
         </div>
+
         <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
           <div class="ai-evolution-intro-title">
             <span class="ai-evolution-tag">AI 自进化</span>
@@ -4875,7 +4875,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 </td>
               </tr>
               <tr v-if="myPublishedSkills.length === 0">
-                <td colspan="6" class="empty-row">暂无符合条件的数据</td>
+                <td colspan="7" class="empty-row">暂无符合条件的数据</td>
               </tr>
             </tbody>
           </table>
@@ -5550,7 +5550,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         role="presentation"
         @click.self="closeUpgradePublishDialog"
       >
-        <div class="v-dialog v-dialog-wide dept-publish-dialog" role="dialog" aria-model="true">
+        <div class="v-dialog v-dialog-wide dept-publish-dialog" role="dialog" aria-modal="true">
           <div class="v-head">
             <strong>发布到组织</strong>
             <button
@@ -5560,33 +5560,53 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               :disabled="upgradePublishing"
               @click="closeUpgradePublishDialog"
             >
-              x
+              ×
             </button>
           </div>
-          <p class="v-sub">将创建发布人物并通知组织 owner 确认。</p>
+          <p class="v-sub">将创建发布任务并通知组织 owner 确认。</p>
           <div class="admin-form">
             <div v-if="publishTargetOrgs.length > 0" class="dept-org-select-wrap">
-              <div
-                class="dept-org-select-trigger"
-                @click="upgradeOrgDropdownOpen = !upgradeOrgDropdownOpen"
-              >
-                <span>{{ upgradeSelectedOrgName || '请选择组织' }}</span>
-                <span class="dept-org-select-arrow">▼</span>
-              </div>
-              <div v-if="upgradeOrgDropdownOpen" class="dept-org-select-dropdown">
+              <label>目标组织：</label>
+              <div class="dept-org-custom-select" :class="{ open: upgradeOrgDropdownOpen }">
                 <div
-                  v-for="org in publishTargetOrgs"
-                  :key="org.id"
-                  class="dept-org-select-opinion"
-                  :class="{ selected: selectedUpgradeOrg && selectedUpgradeOrg.id === org.id }"
-                  @click="selectUpgradeOrg(org)"
+                  class="dept-org-select-trigger"
+                  @click="upgradeOrgDropdownOpen = !upgradeOrgDropdownOpen"
                 >
-                  <div class="dept-org-select-option_name">{{ org.orgName }}</div>
-                  <div v-if="org.deptName" class="dept-org-select-option__dept">
-                    部门：{{ { org.deptName }}
+                  <span>{{ upgradeSelectedOrgName || '请选择组织' }}</span>
+                  <span class="dept-org-select-arrow">▼</span>
+                </div>
+                <div v-if="upgradeOrgDropdownOpen" class="dept-org-select-dropdown">
+                  <div
+                    v-for="org in publishTargetOrgs"
+                    :key="org.id"
+                    class="dept-org-select-opinion"
+                    :class="{ selected: selectedUpgradeOrg && selectedUpgradeOrg.id === org.id }"
+                    @click="selectUpgradeOrg(org)"
+                  >
+                    <div class="dept-org-select-option_name">{{ org.orgName }}</div>
+                    <div v-if="org.deptName" class="dept-org-select-option__dept">
+                      部门：{{ org.deptName }}
+                    </div>
                   </div>
                 </div>
               </div>
+            </div>
+            <div v-else-if="publishTargetOrgs.length === 0" class="dept-org-empty">
+              当前无可发布的组织
+            </div>
+            <div class="dept-publish-skills">
+              <div class="dept-publish-skills-title">本次发布的 Skill：</div>
+              <ul class="dept-publish-skill-list">
+                <li>
+                  <strong>{{ upgradePublishSkill.name }}</strong>
+                  <span class="v-meta-sep">·</span>
+                  <span>{{
+                    upgradePublishSkill.currentVersion || upgradePublishSkill.version || ''
+                  }}</span>
+                  <span class="v-meta-sep">…</span>
+                  <span>{{ upgradePublishSkill.author || '' }}</span>
+                </li>
+              </ul>
             </div>
           </div>
           <div class="v-actions">
@@ -5744,7 +5764,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         <div
           class="v-dialog v-dialog-wide my-release-opinion-dialog"
           role="dialog"
-          aria-model="true"
+          aria-modal="true"
           aria-labelledby="my-release-opinion-title"
         >
           <div class="v-head">
@@ -5812,7 +5832,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                 <div v-for="reply in item.replies" :key="reply.id" class="dept-comment-reply-item">
                   <div class="dept-comment-reply-head">
                     <strong>{{ reply.replierName || '' }} {{ reply.replier }}</strong>
-                    <span class="muted" style="font-size: 12px; margin: 0 20px">·</span>
+                    <span class="muted" style="font-size: 12px; margin: 0 2px">·</span>
                     <span class="dept-comment-time muted">{{
                       formatCommentTime(reply.createdAt)
                     }}</span>
@@ -5843,11 +5863,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                     type="button"
                     class="btn primary sm"
                     :disabled="
-                      !myReleaseReplyDraft[item.id]?.trim() || !myReleaseOpinionProcessingId
+                      !myReleaseReplyDraft[item.id]?.trim() || !!myReleaseOpinionProcessingId
                     "
                     @click="submitMyReleaseReply(item)"
                   >
-                    {{ myReleaseOpinionProcessingId === item.id ? '提交中' : '回复' }}
+                    {{ myReleaseOpinionProcessingId === item.id ? '提交中…' : '回复' }}
                   </button>
                 </div>
               </div>

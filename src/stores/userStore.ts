@@ -205,7 +205,7 @@ export const useProfileStore = defineStore('userProfile', () => {
     const currHref = document.location.href;
     const loginUrl = `xxx/login1/?redirect=${currHref}`;
 
-    // 在 iframe 中：让父页面跳转登录页，避免iframe自身反复重载导致死循环
+    // 在 iframe 中：让父页面跳转登录页，避免 iframe 自身反复重载导致死循环
     if (window.self !== window.top) {
       window.top!.location.href = loginUrl;
       return;
