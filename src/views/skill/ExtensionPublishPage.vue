@@ -808,11 +808,7 @@ async function togglePublishCapability(
 ): Promise<void> {
   const key = capabilityKey(scene, capability);
   const opening = !publishExpandedCapabilities.value.has(key);
-  publishExpandedCapabilities.value = withSetValue(
-    publishExpandedCapabilities.value,
-    key,
-    opening,
-  );
+  publishExpandedCapabilities.value = withSetValue(publishExpandedCapabilities.value, key, opening);
   if (!opening) return;
   if (type === 'skill') await loadSkillCapabilityFiles(scene, capability);
   else await loadDirectCapabilityFile(scene, capability, type);
@@ -1529,8 +1525,7 @@ onBeforeUnmount(() => {
                                 : fileErrors[fileKey(currentScene, capability, file.name)] ||
                                   file.content ||
                                   '(空)'
-                            }}</pre
-                          >
+                            }}</pre>
                         </li>
                         <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
                       </template>
@@ -1723,7 +1718,9 @@ onBeforeUnmount(() => {
                       <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" />
                     </svg>
                     <strong>{{ section.folder }}/</strong>
-                    <span class="folder-count">{{ publishCapabilitiesForType(section.type).length }}</span>
+                    <span class="folder-count">{{
+                      publishCapabilitiesForType(section.type).length
+                    }}</span>
                   </button>
                   <ul
                     v-if="publishCapabilitiesForType(section.type).length"
@@ -1793,17 +1790,10 @@ onBeforeUnmount(() => {
                                 ),
                               }"
                               :aria-expanded="
-                                publishExpandedFiles.has(
-                                  fileKey(modalScene, capability, file.name),
-                                )
+                                publishExpandedFiles.has(fileKey(modalScene, capability, file.name))
                               "
                               @click="
-                                togglePublishFile(
-                                  modalScene,
-                                  capability,
-                                  section.type,
-                                  file.name,
-                                )
+                                togglePublishFile(modalScene, capability, section.type, file.name)
                               "
                             >
                               <span class="file-caret">›</span>
@@ -1815,9 +1805,7 @@ onBeforeUnmount(() => {
                             </button>
                             <pre
                               v-if="
-                                publishExpandedFiles.has(
-                                  fileKey(modalScene, capability, file.name),
-                                )
+                                publishExpandedFiles.has(fileKey(modalScene, capability, file.name))
                               "
                               class="file-content"
                               >{{
@@ -1826,8 +1814,7 @@ onBeforeUnmount(() => {
                                   : fileErrors[fileKey(modalScene, capability, file.name)] ||
                                     file.content ||
                                     '(空)'
-                              }}</pre
-                            >
+                              }}</pre>
                           </li>
                           <li v-if="capability.files.length === 0" class="folder-empty">
                             暂无文件

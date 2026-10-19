@@ -68,9 +68,7 @@ test('Workflow Command 弹窗标题区不保留英文小标题', async ({ page }
 
   await expect(dialog.locator('.workflow-command-eyebrow')).toHaveCount(0);
   await expect(dialog.getByText('WORKFLOW COMMANDS', { exact: true })).toHaveCount(0);
-  await expect(dialog.locator('.workflow-command-header h2')).toContainText(
-    '合并请求自动评审流程',
-  );
+  await expect(dialog.locator('.workflow-command-header h2')).toContainText('合并请求自动评审流程');
 });
 
 test('Workflow Command 条目使用白底浅灰边框与浅蓝展开态', async ({ page }) => {

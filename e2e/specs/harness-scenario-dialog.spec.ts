@@ -64,10 +64,7 @@ test('场景标签和删除确认仅通过操作按钮关闭', async ({ page }) 
   const harness = new HarnessManagementPage(page);
   await harness.goto();
   await harness.scenariosPanel.getByRole('tree').getByText('研发提效', { exact: true }).click();
-  await harness.scenariosPanel
-    .locator('.summary')
-    .getByRole('button', { name: /标签/ })
-    .click();
+  await harness.scenariosPanel.locator('.summary').getByRole('button', { name: /标签/ }).click();
   const tags = page.getByRole('dialog', { name: '场景标签', exact: true });
   await expectExplicitDismissalOnly(page, tags);
   await tags.getByRole('button', { name: '完成', exact: true }).click();

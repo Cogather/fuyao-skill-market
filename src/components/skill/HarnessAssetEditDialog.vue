@@ -51,9 +51,7 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
 
 <template>
   <Teleport to="body">
-    <div
-      class="asset-master-overlay harness-workspace-overlay"
-    >
+    <div class="asset-master-overlay harness-workspace-overlay">
       <form
         class="asset-master-dialog"
         role="dialog"
@@ -124,7 +122,9 @@ onMounted(() => void nextTick(() => nameInput.value?.focus()));
                 type="date"
                 aria-label="计划完成时间"
                 :min="currentLocalDate()"
-                @input="emit('update:planned-complete-date', ($event.target as HTMLInputElement).value)"
+                @input="
+                  emit('update:planned-complete-date', ($event.target as HTMLInputElement).value)
+                "
               />
             </label>
           </div>

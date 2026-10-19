@@ -120,8 +120,8 @@ function mapOneDepartmentTreeNode(
 }
 
 /**
- * 将 getUserDepartment 接口返回的扁平部门层级 (hwDepartName1-6 / hwDepartCode1-6)
- * 转换为 DepartmentTreeNodeDto[] 树结构， 供 coreceDepartmentTreeFromUnknown + mapDepartmentTreeDtoToForest 消费。
+ * 将 getUserDepartment 接口返回的扁平部门层级（hwDepartName1-6 / hwDepartCode1-6）
+ * 转换为 DepartmentTreeNodeDto[] 树结构，供 coreceDepartmentTreeFromUnknown + mapDepartmentTreeDtoToForest 消费。
  */
 export function buildDeptTreeFromUserInfo(
   deptInfo: Record<string, unknown> | null | undefined,

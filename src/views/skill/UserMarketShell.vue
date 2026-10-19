@@ -46,12 +46,12 @@ import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExc
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 
 import { useProfileStore } from '../../stores/userStore';
+import SkillPlanningPage from './SkillPlanningPage.vue';
 const userStore = useProfileStore();
 
 /** 操作者工号由 w3 SSO 登录信息提供 */
 const userId = computed(() => String(userStore.userInfo?.w3Id ?? '').trim());
-const userName = computed(() => userStore.userInfo?.nameCn || userStore.userInfo?.name || '',
-);
+const userName = computed(() => userStore.userInfo?.nameCn || userStore.userInfo?.name || '');
 const departmentList = computed(() => userStore.departmentList);
 
 const skills = ref<any[]>([]);
@@ -213,6 +213,35 @@ const versionPreviewSkill = ref<any>(null);
 /** 市场进入的版本管理不展示「操作」列；与详情是否展示删除同源（我的发布为 true） */
 const versionManageShowOperations = ref(true);
 const deletingMySkillId = ref<string | null>(null);
+const publishTargetOrgs = ref<{ id: string; orgName: string; owner: string; deptName: string }[]>(
+  [],
+);
+const upgradePublishOpen = ref(false);
+const upgradePublishSkill = ref<SkillListRecordDto | null>(null);
+const selectedUpgradeOrg = ref<{
+  id: string;
+  orgName: string;
+  owner: string;
+  deptName: string;
+  orgCode: string;
+} | null>(null);
+const upgradePublishing = ref(false);
+const upgradeOrgDropdownOpen = ref(false);
+const upgradeSelectedOrgName = computed(() => selectedUpgradeOrg.value?.orgName ?? '');
+
+function selectUpgradeOrg(org: {
+  id: string;
+  orgName: string;
+  owner: string;
+  deptName: string;
+}): void {
+  selectedUpgradeOrg.value = org;
+  upgradeOrgDropdownOpen.value = false;
+}
+
+function showUpgradeOrgDropdown(): void {
+  upgradeOrgDropdownOpen.value = true;
+}
 const mockUpgradeSubmittingId = ref<string | null>(null);
 const deleteConfirmRow = ref<SkillListRecordDto | null>(null);
 const deleteConfirmStyle = ref<CSSProperties>({});
@@ -227,6 +256,152 @@ const detailDeleteConfirmPopoverRef = ref<HTMLElement | null>(null);
 const detailDeletePendingId = ref<string | null>(null);
 const detailDeletePendingTitle = ref('');
 let detailDeleteConfirmListenersBound = false;
+/** 意见列表弹窗 */
+const myReleaseOpinionOpen = ref(false);
+const myReleaseOpinionTarget = ref<any>(null);
+const myReleaseOpinionList = ref<any[]>([]);
+const myReleaseOpinionLoading = ref(false);
+const myReleaseOpinionProcessingId = ref('');
+const myReleaseReplyDraft = ref<Record<string, string>>({});
+
+/** 格式化时间 */
+function formatCommentTime(ts: string | number | undefined): string {
+  if (!ts) return '';
+  const d = new Date(Number(ts));
+  if (Number.isNaN(d.getTime())) return String(ts);
+  return d.toLocaleDateString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** 重新加载当前 Skill 的意见列表 */
+async function reloadMyReleaseOpinionList(): Promise<void> {
+  const row = myReleaseOpinionTarget.value;
+  if (!row) return;
+  try {
+    const res = await skillBaseService.queryDeptSkillComments(String(row.id), {
+      userId: userId.value,
+    });
+    const records = Array.isArray(res?.data?.records) ? res.data.records : [];
+    myReleaseOpinionList.value = records.map((c: any) => ({
+      id: c.id,
+      content: c.opinion,
+      submitter: c.reviewer,
+      submitterName: c.reviewerName,
+      submitterId: c.reviewer,
+      createdAt: c.createdAt,
+      status: c.status === 'CLOSED' ? 'closed' : 'processing',
+      isMine: c.reviewer === userId,
+      canOperate: c.canOperate,
+      skillVersion: c.skillVersion,
+      replies: (c.replies || []).map((r: any) => ({
+        id: r.id,
+        replier: r.replier,
+        replierName: r.replierName,
+        content: r.content,
+        createdAt: r.createdAt,
+        canDelete: r.canDelete,
+      })),
+    }));
+  } catch {
+    myReleaseOpinionList.value = [];
+  }
+}
+
+/** 打开某 Skill 的意见列表弹窗 */
+async function openMyReleaseOpinionDialog(row: any): Promise<void> {
+  myReleaseOpinionTarget.value = row;
+  myReleaseOpinionOpen.value = true;
+  myReleaseOpinionLoading.value = true;
+  myReleaseOpinionProcessingId.value = '';
+  await reloadMyReleaseOpinionList();
+  myReleaseOpinionLoading.value = false;
+}
+
+function closeMyReleaseOpinionDialog(): void {
+  myReleaseOpinionOpen.value = false;
+  myReleaseOpinionTarget.value = null;
+  myReleaseOpinionList.value = [];
+  myReleaseReplyDraft.value = {};
+}
+
+/** 提交回复 */
+async function submitMyReleaseReply(item: any): Promise<void> {
+  const content = myReleaseReplyDraft.value[item.id]?.trim();
+  if (!content || myReleaseOpinionProcessingId.value) return;
+  myReleaseOpinionProcessingId.value = item.id;
+  try {
+    await skillBaseService.addDeptSkillReply(item.id, userId.value, userName.value, content);
+    myReleaseReplyDraft.value[item.id] = '';
+    showToast('回复已提交');
+    await reloadMyReleaseOpinionList();
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    myReleaseOpinionProcessingId.value = '';
+  }
+}
+
+/** 关闭（闭环）某条意见 */
+async function closeMyReleaseOpinion(item: any): Promise<void> {
+  if (myReleaseOpinionProcessingId.value || item.status === 'closed') return;
+  myReleaseOpinionProcessingId.value = item.id;
+  try {
+    await skillBaseService.closeDeptSkillComment(item.id, userId.value);
+    const idx = myReleaseOpinionList.value.findIndex((c) => c.id === item.id);
+    if (idx >= 0) {
+      myReleaseOpinionList.value[idx] = { ...myReleaseOpinionList.value[idx], status: 'closed' };
+    }
+    showToast('意见已闭环');
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    myReleaseOpinionProcessingId.value = '';
+  }
+}
+
+/** 删除检视意见（仅提出人） */
+async function deleteMyReleaseOpinion(item: any): Promise<void> {
+  if (myReleaseOpinionProcessingId.value) return;
+  myReleaseOpinionProcessingId.value = item.id;
+  try {
+    await skillBaseService.deleteDeptSkillComment(item.id, userId.value);
+    myReleaseOpinionList.value = myReleaseOpinionList.value.filter((c) => c.id !== item.id);
+    showToast('意见已删除');
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    myReleaseOpinionProcessingId.value = '';
+  }
+}
+
+/** 删除回复（仅回复人） */
+async function deleteMyReleaseReply(commentId: string, replyId: string): Promise<void> {
+  if (myReleaseOpinionProcessingId.value) return;
+  myReleaseOpinionProcessingId.value = commentId;
+  try {
+    await skillBaseService.deleteDeptSkillReply(commentId, replyId, userId.value);
+    const idx = myReleaseOpinionList.value.findIndex((c) => c.id === commentId);
+    if (idx >= 0) {
+      myReleaseOpinionList.value[idx].replies = myReleaseOpinionList.value[idx].replies.filter(
+        (r: any) => r.id !== replyId,
+      );
+    }
+    showToast('回复已删除');
+  } catch {
+    showToast('操作失败，请稍后重试');
+  } finally {
+    myReleaseOpinionProcessingId.value = '';
+  }
+}
+
+function myReleaseOpinionStatusLabel(status: string): { label: string; cls: string } {
+  if (status === 'closed') return { label: '已关闭', cls: 'st-published' };
+  return { label: '待处理', cls: 'st-reviewing-dev' };
+}
 
 const deletePopoverWidth = 232;
 const deletePopoverGap = 8;
@@ -259,10 +434,7 @@ function deletePopoverStyleFor(
   const idealLeft = rect.left + rect.width / 2 - deletePopoverWidth / 2;
   const left = Math.max(
     deletePopoverViewportMargin,
-    Math.min(
-      idealLeft,
-      window.innerWidth - deletePopoverWidth - deletePopoverViewportMargin,
-    ),
+    Math.min(idealLeft, window.innerWidth - deletePopoverWidth - deletePopoverViewportMargin),
   );
 
   return {
@@ -836,7 +1008,7 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
-// userId 和部门树都由父页面通过 Skill_Square_Init 注入。
+// userId 由 w3 SSO 提供，部门树由 initUserDepartment 接口获取。
 function waitUserIdAndDepartmentList(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
     if (userId.value) {
@@ -973,6 +1145,7 @@ onMounted(async () => {
   }
   console.log('userId', userId.value);
   console.log('departmentList', departmentList.value);
+  console.log('userName', userName.value);
   await loadBusinessDimensions();
   // 预拉自进化待审批草稿，保证「自进化审批」入口的角标数量准确
   await loadAiEvolutionSkills();
@@ -1618,45 +1791,94 @@ function myPublishReleaseOp(row: SkillListRecordDto): 'upgraded' | 'upgrade' | '
   }
   return 'upgrade';
 }
-
-async function releaseToOrganization(row: SkillListRecordDto, index: number): Promise<void> {
-  if (
-    transportIsHttp ||
-    index !== myPublishedSkills.value.length - 1 ||
-    mockUpgradeSubmittingId.value
-  ) {
-    return;
-  }
-
-  const rowId = String(row.id);
-  mockUpgradeSubmittingId.value = rowId;
+async function loadPublishOrganizations(): Promise<void> {
   try {
-    const organizationResponse = await skillBaseService.queryOrganizationList({
-      userId: userId.value,
-    });
-    const organizations = organizationResponse.meta.success
-      ? (organizationResponse.data as OrganizationDto[] | undefined)
-      : undefined;
-    const targetOrgId = Number(organizations?.[0]?.id ?? 1);
-    const response = await skillBaseService.syncSkillToAgentCenter(
-      {
-        reason: 'Mock 模式升级试用',
-        targetOrgId,
-      },
-      rowId,
-    );
-    if (!serviceSucceeded(response)) {
-      showToast(serviceMessage(response, '升级申请提交失败'));
-      return;
+    const res = await skillBaseService.queryReviewOrganizations({ userId: userId.value });
+    const list = [];
+    if (res.meta?.success && res.data && Array.isArray(res.data)) {
+      list.push(
+        ...MarketDeptCascader(res.data as any[]).map((o: any) => ({
+          id: String(o.orgCode),
+          orgName: o.orgName ?? '',
+          owner: o.admins ?? o.owner ?? '',
+          deptName: o.deptName ?? '',
+          orgCode: o.orgCode ?? '',
+        })),
+      );
     }
-    row.status = String(response.data?.skillStatus ?? '组织审核中');
-    showToast('已提交组织级升级申请');
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : '升级申请提交失败');
-  } finally {
-    mockUpgradeSubmittingId.value = null;
+    publishTargetOrgs.value = list;
+  } catch {
+    publishTargetOrgs.value = [];
   }
 }
+
+async function openUpgradePublishDialog(skill: SkillListRecordDto): Promise<void> {
+  upgradePublishSkill.value = skill;
+  selectedUpgradeOrg.value = null;
+  upgradeOrgDropdownOpen.value = false;
+  upgradePublishOpen.value = true;
+  await loadPublishOrganizations();
+}
+
+async function closeUpgradePublishDialog() {
+  upgradePublishOpen.value = false;
+  upgradePublishSkill.value = null;
+  selectedUpgradeOrg.value = null;
+  upgradeOrgDropdownOpen.value = false;
+}
+
+async function confirmUpgradePublish(): Promise<void> {
+  const skill = upgradePublishSkill.value;
+  const org = selectedUpgradeOrg.value;
+  if (!skill || !org) {
+    showToast('请选择目标组织');
+    return;
+  }
+  upgradePublishing.value = true;
+  try {
+    const res = await skillBaseService.createDeptPublishTask({
+      userId: userId.value,
+      userName: userName.value,
+      targetOrgId: org.id,
+      targetOrgName: org.orgName,
+      targetOrgCode: org.orgCode,
+      items: [{ skillId: String(skill.id) }],
+    });
+    if (res.meta?.success) {
+      showToast(`已创建发布任务，已通知组织 owner 确认`);
+      closeUpgradePublishDialog();
+    } else {
+      showToast(res.meta?.message || '创建发布任务失败');
+    }
+  } catch (e: any) {
+    showToast(e.message || '创建发布任务失败');
+  } finally {
+    upgradePublishing.value = false;
+  }
+}
+
+const releaseToOrganization = async (row: any) => {
+  let orgObj = {
+    pluginType: 4,
+    pluginId: '',
+    publishLevel: 1,
+    publisherId: '',
+  };
+  await skillBaseService.queryOrganizationList({ userId: userId.value }).then((res: any) => {
+    if (res.meta.success && Array.isArray(res.data) && res.data.length) {
+      const obj = res.data[0];
+      orgObj.publisherId = obj?.orgCode || '';
+      orgObj.pluginId = obj?.id || '';
+    }
+  });
+  await skillBaseService.syncSkillToAgentCenter(
+    {
+      reason: '测试',
+      targetOrgId: 13,
+    },
+    row.id,
+  );
+};
 
 async function openMyReleaseVersions(row: SkillListRecordDto, syncRoute: boolean): Promise<void> {
   versionManageShowOperations.value = true;
@@ -4441,7 +4663,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               :class="{
                 on: releaseFilter === f.key,
                 'seg-ai-evolution': f.key === 'aiEvolution',
-                'seg-dept-review': f.key === 'deptReview',
               }"
               @click="onClickFilterRelease(f.key)"
             >
@@ -4454,226 +4675,211 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             </button>
           </div>
         </div>
-
-        <div v-if="releaseFilter === 'deptReview'" class="dept-review-wrap">
-          <DeptSkillReviewPanel
-            :user-id="userId"
-            :department-tree="marketOverviewDeptTree"
-            @open-skill-detail="openDetailFromMyReleaseSkillId"
-            @toast="showToast"
-          />
+        <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
+          <div class="ai-evolution-intro-title">
+            <span class="ai-evolution-tag">AI 自进化</span>
+            <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
+          </div>
+          <p class="ai-evolution-intro-desc">
+            系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将发布为个人级
+            Skill，可在个人级页面查看；拒绝后将丢弃该候选版本。
+          </p>
         </div>
-        <template v-else>
-          <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
-            <div class="ai-evolution-intro-title">
-              <span class="ai-evolution-tag">AI 自进化</span>
-              <strong>后台自动生成的 Skill 版本，等待你的审批</strong>
-            </div>
-            <p class="ai-evolution-intro-desc">
-              系统会基于运行数据自动产出 Skill 的优化版本。审批通过后将发布为个人级
-              Skill，可在个人级页面查看；拒绝后将丢弃该候选版本。
-            </p>
-          </div>
 
-          <div
-            v-if="releaseFilter === 'aiEvolution'"
-            class="table-wrap my-table-wrap ai-evolution-table-wrap"
-          >
-            <table class="table my-table ai-evolution-table">
-              <thead>
-                <tr>
-                  <th class="col-skill">Skill 名称</th>
-                  <th class="col-source">来源</th>
-                  <th class="col-type">类型</th>
-                  <th class="col-desc">Skill 描述</th>
-                  <th class="col-first-msg">第一条消息内容</th>
-                  <th class="col-repo">代码仓信息</th>
-                  <th class="col-ide">IDE</th>
-                  <th class="col-time">Session 时间</th>
-                  <th class="col-time">Skill 生成时间</th>
-                  <th class="col-ops ai-evo-col-ops">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="row in aiEvolutionSkills"
-                  :key="row.id"
-                  class="ai-evolution-row clickable-row"
-                  role="button"
-                  tabindex="0"
-                  @click="openAiEvolutionDetail(row)"
-                  @keydown.enter.prevent="openAiEvolutionDetail(row)"
-                >
-                  <td>
-                    <div class="skill-main">
-                      <strong class="skill-name skill-name-link">{{ row.name }}</strong>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain ai-evolution-source">
-                      {{ row.source || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain ai-evolution-type">
-                      {{ row.type || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="ai-evolution-reason" :title="row.description">
-                      {{ row.description || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="ai-evolution-first-msg" :title="row.firstMessage">
-                      {{ row.firstMessage || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain ai-evolution-repo">
-                      {{ row.codeRepo || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain ai-evolution-ide">
-                      {{ row.ide || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain ai-evolution-time">
-                      {{ row.sessionTime || '—' }}
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain ai-evolution-time">
-                      {{ row.generatedAt || '—' }}
-                    </div>
-                  </td>
-                  <td class="col-ops-td" @click.stop>
-                    <div class="ops ai-evolution-ops">
-                      <button
-                        type="button"
-                        class="ai-evo-btn ai-evo-approve-btn"
-                        :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
-                        @click="approveAiEvolutionSkill(row)"
-                      >
-                        {{
-                          row.status === 'approved'
-                            ? '已通过'
-                            : processingAiEvolutionId === row.id
-                              ? '处理中…'
-                              : '通过'
-                        }}
-                      </button>
-                      <button
-                        type="button"
-                        class="ai-evo-btn ai-evo-reject-btn"
-                        :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
-                        @click="rejectAiEvolutionSkill(row)"
-                      >
-                        {{ row.status === 'rejected' ? '已拒绝' : '拒绝' }}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                <tr v-if="aiEvolutionSkills.length === 0">
-                  <td colspan="10" class="empty-row">暂无待审批的自进化 Skill</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <div
+          v-if="releaseFilter === 'aiEvolution'"
+          class="table-wrap my-table-wrap ai-evolution-table-wrap"
+        >
+          <table class="table my-table ai-evolution-table">
+            <thead>
+              <tr>
+                <th class="col-skill">Skill 名称</th>
+                <th class="col-source">来源</th>
+                <th class="col-type">类型</th>
+                <th class="col-desc">Skill 描述</th>
+                <th class="col-first-msg">第一条消息内容</th>
+                <th class="col-repo">代码仓信息</th>
+                <th class="col-ide">IDE</th>
+                <th class="col-time">Session 时间</th>
+                <th class="col-time">Skill 生成时间</th>
+                <th class="col-ops ai-evo-col-ops">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in aiEvolutionSkills"
+                :key="row.id"
+                class="ai-evolution-row clickable-row"
+                role="button"
+                tabindex="0"
+                @click="openAiEvolutionDetail(row)"
+                @keydown.enter.prevent="openAiEvolutionDetail(row)"
+              >
+                <td>
+                  <div class="skill-main">
+                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-source">
+                    {{ row.source || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-type">
+                    {{ row.type || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="ai-evolution-reason" :title="row.description">
+                    {{ row.description || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="ai-evolution-first-msg" :title="row.firstMessage">
+                    {{ row.firstMessage || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-repo">
+                    {{ row.codeRepo || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-ide">
+                    {{ row.ide || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-time">
+                    {{ row.sessionTime || '—' }}
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain ai-evolution-time">
+                    {{ row.generatedAt || '—' }}
+                  </div>
+                </td>
+                <td class="col-ops-td" @click.stop>
+                  <div class="ops ai-evolution-ops">
+                    <button
+                      type="button"
+                      class="ai-evo-btn ai-evo-approve-btn"
+                      :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
+                      @click="approveAiEvolutionSkill(row)"
+                    >
+                      {{
+                        row.status === 'approved'
+                          ? '已通过'
+                          : processingAiEvolutionId === row.id
+                            ? '处理中…'
+                            : '通过'
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="ai-evo-btn ai-evo-reject-btn"
+                      :disabled="row.status !== 'pending' || processingAiEvolutionId === row.id"
+                      @click="rejectAiEvolutionSkill(row)"
+                    >
+                      {{ row.status === 'rejected' ? '已拒绝' : '拒绝' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="aiEvolutionSkills.length === 0">
+                <td colspan="10" class="empty-row">暂无待审批的自进化 Skill</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-          <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
-            <table class="table my-table">
-              <thead>
-                <tr>
-                  <th class="col-skill">Skill</th>
-                  <th class="col-level">当前层级</th>
-                  <th class="col-ver">当前版本</th>
-                  <th class="col-status">状态</th>
-                  <th class="col-dl">下载量</th>
-                  <th class="col-ops">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(row, index) in myPublishedSkills"
-                  :key="`${row.id}-${index}`"
-                  class="clickable-row my-release-data-row"
-                  role="button"
-                  tabindex="0"
-                  @click="openDetailFromMyRelease(row)"
-                  @keydown.enter.prevent="openDetailFromMyRelease(row)"
-                >
-                  <td>
-                    <div class="skill-main">
-                      <strong class="skill-name skill-name-link">{{ row.name }}</strong>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain">{{ row.level }}</div>
-                  </td>
-                  <td>
-                    <div class="cell-main cell-main-plain">{{ row.currentVersion }}</div>
-                  </td>
-                  <td>
-                    <span class="st" :class="myPublishStatusPill(row).cls">{{
-                      myPublishStatusPill(row).label
-                    }}</span>
-                  </td>
-                  <td class="num">
-                    {{ (row.totalDownloads ?? 0).toLocaleString('zh-CN') }}
-                  </td>
-                  <td class="col-ops-td" @click.stop>
-                    <div class="ops my-release-ops">
-                      <div class="my-rel-primary-wrap">
-                        <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded"
-                          >已升级</span
-                        >
-                        <button
-                          v-else-if="myPublishReleaseOp(row) === 'upgrade'"
-                          type="button"
-                          class="btn primary sm my-rel-upgrade-btn"
-                          :disabled="
-                            transportIsHttp ||
-                            index !== myPublishedSkills.length - 1 ||
-                            mockUpgradeSubmittingId === String(row.id)
-                          "
-                          :title="
-                            !transportIsHttp && index === myPublishedSkills.length - 1
-                              ? '试用 Mock 升级流程'
-                              : '建设中'
-                          "
-                          @click.stop="releaseToOrganization(row, index)"
-                        >
-                          {{
-                            mockUpgradeSubmittingId === String(row.id)
-                              ? '提交中…'
-                              : '升级为组织级'
-                          }}
-                        </button>
-                        <button v-else type="button" class="mini my-rel-pending-btn" disabled>
-                          升级中
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        class="mini my-rel-delete-btn my-rel-delete-trigger"
-                        :disabled="deletingMySkillId === String(row.id)"
-                        @click.stop="openDeleteConfirm(row, $event)"
+        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
+          <table class="table my-table">
+            <thead>
+              <tr>
+                <th class="col-skill">Skill</th>
+                <th class="col-level">当前层级</th>
+                <th class="col-ver">当前版本</th>
+                <th class="col-status">状态</th>
+                <th class="col-dl">下载量</th>
+                <th class="col-comment">修改意见</th>
+                <th class="col-ops">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(row, index) in myPublishedSkills"
+                :key="`${row.id}-${index}`"
+                class="clickable-row my-release-data-row"
+                role="button"
+                tabindex="0"
+                @click="openDetailFromMyRelease(row)"
+                @keydown.enter.prevent="openDetailFromMyRelease(row)"
+              >
+                <td>
+                  <div class="skill-main">
+                    <strong class="skill-name skill-name-link">{{ row.name }}</strong>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain">{{ row.level }}</div>
+                </td>
+                <td>
+                  <div class="cell-main cell-main-plain">{{ row.currentVersion }}</div>
+                </td>
+                <td>
+                  <span class="st" :class="myPublishStatusPill(row).cls">{{
+                    myPublishStatusPill(row).label
+                  }}</span>
+                </td>
+                <td class="num">
+                  {{ (row.totalDownloads ?? 0).toLocaleString('zh-CN') }}
+                </td>
+                <td class="col-ops-td" @click.stop>
+                  <button
+                    type="button"
+                    class="mini my-rel-opinion-btn"
+                    @click.stop="openMyReleaseOpinionDialog(row)"
+                  >
+                    查看
+                  </button>
+                </td>
+                <td class="col-ops-td" @click.stop>
+                  <div class="ops my-release-ops">
+                    <div class="my-rel-primary-wrap">
+                      <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded"
+                        >已升级</span
                       >
-                        {{ deletingMySkillId === String(row.id) ? '删除中…' : '删除' }}
+                      <button
+                        v-else-if="myPublishReleaseOp(row) === 'upgrade'"
+                        type="button"
+                        class="btn primary sm my-rel-upgrade-btn"
+                        @click.stop="openUpgradePublishDialog(row)"
+                      >
+                        升级为组织级
+                      </button>
+                      <button v-else type="button" class="mini my-rel-pending-btn" disabled>
+                        升级中
                       </button>
                     </div>
-                  </td>
-                </tr>
-                <tr v-if="myPublishedSkills.length === 0">
-                  <td colspan="6" class="empty-row">暂无符合条件的数据</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </template>
+                    <button
+                      type="button"
+                      class="mini my-rel-delete-btn my-rel-delete-trigger"
+                      :disabled="deletingMySkillId === String(row.id)"
+                      @click.stop="openDeleteConfirm(row, $event)"
+                    >
+                      {{ deletingMySkillId === String(row.id) ? '删除中…' : '删除' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="myPublishedSkills.length === 0">
+                <td colspan="6" class="empty-row">暂无符合条件的数据</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -5319,6 +5525,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <div v-else-if="innerTab === 'review'" class="tabs-panel overview-panel review-panel">
       <ReviewCenterPage
         :userId="userId"
+        :user-name="userName"
         :department-tree="marketOverviewDeptTree"
         :expert-department-permission="expertDepartmentPermission"
         :expert-check-loaded="expertCheckLoaded"
@@ -5326,6 +5533,83 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         @open-detail="openReviewSkillDetail"
       />
     </div>
+    <div
+      v-else-if="innerTab === 'planning'"
+      ref="tabPanelRef"
+      class="panel tab-panel planning-panel"
+      :style="tabPanelFillStyle"
+    >
+      <SkillPlanningPage :department-tree="marketOverviewDeptTree" />
+    </div>
+
+    <!-- 升级为组织级发布弹窗 -->
+    <Teleport to="body">
+      <div
+        v-if="upgradePublishOpen && upgradePublishSkill"
+        class="overlay"
+        role="presentation"
+        @click.self="closeUpgradePublishDialog"
+      >
+        <div class="v-dialog v-dialog-wide dept-publish-dialog" role="dialog" aria-model="true">
+          <div class="v-head">
+            <strong>发布到组织</strong>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              :disabled="upgradePublishing"
+              @click="closeUpgradePublishDialog"
+            >
+              x
+            </button>
+          </div>
+          <p class="v-sub">将创建发布人物并通知组织 owner 确认。</p>
+          <div class="admin-form">
+            <div v-if="publishTargetOrgs.length > 0" class="dept-org-select-wrap">
+              <div
+                class="dept-org-select-trigger"
+                @click="upgradeOrgDropdownOpen = !upgradeOrgDropdownOpen"
+              >
+                <span>{{ upgradeSelectedOrgName || '请选择组织' }}</span>
+                <span class="dept-org-select-arrow">▼</span>
+              </div>
+              <div v-if="upgradeOrgDropdownOpen" class="dept-org-select-dropdown">
+                <div
+                  v-for="org in publishTargetOrgs"
+                  :key="org.id"
+                  class="dept-org-select-opinion"
+                  :class="{ selected: selectedUpgradeOrg && selectedUpgradeOrg.id === org.id }"
+                  @click="selectUpgradeOrg(org)"
+                >
+                  <div class="dept-org-select-option_name">{{ org.orgName }}</div>
+                  <div v-if="org.deptName" class="dept-org-select-option__dept">
+                    部门：{{ { org.deptName }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="v-actions">
+            <button
+              type="button"
+              class="btn outline sm"
+              :disabled="upgradePublishing"
+              @click="closeUpgradePublishDialog"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="btn primary sm"
+              :disabled="upgradePublishing || !selectedUpgradeOrg"
+              @click="confirmUpgradePublish"
+            >
+              {{ upgradePublishing ? '提交中…' : '创建任务并通知 owner' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="orgModalOpen" class="overlay" role="presentation" @click.self="closeOrgModal">
@@ -5450,6 +5734,140 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </div>
       </div>
     </Teleport>
+    <Teleport to="body">
+      <div
+        v-if="myReleaseOpinionOpen"
+        class="overlay"
+        role="presentation"
+        @click.self="closeMyReleaseOpinionDialog"
+      >
+        <div
+          class="v-dialog v-dialog-wide my-release-opinion-dialog"
+          role="dialog"
+          aria-model="true"
+          aria-labelledby="my-release-opinion-title"
+        >
+          <div class="v-head">
+            <strong id="my-release-opinion-title">
+              评审意见 · {{ myReleaseOpinionTarget?.name }}
+            </strong>
+            <button
+              type="button"
+              class="close-x"
+              aria-label="关闭"
+              @click="closeMyReleaseOpinionDialog"
+            >
+              ×
+            </button>
+          </div>
+          <p class="v-sub" v-if="myReleaseOpinionTarget">
+            {{ myReleaseOpinionTarget.currentVersion || myReleaseOpinionTarget.version }} ·
+            {{ myReleaseOpinionTarget.author }}
+          </p>
+
+          <div class="dept-comments-list">
+            <div v-if="myReleaseOpinionLoading" class="dept-comments-empty">加载中…</div>
+            <div
+              v-else
+              v-for="item in myReleaseOpinionList"
+              :key="item.id"
+              class="dept-comment-item"
+              :class="{ mine: item.isMine }"
+            >
+              <div class="dept-comment-head">
+                <span class="dept-comment-meta">
+                  <strong class="dept-comment-submitter">
+                    {{ item.submitterName || '' }} {{ item.submitter }}
+                  </strong>
+                  <span v-if="item.skillVersion" class="dept-comment-version">
+                    {{ item.skillVersion }}
+                  </span>
+                </span>
+                <span
+                  v-if="item.isMine && item.status !== 'closed'"
+                  class="dept-comment-ops-inline"
+                >
+                  <button
+                    type="button"
+                    class="mini btn-danger-link close-btn"
+                    :disabled="!!myReleaseOpinionProcessingId"
+                    @click="closeMyReleaseOpinion(item)"
+                  >
+                    关闭
+                  </button>
+                  <button
+                    type="button"
+                    class="mini btn-danger-link"
+                    :disabled="!!myReleaseOpinionProcessingId"
+                    @click="deleteMyReleaseOpinion(item)"
+                  >
+                    删除
+                  </button>
+                </span>
+                <span class="dept-comment-time muted">{{ formatCommentTime(item.createdAt) }}</span>
+              </div>
+              <p class="dept-comment-content">{{ item.content }}</p>
+
+              <div v-if="item.replies && item.replies.length > 0" class="dept-comment-replies">
+                <div v-for="reply in item.replies" :key="reply.id" class="dept-comment-reply-item">
+                  <div class="dept-comment-reply-head">
+                    <strong>{{ reply.replierName || '' }} {{ reply.replier }}</strong>
+                    <span class="muted" style="font-size: 12px; margin: 0 20px">·</span>
+                    <span class="dept-comment-time muted">{{
+                      formatCommentTime(reply.createdAt)
+                    }}</span>
+                    <button
+                      v-if="reply.canDelete"
+                      type="button"
+                      class="mini btn-danger-link reply-delete-btn"
+                      :disabled="!!myReleaseOpinionProcessingId"
+                      @click="deleteMyReleaseReply(item.id, reply.id)"
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <p class="dept-comment-reply-content">{{ reply.content }}</p>
+                </div>
+              </div>
+
+              <div v-if="item.status !== 'closed'" class="dept-add-comment-reply">
+                <textarea
+                  v-model="myReleaseReplyDraft[item.id]"
+                  class="admin-textarea"
+                  rows="2"
+                  :disabled="!!myReleaseOpinionProcessingId"
+                  placeholder="输入回复内容…"
+                />
+                <div class="dept-comment-reply-op">
+                  <button
+                    type="button"
+                    class="btn primary sm"
+                    :disabled="
+                      !myReleaseReplyDraft[item.id]?.trim() || !myReleaseOpinionProcessingId
+                    "
+                    @click="submitMyReleaseReply(item)"
+                  >
+                    {{ myReleaseOpinionProcessingId === item.id ? '提交中' : '回复' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div
+              v-if="!myReleaseOpinionLoading && myReleaseOpinionList.length === 0"
+              class="dept-comments-empty"
+            >
+              暂无评审意见
+            </div>
+          </div>
+
+          <div class="v-actions">
+            <button type="button" class="btn outline sm" @click="closeMyReleaseOpinionDialog">
+              关闭
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div
@@ -5550,4 +5968,367 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
 
 <style scoped lang="scss">
 @use '@/style/UserMarketShell.scss';
+
+.my-release-opinion-dialog {
+  max-width: 640px;
+  width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.my-release-opinion-dialog .dept-comments-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.my-release-opinion-dialog .dept-comment-item {
+  border: 1px solid #e8ecf1;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fafbfd;
+  margin-bottom: 10px;
+}
+
+.my-release-opinion-dialog .dept-comment-item.mine {
+  border-color: #bfdbfe;
+}
+
+.dept-comment-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dept-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.dept-comment-submitter {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.dept-comment-version {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+  padding: 1px 6px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.dept-comment-time {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.4;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.dept-comment-ops-inline {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.dept-comment-ops-inline .btn-danger-link {
+  padding: 2px 10px;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  background: #fef2f2;
+  transition: all 0.2s;
+}
+
+.dept-comment-ops-inline .btn-danger-link:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.dept-comment-ops-inline .btn-danger-link.close-btn {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.dept-comment-ops-inline .btn-danger-link.close-btn:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.dept-comment-content {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #374151;
+  margin: 0;
+}
+
+.dept-comment-replies {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+}
+
+.dept-comment-reply-item {
+  padding: 6px 0;
+}
+
+.dept-comment-reply-item + .dept-comment-reply-item {
+  border-top: 1px dashed #d1d5db;
+}
+
+.dept-comment-reply-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+
+.dept-comment-reply-head strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.dept-comment-reply-head .dept-comment-time {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.4;
+  margin-left: auto;
+}
+
+.dept-comment-reply-head .reply-delete-btn {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.dept-comment-reply-head .reply-delete-btn:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+}
+
+.dept-comment-reply-content {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.6;
+  margin: 0;
+  padding-left: 0;
+}
+
+.dept-comment-ops-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.dept-comment-ops-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dept-add-comment-reply {
+  margin-top: 10px;
+}
+
+.dept-add-comment-reply textarea {
+  width: 100%;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 56px;
+}
+
+.dept-add-comment-reply .dept-comment-reply-op {
+  margin-top: 4px;
+  text-align: right;
+}
+
+.dept-add-comment-reply {
+  margin-top: 10px;
+}
+
+.dept-add-comment-reply textarea {
+  font-size: 12px;
+  resize: vertical;
+  min-height: 56px;
+}
+
+.dept-comment-reply-op {
+  margin-top: 4px;
+  text-align: right;
+}
+
+.btn-danger-link {
+  color: #dc2626 !important;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-danger-link:hover {
+  text-decoration: underline;
+}
+
+.btn-danger-link:disabled {
+  color: #ccc !important;
+  cursor: not-allowed;
+}
+
+.my-rel-opinion-btn {
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  background: #eff6ff;
+}
+
+.my-rel-opinion-btn:hover {
+  background: #dbeafe;
+}
+</style>
+
+<style lang="scss">
+.overlay .dept-org-custom-select {
+  position: relative;
+  width: 320px;
+}
+
+.overlay .dept-org-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.overlay .dept-org-select-trigger:hover {
+  border-color: #3b82f6;
+}
+
+.overlay .dept-org-select-arrow {
+  font-size: 10px;
+  color: #999;
+  transition: transform 0.2s;
+}
+
+.overlay .dept-org-custom-select.open .dept-org-select-arrow {
+  transform: rotate(180deg);
+}
+
+.overlay .dept-org-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.overlay .dept-org-select-option {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.overlay .dept-org-select-option:last-child {
+  border-bottom: none;
+}
+
+.overlay .dept-org-select-option:hover {
+  background: #f8fafc;
+}
+
+.overlay .dept-org-select-option.selected {
+  background: #eff6ff;
+}
+
+.overlay .dept-org-select-option__name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.overlay .dept-org-select-option__dept {
+  font-size: 12px;
+  color: #666;
+}
+
+.overlay .dept-org-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.overlay .dept-org-empty {
+  padding: 12px;
+  color: #999;
+  text-align: center;
+}
+
+.overlay .dept-publish-skills-title {
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.overlay .dept-publish-skills {
+  margin-top: 12px;
+}
+
+.overlay .dept-publish-skill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #e8ecf1;
+  border-radius: 10px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.overlay .dept-publish-skill-list li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
 </style>

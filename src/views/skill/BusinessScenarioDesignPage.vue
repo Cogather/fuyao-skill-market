@@ -1757,12 +1757,7 @@ async function createAsset() {
           class="editor-field"
         >
           <span>场景编码 <span class="required-mark" aria-hidden="true">*</span></span>
-          <input
-            v-model="scenarioForm.code"
-            maxlength="64"
-            required
-            placeholder="请输入场景编码"
-          />
+          <input v-model="scenarioForm.code" maxlength="64" required placeholder="请输入场景编码" />
           <small>
             该编码将作为发布的 Extension 名称：{{
               productCatalogItemPrefix
@@ -2322,10 +2317,7 @@ async function createAsset() {
             <div class="capability-create-fields">
               <label>
                 Command 名称 *
-                <input
-                  v-model="wizard.commandDraft.name"
-                  placeholder="请输入 Command 名称"
-                />
+                <input v-model="wizard.commandDraft.name" placeholder="请输入 Command 名称" />
                 <span class="capability-field-hint">
                   {{
                     productCatalogItemPrefix
@@ -2338,7 +2330,11 @@ async function createAsset() {
               </label>
               <label>
                 描述 *
-                <textarea v-model="wizard.commandDraft.description" placeholder="请输入描述" rows="3" />
+                <textarea
+                  v-model="wizard.commandDraft.description"
+                  placeholder="请输入描述"
+                  rows="3"
+                />
               </label>
               <WorkflowPersonPicker
                 :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"
@@ -2449,7 +2445,11 @@ async function createAsset() {
               </label>
               <label>
                 描述 *
-                <textarea v-model="wizard.assetDraft.description" placeholder="请输入描述" rows="3" />
+                <textarea
+                  v-model="wizard.assetDraft.description"
+                  placeholder="请输入描述"
+                  rows="3"
+                />
               </label>
               <WorkflowPersonPicker
                 :query-users="props.workspace.isHttp ? props.workspace.queryDesignUsers : undefined"

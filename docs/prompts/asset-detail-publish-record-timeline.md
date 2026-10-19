@@ -17,6 +17,7 @@
 ## 1. 图片说明（重要：其它模型看不到图，这里是逐张口述转写）
 
 ### 图 1：待改造的页面（当前效果）
+
 - 页面路径：资产清单 → 点击某个 Agent/Skill/Command 卡片的「…」→「查看详情」→ 进入**资产详情页**。
 - 详情页示例：Command 类型资产「接口契约检查 Command」，标题右侧有绿色「已发布」标签，下面是描述文案，再下面并排三张小信息卡：「张三 w30000001 / 责任人」「李明 w30000006 / 开发责任人」「持续交付组 / 归属部门」。
 - 再往下是一行页签：`内容` | `发布记录`，当前选中 `发布记录`。
@@ -28,16 +29,19 @@
   - 记录卡片是白底、1px 浅灰描边、圆角矩形，四列信息用 `dt/dd` 平铺，整体是「表格化卡片」而不是时间线。
 
 ### 图 2：入口路径（说明怎么走到图 1 的页面）
+
 - 资产清单页，筛选条下方是资产卡片网格（示例：交付协同 Agent、流水线异常分析 Agent 等）。
 - 某张卡片右上角有「…」按钮，点开后是一个下拉菜单，菜单项为：`查看详情`、`编辑信息`、`发布`、`删除`。
 - **红框标注**：红框圈出菜单里的「查看详情」一项，含义是「从这里进入资产详情页」。
 
 ### 图 3：参考页面的入口路径（说明怎么走到图 4 的页面）
+
 - Harness 工作流页面，标题「Harness 工作流」+ 说明文案 + 右上「前往场景设计 →」按钮；下面是工作流清单表格，列为：名称 / 产品 / 部门 / 状态 / 所属业务场景 / Command 入口 / 操作。
 - 操作列有两个圆形图标按钮：第 1 个是**时钟图标**，第 2 个是蓝色发送/发布图标。
 - **红框标注**：红框圈出操作列第 1 个时钟图标按钮，鼠标悬停时 tooltip 显示「查看发布历史」，含义是「点击它就会打开图 4 的发布历史页面」。
 
 ### 图 4：参考页面（«发布历史» 页）的完整布局 —— 本次要抄的样式
+
 从上到下：
 
 1. 左上角一个「← 返回」文字按钮。
@@ -66,14 +70,14 @@
 
 ## 2. 需求明细
 
-| 编号 | 需求 |
-|---|---|
-| R1 | 资产详情页（Agent / Skill / Command）「发布记录」页签内的记录列表，展示结构改为与图 4 一致的**竖向时间线 + 卡片**样式（详见第 4 节逐元素映射）。不再使用现在的「四列 dt/dd 表格化卡片」。 |
-| R2 | 数据源使用本文第 3 节给出的**发布历史（查看进度）接口**，不要新增或臆造其它接口。 |
-| R3 | 页面上新增/保留一个「重新加载」按钮，点击重新拉取历史记录（回到第 1 页），保留当前查询条件。 |
-| R4 | 对满足「状态 = 发布失败 且 来源 = 独立发布」的记录，提供重试按钮，点击调用本文第 3 节的**失败重试接口**，`taskId` 取该条历史记录的 `id` 字段。 |
-| R5 | 保持加载中 / 空数据 / 请求失败三种状态都有明确反馈，并保证请求失败后可以重新加载。 |
-| R6 | 不改动 Extension 的发布历史链路（详见第 7 节约束）。 |
+| 编号 | 需求                                                                                                                                                                                      |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1   | 资产详情页（Agent / Skill / Command）「发布记录」页签内的记录列表，展示结构改为与图 4 一致的**竖向时间线 + 卡片**样式（详见第 4 节逐元素映射）。不再使用现在的「四列 dt/dd 表格化卡片」。 |
+| R2   | 数据源使用本文第 3 节给出的**发布历史（查看进度）接口**，不要新增或臆造其它接口。                                                                                                         |
+| R3   | 页面上新增/保留一个「重新加载」按钮，点击重新拉取历史记录（回到第 1 页），保留当前查询条件。                                                                                              |
+| R4   | 对满足「状态 = 发布失败 且 来源 = 独立发布」的记录，提供重试按钮，点击调用本文第 3 节的**失败重试接口**，`taskId` 取该条历史记录的 `id` 字段。                                            |
+| R5   | 保持加载中 / 空数据 / 请求失败三种状态都有明确反馈，并保证请求失败后可以重新加载。                                                                                                        |
+| R6   | 不改动 Extension 的发布历史链路（详见第 7 节约束）。                                                                                                                                      |
 
 ---
 
@@ -100,16 +104,16 @@ Body:
 - `assetType` 取值使用大写枚举：`AGENT` / `SKILL` / `COMMAND`。
 - 响应 `records[]` 关键字段：
 
-| 字段 | 说明 |
-|---|---|
-| `id` | 记录 ID（重试时作为 taskId 使用） |
-| `publishStatus` | 进行中 / 发布成功 / 发布失败 |
-| `errorMessage` | 失败原因 |
-| `source` | 独立发布 / Extension发布（两种来源合并展示） |
-| `targetOrgName` / `targetOrgCode` | 目标组织 |
-| `operatorName` / `operatorId` | 发布人 |
-| `assetType` / `assetName` / `assetVersion` | 资产三元组 |
-| `createdAt` / `updatedAt` | 时间，格式 `yyyy-MM-dd HH:mm:ss` |
+| 字段                                       | 说明                                         |
+| ------------------------------------------ | -------------------------------------------- |
+| `id`                                       | 记录 ID（重试时作为 taskId 使用）            |
+| `publishStatus`                            | 进行中 / 发布成功 / 发布失败                 |
+| `errorMessage`                             | 失败原因                                     |
+| `source`                                   | 独立发布 / Extension发布（两种来源合并展示） |
+| `targetOrgName` / `targetOrgCode`          | 目标组织                                     |
+| `operatorName` / `operatorId`              | 发布人                                       |
+| `assetType` / `assetName` / `assetVersion` | 资产三元组                                   |
+| `createdAt` / `updatedAt`                  | 时间，格式 `yyyy-MM-dd HH:mm:ss`             |
 
 ### 3.2 失败重试
 
@@ -127,21 +131,22 @@ POST /api/harness/assets/publish/{taskId}/retry?userId={工号}
 
 时间线卡片的每个位置，只能使用接口返回的字段，**接口没有的字段一律不伪造**：
 
-| 参考页（Extension 发布历史）元素 | 原子资产「发布记录」对应实现 |
-|---|---|
-| 左侧时间线竖线 + 状态色圆点 | 保留。圆点颜色与 `publishStatus` 一致：发布成功=绿、发布失败=红、进行中=橙 |
-| 版本徽标 `v0.2` | `record.assetVersion`（原样展示；若形如 `0.1.0` 需要补 `v` 前缀时，沿用组件里已有的版本展示规则，不要另造规则） |
-| 灰色小胶囊标签 `Product` | `record.source`（`独立发布` / `Extension发布`），沿用参考页小胶囊的样式，不要新增枚举或做文案改写 |
-| 加粗资产名 | `record.assetName` |
-| 右上角状态胶囊（成功/失败） | `record.publishStatus`（进行中 / 发布成功 / 发布失败），绿/红/橙三色与状态一一对应，右对齐 |
-| 一行灰色描述 | **该接口不返回描述，省略这一行**（不要用其它字段凑数） |
-| 浅红色失败原因块（前缀「失败原因」） | `record.errorMessage`，仅当 `publishStatus === '发布失败'` 且 `errorMessage` 非空时显示 |
-| 「◆ 内部结构（N 项）」+ 芯片行 | **原子资产历史记录没有内部结构，整块隐藏**（不要显示空的「内部结构（0 项）」） |
+| 参考页（Extension 发布历史）元素                        | 原子资产「发布记录」对应实现                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 左侧时间线竖线 + 状态色圆点                             | 保留。圆点颜色与 `publishStatus` 一致：发布成功=绿、发布失败=红、进行中=橙                                                   |
+| 版本徽标 `v0.2`                                         | `record.assetVersion`（原样展示；若形如 `0.1.0` 需要补 `v` 前缀时，沿用组件里已有的版本展示规则，不要另造规则）              |
+| 灰色小胶囊标签 `Product`                                | `record.source`（`独立发布` / `Extension发布`），沿用参考页小胶囊的样式，不要新增枚举或做文案改写                            |
+| 加粗资产名                                              | `record.assetName`                                                                                                           |
+| 右上角状态胶囊（成功/失败）                             | `record.publishStatus`（进行中 / 发布成功 / 发布失败），绿/红/橙三色与状态一一对应，右对齐                                   |
+| 一行灰色描述                                            | **该接口不返回描述，省略这一行**（不要用其它字段凑数）                                                                       |
+| 浅红色失败原因块（前缀「失败原因」）                    | `record.errorMessage`，仅当 `publishStatus === '发布失败'` 且 `errorMessage` 非空时显示                                      |
+| 「◆ 内部结构（N 项）」+ 芯片行                          | **原子资产历史记录没有内部结构，整块隐藏**（不要显示空的「内部结构（0 项）」）                                               |
 | 底部元信息行：`用户：x（工号）` `时间：xxx` `组织：xxx` | `用户：{operatorName}（{operatorId}）`、`时间：{createdAt}`、`组织：{targetOrgName}（{targetOrgCode}）`；缺失字段用 `—` 占位 |
-| 失败卡片内「↻ 重试发布」按钮 | 仅当 `publishStatus === '发布失败'` 且 `source === '独立发布'` 时显示；文案「↻ 重试发布」，点击调用 3.2 的 retry 接口 |
-| 底部「已全部加载 · 共 N 条」/「加载更多（剩余 N 条）」 | 用响应的 `total` 与已加载条数计算，文案保持一致 |
+| 失败卡片内「↻ 重试发布」按钮                            | 仅当 `publishStatus === '发布失败'` 且 `source === '独立发布'` 时显示；文案「↻ 重试发布」，点击调用 3.2 的 retry 接口        |
+| 底部「已全部加载 · 共 N 条」/「加载更多（剩余 N 条）」  | 用响应的 `total` 与已加载条数计算，文案保持一致                                                                              |
 
 ### 样式细节（对齐图 4）
+
 - 每条记录：左侧圆形节点 + 贯穿竖线；节点直径约 8–10px，实心圆，颜色同状态。
 - 卡片：白底、1px 浅灰边框、约 8–10px 圆角，内边距约 14–16px，卡片之间纵向间距约 12px。
 - 卡片头部：左对齐「版本 + 小标签 + 名称」，右对齐状态胶囊（`display:flex; justify-content:space-between`）。
@@ -176,17 +181,17 @@ POST /api/harness/assets/publish/{taskId}/retry?userId={工号}
 
 ## 6. 现状与涉及文件（改造起点）
 
-| 文件 | 说明 |
-|---|---|
-| `src/views/skill/AgentSkillAssetsPage.vue` | 资产清单 + 资产详情页所在组件。页签区在约 1654–1707 行（`内容` / `发布记录`）；原子资产的「发布记录」页签在约 1790–1801 行以 `<AtomicAssetPublishPage :asset="selectedAsset" initial-panel="history" :release-chrome="false" />` 内嵌渲染。 |
-| `src/views/skill/AtomicAssetPublishPage.vue` | **本次主要改造文件**。该组件同时服务「资产卡片 → 发布」独立页面（`releaseChrome=true`）与「详情页 → 发布记录」内嵌模式（`releaseChrome=false`）。当前「发布记录」区域的模板在约 584–666 行（`.atomic-history`），样式在约 1310–1403 行；逻辑 `loadHistory()` / `historyQuery()` / `retryRecord()` 在约 262–313 行；`canRetryAtomicPublish()` 在约 300 行处用于控制重试按钮。改造时注意**不要破坏 `releaseChrome=true` 的独立发布页**。 |
-| `src/views/skill/ExtensionPublishPage.vue` | **参考实现（图 4 样式来源）**。时间线结构在约 1992–2085 行（`.timeline` / `.timeline-item` / `.timeline-dot` / `.timeline-card` / `.release-status` / `.history-end`），标题行的圆形刷新按钮在约 1200–1215 行。请复用其视觉与交互细节，但**不要修改它的行为**。 |
-| `src/views/skill/HarnessWorkflowsPage.vue` | 图 3 的页面。约 637–665 行是操作列的「查看发布历史」时钟按钮；约 755–758 行以 `:initial-panel="'history'"` + `releaseChrome=true` 打开参考页（即图 4）。 |
-| `src/services/skillMarket/atomicAssetPublishHttp.ts` | 接口封装：`queryAtomicAssetPublishHistory()`、`retryAtomicAssetPublish()`、`canRetryAtomicPublish()`、`mapHistoryRecord()`，以及 mock/http 双通道实现（mock 分支会生成一条「发布失败」+ 一条「发布成功」记录，可用于本地验收）。 |
-| `src/services/skillMarket/skillBaseService.ts` | 约 979–995 行：`queryHarnessAssetPublishHistory`（`url: '/assets/publish/history'`）、`retryHarnessAssetPublish`（`url: '/assets/publish/{taskId}/retry'`），请求基址前缀为 `/api/harness`。 |
-| `e2e/specs/harness-assets-atomic-publish.spec.ts` | 现有回归用例，含「详情发布记录按资产类型和名称查询独立历史」（约 363–370 行，断言 `getByRole('tab', { name: '发布记录' })` 与 `getByRole('region', { name: 'Skill 发布记录' })`）、以及提交后按 batchId 查看历史 + 重试（约 300–355 行）。 |
-| `tests/harness-atomic-asset-publish-http.tests.mjs` | 接口层单测（断言请求体与 URL）。 |
-| `e2e/specs/harness-workflow-list-http.spec.ts`、`e2e/specs/harness-assets-http.spec.ts` | 参考页（Extension 发布历史）的回归用例，改造后必须仍然通过。 |
+| 文件                                                                                    | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/views/skill/AgentSkillAssetsPage.vue`                                              | 资产清单 + 资产详情页所在组件。页签区在约 1654–1707 行（`内容` / `发布记录`）；原子资产的「发布记录」页签在约 1790–1801 行以 `<AtomicAssetPublishPage :asset="selectedAsset" initial-panel="history" :release-chrome="false" />` 内嵌渲染。                                                                                                                                                                                            |
+| `src/views/skill/AtomicAssetPublishPage.vue`                                            | **本次主要改造文件**。该组件同时服务「资产卡片 → 发布」独立页面（`releaseChrome=true`）与「详情页 → 发布记录」内嵌模式（`releaseChrome=false`）。当前「发布记录」区域的模板在约 584–666 行（`.atomic-history`），样式在约 1310–1403 行；逻辑 `loadHistory()` / `historyQuery()` / `retryRecord()` 在约 262–313 行；`canRetryAtomicPublish()` 在约 300 行处用于控制重试按钮。改造时注意**不要破坏 `releaseChrome=true` 的独立发布页**。 |
+| `src/views/skill/ExtensionPublishPage.vue`                                              | **参考实现（图 4 样式来源）**。时间线结构在约 1992–2085 行（`.timeline` / `.timeline-item` / `.timeline-dot` / `.timeline-card` / `.release-status` / `.history-end`），标题行的圆形刷新按钮在约 1200–1215 行。请复用其视觉与交互细节，但**不要修改它的行为**。                                                                                                                                                                        |
+| `src/views/skill/HarnessWorkflowsPage.vue`                                              | 图 3 的页面。约 637–665 行是操作列的「查看发布历史」时钟按钮；约 755–758 行以 `:initial-panel="'history'"` + `releaseChrome=true` 打开参考页（即图 4）。                                                                                                                                                                                                                                                                               |
+| `src/services/skillMarket/atomicAssetPublishHttp.ts`                                    | 接口封装：`queryAtomicAssetPublishHistory()`、`retryAtomicAssetPublish()`、`canRetryAtomicPublish()`、`mapHistoryRecord()`，以及 mock/http 双通道实现（mock 分支会生成一条「发布失败」+ 一条「发布成功」记录，可用于本地验收）。                                                                                                                                                                                                       |
+| `src/services/skillMarket/skillBaseService.ts`                                          | 约 979–995 行：`queryHarnessAssetPublishHistory`（`url: '/assets/publish/history'`）、`retryHarnessAssetPublish`（`url: '/assets/publish/{taskId}/retry'`），请求基址前缀为 `/api/harness`。                                                                                                                                                                                                                                           |
+| `e2e/specs/harness-assets-atomic-publish.spec.ts`                                       | 现有回归用例，含「详情发布记录按资产类型和名称查询独立历史」（约 363–370 行，断言 `getByRole('tab', { name: '发布记录' })` 与 `getByRole('region', { name: 'Skill 发布记录' })`）、以及提交后按 batchId 查看历史 + 重试（约 300–355 行）。                                                                                                                                                                                             |
+| `tests/harness-atomic-asset-publish-http.tests.mjs`                                     | 接口层单测（断言请求体与 URL）。                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `e2e/specs/harness-workflow-list-http.spec.ts`、`e2e/specs/harness-assets-http.spec.ts` | 参考页（Extension 发布历史）的回归用例，改造后必须仍然通过。                                                                                                                                                                                                                                                                                                                                                                           |
 
 补充说明：`queryAtomicAssetPublishHistory` 当前在 `batchId` 存在时只按 `batchId` 查询，否则按 `assetType + assetName` 查询；这个行为可以先保留（见第 9 节待确认第 4 条）。
 

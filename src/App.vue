@@ -2,9 +2,9 @@
 import { onBeforeUnmount, onMounted } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
 
-import { useSkillMarketStore } from './stores/skillMarketStore';
+import { useProfileStore } from './stores/userStore';
 
-const skillMarketStore = useSkillMarketStore();
+const profileStore = useProfileStore();
 const router = useRouter();
 
 function firstString(value: unknown): string {
@@ -52,6 +52,13 @@ function handleEvent(event: MessageEvent): void {
 }
 
 window.addEventListener('message', handleEvent);
+
+// 初始化 w3 用户信息，并定期校验登录态
+onMounted(async () => {
+  await profileStore.initUserInfo();
+  // 每5分钟校验一次登录态，失效自动跳 w3 登录页
+  setInterval(() => profileStore.checkUserToken(), 300 * 1000);
+});
 onBeforeUnmount(() => {
   window.removeEventListener('message', handleEvent);
 });

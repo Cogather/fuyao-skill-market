@@ -47,7 +47,7 @@ export const useProfileStore = defineStore('userProfile', () => {
     role: '',
   });
 
-  // 用户部门树（由getUserDepartment 接口获取，buildDeptTreeFromUserInfo 转换）
+  // 用户部门树（由 getUserDepartment 接口获取，buildDeptTreeFromUserInfo 转换）
   const departmentList = ref<unknown[]>([]);
 
   function updateDept(list: unknown[]): void {
@@ -101,6 +101,7 @@ export const useProfileStore = defineStore('userProfile', () => {
             tenantName: result?.tenantName,
           };
           updateUserInfo(info);
+
           // 通过接口获取用户部门信息，构建部门树
           await initUserDepartment(info.w3Id);
 
@@ -120,25 +121,22 @@ export const useProfileStore = defineStore('userProfile', () => {
   };
 
   /**
-   * 获取用户部门信息并写入 departmentList 
+   * 获取用户部门信息并写入 departmentList
    */
   async function initUserDepartment(userId: string): Promise<void> {
     if (!userId) return;
     try {
       const res = await managerUserService.getUserDepartment(userId);
-      // 接口返回 { code: 200, data: [{hwDepartName1-6, hwDepartCode1-6, ... }]}
+      // 接口返回 { code: 200, data: [{ hwDepartName1-6, hwDepartCode1-6, ... }] }
       const deptInfo = Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null;
       const deptTree = buildDeptTreeFromUserInfo(deptInfo);
       if (deptTree.length > 0) {
-        updateDept(deptTree)
+        updateDept(deptTree);
       }
     } catch (error) {
-      console.error('Failed to fetch user department:', error)
+      console.error('Failed to fetch user department:', error);
     }
   }
-
-
-
 
   // 获取管理员信息
   const getAdminInfo = async (userId: string): Promise<void> => {
@@ -205,14 +203,14 @@ export const useProfileStore = defineStore('userProfile', () => {
     localStorage.setItem('userPermission', JSON.stringify({ isAdmin: false, owner: false }));
 
     const currHref = document.location.href;
-    const loginUrl = `https://login.huawei.com/login1/?redirect=${currHref}`
+    const loginUrl = `xxx/login1/?redirect=${currHref}`;
 
     // 在 iframe 中：让父页面跳转登录页，避免iframe自身反复重载导致死循环
-    if(window.self !== window.top) {
+    if (window.self !== window.top) {
       window.top!.location.href = loginUrl;
       return;
     }
-    // 非 iframe: 直接跳转
+    // 非 iframe：直接跳转
     window.location.href = loginUrl;
   }
 

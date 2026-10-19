@@ -158,7 +158,10 @@ try {
     await assert.rejects(update(productInput, 'http'), /需以产品名称/);
     await assert.rejects(update({ ...productInput, name: 'currentproduct-' }, 'http'), /后补充/);
     await update({ ...productInput, name: 'currentproduct-renamed' }, 'http');
-    await assert.rejects(update({ ...productInput, name: 'myproduct-renamed' }, 'http'), /需以产品名称/);
+    await assert.rejects(
+      update({ ...productInput, name: 'myproduct-renamed' }, 'http'),
+      /需以产品名称/,
+    );
     await update({ ...productInput, name: asset.name }, 'http');
 
     const records = () =>

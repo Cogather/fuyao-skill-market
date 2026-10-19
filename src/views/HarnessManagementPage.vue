@@ -56,8 +56,7 @@ const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
 const harnessPermissionError = ref('');
 const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
   '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
-const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
-  '未获取到部门树，请检查网络或重新登录后进入。';
+const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE = '未获取到部门树，请检查网络或重新登录后进入。';
 
 type HarnessTab =
   | 'scenarios'
@@ -146,11 +145,11 @@ const activeHarnessTabMeta = computed(
 const topbarElevated = ref(false);
 
 const userId = computed(() => {
-  const w3Id = String(profileStore.userInfo?.w3Id ?? '')?.trim();
-  if(w3Id) return w3Id;
+  const w3Id = String(profileStore.userInfo?.w3Id ?? '').trim();
+  if (w3Id) return w3Id;
 
   if (transportIsHttp) return '';
-  return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
+  return MOCK_HARNESS_USER_ID;
 });
 
 const userName = computed(() => {
