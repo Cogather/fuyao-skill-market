@@ -5579,11 +5579,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   <div
                     v-for="org in publishTargetOrgs"
                     :key="org.id"
-                    class="dept-org-select-opinion"
+                    class="dept-org-select-option"
                     :class="{ selected: selectedUpgradeOrg && selectedUpgradeOrg.id === org.id }"
                     @click="selectUpgradeOrg(org)"
                   >
-                    <div class="dept-org-select-option_name">{{ org.orgName }}</div>
+                    <div class="dept-org-select-option__name">{{ org.orgName }}</div>
                     <div v-if="org.deptName" class="dept-org-select-option__dept">
                       部门：{{ org.deptName }}
                     </div>
@@ -5603,7 +5603,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                   <span>{{
                     upgradePublishSkill.currentVersion || upgradePublishSkill.version || ''
                   }}</span>
-                  <span class="v-meta-sep">…</span>
+                  <span class="v-meta-sep">·</span>
                   <span>{{ upgradePublishSkill.author || '' }}</span>
                 </li>
               </ul>
