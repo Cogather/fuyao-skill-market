@@ -62,7 +62,7 @@ export const useProfileStore = defineStore('userProfile', () => {
     Object.assign(userInfo, {
       ...info,
       avatar: info.w3Id
-        ? `https://w3.huawei.com/w3lab/rest/yellowpage/face/${info.w3Id.substr(1)}/120`
+        ? `https://xxx/face/${info.w3Id.substr(1)}/120`
         : '',
     });
   }
