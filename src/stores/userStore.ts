@@ -22,6 +22,37 @@ interface UserPermission {
   owner: boolean;
 }
 
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  return value && typeof value === 'object' ? (value as UnknownRecord) : {};
+}
+
+function readText(value: unknown): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
+function userPayload(response: unknown, depth = 0): UnknownRecord {
+  const root = asRecord(response);
+  if (readText(root.uid || root.userId || root.w3Id || root.userAccount || root.account)) {
+    return root;
+  }
+  if (depth >= 3) {
+    return {};
+  }
+  for (const key of ['data', 'result', 'user', 'userInfo']) {
+    const nested = userPayload(root[key], depth + 1);
+    if (Object.keys(nested).length > 0) {
+      return nested;
+    }
+  }
+  return {};
+}
+
+function responseStatus(error: unknown): number {
+  return Number(asRecord(asRecord(error).response).status ?? 0);
+}
+
 export const useProfileStore = defineStore('userProfile', () => {
   // 子页面状态
   const loginStatus = reactive({ isEnd: false });
@@ -61,9 +92,7 @@ export const useProfileStore = defineStore('userProfile', () => {
   function updateUserInfo(info: Partial<UserInfo>): void {
     Object.assign(userInfo, {
       ...info,
-      avatar: info.w3Id
-        ? `https://xxx/face/${info.w3Id.substr(1)}/120`
-        : '',
+      avatar: info.w3Id ? `https://xxx/face/${info.w3Id.substr(1)}/120` : '',
     });
   }
 
@@ -79,41 +108,55 @@ export const useProfileStore = defineStore('userProfile', () => {
 
   // 防重入锁：避免 initUserInfo 被并发调用导致多次跳转
   let initUserInfoPromise: Promise<void> | null = null;
+  const userInitializationReady = ref(false);
+  const userInitializationError = ref('');
 
   // 初始化用户信息
   const initUserInfo = async (): Promise<void> => {
     if (initUserInfoPromise) return initUserInfoPromise;
     initUserInfoPromise = (async () => {
+      userInitializationReady.value = false;
+      userInitializationError.value = '';
       try {
         const result = await managerUserService.getUserInfo();
-        if (result) {
+        const payload = userPayload(result);
+        const uid = readText(
+          payload.uid || payload.userId || payload.w3Id || payload.userAccount || payload.account,
+        );
+        if (uid) {
           const info = {
-            id: result.uid,
-            w3Id: result.uid,
-            uid: result.uid,
-            name: result.displayNameEN,
-            nameCn: result.displayNameCN,
-            nameAndId: result.displayNameEN,
+            id: uid,
+            w3Id: uid,
+            uid,
+            name: readText(payload.displayNameEN || payload.name || payload.userName),
+            nameCn: readText(
+              payload.displayNameCN || payload.nameCn || payload.userNameCn || payload.realName,
+            ),
+            nameAndId: readText(payload.displayNameEN || payload.name || payload.userName) || uid,
             dept: '',
-            email: result.mail || '',
+            email: readText(payload.mail || payload.email),
             createTime: '',
-            tenantId: result?.tenantId,
-            tenantName: result?.tenantName,
+            tenantId: readText(payload.tenantId),
+            tenantName: readText(payload.tenantName),
           };
           updateUserInfo(info);
 
-          // 通过接口获取用户部门信息，构建部门树
-          await initUserDepartment(info.w3Id);
-
-          await getAdminInfo(info.w3Id);
+          // 用户已确认后并行补齐部门和管理员上下文，避免单个慢接口串行拖长首屏等待。
+          await Promise.all([initUserDepartment(info.w3Id), getAdminInfo(info.w3Id)]);
         } else {
           clearUserInfo();
         }
       } catch (error) {
-        // 网络错误不跳登录页，避免短暂网络波动导致死循环
-        // 只有 validate 接口明确返回未登录（result 为 false）才跳转
+        userInitializationError.value =
+          error instanceof Error && error.message ? error.message : '用户信息初始化失败';
+        // 401/403 表示会话明确失效；网关不可达等网络错误保留页面，避免重定向死循环。
+        if ([401, 403].includes(responseStatus(error))) {
+          clearUserInfo();
+        }
         console.error('Failed to initialize user info:', error);
       } finally {
+        userInitializationReady.value = true;
+        updateCheckLoginStatus(true);
         initUserInfoPromise = null;
       }
     })();
@@ -130,9 +173,7 @@ export const useProfileStore = defineStore('userProfile', () => {
       // 接口返回 { code: 200, data: [{ hwDepartName1-6, hwDepartCode1-6, ... }] }
       const deptInfo = Array.isArray(res?.data) && res.data.length > 0 ? res.data[0] : null;
       const deptTree = buildDeptTreeFromUserInfo(deptInfo);
-      if (deptTree.length > 0) {
-        updateDept(deptTree);
-      }
+      updateDept(deptTree);
     } catch (error) {
       console.error('Failed to fetch user department:', error);
     }
@@ -154,7 +195,9 @@ export const useProfileStore = defineStore('userProfile', () => {
 
       const res = await managerUserService.getAdminInfo(userId);
       if (res && res.messageEn === 'success') {
-        const userArr = res.data.list.filter((item: any) => item.userId === userId);
+        const userArr = Array.isArray(res?.data?.list)
+          ? res.data.list.filter((item: any) => item.userId === userId)
+          : [];
         if (userArr.length > 0) {
           const userRole = userArr[0];
           updateAdminUserInfo(userRole.role);
@@ -203,7 +246,7 @@ export const useProfileStore = defineStore('userProfile', () => {
     localStorage.setItem('userPermission', JSON.stringify({ isAdmin: false, owner: false }));
 
     const currHref = document.location.href;
-    const loginUrl = `xxx/login1/?redirect=${currHref}`;
+    const loginUrl = `xxx/login1/?redirect=${encodeURIComponent(currHref)}`;
 
     // 在 iframe 中：让父页面跳转登录页，避免 iframe 自身反复重载导致死循环
     if (window.self !== window.top) {
@@ -219,10 +262,18 @@ export const useProfileStore = defineStore('userProfile', () => {
     managerUserService
       .getUserInfo()
       .then((res) => {
-        if (!res) {
+        const payload = userPayload(res);
+        if (
+          !readText(
+            payload.uid || payload.userId || payload.w3Id || payload.userAccount || payload.account,
+          )
+        ) {
           console.log(new Date(), 'failed to get user info');
           clearUserInfo();
           return;
+        }
+        if (!userInfo.w3Id) {
+          void initUserInfo();
         }
       })
       .catch((err) => {
@@ -234,6 +285,8 @@ export const useProfileStore = defineStore('userProfile', () => {
   return {
     userInfo,
     departmentList,
+    userInitializationReady,
+    userInitializationError,
     isSubPage,
     loginStatus,
     initUserInfo,

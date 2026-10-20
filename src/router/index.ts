@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { useProfileStore } from '@/stores/userStore';
 import HarnessManagementPage from '../views/HarnessManagementPage.vue';
 import SkillMarketPage from '../views/SkillMarketPage.vue';
 import SkillDebugPage from '../views/skill/SkillDebugPage.vue';
@@ -50,19 +49,6 @@ const router = createRouter({
       alias: '/skill-detail/:skillId',
     },
   ],
-});
-
-// 路由守卫：未登录时跳转 w3 登录页
-router.beforeEach((to, from, next) => {
-  const profileStore = useProfileStore();
-  // 如果用户信息已初始化（有 w3Id），直接放行
-  if (profileStore.userInfo.w3Id) {
-    next();
-    return;
-  }
-  // 登录校验尚未完成时也放行（initUserInfo 在 App.vue onMounted 中异步执行，
-  // 若未登录会由 clearUserInfo 自动跳转 w3 登录页，不在此阻塞路由）
-  next();
 });
 
 export default router;

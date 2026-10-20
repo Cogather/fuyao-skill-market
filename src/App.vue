@@ -53,14 +53,17 @@ function handleEvent(event: MessageEvent): void {
 
 window.addEventListener('message', handleEvent);
 
-// 初始化 w3 用户信息，并定期校验登录态
-onMounted(async () => {
-  await profileStore.initUserInfo();
-  // 每5分钟校验一次登录态，失效自动跳 w3 登录页
-  setInterval(() => profileStore.checkUserToken(), 300 * 1000);
+let loginCheckTimer: number | undefined;
+
+// 用户信息已在应用挂载前初始化；页面运行期间每 5 分钟复查一次登录态。
+onMounted(() => {
+  loginCheckTimer = window.setInterval(() => profileStore.checkUserToken(), 300 * 1000);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('message', handleEvent);
+  if (loginCheckTimer !== undefined) {
+    window.clearInterval(loginCheckTimer);
+  }
 });
 </script>
 
