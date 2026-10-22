@@ -14,6 +14,7 @@ import type {
   Asset,
   Command,
   Scenario,
+  Stage,
   Workflow,
 } from '../../composables/useHarnessScenarioWorkspace';
 import type { ScenarioTaxonomyClient } from './harnessScenarioTaxonomyService';
@@ -54,9 +55,11 @@ function normalizeCommands(items: unknown[]): WorkflowDetail['commands'] {
     const name = readCommandName(value);
     if (!name) continue;
     const item = record(value);
+    const version = text(item.version);
     commands.set(name, {
       commandName: name,
       description: text(item.description) || text(item.commandDescription),
+      ...(version ? { version } : {}),
     });
   }
   return [...commands.values()];
@@ -64,7 +67,8 @@ function normalizeCommands(items: unknown[]): WorkflowDetail['commands'] {
 export function designData<T>(response: unknown, message = '业务场景设计请求失败'): T {
   const envelope = record(response);
   const meta = record(envelope.meta);
-  if (meta.success !== true && !(meta.success == null && meta.message === 'OK')) {
+  const success = meta.success ?? meta.isSuccess;
+  if (success !== true && !(success == null && meta.message === 'OK')) {
     throw new Error(text(meta.message || envelope.message) || message);
   }
   return envelope.data as T;
@@ -154,7 +158,7 @@ export function mapDesignDetail(
     description: item.description || '',
     owner: '',
     developer: '',
-    version: null,
+    version: item.version || null,
   }));
   const workflow: Workflow = {
     _id: `workflow:${scenarioId}`,
@@ -174,6 +178,7 @@ export function mapDesignDetail(
         order: index,
         description: '',
         steps: [...stage.steps]
+          .filter((step) => Boolean(text(step.subActivityNodeName)))
           .sort((a, b) => a.sort - b.sort)
           .map((step, order) => ({
             id: JSON.stringify([scenarioId, stage.activityNodeName, step.subActivityNodeName]),
@@ -198,11 +203,9 @@ export async function saveDesignMetadata(
   workflow: Workflow,
   before: WorkflowDetail,
   onSaved?: (values: Partial<WorkflowSceneRow>) => void,
-  forceSceneMetadata = false,
 ) {
   const params = dimension(scope);
   if (
-    forceSceneMetadata ||
     scenario.code !== (before.sceneExtensionCode || '') ||
     scenario.description !== (before.secondSceneDescription || '')
   ) {
@@ -265,35 +268,7 @@ export async function saveDesignActivities(
     mapDesignDetail(scope, before, workflow.scenarioId, '').workflow.stages,
   );
   if (JSON.stringify(desired) === JSON.stringify(previous)) return;
-  const params = dimension(scope);
-  // refreshActivities replaces the dimension: include every other scene, including when this one is emptied.
-  const scenes = designData<WorkflowSceneRow[]>(await api.querySceneList(params));
-  const others = [
-    ...new Map(
-      scenes
-        .filter(
-          (item) =>
-            item.secondScene &&
-            (item.firstScene !== scope.firstScene || item.secondScene !== scope.secondScene),
-        )
-        .map((item) => [JSON.stringify(sceneKey(item)), item]),
-    ).values(),
-  ];
-  const untouched = await Promise.all(
-    others.map(async (item) =>
-      designData<WorkflowActivityRow[]>(
-        await api.queryActivitiesByScene({ ...params, ...sceneKey(item) }),
-      ).map((activity) => ({
-        ...sceneKey(item),
-        activityNodeName: activity.activityNodeName,
-        subActivityNodeName: activity.subActivityNodeName || '',
-        sort: activity.sort,
-      })),
-    ),
-  );
-  designData(
-    await api.refreshActivities(params, { activities: [...untouched.flat(), ...desired] }),
-  );
+  designData(await api.refreshActivities(scope, { activities: desired }));
 }
 
 type Binding = { type: WorkflowComponentType; name: string; stage: string; node: string };
@@ -388,28 +363,114 @@ async function unbind(
     designData(await remove(item.id, dimension(scope)));
   }
 }
-export function hasDesignBindings(data: WorkflowDetail): boolean {
-  return data.commands.length > 0 || data.assetPool.length > 0 || detailBindings(data).length > 0;
+function activityIdentity(id: string): string[] {
+  try {
+    const parsed = JSON.parse(id);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
-/** Referenced activities must be explicitly unbound and saved before renaming or removing them. */
+/** Rename/delete exact activity records before refresh can replace them, preserving their bindings. */
 export async function prepareDesignActivityChanges(
-  _scope: WorkflowSceneContext,
+  scope: WorkflowSceneContext,
   workflow: Workflow,
   before: WorkflowDetail,
 ): Promise<WorkflowDetail> {
-  const nodes = new Set(
-    workflow.stages.flatMap((stage) =>
-      stage.steps.map((node) => JSON.stringify([stage.name, node.name])),
-    ),
+  const previousWorkflow = mapDesignDetail(scope, before, workflow.scenarioId, '').workflow;
+  const previous = activityRows(scope, previousWorkflow.stages);
+  const desired = activityRows(scope, workflow.stages);
+  const key = (row: WorkflowActivityRow) =>
+    JSON.stringify([row.activityNodeName, row.subActivityNodeName || '']);
+  const desiredKeys = new Set(desired.map(key));
+  if (previous.every((row) => desiredKeys.has(key(row)))) return before;
+
+  const desiredStage = (source: Stage) =>
+    workflow.stages.find((item) => item.id === source.id) ??
+    workflow.stages.find((item) => item.name === source.name);
+  const changesStageIdentity = previousWorkflow.stages.some((stage) => {
+    const desired = desiredStage(stage);
+    return !desired || desired.name !== stage.name;
+  });
+  // Detail already identifies child records exactly. Query raw activities only when a stage
+  // changes, because only that response distinguishes a persisted parent row from a grouping.
+  const actual = changesStageIdentity
+    ? designData<WorkflowActivityRow[]>(await api.queryActivitiesByScene(scope))
+    : previous;
+  const operations = actual.map((row) => {
+    const stage =
+      workflow.stages.find((item) => activityIdentity(item.id)[1] === row.activityNodeName) ??
+      workflow.stages.find((item) => item.name === row.activityNodeName);
+    const nodeName = row.subActivityNodeName || '';
+    const node =
+      nodeName && stage
+        ? (stage.steps.find((item) => activityIdentity(item.id)[2] === nodeName) ??
+          stage.steps.find((item) => item.name === nodeName))
+        : undefined;
+    return { row, stage, node, deleted: !stage || Boolean(nodeName && !node) };
+  });
+  // Delete children first. The parent endpoint explicitly does not cascade to its children.
+  operations.sort(
+    (a, b) =>
+      Number(Boolean(b.row.subActivityNodeName)) - Number(Boolean(a.row.subActivityNodeName)),
   );
-  const removals = detailBindings(before).filter(
-    (binding) => !nodes.has(JSON.stringify([binding.stage, binding.node])),
-  );
-  if (removals.length)
-    throw new Error(
-      `节点“${removals[0]!.stage} / ${removals[0]!.node}”已绑定资产，请先解除绑定并保存，再改名或删除`,
+  let changed = false;
+  for (const { row, stage, node, deleted } of operations) {
+    const oldNode = row.subActivityNodeName || null;
+    if (deleted) {
+      designData(
+        await api.deleteActivity({
+          ...scope,
+          activityNodeName: row.activityNodeName,
+          ...(oldNode ? { subActivityNodeName: oldNode } : {}),
+        }),
+      );
+      changed = true;
+    } else if (stage!.name !== row.activityNodeName || (node?.name || null) !== oldNode) {
+      designData(
+        await api.renameActivity(
+          {
+            ...sceneKey(scope),
+            oldActivityNodeName: row.activityNodeName,
+            oldSubActivityNodeName: oldNode,
+            newActivityNodeName: stage!.name,
+            newSubActivityNodeName: node?.name || null,
+          },
+          dimension(scope),
+        ),
+      );
+      changed = true;
+    }
+  }
+  if (!changed) return before;
+  // The rename/delete endpoints migrate or remove bindings transactionally. Mirror those exact
+  // structural changes locally so later diffs do not need an intermediate detail readback.
+  const migrated = JSON.parse(JSON.stringify(before)) as WorkflowDetail;
+  for (const previousStage of previousWorkflow.stages) {
+    const nextStage = desiredStage(previousStage);
+    const detailStage = migrated.stages.find(
+      (item) => item.activityNodeName === previousStage.name,
     );
-  return before;
+    if (!detailStage) continue;
+    if (!nextStage) {
+      migrated.stages = migrated.stages.filter((item) => item !== detailStage);
+      continue;
+    }
+    detailStage.activityNodeName = nextStage.name;
+    for (const previousNode of previousStage.steps) {
+      const nextNode =
+        nextStage.steps.find((item) => item.id === previousNode.id) ??
+        nextStage.steps.find((item) => item.name === previousNode.name);
+      const detailNode = detailStage.steps.find(
+        (item) => item.subActivityNodeName === previousNode.name,
+      );
+      if (!detailNode) continue;
+      if (!nextNode) detailStage.steps = detailStage.steps.filter((item) => item !== detailNode);
+      else detailNode.subActivityNodeName = nextNode.name;
+    }
+    detailStage.steps = detailStage.steps.filter((item) => Boolean(text(item.subActivityNodeName)));
+  }
+  return migrated;
 }
 export async function attachDesignCapability(
   scope: WorkflowSceneContext,
@@ -468,8 +529,6 @@ export async function saveDesignAssets(
       return [poolKey(item), item];
     }),
   );
-  const currentPool = designData<WorkflowPoolItem[]>(await api.querySceneAssetPool(scope));
-  const existingPool = new Map(currentPool.map((item) => [poolKey(item), item]));
   const desiredBindings = workflow.stages.flatMap((stage) =>
     stage.steps.flatMap((step) =>
       step.assets.map((asset) => {
@@ -482,6 +541,17 @@ export async function saveDesignAssets(
   );
   const desiredKeys = new Set(desiredBindings.map(bindingKey));
   const previous = detailBindings(before);
+  const previousKeys = new Set(previous.map(bindingKey));
+  const previousPoolKeys = new Set(before.assetPool.map(poolKey));
+  if (
+    desiredPool.size === previousPoolKeys.size &&
+    [...desiredPool.keys()].every((key) => previousPoolKeys.has(key)) &&
+    desiredKeys.size === previousKeys.size &&
+    [...desiredKeys].every((key) => previousKeys.has(key))
+  )
+    return;
+  const currentPool = designData<WorkflowPoolItem[]>(await api.querySceneAssetPool(scope));
+  const existingPool = new Map(currentPool.map((item) => [poolKey(item), item]));
   // Removing an asset from the pool already unbinds it transactionally on the backend.
   const removals = previous.filter(
     (item) =>
@@ -506,7 +576,7 @@ export async function saveDesignAssets(
         }),
       );
   }
-  const existingKeys = new Set(previous.map(bindingKey));
+  const existingKeys = new Set(previousKeys);
   for (const item of desiredBindings) {
     if (existingKeys.has(bindingKey(item))) continue;
     const body = {

@@ -3,26 +3,121 @@ import { HarnessManagementPage } from '../pages/harnessManagement.page';
 
 const workspaceKey = 'harness-scenario-workspace-v2:mock:w30000001';
 
+test('Harness 工作流使用与资产清单一致的四状态胶囊筛选', async ({ page }) => {
+  const harness = new HarnessManagementPage(page);
+  await harness.goto();
+  await harness.switchToWorkflows();
+
+  const statusFilter = harness.workflowsPanel.getByRole('group', {
+    name: '筛选工作流状态',
+  });
+  const statusButtons = statusFilter.getByRole('button');
+  await expect(statusButtons).toHaveText(['全部', '设计中', '待发布', '已发布']);
+  await expect(statusFilter.locator('.wf-status-count')).toHaveCount(0);
+
+  const activeStyle = await harness.workflowStatusButton('全部').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      color: style.color,
+    };
+  });
+  expect(activeStyle).toEqual({
+    backgroundColor: 'rgb(31, 35, 41)',
+    borderRadius: '16px',
+    color: 'rgb(255, 255, 255)',
+  });
+
+  await harness.workflowStatusButton('设计中').click();
+  const rows = harness.workflowsTable.locator('tbody').getByRole('row');
+  await expect(rows.first().getByRole('cell').nth(3)).toHaveText('设计中');
+  expect(new Set(await rows.locator('td:nth-child(4)').allTextContents())).toEqual(
+    new Set(['设计中']),
+  );
+});
+
+test('Mock 工作流提供可发布示例并使用白色查看、蓝色发布按钮', async ({ page }) => {
+  const harness = new HarnessManagementPage(page);
+  await harness.goto();
+  await harness.switchToWorkflows();
+
+  await harness.workflowStatusButton('待发布').click();
+  for (const name of ['单元测试补全流程', '回归测试编排流程']) {
+    await expect(
+      harness.workflowInventoryRow(name).getByRole('button', { name: '发布', exact: true }),
+    ).toBeVisible();
+  }
+
+  const pendingRow = harness.workflowInventoryRow('单元测试补全流程');
+  const view = pendingRow.getByRole('button', { name: '查看发布历史', exact: true });
+  const publish = pendingRow.getByRole('button', { name: '发布', exact: true });
+  expect(
+    await view.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        color: style.color,
+      };
+    }),
+  ).toEqual({
+    backgroundColor: 'rgb(255, 255, 255)',
+    borderRadius: '6px',
+    color: 'rgb(52, 64, 84)',
+  });
+  expect(
+    await publish.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        borderRadius: style.borderRadius,
+        color: style.color,
+      };
+    }),
+  ).toEqual({
+    backgroundColor: 'rgb(37, 99, 235)',
+    borderRadius: '6px',
+    color: 'rgb(255, 255, 255)',
+  });
+
+  await harness.workflowStatusButton('已发布').click();
+  for (const name of ['应用脚手架生成流程', '合并请求自动评审流程']) {
+    await expect(
+      harness.workflowInventoryRow(name).getByRole('button', { name: '发布', exact: true }),
+    ).toBeVisible();
+  }
+});
+
 test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态与范围筛选', async ({ page }) => {
   const harness = new HarnessManagementPage(page);
   await harness.goto();
   await harness.switchToWorkflows();
 
-  await expect(harness.workflowsPanel.getByText('共 15 条', { exact: true })).toBeVisible();
+  await expect(harness.workflowsPanel.getByText('共 26 条', { exact: true })).toBeVisible();
   const rows = harness.workflowsTable.locator('tbody').getByRole('row');
   await expect(rows).toHaveCount(10);
   await expect(harness.workflowsPreviousPageButton).toBeDisabled();
-  const firstPageNames = await rows.locator('td:first-child').allTextContents();
-  const commandCounts = await rows.locator('td:last-child').allTextContents();
+  const pageContent = async () => ({
+    names: await rows.locator('td:first-child').allTextContents(),
+    commands: await rows.locator('td:nth-child(6)').allTextContents(),
+  });
+  const firstPage = await pageContent();
 
   await harness.workflowsNextPageButton.click();
-  await expect(rows).toHaveCount(5);
+  await expect(rows).toHaveCount(10);
+  const secondPage = await pageContent();
+  await harness.workflowsNextPageButton.click();
+  await expect(rows).toHaveCount(6);
   await expect(harness.workflowsNextPageButton).toBeDisabled();
-  const secondPageNames = await rows.locator('td:first-child').allTextContents();
-  expect(new Set([...firstPageNames, ...secondPageNames]).size).toBe(15);
-  expect(
-    new Set([...commandCounts, ...(await rows.locator('td:last-child').allTextContents())]),
-  ).toEqual(new Set(['0 个', '1 个', '2 个', '3 个']));
+  const thirdPage = await pageContent();
+  const allNames = [...firstPage.names, ...secondPage.names, ...thirdPage.names];
+  expect(allNames).toHaveLength(26);
+  // 桥接行与 harness-pipeline 产品的同名场景跨产品重名，属于预期数据。
+  expect(allNames.filter((name) => name === 'MML开发流程')).toHaveLength(2);
+  expect([
+    ...new Set([...firstPage.commands, ...secondPage.commands, ...thirdPage.commands]),
+  ]).toEqual(expect.arrayContaining(['0 个', '1 个', '2 个', '3 个']));
 
   await harness.workflowStatusButton('已发布').click();
   await expect(
@@ -44,12 +139,12 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
 
   await harness.selectWorkflowDepartment('流水线平台小组');
   await expect(harness.workflowStatusButton('全部')).toHaveAttribute('aria-pressed', 'true');
-  await expect(harness.workflowsProductFilter).toHaveValue('');
+  await expect(harness.workflowsProductFilter).toHaveAttribute('data-value', '');
   await expect(rows).toHaveCount(3);
   await expect(rows.locator('td:nth-child(3)')).toHaveText(Array(3).fill('流水线平台小组'));
 
   await harness.selectWorkflowDepartment('持续交付组');
-  await expect(harness.workflowsPanel.getByText('共 15 条', { exact: true })).toBeVisible();
+  await expect(harness.workflowsPanel.getByText('共 26 条', { exact: true })).toBeVisible();
   await harness.workflowsNextPageButton.click();
   await harness.selectWorkflowProduct('devops-center-v2');
   await expect(rows).toHaveCount(4);
@@ -58,7 +153,9 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
   await expect(harness.workflowsNextPageButton).toBeDisabled();
 
   await harness.selectWorkflowProduct('harness-pipeline');
-  await expect(harness.workflowsPanel.getByText('暂无工作流', { exact: true })).toBeVisible();
+  await expect(harness.workflowsPanel.getByText('共 8 条', { exact: true })).toBeVisible();
+  await expect(rows).toHaveCount(8);
+  await expect(harness.workflowInventoryRow('MML开发流程')).toBeVisible();
 });
 
 test('不同部门提供独立的 Mock 工作流，返回父部门仍包含下级工作流', async ({ page }) => {
@@ -86,14 +183,14 @@ test('不同部门提供独立的 Mock 工作流，返回父部门仍包含下�
   }
 
   await harness.selectWorkflowDepartment('持续交付组');
-  await expect(harness.workflowsPanel.getByText('共 15 条', { exact: true })).toBeVisible();
+  await expect(harness.workflowsPanel.getByText('共 26 条', { exact: true })).toBeVisible();
 });
 
 test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新建草稿', async ({ page }) => {
   const harness = new HarnessManagementPage(page);
   await harness.goto();
   await harness.switchToWorkflows();
-  await expect(harness.workflowsPanel.getByText('共 15 条', { exact: true })).toBeVisible();
+  await expect(harness.workflowsPanel.getByText('共 26 条', { exact: true })).toBeVisible();
   await harness.openScenariosFromWorkflows();
   await harness.openScenarioDesign();
   await harness.workflowDesignDialog.getByRole('button', { name: '关闭 Workflow 设计' }).click();
@@ -101,9 +198,7 @@ test('Mock 工作流刷新不重复播种，并保留用户修改、删除与新
 
   const expected = await page.evaluate((key) => {
     const saved = JSON.parse(localStorage.getItem(key)!);
-    const draft = saved.workflows.find(
-      (workflow: { name: string }) => workflow.name === '',
-    );
+    const draft = saved.workflows.find((workflow: { name: string }) => workflow.name === '');
     const samples = saved.workflows.filter(
       (workflow: { name: string }) => workflow.name !== draft.name,
     );

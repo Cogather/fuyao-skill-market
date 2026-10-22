@@ -43,6 +43,28 @@ try {
     assert.equal(calls.at(-1).data.activityNodeName, null);
     assert.equal(calls.at(-1).data.subActivityNodeName, null);
   });
+  await test('Command binding strips leading display slashes without changing the source or other fields', async () => {
+    for (const [input, expected] of [
+      ['/demo-entry', 'demo-entry'],
+      ['demo-entry', 'demo-entry'],
+      [' //demo-entry ', 'demo-entry'],
+      ['/demo/entry', 'demo/entry'],
+    ]) {
+      const body = { firstScene: '研发/交付', secondScene: '代码生成', commandName: input };
+      const original = structuredClone(body);
+      await api.commandBindScene(body, scope);
+      assert.equal(calls.at(-1).url, '/commands/config/supplement/add');
+      assert.equal(calls.at(-1).method, 'POST');
+      assert.deepEqual(calls.at(-1).params, scope);
+      assert.deepEqual(calls.at(-1).data, {
+        ...body,
+        commandName: expected,
+        activityNodeName: null,
+        subActivityNodeName: null,
+      });
+      assert.deepEqual(body, original);
+    }
+  });
   await test('scene refresh sends firstSceneDescription and retains existing child metadata', async () => {
     const root = {
       firstScene: '新建一级场景',
@@ -102,6 +124,56 @@ try {
       skills: [{ name: 'demo-skill', version: '1.0.0' }],
     };
     const contracts = [
+      [
+        'renameScene',
+        [
+          { oldFirstScene: '研发', newFirstScene: '交付', oldSecondScene: '', newSecondScene: '' },
+          scope,
+        ],
+        'PUT',
+        '/scene-activity/scene/name',
+        scope,
+        { oldFirstScene: '研发', newFirstScene: '交付', oldSecondScene: '', newSecondScene: '' },
+      ],
+      [
+        'deleteScene',
+        [{ ...scope, ...scene }],
+        'DELETE',
+        '/scene-activity/scene',
+        { ...scope, ...scene },
+        undefined,
+      ],
+      [
+        'renameActivity',
+        [
+          {
+            ...scene,
+            oldActivityNodeName: '编码',
+            oldSubActivityNodeName: null,
+            newActivityNodeName: '实现',
+            newSubActivityNodeName: null,
+          },
+          scope,
+        ],
+        'PUT',
+        '/scene-activity/activity/name',
+        scope,
+        {
+          ...scene,
+          oldActivityNodeName: '编码',
+          oldSubActivityNodeName: null,
+          newActivityNodeName: '实现',
+          newSubActivityNodeName: null,
+        },
+      ],
+      [
+        'deleteActivity',
+        [{ ...context, activityNodeName: '编码' }],
+        'DELETE',
+        '/scene-activity/activity',
+        { ...context, activityNodeName: '编码' },
+        undefined,
+      ],
       ['querySceneList', [scope], 'GET', '/scene-activity/scene', scope, undefined],
       [
         'refreshScene',
@@ -141,10 +213,10 @@ try {
       ['queryActivitiesByScene', [context], 'GET', '/scene-activity/activity', context, undefined],
       [
         'refreshActivities',
-        [scope, { activities: [] }],
+        [context, { activities: [] }],
         'POST',
         '/scene-activity/activity',
-        scope,
+        context,
         { activities: [] },
       ],
       [
@@ -164,7 +236,19 @@ try {
         { ...context, assetType: 'AGENT', assetName: 'demo-agent' },
         undefined,
       ],
-      ['queryHarnessWorkflowDetail', [context], 'GET', '/workflow/detail', context, undefined],
+      [
+        'queryHarnessWorkflowDetail',
+        [context],
+        'GET',
+        '/workflow/detail',
+        {
+          userId: context.userId,
+          dimCode: context.dimCode,
+          firstScene: context.firstScene,
+          secondScene: context.secondScene,
+        },
+        undefined,
+      ],
       [
         'agentBindActivity',
         [
@@ -282,6 +366,41 @@ try {
     assert.equal(mapped.workflow.commands[0].name, '/demo-start');
     assert.equal(mapped.workflow.stages[0].steps[0].assets[0].assetId, mapped.assets[0]._id);
     assert.equal(mapped.assets[0].packageReady, true);
+  });
+  await test('detail mapping preserves a nonempty Command version and ignores blank versions', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        commands: [
+          { commandName: '/demo-versioned', description: '已发布入口', version: ' 1.2.3 ' },
+          { commandName: '/demo-draft', description: '未发布入口', version: '   ' },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.equal(mapped.workflow.commands[0].version, '1.2.3');
+    assert.equal(mapped.workflow.commands[1].version, null);
+  });
+  await test('detail mapping treats a null child name as a stage placeholder, not a blank node', async () => {
+    const mapped = repository.mapDesignDetail(
+      context,
+      {
+        ...detail,
+        stages: [
+          {
+            activityNodeName: '编码',
+            sort: 0,
+            steps: [{ subActivityNodeName: null, sort: 0, boundAssets: [] }],
+          },
+        ],
+      },
+      'scenario-id',
+      'product-id',
+    );
+    assert.equal(mapped.workflow.stages.length, 1);
+    assert.deepEqual(mapped.workflow.stages[0].steps, []);
   });
   await test('detail mapping tolerates null Command names and uses a nonempty name alias', async () => {
     const mapped = repository.mapDesignDetail(
@@ -508,58 +627,31 @@ try {
     assert.equal(removed.length, 1);
     assert.equal(removed[0].secondScene, scene.secondScene);
   });
-  await test('bound node rename is blocked; after explicit unbinding refresh preserves other scenes', async () => {
+  await test('activity refresh writes only the current scene with scene-scoped params', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');
-    mapped.workflow.stages[0].steps[0].name = '新节点';
-    const operations = [];
-    api.queryConfigurationBindings = async () =>
-      success([
-        {
-          id: 'old-binding',
-          ...scene,
-          skillName: 'demo-code',
-          activityNodeName: '编码',
-          subActivityNodeName: '生成',
-        },
-      ]);
-    api.skillUnbindScene = async (id) => {
-      operations.push(['unbind', id]);
-      return success(null);
+    mapped.workflow.stages[0].steps.push({ id: 'new', name: '新节点', order: 1, assets: [] });
+    api.querySceneList = async () => {
+      throw new Error('activity save must not query the scene list');
     };
-    api.querySceneList = async () =>
-      success([
-        { ...scene, sort: 0 },
-        { firstScene: '研发', secondScene: '保留场景', sort: 1 },
-      ]);
-    api.queryActivitiesByScene = async (params) =>
-      success([
-        { ...params, activityNodeName: '保留环节', subActivityNodeName: '保留节点', sort: 0 },
-      ]);
+    api.queryActivitiesByScene = async () => {
+      throw new Error('activity save must not read other scene activities');
+    };
+    let refreshedParams;
+    let refreshed;
     api.refreshActivities = async (params, body) => {
-      operations.push(['activities', body]);
+      refreshedParams = structuredClone(params);
+      refreshed = body;
       return success(null);
     };
-    api.skillBindActivity = async (body) => {
-      operations.push(['bind', body]);
-      return success(null);
-    };
-    api.querySceneAssetPool = async () => success(detail.assetPool);
-    await assert.rejects(
-      () => repository.prepareDesignActivityChanges(context, mapped.workflow, detail),
-      /已绑定资产/,
+    await repository.saveDesignActivities(context, mapped.workflow, detail);
+    assert.deepEqual(refreshedParams, context);
+    assert.equal(refreshed.activities.length, 2);
+    assert.ok(
+      refreshed.activities.every(
+        (row) => row.firstScene === scene.firstScene && row.secondScene === scene.secondScene,
+      ),
     );
-    assert.deepEqual(operations, []);
-    const unbound = structuredClone(detail);
-    unbound.stages[0].steps[0].boundAssets = [];
-    mapped.workflow.stages[0].steps[0].assets = [];
-    await repository.prepareDesignActivityChanges(context, mapped.workflow, unbound);
-    await repository.saveDesignActivities(context, mapped.workflow, unbound);
-    assert.deepEqual(
-      operations.map((item) => item[0]),
-      ['activities'],
-    );
-    assert.equal(operations[0][1].activities[0].secondScene, '保留场景');
-    assert.equal(operations[0][1].activities.at(-1).subActivityNodeName, '新节点');
+    assert.equal(refreshed.activities.at(-1).subActivityNodeName, '新节点');
   });
   await test('successful code writes are remembered even if the subsequent metadata request fails', async () => {
     const mapped = repository.mapDesignDetail(context, detail, 'scenario-id', 'product-id');

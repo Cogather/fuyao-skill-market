@@ -10,3 +10,16 @@ export type HarnessScopeSnapshot = {
 export type HarnessDepartmentSnapshot = {
   departmentPath: string[];
 };
+
+export type HarnessCatalogAssetType = 'Agent' | 'Skill' | 'Command';
+export type HarnessCatalogAction = 'create' | 'import' | 'export';
+
+export type HarnessCatalogScopeSnapshots = Partial<
+  Record<HarnessCatalogAssetType, Partial<Record<HarnessCatalogAction, HarnessScopeSnapshot>>>
+>;
+
+export type HarnessCatalogScopeChange = {
+  assetType: HarnessCatalogAssetType;
+  action: HarnessCatalogAction;
+  snapshot: HarnessScopeSnapshot;
+};

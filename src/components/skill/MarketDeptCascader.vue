@@ -41,6 +41,7 @@ const props = withDefaults(
     searchPlaceholder?: string;
     disabled?: boolean;
     matchTriggerWidth?: boolean;
+    panelRightAnchor?: HTMLElement | null;
   }>(),
   {
     maxLevel: 6,
@@ -249,6 +250,8 @@ function updatePanelLayout(): void {
   const rect = wrap.getBoundingClientRect();
   const margin = 16;
   const fromLeft = Math.max(0, rect.left);
+  const alignedRight = props.panelRightAnchor?.getBoundingClientRect().right ?? rect.right;
+  const alignedWidth = Math.max(rect.width, alignedRight - fromLeft);
   const usable = Math.max(220, Math.floor(window.innerWidth - fromLeft - margin));
   const gap = 4;
   const availableBelow = Math.max(0, window.innerHeight - rect.bottom - margin - gap);
@@ -266,9 +269,9 @@ function updatePanelLayout(): void {
     ? Math.max(margin, Math.floor(rect.top - renderedHeight - gap))
     : Math.floor(rect.bottom + gap);
   panelLayout.value = {
-    left: Math.floor(fromLeft),
+    left: fromLeft,
     top: Math.floor(rect.bottom + 4),
-    maxWidth: Math.min(props.matchTriggerWidth ? Math.floor(rect.width) : 720, usable),
+    maxWidth: Math.min(props.matchTriggerWidth ? alignedWidth : 720, usable),
   };
   if (panelLayout.value) panelLayout.value.top = nextTop;
   panelMaxHeight.value = maxHeight;
@@ -382,6 +385,8 @@ function onDocumentKeydown(event: KeyboardEvent): void {
     setOpen(false);
   }
 }
+
+watch(() => props.panelRightAnchor, updatePanelLayout, { flush: 'post' });
 
 watch(open, (isOpen) => {
   panelScrollCleanup?.();
@@ -603,6 +608,12 @@ onBeforeUnmount(() => {
   color: #64748b;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.market-dept-cascader-panel--wide,
+.market-dept-cascader-panel--wide .market-dept-cascader-results,
+.market-dept-cascader-panel--wide .market-dept-cascader-result {
+  min-width: 0;
 }
 
 .market-dept-cascader-search {

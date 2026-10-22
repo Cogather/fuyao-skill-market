@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import type { Locator, Page } from '@playwright/test';
 import { APP_BASE_PATH } from '../helpers/constants';
 
@@ -16,6 +17,8 @@ export class HarnessManagementPage {
   readonly tabScenarios: Locator;
   readonly tabCapabilities: Locator;
   readonly capabilitiesPanel: Locator;
+  readonly tabAssets: Locator;
+  readonly assetsPanel: Locator;
   readonly capabilityManagementTabList: Locator;
   readonly scenariosPanel: Locator;
   readonly scenariosHeading: Locator;
@@ -54,6 +57,8 @@ export class HarnessManagementPage {
     this.tabScenarios = page.locator('#harness-tab-scenarios');
     this.tabCapabilities = page.locator('#harness-tab-capabilities');
     this.capabilitiesPanel = page.locator('#harness-panel-capabilities');
+    this.tabAssets = page.locator('#harness-tab-assets');
+    this.assetsPanel = page.locator('#harness-panel-assets');
     this.capabilityManagementTabList = this.capabilitiesPanel.getByRole('tablist', {
       name: '资产清单分区',
     });
@@ -152,6 +157,12 @@ export class HarnessManagementPage {
     await this.capabilitiesPanel.waitFor();
   }
 
+  /** 切换到第二个「资产清单」，并等待统一资产面板渲染 */
+  async switchToAssets(): Promise<void> {
+    await this.tabAssets.click();
+    await this.assetsPanel.waitFor();
+  }
+
   capabilityManagementTab(name: 'Command 清单' | 'Skill 清单' | 'Agent 清单' | 'Extension 发布') {
     return this.capabilityManagementTabList.getByRole('tab', {
       name: name.replace(/ (清单|发布)$/, ''),
@@ -188,11 +199,11 @@ export class HarnessManagementPage {
 
   /** 在 Harness 工作流清单中切换产品范围。 */
   async selectWorkflowProduct(productName: string): Promise<void> {
-    await this.workflowsProductFilter.selectOption({ label: productName });
+    await selectHarnessOption(this.workflowsProductFilter, { label: productName });
   }
 
   /** 按业务状态筛选 Harness 工作流。 */
-  workflowStatusButton(status: '全部' | '已发布' | '设计中'): Locator {
+  workflowStatusButton(status: '全部' | '设计中' | '待发布' | '已发布'): Locator {
     return this.workflowsPanel.getByRole('button', { name: status, exact: true });
   }
 
@@ -307,7 +318,7 @@ export class HarnessManagementPage {
       .click();
     const commandEditor = this.workflowDesignDialog.locator('.inline.form');
     await commandEditor.getByPlaceholder(/e2e-codec$/).fill(options.commandName);
-    await commandEditor.getByPlaceholder('描述 *').fill('端到端协议开发入口');
+    await commandEditor.getByPlaceholder('请输入描述').fill('端到端协议开发入口');
     await commandEditor
       .getByRole('combobox', { name: '开发责任人 *', exact: true })
       .fill('w30000001');
@@ -323,7 +334,7 @@ export class HarnessManagementPage {
       .click();
     const assetEditor = this.workflowDesignDialog.locator('.inline.form');
     await assetEditor.getByPlaceholder(/coding-agent$/).fill(options.assetName);
-    await assetEditor.getByPlaceholder('描述 *').fill('执行协议开发节点');
+    await assetEditor.getByPlaceholder('请输入描述').fill('执行协议开发节点');
     await assetEditor
       .getByRole('combobox', { name: '开发责任人 *', exact: true })
       .fill('w30000001');
@@ -336,7 +347,9 @@ export class HarnessManagementPage {
     const assignment = this.workflowDesignDialog.locator('.assignment').filter({
       hasText: options.nodeName,
     });
-    await assignment.locator('select').selectOption({ label: `${options.assetName}（Agent）` });
+    await selectHarnessOption(assignment.getByRole('combobox'), {
+      label: `${options.assetName} Agent`,
+    });
     await this.workflowDesignDialog.getByRole('button', { name: '完成设计', exact: true }).click();
     await this.workflowDesignDialog.waitFor({ state: 'hidden' });
   }

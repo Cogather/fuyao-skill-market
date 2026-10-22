@@ -159,6 +159,7 @@ type MockSkillMasterManagementRecord = {
     uploadedAt: string;
     mrId?: string;
     repoUrl?: string;
+    reportUrl?: string;
     tagName?: string | null;
   }>;
 };
@@ -258,6 +259,12 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [
       { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
       { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
+      {
+        version: '1.1.0',
+        uploadedAt: '2026-09-01 10:00:00',
+        repoUrl: 'https://git.example.com/fuyao/skill/504',
+        reportUrl: 'https://git.example.com/fuyao/skill/504?ref=1.1.0',
+      },
     ],
   },
   {
@@ -327,6 +334,158 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [],
   },
   {
+    id: '508',
+    skillName: '发布回滚预案校验 Skill',
+    skillDescription: '校验发布单中的回滚步骤、依赖备份和恢复验证项是否完整',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '孙睿',
+    ownerId: 'w30000010',
+    developOwnerName: '林晓',
+    developOwnerId: 'w30000011',
+    status: '开发中',
+    planFinishDate: '2026-09-30',
+    createdAt: [2026, 8, 18, 9, 20, 0, 0],
+    updatedAt: [2026, 8, 31, 17, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '509',
+    skillName: '变更窗口冲突检测 Skill',
+    skillDescription: '识别同一服务、集群或共享依赖上的发布时间冲突与冻结期风险',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '陈宇',
+    ownerId: 'w30000012',
+    developOwnerName: '郑宁',
+    developOwnerId: 'w30000013',
+    status: '开发中',
+    planFinishDate: '2026-10-03',
+    createdAt: [2026, 8, 19, 10, 0, 0, 0],
+    updatedAt: [2026, 8, 30, 16, 10, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '510',
+    skillName: '依赖服务健康预检 Skill',
+    skillDescription: '在发布前检查上下游服务、关键接口与基础资源健康状态',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '郭文',
+    ownerId: 'w30000014',
+    developOwnerName: '高远',
+    developOwnerId: 'w30000015',
+    status: '开发中',
+    planFinishDate: '2026-10-08',
+    createdAt: [2026, 8, 20, 14, 30, 0, 0],
+    updatedAt: [2026, 8, 29, 15, 45, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '604',
+    skillName: 'Harness 流水线失败根因分析 Skill',
+    skillDescription: '聚合 Harness 执行日志、步骤状态与历史失败样本，输出根因和修复建议',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李明',
+    developOwnerId: 'w30000006',
+    status: '已完成',
+    planFinishDate: '2026-09-18',
+    createdAt: [2026, 8, 12, 9, 30, 0, 0],
+    updatedAt: [2026, 9, 19, 16, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [
+      { version: '0.9.0', uploadedAt: '2026-09-08 14:00:00' },
+      { version: '1.0.0', uploadedAt: '2026-09-18 18:10:00' },
+      {
+        version: '1.1.0',
+        uploadedAt: '2026-09-19 16:20:00',
+        repoUrl: 'https://git.example.com/fuyao/skill/604',
+        reportUrl: 'https://git.example.com/fuyao/skill/604?ref=1.1.0',
+      },
+    ],
+  },
+  {
+    id: '605',
+    skillName: 'Harness 部署风险门禁 Skill',
+    skillDescription: '在部署前识别变更范围、服务依赖和历史事故风险，生成可执行的门禁结论',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '李四',
+    ownerId: 'w30000002',
+    developOwnerName: '周扬',
+    developOwnerId: 'w30000007',
+    status: '进行中',
+    planFinishDate: '2026-10-05',
+    createdAt: [2026, 9, 1, 10, 0, 0, 0],
+    updatedAt: [2026, 9, 24, 17, 45, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'imported',
+    versions: [
+      { version: '0.6.0', uploadedAt: '2026-09-12 11:30:00' },
+      { version: '0.7.0', uploadedAt: '2026-09-24 17:45:00' },
+    ],
+  },
+  {
+    id: '606',
+    skillName: 'Harness 流水线模板生成 Skill',
+    skillDescription: '根据服务技术栈、构建规则和目标环境生成标准化 Harness 流水线模板',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '王五',
+    ownerId: 'w30000003',
+    developOwnerName: '陈七',
+    developOwnerId: 'w30000008',
+    status: '开发中',
+    planFinishDate: '2026-10-15',
+    createdAt: [2026, 9, 10, 9, 15, 0, 0],
+    updatedAt: [2026, 9, 27, 15, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '607',
+    skillName: 'Harness 环境漂移巡检 Skill',
+    skillDescription: '对比预期配置与各部署环境的实际参数，标记密钥、变量和服务版本偏差',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '赵六',
+    ownerId: 'w30000004',
+    developOwnerName: '刘岚',
+    developOwnerId: 'w30000009',
+    status: '未开始',
+    planFinishDate: '2026-10-22',
+    createdAt: [2026, 9, 25, 11, 0, 0, 0],
+    updatedAt: [2026, 9, 25, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
     id: '501',
     skillName: '稳定性日报 Skill',
     skillDescription: '汇总稳定性指标并生成日报摘要',
@@ -347,6 +506,7 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [
       { version: '0.0.2', uploadedAt: '2026-06-20 18:00:00' },
       { version: '0.0.3', uploadedAt: '2026-06-26 18:00:00' },
+      { version: '0.0.4', uploadedAt: '2026-07-03 18:00:00' },
     ],
   },
   {
@@ -393,6 +553,70 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     versions: [],
   },
 ];
+
+type MockSkillDetailsPatch = Pick<
+  MockSkillMasterManagementRecord,
+  'skillName' | 'skillDescription'
+> &
+  Partial<
+    Pick<
+      MockSkillMasterManagementRecord,
+      'ownerName' | 'ownerId' | 'developOwnerName' | 'developOwnerId' | 'planFinishDate'
+    >
+  >;
+const SKILL_DETAILS_STORAGE_KEY = 'harness-mock-skill-details-v1';
+const savedSkillDetails: Record<string, MockSkillDetailsPatch> = {};
+if (typeof window !== 'undefined') {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SKILL_DETAILS_STORAGE_KEY) || '{}');
+    for (const record of mockSkillMasterManagementRecords) {
+      const patch = saved?.[record.id];
+      if (
+        !patch ||
+        typeof patch.skillName !== 'string' ||
+        typeof patch.skillDescription !== 'string'
+      )
+        continue;
+      const clean: MockSkillDetailsPatch = {
+        skillName: patch.skillName,
+        skillDescription: patch.skillDescription,
+      };
+      for (const key of [
+        'ownerName',
+        'ownerId',
+        'developOwnerName',
+        'developOwnerId',
+        'planFinishDate',
+      ] as const) {
+        if (typeof patch[key] === 'string') clean[key] = patch[key];
+      }
+      Object.assign(record, clean);
+      savedSkillDetails[record.id] = clean;
+    }
+  } catch {
+    /* An invalid local draft must not prevent loading Mock fixtures. */
+  }
+}
+
+export function getMockSkillMasterManagementRecord(
+  id: string,
+): MockSkillMasterManagementRecord | undefined {
+  const record = mockSkillMasterManagementRecords.find((item) => item.id === id);
+  return record ? { ...record } : undefined;
+}
+
+export function updateMockSkillMasterManagementDetails(
+  id: string,
+  patch: MockSkillDetailsPatch,
+): void {
+  const record = mockSkillMasterManagementRecords.find((item) => item.id === id);
+  if (!record) throw new Error('未找到对应资产，请刷新后重试');
+  const next = { ...savedSkillDetails, [id]: { ...savedSkillDetails[id], ...patch } };
+  if (typeof window !== 'undefined')
+    window.localStorage.setItem(SKILL_DETAILS_STORAGE_KEY, JSON.stringify(next));
+  Object.assign(savedSkillDetails, next);
+  Object.assign(record, patch, { updatedAt: nowLocalDateTimeArray() });
+}
 
 function readSkillRequestBody(data: unknown): unknown {
   if (data === undefined || data === null || data === '') {

@@ -6,6 +6,10 @@ interface ImportMetaEnv {
   /** 后端根地址，例如 `https://api.example.com` 或空字符串表示同源 */
   readonly VITE_SKILL_MARKET_API_BASE?: string;
   readonly VITE_BASE?: string;
+  /** w3 SSO 会话校验的 API 基础地址 */
+  readonly VITE_API_BASEURL?: string;
+  /** config-service / 部门信息接口的基础地址 */
+  readonly VITE_APP_CORE_MLOPS_URL?: string;
 }
 
 interface ImportMeta {

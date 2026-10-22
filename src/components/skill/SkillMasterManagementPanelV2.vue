@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import HarnessSelect from './HarnessSelect.vue';
+import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import { listScenes, type SceneRecord } from '../../services/skillMarket/sceneManagementService';
 import {
@@ -38,6 +41,7 @@ import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import {
@@ -95,6 +99,7 @@ const props = withDefaults(
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
     initialScope?: HarnessScopeSnapshot;
+    createOnly?: boolean;
   }>(),
   {
     departmentTree: () => [],
@@ -104,15 +109,18 @@ const props = withDefaults(
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
     initialScope: undefined,
+    createOnly: false,
   },
 );
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  created: [];
 }>();
 const records = ref<SkillMasterRecord[]>([]);
 const detailRecord = ref<SkillMasterRecord | null>(null);
 const masterLoading = ref(false);
-const masterPageSizeOptions = [5, 10, 20, 50];
+const tableScroll = ref<HTMLElement | null>(null);
 const masterPageNum = ref(1);
 const masterPageSize = ref(10);
 const masterTotal = ref(0);
@@ -133,6 +141,7 @@ const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
 const personDisplayLabels = ref<Record<string, string>>({});
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -347,6 +356,10 @@ const selectedMasterProduct = computed(() =>
 
 const requiredSkillNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(masterScopeForm.level, masterScopeForm.offeringName);
+});
+const suggestedSkillNamePrefix = computed(() => {
+  if (masterScopeForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(masterScopeForm.offeringName);
 });
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
@@ -611,12 +624,6 @@ const filteredRecords = computed(() => {
 const masterTotalPages = computed(() =>
   Math.max(1, Math.ceil(masterTotal.value / masterPageSize.value)),
 );
-const masterPageStart = computed(() =>
-  masterTotal.value === 0 ? 0 : (masterPageNum.value - 1) * masterPageSize.value + 1,
-);
-const masterPageEnd = computed(() =>
-  Math.min(masterTotal.value, masterPageNum.value * masterPageSize.value),
-);
 const selectedMasterRecords = computed(() =>
   records.value.filter((record) => selectedMasterIds.value.includes(record.id)),
 );
@@ -673,6 +680,8 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
 }
 
 async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
+  if (props.createOnly) return;
+  tableScroll.value?.scrollTo({ top: 0 });
   const requestSequence = ++masterQuerySequence;
   const validationMessage = masterQueryValidationMessage();
   if (validationMessage) {
@@ -882,6 +891,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function applyOwnerSelection(option: SkillPlanningUserOption): void {
@@ -1325,6 +1348,20 @@ function resetImportTab(): void {
   importSelectedId.value = '';
 }
 
+async function prepareNextCreate(tab: CreateSkillTab): Promise<void> {
+  resetEditor();
+  editor.mode = 'create';
+  applyCurrentScopeToEditor();
+  editor.name = tab === 'direct' ? requiredSkillNamePrefix.value : '';
+  createTab.value = tab;
+  if (tab === 'import') importSelectedId.value = '';
+  editor.open = true;
+  await nextTick();
+  if (tab === 'direct') {
+    editorFormRef.value?.querySelector<HTMLInputElement>('input[maxlength="64"]')?.focus();
+  }
+}
+
 const importTotalPages = computed(() =>
   Math.max(1, Math.ceil(importTotal.value / importPageSize.value)),
 );
@@ -1392,6 +1429,12 @@ async function importFromSquare(): Promise<void> {
       editor.error = String(response?.meta?.message || response?.message || '引入失败，请稍后重试');
       return;
     }
+    if (props.createOnly) {
+      emit('created');
+      showToast(`已从 Skill 广场引入“${skill.name}”，可继续引入`);
+      await prepareNextCreate('import');
+      return;
+    }
     closeEditor();
     masterPageNum.value = 1;
     await reload();
@@ -1404,7 +1447,7 @@ async function importFromSquare(): Promise<void> {
 }
 
 function openCreate(): void {
-  if (!ensureMasterScopeSelection(true)) {
+  if (!props.createOnly && !ensureMasterScopeSelection(true)) {
     return;
   }
   resetEditor();
@@ -1462,6 +1505,7 @@ function closeEditor(): void {
   initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+  if (props.createOnly) emit('close');
 }
 
 function onEditorFormSubmit(event: SubmitEvent): void {
@@ -1555,6 +1599,12 @@ async function submitEditor(): Promise<void> {
         editor.error = String(
           response?.meta?.message || response?.message || '新增失败，请稍后重试',
         );
+        return;
+      }
+      if (props.createOnly) {
+        emit('created');
+        showToast('Skill 已新增，可继续添加');
+        await prepareNextCreate('direct');
         return;
       }
       closeEditor();
@@ -1964,7 +2014,8 @@ async function goMasterPage(nextPage: number): Promise<void> {
   await reload();
 }
 
-async function changeMasterPageSize(): Promise<void> {
+async function changeMasterPageSize(size: number): Promise<void> {
+  masterPageSize.value = size;
   masterPageNum.value = 1;
   await reload();
 }
@@ -1977,6 +2028,13 @@ watch(requiredSkillNamePrefix, (nextPrefix, previousPrefix) => {
   }
   if (previousPrefix && editor.name.startsWith(previousPrefix)) {
     editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  } else if (
+    props.createOnly &&
+    nextPrefix &&
+    !previousPrefix &&
+    !editor.name.startsWith(nextPrefix)
+  ) {
+    editor.name = nextPrefix + editor.name;
   }
 });
 
@@ -1995,6 +2053,8 @@ watch(
   { immediate: true, deep: true },
 );
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
+  masterProductLoadSequence += 1;
   if (toastTimer !== null) {
     window.clearTimeout(toastTimer);
   }
@@ -2002,26 +2062,32 @@ onBeforeUnmount(() => {
   clearDevelopOwnerSearchTimer();
   clearImportSearchTimer();
 });
+onMounted(() => {
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
+  if (props.createOnly) openCreate();
+});
 </script>
 
 <template>
-  <section class="master-panel" aria-label="Skill 管理">
-    <section class="master-filter-card" aria-label="Skill 清单查询">
+  <section
+    class="master-panel"
+    :class="{ 'is-create-only': props.createOnly }"
+    aria-label="Skill 管理"
+  >
+    <section v-if="!props.createOnly" class="master-filter-card" aria-label="Skill 清单查询">
       <div
         class="master-scope-controls"
         :class="{ 'is-department-level': masterScopeForm.level === '部门级' }"
       >
         <label class="master-scope-field master-scope-field--level">
           <span>层级 <em>*</em></span>
-          <select v-model="masterScopeForm.level" @change="onMasterScopeLevelChange">
-            <option
-              v-for="item in planningLevelOptions"
-              :key="`master-level-${item}`"
-              :value="item"
-            >
-              {{ item }}
-            </option>
-          </select>
+          <HarnessSelect
+            v-model="masterScopeForm.level"
+            @change="onMasterScopeLevelChange"
+            :searchable="false"
+            :options="[...planningLevelOptions.map((item) => ({ value: item, label: item }))]"
+          />
         </label>
         <div class="master-scope-field master-scope-field--dept">
           <span
@@ -2050,28 +2116,25 @@ onBeforeUnmount(() => {
         </div>
         <label v-if="masterScopeForm.level === '产品级'" class="master-scope-field">
           <span>产品 <em>*</em></span>
-          <select
+          <HarnessSelect
             v-model="masterScopeForm.offeringName"
             :disabled="!masterScopeForm.planningDeptName || masterProductsLoading"
             @change="onMasterProductChange"
-          >
-            <option value="">
-              {{
-                !masterScopeForm.planningDeptName
+            :options="[
+              {
+                value: '',
+                label: !masterScopeForm.planningDeptName
                   ? '请先选择部门'
                   : masterProductsLoading
                     ? '产品加载中...'
-                    : '请选择产品'
-              }}
-            </option>
-            <option
-              v-for="item in masterProductOptions"
-              :key="item.offeringId || item.offeringName"
-              :value="item.offeringName"
-            >
-              {{ item.offeringName }}
-            </option>
-          </select>
+                    : '请选择产品',
+              },
+              ...masterProductOptions.map((item) => ({
+                value: item.offeringName,
+                label: item.offeringName,
+              })),
+            ]"
+          />
         </label>
         <label class="master-scope-field master-scope-field--keyword">
           <span>关键词</span>
@@ -2094,7 +2157,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div class="master-board">
+    <div v-if="!props.createOnly" class="master-board">
       <header class="master-toolbar">
         <div class="master-toolbar__title">
           <small
@@ -2170,7 +2233,13 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <div class="table-wrap">
+      <div
+        ref="tableScroll"
+        class="table-wrap"
+        role="region"
+        aria-label="Skill 清单表格"
+        tabindex="0"
+      >
         <table>
           <colgroup>
             <col class="selection-column" />
@@ -2323,35 +2392,14 @@ onBeforeUnmount(() => {
           </tbody>
         </table>
       </div>
-      <div class="master-pagination">
-        <span>第 {{ masterPageStart }}-{{ masterPageEnd }} 条，共 {{ masterTotal }} 条</span>
-        <div class="master-pagination__controls">
-          <select
-            v-model.number="masterPageSize"
-            :disabled="masterLoading"
-            @change="changeMasterPageSize"
-          >
-            <option v-for="size in masterPageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
-          <button
-            type="button"
-            :disabled="masterLoading || masterPageNum <= 1"
-            @click="goMasterPage(masterPageNum - 1)"
-          >
-            上一页
-          </button>
-          <strong>{{ masterPageNum }} / {{ masterTotalPages }}</strong>
-          <button
-            type="button"
-            :disabled="masterLoading || masterPageNum >= masterTotalPages"
-            @click="goMasterPage(masterPageNum + 1)"
-          >
-            下一页
-          </button>
-        </div>
-      </div>
+      <HarnessCatalogPagination
+        :page="masterPageNum"
+        :page-size="masterPageSize"
+        :total="masterTotal"
+        :loading="masterLoading"
+        @page-change="goMasterPage"
+        @page-size-change="changeMasterPageSize"
+      />
     </div>
 
     <HarnessCatalogDetailDialog
@@ -2363,9 +2411,20 @@ onBeforeUnmount(() => {
     />
 
     <Teleport to="body">
-      <div v-if="editor.open" class="overlay" @click.stop @pointerdown.stop @pointerup.stop>
+      <div
+        v-if="editor.open"
+        class="overlay"
+        :class="{ 'harness-workspace-overlay': props.createOnly }"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
+      >
         <form
+          ref="editorFormRef"
           class="dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="editor.mode === 'create' ? '添加 Skill' : '编辑 Skill'"
           :class="{
             'is-create-dialog': editor.mode === 'create',
             'is-imported-edit':
@@ -2380,7 +2439,7 @@ onBeforeUnmount(() => {
         >
           <header>
             <div>
-              <small>SKILL MASTER</small
+              <small v-if="!props.createOnly">SKILL MASTER</small
               ><strong>
                 {{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}
                 <em
@@ -2389,12 +2448,35 @@ onBeforeUnmount(() => {
                   >广场引入</em
                 >
               </strong>
-              <p>
+              <p v-if="props.createOnly">选择资产归属并填写基本信息，也可从 Skill 广场引入。</p>
+              <p v-else>
                 这里只维护可复用的原子 Skill；场景、活动、层级和部门/产品请在 Skill 规划中配置。
               </p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
+          <HarnessCatalogCreateScope
+            v-if="props.createOnly"
+            :level="masterScopeForm.level"
+            :department-path="masterDepartmentSegments"
+            :department-tree="masterDepartmentTree"
+            :product-name="masterScopeForm.offeringName"
+            :products="masterProductOptions"
+            :products-loading="masterProductsLoading"
+            :disabled="submitting || importSubmitting"
+            :permission-path="legacyMasterPermissionPath"
+            :allowed-department-paths="normalizedAllowedDepartmentPaths"
+            :before-department-done="guardMasterDepartmentSelection"
+            @level-change="
+              masterScopeForm.level = $event;
+              onMasterScopeLevelChange();
+            "
+            @department-change="onMasterDepartmentDone"
+            @product-change="
+              masterScopeForm.offeringName = $event;
+              onMasterProductChange();
+            "
+          />
           <div
             v-if="editor.mode === 'create'"
             class="dialog-tabs"
@@ -2437,14 +2519,20 @@ onBeforeUnmount(() => {
                   v-model.trim="editor.name"
                   maxlength="64"
                   :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
-                  :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
+                  placeholder="请输入 Skill 名称"
                 />
                 <small
                   v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
                   class="field-hint"
                   >从 Skill 广场引入的 Skill 名称不可修改</small
                 ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
-                  >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
+                  >需以产品名称的小写形式“{{
+                    requiredSkillNamePrefix
+                  }}”开头，仅使用小写字母、数字和连字符。</small
+                ><small v-else-if="suggestedSkillNamePrefix" class="field-hint"
+                  >建议使用“{{
+                    suggestedSkillNamePrefix
+                  }}”作为名称前缀，仅使用小写字母、数字和连字符。</small
                 ></label
               >
               <label class="wide"
@@ -2606,16 +2694,19 @@ onBeforeUnmount(() => {
 
               <div class="import-pagination">
                 <span>共 {{ importTotal }} 条</span>
-                <select
-                  v-model.number="importPageSize"
+                <HarnessSelect
+                  v-model="importPageSize"
                   :disabled="importLoading"
                   aria-label="每页条数"
                   @change="changeImportPageSize"
-                >
-                  <option v-for="size in importPageSizeOptions" :key="size" :value="size">
-                    {{ size }} 条/页
-                  </option>
-                </select>
+                  :searchable="false"
+                  :options="[
+                    ...importPageSizeOptions.map((size) => ({
+                      value: size,
+                      label: size + '条/页',
+                    })),
+                  ]"
+                />
                 <button
                   type="button"
                   :disabled="importLoading || importPageNum <= 1"
@@ -2899,6 +2990,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+.master-panel.is-create-only {
+  display: contents;
+}
+
 .master-panel {
   display: flex;
   flex-direction: column;
@@ -3026,6 +3121,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .master-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3070,7 +3166,7 @@ onBeforeUnmount(() => {
   font-style: normal;
 }
 .master-scope-field input,
-.master-scope-field select {
+.master-scope-field :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   height: 38px;
@@ -3085,7 +3181,7 @@ onBeforeUnmount(() => {
   outline: none;
 }
 .master-scope-field input:focus,
-.master-scope-field select:focus {
+.master-scope-field :is(select, .harness-select):focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
@@ -3440,7 +3536,7 @@ onBeforeUnmount(() => {
   color: #7c879a;
   font-size: 11px;
 }
-.import-pagination select {
+.import-pagination :is(select, .harness-select) {
   height: 28px;
   padding: 0 8px;
   border: 1px solid #d7dfeb;
@@ -3452,11 +3548,11 @@ onBeforeUnmount(() => {
   outline: none;
   cursor: pointer;
 }
-.import-pagination select:focus {
+.import-pagination :is(select, .harness-select):focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
-.import-pagination select:disabled {
+.import-pagination :is(select, .harness-select):disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -3632,43 +3728,6 @@ onBeforeUnmount(() => {
 }
 .table-wrap tbody tr:hover td {
   background: #f8fbff;
-}
-.master-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-top: 1px solid #edf2f7;
-  color: #64748b;
-  font-size: 13px;
-}
-.master-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.master-pagination__controls select,
-.master-pagination__controls button {
-  height: 32px;
-  border: 1px solid #dbe5f2;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #253857;
-  font: inherit;
-  font-size: 13px;
-}
-.master-pagination__controls select {
-  padding: 0 8px;
-}
-.master-pagination__controls button {
-  padding: 0 10px;
-  cursor: pointer;
-}
-.master-pagination__controls button:disabled,
-.master-pagination__controls select:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 .table-wrap .selection-cell {
   text-align: center;
@@ -3889,7 +3948,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: min(804px, calc(100vw - 32px));
+  width: min(1206px, calc(100vw - 32px));
   height: 760px;
   min-height: 0;
   max-height: calc(100vh - 92px);
@@ -3897,10 +3956,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .dialog.is-create-dialog > header,
+.dialog.is-create-dialog > .catalog-create-scope,
 .dialog.is-create-dialog > .dialog-tabs,
 .dialog.is-create-dialog > .error,
 .dialog.is-create-dialog > footer {
   flex: 0 0 auto;
+}
+.dialog.is-create-dialog > .catalog-create-scope {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(210px, 0.6fr);
 }
 .dialog-scroll-body {
   min-height: 0;
@@ -3908,7 +3971,7 @@ onBeforeUnmount(() => {
 }
 .dialog.is-create-dialog > .dialog-scroll-body {
   flex: 1 1 auto;
-  overflow-y: visible;
+  overflow-y: auto;
 }
 .dialog > header {
   display: flex;
@@ -3966,7 +4029,7 @@ onBeforeUnmount(() => {
   line-height: 1.45;
 }
 .form-grid input,
-.form-grid select,
+.form-grid :is(select, .harness-select),
 .form-grid textarea {
   box-sizing: border-box;
   width: 100%;
@@ -3976,7 +4039,7 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 .form-grid input,
-.form-grid select {
+.form-grid :is(select, .harness-select) {
   height: 40px;
 }
 .form-grid textarea {
@@ -4299,13 +4362,6 @@ onBeforeUnmount(() => {
   }
 }
 @media (max-width: 1100px) {
-  .master-panel {
-    height: auto;
-    overflow: visible;
-  }
-  .master-board {
-    flex: 0 0 auto;
-  }
   .master-hero {
     align-items: stretch;
     flex-direction: column;
@@ -4313,14 +4369,6 @@ onBeforeUnmount(() => {
   .master-toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-  .master-pagination {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .master-pagination__controls {
-    justify-content: flex-start;
-    flex-wrap: wrap;
   }
 
   .master-scope-controls,

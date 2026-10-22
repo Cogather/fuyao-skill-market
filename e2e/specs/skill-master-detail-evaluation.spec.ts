@@ -5,8 +5,8 @@ test('Skill 清单详情支持在详情与评估页签间切换', async ({ page 
   await page.setViewportSize({ width: 1090, height: 869 });
   await page.goto(`${APP_BASE_PATH}/harness-management`);
 
-  await page.getByRole('tab', { name: 'Skill 规划', exact: true }).click();
-  await page.getByRole('button', { name: 'Skill 清单', exact: true }).click();
+  await page.getByRole('tab', { name: '资产清单', exact: true }).click();
+  await page.getByRole('tab', { name: 'Skill', exact: true }).click();
   await page.getByRole('button', { name: '查看 Skill', exact: true }).first().click();
 
   const dialog = page.getByRole('dialog');

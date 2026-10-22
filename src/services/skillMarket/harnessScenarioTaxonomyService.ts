@@ -191,7 +191,21 @@ function rememberScenarioRecords(scope: TaxonomyScope, records: TaxonomyRecord[]
   loadedScenarioRecords.set(scenarioCacheKey(scope), cloneRecords(records));
 }
 
-function validateScenarioRecords(scope: TaxonomyScope, records: TaxonomyRecord[]): void {
+/** Remember an already committed granular mutation before any fallible list readback. */
+export function commitScenarioRecordMutation(
+  scope: TaxonomyScope,
+  records: TaxonomyRecord[],
+): void {
+  commitIdentityRecords('scene', scope, records);
+  rememberScenarioRecords(scope, records);
+  notifyHarnessConfigurationChanged('scene', scope.departmentName);
+}
+
+function validateScenarioRecords(
+  scope: TaxonomyScope,
+  records: TaxonomyRecord[],
+  allowReferencedChanges = false,
+): void {
   if (records.some((record) => !record.id.trim() || !record.name.trim())) {
     throw new Error('场景名称不能为空');
   }
@@ -212,6 +226,7 @@ function validateScenarioRecords(scope: TaxonomyScope, records: TaxonomyRecord[]
     siblingNames.add(siblingKey);
   });
 
+  if (allowReferencedChanges) return;
   const previous = loadedScenarioRecords.get(scenarioCacheKey(scope));
   if (!previous) return;
   const nextById = new Map(records.map((record) => [record.id, record]));
@@ -506,8 +521,9 @@ export async function saveScenarioRecords(
   records: TaxonomyRecord[],
   client: ScenarioTaxonomyClient = skillBaseService,
   onCommitted?: (records: TaxonomyRecord[]) => void,
+  allowReferencedMockChanges = false,
 ): Promise<TaxonomyRecord[]> {
-  validateScenarioRecords(scope, records);
+  validateScenarioRecords(scope, records, !transportIsHttp && allowReferencedMockChanges);
   if (!transportIsHttp) {
     const nextIds = new Set(records.map((record) => record.id));
     const deletedRootIds = (loadedScenarioRecords.get(scenarioCacheKey(scope)) ?? [])

@@ -57,7 +57,7 @@ test('拖拽一级和二级场景后保存顺序，刷新后保持一致且保�
   await expect(workflow).toHaveAttribute('data-workflow-id', workflowId!);
 });
 
-test('拖拽不允许跨父级移动，原有上下箭头仍可保存排序', async ({ page }) => {
+test('拖拽不允许跨父级移动，同级拖拽仍可保存排序', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const harness = new HarnessManagementPage(page);
   await harness.goto();
@@ -81,8 +81,12 @@ test('拖拽不允许跨父级移动，原有上下箭头仍可保存排序', as
     '代码审查',
   ]);
   await expect(tree.locator('.is-dragging, .drop-before, .drop-after')).toHaveCount(0);
-  await source.hover();
-  await source.getByRole('button', { name: '下移代码生成', exact: true }).click();
+  await source.getByLabel('拖动排序代码生成').dragTo(
+    research.locator('.child').filter({
+      has: page.locator('b').filter({ hasText: /^SQL优化$/ }),
+    }),
+    { targetPosition: { x: 90, y: 4 } },
+  );
   await expect(research.locator('.child > b')).toHaveText([
     '接口开发',
     '代码生成',

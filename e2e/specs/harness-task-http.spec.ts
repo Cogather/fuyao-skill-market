@@ -145,14 +145,10 @@ test.describe('Harness 任务管理 HTTP 详情', () => {
     const treeRequestsBeforeEmptyDetail = treeRequestCount;
     const fileRequestsBeforeEmptyDetail = fileRequestCount;
     const emptyVersionRow = page.getByRole('row', { name: /无可用版本 Skill/ });
-    await emptyVersionRow.getByRole('button', { name: '查看 Skill', exact: true }).click();
-
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toHaveClass(/is-basic-only/);
-    await expect(dialog.locator('.task-detail-version-filter')).toHaveCount(0);
-    await expect(dialog.locator('.task-detail-capability')).toHaveCount(0);
-    await expect(dialog.locator('footer')).toHaveCount(0);
-    await page.waitForTimeout(100);
+    await expect(
+      emptyVersionRow.getByRole('button', { name: '查看 Skill', exact: true }),
+    ).toHaveCount(0);
+    await expect(dialog).toBeHidden();
     expect(treeRequestCount).toBe(treeRequestsBeforeEmptyDetail);
     expect(fileRequestCount).toBe(fileRequestsBeforeEmptyDetail);
   });

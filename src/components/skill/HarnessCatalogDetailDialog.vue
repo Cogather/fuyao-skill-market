@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HarnessSelect from './HarnessSelect.vue';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { PlanningTaskCapabilityType } from '../../services/skillMarket/skillPlanningTaskService';
 import {
@@ -23,6 +24,11 @@ type DetailFileState = {
 };
 
 type DetailTab = 'detail' | 'evaluation';
+
+type DetailRecord = Pick<SkillMasterRecord, 'name' | 'versions'> &
+  Partial<
+    Pick<SkillMasterRecord, 'description' | 'status' | 'product' | 'department' | 'level' | 'owner'>
+  >;
 
 type EvaluationDimensionScore = {
   id: string;
@@ -83,12 +89,16 @@ type SkillEvaluation = {
 const props = withDefaults(
   defineProps<{
     open: boolean;
-    record: SkillMasterRecord | null;
+    record: DetailRecord | null;
     userId?: string;
     capabilityType: PlanningTaskCapabilityType;
+    embedded?: boolean;
+    version?: string;
+    tab?: DetailTab;
   }>(),
   {
     userId: '',
+    embedded: false,
   },
 );
 
@@ -111,6 +121,7 @@ const detailError = ref('');
 const expandedDetailFilePaths = ref<string[]>([]);
 const detailCapabilityExpanded = ref(true);
 const activeTab = ref<DetailTab>('detail');
+const displayedTab = computed(() => props.tab ?? activeTab.value);
 const evaluation = ref<SkillEvaluation | null>(null);
 const evaluationLoading = ref(false);
 const evaluationError = ref('');
@@ -726,13 +737,20 @@ function closeDialog(): void {
 }
 
 watch(
-  [() => props.open, () => props.record],
+  [
+    () => props.open,
+    () => props.record,
+    () => props.version,
+    () => props.capabilityType,
+    () => props.userId,
+  ],
   ([open, record]) => {
     resetDetailContent();
     if (!open || !record) return;
 
     selectedVersion.value =
-      latestSkillMasterVersion(record)?.version || detailVersions.value[0]?.version || '';
+      props.version ??
+      (latestSkillMasterVersion(record)?.version || detailVersions.value[0]?.version || '');
     if (selectedVersion.value) void loadSelectedVersion();
   },
   { immediate: true },
@@ -745,16 +763,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="props.open && props.record" class="catalog-detail-overlay">
+  <Teleport to="body" :disabled="props.embedded">
+    <div
+      v-if="props.open && props.record"
+      :class="props.embedded ? 'catalog-detail-embedded' : 'catalog-detail-overlay'"
+    >
       <div
         class="catalog-detail-dialog"
-        :class="{ 'is-basic-only': detailVersions.length === 0 }"
-        role="dialog"
-        aria-modal="true"
+        :class="{ 'is-basic-only': detailVersions.length === 0, 'is-embedded': props.embedded }"
+        :role="props.embedded ? undefined : 'dialog'"
+        :aria-modal="props.embedded ? undefined : true"
         :aria-label="`${props.record.name} 详情`"
       >
-        <header class="catalog-detail-header">
+        <header v-if="!props.embedded" class="catalog-detail-header">
           <div class="catalog-detail-heading">
             <small>{{ capabilityLabelUpper }} DETAIL</small>
             <div class="catalog-detail-heading-title">
@@ -791,11 +812,14 @@ onBeforeUnmount(() => {
                 <small>版本</small>
                 <em>{{ formatUpdatedTime(selectedVersionRecord?.uploadedAt) }} 更新</em>
               </span>
-              <select v-model="selectedVersion" aria-label="详情版本" @change="loadSelectedVersion">
-                <option v-for="item in detailVersions" :key="item.version" :value="item.version">
-                  {{ item.version }}
-                </option>
-              </select>
+              <HarnessSelect
+                v-model="selectedVersion"
+                aria-label="详情版本"
+                @change="loadSelectedVersion"
+                :options="[
+                  ...detailVersions.map((item) => ({ value: item.version, label: item.version })),
+                ]"
+              />
             </label>
             <div v-if="props.capabilityType === 'skill'" class="catalog-detail-evaluation-meta">
               <small>评估模型</small>
@@ -811,7 +835,7 @@ onBeforeUnmount(() => {
         </header>
 
         <div
-          v-if="detailVersions.length && props.capabilityType === 'skill'"
+          v-if="!props.embedded && detailVersions.length && props.capabilityType === 'skill'"
           class="catalog-detail-tabs"
           role="tablist"
           aria-label="Skill 信息类型"
@@ -820,8 +844,8 @@ onBeforeUnmount(() => {
             id="catalog-detail-tab-detail"
             type="button"
             role="tab"
-            :class="{ 'is-active': activeTab === 'detail' }"
-            :aria-selected="activeTab === 'detail'"
+            :class="{ 'is-active': displayedTab === 'detail' }"
+            :aria-selected="displayedTab === 'detail'"
             aria-controls="catalog-detail-panel-detail"
             @click="activeTab = 'detail'"
           >
@@ -831,8 +855,8 @@ onBeforeUnmount(() => {
             id="catalog-detail-tab-evaluation"
             type="button"
             role="tab"
-            :class="{ 'is-active': activeTab === 'evaluation' }"
-            :aria-selected="activeTab === 'evaluation'"
+            :class="{ 'is-active': displayedTab === 'evaluation' }"
+            :aria-selected="displayedTab === 'evaluation'"
             aria-controls="catalog-detail-panel-evaluation"
             @click="activeTab = 'evaluation'"
           >
@@ -840,15 +864,21 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
+        <p v-if="props.embedded && !selectedVersion" class="catalog-detail-state">
+          {{ displayedTab === 'evaluation' ? '当前版本暂无评估结果' : '暂无可展示的文件' }}
+        </p>
+
         <section
-          v-if="
-            detailVersions.length && (props.capabilityType !== 'skill' || activeTab === 'detail')
-          "
+          v-if="selectedVersion && (props.capabilityType !== 'skill' || displayedTab === 'detail')"
           id="catalog-detail-panel-detail"
           class="catalog-detail-capability"
           role="tabpanel"
           :aria-labelledby="
-            props.capabilityType === 'skill' ? 'catalog-detail-tab-detail' : undefined
+            props.embedded
+              ? 'asset-detail-tab-content'
+              : props.capabilityType === 'skill'
+                ? 'catalog-detail-tab-detail'
+                : undefined
           "
         >
           <button
@@ -917,12 +947,14 @@ onBeforeUnmount(() => {
 
         <section
           v-if="
-            detailVersions.length && props.capabilityType === 'skill' && activeTab === 'evaluation'
+            selectedVersion && props.capabilityType === 'skill' && displayedTab === 'evaluation'
           "
           id="catalog-detail-panel-evaluation"
           class="catalog-evaluation-panel"
           role="tabpanel"
-          aria-labelledby="catalog-detail-tab-evaluation"
+          :aria-labelledby="
+            props.embedded ? 'asset-detail-tab-report' : 'catalog-detail-tab-evaluation'
+          "
         >
           <p v-if="evaluationLoading" class="catalog-detail-state">正在加载评估信息...</p>
           <div v-else-if="evaluationError" class="catalog-detail-state is-error">
@@ -1174,6 +1206,32 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.catalog-detail-embedded {
+  min-width: 0;
+}
+
+.catalog-detail-dialog.is-embedded {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.is-embedded .catalog-detail-capability,
+.is-embedded .catalog-evaluation-panel {
+  flex: none;
+  margin-top: 0;
+}
+
+.is-embedded .catalog-detail-content {
+  min-height: 360px;
+  flex: none;
+  overflow: visible;
+}
+
 .catalog-detail-header {
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(600px, 1.35fr);
@@ -1250,7 +1308,7 @@ onBeforeUnmount(() => {
 }
 
 .catalog-detail-meta strong,
-.catalog-detail-version-meta select {
+.catalog-detail-version-meta :is(select, .harness-select) {
   color: #31405e;
   font-size: 11px;
 }
@@ -1284,7 +1342,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.catalog-detail-version-meta select {
+.catalog-detail-version-meta :is(select, .harness-select) {
   width: 100%;
   height: 30px;
   padding: 0 9px;
@@ -1295,7 +1353,7 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
-.catalog-detail-version-meta select:focus {
+.catalog-detail-version-meta :is(select, .harness-select):focus {
   border-color: #7184ec;
   box-shadow: 0 0 0 3px rgba(92, 111, 232, 0.1);
 }

@@ -757,6 +757,120 @@ export type CreateAgentMasterManagementBody = Omit<
   agentDescription: string;
 };
 
+export type HarnessAssetQueryStatus = '开发中' | '待发布' | '已发布';
+
+/** 资产清单统一筛选列表（POST /api/harness/components/query）。 */
+export type QueryHarnessAssetComponentsBody = {
+  userId: string;
+  deptCode?: string;
+  productCode?: string;
+  keyword?: string;
+  status?: HarnessAssetQueryStatus;
+  type: 'AGENT' | 'SKILL' | 'COMMAND' | 'EXTENSION';
+  sortBy: 'updatedAt';
+  sortOrder: 'desc';
+  pageNo: number;
+  pageSize: number;
+};
+
+export type HarnessAssetComponentDto = {
+  name: string;
+  description: string;
+  /** 组件查询记录返回的资产类型。 */
+  type?: QueryHarnessAssetComponentsBody['type'];
+  latestVersion: string | null;
+  status: string;
+  skillId?: string | null;
+  agentId?: string | null;
+  commandId?: string | null;
+  owner?: string | null;
+  developer?: string | null;
+  /** Extension 当前版本的发布人；原子资产不使用。 */
+  publisher?: string | null;
+  /** 兼容组件列表以版本上传人命名发布人的响应。 */
+  uploadedBy?: string | null;
+  category: string;
+  updatedAt: string;
+  dimType?: string | null;
+  dimCode?: string | null;
+  dimName?: string | null;
+  firstScene?: string | null;
+  secondScene?: string | null;
+  canPublish?: boolean;
+  canEdit?: boolean | null;
+};
+
+export type HarnessAssetComponentsResponse = {
+  meta: ApiMeta;
+  data: {
+    records: HarnessAssetComponentDto[];
+    total: number;
+    pageNo: number;
+    pageSize: number;
+  };
+};
+
+/** 点击资产卡片查询详情；Extension 的 name 为二级场景编码。 */
+export type QueryHarnessAssetComponentDetailParams = {
+  userId: string;
+  type: QueryHarnessAssetComponentsBody['type'];
+  name: string;
+};
+
+export type HarnessAssetComponentDetailDto = {
+  name: string;
+  description: string;
+  category: string;
+  ownerName: string | null;
+  ownerId: string | null;
+  developerName: string | null;
+  developerId: string | null;
+  /** 仅明确返回 true 时允许编辑，未返回时使用列表的显式权限。 */
+  canEdit?: boolean | null;
+  type: QueryHarnessAssetComponentsBody['type'];
+  firstScene: string | null;
+  secondScene: string | null;
+  versions: Array<{
+    version: string;
+    uploadedAt: string | null;
+    uploadedBy: string;
+    /** 当前版本对应的来源仓地址。 */
+    reportUrl?: string | null;
+    /** 兼容部分环境返回的来源仓字段名。 */
+    repoUrl?: string | null;
+  }>;
+};
+
+export type QueryExtensionVersionHistoryParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  name: string;
+  version?: string;
+};
+
+export type ExtensionFrozenComponentDto = {
+  name: string;
+  version: string;
+};
+
+export type ExtensionVersionHistoryDto = {
+  extensionName: string;
+  version: string;
+  description: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  targetOrgCode: string;
+  targetOrgName: string;
+  operatorName: string;
+  publishStatus: string;
+  releaseType: string;
+  agents: ExtensionFrozenComponentDto[];
+  commands: ExtensionFrozenComponentDto[];
+  skills: ExtensionFrozenComponentDto[];
+};
+
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
 export type QuerySkillMasterManagementBody = {
   userId: string;
@@ -779,6 +893,7 @@ export type SkillMasterManagementVersionDto = {
   uploadedAt?: string | null;
   mrId?: string | null;
   repoUrl?: string | null;
+  reportUrl?: string | null;
   tagName?: string | null;
 };
 

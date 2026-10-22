@@ -21,7 +21,7 @@ export interface WorkflowSceneRow extends WorkflowSceneKey {
 }
 export interface WorkflowActivityRow extends WorkflowSceneKey {
   activityNodeName: string;
-  subActivityNodeName?: string;
+  subActivityNodeName?: string | null;
   sort: number;
 }
 export interface WorkflowPoolItem {
@@ -41,7 +41,7 @@ export interface WorkflowDetail {
   flowDescription: string | null;
   sceneExtensionCode: string | null;
   secondSceneDescription: string | null;
-  commands: { commandName: string; description: string }[];
+  commands: { commandName: string; description: string; version?: string | null }[];
   assetPool: WorkflowPoolItem[];
   stages: {
     activityNodeName: string;
@@ -154,7 +154,7 @@ export const harnessWorkflowService = {
   },
 
   /**
-   * 更新二级场景编码与描述（场景改名时，须等待刷新场景完成后调用）
+   * 更新二级场景编码与描述（场景改名时，须等待 renameScene 完成后调用）
    * @param body
    * @param params
    * @returns
@@ -189,12 +189,8 @@ export const harnessWorkflowService = {
     });
   },
 
-  /**
-   * 查询指定场景下的活动
-   * @param params
-   * @returns
-   */
-  queryActivitiesByScene: (params: WorkflowSceneContext): Promise<any> => {
+  /** 查询指定维度下的活动；传入场景字段时可进一步限定范围。 */
+  queryActivitiesByScene: (params: WorkflowDimension & Partial<WorkflowSceneKey>): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/scene-activity/activity',
       method: 'GET',
@@ -202,13 +198,59 @@ export const harnessWorkflowService = {
     });
   },
 
+  /** 级联更新场景名称；一级改名时两个二级名称均传空。 */
+  renameScene: (
+    body: {
+      oldFirstScene: string;
+      oldSecondScene?: string | null;
+      newFirstScene: string;
+      newSecondScene?: string | null;
+    },
+    params: WorkflowDimension,
+  ): Promise<any> =>
+    httpRequest.harnessApi({
+      url: '/scene-activity/scene/name',
+      method: 'PUT',
+      params,
+      data: body,
+    }),
+
+  /** 级联删除场景关联数据；仅删一级时省略 secondScene。 */
+  deleteScene: (
+    params: WorkflowDimension & { firstScene: string; secondScene?: string },
+  ): Promise<any> =>
+    httpRequest.harnessApi({ url: '/scene-activity/scene', method: 'DELETE', params }),
+
+  /** 按活动与子活动精确改名，并迁移规划关系；父活动的子活动名传 null。 */
+  renameActivity: (
+    body: WorkflowSceneKey & {
+      oldActivityNodeName: string;
+      oldSubActivityNodeName: string | null;
+      newActivityNodeName: string;
+      newSubActivityNodeName: string | null;
+    },
+    params: WorkflowDimension,
+  ): Promise<any> =>
+    httpRequest.harnessApi({
+      url: '/scene-activity/activity/name',
+      method: 'PUT',
+      params,
+      data: body,
+    }),
+
+  /** 级联删除指定活动的规划；省略子活动名只删除父记录。 */
+  deleteActivity: (
+    params: WorkflowSceneContext & { activityNodeName: string; subActivityNodeName?: string },
+  ): Promise<any> =>
+    httpRequest.harnessApi({ url: '/scene-activity/activity', method: 'DELETE', params }),
+
   /**
-   * 全量刷新活动
+   * 全量刷新当前场景的活动
    * @param params
    * @returns
    */
   refreshActivities: (
-    params: SceneTagDimContext,
+    params: WorkflowSceneContext,
     body: { activities: WorkflowActivityRow[] },
   ): Promise<any> => {
     return httpRequest.harnessApi({
@@ -297,11 +339,14 @@ export const harnessWorkflowService = {
    * @param params
    * @returns
    */
-  queryHarnessWorkflowDetail: (params: WorkflowSceneContext): Promise<any> => {
+  queryHarnessWorkflowDetail: (
+    params: Pick<WorkflowSceneContext, 'userId' | 'dimCode' | 'firstScene' | 'secondScene'>,
+  ): Promise<any> => {
+    const { userId, dimCode, firstScene, secondScene } = params;
     return httpRequest.harnessApi({
       url: '/workflow/detail',
       method: 'GET',
-      params: params,
+      params: { userId, dimCode, firstScene, secondScene },
     });
   },
 
@@ -366,7 +411,12 @@ export const harnessWorkflowService = {
     return httpRequest.harnessApi({
       url: '/commands/config/supplement/add',
       method: 'POST',
-      data: { ...body, activityNodeName: null, subActivityNodeName: null },
+      data: {
+        ...body,
+        commandName: body.commandName.trim().replace(/^\/+/, ''),
+        activityNodeName: null,
+        subActivityNodeName: null,
+      },
       params: params,
     });
   },
@@ -468,7 +518,10 @@ export const harnessWorkflowService = {
    */
   queryExtensionSceneDetail: (
     params: { userId: string },
-    body: { dimType: string; dimCode: string; dimName: string; extensionName: string },
+    body: { dimType: string; dimCode: string; dimName: string } & (
+      | { extensionName: string; firstScene?: string; secondScene?: string }
+      | { extensionName?: string; firstScene: string; secondScene: string }
+    ),
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/extensions/detail',

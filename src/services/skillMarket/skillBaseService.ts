@@ -14,6 +14,12 @@ import type {
   SkillEvaluationDetailResponseDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
+  QueryHarnessAssetComponentsBody,
+  HarnessAssetComponentsResponse,
+  QueryHarnessAssetComponentDetailParams,
+  HarnessAssetComponentDetailDto,
+  QueryExtensionVersionHistoryParams,
+  ExtensionVersionHistoryDto,
   QueryHarnessPermissionUsersParams,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
@@ -528,6 +534,37 @@ export const skillBaseService = {
     });
   },
 
+  /** 资产页的统一筛选列表。 */
+  queryHarnessAssetComponents: (
+    body: QueryHarnessAssetComponentsBody,
+  ): Promise<HarnessAssetComponentsResponse> => {
+    return httpRequest.api<HarnessAssetComponentsResponse>({
+      url: '/v1/harness/plans/components/query',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  queryHarnessAssetComponentDetail: (
+    params: QueryHarnessAssetComponentDetailParams,
+  ): Promise<ApiEnvelope<HarnessAssetComponentDetailDto>> => {
+    return httpRequest.api<ApiEnvelope<HarnessAssetComponentDetailDto>>({
+      url: '/v1/harness/plans/components/detail',
+      method: 'get',
+      params,
+    });
+  },
+
+  queryExtensionVersionHistory: (
+    params: QueryExtensionVersionHistoryParams,
+  ): Promise<ApiEnvelope<ExtensionVersionHistoryDto>> => {
+    return httpRequest.harnessApi<ApiEnvelope<ExtensionVersionHistoryDto>>({
+      url: '/extensions/version-history',
+      method: 'get',
+      params,
+    });
+  },
+
   // skill 原子能力相关接口
 
   createSkillMasterManagement: (
@@ -956,6 +993,34 @@ export const skillBaseService = {
   retryPublishExtension: (id: string, params: any): any => {
     return httpRequest.harnessApi<any>({
       url: `/extensions/${id}/retry`,
+      method: 'post',
+      params,
+    });
+  },
+
+  // Agent / Skill / Command 独立发布
+  publishHarnessAssets: (params: { userId: string; userName: string }, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/assets/publish',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+
+  // Agent / Skill / Command 发布历史
+  queryHarnessAssetPublishHistory: (body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/assets/publish/history',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // Agent / Skill / Command 独立发布失败重试
+  retryHarnessAssetPublish: (taskId: string, params: { userId: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: `/assets/publish/${encodeURIComponent(taskId)}/retry`,
       method: 'post',
       params,
     });

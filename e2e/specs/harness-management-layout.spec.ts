@@ -144,7 +144,7 @@ test('Harness 管理各顶层页面保持资产页标题排版与视口内滚动
     expect(rootOverflow.scrollHeight).toBeLessThanOrEqual(rootOverflow.clientHeight + 1);
 
     if (scenario.key === 'assets') {
-      await expect(panel.locator('.asset-card')).toHaveCount(24);
+      await expect(panel.locator('.asset-card').first()).toBeVisible();
       const boardOverflow = await panel.locator('.asset-board--catalog').evaluate((element) => ({
         scrollHeight: element.scrollHeight,
         clientHeight: element.clientHeight,

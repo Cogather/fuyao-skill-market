@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import HarnessSelect from './HarnessSelect.vue';
+import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
 import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import {
   getHarnessCapabilityPlanningApi,
@@ -23,6 +26,7 @@ import {
 } from '../../services/skillMarket/skillMasterManagementService';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
@@ -67,6 +71,8 @@ const props = withDefaults(
     currentUserDepartmentPath?: string[];
     defaultDepartmentPath?: string[];
     initialScope?: HarnessScopeSnapshot;
+    createOnly?: boolean;
+    allowedDepartmentPaths?: string[][];
   }>(),
   {
     departmentTree: () => [],
@@ -74,11 +80,15 @@ const props = withDefaults(
     currentUserDepartmentPath: () => [],
     defaultDepartmentPath: () => [],
     initialScope: undefined,
+    createOnly: false,
+    allowedDepartmentPaths: () => [],
   },
 );
 
 const emit = defineEmits<{
   'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  created: [];
 }>();
 
 const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
@@ -99,7 +109,7 @@ const loading = ref(false);
 const selectedIds = ref<string[]>([]);
 const pageNum = ref(1);
 const pageSize = ref(10);
-const pageSizeOptions = [5, 10, 20, 50];
+const tableScroll = ref<HTMLElement | null>(null);
 const toast = ref('');
 let toastTimer: number | null = null;
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -108,6 +118,7 @@ const exporting = ref(false);
 let productLoadSequence = 0;
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
 const initialPlannedCompleteDate = ref('');
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -191,6 +202,10 @@ const selectedProduct = computed(() =>
 
 const requiredCapabilityNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
+});
+const suggestedCapabilityNamePrefix = computed(() => {
+  if (filterForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(filterForm.product);
 });
 
 const catalogScopeErrorMessage = computed(() => {
@@ -318,8 +333,6 @@ function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const pageRecords = computed(() => records.value);
-const pageStart = computed(() => (total.value ? (pageNum.value - 1) * pageSize.value + 1 : 0));
-const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
 const allPageSelected = computed(
   () =>
     pageRecords.value.length > 0 &&
@@ -327,6 +340,8 @@ const allPageSelected = computed(
 );
 
 async function reload(): Promise<void> {
+  if (props.createOnly) return;
+  tableScroll.value?.scrollTo({ top: 0 });
   const scope = currentCatalogScope.value;
   if (!scope) {
     records.value = [];
@@ -454,6 +469,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function resetPersonPicker(picker: PersonPickerState): void {
@@ -608,7 +637,7 @@ function hydratePersonPicker(picker: PersonPickerState, label: string, departmen
   };
 }
 
-function resetEditor(): void {
+function resetEditor(options: { preserveSubmitting?: boolean } = {}): void {
   Object.assign(editor, {
     id: '',
     name: '',
@@ -620,7 +649,7 @@ function resetEditor(): void {
     plannedCompleteDate: '',
     status: '未开始' as SkillMasterStatus,
     error: '',
-    submitting: false,
+    submitting: options.preserveSubmitting ? editor.submitting : false,
   });
   initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
@@ -677,6 +706,15 @@ function openCreate(): void {
   editor.open = true;
 }
 
+async function prepareNextCreate(): Promise<void> {
+  resetEditor({ preserveSubmitting: true });
+  editor.mode = 'create';
+  editor.name = requiredCapabilityNamePrefix.value;
+  editor.open = true;
+  await nextTick();
+  editorFormRef.value?.querySelector<HTMLInputElement>('input[maxlength="64"]')?.focus();
+}
+
 function openDetail(record: SkillMasterRecord): void {
   detailRecord.value = record;
 }
@@ -713,6 +751,7 @@ function closeEditor(): void {
   initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+  if (props.createOnly) emit('close');
 }
 
 function onEditorFormEnter(event: KeyboardEvent): void {
@@ -776,6 +815,12 @@ async function submitEditor(): Promise<void> {
     const scope = requireCatalogScope();
     if (editor.mode === 'create') {
       await api.value.createCatalog(editorPayload(), scope);
+      if (props.createOnly) {
+        emit('created');
+        showToast(`${capabilityLabel.value} 已新增，可继续添加`);
+        await prepareNextCreate();
+        return;
+      }
       showToast(`已新增 ${capabilityLabel.value}`);
     } else {
       await api.value.updateCatalog(editor.id, editorPayload(), scope);
@@ -925,7 +970,8 @@ async function goPage(next: number): Promise<void> {
   await reload();
 }
 
-async function changePageSize(): Promise<void> {
+async function changePageSize(size: number): Promise<void> {
+  pageSize.value = size;
   pageNum.value = 1;
   selectedIds.value = [];
   await reload();
@@ -939,6 +985,13 @@ watch(requiredCapabilityNamePrefix, (nextPrefix, previousPrefix) => {
   }
   if (previousPrefix && editor.name.startsWith(previousPrefix)) {
     editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  } else if (
+    props.createOnly &&
+    nextPrefix &&
+    !previousPrefix &&
+    !editor.name.startsWith(nextPrefix)
+  ) {
+    editor.name = nextPrefix + editor.name;
   }
 });
 
@@ -981,6 +1034,8 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
+  productLoadSequence += 1;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   clearOwnerSearchTimer();
   clearDevelopOwnerSearchTimer();
@@ -989,8 +1044,11 @@ onBeforeUnmount(() => {
 });
 
 onMounted(async () => {
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
   const restoredScope = restoreScopeSnapshot();
   if (!restoredScope) applyDefaultDepartment();
+  if (props.createOnly) openCreate();
   await loadProductOptions(restoredScope);
   await reload();
   emitScopeSnapshot();
@@ -998,18 +1056,28 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="capability-master-panel" :aria-label="`${capabilityLabel} 清单管理`">
+  <section
+    class="capability-master-panel"
+    :class="{ 'is-create-only': props.createOnly }"
+    :aria-label="`${capabilityLabel} 清单管理`"
+  >
     <section
+      v-if="!props.createOnly"
       class="capability-master-filter"
       :class="{ 'is-product-level': filterForm.level === '产品级' }"
       :aria-label="`${capabilityLabel} 清单查询`"
     >
       <label class="capability-master-field capability-master-field--level">
         <span>层级 <em>*</em></span>
-        <select v-model="filterForm.level" @change="onLevelChange">
-          <option value="部门级">部门级</option>
-          <option value="产品级">产品级</option>
-        </select>
+        <HarnessSelect
+          v-model="filterForm.level"
+          @change="onLevelChange"
+          :searchable="false"
+          :options="[
+            { value: '部门级', label: '部门级' },
+            { value: '产品级', label: '产品级' },
+          ]"
+        />
       </label>
       <div class="capability-master-field capability-master-field--dept">
         <span>{{ filterForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
@@ -1030,28 +1098,25 @@ onMounted(async () => {
         class="capability-master-field capability-master-field--product"
       >
         <span>产品 <em>*</em></span>
-        <select
+        <HarnessSelect
           v-model="filterForm.product"
           :disabled="!filterForm.departmentName || productsLoading"
           @change="onProductChange"
-        >
-          <option value="">
-            {{
-              productsLoading
+          :options="[
+            {
+              value: '',
+              label: productsLoading
                 ? '产品加载中...'
                 : filterForm.departmentName
                   ? '请选择产品'
-                  : '请先选择部门'
-            }}
-          </option>
-          <option
-            v-for="product in productOptions"
-            :key="product.offeringId"
-            :value="product.offeringName"
-          >
-            {{ product.offeringName }}
-          </option>
-        </select>
+                  : '请先选择部门',
+            },
+            ...productOptions.map((product) => ({
+              value: product.offeringName,
+              label: product.offeringName,
+            })),
+          ]"
+        />
       </label>
       <label class="capability-master-field capability-master-field--keyword">
         <span>关键词</span>
@@ -1077,7 +1142,7 @@ onMounted(async () => {
       </div>
     </section>
 
-    <section class="capability-master-board">
+    <section v-if="!props.createOnly" class="capability-master-board">
       <header class="capability-master-toolbar">
         <div class="capability-master-toolbar__summary">
           <small
@@ -1137,7 +1202,13 @@ onMounted(async () => {
         </div>
       </header>
 
-      <div class="capability-master-table-wrap">
+      <div
+        ref="tableScroll"
+        class="capability-master-table-wrap"
+        role="region"
+        :aria-label="`${capabilityLabel} 清单表格`"
+        tabindex="0"
+      >
         <table class="capability-master-table">
           <colgroup>
             <col class="is-check-column" />
@@ -1256,23 +1327,14 @@ onMounted(async () => {
           </tbody>
         </table>
       </div>
-      <footer class="capability-master-pagination">
-        <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
-        <div class="capability-master-pagination__controls">
-          <select v-model.number="pageSize" @change="changePageSize">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
-          <button type="button" :disabled="pageNum <= 1" @click="goPage(pageNum - 1)">
-            上一页
-          </button>
-          <span>{{ pageNum }} / {{ totalPages }}</span>
-          <button type="button" :disabled="pageNum >= totalPages" @click="goPage(pageNum + 1)">
-            下一页
-          </button>
-        </div>
-      </footer>
+      <HarnessCatalogPagination
+        :page="pageNum"
+        :page-size="pageSize"
+        :total="total"
+        :loading="loading"
+        @page-change="goPage"
+        @page-size-change="changePageSize"
+      />
     </section>
 
     <HarnessCatalogDetailDialog
@@ -1287,12 +1349,18 @@ onMounted(async () => {
       <div
         v-if="editor.open"
         class="capability-master-overlay"
+        :class="{ 'harness-workspace-overlay': props.createOnly }"
         @click.stop
         @pointerdown.stop
         @pointerup.stop
       >
         <form
+          ref="editorFormRef"
           class="capability-master-dialog"
+          :class="{ 'is-create-dialog': props.createOnly }"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`${editor.mode === 'create' ? '添加' : '编辑'} ${capabilityLabel}`"
           @click.stop
           @pointerdown.stop
           @pointerup.stop
@@ -1301,15 +1369,37 @@ onMounted(async () => {
         >
           <header>
             <div>
-              <small>{{ capabilityLabel.toUpperCase() }} MASTER</small>
+              <small v-if="!props.createOnly">{{ capabilityLabel.toUpperCase() }} MASTER</small>
               <strong>{{
                 editor.mode === 'create' ? `添加 ${capabilityLabel}` : `编辑 ${capabilityLabel}`
               }}</strong>
-              <p>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p>
+              <p v-if="props.createOnly">选择资产归属并填写基本信息。</p>
+              <p v-else>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
-          <div class="capability-master-note">
+          <HarnessCatalogCreateScope
+            v-if="props.createOnly"
+            :level="filterForm.level"
+            :department-path="departmentSegments"
+            :department-tree="props.departmentTree"
+            :product-name="filterForm.product"
+            :products="productOptions"
+            :products-loading="productsLoading"
+            :disabled="editor.submitting"
+            :permission-path="props.defaultDepartmentPath"
+            :allowed-department-paths="props.allowedDepartmentPaths"
+            @level-change="
+              filterForm.level = $event;
+              onLevelChange();
+            "
+            @department-change="onDepartmentDone"
+            @product-change="
+              filterForm.product = $event;
+              onProductChange();
+            "
+          />
+          <div v-if="!props.createOnly" class="capability-master-note">
             <b>部门语义</b>
             <span>Owner 所在部门是人员属性，不作为 {{ capabilityLabel }} 的规划归属。</span>
           </div>
@@ -1325,15 +1415,20 @@ onMounted(async () => {
                 {{
                   '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c' +
                   requiredCapabilityNamePrefix +
-                  '\u201d\u5f00\u5934'
+                  '\u201d\u5f00\u5934\uff0c\u4ec5\u4f7f\u7528\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u8fde\u5b57\u7b26\u3002'
                 }}
+              </small>
+              <small v-else-if="suggestedCapabilityNamePrefix" class="capability-name-prefix-hint">
+                建议使用“{{
+                  suggestedCapabilityNamePrefix
+                }}”作为名称前缀，仅使用小写字母、数字和连字符。
               </small>
             </label>
             <label class="is-wide">
               <span>{{ capabilityLabel }} 说明 *</span>
               <textarea v-model.trim="editor.description" rows="4" maxlength="300" />
             </label>
-            <label class="person-search" @keydown.esc="closeOwnerPersonSearch">
+            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
               <div class="person-search__control">
                 <input
@@ -1378,7 +1473,10 @@ onMounted(async () => {
                 </template>
               </div>
             </label>
-            <label class="person-search" @keydown.esc="closeDevelopOwnerPersonSearch">
+            <label
+              class="develop-owner-picker person-search"
+              @keydown.esc="closeDevelopOwnerPersonSearch"
+            >
               <span>开发责任人 *</span>
               <div class="person-search__control">
                 <input
@@ -1475,6 +1573,10 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.capability-master-panel.is-create-only {
+  display: contents;
+}
+
 .capability-master-panel {
   display: flex;
   flex-direction: column;
@@ -1517,7 +1619,7 @@ onMounted(async () => {
   font-style: normal;
 }
 .capability-master-field input,
-.capability-master-field select {
+.capability-master-field :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   height: 38px;
@@ -1543,7 +1645,7 @@ onMounted(async () => {
   box-shadow: none;
 }
 .capability-master-field input:focus,
-.capability-master-field select:focus {
+.capability-master-field :is(select, .harness-select):focus {
   border-color: #6285f5;
   box-shadow: 0 0 0 3px rgba(75, 103, 241, 0.11);
 }
@@ -1621,6 +1723,7 @@ onMounted(async () => {
   box-shadow: 0 10px 28px rgba(35, 52, 84, 0.06);
 }
 .capability-master-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1868,41 +1971,6 @@ td.is-description > span {
   color: #64748b;
   text-align: center;
 }
-.capability-master-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  color: #64748b;
-  font-size: 13px;
-}
-.capability-master-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.capability-master-pagination select,
-.capability-master-pagination button {
-  height: 32px;
-  border: 1px solid #dbe5f2;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #253857;
-  font: inherit;
-  font-size: 13px;
-}
-.capability-master-pagination select {
-  padding: 0 8px;
-}
-.capability-master-pagination button {
-  padding: 0 10px;
-  cursor: pointer;
-}
-.capability-master-pagination button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
 .capability-master-overlay {
   position: fixed;
   z-index: 1300;
@@ -1922,6 +1990,32 @@ td.is-description > span {
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
+}
+.capability-master-dialog.is-create-dialog {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(1206px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+.capability-master-dialog.is-create-dialog > header,
+.capability-master-dialog.is-create-dialog > .catalog-create-scope,
+.capability-master-dialog.is-create-dialog > .capability-master-error,
+.capability-master-dialog.is-create-dialog > footer {
+  flex: 0 0 auto;
+}
+.capability-master-dialog.is-create-dialog > .catalog-create-scope {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(210px, 0.6fr);
+}
+.capability-master-dialog.is-create-dialog > .capability-master-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
 }
 .capability-master-dialog > header {
   display: flex;
@@ -1991,7 +2085,7 @@ td.is-description > span {
 }
 .capability-master-form input,
 .capability-master-form textarea,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   padding: 11px 13px;
@@ -2041,13 +2135,13 @@ td.is-description > span {
 }
 .capability-master-form input,
 .capability-master-form textarea,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   padding: 0 11px;
   border-color: #d7dfeb;
   font-size: 11px;
 }
 .capability-master-form input,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   height: 40px;
 }
 .capability-master-form textarea {
@@ -2201,14 +2295,22 @@ td.is-description > span {
   font-size: 13px;
   font-weight: 700;
 }
+@media (max-height: 760px) {
+  .capability-master-dialog.is-create-dialog {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    padding: 18px 22px;
+  }
+  .capability-master-dialog.is-create-dialog > header {
+    margin-bottom: 12px;
+  }
+  .capability-master-dialog.is-create-dialog > footer {
+    margin-top: 12px;
+  }
+}
 @media (max-width: 1100px) {
-  .capability-master-panel {
-    height: auto;
-    overflow: visible;
-  }
-  .capability-master-board {
-    flex: 0 0 auto;
-  }
   .capability-master-filter {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

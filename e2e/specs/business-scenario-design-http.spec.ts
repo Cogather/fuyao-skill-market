@@ -1,3 +1,4 @@
+import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import type { WorkflowDetail } from '../../src/services/skillMarket/businessScenarioDesignService';
 
@@ -36,6 +37,7 @@ test.describe('业务场景设计 HTTP', () => {
         }),
       );
       let rejectCode = false;
+      let rejectDelete = false;
       let pauseMetadataSave = false;
       let finishMetadataSave: (() => void) | undefined;
       let currentSceneName = '代码生成';
@@ -79,17 +81,54 @@ test.describe('业务场景设计 HTTP', () => {
         else if (path.endsWith('/scene-activity/scene') && method === 'GET')
           data = [
             {
+              ...detail,
               firstScene: '研发',
               secondScene: currentSceneName,
               sort: 0,
-              ...detail,
               commands: undefined,
               assetPool: undefined,
               stages: undefined,
               steps: undefined,
             },
           ];
-        else if (path.endsWith('/scene-activity/scene') && method === 'POST') {
+        else if (path.endsWith('/scene/name')) {
+          expect(body.oldSecondScene).toBe(currentSceneName);
+          currentSceneName = body.newSecondScene;
+          data = null;
+        } else if (path.endsWith('/scene-activity/activity') && method === 'GET') {
+          data = detail.stages.flatMap((stage) =>
+            (stage.steps.length ? stage.steps : [null]).map((node) => ({
+              firstScene: '研发',
+              secondScene: currentSceneName,
+              activityNodeName: stage.activityNodeName,
+              subActivityNodeName: node?.subActivityNodeName || null,
+              sort: 0,
+            })),
+          );
+        } else if (path.endsWith('/activity/name')) {
+          const stage = detail.stages.find(
+            (item) => item.activityNodeName === body.oldActivityNodeName,
+          )!;
+          const node = stage.steps.find(
+            (item) => item.subActivityNodeName === body.oldSubActivityNodeName,
+          )!;
+          node.subActivityNodeName = body.newSubActivityNodeName;
+          data = null;
+        } else if (path.endsWith('/scene-activity/activity') && method === 'DELETE') {
+          if (rejectDelete)
+            return route.fulfill({
+              json: { meta: { success: false, message: '删除失败，请重试' }, data: null },
+            });
+          const stage = detail.stages.find(
+            (item) => item.activityNodeName === url.searchParams.get('activityNodeName'),
+          )!;
+          stage.steps = stage.steps.filter(
+            (item) => item.subActivityNodeName !== url.searchParams.get('subActivityNodeName'),
+          );
+          if (!url.searchParams.has('subActivityNodeName'))
+            detail.stages = detail.stages.filter((item) => item !== stage);
+          data = null;
+        } else if (path.endsWith('/scene-activity/scene') && method === 'POST') {
           currentSceneName = body.scenes.find((scene: any) => scene.secondScene)?.secondScene;
           detail.sceneExtensionCode = null;
           detail.secondSceneDescription = null;
@@ -109,7 +148,7 @@ test.describe('业务场景设计 HTTP', () => {
             {
               key: 'assets',
               label: 'Skill / Agent 集成',
-              state: detail.stages[0]!.steps[0]!.boundAssets.length ? 'done' : 'todo',
+              state: detail.stages[0]?.steps[0]?.boundAssets.length ? 'done' : 'todo',
               reason: '',
             },
           ];
@@ -301,9 +340,12 @@ test.describe('业务场景设计 HTTP', () => {
         const form = wizard.locator('.capability-create-form');
         for (const label of ['开发责任人 *', '责任人 *']) {
           await form.getByRole('combobox', { name: label, exact: true }).fill('张三');
-          await form.getByRole('option', { name: /u1/ }).click();
+          await page
+            .getByRole('listbox', { name: `${label}搜索结果`, exact: true })
+            .getByRole('option', { name: /u1/ })
+            .click();
         }
-        await form.getByPlaceholder('描述 *').fill('HTTP 创建能力');
+        await form.getByPlaceholder('请输入描述').fill('HTTP 创建能力');
         await form.locator('input[type="date"]').fill('2026-12-31');
       }
       if (missingCommandName) {
@@ -336,9 +378,9 @@ test.describe('业务场景设计 HTTP', () => {
             .fill(`demo-created-${type.toLowerCase()}`);
           await fillCapabilityPeople();
           await wizard.getByRole('button', { name: '创建并加入资产清单', exact: true }).click();
-          await wizard
-            .locator('.assignment select')
-            .selectOption({ label: `demo-created-${type.toLowerCase()}（${type}）` });
+          await selectHarnessOption(wizard.getByRole('combobox', { name: /分配资产$/ }), {
+            label: `demo-created-${type.toLowerCase()}（${type}）`,
+          });
         }
       } else {
         await wizard.locator('.capability-trigger').click();
@@ -352,11 +394,13 @@ test.describe('业务场景设计 HTTP', () => {
           .getByRole('button', { name: '+ 添加', exact: true })
           .click();
         await wizard.getByRole('searchbox', { name: '搜索 Skill' }).press('Escape');
-        await wizard.locator('select').selectOption({ label: 'demo-coding（Skill）' });
+        await selectHarnessOption(wizard.getByRole('combobox'), { label: 'demo-coding Skill' });
       }
       await wizard.getByRole('button', { name: '完成设计', exact: true }).click();
       await expect(wizard).toHaveCount(0);
-      await expect(panel.locator('.workflow-card')).toContainText('设计完成');
+      await expect(
+        panel.locator('.workflow-card').getByRole('button', { name: '查看设计', exact: true }),
+      ).toBeVisible();
       const poolAdd = calls.findIndex((call) => call.path.endsWith('/asset-pool/add'));
       const binding = calls.findIndex((call) =>
         call.path.endsWith('/skills/config/supplement/add'),
@@ -369,12 +413,15 @@ test.describe('业务场景设计 HTTP', () => {
         expect(call.query.get('userId')).toBe('designer');
         expect(call.body).not.toHaveProperty('userId');
       }
-      const sceneRefresh = calls.findIndex(
-        (call) => call.path.endsWith('/scene-activity/scene') && call.method === 'POST',
+      const sceneRename = calls.findIndex(
+        (call) => call.path.endsWith('/scene/name') && call.method === 'PUT',
       );
       const sceneCode = calls.findIndex((call) => call.path.endsWith('/scene/code'));
-      expect(sceneRefresh).toBeGreaterThan(-1);
-      expect(sceneCode).toBeGreaterThan(sceneRefresh);
+      expect(sceneRename).toBeGreaterThan(-1);
+      expect(sceneCode).toBeGreaterThan(sceneRename);
+      expect(
+        calls.some((call) => call.path.endsWith('/scene-activity/scene') && call.method === 'POST'),
+      ).toBe(false);
       expect(calls[sceneCode]!.body).toMatchObject({
         secondScene: '代码生成新版',
         sceneExtensionCode: 'demo-design',
@@ -396,12 +443,17 @@ test.describe('业务场景设计 HTTP', () => {
         }
       }
       const command = calls.find((call) => call.path.endsWith('/commands/config/supplement/add'))!;
+      expect(command.body.commandName).toBe(
+        missingCommandName ? 'demo-created-command' : 'demo-start',
+      );
       expect(command.body.activityNodeName).toBeNull();
       expect(command.body.subActivityNodeName).toBeNull();
       expect(command.query.get('dimCode')).toBe('p-demo');
       await mount();
       await expect(panel.getByRole('heading', { name: '服务端工作流', exact: true })).toBeVisible();
-      await expect(panel.locator('.workflow-card')).toContainText('设计完成');
+      await expect(
+        panel.locator('.workflow-card').getByRole('button', { name: '查看设计', exact: true }),
+      ).toBeVisible();
       await panel.locator('.workflow-card .progress').getByRole('button').first().click();
       for (const index of [3, 2, 1, 0]) {
         await expect(steps.nth(index)).toBeEnabled();
@@ -421,6 +473,93 @@ test.describe('业务场景设计 HTTP', () => {
         missingCommandName,
       );
       await expect(wizard.getByLabel(/^场景编码/)).toHaveValue('demo-design');
+      // Saved assets no longer prevent renaming the scene or its bound activity.
+      await wizard.getByLabel(/^场景名称/).fill('已绑定资产的新版场景');
+      await wizard.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+      expect(currentSceneName).toBe('已绑定资产的新版场景');
+      const boundAssetsBeforeRename = structuredClone(detail.stages[0]!.steps[0]!.boundAssets);
+      await steps.nth(1).click();
+      await wizard.locator('.node-row').getByRole('button', { name: '编辑', exact: true }).click();
+      await wizard.getByPlaceholder('节点名称', { exact: true }).fill('代码实现');
+      await wizard.getByRole('button', { name: '保存节点', exact: true }).click();
+      await wizard.getByRole('button', { name: '保存', exact: true }).click();
+      await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+      expect(detail.stages[0]!.steps[0]!.subActivityNodeName).toBe('代码实现');
+      expect(detail.stages[0]!.steps[0]!.boundAssets).toEqual(boundAssetsBeforeRename);
+      const browserDialogs: string[] = [];
+      page.on('dialog', async (dialog) => {
+        browserDialogs.push(dialog.message());
+        await dialog.dismiss();
+      });
+      const deleteCount = () => calls.filter((call) => call.method === 'DELETE').length;
+      const beforeDelete = deleteCount();
+      await wizard.getByLabel('流程名称', { exact: true }).fill('');
+      await wizard.locator('.node-row').getByRole('button', { name: '删除', exact: true }).click();
+      const nodeConfirmation = page.getByRole('dialog', { name: '删除节点', exact: true });
+      const beforeInvalidDelete = calls.filter((call) => call.method !== 'GET').length;
+      await nodeConfirmation.getByRole('button', { name: '确认删除', exact: true }).click();
+      await expect(nodeConfirmation.getByRole('alert')).toHaveText('请填写流程名称');
+      expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(beforeInvalidDelete);
+      await nodeConfirmation.getByRole('button', { name: '取消', exact: true }).click();
+      await wizard.getByLabel('流程名称', { exact: true }).fill('服务端工作流');
+      await wizard
+        .locator('.edit-stage > header')
+        .getByRole('button', { name: '编辑', exact: true })
+        .click();
+      await wizard.getByPlaceholder('环节名称', { exact: true }).fill('尚未保存的环节名称');
+      await wizard.locator('.node-row').getByRole('button', { name: '删除', exact: true }).click();
+      await expect(nodeConfirmation).toBeVisible();
+      await expect(nodeConfirmation).toContainText('代码实现');
+      expect(deleteCount()).toBe(beforeDelete);
+      const box = (await nodeConfirmation.boundingBox())!;
+      const viewport = page.viewportSize()!;
+      expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThan(2);
+      expect(Math.abs(box.y + box.height / 2 - viewport.height / 2)).toBeLessThan(2);
+      await nodeConfirmation.screenshot({
+        path: `test-results/workflow-delete-${missingCommandName ? 'missing-command' : 'standard'}.png`,
+      });
+      await nodeConfirmation.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(wizard.locator('.node-row')).toHaveCount(1);
+      expect(deleteCount()).toBe(beforeDelete);
+      await wizard.locator('.node-row').getByRole('button', { name: '删除', exact: true }).click();
+      rejectDelete = true;
+      await nodeConfirmation.getByRole('button', { name: '确认删除', exact: true }).click();
+      await expect(nodeConfirmation.getByRole('alert')).toContainText('删除失败');
+      await expect(page.locator('.wizard .node-row')).toHaveCount(1);
+      expect(detail.stages[0]!.steps).toHaveLength(1);
+      rejectDelete = false;
+      await nodeConfirmation.getByRole('button', { name: '确认删除', exact: true }).click();
+      await expect(nodeConfirmation).toHaveCount(0);
+      await expect(wizard.locator('.node-row')).toHaveCount(0);
+      await expect(wizard.getByPlaceholder('环节名称', { exact: true })).toHaveValue(
+        '尚未保存的环节名称',
+      );
+      await expect(wizard.locator('.wizard-save-status')).toContainText('有未保存修改');
+      await wizard
+        .locator('.structure-draft')
+        .getByRole('button', { name: '取消', exact: true })
+        .click();
+      await expect(wizard.locator('.wizard-save-status')).toHaveText('已保存');
+      expect(detail.stages[0]!.steps).toHaveLength(0);
+      expect(detail.assetPool.length).toBeGreaterThan(0);
+      const activityDelete = calls.find(
+        (call) => call.path.endsWith('/scene-activity/activity') && call.method === 'DELETE',
+      )!;
+      expect(activityDelete.query.get('subActivityNodeName')).toBe('代码实现');
+      expect(calls.some((call) => /config\/supplement\/delete/.test(call.path))).toBe(false);
+      await wizard
+        .locator('.edit-stage > header')
+        .getByRole('button', { name: '删除', exact: true })
+        .click();
+      const stageConfirmation = page.getByRole('dialog', { name: '删除环节', exact: true });
+      await expect(stageConfirmation).toBeVisible();
+      await stageConfirmation.getByRole('button', { name: '确认删除', exact: true }).click();
+      await expect(stageConfirmation).toHaveCount(0);
+      await expect(wizard.locator('.edit-stage')).toHaveCount(0);
+      expect(detail.stages).toHaveLength(0);
+      expect(browserDialogs).toEqual([]);
+      await steps.nth(0).click();
       rejectCode = true;
       await wizard.getByLabel(/^场景编码/).fill('demo-rejected');
       await wizard.getByRole('button', { name: '保存', exact: true }).click();

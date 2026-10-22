@@ -11,6 +11,7 @@ export interface SkillMasterVersion {
   uploadedAt: string;
   mrId?: string;
   repoUrl?: string;
+  reportUrl?: string;
   tagName?: string | null;
 }
 
@@ -166,6 +167,7 @@ export function normalizeSkillMasterVersions(value: unknown): SkillMasterVersion
         uploadedAt: normalize(record.uploadedAt),
         mrId: normalize(record.mrId),
         repoUrl: normalize(record.repoUrl),
+        reportUrl: normalize(record.reportUrl),
         tagName: record.tagName == null ? null : normalize(record.tagName),
       };
     })
@@ -366,6 +368,19 @@ export function updateSkillMasterRecord(
   Object.assign(record, normalized, { updatedAt: new Date().toISOString() });
   persist(records);
   return cloneRecord(record);
+}
+
+export function updateSkillMasterPerson(
+  id: string,
+  field: 'owner' | 'developOwner',
+  label: string,
+): void {
+  const records = readRecords();
+  const record = records.find((item) => item.id === id);
+  if (!record) throw new Error('未找到该 Skill');
+  record[field] = label;
+  record.updatedAt = new Date().toISOString();
+  persist(records);
 }
 
 export function deleteSkillMasterRecord(id: string): void {

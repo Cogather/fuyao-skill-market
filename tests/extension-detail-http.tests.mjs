@@ -93,6 +93,8 @@ try {
       dimCode: '30222',
       dimName: 'Udm产品部',
       extensionName: 'udm-mml-e2e-extension',
+      firstScene: '应用开发',
+      secondScene: 'mml代码开发',
     },
   });
   assert.equal(bindingCalls, 0, 'known names do not reload the entire binding tree');
@@ -114,53 +116,68 @@ try {
   );
   assert.equal(detail.releases[0].status, '成功');
 
+  for (const publishChecks of [
+    {
+      beta: {
+        canPublish: false,
+        message: '当前配置与已发布版本 v1.0.0 完全一致，无需重新发布',
+      },
+      product: { canPublish: true, message: '  清单完备，可发布  ' },
+    },
+    {
+      beta: { canPublish: true, message: '' },
+      product: { canPublish: false, message: '' },
+    },
+    undefined,
+  ]) {
+    detailResponse = success({ ...detailData, publishChecks });
+    const checked = await queryHttpExtensionBindings('user-001', scope, namedScene);
+    assert.deepEqual(
+      checked.publishChecks,
+      publishChecks,
+      'retain each channel check and its exact message',
+    );
+    assert.equal(checked.publishable, true, 'publishChecks do not change scene readiness');
+  }
+  detailResponse = success(detailData);
+
   calls.length = 0;
   historyCalls = 0;
   const discovered = await queryHttpExtensionBindings('user-001', scope, emptyScene);
-  assert.equal(bindingCalls, 1);
-  assert.equal(
-    calls.length,
-    1,
-    'the initial scene selection discovers its Extension name, then loads detail',
-  );
-  assert.equal(historyCalls, 1, 'initial selection does not request release history twice');
+  assert.equal(bindingCalls, 0);
+  assert.equal(calls.length, 1, 'scene names directly load single detail without bulk discovery');
+  assert.equal(historyCalls, 0, 'publish preparation must never request release history');
+  assert.deepEqual(calls[0].data, {
+    dimType: scope.dimType,
+    dimCode: scope.dimCode,
+    dimName: scope.dimName,
+    firstScene: emptyScene.primary,
+    secondScene: emptyScene.name,
+  });
   assert.equal(discovered.capabilities.agent[0].name, 'udm-coding-agent');
 
-  skillBaseService.queryPublishedHistoryList = async () =>
-    success([
-      {
-        id: 'release-1',
-        firstScene: '应用开发',
-        secondScene: 'mml代码开发',
-        extensionName: 'udm-mml-e2e-extension',
-        version: '1.0.0',
-        publishStatus: 'processing',
-        description: '历史描述',
-        operatorName: '原发布人',
-        userId: 'publisher-1',
-        publishedAt: '2026-08-01 10:00:00',
-        targetOrgName: '原目标组织',
-        releaseType: 'product',
-        agents: [{ name: 'historical-agent', version: '1.0.0' }],
-      },
-    ]);
-  const withHistory = await queryHttpExtensionBindings('user-001', scope, namedScene);
+  skillBaseService.queryPublishedHistoryList = async () => {
+    assert.fail('history service is unavailable and must not affect publication');
+  };
+  const withoutHistory = await queryHttpExtensionBindings('user-001', scope, namedScene);
+  assert.equal(withoutHistory.publishing, null);
+  assert.equal(withoutHistory.releases.length, 1);
+  assert.equal(withoutHistory.releases[0].version, '1.0.0');
+  assert.equal(withoutHistory.releases[0].status, '成功');
+  detailResponse = success({
+    ...detailData,
+    publishedExtension: {
+      ...detailData.publishedExtension,
+      publishStatus: '发布中',
+    },
+  });
+  const publishing = await queryHttpExtensionBindings('user-001', scope, namedScene);
   assert.equal(
-    withHistory.publishing,
-    null,
-    'new detail status supersedes a stale processing status',
+    publishing.publishing.version,
+    '1.0.0',
+    'publication in progress comes from detail summary',
   );
-  assert.equal(
-    withHistory.releases.length,
-    1,
-    'summary and history of the same version are merged',
-  );
-  assert.equal(withHistory.releases[0].id, 'release-1');
-  assert.equal(withHistory.releases[0].operator.name, '原发布人');
-  assert.equal(withHistory.releases[0].organization, '原目标组织');
-  assert.equal(withHistory.releases[0].channel, 'Product');
-  assert.equal(withHistory.releases[0].items[0].name, 'historical-agent');
-  skillBaseService.queryPublishedHistoryList = async () => success([]);
+  assert.deepEqual(publishing.releases, []);
 
   detailResponse = success({ ...detailData, readyStatus: '不完备', publishedExtension: null });
   const incomplete = await queryHttpExtensionBindings('user-001', scope, namedScene);
@@ -175,27 +192,13 @@ try {
   );
 
   calls.length = 0;
-  skillBaseService.querySceneAndBindingPlanningItems = async () =>
-    success([
-      {
-        firstScene: emptyScene.primary,
-        secondScenes: [
-          {
-            secondScene: emptyScene.name,
-            readyStatus: '已就绪',
-            publishedExtension: null,
-            components: detailData.components,
-          },
-        ],
-      },
-    ]);
+  detailResponse = success({ ...detailData, publishedExtension: null });
   const unpublished = await queryHttpExtensionBindings('user-001', scope, emptyScene);
-  assert.equal(
-    calls.length,
-    0,
-    'unpublished scenes without an Extension name still load legacy bindings',
-  );
+  assert.equal(calls.length, 1, 'unpublished scenes also load POST detail by scene names');
   assert.equal(unpublished.capabilities.agent[0].name, 'udm-coding-agent');
+  detailResponse = success({ ...detailData, readyStatus: '未配置', publishedExtension: null });
+  const unconfigured = await queryHttpExtensionBindings('user-001', scope, emptyScene);
+  assert.equal(unconfigured.publishable, false, '未配置 must block publication');
 
   let publishRequest;
   skillBaseService.saveExtension = async (params, body) => {
@@ -235,8 +238,46 @@ try {
     },
     'publishing keeps the existing API payload, including extensionName',
   );
+  const publishChecks = {
+    beta: {
+      canPublish: false,
+      message: '当前配置与已发布版本 v1.0.0 完全一致，无需重新发布',
+    },
+    product: { canPublish: true, message: '清单完备，可发布' },
+  };
+  publishRequest = undefined;
+  await assert.rejects(
+    publishHttpExtension({
+      userId: 'user-001',
+      operatorName: '发布人',
+      scope: { ...scope, dimName: 'udm' },
+      scene: { ...unpublished, publishChecks },
+      extensionName: 'udm-mml-e2e-extension',
+      description: '扩展说明',
+      channel: 'beta',
+      organization: { id: 'org-1', name: '组织一', deptId: '', deptName: '' },
+    }),
+    { message: publishChecks.beta.message },
+  );
+  assert.equal(publishRequest, undefined, 'a failed beta check must not submit a beta release');
+  await publishHttpExtension({
+    userId: 'user-001',
+    operatorName: '发布人',
+    scope: { ...scope, dimName: 'udm' },
+    scene: { ...unpublished, publishChecks },
+    extensionName: 'udm-mml-e2e-extension',
+    description: '扩展说明',
+    channel: 'product',
+    organization: { id: 'org-1', name: '组织一', deptId: '', deptName: '' },
+  });
+  assert.equal(
+    publishRequest.body.releaseType,
+    'product',
+    'a publishable product check allows a product release',
+  );
+  console.log('PASS publishChecks are preserved by channel and block only the selected channel');
   console.log(
-    'PASS Extension detail request/mapping, initial name discovery, readiness, error handling, and legacy publishing',
+    'PASS Extension detail request/mapping, scene-name lookup, readiness, error handling, and legacy publishing',
   );
 } finally {
   await server.close();
