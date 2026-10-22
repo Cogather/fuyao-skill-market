@@ -661,8 +661,7 @@ onBeforeUnmount(() => {
                     <pre
                       v-if="expandedDetailFilePath === file.path"
                       class="task-detail-file-content"
-                      >{{ file.loading ? '正在加载…' : file.error || file.content || '(空)' }}</pre
-                    >
+                      >{{ file.loading ? '正在加载…' : file.error || file.content || '(空)' }}</pre>
                   </li>
                 </ul>
                 <div v-else class="task-detail-state">暂无文件</div>

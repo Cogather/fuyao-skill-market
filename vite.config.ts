@@ -12,7 +12,7 @@ const skillDebugFallbackPath = path.resolve(__dirname, 'src/views/SkillMarketPag
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
-  const fuyaoTarget = 'https://fuyao.rnd.huawei.com';
+  const fuyaoTarget = 'https://fuyao.xxx.com';
 
   return {
     base: env.VITE_BASE || '/',

@@ -25,6 +25,7 @@
 ### Task 1: Correct component list/detail transport contracts
 
 **Files:**
+
 - Modify: `src/services/skillMarket/apiTypes.ts:761-825`
 - Modify: `src/services/skillMarket/skillBaseService.ts:503-524`
 - Modify: `src/services/skillMarket/assetManagementTypes.ts:80-116,156-160`
@@ -33,6 +34,7 @@
 - Test: `tests/harness-asset-detail-http.tests.mjs`
 
 **Interfaces:**
+
 - Produces: `HarnessAssetQueryStatus = '开发中' | '待发布' | '已发布'`.
 - Produces: `HarnessAssetPageQuery.status?: HarnessAssetQueryStatus`.
 - Produces: optional `skillId`, `agentId`, and `commandId` on `HarnessAssetComponentDto` and `HarnessAsset`.
@@ -132,8 +134,8 @@
   Add `skillId?: string | null`, `agentId?: string | null`, and `commandId?: string | null` to the response DTO and normalized asset. Route both service calls through `httpRequest.harnessApi`:
 
   ```ts
-  url: '/components/query'
-  url: '/components/detail'
+  url: '/components/query';
+  url: '/components/detail';
   ```
 
   In `queryHttpHarnessAssetPage`, trim and forward `page.status`, then copy the three IDs without synthesizing one as a backend entity ID. Keep the existing stable UI `id` fallback.
@@ -154,10 +156,12 @@
 ### Task 2: Make type and status tabs server-driven
 
 **Files:**
+
 - Modify: `src/views/skill/AgentSkillAssetsPage.vue:41-104,415-441,626-804,1228-1244`
 - Test: `e2e/specs/harness-assets-query-http.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `HarnessAssetPageQuery.status` from Task 1.
 - Produces: `selectStatusFilter(nextFilter: AssetStatusFilter): Promise<void>`.
 - Produces: page-level `assetTotal` reflecting `ComponentQueryItem.total` for the active query.
@@ -224,6 +228,7 @@
 ### Task 3: Load frozen Extension version contents from version-history
 
 **Files:**
+
 - Modify: `src/services/skillMarket/apiTypes.ts`
 - Modify: `src/services/skillMarket/skillBaseService.ts`
 - Modify: `src/services/skillMarket/extensionPublishHttp.ts:500-522,659-707`
@@ -232,6 +237,7 @@
 - Test: `tests/harness-asset-detail-http.tests.mjs`
 
 **Interfaces:**
+
 - Produces: `QueryExtensionVersionHistoryParams` with `userId`, `dimType`, `dimCode`, `name`, and optional `version`.
 - Produces: `ExtensionVersionHistoryDto` containing Extension metadata and frozen `skills`, `commands`, `agents` arrays of `{ name, version }`.
 - Changes: `queryHttpExtensionVersionCapabilities(userId, scope, identity, version)` where `identity` contains `name` instead of first/second scene names.
@@ -256,8 +262,8 @@
     releaseType: 'Product',
     skills: [{ name: 'selected-skill', version: '0.9.0' }],
     commands: [{ name: 'selected-command', version: '0.8.0' }],
-    agents: [{ name: 'selected-agent', version: '0.7.0' }]
-  })
+    agents: [{ name: 'selected-agent', version: '0.7.0' }],
+  });
   ```
 
   Assert the real request is:
@@ -322,10 +328,12 @@
 ### Task 4: Focused regression verification
 
 **Files:**
+
 - Verify: all files modified by Tasks 1-3
 - Update only if assertions reflect the superseded contract: `e2e/specs/extension-detail-http.spec.ts`, `e2e/specs/harness-assets-query-http.spec.ts`
 
 **Interfaces:**
+
 - Consumes all preceding task outputs.
 - Produces no new runtime API.
 

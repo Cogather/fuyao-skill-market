@@ -1321,8 +1321,7 @@ onBeforeUnmount(() => {
                               : fileErrors[fileKey(currentScene, capability, file.name)] ||
                                 file.content ||
                                 '(空)'
-                          }}</pre
-                        >
+                          }}</pre>
                       </li>
                       <li v-if="capability.files.length === 0" class="folder-empty">暂无文件</li>
                     </template>

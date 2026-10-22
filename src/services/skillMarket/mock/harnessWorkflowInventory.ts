@@ -357,8 +357,7 @@ function ensureExtensionBridgeScenes(departmentName: string): void {
   for (const record of extensionBridgeSceneRecords) {
     const exists = scenes.some(
       (item) =>
-        item.id === record.id ||
-        (item.parentId === record.parentId && item.name === record.name),
+        item.id === record.id || (item.parentId === record.parentId && item.name === record.name),
     );
     if (exists) continue;
     scenes.push({ ...record });
