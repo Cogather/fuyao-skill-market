@@ -257,6 +257,7 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
     restrictToPermissionDepartments.value && activeHarnessTab.value === 'scenarios',
 }));
 const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
+  const level = scenarioWorkspace.scopeLevel.value;
   const product = scenarioWorkspace.products.find(
     (item) => item._id === scenarioWorkspace.productId.value,
   );
@@ -265,10 +266,10 @@ const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
   );
   return product && department
     ? {
-        level: '产品级',
+        level,
         departmentPath: department.path,
-        offeringId: product.code,
-        offeringName: product.name,
+        offeringId: level === '产品级' ? product.code : '',
+        offeringName: level === '产品级' ? product.name : '',
       }
     : undefined;
 });

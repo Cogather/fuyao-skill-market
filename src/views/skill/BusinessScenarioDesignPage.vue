@@ -4,8 +4,13 @@ import { computed, nextTick, reactive, ref, watch } from 'vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
 import WorkflowCapabilityPicker from '../../components/skill/WorkflowCapabilityPicker.vue';
 import WorkflowPersonPicker from '../../components/skill/WorkflowPersonPicker.vue';
+import WorkflowInheritanceDialog from '../../components/skill/WorkflowInheritanceDialog.vue';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningService';
 import type { WorkflowCapabilityOption } from '../../services/skillMarket/workflowCapabilitySearchService';
+import type {
+  WorkflowInheritancePage,
+  WorkflowInheritanceSource,
+} from '../../services/skillMarket/workflowInheritanceService';
 import {
   getProductCatalogItemNamePrefix,
   getSuggestedProductCatalogItemNamePrefix,
@@ -32,10 +37,12 @@ const {
   workflows,
   assets,
   commands,
+  scopeLevel,
   selectedDeptId,
   productId,
   selectedScenarioId,
   productOptions,
+  selectLevel,
   selectDepartment,
   loading,
   available,
@@ -123,6 +130,10 @@ const scenarioDialogTitle = computed(() =>
 const deleteTarget = ref<Scenario | null>(null);
 const tagTarget = ref<Scenario | null>(null);
 const wizard = ref<Wizard | null>(null);
+const inheritanceOpen = ref(false);
+const inheritanceBusy = ref(false);
+const inheritanceError = ref('');
+let inheritanceOpener: HTMLElement | null = null;
 const capabilitySaving = ref(false);
 const structureDeleting = ref(false);
 const structureDeleteTarget = ref<{
@@ -170,11 +181,16 @@ const scenarioError = ref('');
 const scenarioForm = reactive({ name: '', code: '', description: '', tags: [] as string[] });
 const uid = (prefix: string) => `${prefix}${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 const currentProduct = computed(() => products.find((item) => item._id === productId.value));
+const catalogProductName = computed(() =>
+  scopeLevel.value === '产品级' ? (currentProduct.value?.name ?? '') : '',
+);
 const productCatalogItemPrefix = computed(() =>
-  getProductCatalogItemNamePrefix('产品级', currentProduct.value?.name ?? ''),
+  getProductCatalogItemNamePrefix(scopeLevel.value, catalogProductName.value),
 );
 const suggestedProductCatalogItemPrefix = computed(() =>
-  getSuggestedProductCatalogItemNamePrefix(currentProduct.value?.name ?? ''),
+  scopeLevel.value === '产品级'
+    ? getSuggestedProductCatalogItemNamePrefix(currentProduct.value?.name ?? '')
+    : '',
 );
 function isLocalProductOption(item: { sourceId?: string; productId?: string; name: string }) {
   if (item.sourceId) return false;
@@ -207,19 +223,23 @@ const currentWorkflows = computed(() =>
   workflows.filter((item) => item.scenarioId === selectedScenarioId.value),
 );
 const assetById = computed(() => new Map(assets.map((item) => [item._id, item])));
-watch([selectedDeptId, productId, selectedScenarioId, available], () => {
+watch([scopeLevel, selectedDeptId, productId, selectedScenarioId, available], () => {
   if (
     wizard.value &&
     (!available.value || wizard.value.workflow.scenarioId !== selectedScenarioId.value)
   )
     dismissWizard();
 });
-watch([selectedDeptId, productId], () => {
+watch([scopeLevel, selectedDeptId, productId], () => {
   if (scenarioDialog.value) closeScenarioDialog();
   if (deleteTarget.value) closeDeleteDialog();
   if (tagTarget.value) closeTagDialog();
+  if (inheritanceOpen.value) dismissInheritanceDialog(false);
 });
-watch([selectedDeptId, productId, available], () => {
+watch(selectedScenarioId, () => {
+  if (inheritanceOpen.value) dismissInheritanceDialog(false);
+});
+watch([scopeLevel, selectedDeptId, productId, available], () => {
   sortingScope += 1;
   clearScenarioDrag();
   sortingMessage.value = '';
@@ -232,7 +252,10 @@ function scenarioValidationError(
   if (!scenario.name.trim()) return '请填写场景名称';
   if (!scenario.code.trim()) return '请填写场景编码';
   if (!scenario.releaseCount) {
-    const error = validateProductCatalogItemName(scenario.code, productName);
+    const error = validateProductCatalogItemName(
+      scenario.code,
+      scopeLevel.value === '产品级' ? productName : '',
+    );
     if (error) return `场景编码不符合命名规则：${error}`;
   }
   return '';
@@ -247,7 +270,7 @@ function workflowPlanningError(workflow: Workflow): string {
   return '';
 }
 function hasMainEntry(commandsToCheck: CommandRef[], productName: string): boolean {
-  const prefix = getProductCatalogItemNamePrefix('产品级', productName).replace(/-$/, '');
+  const prefix = getProductCatalogItemNamePrefix(scopeLevel.value, productName).replace(/-$/, '');
   return commandsToCheck.some((command) => {
     const name = command.name.trim().replace(/^\//, '');
     return /^e2e(-|$)/.test(name) || Boolean(prefix && name.startsWith(`${prefix}-e2e`));
@@ -465,10 +488,7 @@ async function saveScenario() {
   const parentId = scenarioDialog.value?.parentId || null;
   const editingScenario = scenarioDialog.value?.editingScenario;
   if (!editingScenario && parentId && (!props.workspace.isHttp || scenarioForm.code.trim())) {
-    const error = validateProductCatalogItemName(
-      scenarioForm.code,
-      currentProduct.value?.name ?? '',
-    );
+    const error = validateProductCatalogItemName(scenarioForm.code, catalogProductName.value);
     if (error) {
       scenarioError.value = `场景编码不符合命名规则：${error}`;
       return;
@@ -597,6 +617,50 @@ function progress(workflow: Workflow) {
     done: states.filter((state) => state === 'done').length,
     complete: next === -1,
   };
+}
+function openInheritanceDialog() {
+  if (
+    !canEdit.value ||
+    currentScenario.value?.level !== 2 ||
+    loading.value ||
+    workflowLoading.value ||
+    wizardBusy.value ||
+    inheritanceBusy.value
+  )
+    return;
+  inheritanceOpener = activeElement();
+  inheritanceError.value = '';
+  inheritanceOpen.value = true;
+}
+function dismissInheritanceDialog(restoreFocus = true) {
+  inheritanceOpen.value = false;
+  inheritanceError.value = '';
+  const opener = inheritanceOpener;
+  inheritanceOpener = null;
+  if (restoreFocus) void nextTick(() => opener?.isConnected && opener.focus());
+}
+function closeInheritanceDialog() {
+  if (!inheritanceBusy.value) dismissInheritanceDialog();
+}
+function loadInheritancePage(query: {
+  keyword: string;
+  pageNo: number;
+  pageSize: number;
+}): Promise<WorkflowInheritancePage> {
+  return props.workspace.queryWorkflowInheritance(query);
+}
+async function confirmWorkflowInheritance(source: WorkflowInheritanceSource) {
+  if (inheritanceBusy.value) return;
+  inheritanceBusy.value = true;
+  inheritanceError.value = '';
+  try {
+    await props.workspace.inheritWorkflow(source);
+    dismissInheritanceDialog();
+  } catch (cause) {
+    inheritanceError.value = cause instanceof Error ? cause.message : 'Workflow 继承失败，请重试';
+  } finally {
+    inheritanceBusy.value = false;
+  }
 }
 async function openWizard(workflow?: Workflow, step = 0) {
   const scenario = currentScenario.value;
@@ -1131,7 +1195,7 @@ async function createCommand() {
   }
   const error = validateProductCatalogItemName(
     d.name.trim().replace(/^\//, ''),
-    currentProduct.value?.name ?? '',
+    catalogProductName.value,
   );
   if (error) {
     w.error = `Command 名称不符合命名规则：${error}`;
@@ -1204,7 +1268,7 @@ async function createAsset() {
     w.error = '计划完成时间不能早于当前日期';
     return;
   }
-  const error = validateProductCatalogItemName(d.name, currentProduct.value?.name ?? '');
+  const error = validateProductCatalogItemName(d.name, catalogProductName.value);
   if (error) {
     w.error = `资产名称不符合命名规则：${error}`;
     return;
@@ -1256,6 +1320,19 @@ async function createAsset() {
       </p>
     </header>
     <section class="selector">
+      <HarnessSelect
+        class="scope-level-select"
+        :model-value="scopeLevel"
+        aria-label="选择层级"
+        :disabled="loading || saving"
+        :searchable="false"
+        :options="[
+          { value: '产品级', label: '产品级' },
+          { value: '部门级', label: '部门级' },
+        ]"
+        @update:model-value="selectLevel($event as '产品级' | '部门级')"
+      />
+      <span class="selector-divider" aria-hidden="true"></span>
       <HarnessDepartmentPicker
         class="dept-picker"
         :active="props.active"
@@ -1264,9 +1341,9 @@ async function createAsset() {
         :disabled="saving"
         @update:model-value="selectDepartment"
       />
-      <span v-if="productOptions.length" class="divider">→</span
+      <span v-if="scopeLevel === '产品级' && productOptions.length" class="divider">→</span
       ><HarnessSelect
-        v-if="productOptions.length"
+        v-if="scopeLevel === '产品级' && productOptions.length"
         v-model="productId"
         aria-label="选择产品"
         :disabled="loading || saving"
@@ -1280,7 +1357,9 @@ async function createAsset() {
     <p v-if="workspaceError" class="error" role="alert">
       {{ workspaceError }} <button @click="props.workspace.reloadScenes()">重试加载</button>
     </p>
-    <p v-if="loading" role="status">正在加载部门、产品与场景…</p>
+    <p v-if="loading" role="status">
+      {{ scopeLevel === '产品级' ? '正在加载部门、产品与场景…' : '正在加载部门与场景…' }}
+    </p>
     <section
       class="workspace"
       :inert="!available || loading || saving ? true : undefined"
@@ -1291,7 +1370,13 @@ async function createAsset() {
           场景地图
           <button
             :disabled="!productId || !canEdit"
-            :title="productId ? '新建一级场景' : '请先选择部门与产品'"
+            :title="
+              productId
+                ? '新建一级场景'
+                : scopeLevel === '产品级'
+                  ? '请先选择部门与产品'
+                  : '请先选择部门'
+            "
             @click="openScenario(null)"
           >
             +
@@ -1312,9 +1397,11 @@ async function createAsset() {
           }}
         </p>
         <div class="tree-body" role="tree" aria-label="业务场景地图" @dragend="clearScenarioDrag">
-          <p v-if="!productId" class="tree-empty">请先在上方选择部门与产品。</p>
+          <p v-if="!productId" class="tree-empty">
+            {{ scopeLevel === '产品级' ? '请先在上方选择部门与产品。' : '请先在上方选择部门。' }}
+          </p>
           <p v-else-if="!tree().length" class="tree-empty">
-            该产品下暂无业务场景，请先创建一级场景。
+            {{ scopeLevel === '产品级' ? '该产品' : '该部门' }}下暂无业务场景，请先创建一级场景。
           </p>
           <template v-else
             ><div v-for="item in tree()" :key="item._id" class="tree-item">
@@ -1532,14 +1619,35 @@ async function createAsset() {
                 </button>
               </div>
             </div>
-            <button
-              v-if="currentScenario.level === 2 && !currentWorkflows.length"
-              class="primary start-workflow-button"
-              :disabled="!canEdit || workflowLoading || wizardBusy"
-              @click="openWizard()"
-            >
-              + 开始设计 Workflow
-            </button>
+            <div v-if="currentScenario.level === 2" class="summary-actions">
+              <button
+                class="inherit-workflow-button"
+                type="button"
+                :disabled="!canEdit || workflowLoading || wizardBusy || inheritanceBusy"
+                @click="openInheritanceDialog"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
+                  <path d="M6 4v11a4 4 0 0 0 4 4h8" />
+                  <path d="m15 16 3 3-3 3M6 8h7a4 4 0 0 1 4 4v1" />
+                  <circle cx="6" cy="4" r="2" />
+                </svg>
+                继承 Workflow
+              </button>
+              <button
+                v-if="!currentWorkflows.length"
+                class="primary start-workflow-button"
+                :disabled="!canEdit || workflowLoading || wizardBusy || inheritanceBusy"
+                @click="openWizard()"
+              >
+                + 开始设计 Workflow
+              </button>
+            </div>
           </header>
           <div v-if="currentScenario.level === 1" class="empty boxed">
             <b>一级场景为业务分组节点</b
@@ -1974,6 +2082,14 @@ async function createAsset() {
       >
     </section>
   </div>
+  <WorkflowInheritanceDialog
+    :open="inheritanceOpen"
+    :busy="inheritanceBusy"
+    :error="inheritanceError"
+    :load-page="loadInheritancePage"
+    @close="closeInheritanceDialog"
+    @confirm="confirmWorkflowInheritance"
+  />
   <Teleport to="body">
     <div v-if="wizard" class="modal harness-workspace-overlay">
       <section
@@ -2307,6 +2423,7 @@ async function createAsset() {
           <WorkflowCapabilityPicker
             :key="`command-${productId}`"
             :types="['Command']"
+            :scope-level="scopeLevel"
             :local-options="localCommandOptions"
             :selected-ids="wizard.workflow.commands.map((item) => item.commandId)"
             :query="props.workspace.queryCapabilityOptions"
@@ -2400,6 +2517,7 @@ async function createAsset() {
           <WorkflowCapabilityPicker
             :key="`asset-${productId}`"
             :types="['Agent', 'Skill']"
+            :scope-level="scopeLevel"
             :local-options="localAssetOptions"
             :selected-ids="wizard.poolIds"
             :query="props.workspace.queryCapabilityOptions"
@@ -2687,6 +2805,16 @@ async function createAsset() {
   padding: 0.85rem 1rem;
   margin-bottom: 1.25rem;
 }
+.selector > .scope-level-select {
+  min-width: 132px;
+  flex: 0 0 132px;
+}
+.selector-divider {
+  width: 1px;
+  height: 26px;
+  flex: 0 0 1px;
+  background: linear-gradient(180deg, transparent, #d8dfeb 20%, #d8dfeb 80%, transparent);
+}
 .dept-picker {
   position: relative;
   min-width: 320px;
@@ -2967,6 +3095,44 @@ async function createAsset() {
 .summary h2 {
   margin: 8px 0;
   font-size: 25px;
+}
+.summary-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+}
+.inherit-workflow-button {
+  display: inline-flex;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #b9c9f8;
+  border-radius: 7px;
+  background: #f7f9ff;
+  color: #315ce8;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+.inherit-workflow-button svg {
+  width: 16px;
+  height: 16px;
+}
+.inherit-workflow-button:not(:disabled):hover {
+  border-color: #7896f4;
+  background: #eef3ff;
+  box-shadow: 0 4px 12px rgba(49, 92, 232, 0.12);
+  transform: translateY(-1px);
 }
 .level {
   display: inline-flex;
@@ -4590,6 +4756,12 @@ h4 small {
   .selector > :is(select, .harness-select) {
     width: 100%;
     flex-basis: 100%;
+  }
+  .selector > .scope-level-select {
+    min-width: 100%;
+  }
+  .selector-divider {
+    display: none;
   }
   .design-panel {
     padding: 16px;

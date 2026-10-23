@@ -271,6 +271,7 @@ export const harnessWorkflowService = {
     dimName: string;
     productCode?: string;
     status?: string;
+    keyword?: string;
     pageNo?: number;
     pageSize?: number;
   }): Promise<any> => {
