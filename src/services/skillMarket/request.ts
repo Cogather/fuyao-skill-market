@@ -18,7 +18,8 @@ function normalizeConfiguredBase(value: unknown, fallback: string): string {
   }
 }
 
-const fuyao = normalizeConfiguredBase(import.meta.env.VITE_FUYAO_API_BASE, '/fuyaoDomain');
+const fuyaoFallback = import.meta.env.DEV ? '/fuyaoDomain' : '';
+const fuyao = normalizeConfiguredBase(import.meta.env.VITE_FUYAO_API_BASE, fuyaoFallback);
 
 function isSuccessStatus(status: number): boolean {
   return status >= 200 && status < 300;
