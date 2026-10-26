@@ -3754,6 +3754,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <UploadSkillModal
       v-model="uploadOpen"
       :operator-user-id="userId"
+      :operator-user-name="userName"
       :parse-skill-archive="parseSkillArchiveForUpload"
       @submit="onUploadSubmit"
     />
@@ -4825,7 +4826,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </table>
         </div>
 
-        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
+        <div
+          v-if="releaseFilter !== 'orgPublish' && releaseFilter !== 'aiEvolution'"
+          class="table-wrap my-table-wrap"
+          ref="myReleaseTableWrapRef"
+        >
           <table class="table my-table">
             <thead>
               <tr>
