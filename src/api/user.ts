@@ -1,31 +1,7 @@
 import request from '@/services/skillMarket/request';
 
 const userRequestTimeout = 10_000;
-
-type UnknownRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): UnknownRecord {
-  return value && typeof value === 'object' ? (value as UnknownRecord) : {};
-}
-
-function identityText(value: unknown): string {
-  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
-}
-
-function hasUserIdentity(value: unknown, depth = 0): boolean {
-  const record = asRecord(value);
-  if (
-    ['uid', 'userId', 'w3Id', 'userAccount', 'account'].some((key) => identityText(record[key]))
-  ) {
-    return true;
-  }
-  if (depth >= 3) {
-    return false;
-  }
-  return ['data', 'result', 'user', 'userInfo'].some((key) =>
-    hasUserIdentity(record[key], depth + 1),
-  );
-}
+const userGatewayFallbackStatuses = new Set([0, 404, 502, 503, 504]);
 
 function requestStatus(error: unknown): number {
   if (!error || typeof error !== 'object') {
@@ -60,16 +36,15 @@ export const managerUserService = {
    */
   getUserInfo: async (): Promise<any> => {
     try {
-      const result = await getMateUserInfo();
-      if (hasUserIdentity(result)) {
-        return result;
-      }
-      console.warn('mateopenapi returned no user identity, using auth-manager login');
+      return await getMateUserInfo();
     } catch (error) {
       const status = requestStatus(error);
+      if (!userGatewayFallbackStatuses.has(status)) {
+        throw error;
+      }
       console.warn(`mateopenapi unavailable (${status || 'network'}), using auth-manager login`);
+      return getFuyaoLoginInfo();
     }
-    return getFuyaoLoginInfo();
   },
 
   /**

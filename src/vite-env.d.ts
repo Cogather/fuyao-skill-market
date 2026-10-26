@@ -8,8 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_BASE?: string;
   /** w3 SSO 会话校验的 API 基础地址 */
   readonly VITE_API_BASEURL?: string;
-  /** 扶摇接口地址；生产环境留空时使用同源网关。 */
-  readonly VITE_FUYAO_API_BASE?: string;
   /** config-service / 部门信息接口的基础地址 */
   readonly VITE_APP_CORE_MLOPS_URL?: string;
 }
