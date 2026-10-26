@@ -145,3 +145,29 @@ test('profile initialization does not fetch a separate department tree', async (
   }
 });
 
+test('skill upload prefers the injected parent identity over the profile fallback', async () => {
+  const { useSkillMarketStore } = await server.ssrLoadModule('/src/stores/skillMarketStore.ts');
+  const { useProfileStore } = await server.ssrLoadModule('/src/stores/userStore.ts');
+  const { default: UploadSkillModal } = await server.ssrLoadModule(
+    '/src/components/skill/UploadSkillModal.vue',
+  );
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const market = useSkillMarketStore(pinia);
+  market.updateUserId('injected-user');
+  market.updateUserName('Injected User');
+  const profile = useProfileStore(pinia);
+  profile.updateUserInfo({ w3Id: 'profile-user' });
+
+  let bindings;
+  const Host = {
+    setup(_, context) {
+      bindings = UploadSkillModal.setup({ modelValue: false, operatorUserId: '' }, context);
+      return () => h('div');
+    },
+  };
+  await renderToString(createSSRApp(Host).use(pinia));
+
+  assert.equal(bindings.userId.value, 'injected-user');
+});
+
