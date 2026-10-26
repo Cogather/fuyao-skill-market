@@ -102,6 +102,38 @@ function filterDotClass(status: string): string {
   return `dot-${status}`;
 }
 
+/** 发布日期格式化：统一输出 YYYY-MM-DD HH:mm:ss，兼容 ISO 字符串/时间戳/不带秒的字符串 */
+function formatDateTime(value: string | undefined): string {
+  if (!value) {
+    return '—';
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return '—';
+  }
+  // 纯数字时间戳（毫秒）
+  if (/^\d+$/.test(raw)) {
+    const d = new Date(Number(raw));
+    return isNaN(d.getTime()) ? raw : formatFromDate(d);
+  }
+  // ISO 或 yyyy-MM-ddTHH:mm:ss / yyyy-MM-dd HH:mm:ss 等
+  const normalized = raw.replace('T', ' ').replace(/\.\d+.*$/, '').replace(/([+-]\d{2}:?\d{2}|Z)$/, '');
+  const d = new Date(normalized.replace(' ', 'T'));
+  if (!isNaN(d.getTime())) {
+    return formatFromDate(d);
+  }
+  // 兜底：补齐秒
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(normalized)) {
+    return `${normalized}:00`;
+  }
+  return normalized;
+}
+
+function formatFromDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 const sortedTasks = computed(() =>
   [...filteredTasks.value].sort((a, b) =>
     String(b.publishDate).localeCompare(String(a.publishDate)),
@@ -363,7 +395,7 @@ onMounted(() => {
             </td>
             <td><span class="version-text">{{ task.version || '—' }}</span></td>
             <td>{{ task.targetOrgName || '—' }}</td>
-            <td>{{ task.publishDate || '—' }}</td>
+            <td>{{ formatDateTime(task.publishDate) }}</td>
             <td>
               <span class="st" :class="taskStatusMeta(task).cls">
                 {{ taskStatusMeta(task).label }}
