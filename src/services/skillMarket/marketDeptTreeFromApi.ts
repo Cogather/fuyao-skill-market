@@ -119,19 +119,9 @@ function mapOneDepartmentTreeNode(
   };
 }
 
-function firstDepartmentField(record: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = String(record[key] ?? '').trim();
-    if (value && value !== 'undefined' && value !== 'null') {
-      return value;
-    }
-  }
-  return '';
-}
-
 /**
- * 将用户信息接口返回的扁平部门层级转换为部门树。
- * HTTP 数据使用 hwDepartNameN / hwDepartCodeN，Mock 与部分旧接口使用 department_lN。
+ * 将 getUserDepartment 接口返回的扁平部门层级（hwDepartName1-6 / hwDepartCode1-6）
+ * 转换为 DepartmentTreeNodeDto[] 树结构，供 coreceDepartmentTreeFromUnknown + mapDepartmentTreeDtoToForest 消费。
  */
 export function buildDeptTreeFromUserInfo(
   deptInfo: Record<string, unknown> | null | undefined,
@@ -140,32 +130,14 @@ export function buildDeptTreeFromUserInfo(
     return [];
   }
 
-  const record = deptInfo as Record<string, unknown>;
-  const levels: { name: string; code: string }[] = [];
-  // 真实接口的业务组织通常从 L3 开始；仅有低层级字段或旧格式时从 L1 兼容读取。
-  const hasBusinessDepartmentLevel = Array.from({ length: 6 }, (_, index) => index + 3).some(
-    (level) =>
-      firstDepartmentField(record, [`hwDepartName${level}`, `hwDepartNames${level}`]) !== '',
-  );
-  const firstLevel = hasBusinessDepartmentLevel ? 3 : 1;
-
-  for (let i = firstLevel; i <= 8; i += 1) {
-    const name = firstDepartmentField(record, [
-      `hwDepartName${i}`,
-      `hwDepartNames${i}`,
-      `department_l${i}`,
-      `departmentL${i}`,
-      `dept_l${i}`,
-      `deptL${i}`,
-    ]);
-    const code = firstDepartmentField(record, [
-      `hwDepartCode${i}`,
-      `department_code_l${i}`,
-      `departmentCodeL${i}`,
-      `deptCode${i}`,
-    ]);
+  // 收集 1-6 级部门名称和编码，跳过空值
+  const levels: { name: string; code: string; level: number }[] = [];
+  for (let i = 3; i <= 6; i++) {
+    const name = String((deptInfo as Record<string, unknown>)[`hwDepartNames${i}`] ?? '').trim();
+    const code = String((deptInfo as Record<string, unknown>)[`hwDepartCode${i}`] ?? '').trim();
     if (name) {
-      levels.push({ name, code });
+      // 重新编号为1，2，3，4，保证树结构 levelNo 从 1 开始
+      levels.push({ name, code, level: i - 2 });
     }
   }
 
@@ -173,13 +145,13 @@ export function buildDeptTreeFromUserInfo(
     return [];
   }
 
-  // 从低层级到高层级逐级嵌套构建树
+  // 从 L1 → L6 逐级嵌套构建树
   let tree: DepartmentTreeNodeDto | null = null;
-  for (const [index, level] of levels.entries()) {
+  for (const lv of levels) {
     const node: DepartmentTreeNodeDto = {
-      ...(level.code ? { deptCode: level.code, deptId: level.code } : {}),
-      deptName: level.name,
-      deptLevel: index + 1,
+      ...(lv.code ? { deptCode: lv.code, deptId: lv.code } : {}),
+      deptName: lv.name,
+      deptLevel: lv.level,
     };
     if (tree) {
       // 将当前节点作为上一级的子节点

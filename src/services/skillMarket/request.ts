@@ -2,23 +2,7 @@ import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 import { maybeHandleSkillBaseMockRequest } from './skillBaseServiceMock';
 
-function normalizeConfiguredBase(value: unknown, fallback: string): string {
-  const raw = String(value ?? '').trim();
-  if (!raw) {
-    return fallback;
-  }
-  if (raw.startsWith('/')) {
-    return raw.replace(/\/+$/, '') || '/';
-  }
-  try {
-    const parsed = new URL(raw);
-    return parsed.hostname ? raw.replace(/\/+$/, '') : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-const fuyao = normalizeConfiguredBase(import.meta.env.VITE_FUYAO_API_BASE, '/fuyaoDomain');
+const fuyao = import.meta.env.VITE_FUYAO_API_BASE || '/fuyaoDomain';
 
 function isSuccessStatus(status: number): boolean {
   return status >= 200 && status < 300;
@@ -48,7 +32,7 @@ axiosRequest.interceptors.response.use(
 );
 
 function normalizeEnvBase(): string {
-  return normalizeConfiguredBase(import.meta.env.VITE_SKILL_MARKET_API_BASE, '');
+  return String(import.meta.env.VITE_SKILL_MARKET_API_BASE ?? '').replace(/\/+$/, '');
 }
 
 function normalizePath(path: unknown): string {
@@ -102,14 +86,6 @@ function tryMockThenAxios<T>(channel: string, requestConfig: AxiosRequestConfig)
   return axiosRequest.request<T, T>({
     ...requestConfig,
   });
-}
-
-function buildDirectRequestConfig(config: AxiosRequestConfig): AxiosRequestConfig {
-  return {
-    ...config,
-    baseURL: config.baseURL || '/',
-    url: stripPrefix(config.url, '/'),
-  };
 }
 
 // 请求方法
@@ -179,28 +155,26 @@ const httpRequest = {
     return tryMockThenAxios<T>('fuyao', requestConfig);
   },
   direct: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-    const requestConfig = buildDirectRequestConfig(config);
+    const requestConfig = {
+      ...config,
+      baseURL: config.baseURL || '/',
+      url: stripPrefix(config.url, '/'),
+    };
     return tryMockThenAxios<T>('direct', requestConfig);
   },
   getWithCookie: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-    return tryMockThenAxios<T>(
-      'direct',
-      buildDirectRequestConfig({
-        ...config,
-        method: 'get',
-        withCredentials: true,
-      }),
-    );
+    return tryMockThenAxios<T>('direct', {
+      ...config,
+      method: 'get',
+      withCredentials: true,
+    });
   },
   postWithCookie: <T = null>(config: AxiosRequestConfig): Promise<T> => {
-    return tryMockThenAxios<T>(
-      'direct',
-      buildDirectRequestConfig({
-        ...config,
-        method: 'post',
-        withCredentials: true,
-      }),
-    );
+    return tryMockThenAxios<T>('direct', {
+      ...config,
+      method: 'post',
+      withCredentials: true,
+    });
   },
 };
 
