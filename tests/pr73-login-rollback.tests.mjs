@@ -147,11 +147,14 @@ test('application startup does not initialize or schedule the profile login chai
   profile.checkUserToken = () => {
     tokenCheckCalls += 1;
   };
-  const originalSetInterval = globalThis.window.setInterval;
-  globalThis.window.setInterval = (...args) => {
+  const originalGlobalSetInterval = globalThis.setInterval;
+  const originalWindowSetInterval = globalThis.window.setInterval;
+  const setIntervalSpy = () => {
     intervalCalls += 1;
-    return originalSetInterval(...args);
+    return 1;
   };
+  globalThis.setInterval = setIntervalSpy;
+  globalThis.window.setInterval = setIntervalSpy;
 
   const router = createRouter({
     history: createMemoryHistory(),
@@ -174,7 +177,8 @@ test('application startup does not initialize or schedule the profile login chai
     assert.equal(intervalCalls, 0);
   } finally {
     app.unmount();
-    globalThis.window.setInterval = originalSetInterval;
+    globalThis.setInterval = originalGlobalSetInterval;
+    globalThis.window.setInterval = originalWindowSetInterval;
   }
 });
 
