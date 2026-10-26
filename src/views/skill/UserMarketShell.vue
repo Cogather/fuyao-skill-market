@@ -7,7 +7,6 @@ import SkillCard from '../../components/skill/SkillCard.vue';
 import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import UploadSkillModal from '../../components/skill/UploadSkillModal.vue';
-import OrgPublishTaskPanel from '../../components/skill/OrgPublishTaskPanel.vue';
 
 import ReviewCenterPage from '../skill/ReviewCenterPage.vue';
 import companyOpsDashboardJson from '/src/mock/opsDashboardCompanyDefault.json?raw';
@@ -2530,12 +2529,6 @@ type UploadSubmitPayload = SkillUploadPayload & {
 };
 
 async function onUploadSubmit(payload: UploadSubmitPayload): Promise<void> {
-  if (payload.scope === 'org') {
-    const orgText = payload.targetOrgName ? `，目标组织「${payload.targetOrgName}」` : '';
-    showToast(`已提交组织级发布「${payload.name}」${payload.version ? ` v${payload.version}` : ''}${orgText}，请在任务清单中跟踪进度`, 5200);
-    goOrgPublishTasks();
-    return;
-  }
   const versionText = payload.version ? ` v${payload.version}` : '';
   const message =
     payload.versionUpgrade && payload.existingVersion
@@ -2553,11 +2546,6 @@ async function onUploadSubmit(payload: UploadSubmitPayload): Promise<void> {
       4000,
     );
   }
-}
-
-function goOrgPublishTasks(): void {
-  goTab('releases', true);
-  releaseFilter.value = 'orgPublish';
 }
 
 async function onDownload(id: string, version?: string): Promise<void> {
@@ -3024,14 +3012,13 @@ function onApplyCoreHarness(): void {
   }, 2500);
 }
 
-type ReleaseFilterKey = 'all' | 'personal' | 'aiEvolution' | 'orgPublish' | 'coreApply';
+type ReleaseFilterKey = 'all' | 'personal' | 'aiEvolution' | 'coreApply';
 
 const releaseFilter = ref<ReleaseFilterKey>('all');
 
 const releaseFilters: { key: ReleaseFilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'personal', label: '个人级' },
-  { key: 'orgPublish', label: '组织级发布' },
   { key: 'aiEvolution', label: '自进化审批' },
 ];
 
@@ -3273,9 +3260,6 @@ const onClickFilterRelease = async (key: any) => {
 
   if (key === 'aiEvolution') {
     await loadAiEvolutionSkills();
-    return;
-  }
-  if (key === 'orgPublish') {
     return;
   }
   if (key === 'all' && 'status' in myReleaseFilterObj.value) {
@@ -4673,14 +4657,6 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <span class="flow-dot">成为组织级 Skill</span>
             </div>
             <p class="muted mine-flow-note">被驳回时会在卡片中展示驳回原因，可修改后重新提交。</p>
-            <button
-              type="button"
-              class="mine-flow-ops-btn"
-              title="查看组织级发布任务与审批进度"
-              @click="goOrgPublishTasks"
-            >
-              组织级发布任务 →
-            </button>
           </div>
         </div>
       </section>
@@ -4709,10 +4685,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </div>
         </div>
 
-        <div v-if="releaseFilter === 'orgPublish'" class="org-publish-wrap">
-          <OrgPublishTaskPanel :user-id="userId" @toast="showToast" />
-        </div>
-        <div v-else-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
+        <div v-if="releaseFilter === 'aiEvolution'" class="ai-evolution-intro" role="note">
           <div class="ai-evolution-intro-title">
             <span class="ai-evolution-tag">AI 自进化</span>
             <strong>后台自动生成的 Skill 版本，等待你的审批</strong>

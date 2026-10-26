@@ -97,50 +97,6 @@ export type OverviewQuickFilter =
 
 export type SkillMarketScope = 'all' | 'personal' | 'devDept' | 'pdu' | 'productLine';
 
-/** 弹窗发布层级 */
-export type SkillPublishScope = 'personal' | 'org';
-
-/** 弹窗可选的目标组织（当前用户有发布权限的组织） */
-export interface SkillPublishOrgOption {
-  orgId: string;
-  orgCode?: string;
-  orgName: string;
-  /** 组织 owner 名称，仅展示用 */
-  owner?: string;
-}
-
-/**
- * 组织级发布任务状态（对齐真实接口枚举）：
- * PROCESSING 发布中 / PENDING_APPROVAL 待审批 / SUCCESS 成功 / FAIL 失败 / REJECTED 驳回
- */
-export type SkillOrgPublishTaskStatus =
-  | 'processing'
-  | 'pending_approval'
-  | 'success'
-  | 'fail'
-  | 'rejected';
-
-export interface SkillOrgPublishTask {
-  id: string;
-  /** Skill 名称（含版本展示用） */
-  skillName: string;
-  version?: string;
-  /** 发布人工号/姓名 */
-  publisher?: string;
-  publisherName?: string;
-  targetOrgId?: string;
-  targetOrgName?: string;
-  /** 发布日期（提交时间） */
-  publishDate: string;
-  status: SkillOrgPublishTaskStatus;
-  /** status = pending_approval 时后端给出完整审批页链接 */
-  approvalUrl?: string;
-  /** 审批完成时间 / 驳回时间 */
-  finishedDate?: string | null;
-  /** 驳回原因 */
-  rejectReason?: string | null;
-}
-
 export interface SkillUploadPayload {
   name: string;
   publisher?: string;
@@ -148,13 +104,6 @@ export interface SkillUploadPayload {
   note?: string;
   file?: File | null;
   scopeLabel?: string;
-  /** 发布层级：personal 个人级（默认）；org 组织级（需审批） */
-  scope?: SkillPublishScope;
-  /** 组织级发布的目标组织 */
-  targetOrgId?: string;
-  targetOrgName?: string;
-  /** 组织级发布任务 ID（提交成功后由后端返回） */
-  taskId?: string;
   tagFunctional?: string;
 }
 

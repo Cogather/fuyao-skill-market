@@ -240,38 +240,6 @@ export const skillBaseService = {
     });
   },
 
-  // 组织级发布-当前用户有发布权限的组织列表
-  querySkillOrgPublishOrganizations: (params?: any): any => {
-    return httpRequest.skill<any>({
-      url: '/org-publish/orgs',
-      method: 'get',
-      params,
-    });
-  },
-
-  // 组织级发布提交（FormData 创建发布任务，进入解析/校验 -> 组织审批流程）
-  submitSkillOrgPublish: (formData: FormData, params?: any): any => {
-    return httpRequest.skill<any>({
-      url: '/org-publish',
-      method: 'post',
-      withCredentials: true,
-      data: formData,
-      params: params,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  },
-
-  // 组织级发布任务清单（进度页）
-  querySkillOrgPublishTasks: (params?: any): any => {
-    return httpRequest.skill<any>({
-      url: '/org-publish/tasks',
-      method: 'get',
-      params,
-    });
-  },
-
   // projSkill发布到市场接口
   publishProjSkill: (body: any): any => {
     return httpRequest.skill<any>({
