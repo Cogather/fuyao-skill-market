@@ -360,10 +360,21 @@ async function loadHarnessDepartmentScope(): Promise<void> {
   }
 }
 
-async function ensureUserContext(): Promise<void> {
-  if (!userId.value) {
-    await profileStore.initUserInfo();
-  }
+function waitForInjectedContext(timeout = 8000): Promise<void> {
+  return new Promise((resolve) => {
+    if (userId.value) {
+      resolve();
+      return;
+    }
+
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      if (userId.value || Date.now() - startedAt > timeout) {
+        window.clearInterval(timer);
+        resolve();
+      }
+    }, 100);
+  });
 }
 
 function updateTopbarElevation(): void {
@@ -455,7 +466,7 @@ onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
   try {
-    if (transportIsHttp) await ensureUserContext();
+    if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
     activeHarnessTab.value = visibleHarnessTabs.value[0]?.key ?? 'workflows';
   } finally {

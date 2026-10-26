@@ -418,47 +418,39 @@ function deletePopoverNaturalHeight(popover: HTMLElement | null): number {
 
 /**
  * 将删除确认框固定在触发按钮附近，并在视口底部空间不足时自动翻到按钮上方。
- * 根据实际内容高度和可见视口钳制 top，避免长 Skill 名称让弹框掉出视口。
+ * 使用 bottom 锚定上方弹框，内容因 Skill 名称换行而变高时也不会掉出视口。
  */
 function deletePopoverStyleFor(
   trigger: HTMLElement,
   popoverHeight = deletePopoverFallbackHeight,
 ): CSSProperties {
   const rect = trigger.getBoundingClientRect();
-  const visualViewport = window.visualViewport;
-  const viewportTop = visualViewport?.offsetTop ?? 0;
-  const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
   const availableBelow =
-    viewportBottom - rect.bottom - deletePopoverGap - deletePopoverViewportMargin;
-  const availableAbove = rect.top - viewportTop - deletePopoverGap - deletePopoverViewportMargin;
+    window.innerHeight - rect.bottom - deletePopoverGap - deletePopoverViewportMargin;
+  const availableAbove = rect.top - deletePopoverGap - deletePopoverViewportMargin;
   const placeAbove = availableBelow < popoverHeight && availableAbove > availableBelow;
-  const availableHeight = Math.max(0, placeAbove ? availableAbove : availableBelow);
-  const renderedHeight = Math.min(popoverHeight, availableHeight);
+  const availableHeight = placeAbove ? availableAbove : availableBelow;
   const idealLeft = rect.left + rect.width / 2 - deletePopoverWidth / 2;
   const left = Math.max(
     deletePopoverViewportMargin,
     Math.min(idealLeft, window.innerWidth - deletePopoverWidth - deletePopoverViewportMargin),
   );
-  const preferredTop = placeAbove
-    ? rect.top - deletePopoverGap - renderedHeight
-    : rect.bottom + deletePopoverGap;
-  const minimumTop = viewportTop + deletePopoverViewportMargin;
-  const maximumTop = Math.max(
-    minimumTop,
-    viewportBottom - deletePopoverViewportMargin - renderedHeight,
-  );
-  const top = Math.max(minimumTop, Math.min(preferredTop, maximumTop));
 
   return {
     position: 'fixed',
-    top: `${Math.round(top)}px`,
-    bottom: 'auto',
     left: `${Math.round(left)}px`,
     width: `${deletePopoverWidth}px`,
     maxWidth: `calc(100vw - ${deletePopoverViewportMargin * 2}px)`,
-    maxHeight: `${Math.floor(availableHeight)}px`,
+    maxHeight: `${Math.max(0, Math.floor(availableHeight))}px`,
     overflowY: 'auto',
     zIndex: 5000,
+    ...(placeAbove
+      ? {
+          bottom: `${Math.round(window.innerHeight - rect.top + deletePopoverGap)}px`,
+        }
+      : {
+          top: `${Math.round(rect.bottom + deletePopoverGap)}px`,
+        }),
   };
 }
 
@@ -1164,8 +1156,6 @@ onMounted(async () => {
       isExpertReviewer.value = expertData.isExpert === true;
       expertDepartmentPermission.value = extractExpertDepartmentPermission(expertData);
     }
-  } catch (error) {
-    console.error('Failed to load expert reviewer status:', error);
   } finally {
     expertCheckLoaded.value = true;
   }
