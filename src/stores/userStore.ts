@@ -24,8 +24,6 @@ interface UserPermission {
 
 type UnknownRecord = Record<string, unknown>;
 
-const loginRedirectStorageKey = 'skill-market:last-login-redirect';
-
 function asRecord(value: unknown): UnknownRecord {
   return value && typeof value === 'object' ? (value as UnknownRecord) : {};
 }
@@ -53,39 +51,6 @@ function userPayload(response: unknown, depth = 0): UnknownRecord {
 
 function responseStatus(error: unknown): number {
   return Number(asRecord(asRecord(error).response).status ?? 0);
-}
-
-function clearLoginRedirectMarker(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.removeItem(loginRedirectStorageKey);
-  } catch {
-    // 浏览器禁用 sessionStorage 时仍允许正常登录流程继续。
-  }
-}
-
-function hasLoginRedirectMarker(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const marker = asRecord(
-      JSON.parse(window.sessionStorage.getItem(loginRedirectStorageKey) || '{}'),
-    );
-    return typeof marker.href === 'string' && marker.href.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function markLoginRedirect(href: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(
-      loginRedirectStorageKey,
-      JSON.stringify({ href, at: Date.now() }),
-    );
-  } catch {
-    // 浏览器禁用 sessionStorage 时仍执行本次登录跳转。
-  }
 }
 
 export const useProfileStore = defineStore('userProfile', () => {
@@ -159,7 +124,6 @@ export const useProfileStore = defineStore('userProfile', () => {
           payload.uid || payload.userId || payload.w3Id || payload.userAccount || payload.account,
         );
         if (uid) {
-          clearLoginRedirectMarker();
           const info = {
             id: uid,
             w3Id: uid,
@@ -282,14 +246,6 @@ export const useProfileStore = defineStore('userProfile', () => {
     localStorage.setItem('userPermission', JSON.stringify({ isAdmin: false, owner: false }));
 
     const currHref = document.location.href;
-    if (hasLoginRedirectMarker()) {
-      userInitializationError.value = '登录后仍未获取到用户信息，请检查认证网关配置';
-      console.error(
-        'Authentication is still unavailable after returning from login; redirect stopped.',
-      );
-      return;
-    }
-    markLoginRedirect(currHref);
     const loginUrl = `xxx/login1/?redirect=${encodeURIComponent(currHref)}`;
 
     // 在 iframe 中：让父页面跳转登录页，避免 iframe 自身反复重载导致死循环

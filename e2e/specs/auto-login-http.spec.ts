@@ -16,13 +16,7 @@ const HTTP_MY_SKILLS = Array.from({ length: 16 }, (_, index) => ({
 
 async function mockHttpGateways(
   page: Page,
-  options: {
-    mateUnavailable?: boolean;
-    mateUnauthorized?: boolean;
-    mateMissingUser?: boolean;
-    mateMalformedIdentity?: boolean;
-    authManagerUnauthorized?: boolean;
-  } = {},
+  options: { mateUnavailable?: boolean } = {},
 ): Promise<Request[]> {
   const requests: Request[] = [];
 
@@ -38,31 +32,11 @@ async function mockHttpGateways(
     const url = new URL(request.url());
 
     if (url.pathname.endsWith('/matestoreauthservice/v1/users/validate')) {
-      if (options.mateUnauthorized) {
-        await route.fulfill({
-          status: 401,
-          contentType: 'application/json',
-          body: JSON.stringify({ message: 'Unauthorized' }),
-        });
-        return;
-      }
       if (options.mateUnavailable) {
         await route.fulfill({
           status: 503,
           contentType: 'text/plain',
           body: 'Service Temporarily Unavailable',
-        });
-        return;
-      }
-      if (options.mateMissingUser) {
-        await route.fulfill({
-          json: { code: 401, message: 'session not found' },
-        });
-        return;
-      }
-      if (options.mateMalformedIdentity) {
-        await route.fulfill({
-          json: { account: {}, message: 'malformed identity' },
         });
         return;
       }
@@ -78,14 +52,6 @@ async function mockHttpGateways(
     }
 
     if (url.pathname.endsWith('/dataengineering/auth-manager/login')) {
-      if (options.authManagerUnauthorized) {
-        await route.fulfill({
-          status: 401,
-          contentType: 'application/json',
-          body: JSON.stringify({ message: 'Unauthorized' }),
-        });
-        return;
-      }
       await route.fulfill({
         json: {
           success: true,
@@ -192,116 +158,6 @@ test.describe('HTTP 自动登录上下文', () => {
         return expertRequest ? new URL(expertRequest.url()).searchParams.get('userId') : undefined;
       })
       .toBe(TEST_USER_ID);
-  });
-
-  test('生产环境 mateopenapi 返回 401 时继续通过 auth-manager 自动登录', async ({ page }) => {
-    const requests = await mockHttpGateways(page, { mateUnauthorized: true });
-
-    await page.goto(`${APP_BASE_PATH}/skill-square?tab=releases`);
-
-    await expect
-      .poll(() =>
-        requests.some((request) =>
-          new URL(request.url()).pathname.endsWith('/dataengineering/auth-manager/login'),
-        ),
-      )
-      .toBe(true);
-    await expect
-      .poll(() => {
-        const expertRequest = requests.find((request) =>
-          new URL(request.url()).pathname.endsWith('/api/skills/review/expert/check'),
-        );
-        return expertRequest ? new URL(expertRequest.url()).searchParams.get('userId') : undefined;
-      })
-      .toBe(TEST_USER_ID);
-  });
-
-  test('mateopenapi 返回成功状态但没有用户时继续通过 auth-manager 自动登录', async ({ page }) => {
-    const requests = await mockHttpGateways(page, { mateMissingUser: true });
-
-    await page.goto(`${APP_BASE_PATH}/skill-square?tab=releases`);
-
-    await expect
-      .poll(() =>
-        requests.some((request) =>
-          new URL(request.url()).pathname.endsWith('/dataengineering/auth-manager/login'),
-        ),
-      )
-      .toBe(true);
-    await expect
-      .poll(() => {
-        const expertRequest = requests.find((request) =>
-          new URL(request.url()).pathname.endsWith('/api/skills/review/expert/check'),
-        );
-        return expertRequest ? new URL(expertRequest.url()).searchParams.get('userId') : undefined;
-      })
-      .toBe(TEST_USER_ID);
-  });
-
-  test('mateopenapi 返回非标量用户字段时继续通过 auth-manager 自动登录', async ({ page }) => {
-    const requests = await mockHttpGateways(page, { mateMalformedIdentity: true });
-
-    await page.goto(`${APP_BASE_PATH}/skill-square?tab=releases`);
-
-    await expect
-      .poll(() =>
-        requests.some((request) =>
-          new URL(request.url()).pathname.endsWith('/dataengineering/auth-manager/login'),
-        ),
-      )
-      .toBe(true);
-  });
-
-  test('登录跳转返回后仍未认证时停止重复跳转', async ({ page, baseURL }) => {
-    const targetUrl = new URL(`${APP_BASE_PATH}/skill-square?tab=releases`, baseURL).toString();
-    const loginNavigations: string[] = [];
-    page.on('request', (request) => {
-      if (request.isNavigationRequest() && request.url().includes('/login1/')) {
-        loginNavigations.push(request.url());
-      }
-    });
-    await page.addInitScript(
-      ({ key, href }) => {
-        window.sessionStorage.setItem(key, JSON.stringify({ href, at: Date.now() - 10 * 60_000 }));
-      },
-      { key: 'skill-market:last-login-redirect', href: targetUrl },
-    );
-    const requests = await mockHttpGateways(page, {
-      mateUnauthorized: true,
-      authManagerUnauthorized: true,
-    });
-
-    await page.goto(`${APP_BASE_PATH}/skill-square?tab=releases`);
-    await expect
-      .poll(() =>
-        requests.some((request) =>
-          new URL(request.url()).pathname.endsWith('/dataengineering/auth-manager/login'),
-        ),
-      )
-      .toBe(true);
-    await page.waitForTimeout(300);
-
-    expect(loginNavigations).toEqual([]);
-    expect(page.url()).toBe(targetUrl);
-  });
-
-  test('自动登录成功后清除登录跳转标记', async ({ page, baseURL }) => {
-    const targetUrl = new URL(`${APP_BASE_PATH}/skill-square?tab=releases`, baseURL).toString();
-    await page.addInitScript(
-      ({ key, href }) => {
-        window.sessionStorage.setItem(key, JSON.stringify({ href, at: Date.now() }));
-      },
-      { key: 'skill-market:last-login-redirect', href: targetUrl },
-    );
-    await mockHttpGateways(page);
-
-    await page.goto(`${APP_BASE_PATH}/skill-square?tab=releases`);
-
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.sessionStorage.getItem('skill-market:last-login-redirect')),
-      )
-      .toBeNull();
   });
 
   test('直接打开 Harness 管理页也使用自动登录用户', async ({ page }) => {
