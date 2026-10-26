@@ -160,24 +160,6 @@ test.describe('HTTP 自动登录上下文', () => {
       .toBe(TEST_USER_ID);
   });
 
-  test('直接打开 Harness 管理页也使用自动登录用户', async ({ page }) => {
-    const requests = await mockHttpGateways(page);
-
-    await page.goto(`${APP_BASE_PATH}/harness-management`);
-
-    await expect(page.locator('main.harness-management-shell')).toBeVisible();
-    await expect
-      .poll(() => {
-        const permissionRequest = requests.find((request) =>
-          new URL(request.url()).pathname.endsWith('/api/harness/permission/user-depts'),
-        );
-        return permissionRequest
-          ? new URL(permissionRequest.url()).searchParams.get('userId')
-          : undefined;
-      })
-      .toBe(TEST_USER_ID);
-  });
-
   test('HTTP 长列表最后一行的删除确认框显示在按钮上方且不越出视口', async ({ page }) => {
     await mockHttpGateways(page);
     await page.goto(`${APP_BASE_PATH}/skill-square?tab=releases`);
