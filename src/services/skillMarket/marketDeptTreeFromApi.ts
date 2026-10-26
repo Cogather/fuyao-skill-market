@@ -28,7 +28,7 @@ export function getDepartmentNodeCode(node: DepartmentCodeNode | null | undefine
  * 将后端 / Mock 返回的 `DepartmentTreeNodeDto` 转为市场级联使用的森林（各级名称有序）。
  */
 /**
- * 将接口返回的部门树结构规整为 `DepartmentTreeNodeDto`，便于与市场级联共用映射逻辑。
+ * 将父页面 postMessage 等来源的未知结构尽量规整为 `DepartmentTreeNodeDto`，便于与市场级联共用映射逻辑。
  */
 export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeNodeDto[] {
   if (!Array.isArray(nodes) || nodes.length === 0) {
@@ -117,57 +117,4 @@ function mapOneDepartmentTreeNode(
     levelNo,
     children,
   };
-}
-
-/**
- * 将 getUserDepartment 接口返回的扁平部门层级（hwDepartName1-6 / hwDepartCode1-6）
- * 转换为 DepartmentTreeNodeDto[] 树结构，供 coreceDepartmentTreeFromUnknown + mapDepartmentTreeDtoToForest 消费。
- */
-export function buildDeptTreeFromUserInfo(
-  deptInfo: Record<string, unknown> | null | undefined,
-): DepartmentTreeNodeDto[] {
-  if (!deptInfo || typeof deptInfo !== 'object') {
-    return [];
-  }
-
-  // 收集 1-6 级部门名称和编码，跳过空值
-  const levels: { name: string; code: string; level: number }[] = [];
-  for (let i = 3; i <= 6; i++) {
-    const name = String((deptInfo as Record<string, unknown>)[`hwDepartNames${i}`] ?? '').trim();
-    const code = String((deptInfo as Record<string, unknown>)[`hwDepartCode${i}`] ?? '').trim();
-    if (name) {
-      // 重新编号为1，2，3，4，保证树结构 levelNo 从 1 开始
-      levels.push({ name, code, level: i - 2 });
-    }
-  }
-
-  if (levels.length === 0) {
-    return [];
-  }
-
-  // 从 L1 → L6 逐级嵌套构建树
-  let tree: DepartmentTreeNodeDto | null = null;
-  for (const lv of levels) {
-    const node: DepartmentTreeNodeDto = {
-      ...(lv.code ? { deptCode: lv.code, deptId: lv.code } : {}),
-      deptName: lv.name,
-      deptLevel: lv.level,
-    };
-    if (tree) {
-      // 将当前节点作为上一级的子节点
-      const deepest = findDeepestNode(tree);
-      deepest.children = [node];
-    } else {
-      tree = node;
-    }
-  }
-
-  return tree ? [tree] : [];
-}
-
-function findDeepestNode(node: DepartmentTreeNodeDto): DepartmentTreeNodeDto {
-  if (node.children && node.children.length > 0) {
-    return findDeepestNode(node.children[0]!);
-  }
-  return node;
 }
