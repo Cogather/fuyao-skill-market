@@ -38,17 +38,18 @@
 
 **Interfaces:**
 - Consumes: 当前 `master` 运行时行为与 `f874f16^` 确定的旧登录链路。
-- Produces: 覆盖父级上下文、原请求通道、Profile 部门初始化和消费者身份优先级的 Node 测试。
+- Produces: 覆盖父级上下文、禁止自动登录启动、原请求通道、Profile 部门初始化和消费者身份优先级的 Node 测试。
 
 - [ ] **Step 1: 编写核心登录运行时测试**
 
 - 将 `Skill_Square_Init` 消息送入 `App.vue`，断言 `skillMarketStore` 收到用户和部门上下文。
+- 客户端装载 `App.vue`，断言不会调用 Profile 初始化、Token 校验或注册登录定时器。
 - 替换请求对象方法，断言 `getUserInfo()` 使用原 `direct` 通道而不是 Cookie 专用通道。
 - 初始化 Profile Store，断言不会额外调用用户部门接口。
 
 - [ ] **Step 2: 编写消费者身份优先级测试**
 
-同时设置父页面注入身份和 Profile 身份，装载上传弹窗，断言使用父页面注入身份。
+同时设置父页面注入身份和 Profile 身份，装载上传弹窗、UserMarketShell、Harness 与详情页，断言它们都使用父页面注入身份和部门上下文。
 
 - [ ] **Step 3: 运行测试并确认红灯**
 
@@ -82,7 +83,7 @@ Expected: 核心测试在当前 `master` 上分别因上下文未写入、请求
 
 - [ ] **Step 3: 运行核心契约测试**
 
-Run: `node --test --test-name-pattern="Skill_Square_Init|login user lookup|profile initialization" tests/pr73-login-rollback.tests.mjs`
+Run: `node --test --test-name-pattern="Skill_Square_Init|application startup|login user lookup|profile initialization" tests/pr73-login-rollback.tests.mjs`
 
 Expected: PASS。
 
@@ -128,7 +129,7 @@ Expected: PASS。
 
 Run: `node --test tests/pr73-login-rollback.tests.mjs`
 
-Expected: 4/4 PASS。
+Expected: 6/6 PASS。
 
 Run: `npm.cmd run build`
 

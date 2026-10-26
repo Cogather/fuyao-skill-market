@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { createPinia, setActivePinia } from 'pinia';
-import { createSSRApp, h } from 'vue';
+import { createRenderer, createSSRApp, h, nextTick, ssrContextKey } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { createServer } from 'vite';
+
+process.env.VITE_SKILL_MARKET_TRANSPORT = 'http';
 
 const storage = new Map();
 globalThis.localStorage = {
@@ -29,6 +31,19 @@ globalThis.window = {
   location: { href: 'http://localhost/' },
   self: null,
   top: null,
+  parent: null,
+  scrollY: 0,
+  innerHeight: 900,
+  setInterval,
+  clearInterval,
+  setTimeout,
+  clearTimeout,
+  requestAnimationFrame(callback) {
+    return setTimeout(callback, 0);
+  },
+  cancelAnimationFrame(handle) {
+    clearTimeout(handle);
+  },
   addEventListener(type, handler) {
     if (type === 'message') messageHandlers.add(handler);
   },
@@ -38,7 +53,38 @@ globalThis.window = {
 };
 globalThis.window.self = globalThis.window;
 globalThis.window.top = globalThis.window;
-globalThis.document = { location: globalThis.window.location };
+globalThis.window.parent = globalThis.window;
+globalThis.document = {
+  location: globalThis.window.location,
+  documentElement: { scrollHeight: 0, clientHeight: 900 },
+  body: { scrollHeight: 0 },
+};
+
+const renderer = createRenderer({
+  createElement: (type) => ({ type, children: [] }),
+  insert(child, parent) {
+    parent.children ??= [];
+    parent.children.push(child);
+  },
+  remove() {},
+  setElementText(element, text) {
+    element.text = text;
+  },
+  createText: (text) => ({ text }),
+  createComment: (text) => ({ comment: text }),
+  setText(node, text) {
+    node.text = text;
+  },
+  setComment(node, text) {
+    node.comment = text;
+  },
+  parentNode: () => null,
+  nextSibling: () => null,
+  patchProp(element, key, previous, value) {
+    element.props ??= {};
+    element.props[key] = value;
+  },
+});
 
 const server = await createServer({
   appType: 'custom',
@@ -84,6 +130,52 @@ test('Skill_Square_Init populates the injected user and department context', asy
   assert.equal(market.userId, 'injected-user');
   assert.equal(market.userName, 'Injected User');
   assert.deepEqual(market.departmentList, departmentList);
+});
+
+test('application startup does not initialize or schedule the profile login chain', async () => {
+  const { default: App } = await server.ssrLoadModule('/src/App.vue');
+  const { useProfileStore } = await server.ssrLoadModule('/src/stores/userStore.ts');
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const profile = useProfileStore(pinia);
+  let initCalls = 0;
+  let tokenCheckCalls = 0;
+  let intervalCalls = 0;
+  profile.initUserInfo = async () => {
+    initCalls += 1;
+  };
+  profile.checkUserToken = () => {
+    tokenCheckCalls += 1;
+  };
+  const originalSetInterval = globalThis.window.setInterval;
+  globalThis.window.setInterval = (...args) => {
+    intervalCalls += 1;
+    return originalSetInterval(...args);
+  };
+
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', name: 'skill-square', component: { render: () => h('div') } }],
+  });
+  await router.push('/');
+  await router.isReady();
+  const app = renderer.createApp(App);
+  app.use(pinia);
+  app.use(router);
+  app.provide(ssrContextKey, { modules: new Set() });
+
+  try {
+    app.mount({ children: [] });
+    await Promise.resolve();
+    await nextTick();
+    await Promise.resolve();
+    assert.equal(initCalls, 0);
+    assert.equal(tokenCheckCalls, 0);
+    assert.equal(intervalCalls, 0);
+  } finally {
+    app.unmount();
+    globalThis.window.setInterval = originalSetInterval;
+  }
 });
 
 test('login user lookup uses the original direct request channel', async () => {
@@ -171,3 +263,73 @@ test('skill upload prefers the injected parent identity over the profile fallbac
   assert.equal(bindings.userId.value, 'injected-user');
 });
 
+test('shell, Harness, and detail consumers use the injected parent identity', async () => {
+  const { useSkillMarketStore } = await server.ssrLoadModule('/src/stores/skillMarketStore.ts');
+  const { useProfileStore } = await server.ssrLoadModule('/src/stores/userStore.ts');
+  const savedWindow = globalThis.window;
+  const savedDocument = globalThis.document;
+  let UserMarketShell;
+  let HarnessManagementPage;
+  let SkillDetailPage;
+  delete globalThis.window;
+  delete globalThis.document;
+  try {
+    ({ default: UserMarketShell } = await server.ssrLoadModule(
+      '/src/views/skill/UserMarketShell.vue',
+    ));
+    ({ default: HarnessManagementPage } = await server.ssrLoadModule(
+      '/src/views/HarnessManagementPage.vue',
+    ));
+    ({ default: SkillDetailPage } = await server.ssrLoadModule(
+      '/src/views/skill/SkillDetailPage.vue',
+    ));
+  } finally {
+    globalThis.window = savedWindow;
+    globalThis.document = savedDocument;
+  }
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const market = useSkillMarketStore(pinia);
+  const departmentList = [
+    { deptId: 'dept-1', deptCode: 'dept-1', deptName: '研发部', deptLevel: 1, children: [] },
+  ];
+  market.updateUserId('injected-user');
+  market.updateUserName('Injected User');
+  market.updateDept(departmentList);
+  const profile = useProfileStore(pinia);
+  profile.updateUserInfo({ w3Id: 'profile-user', name: 'Profile User' });
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', name: 'skill-square', component: { render: () => h('div') } }],
+  });
+  await router.push({ path: '/', query: { tab: 'planning' } });
+  await router.isReady();
+
+  async function loadBindings(component) {
+    let bindings;
+    const Host = {
+      setup(_, context) {
+        bindings = component.setup({}, context);
+        return () => h('div');
+      },
+    };
+    const app = createSSRApp(Host);
+    app.use(pinia);
+    app.use(router);
+    await renderToString(app);
+    return bindings;
+  }
+
+  const shell = await loadBindings(UserMarketShell);
+  assert.equal(shell.userId.value, 'injected-user');
+  assert.equal(shell.userName.value, 'Injected User');
+  assert.deepEqual(shell.departmentList.value, departmentList);
+
+  const harness = await loadBindings(HarnessManagementPage);
+  assert.equal(harness.userId.value, 'injected-user');
+  assert.equal(harness.userName.value, 'Injected User');
+  assert.equal(harness.departmentTree.value[0]?.name, '研发部');
+
+  const detail = await loadBindings(SkillDetailPage);
+  assert.equal(detail.userId.value, 'injected-user');
+});
