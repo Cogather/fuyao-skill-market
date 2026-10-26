@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue';
 
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
 import BusinessDimensionCascader from './BusinessDimensionCascader.vue';
 
+const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
 
 type ParsedSkillMeta = {
@@ -45,6 +47,10 @@ const userId = computed(() => {
   const fromParent = String(props.operatorUserId ?? '').trim();
   if (fromParent) {
     return fromParent;
+  }
+  const fromMarket = String(skillMarketStore.userId ?? '').trim();
+  if (fromMarket) {
+    return fromMarket;
   }
   return String(userStore.userInfo?.w3Id ?? '').trim();
 });

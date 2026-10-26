@@ -3667,7 +3667,7 @@ controller/skill/
 ## 4.7 测试用例
 
 ```
-src/test/java/com/xxx/tool/
+src/test/java/com/huawei/tool/
 ├── controller/skill/
 │   └── SkillControllerTest.java
 ├── service/skill/

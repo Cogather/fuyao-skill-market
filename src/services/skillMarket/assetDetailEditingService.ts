@@ -14,7 +14,10 @@ import {
   queryMockCapabilityCatalog,
   updateMockCapabilityCatalogDetails,
 } from './harnessCapabilityPlanningMock';
-import { getAssetCatalogItemNamePrefix, isCatalogItemNameValid } from '../../utils/catalogItemName';
+import {
+  getAssetCatalogItemNamePrefix,
+  isCatalogItemNameValid,
+} from '../../utils/catalogItemName';
 
 const text = (value: unknown): string => String(value ?? '').trim();
 
@@ -77,7 +80,8 @@ export async function updateHarnessAssetDetails(
   const plannedCompleteDate = text(input.plannedCompleteDate);
   if (input.plannedCompleteDate !== undefined) {
     if (!plannedCompleteDate) throw new Error('请选择计划完成时间');
-    if (plannedCompleteDate < currentLocalDate()) throw new Error('计划完成时间不能早于当前日期');
+    if (plannedCompleteDate < currentLocalDate())
+      throw new Error('计划完成时间不能早于当前日期');
     result.plannedCompleteDate = plannedCompleteDate;
   }
   if (transport === 'mock') {

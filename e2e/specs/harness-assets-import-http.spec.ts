@@ -153,7 +153,9 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
 
   for (const type of ['Agent', 'Skill', 'Command']) {
     for (const level of ['产品级', '部门级']) {
-      test(`${type} ${level} 独立导出弹窗使用当前类型和弹窗归属`, async ({ page }, testInfo) => {
+      test(`${type} ${level} 独立导出弹窗使用当前类型和弹窗归属`, async ({
+        page,
+      }, testInfo) => {
         const { exports, imports, lists, catalogQueries } = await prepareAssets(page);
         const dialog = await openExport(page, type);
         const originalQuery = lists.at(-1)!.postDataJSON();
@@ -207,7 +209,9 @@ test.describe('资产页导入导出弹窗 HTTP', () => {
         expect(chooserCount).toBe(0);
         await expect(page.locator('#harness-tab-assets')).toHaveAttribute('aria-selected', 'true');
         await expect(page.locator('#harness-panel-capabilities')).toHaveCount(0);
-        await expect(dialog.getByRole('button', { name: '下载', exact: true })).toHaveCount(0);
+        await expect(
+          dialog.getByRole('button', { name: '下载', exact: true }),
+        ).toHaveCount(0);
         await expect(dialog.getByRole('button', { name: '开始导入', exact: true })).toBeDisabled();
         await selectHarnessOption(dialog.getByLabel('层级'), level);
         await selectTargetDepartment(page, dialog);

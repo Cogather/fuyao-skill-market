@@ -6,6 +6,7 @@ import SkillDetailDialog from '../../components/skill/SkillDetailDialog.vue';
 import SkillVersionManageDialog from '../../components/skill/SkillVersionManageDialog.vue';
 import type { SkillVersionListItemDto } from '../../services/skillMarket/apiTypes';
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
+import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
 import {
   fileTreeFromDetailDto,
@@ -15,6 +16,7 @@ import type { UserInnerTab } from '../../types/skill';
 
 const route = useRoute();
 const router = useRouter();
+const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
 
 const innerTabAliases: Record<string, UserInnerTab> = {
@@ -45,6 +47,10 @@ const deletingSkillId = ref<string | null>(null);
 const versionPreviewSkill = ref<Record<string, unknown> | null>(null);
 
 const userId = computed(() => {
+  const fromStore = String(skillMarketStore.userId ?? '').trim();
+  if (fromStore) {
+    return fromStore;
+  }
   return String(userStore.userInfo?.w3Id ?? '').trim();
 });
 

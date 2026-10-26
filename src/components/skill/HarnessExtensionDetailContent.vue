@@ -218,7 +218,10 @@ async function toggleFile(row: CapabilityRow, file: FileRow): Promise<void> {
               row.capability.ready ? '›' : '•'
             }}</span>
             <img class="capability-icon" :src="section.iconSrc" :alt="section.label" />
-            <span class="capability-type-tag" :class="`capability-type-tag--${section.type}`">
+            <span
+              class="capability-type-tag"
+              :class="`capability-type-tag--${section.type}`"
+            >
               {{ section.label }}
             </span>
             <span class="capability-name">{{ row.capability.name }}</span>

@@ -115,9 +115,9 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
   expect(allNames).toHaveLength(26);
   // 桥接行与 harness-pipeline 产品的同名场景跨产品重名，属于预期数据。
   expect(allNames.filter((name) => name === 'MML开发流程')).toHaveLength(2);
-  expect([
-    ...new Set([...firstPage.commands, ...secondPage.commands, ...thirdPage.commands]),
-  ]).toEqual(expect.arrayContaining(['0 个', '1 个', '2 个', '3 个']));
+  expect(
+    [...new Set([...firstPage.commands, ...secondPage.commands, ...thirdPage.commands])],
+  ).toEqual(expect.arrayContaining(['0 个', '1 个', '2 个', '3 个']));
 
   await harness.workflowStatusButton('已发布').click();
   await expect(

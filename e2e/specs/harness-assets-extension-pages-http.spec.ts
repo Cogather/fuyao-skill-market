@@ -580,7 +580,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       return route.fulfill({
         json: envelope({
           skills: [{ name: '分析 Skill', version: '1.2.0' }],
-          commands: [{ name: '执行 Command', version: '2.1.0', filePath: 'commands/run.md' }],
+          commands: [
+            { name: '执行 Command', version: '2.1.0', filePath: 'commands/run.md' },
+          ],
           agents: [{ name: '诊断 Agent', version: '3.0.0' }],
         }),
       });
@@ -652,7 +654,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       name: 'product-b-build-extension',
     });
     expect(versionContentQueries).toHaveLength(1);
-    expect(Object.fromEntries(new URL(versionContentQueries[0]!.url()).searchParams)).toEqual({
+    expect(
+      Object.fromEntries(new URL(versionContentQueries[0]!.url()).searchParams),
+    ).toEqual({
       userId: 'release-user',
       dimType: '产品级',
       dimCode: 'product-b-id',
