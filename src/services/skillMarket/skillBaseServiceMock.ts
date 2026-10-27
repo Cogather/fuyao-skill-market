@@ -1145,7 +1145,8 @@ type MockOrgPublishTask = {
   targetOrgId: string;
   targetOrgName: string;
   publishDate: string;
-  status: 'processing' | 'pending_approval' | 'success' | 'rejected';  approvalUrl?: string;
+  status: 'processing' | 'pending_approval' | 'success' | 'rejected';
+  approvalUrl?: string;
   finishedDate?: string | null;
   rejectReason?: string | null;
   submittedAtMs: number;
@@ -2615,20 +2616,23 @@ function handleSkillRequest(
     if (!uploadFile) {
       return fail('缺少必填参数: file', null);
     }
-    const formOrgCode = String(params.orgCode ?? formFieldValue(config.data, 'orgCode') ?? '').trim();
+    const formOrgCode = String(
+      params.orgCode ?? formFieldValue(config.data, 'orgCode') ?? '',
+    ).trim();
     if (!formOrgCode) {
       return fail('缺少必填参数: orgCode', null);
     }
     // mock 演示兜底：standalone 直接打开 dev 页面时父页面不注入 userId，这里代位使用演示身份
-    const MOCK_DEMO_USER_ID =
-      MOCK_USER_DEPARTMENT_OPTIONS[0]?.id ?? 'w30000001';
-    const formUserId = String(
-      params.userId ?? formFieldValue(config.data, 'userId') ?? MOCK_DEMO_USER_ID,
-    ).trim() || MOCK_DEMO_USER_ID;
+    const MOCK_DEMO_USER_ID = MOCK_USER_DEPARTMENT_OPTIONS[0]?.id ?? 'w30000001';
+    const formUserId =
+      String(params.userId ?? formFieldValue(config.data, 'userId') ?? MOCK_DEMO_USER_ID).trim() ||
+      MOCK_DEMO_USER_ID;
     const formUserName =
       String(params.userName ?? formFieldValue(config.data, 'userName') ?? '').trim() ||
       mockOrgNamesFromUserId(formUserId);
-    const org = mockOrgPublishOrgOptions.find((o) => o.orgId === formOrgCode || o.orgCode === formOrgCode);
+    const org = mockOrgPublishOrgOptions.find(
+      (o) => o.orgId === formOrgCode || o.orgCode === formOrgCode,
+    );
     if (!org) {
       return fail(`目标组织不存在或无发布权限: ${formOrgCode}`, null);
     }
@@ -2660,7 +2664,9 @@ function handleSkillRequest(
       // 演示兜底：当前操作者没有历史任务时回退为全量，便于本地联调查看种子数据
       rows = mine.length > 0 ? mine : rows;
     }
-    const skillNameKeyword = String(params.skillName ?? '').trim().toLowerCase();
+    const skillNameKeyword = String(params.skillName ?? '')
+      .trim()
+      .toLowerCase();
     if (skillNameKeyword) {
       rows = rows.filter((t) => t.skillName.toLowerCase().includes(skillNameKeyword));
     }

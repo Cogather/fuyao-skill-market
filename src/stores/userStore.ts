@@ -51,9 +51,7 @@ export const useProfileStore = defineStore('userProfile', () => {
   function updateUserInfo(info: Partial<UserInfo>): void {
     Object.assign(userInfo, {
       ...info,
-      avatar: info.w3Id
-        ? `https://xxx/face/${info.w3Id.substr(1)}/120`
-        : '',
+      avatar: info.w3Id ? `https://xxx/face/${info.w3Id.substr(1)}/120` : '',
     });
   }
 

@@ -114,11 +114,7 @@ export interface SkillPublishOrgOption {
  * PROCESSING 发布中 / PENDING_APPROVAL 待审批 / SUCCESS 成功 / FAIL 失败 / REJECTED 驳回
  */
 export type SkillOrgPublishTaskStatus =
-  | 'processing'
-  | 'pending_approval'
-  | 'success'
-  | 'fail'
-  | 'rejected';
+  'processing' | 'pending_approval' | 'success' | 'fail' | 'rejected';
 
 export interface SkillOrgPublishTask {
   id: string;

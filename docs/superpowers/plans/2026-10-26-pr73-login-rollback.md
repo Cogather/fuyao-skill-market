@@ -32,11 +32,13 @@
 ### Task 1: 添加登录回退运行时回归测试
 
 **Files:**
+
 - Create: `tests/pr73-login-rollback.tests.mjs`
 - Modify: `docs/superpowers/specs/2026-10-26-pr73-login-rollback-design.md`
 - Create: `docs/superpowers/plans/2026-10-26-pr73-login-rollback.md`
 
 **Interfaces:**
+
 - Consumes: 当前 `master` 运行时行为与 `f874f16^` 确定的旧登录链路。
 - Produces: 覆盖父级上下文、禁止自动登录启动、原请求通道、Profile 部门初始化和消费者身份优先级的 Node 测试。
 
@@ -60,6 +62,7 @@ Expected: 核心测试在当前 `master` 上分别因上下文未写入、请求
 ### Task 2: 恢复核心登录基础设施
 
 **Files:**
+
 - Modify: `src/App.vue`
 - Modify: `src/api/user.ts`
 - Modify: `src/router/index.ts`
@@ -70,6 +73,7 @@ Expected: 核心测试在当前 `master` 上分别因上下文未写入、请求
 - Test: `tests/pr73-login-rollback.tests.mjs`
 
 **Interfaces:**
+
 - Consumes: `f874f16^` 中的父页面上下文、原用户 API 与原 Profile Store 行为。
 - Produces: 由 `skillMarketStore` 父页面上下文驱动的应用入口；不再自动启动新 SSO 登录链路。
 
@@ -97,6 +101,7 @@ git commit -m "revert: restore pre-PR73 login plumbing"
 ### Task 3: 恢复页面身份来源并保留迁移内容
 
 **Files:**
+
 - Modify: `src/components/skill/UploadSkillModal.vue`
 - Modify: `src/views/skill/SkillDetailPage.vue`
 - Modify: `src/views/HarnessManagementPage.vue`
@@ -104,6 +109,7 @@ git commit -m "revert: restore pre-PR73 login plumbing"
 - Test: `tests/pr73-login-rollback.tests.mjs`
 
 **Interfaces:**
+
 - Consumes: `skillMarketStore.userId: string`、`skillMarketStore.userName: string`、`skillMarketStore.departmentList: unknown[]`。
 - Produces: 所有业务消费者优先使用父页面注入身份，同时保留 Profile Store 作为原有兜底的位置。
 
