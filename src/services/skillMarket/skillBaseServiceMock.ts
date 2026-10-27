@@ -2625,6 +2625,9 @@ function handleSkillRequest(
     const formUserId = String(
       params.userId ?? formFieldValue(config.data, 'userId') ?? MOCK_DEMO_USER_ID,
     ).trim() || MOCK_DEMO_USER_ID;
+    const formUserName =
+      String(params.userName ?? formFieldValue(config.data, 'userName') ?? '').trim() ||
+      mockOrgNamesFromUserId(formUserId);
     const org = mockOrgPublishOrgOptions.find((o) => o.orgId === formOrgCode || o.orgCode === formOrgCode);
     if (!org) {
       return fail(`目标组织不存在或无发布权限: ${formOrgCode}`, null);
@@ -2635,7 +2638,7 @@ function handleSkillRequest(
       skillName: String(parsed.name ?? fileBaseName(uploadFile, mockOrgUniqueSkillSlug())),
       version: String(parsed.version ?? '1.0.0'),
       publisher: formUserId,
-      publisherName: mockOrgNamesFromUserId(formUserId),
+      publisherName: formUserName,
       targetOrgId: org.orgId,
       targetOrgName: org.orgName,
       publishDate: nowText(),

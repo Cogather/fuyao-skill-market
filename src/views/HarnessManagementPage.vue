@@ -24,6 +24,7 @@ import {
 } from '../services/skillMarket/harnessDepartmentPermission';
 import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marketDepartmentsTreeDefault';
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
+import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
 import type {
   HarnessCatalogScopeChange,
@@ -32,6 +33,7 @@ import type {
   HarnessScopeSnapshot,
 } from '../types/harnessFilterMemory';
 
+const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
 const permissionContextReady = ref(false);
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
@@ -56,7 +58,8 @@ const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
 const harnessPermissionError = ref('');
 const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
   '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
-const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE = '未获取到部门树，请检查网络或重新登录后进入。';
+const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
+  '未从父页面获取到部门树，请检查初始化参数后重新进入。';
 
 type HarnessTab =
   | 'scenarios'
@@ -145,23 +148,21 @@ const activeHarnessTabMeta = computed(
 const topbarElevated = ref(false);
 
 const userId = computed(() => {
-  const w3Id = String(profileStore.userInfo?.w3Id ?? '').trim();
-  if (w3Id) return w3Id;
+  const injectedUserId = String(skillMarketStore.userId ?? '').trim();
+  if (injectedUserId) return injectedUserId;
 
   if (transportIsHttp) return '';
-  return MOCK_HARNESS_USER_ID;
+  return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
-const userName = computed(() => {
-  return String(profileStore.userInfo?.nameCn ?? profileStore.userInfo?.name ?? '').trim();
-});
+const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
 const assetCatalogScopeSnapshots = computed<HarnessCatalogScopeSnapshots>(
   () => assetCatalogScopeSnapshotsByUser.value[userId.value] ?? {},
 );
 
 const departmentTree = computed(() => {
-  const injectedDepartments = profileStore.departmentList;
-  // HTTP 模式使用接口获取的部门树，不回退 Mock。
+  const injectedDepartments = skillMarketStore.departmentList;
+  // HTTP 模式只使用父页面注入的数据，不请求部门树接口，也不回退 Mock。
   const source = transportIsHttp ? injectedDepartments : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
@@ -361,10 +362,21 @@ async function loadHarnessDepartmentScope(): Promise<void> {
   }
 }
 
-async function ensureUserContext(): Promise<void> {
-  if (!userId.value) {
-    await profileStore.initUserInfo();
-  }
+function waitForInjectedContext(timeout = 8000): Promise<void> {
+  return new Promise((resolve) => {
+    if (userId.value && departmentTree.value.length > 0) {
+      resolve();
+      return;
+    }
+
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      if ((userId.value && departmentTree.value.length > 0) || Date.now() - startedAt > timeout) {
+        window.clearInterval(timer);
+        resolve();
+      }
+    }, 100);
+  });
 }
 
 function updateTopbarElevation(): void {
@@ -456,7 +468,7 @@ onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
   try {
-    if (transportIsHttp) await ensureUserContext();
+    if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
     activeHarnessTab.value = visibleHarnessTabs.value[0]?.key ?? 'workflows';
   } finally {

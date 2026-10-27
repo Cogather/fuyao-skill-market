@@ -46,14 +46,18 @@ import {
 import { buildOpsDashboardBundle, parseOpsExcelBuffer } from '../../utils/opsExcelImport';
 import { skillBaseService, webfrondUrl } from '../../services/skillMarket/skillBaseService';
 
+import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
 import SkillPlanningPage from './SkillPlanningPage.vue';
+const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
 
-/** 操作者工号由 w3 SSO 登录信息提供 */
-const userId = computed(() => String(userStore.userInfo?.w3Id ?? '').trim());
-const userName = computed(() => userStore.userInfo?.nameCn || userStore.userInfo?.name || '');
-const departmentList = computed(() => userStore.departmentList);
+/** 操作者工号只接受父应用注入，不再通过角色接口或 Profile 回填。 */
+const userId = computed(() => String(skillMarketStore.userId ?? '').trim());
+const userName = computed(
+  () => skillMarketStore.userName || userStore.userInfo?.nameCn || userStore.userInfo?.name || '',
+);
+const departmentList = computed(() => skillMarketStore.departmentList);
 
 const skills = ref<any[]>([]);
 const newSkills = ref<any[]>([]);
@@ -419,47 +423,39 @@ function deletePopoverNaturalHeight(popover: HTMLElement | null): number {
 
 /**
  * 将删除确认框固定在触发按钮附近，并在视口底部空间不足时自动翻到按钮上方。
- * 根据实际内容高度和可见视口钳制 top，避免长 Skill 名称让弹框掉出视口。
+ * 使用 bottom 锚定上方弹框，内容因 Skill 名称换行而变高时也不会掉出视口。
  */
 function deletePopoverStyleFor(
   trigger: HTMLElement,
   popoverHeight = deletePopoverFallbackHeight,
 ): CSSProperties {
   const rect = trigger.getBoundingClientRect();
-  const visualViewport = window.visualViewport;
-  const viewportTop = visualViewport?.offsetTop ?? 0;
-  const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
   const availableBelow =
-    viewportBottom - rect.bottom - deletePopoverGap - deletePopoverViewportMargin;
-  const availableAbove = rect.top - viewportTop - deletePopoverGap - deletePopoverViewportMargin;
+    window.innerHeight - rect.bottom - deletePopoverGap - deletePopoverViewportMargin;
+  const availableAbove = rect.top - deletePopoverGap - deletePopoverViewportMargin;
   const placeAbove = availableBelow < popoverHeight && availableAbove > availableBelow;
-  const availableHeight = Math.max(0, placeAbove ? availableAbove : availableBelow);
-  const renderedHeight = Math.min(popoverHeight, availableHeight);
+  const availableHeight = placeAbove ? availableAbove : availableBelow;
   const idealLeft = rect.left + rect.width / 2 - deletePopoverWidth / 2;
   const left = Math.max(
     deletePopoverViewportMargin,
     Math.min(idealLeft, window.innerWidth - deletePopoverWidth - deletePopoverViewportMargin),
   );
-  const preferredTop = placeAbove
-    ? rect.top - deletePopoverGap - renderedHeight
-    : rect.bottom + deletePopoverGap;
-  const minimumTop = viewportTop + deletePopoverViewportMargin;
-  const maximumTop = Math.max(
-    minimumTop,
-    viewportBottom - deletePopoverViewportMargin - renderedHeight,
-  );
-  const top = Math.max(minimumTop, Math.min(preferredTop, maximumTop));
 
   return {
     position: 'fixed',
-    top: `${Math.round(top)}px`,
-    bottom: 'auto',
     left: `${Math.round(left)}px`,
     width: `${deletePopoverWidth}px`,
     maxWidth: `calc(100vw - ${deletePopoverViewportMargin * 2}px)`,
-    maxHeight: `${Math.floor(availableHeight)}px`,
+    maxHeight: `${Math.max(0, Math.floor(availableHeight))}px`,
     overflowY: 'auto',
     zIndex: 5000,
+    ...(placeAbove
+      ? {
+          bottom: `${Math.round(window.innerHeight - rect.top + deletePopoverGap)}px`,
+        }
+      : {
+          top: `${Math.round(rect.bottom + deletePopoverGap)}px`,
+        }),
   };
 }
 
@@ -1016,16 +1012,16 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
-// userId 由 w3 SSO 提供，部门树由 initUserDepartment 接口获取。
+// userId 和部门树都由父页面通过 Skill_Square_Init 注入。
 function waitUserIdAndDepartmentList(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value) {
+    if (userId.value && departmentList.value.length > 0) {
       resolve();
       return;
     }
     const start = Date.now();
     const timer = setInterval(() => {
-      if (userId.value) {
+      if (userId.value && departmentList.value.length > 0) {
         clearInterval(timer);
         resolve();
         return;
@@ -1089,7 +1085,7 @@ async function loadBusinessDimensions(params: any = { format: 'tree' }): Promise
   }
 }
 
-/** 当前用户工号，由 w3 SSO 登录信息提供。 */
+/** 工号与父应用注入的 userId 同源。 */
 function effectiveSkillUserId(): string {
   return userId.value?.trim() || '';
 }
@@ -1165,8 +1161,6 @@ onMounted(async () => {
       isExpertReviewer.value = expertData.isExpert === true;
       expertDepartmentPermission.value = extractExpertDepartmentPermission(expertData);
     }
-  } catch (error) {
-    console.error('Failed to load expert reviewer status:', error);
   } finally {
     expertCheckLoaded.value = true;
   }
@@ -3760,6 +3754,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
     <UploadSkillModal
       v-model="uploadOpen"
       :operator-user-id="userId"
+      :operator-user-name="userName"
       :parse-skill-archive="parseSkillArchiveForUpload"
       @submit="onUploadSubmit"
     />
@@ -4831,7 +4826,11 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           </table>
         </div>
 
-        <div v-else class="table-wrap my-table-wrap" ref="myReleaseTableWrapRef">
+        <div
+          v-if="releaseFilter !== 'orgPublish' && releaseFilter !== 'aiEvolution'"
+          class="table-wrap my-table-wrap"
+          ref="myReleaseTableWrapRef"
+        >
           <table class="table my-table">
             <thead>
               <tr>

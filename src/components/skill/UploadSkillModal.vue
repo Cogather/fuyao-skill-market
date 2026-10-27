@@ -2,10 +2,12 @@
 import { computed, ref, watch } from 'vue';
 
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
 import type { SkillPublishOrgOption, SkillPublishScope } from '../../types/skill';
 import BusinessDimensionCascader from './BusinessDimensionCascader.vue';
 
+const skillMarketStore = useSkillMarketStore();
 const userStore = useProfileStore();
 
 type ParsedSkillMeta = {
@@ -35,6 +37,8 @@ const props = withDefaults(
      * 避免弹窗内仅读 store 时与壳层「角色已返回、store 尚未回填」的瞬时不同步。
      */
     operatorUserId?: string;
+    /** 操作者姓名，随发布请求一起传给后端 */
+    operatorUserName?: string;
   }>(),
   {
     modelValue: false,
@@ -47,7 +51,27 @@ const userId = computed(() => {
   if (fromParent) {
     return fromParent;
   }
+  const fromMarket = String(skillMarketStore.userId ?? '').trim();
+  if (fromMarket) {
+    return fromMarket;
+  }
   return String(userStore.userInfo?.w3Id ?? '').trim();
+});
+
+/** 操作者姓名：父级传入 > 市场 store > Profile 姓名 */
+const userName = computed(() => {
+  const fromParent = String(props.operatorUserName ?? '').trim();
+  if (fromParent) {
+    return fromParent;
+  }
+  const fromMarket = String(skillMarketStore.userName ?? '').trim();
+  if (fromMarket) {
+    return fromMarket;
+  }
+  return (
+    String(userStore.userInfo?.nameCn ?? '').trim() ||
+    String(userStore.userInfo?.name ?? '').trim()
+  );
 });
 
 const emit = defineEmits<{
@@ -542,6 +566,7 @@ const onSubmit = async (): Promise<void> => {
       formData.append('file', orgView);
       formData.append('orgCode', org!.orgId);
       formData.append('userId', orgUserId);
+      formData.append('userName', userName.value);
       const env = await skillBaseService.submitSkillOrgPublish(formData);
       if (!serviceSucceeded(env)) {
         parseError.value = serviceMessage(env, '组织级发布提交失败');

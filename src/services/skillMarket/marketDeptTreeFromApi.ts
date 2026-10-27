@@ -28,7 +28,7 @@ export function getDepartmentNodeCode(node: DepartmentCodeNode | null | undefine
  * 将后端 / Mock 返回的 `DepartmentTreeNodeDto` 转为市场级联使用的森林（各级名称有序）。
  */
 /**
- * 将接口返回的部门树结构规整为 `DepartmentTreeNodeDto`，便于与市场级联共用映射逻辑。
+ * 将父页面 postMessage 等来源的未知结构尽量规整为 `DepartmentTreeNodeDto`，便于与市场级联共用映射逻辑。
  */
 export function coerceDepartmentTreeFromUnknown(nodes: unknown): DepartmentTreeNodeDto[] {
   if (!Array.isArray(nodes) || nodes.length === 0) {
@@ -117,85 +117,4 @@ function mapOneDepartmentTreeNode(
     levelNo,
     children,
   };
-}
-
-function firstDepartmentField(record: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = String(record[key] ?? '').trim();
-    if (value && value !== 'undefined' && value !== 'null') {
-      return value;
-    }
-  }
-  return '';
-}
-
-/**
- * 将用户信息接口返回的扁平部门层级转换为部门树。
- * HTTP 数据使用 hwDepartNameN / hwDepartCodeN，Mock 与部分旧接口使用 department_lN。
- */
-export function buildDeptTreeFromUserInfo(
-  deptInfo: Record<string, unknown> | null | undefined,
-): DepartmentTreeNodeDto[] {
-  if (!deptInfo || typeof deptInfo !== 'object') {
-    return [];
-  }
-
-  const record = deptInfo as Record<string, unknown>;
-  const levels: { name: string; code: string }[] = [];
-  // 真实接口的业务组织通常从 L3 开始；仅有低层级字段或旧格式时从 L1 兼容读取。
-  const hasBusinessDepartmentLevel = Array.from({ length: 6 }, (_, index) => index + 3).some(
-    (level) =>
-      firstDepartmentField(record, [`hwDepartName${level}`, `hwDepartNames${level}`]) !== '',
-  );
-  const firstLevel = hasBusinessDepartmentLevel ? 3 : 1;
-
-  for (let i = firstLevel; i <= 8; i += 1) {
-    const name = firstDepartmentField(record, [
-      `hwDepartName${i}`,
-      `hwDepartNames${i}`,
-      `department_l${i}`,
-      `departmentL${i}`,
-      `dept_l${i}`,
-      `deptL${i}`,
-    ]);
-    const code = firstDepartmentField(record, [
-      `hwDepartCode${i}`,
-      `department_code_l${i}`,
-      `departmentCodeL${i}`,
-      `deptCode${i}`,
-    ]);
-    if (name) {
-      levels.push({ name, code });
-    }
-  }
-
-  if (levels.length === 0) {
-    return [];
-  }
-
-  // 从低层级到高层级逐级嵌套构建树
-  let tree: DepartmentTreeNodeDto | null = null;
-  for (const [index, level] of levels.entries()) {
-    const node: DepartmentTreeNodeDto = {
-      ...(level.code ? { deptCode: level.code, deptId: level.code } : {}),
-      deptName: level.name,
-      deptLevel: index + 1,
-    };
-    if (tree) {
-      // 将当前节点作为上一级的子节点
-      const deepest = findDeepestNode(tree);
-      deepest.children = [node];
-    } else {
-      tree = node;
-    }
-  }
-
-  return tree ? [tree] : [];
-}
-
-function findDeepestNode(node: DepartmentTreeNodeDto): DepartmentTreeNodeDto {
-  if (node.children && node.children.length > 0) {
-    return findDeepestNode(node.children[0]!);
-  }
-  return node;
 }
