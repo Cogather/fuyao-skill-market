@@ -47,6 +47,7 @@ export type PublishExtensionInput = {
   description: string;
   channel: ExtensionPublishChannel;
   organization: PublishableOrganization;
+  inheritBypass?: boolean;
 };
 
 type HttpExtensionRelease = ExtensionRelease & {
@@ -103,7 +104,7 @@ function assertHttpSuccess(response: unknown, fallback: string): void {
   if (
     meta.success === false ||
     record.success === false ||
-    (Number.isFinite(code) && code >= 400)
+    (record.code != null && ![0, 200].includes(code))
   ) {
     throw new Error(responseMessage(response, fallback));
   }
@@ -597,6 +598,15 @@ export async function queryHttpExtensionDetail(
   );
   if (Object.keys(mappedPublishChecks).length > 0) detail.publishChecks = mappedPublishChecks;
   detail.extension.name ||= extensionName;
+  detail.layoutMode = data.layoutMode === 'testagent' ? 'testagent' : 'standard';
+  detail.hasBypass = data.hasBypass === true;
+  detail.bypassEntries = detail.hasBypass
+    ? readArray(data, ['bypassEntries']).flatMap((value) => {
+        const entry = asRecord(value);
+        const path = readText(entry, ['path']);
+        return path ? [{ path, size: entry.size == null ? null : Number(entry.size) }] : [];
+      })
+    : [];
   return detail;
 }
 
@@ -669,6 +679,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     agents: componentBody(input.scene, 'agent'),
     skills: componentBody(input.scene, 'skill'),
     commands: componentBody(input.scene, 'command'),
+    ...(typeof input.inheritBypass === 'boolean' ? { inheritBypass: input.inheritBypass } : {}),
   };
   const response = await skillBaseService.saveExtension(params, body);
   assertHttpSuccess(response, 'Extension 发布失败');

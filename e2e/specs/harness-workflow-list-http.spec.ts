@@ -34,6 +34,8 @@ async function prepare(page: Page) {
       };
     else if (path.endsWith('/smapi-product-by-dept'))
       data = [{ offeringId: 'remote-product', offeringName: '产品筛选项' }];
+    else if (path.endsWith('/extensions/structure/tree'))
+      data = { layoutMode: 'standard', entries: [] };
     // A scene endpoint failure must not prevent the independent workflow inventory from loading.
     else if (path.endsWith('/scene-activity/scene'))
       return route.fulfill({
@@ -497,7 +499,7 @@ test.describe('Harness 工作流服务端列表', () => {
           : '# 执行 Command\n\n执行接口生成命令。';
       return route.fulfill({ json: success({ content }) });
     });
-    await page.route(/\/api\/harness\/extensions(?:\?.*)?$/, (route) => {
+    await page.route(/\/api\/harness\/extensions\/save(?:\?.*)?$/, (route) => {
       publishRequests.push(route.request());
       return route.fulfill({ json: success({ extensionId: 'extension-release-1' }) });
     });
@@ -521,7 +523,8 @@ test.describe('Harness 工作流服务端列表', () => {
     expect(publishDetails).toHaveLength(1);
     const detailUrl = new URL(publishDetails[0]!.url());
     expect(detailUrl.searchParams.get('userId')).toBe('workflow-reader');
-    expect(publishDetails[0]!.postDataJSON()).toMatchObject({
+    expect(publishDetails[0]!.method()).toBe('GET');
+    expect(Object.fromEntries(detailUrl.searchParams)).toMatchObject({
       dimType: '产品级',
       dimCode: 'product-b-id',
       dimName: 'product-b',
@@ -529,7 +532,7 @@ test.describe('Harness 工作流服务端列表', () => {
     });
 
     const publishCheckMessage = publish.locator('.publish-check-message');
-    const confirmPublish = publish.getByRole('button', { name: '确认发布', exact: true });
+    const confirmPublish = page.getByRole('region', { name: 'Extension 发布组装' }).getByRole('button', { name: '确认发布', exact: true });
     await expect(publishCheckMessage).toHaveText(
       '当前配置与已发布版本 v1.3.0 完全一致，无需重新发布',
     );
@@ -661,7 +664,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await expect(publish).not.toContainText(
       '清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。',
     );
-    await expect(publish.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+    await expect(page.getByRole('region', { name: 'Extension 发布组装' }).getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
   });
 
   test('失败可重试，空筛选仍可切换，过期请求不能覆盖新的状态结果', async ({ page }) => {

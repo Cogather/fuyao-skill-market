@@ -129,7 +129,7 @@ function assertHttpSuccess(response: unknown, fallback: string): void {
   if (
     meta.success === false ||
     record.success === false ||
-    (Number.isFinite(code) && code >= 400)
+    (record.code != null && ![0, 200].includes(code))
   ) {
     throw new Error(responseMessage(response, fallback));
   }

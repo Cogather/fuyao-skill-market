@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import type { ExtensionAssemblyDetail } from './extensionAssemblyHttp';
 
 export type ExtensionCapabilityType = 'skill' | 'command' | 'agent';
 
@@ -45,7 +46,7 @@ export type ExtensionPublishCheck = {
 
 export type ExtensionPublishChecks = Partial<Record<'beta' | 'product', ExtensionPublishCheck>>;
 
-export type ExtensionScene = {
+export type ExtensionScene = ExtensionAssemblyDetail & {
   id: string;
   productId: string;
   primary: string;

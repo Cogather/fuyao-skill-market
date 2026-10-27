@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Use a dedicated port when HTTP and mock development servers coexist locally.
+const port = Number(process.env.PW_PORT || 5173);
+
 /**
  * Playwright E2E 配置（本地优先、稳定优先）。
  *
@@ -23,7 +26,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
 
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${port}`,
     // 默认使用 playwright 自带的 chromium（npx playwright install chromium 安装）。
     // 受限环境（无法下载浏览器/企业代理）可设置 PW_CHANNEL=msedge 使用系统 Edge，零下载。
     channel: process.env.PW_CHANNEL || undefined,
@@ -37,8 +40,8 @@ export default defineConfig({
   },
 
   webServer: {
-    command: 'npm run dev -- --port 5173 --strictPort',
-    url: 'http://localhost:5173',
+    command: `npm run dev -- --port ${port} --strictPort`,
+    url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: 'ignore',

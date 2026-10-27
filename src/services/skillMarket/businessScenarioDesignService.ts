@@ -477,6 +477,7 @@ export const harnessWorkflowService = {
       commands?: { name: string; version: string }[];
       skills?: { name: string; version: string }[];
       releaseType?: string;
+      inheritBypass?: boolean;
     },
     params: {
       dimType: string;
@@ -487,7 +488,7 @@ export const harnessWorkflowService = {
     },
   ): Promise<any> => {
     return httpRequest.harnessApi({
-      url: '/extensions',
+      url: '/extensions/save',
       method: 'POST',
       data: body,
       params: params,
@@ -525,9 +526,8 @@ export const harnessWorkflowService = {
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/extensions/detail',
-      method: 'POST',
-      params: params,
-      data: body,
+      method: 'GET',
+      params: { ...params, ...body },
     });
   },
 };

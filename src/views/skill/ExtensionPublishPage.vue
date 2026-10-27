@@ -2,6 +2,9 @@
 import HarnessSelect from '../../components/skill/HarnessSelect.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
+import ExtensionReleaseAssemblyPanel from '../../components/skill/ExtensionReleaseAssemblyPanel.vue';
+import type { ExtensionAssemblyDetail, StructureComponent } from '../../services/skillMarket/extensionAssemblyHttp';
+import type { ExtensionHttpAssemblyContext } from '../../composables/useExtensionHttpAssembly';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
@@ -30,6 +33,13 @@ import {
   type ExtensionReleaseItem,
   type ExtensionScene,
 } from '../../services/skillMarket/extensionPublishMock';
+import {
+  createAssemblyState,
+  queryExtensionInheritanceSourcesMock,
+  submitExtensionAssemblyMock,
+  type ExtensionAssemblyState,
+  type ExtensionInheritanceSource,
+} from '../../services/skillMarket/extensionReleaseAssembly';
 import {
   getProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
@@ -756,6 +766,34 @@ const publishForm = reactive({
   channel: 'beta' as ExtensionPublishChannel,
   organizationId: organizations.value[0]?.id ?? '',
 });
+const assemblySources = ref<ExtensionInheritanceSource[]>([]);
+const assemblyState = ref<ExtensionAssemblyState>(createAssemblyState());
+const assemblyLoading = ref(false);
+const assemblyBlocked = ref(false);
+const assemblyBusy = ref(false);
+let assemblyLoadSequence = 0;
+const assemblyHttpContext = computed<ExtensionHttpAssemblyContext | undefined>(() => {
+  if (!transportIsHttp || !props.releaseContext || !modalScene.value) return undefined;
+  const scene = modalScene.value;
+  const components: StructureComponent[] = (['skill', 'command', 'agent'] as const).flatMap((type) =>
+    scene.capabilities[type].map((item) => ({
+      componentType: type,
+      componentName: item.name,
+      componentVersion: item.version,
+    })),
+  );
+  return {
+    userId: props.userId.trim(),
+    extensionName: publishExtension.value.name,
+    components,
+    layoutMode: scene.layoutMode,
+    hasBypass: scene.hasBypass,
+    bypassEntries: scene.bypassEntries,
+  };
+});
+function updateAssemblySnapshot(detail: ExtensionAssemblyDetail): void {
+  if (modalScene.value) Object.assign(modalScene.value, detail);
+}
 
 function preferredOrganizationId(items: PublishableOrganization[]): string {
   const preferredId = props.preferredOrganization?.id?.trim() ?? '';
@@ -766,6 +804,42 @@ function preferredOrganizationId(items: PublishableOrganization[]): string {
     items[0]?.id ??
     ''
   );
+}
+const selectedOrganization = computed(
+  () =>
+    organizations.value.find((item) => item.id === publishForm.organizationId) ??
+    organizations.value[0] ??
+    null,
+);
+
+async function initializeReleaseAssembly(scene: ExtensionScene): Promise<void> {
+  const sequence = ++assemblyLoadSequence;
+  assemblyBlocked.value = false;
+  assemblyBusy.value = false;
+  if (transportIsHttp) {
+    assemblySources.value = [];
+    assemblyState.value = {
+      ...createAssemblyState(),
+      target: scene.layoutMode === 'testagent' ? 'testagent' : 'codeagent',
+      inheritBypass: true,
+    };
+    assemblyLoading.value = false;
+    return;
+  }
+  assemblyLoading.value = true;
+  try {
+    const latest = latestSuccessfulRelease(scene);
+    const sources = await queryExtensionInheritanceSourcesMock({
+      extensionName: scene.extension.name || latest?.extensionName || publishExtension.value.name,
+      previousVersion: latest?.version,
+      organization: latest?.organization || selectedOrganization.value?.name,
+    });
+    if (sequence !== assemblyLoadSequence || modalSceneId.value !== scene.id) return;
+    assemblySources.value = sources;
+    assemblyState.value = createAssemblyState(sources);
+  } finally {
+    if (sequence === assemblyLoadSequence) assemblyLoading.value = false;
+  }
 }
 const requiredExtensionNamePrefix = computed(() =>
   getProductCatalogItemNamePrefix(publishDimension.value.type, publishDimension.value.name),
@@ -859,11 +933,15 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   activeModal.value = 'publish';
   publishError.value = blockedReason;
   organizationError.value = '';
+  const assemblyPromise = props.releaseContext
+    ? initializeReleaseAssembly(scene)
+    : Promise.resolve();
   if (transportIsHttp) {
     await loadHttpOrganizations();
   } else {
     publishForm.organizationId = preferredOrganizationId(organizations.value);
   }
+  await assemblyPromise;
 }
 
 function finishPublish(scene: ExtensionScene): void {
@@ -919,7 +997,9 @@ async function loadHistory(scene: ExtensionScene): Promise<void> {
 }
 
 function closeModal(): void {
-  if (publishSubmitting.value || retryingReleaseId.value) return;
+  if (publishSubmitting.value || retryingReleaseId.value || assemblyBusy.value) return;
+  assemblyLoadSequence += 1;
+  assemblyLoading.value = false;
   historyLoadSequence += 1;
   historyLoading.value = false;
   activeModal.value = null;
@@ -957,22 +1037,34 @@ async function confirmPublish(): Promise<void> {
     publishError.value = '请输入 Extension 描述';
     return;
   }
-  const organization =
-    organizations.value.find((item) => item.id === publishForm.organizationId) ??
-    organizations.value[0];
+  const organization = selectedOrganization.value;
   if (!organization) {
     publishError.value = organizationError.value || '当前用户暂无可发布组织';
     return;
   }
+  if (transportIsHttp && !appliedHttpScope.value) {
+    publishError.value = '当前发布范围无效，请重新选择';
+    return;
+  }
+  if (props.releaseContext && (assemblyLoading.value || assemblyBlocked.value)) {
+    publishError.value = '发布组装信息正在加载，请稍后重试';
+    return;
+  }
 
-  if (transportIsHttp) {
-    if (!appliedHttpScope.value) {
-      publishError.value = '当前发布范围无效，请重新选择';
-      return;
-    }
-    publishSubmitting.value = true;
-    publishError.value = '';
-    try {
+  publishSubmitting.value = true;
+  publishError.value = '';
+  try {
+    const assemblyResult = props.releaseContext && !transportIsHttp
+      ? await submitExtensionAssemblyMock({
+          extensionName: name,
+          target: assemblyState.value.target,
+          inheritanceSourceId: assemblyState.value.inheritanceSourceId,
+          uploadedFiles: assemblyState.value.uploadedPackage?.files ?? [],
+          convertAfterPublish: assemblyState.value.convertAfterPublish,
+        })
+      : null;
+
+    if (transportIsHttp && appliedHttpScope.value) {
       await publishHttpExtension({
         userId: props.userId.trim(),
         operatorName: currentUserName.value,
@@ -982,36 +1074,55 @@ async function confirmPublish(): Promise<void> {
         description,
         channel: publishForm.channel,
         organization,
+        ...(props.releaseContext
+          ? { inheritBypass: assemblyState.value.inheritBypass !== false }
+          : {}),
       });
       const sceneId = scene.id;
       if (!props.releaseContext) await refreshHttpScenes(sceneId, false);
       finishPublish(scene);
-      showToast(`已提交 ${publishForm.channel} 发布 → ${organization.name}，后台处理中`);
-    } catch (error) {
-      publishError.value = errorMessage(error, 'Extension 发布失败');
-    } finally {
-      publishSubmitting.value = false;
+      const targetText = assemblyResult
+        ? `${assemblyResult.target === 'codeagent' ? 'CodeAgent' : 'TestAgent'} 模式 · `
+        : '';
+      const conversionText = assemblyResult?.convertTaskCreated
+        ? '；发布成功后将自动发起 CoreALM-Next 小队转换任务'
+        : '';
+      showToast(
+        `已提交 ${targetText}${publishForm.channel} 发布 → ${organization.name}，后台处理中${conversionText}`,
+      );
+      return;
     }
-    return;
-  }
 
-  scene.extension.name = name;
-  scene.extension.description = description;
-  scene.publishing = {
-    version: publishVersion.value,
-    extensionName: name,
-    description,
-    channel: publishForm.channel === 'product' ? 'Product' : 'Beta',
-    operator: { no: 'A0123', name: '当前用户' },
-    publishedAt: formatNow(),
-    status: '进行中',
-    organization: organization.name,
-    items: publishItems.value,
-  };
-  finishPublish(scene);
-  showToast(
-    `已提交 ${scene.publishing.channel} 发布 v${scene.publishing.version} → ${organization.name}，后台处理中`,
-  );
+    scene.extension.name = name;
+    scene.extension.description = description;
+    scene.publishing = {
+      version: publishVersion.value,
+      extensionName: name,
+      description,
+      channel: publishForm.channel === 'product' ? 'Product' : 'Beta',
+      operator: { no: 'A0123', name: '当前用户' },
+      publishedAt: formatNow(),
+      status: '进行中',
+      organization: organization.name,
+      items: publishItems.value,
+    };
+    const submittedChannel = scene.publishing.channel;
+    const submittedVersion = scene.publishing.version;
+    finishPublish(scene);
+    const targetText = assemblyResult
+      ? `${assemblyResult.target === 'codeagent' ? 'CodeAgent' : 'TestAgent'} 模式 · `
+      : '';
+    const conversionText = assemblyResult?.convertTaskCreated
+      ? '；发布成功后将自动发起 CoreALM-Next 小队转换任务'
+      : '';
+    showToast(
+      `已提交 ${targetText}${submittedChannel} 发布 v${submittedVersion} → ${organization.name}，后台处理中${conversionText}`,
+    );
+  } catch (error) {
+    publishError.value = errorMessage(error, 'Extension 发布失败');
+  } finally {
+    publishSubmitting.value = false;
+  }
 }
 
 async function retryRelease(release: ExtensionRelease): Promise<void> {
@@ -1161,6 +1272,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   organizationLoadSequence += 1;
+  assemblyLoadSequence += 1;
   historyLoadSequence += 1;
   if (toastTimer) window.clearTimeout(toastTimer);
 });
@@ -1179,7 +1291,7 @@ onBeforeUnmount(() => {
         v-if="releaseChrome"
         type="button"
         class="extension-release__back"
-        :disabled="publishSubmitting || Boolean(retryingReleaseId)"
+        :disabled="publishSubmitting || Boolean(retryingReleaseId) || assemblyBusy"
         @click="closeModal"
       >
         <span aria-hidden="true">←</span> 返回
@@ -1560,15 +1672,27 @@ onBeforeUnmount(() => {
       v-if="activeModal"
       :class="releaseContext ? 'extension-release__content' : 'modal-overlay'"
     >
-      <section
+      <ExtensionReleaseAssemblyPanel
         v-if="activeModal === 'publish' && modalScene"
-        class="extension-modal"
-        :class="{ 'extension-panel': Boolean(releaseContext) }"
-        :role="releaseContext ? 'region' : 'dialog'"
-        :aria-modal="releaseContext ? undefined : true"
-        :aria-labelledby="releaseContext ? undefined : 'publish-modal-title'"
-        :aria-label="releaseContext ? `发布 Extension · ${modalScene.name}` : undefined"
+        v-model="assemblyState"
+        :enabled="Boolean(releaseContext)"
+        :sources="assemblySources"
+        :extension-name="publishExtension.name"
+        :capabilities="modalScene.capabilities"
+        :disabled="publishSubmitting || assemblyLoading"
+        :http-context="assemblyHttpContext"
+        @blocked-change="assemblyBlocked = $event"
+        @busy-change="assemblyBusy = $event"
+        @snapshot-change="updateAssemblySnapshot"
       >
+        <section
+          class="extension-modal"
+          :class="{ 'extension-panel': Boolean(releaseContext) }"
+          :role="releaseContext ? 'region' : 'dialog'"
+          :aria-modal="releaseContext ? undefined : true"
+          :aria-labelledby="releaseContext ? undefined : 'publish-modal-title'"
+          :aria-label="releaseContext ? `发布 Extension · ${modalScene.name}` : undefined"
+        >
         <header class="modal-header">
           <h3 id="publish-modal-title">
             {{ releaseContext ? 'Extension 发布信息' : `发布 Extension · ${modalScene.name}` }}
@@ -1875,7 +1999,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
-        <footer class="modal-footer">
+        <footer v-if="!releaseContext" class="modal-footer">
           <button
             type="button"
             class="extension-button extension-button--ghost extension-button--modal-action"
@@ -1889,6 +2013,7 @@ onBeforeUnmount(() => {
             class="extension-button extension-button--publish extension-button--modal-action"
             :disabled="
               publishSubmitting ||
+              assemblyLoading ||
               organizationLoading ||
               organizations.length === 0 ||
               selectedPublishCheck?.canPublish === false ||
@@ -1900,7 +2025,46 @@ onBeforeUnmount(() => {
             {{ publishSubmitting ? '发布中…' : '确认发布' }}
           </button>
         </footer>
-      </section>
+        </section>
+
+        <template #actions>
+          <footer v-if="releaseContext" class="modal-footer extension-assembly-footer">
+            <button
+              type="button"
+              class="extension-button extension-button--ghost extension-button--modal-action"
+              :disabled="publishSubmitting || assemblyLoading || assemblyBlocked"
+              @click="openHistoryModal(modalScene)"
+            >
+              发布历史
+            </button>
+            <button
+              type="button"
+              class="extension-button extension-button--ghost extension-button--modal-action"
+              :disabled="publishSubmitting || assemblyLoading || assemblyBusy"
+              @click="closeModal"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="extension-button extension-button--publish extension-button--modal-action"
+              :disabled="
+                publishSubmitting ||
+                assemblyLoading ||
+                assemblyBlocked ||
+                organizationLoading ||
+                organizations.length === 0 ||
+                selectedPublishCheck?.canPublish === false ||
+                !modalScene.publishable ||
+                Boolean(modalScene.publishing)
+              "
+              @click="confirmPublish"
+            >
+              {{ publishSubmitting ? '发布中…' : '确认发布' }}
+            </button>
+          </footer>
+        </template>
+      </ExtensionReleaseAssemblyPanel>
 
       <section
         v-else-if="activeModal === 'history' && modalScene"
@@ -2259,6 +2423,13 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.extension-release__content > .release-assembly {
+  width: 100%;
+  padding-right: 4px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
 .extension-release__content .extension-panel {
   flex: 1;
   width: 100%;
@@ -2269,8 +2440,19 @@ onBeforeUnmount(() => {
   box-shadow: none;
 }
 
+.extension-release__content > .release-assembly .extension-panel {
+  flex: 0 0 auto;
+}
+
 .extension-release__content .modal-body {
   min-height: 0;
+}
+
+.extension-assembly-footer {
+  margin-left: auto;
+  padding: 10px 14px;
+  border-top: 0;
+  background: transparent;
 }
 
 .extension-page button,

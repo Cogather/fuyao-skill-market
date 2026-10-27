@@ -274,7 +274,7 @@ try {
         'saveExtension',
         [extension, { ...scope, operatorName: '设计者' }],
         'POST',
-        '/extensions',
+        '/extensions/save',
         { ...scope, operatorName: '设计者' },
         extension,
       ],
@@ -300,15 +300,16 @@ try {
             extensionName: 'demo-code',
           },
         ],
-        'POST',
+        'GET',
         '/extensions/detail',
-        { userId: scope.userId },
         {
+          userId: scope.userId,
           dimType: scope.dimType,
           dimCode: scope.dimCode,
           dimName: scope.dimName,
           extensionName: 'demo-code',
         },
+        undefined,
       ],
     ];
     for (const [name, args, method, url, params, body] of contracts) {

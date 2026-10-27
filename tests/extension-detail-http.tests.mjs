@@ -86,9 +86,9 @@ try {
   assert.equal(calls.length, 1, 'known Extension names must load the single-detail endpoint');
   assert.deepEqual(calls[0], {
     url: '/extensions/detail',
-    method: 'POST',
-    params: { userId: 'user-001' },
-    data: {
+    method: 'GET',
+    params: {
+      userId: 'user-001',
       dimType: '产品级',
       dimCode: '30222',
       dimName: 'Udm产品部',
@@ -147,7 +147,8 @@ try {
   assert.equal(bindingCalls, 0);
   assert.equal(calls.length, 1, 'scene names directly load single detail without bulk discovery');
   assert.equal(historyCalls, 0, 'publish preparation must never request release history');
-  assert.deepEqual(calls[0].data, {
+  assert.deepEqual(calls[0].params, {
+    userId: 'user-001',
     dimType: scope.dimType,
     dimCode: scope.dimCode,
     dimName: scope.dimName,
@@ -194,7 +195,7 @@ try {
   calls.length = 0;
   detailResponse = success({ ...detailData, publishedExtension: null });
   const unpublished = await queryHttpExtensionBindings('user-001', scope, emptyScene);
-  assert.equal(calls.length, 1, 'unpublished scenes also load POST detail by scene names');
+  assert.equal(calls.length, 1, 'unpublished scenes also load GET detail by scene names');
   assert.equal(unpublished.capabilities.agent[0].name, 'udm-coding-agent');
   detailResponse = success({ ...detailData, readyStatus: '未配置', publishedExtension: null });
   const unconfigured = await queryHttpExtensionBindings('user-001', scope, emptyScene);

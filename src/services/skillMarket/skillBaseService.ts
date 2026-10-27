@@ -958,7 +958,7 @@ export const skillBaseService = {
   // Extension 保存
   saveExtension: (params: any, body: any): any => {
     return httpRequest.harnessApi<any>({
-      url: '/extensions',
+      url: '/extensions/save',
       method: 'post',
       data: body,
       params,
