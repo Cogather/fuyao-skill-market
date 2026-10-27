@@ -8,6 +8,10 @@ import type {
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
 import { harnessWorkflowService } from './businessScenarioDesignService';
+import {
+  normalizeExtensionBypassEntries,
+  normalizeExtensionLayout,
+} from './extensionBypassService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
 import {
@@ -47,6 +51,7 @@ export type PublishExtensionInput = {
   description: string;
   channel: ExtensionPublishChannel;
   organization: PublishableOrganization;
+  inheritBypass?: boolean;
 };
 
 type HttpExtensionRelease = ExtensionRelease & {
@@ -352,6 +357,11 @@ function mapBindingScenes(
         );
         return {
           id: sceneKey,
+          sceneExtensionCode:
+            readText(secondRecord, ['sceneExtensionCode', 'extensionName']) || null,
+          layoutMode: normalizeExtensionLayout(secondRecord.layoutMode),
+          hasBypass: secondRecord.hasBypass === true,
+          bypassEntries: normalizeExtensionBypassEntries(secondRecord.bypassEntries ?? []),
           productId: scope.productId || scope.dimCode,
           primary: firstScene,
           name: secondScene,
@@ -388,6 +398,10 @@ function mapSceneOptionGroups(
       ]);
       return {
         id: sceneKey,
+        sceneExtensionCode: null,
+        layoutMode: 'standard',
+        hasBypass: false,
+        bypassEntries: [],
         productId: scope.productId || scope.dimCode,
         primary: firstScene,
         name: secondScene,
@@ -493,11 +507,13 @@ export async function queryHttpExtensionBindings(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
-  return queryHttpExtensionDetail(userId, scope, {
-    extensionName: scene.extension.name,
+  const detail = await queryHttpExtensionDetail(userId, scope, {
+    extensionName: scene.sceneExtensionCode ?? undefined,
     firstScene: scene.primary,
     secondScene: scene.name,
   });
+  detail.extension.name ||= scene.extension.name;
+  return detail;
 }
 
 export type ExtensionVersionSnapshot = {
@@ -547,11 +563,7 @@ export async function queryHttpExtensionDetail(
 ): Promise<ExtensionScene> {
   const extensionName = normalizeText(identity.extensionName);
   const lookup = extensionName
-    ? {
-        extensionName,
-        ...(normalizeText(identity.firstScene) ? { firstScene: identity.firstScene } : {}),
-        ...(normalizeText(identity.secondScene) ? { secondScene: identity.secondScene } : {}),
-      }
+    ? { extensionName }
     : {
         firstScene: requiredText(identity.firstScene, '请选择一级场景'),
         secondScene: requiredText(identity.secondScene, '请选择二级场景'),
@@ -596,7 +608,6 @@ export async function queryHttpExtensionDetail(
     }),
   );
   if (Object.keys(mappedPublishChecks).length > 0) detail.publishChecks = mappedPublishChecks;
-  detail.extension.name ||= extensionName;
   return detail;
 }
 
@@ -662,6 +673,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     extensionName,
     description: requiredText(input.description, '请输入 Extension 描述'),
     releaseType: input.channel,
+    inheritBypass: input.inheritBypass ?? true,
     firstScene: input.scene.primary,
     secondScene: input.scene.name,
     targetOrgCode: input.organization.id,

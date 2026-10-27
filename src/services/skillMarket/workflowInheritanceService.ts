@@ -1,11 +1,9 @@
+import { designData } from './businessScenarioDesignRepository';
 import {
-  queryHarnessWorkflowPage,
-  type HarnessWorkflowListPage,
-  type HarnessWorkflowListQuery,
-  type HarnessWorkflowListRow,
-} from './harnessWorkflowListService';
-import { loadDesignDetail, mapDesignDetail } from './businessScenarioDesignRepository';
-import type { WorkflowSceneContext } from './businessScenarioDesignService';
+  harnessWorkflowService,
+  type WorkflowSceneSearchRow,
+  type WorkflowDimension,
+} from './businessScenarioDesignService';
 import type {
   Department,
   Product,
@@ -13,14 +11,23 @@ import type {
   Workflow,
 } from '../../composables/useHarnessScenarioWorkspace';
 
-export interface WorkflowInheritanceSource extends HarnessWorkflowListRow {
+export interface WorkflowInheritanceSource extends WorkflowSceneSearchRow {
   key: string;
   localWorkflowId?: string;
+  flowDescription?: string | null;
+  commandCount?: number | null;
+  status?: string;
+  canPublish?: boolean | null;
+  changed?: boolean | null;
 }
 
-export interface WorkflowInheritancePage extends Omit<HarnessWorkflowListPage, 'list'> {
+export interface WorkflowInheritancePage {
+  total: number;
+  pageNo: number;
+  pageSize: number;
   list: WorkflowInheritanceSource[];
   excludedCurrent?: boolean;
+  hasMore?: boolean;
 }
 
 export interface WorkflowInheritanceIdentity {
@@ -28,25 +35,41 @@ export interface WorkflowInheritanceIdentity {
   dimCode: string;
   firstScene: string;
   secondScene: string;
+  sceneExtensionCode?: string | null;
 }
 
-export type WorkflowInheritanceQuery = HarnessWorkflowListQuery & { keyword?: string };
+export interface WorkflowInheritanceQuery {
+  userId: string;
+  keyword?: string;
+  pageNo: number;
+  pageSize: number;
+}
 
 export function workflowInheritanceKey(
-  row: Pick<HarnessWorkflowListRow, 'dimType' | 'dimCode' | 'firstScene' | 'secondScene'>,
+  row: Pick<
+    WorkflowSceneSearchRow,
+    'sourceDimType' | 'sourceDimCode' | 'firstScene' | 'secondScene' | 'sceneExtensionCode'
+  >,
 ): string {
-  return JSON.stringify([row.dimType, row.dimCode, row.firstScene, row.secondScene]);
+  return JSON.stringify([
+    row.sourceDimType,
+    row.sourceDimCode,
+    ...(row.sceneExtensionCode?.trim()
+      ? [row.sceneExtensionCode.trim()]
+      : [null, row.firstScene, row.secondScene]),
+  ]);
 }
 
 function isSameWorkflow(
-  row: Pick<HarnessWorkflowListRow, 'dimType' | 'dimCode' | 'firstScene' | 'secondScene'>,
+  row: WorkflowSceneSearchRow,
   current: WorkflowInheritanceIdentity,
 ): boolean {
   return (
-    row.dimType === current.dimType &&
-    row.dimCode === current.dimCode &&
-    row.firstScene === current.firstScene &&
-    row.secondScene === current.secondScene
+    row.sourceDimType === current.dimType &&
+    row.sourceDimCode === current.dimCode &&
+    (row.sceneExtensionCode?.trim() && current.sceneExtensionCode?.trim()
+      ? row.sceneExtensionCode.trim() === current.sceneExtensionCode.trim()
+      : row.firstScene === current.firstScene && row.secondScene === current.secondScene)
   );
 }
 
@@ -54,34 +77,81 @@ export async function queryWorkflowInheritancePage(
   query: WorkflowInheritanceQuery,
   current?: WorkflowInheritanceIdentity,
 ): Promise<WorkflowInheritancePage> {
-  const page = await queryHarnessWorkflowPage(query);
-  const currentIncluded = Boolean(current && page.list.some((row) => isSameWorkflow(row, current)));
+  const pageNo = Math.max(1, Math.floor(query.pageNo));
+  const pageSize = Math.max(1, Math.floor(query.pageSize));
+  const limit = Math.min(pageNo * pageSize, 100);
+  const data = designData<unknown>(
+    await harnessWorkflowService.searchScenes({
+      userId: query.userId,
+      keyword: query.keyword ?? '',
+      limit,
+    }),
+    '场景搜索失败',
+  );
+  if (!Array.isArray(data)) throw new Error('场景搜索响应缺少有效的场景列表');
+  const rows: WorkflowSceneSearchRow[] = data
+    .map((value) => {
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        !['sourceDimType', 'sourceDimCode', 'firstScene', 'secondScene'].every(
+          (key) => typeof value[key] === 'string',
+        )
+      )
+        throw new Error('场景搜索响应缺少有效的场景标识');
+      return {
+        sourceDimType: value.sourceDimType,
+        sourceDimCode: value.sourceDimCode,
+        sourceDimName: typeof value.sourceDimName === 'string' ? value.sourceDimName : '',
+        firstScene: value.firstScene,
+        secondScene: value.secondScene,
+        sceneExtensionCode:
+          typeof value.sceneExtensionCode === 'string' ? value.sceneExtensionCode : null,
+        flowName: typeof value.flowName === 'string' ? value.flowName : null,
+        activityCount:
+          Number.isSafeInteger(value.activityCount) && value.activityCount >= 0
+            ? value.activityCount
+            : null,
+      };
+    })
+    .slice(0, limit);
+  const hasMore = data.length >= limit && limit < 100;
+  const uniqueRows = [...new Map(rows.map((row) => [workflowInheritanceKey(row), row])).values()];
+  const currentIncluded = Boolean(
+    current && uniqueRows.some((row) => isSameWorkflow(row, current)),
+  );
   return {
-    ...page,
+    total: uniqueRows.length,
+    pageNo,
+    pageSize,
+    hasMore,
     excludedCurrent: currentIncluded,
-    list: page.list
+    list: uniqueRows
       .filter((row) => !current || !isSameWorkflow(row, current))
       .map((row) => ({ ...row, key: workflowInheritanceKey(row) })),
   };
 }
 
-export async function loadWorkflowInheritanceDraft(
+export async function copyWorkflowInheritance(
   source: WorkflowInheritanceSource,
-  target: {
-    context: WorkflowSceneContext;
-    scenarioId: string;
-    productId: string;
-  },
-) {
-  const detail = await loadDesignDetail({
-    userId: target.context.userId,
-    dimType: source.dimType,
-    dimCode: source.dimCode,
-    dimName: source.dimName,
-    firstScene: source.firstScene,
-    secondScene: source.secondScene,
-  });
-  return mapDesignDetail(target.context, detail, target.scenarioId, target.productId);
+  target: Pick<WorkflowDimension, 'userId' | 'dimType' | 'dimCode'>,
+): Promise<string> {
+  const code = designData<unknown>(
+    await harnessWorkflowService.copyScene(
+      {
+        sourceDimType: source.sourceDimType,
+        sourceDimCode: source.sourceDimCode,
+        targetDimType: target.dimType,
+        targetDimCode: target.dimCode,
+        firstScene: source.firstScene,
+        secondScene: source.secondScene,
+      },
+      { userId: target.userId },
+    ),
+    '场景复制失败',
+  );
+  if (typeof code !== 'string' || !code.trim()) throw new Error('场景复制响应缺少有效的场景编码');
+  return code;
 }
 
 export function queryLocalWorkflowInheritancePage(input: {
@@ -137,11 +207,11 @@ export function queryLocalWorkflowInheritancePage(input: {
       flowDescription: workflow.description || null,
       firstScene: parent.name,
       secondScene: scenario.name,
-      secondSceneDescription: scenario.description || null,
       sceneExtensionCode: scenario.code || null,
-      dimType,
-      dimCode: dimType === '部门级' ? department.deptCode : product.code,
-      dimName: dimType === '部门级' ? department.path.join('/') : product.name,
+      sourceDimType: dimType,
+      sourceDimCode: dimType === '部门级' ? department.deptCode : product.code,
+      sourceDimName: dimType === '部门级' ? department.path.join('/') : product.name,
+      activityCount: workflow.stages.length,
       commandCount: workflow.commands.length,
       status: workflow.status,
       canPublish: workflow.canPublish,

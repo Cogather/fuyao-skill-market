@@ -265,6 +265,180 @@ try {
     assert.deepEqual(sceneCodeWrites.at(-1).scope, sceneWrites.at(-1).scope);
     assert.equal(sceneCodeWrites.at(-1).body.sceneExtensionCode, 'change-review');
   });
+  for (const restrictToAllowedDepartments of [true, false]) {
+    await test(`product scope outside department permissions remains editable (tree restriction ${restrictToAllowedDepartments})`, async () => {
+      const sceneQueries = [];
+      const capabilityCalls = [];
+      api.queryProducts = async () =>
+        success([{ offeringId: 'outside-offering', offeringName: 'outside-product' }]);
+      api.querySceneList = async (dimension) => {
+        sceneQueries.push(structuredClone(dimension));
+        return success([]);
+      };
+      api.createCapability = async (type, body, dimension) => {
+        capabilityCalls.push({ type, body, dimension: structuredClone(dimension) });
+        return success('created-command');
+      };
+      const context = reactive({
+        ready: true,
+        userId: 'parent-injected-user',
+        departmentTree: [
+          { id: 'outside', deptCode: 'outside-code', name: '外部部门', children: [] },
+          {
+            id: 'allowed',
+            deptCode: 'allowed-code',
+            name: '授权部门',
+            children: [{ id: 'child', deptCode: 'child-code', name: '子部门', children: [] }],
+          },
+        ],
+        defaultDepartmentPath: ['外部部门'],
+        allowedDepartmentPaths: [['授权部门']],
+        restrictToAllowedDepartments,
+      });
+      const scope = effectScope();
+      scopes.push(scope);
+      const workspace = scope.run(() => createHarnessScenarioWorkspace(() => context));
+      await settleUntil(() => workspace.available.value, 'product-level data should load');
+      assert.equal(
+        workspace.selectedDeptId.value,
+        'outside-code',
+        'product scope retains an unauthorized department',
+      );
+      assert.deepEqual(
+        workspace.departments.map((item) => item.deptCode),
+        ['outside-code', 'allowed-code', 'child-code'],
+      );
+      assert.equal(
+        workspace.canManageDepartment.value,
+        true,
+        'product-level management skips department permission checks',
+      );
+      assert.deepEqual(sceneQueries.at(-1), {
+        userId: 'parent-injected-user',
+        dimType: '产品级',
+        dimCode: 'outside-offering',
+        dimName: 'outside-product',
+      });
+      const command = {
+        _id: 'draft',
+        name: '/outside-product-check',
+        description: '产品检查',
+        owner: 'owner',
+        ownerId: 'owner',
+        developer: 'developer',
+        developerId: 'developer',
+        version: null,
+        dueDate: null,
+      };
+      await workspace.createCapability('Command', command);
+      assert.equal(capabilityCalls.length, 1, 'product-level write reaches the backend');
+      assert.deepEqual(capabilityCalls[0].dimension, {
+        userId: 'parent-injected-user',
+        dimType: '产品级',
+        dimCode: 'outside-offering',
+        dimName: 'outside-product',
+      });
+
+      sceneQueries.length = 0;
+      workspace.selectLevel('部门级');
+      await settleUntil(
+        () => workspace.available.value && sceneQueries.some((item) => item.dimType === '部门级'),
+        'authorized department scope should load after switching levels',
+      );
+      assert.equal(workspace.selectedDeptId.value, 'allowed-code');
+      assert.ok(
+        sceneQueries.every((item) => item.dimType === '部门级' && item.dimCode === 'allowed-code'),
+        'transition must not request unauthorized department data',
+      );
+      assert.deepEqual(sceneQueries.at(-1), {
+        userId: 'parent-injected-user',
+        dimType: '部门级',
+        dimCode: 'allowed-code',
+        dimName: '授权部门',
+      });
+      assert.deepEqual(
+        workspace.departments.map((item) => item.deptCode),
+        restrictToAllowedDepartments
+          ? ['allowed-code', 'child-code']
+          : ['outside-code', 'allowed-code', 'child-code'],
+      );
+      workspace.selectDepartment('outside-code');
+      assert.equal(
+        workspace.selectedDeptId.value,
+        'allowed-code',
+        'unauthorized department selection is blocked',
+      );
+      workspace.selectDepartment('child-code');
+      await settleUntil(
+        () => workspace.available.value && sceneQueries.at(-1)?.dimCode === 'child-code',
+        'authorized descendants remain selectable',
+      );
+      assert.equal(workspace.canManageDepartment.value, true);
+
+      workspace.selectLevel('产品级');
+      await settleUntil(
+        () => workspace.available.value && sceneQueries.at(-1)?.dimType === '产品级',
+        'product scope should reload',
+      );
+      assert.deepEqual(
+        workspace.departments.map((item) => item.deptCode),
+        ['outside-code', 'allowed-code', 'child-code'],
+      );
+      workspace.selectDepartment('outside-code');
+      await settleUntil(
+        () => workspace.available.value && workspace.selectedDeptId.value === 'outside-code',
+        'full product tree should be selectable again',
+      );
+      assert.equal(workspace.canManageDepartment.value, true);
+      assert.deepEqual(
+        context.allowedDepartmentPaths,
+        [['授权部门']],
+        'permission data stays unchanged',
+      );
+    });
+  }
+
+  await test('switching to department scope without any authorized node blocks data and writes', async () => {
+    const sceneQueries = [];
+    let writes = 0;
+    api.queryProducts = async () =>
+      success([{ offeringId: 'product-code', offeringName: 'test-product' }]);
+    api.querySceneList = async (dimension) => {
+      sceneQueries.push(structuredClone(dimension));
+      return success([]);
+    };
+    api.createCapability = async () => {
+      writes += 1;
+      return success('created');
+    };
+    const context = reactive({
+      ready: true,
+      userId: 'parent-user',
+      departmentTree: [{ id: 'outside', name: '外部部门', children: [] }],
+      defaultDepartmentPath: ['外部部门'],
+      allowedDepartmentPaths: [],
+      restrictToAllowedDepartments: false,
+    });
+    const scope = effectScope();
+    scopes.push(scope);
+    const workspace = scope.run(() => createHarnessScenarioWorkspace(() => context));
+    await settleUntil(
+      () => workspace.available.value,
+      'product scope does not require department permissions',
+    );
+    sceneQueries.length = 0;
+    workspace.selectLevel('部门级');
+    await nextTick();
+    await setImmediate();
+    assert.equal(workspace.available.value, false);
+    assert.equal(workspace.canManageDepartment.value, false);
+    assert.deepEqual(sceneQueries, [], 'no department request is allowed without permission');
+    await assert.rejects(
+      () => workspace.createCapability('Command', { name: '/check' }),
+      /无管理权限/,
+    );
+    assert.equal(writes, 0);
+  });
 } finally {
   await server.close();
   globalThis.window = originalWindow;

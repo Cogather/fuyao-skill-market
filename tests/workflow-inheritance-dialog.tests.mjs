@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { setImmediate } from 'node:timers/promises';
-import { createRenderer, h, nextTick, reactive, ssrContextKey } from 'vue';
+import { createRenderer, createSSRApp, h, nextTick, reactive, ssrContextKey } from 'vue';
+import { renderToString } from 'vue/server-renderer';
+
+process.env.VITE_SKILL_MARKET_TRANSPORT = 'http';
 import { createServer } from 'vite';
 
 const server = await createServer({
@@ -80,6 +83,37 @@ try {
     return { state, props, events };
   }
 
+  await test('HTTP dialog explains creating a new scene and rejects overwrite expectations', async () => {
+    const context = {};
+    await renderToString(
+      createSSRApp(Dialog, {
+        open: true,
+        loadPage: async () => ({ total: 0, pageNo: 1, pageSize: 20, list: [] }),
+      }),
+      context,
+    );
+    const html = Object.values(context.teleports || {}).join('');
+    assert.match(html, /\u5f53\u524d\u4ea7\u54c1\u6216\u90e8\u95e8\u4e0b\u65b0\u5efa\u573a\u666f/);
+    assert.match(html, /\u540c\u540d\u573a\u666f.*\u62d2\u7edd/);
+    assert.match(html, /\u4e0d\u4f1a\u8986\u76d6/);
+    assert.doesNotMatch(html, /\u7ee7\u627f\u4f1a\u8986\u76d6\u5f53\u524d Workflow \u914d\u7f6e/);
+  });
+
+  await test('explicit cumulative-search continuation is honored even when filtering empties the reached page', async () => {
+    const { state } = mount(async (query) => ({
+      total: query.pageNo === 1 ? 0 : 1,
+      pageNo: query.pageNo,
+      pageSize: 20,
+      list: query.pageNo === 1 ? [] : [source('later', 'Later workflow', 'Later scene')],
+      hasMore: query.pageNo === 1,
+    }));
+    await settle();
+    assert.equal(state.hasMore.value, true);
+    await state.loadNextPage();
+    assert.equal(state.rows.value.length, 1);
+    assert.equal(state.hasMore.value, false);
+  });
+
   await test('dialog resets search pagination, appends unique lazy pages and confirms one selection', async () => {
     const requests = [];
     const loadPage = async (query) => {
@@ -136,6 +170,34 @@ try {
     assert.equal(events.length, 1);
     assert.equal(events[0][0], 'confirm');
     assert.equal(events[0][1].key, 'code-2');
+  });
+
+  await test('dialog deduplicates its first cumulative response and appends an unseen prefix once', async () => {
+    const { state } = mount(async (query) => ({
+      total: 40,
+      pageNo: query.pageNo,
+      pageSize: 20,
+      hasMore: true,
+      list:
+        query.pageNo === 1
+          ? [
+              ...Array.from({ length: 20 }, (_, i) =>
+                source(`A${i + 1}`, `Workflow ${i + 1}`, `Scene ${i + 1}`),
+              ),
+              source('A1', 'Duplicate', 'Scene 1'),
+            ]
+          : [
+              source('X', 'Inserted', 'Inserted'),
+              ...Array.from({ length: 39 }, (_, i) =>
+                source(`A${i + 1}`, `Workflow ${i + 1}`, `Scene ${i + 1}`),
+              ),
+            ],
+    }));
+    await settle();
+    assert.equal(state.rows.value.length, 20);
+    await state.loadNextPage();
+    assert.equal(state.rows.value.length, 40);
+    assert.equal(state.rows.value.filter((row) => row.key === 'X').length, 1);
   });
 
   await test('editing the search clears a destructive selection before the debounce completes', async () => {

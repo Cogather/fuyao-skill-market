@@ -7,6 +7,25 @@ export interface WorkflowSceneKey {
   secondScene: string;
 }
 export type WorkflowSceneContext = WorkflowDimension & WorkflowSceneKey;
+export interface WorkflowSceneSearchRow extends WorkflowSceneKey {
+  sourceDimType: string;
+  sourceDimCode: string;
+  sourceDimName: string;
+  sceneExtensionCode: string | null;
+  flowName: string | null;
+  activityCount: number | null;
+}
+export interface WorkflowSceneSearchQuery {
+  userId: string;
+  keyword: string;
+  limit: number;
+}
+export interface WorkflowSceneCopyBody extends WorkflowSceneKey {
+  sourceDimType: string;
+  sourceDimCode: string;
+  targetDimType: string;
+  targetDimCode: string;
+}
 export type WorkflowAssetType = 'SKILL' | 'AGENT';
 export type WorkflowComponentType = WorkflowAssetType | 'COMMAND';
 export interface WorkflowSceneRow extends WorkflowSceneKey {
@@ -73,6 +92,10 @@ interface updateSceneMetadataBody {
 }
 
 export const harnessWorkflowService = {
+  searchScenes: (params: WorkflowSceneSearchQuery): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/scenes/search', method: 'GET', params }),
+  copyScene: (body: WorkflowSceneCopyBody, params: { userId: string }): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/scene/copy', method: 'POST', params, data: body }),
   // Supporting requests for this tab use the same service, including lookup of binding IDs.
   queryConfigurationBindings: (
     type: WorkflowComponentType,
@@ -469,6 +492,7 @@ export const harnessWorkflowService = {
    */
   saveExtension: (
     body: {
+      extensionName?: string;
       description?: string;
       firstScene: string;
       secondScene: string;
@@ -478,6 +502,7 @@ export const harnessWorkflowService = {
       commands?: { name: string; version: string }[];
       skills?: { name: string; version: string }[];
       releaseType?: string;
+      inheritBypass?: boolean;
     },
     params: {
       dimType: string;
@@ -488,9 +513,9 @@ export const harnessWorkflowService = {
     },
   ): Promise<any> => {
     return httpRequest.harnessApi({
-      url: '/extensions',
+      url: '/extensions/save',
       method: 'POST',
-      data: body,
+      data: { ...body, inheritBypass: body.inheritBypass ?? true },
       params: params,
     });
   },
@@ -526,9 +551,8 @@ export const harnessWorkflowService = {
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/extensions/detail',
-      method: 'POST',
-      params: params,
-      data: body,
+      method: 'GET',
+      params: { ...params, ...body },
     });
   },
 };

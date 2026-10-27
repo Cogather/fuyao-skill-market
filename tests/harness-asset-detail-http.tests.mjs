@@ -296,8 +296,8 @@ try {
   request.harnessApi = async (config) => {
     calls.push(config);
     return success({
-      firstScene: config.data.firstScene,
-      secondScene: config.data.secondScene,
+      firstScene: config.params.firstScene,
+      secondScene: config.params.secondScene,
       readyStatus: '已就绪',
       publishedExtension: null,
       components: { commands: [{ name: '/udm-e2e', version: '1.0.0' }], skills: [], agents: [] },
@@ -317,26 +317,25 @@ try {
   assert.deepEqual(calls, [
     {
       url: '/extensions/detail',
-      method: 'POST',
-      params: { userId: 'user-001' },
-      data: {
+      method: 'GET',
+      params: {
+        userId: 'user-001',
         dimType: '产品级',
         dimCode: 'product-1',
         dimName: 'udm',
-        extensionName: 'udm-extension-二',
         firstScene: '应用开发二',
         secondScene: '代码开发二',
       },
     },
   ]);
   console.log(
-    'PASS Extension publication carries the selected list item scene names alongside its code',
+    'PASS Extension publication queries the selected list item scene names separately from its package name',
   );
   await api.queryReleases(scope, selectedExtension);
   await api.queryPublishDetail(scope, selectedExtension);
   assert.deepEqual(
-    calls[1].data,
-    calls[0].data,
+    calls[1].params,
+    calls[0].params,
     'scene names survive release refresh and reopening publication',
   );
   selectedExtension.canPublish = false;

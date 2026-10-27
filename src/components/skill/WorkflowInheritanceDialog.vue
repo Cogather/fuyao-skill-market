@@ -26,11 +26,13 @@ const emit = defineEmits<{
 }>();
 
 const keyword = ref('');
+const createsScene = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const rows = ref<WorkflowInheritanceSource[]>([]);
 const selectedKey = ref('');
 const pageNo = ref(0);
 const total = ref(0);
 const excludedCurrent = ref(false);
+const continuation = ref<boolean | undefined>();
 const loading = ref(false);
 const loadError = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
@@ -40,7 +42,7 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let previousScrollTop = 0;
 
 const selected = computed(() => rows.value.find((row) => row.key === selectedKey.value) ?? null);
-const hasMore = computed(() => rows.value.length < total.value);
+const hasMore = computed(() => continuation.value ?? rows.value.length < total.value);
 
 function clearSearchTimer() {
   if (searchTimer) clearTimeout(searchTimer);
@@ -59,6 +61,7 @@ async function loadPageNumber(nextPage: number, replace: boolean) {
     pageNo.value = 0;
     total.value = 0;
     excludedCurrent.value = false;
+    continuation.value = undefined;
     previousScrollTop = 0;
   }
   try {
@@ -69,8 +72,9 @@ async function loadPageNumber(nextPage: number, replace: boolean) {
     });
     if (sequence !== requestSequence || !props.open || keyword.value.trim() !== queryKeyword)
       return;
-    rows.value = replace ? result.list : mergeUniquePage(rows.value, result.list, (row) => row.key);
+    rows.value = mergeUniquePage(replace ? [] : rows.value, result.list, (row) => row.key);
     pageNo.value = result.pageNo;
+    continuation.value = result.hasMore;
     excludedCurrent.value = excludedCurrent.value || result.excludedCurrent === true;
     total.value = Math.max(0, result.total - (excludedCurrent.value ? 1 : 0));
   } catch (cause) {
@@ -213,7 +217,13 @@ onBeforeUnmount(() => {
           </div>
           <div>
             <h2 id="inheritance-title">继承已有 Workflow</h2>
-            <p id="inheritance-description">选择一个成熟工作流，将其流程编排复用到当前场景。</p>
+            <p id="inheritance-description">
+              {{
+                createsScene
+                  ? '选择已有场景，在当前产品或部门下新建场景并复用流程编排。'
+                  : '选择一个成熟工作流，将其流程编排复用到当前场景。'
+              }}
+            </p>
           </div>
           <button
             class="icon-button"
@@ -271,7 +281,7 @@ onBeforeUnmount(() => {
             <span class="option-content">
               <span class="option-heading">
                 <strong>{{ row.flowName || '未命名 Workflow' }}</strong>
-                <span class="status-chip">{{ row.status || '设计中' }}</span>
+                <span v-if="!createsScene" class="status-chip">{{ row.status || '设计中' }}</span>
               </span>
               <span v-if="row.flowDescription" class="option-description">{{
                 row.flowDescription
@@ -289,8 +299,11 @@ onBeforeUnmount(() => {
                   </svg>
                   {{ [row.firstScene, row.secondScene].filter(Boolean).join(' / ') }}
                 </span>
-                <span>{{ row.dimName || '未标注所属维度' }}</span>
-                <span>{{ row.commandCount ?? 0 }} 个 Command</span>
+                <span>{{ row.sourceDimName || '未标注所属维度' }}</span>
+                <span v-if="createsScene">{{ row.sourceDimType }}</span>
+                <span v-if="createsScene">场景编码：{{ row.sceneExtensionCode || '未设置' }}</span>
+                <span v-if="createsScene">{{ row.activityCount ?? 0 }} 个活动</span>
+                <span v-else>{{ row.commandCount ?? 0 }} 个 Command</span>
               </span>
             </span>
             <svg
@@ -333,8 +346,12 @@ onBeforeUnmount(() => {
             <path d="M12 9v5M12 17.5v.1" />
           </svg>
           <div>
-            <strong>继承会覆盖当前 Workflow 配置</strong>
-            <span
+            <strong v-if="createsScene">继承将在当前产品或部门下新建场景</strong>
+            <strong v-else>继承会覆盖当前 Workflow 配置</strong>
+            <span v-if="createsScene"
+              >目标下存在同名场景时将拒绝复制，不会覆盖已有场景或 Workflow 配置。</span
+            >
+            <span v-else
               >Workflow
               规划、Command、资产池和节点绑定将替换为所选内容；当前场景名称、编码、说明和标签保持不变。</span
             >

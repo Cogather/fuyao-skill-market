@@ -66,13 +66,12 @@ try {
   );
   assert.deepEqual(calls[0], {
     url: '/extensions/detail',
-    method: 'POST',
-    params: { userId: 'user-001' },
-    data: {
+    method: 'GET',
+    params: {
+      userId: 'user-001',
       dimType: '产品级',
       dimCode: '30222',
       dimName: 'Udm产品部',
-      extensionName: 'udm-mml-e2e-extension',
       firstScene: '应用开发',
       secondScene: 'mml代码开发',
     },
@@ -88,7 +87,7 @@ try {
     { ...scope, product: { ...product, id: 'stale-filter-code' } },
     asset,
   );
-  assert.equal(calls[0].data.dimCode, '30222');
+  assert.equal(calls[0].params.dimCode, '30222');
   assert.deepEqual(
     calls.map((call) => call.url),
     ['/extensions/detail'],
@@ -111,9 +110,9 @@ try {
     calls.map((call) => call.url),
     ['/extensions/detail'],
   );
-  assert.equal(calls[0].data.dimType, '部门级');
-  assert.equal(calls[0].data.dimCode, 'dept-2');
-  assert.equal(calls[0].data.dimName, '另一部门');
+  assert.equal(calls[0].params.dimType, '部门级');
+  assert.equal(calls[0].params.dimCode, 'dept-2');
+  assert.equal(calls[0].params.dimName, '另一部门');
   assert.equal(departmentContext.productName, '');
 
   // Unresolved card ownership must neither reload products nor borrow an unrelated filter.

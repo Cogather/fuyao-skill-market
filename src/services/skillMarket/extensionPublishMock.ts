@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import type { ExtensionBypassEntry, ExtensionLayoutMode } from './extensionBypassService';
 
 export type ExtensionCapabilityType = 'skill' | 'command' | 'agent';
 
@@ -47,6 +48,11 @@ export type ExtensionPublishChecks = Partial<Record<'beta' | 'product', Extensio
 
 export type ExtensionScene = {
   id: string;
+  /** Scene identity used by bypass requests; distinct from extension.name. */
+  sceneExtensionCode?: string | null;
+  layoutMode?: ExtensionLayoutMode;
+  hasBypass?: boolean;
+  bypassEntries?: ExtensionBypassEntry[];
   productId: string;
   primary: string;
   name: string;

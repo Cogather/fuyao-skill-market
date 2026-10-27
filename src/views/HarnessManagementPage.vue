@@ -253,7 +253,7 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   defaultDepartmentPath:
     permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
   allowedDepartmentPaths: permissionDepartmentPaths.value,
-  // 场景设计按管理权限选择部门；只读工作流清单保留完整部门筛选。
+  // 场景设计仅在部门级应用管理权限；产品级和只读工作流清单保留完整部门树。
   restrictToAllowedDepartments:
     restrictToPermissionDepartments.value && activeHarnessTab.value === 'scenarios',
 }));
@@ -326,7 +326,7 @@ const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
 
 const visibleHarnessTabs = computed(() =>
   harnessTabs.filter((tab) => {
-    if (tab.key === 'scenarios') return harnessAccessLevel.value !== 'task-only';
+    if (tab.key === 'scenarios') return transportIsHttp || harnessAccessLevel.value !== 'task-only';
     if (tab.key === 'settings') return harnessAccessLevel.value === 'owner';
     if (publicHarnessTabKeys.has(tab.key)) return true;
     return (

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { setImmediate } from 'node:timers/promises';
+import { effectScope, nextTick, reactive } from 'vue';
 import { createServer } from 'vite';
 
 process.env.VITE_SKILL_MARKET_TRANSPORT = 'http';
@@ -8,230 +10,418 @@ const server = await createServer({
 });
 const success = (data) => ({ meta: { success: true }, data });
 let failures = 0;
-
 async function test(name, run) {
   try {
     await run();
     console.log(`PASS ${name}`);
   } catch (error) {
-    failures += 1;
+    failures++;
     console.error(`FAIL ${name}`);
     console.error(error);
   }
 }
-
-const workflowDetail = {
-  flowName: '代码检查 Workflow',
-  flowDescription: '复用代码检查编排',
-  sceneExtensionCode: 'source-scene-code',
-  secondSceneDescription: '来源场景说明',
-  commands: [{ commandName: '/source-review', description: '检查入口', version: '1.2.0' }],
-  assetPool: [
-    { assetType: 'SKILL', assetName: 'review-skill', description: '检查代码', packageReady: true },
-  ],
-  stages: [
-    {
-      activityNodeName: '代码检查',
-      sort: 0,
-      steps: [
-        {
-          subActivityNodeName: '静态扫描',
-          sort: 0,
-          boundAssets: [{ assetType: 'SKILL', assetName: 'review-skill' }],
-        },
-      ],
-    },
-  ],
-  steps: ['scenario', 'workflow', 'command', 'assets'].map((key) => ({
-    key,
-    label: key,
-    state: 'done',
-    reason: '',
-  })),
-  nextStep: 4,
-  allDone: true,
+const source = (index, extra = {}) => ({
+  sourceDimType: '\u4ea7\u54c1\u7ea7',
+  sourceDimCode: 'source-product',
+  sourceDimName: 'Current scene',
+  firstScene: 'Research',
+  secondScene: `Scene ${index}`,
+  sceneExtensionCode: `source-${index}`,
+  flowName: `Workflow ${index}`,
+  activityCount: 3,
+  ...extra,
+});
+const current = {
+  dimType: '\u4ea7\u54c1\u7ea7',
+  dimCode: 'target-product',
+  firstScene: 'Research',
+  secondScene: 'Current scene',
 };
-
+const emptyDetail = {
+  flowName: '',
+  flowDescription: '',
+  sceneExtensionCode: '',
+  secondSceneDescription: '',
+  commands: [],
+  assetPool: [],
+  stages: [],
+  steps: [],
+  nextStep: 0,
+  allDone: false,
+};
 try {
   const { harnessWorkflowService: api } = await server.ssrLoadModule(
     '/src/services/skillMarket/businessScenarioDesignService.ts',
   );
+  const { default: request } = await server.ssrLoadModule('/src/services/skillMarket/request.ts');
   const inheritance = await server.ssrLoadModule(
     '/src/services/skillMarket/workflowInheritanceService.ts',
   );
+  const originalRequest = request.harnessApi;
 
-  await test('inheritance search forwards fuzzy keyword and pagination while excluding the current scene', async () => {
+  await test('HTTP inheritance searches scenes with literal keywords and cumulative limits, excluding only the current identity', async () => {
     const requests = [];
-    api.queryHarnessWorkflowList = async (params) => {
-      requests.push(params);
-      return success({
-        total: 3,
-        pageNo: params.pageNo,
-        pageSize: params.pageSize,
-        list: [
+    request.harnessApi = async (config) => {
+      requests.push(config);
+      const list = Array.from({ length: 40 }, (_, index) => source(index));
+      list[1] = source(1, {
+        sourceDimCode: 'target-product',
+        firstScene: 'Research',
+        secondScene: 'Current scene',
+      });
+      list[21] = source(21, {
+        sourceDimType: '\u90e8\u95e8\u7ea7',
+        sourceDimCode: 'target-product',
+        firstScene: 'Research',
+        secondScene: 'Current scene',
+      });
+      return success(
+        config.url === '/scenes/search'
+          ? list.slice(0, config.params.limit)
+          : { total: 40, pageNo: 2, pageSize: 20, list },
+      );
+    };
+    try {
+      const first = await inheritance.queryWorkflowInheritancePage(
+        { userId: 'parent-user', keyword: 'code % _ ', pageNo: 1, pageSize: 20 },
+        current,
+      );
+      const second = await inheritance.queryWorkflowInheritancePage(
+        { userId: 'parent-user', keyword: 'code % _ ', pageNo: 2, pageSize: 20 },
+        current,
+      );
+      assert.deepEqual(
+        requests.map(({ url, method, params }) => ({ url, method, params })),
+        [
           {
-            flowName: '当前 Workflow',
-            flowDescription: '不应出现在候选项中',
-            firstScene: '质量保障',
-            secondScene: '缺陷复盘',
-            secondSceneDescription: '',
-            sceneExtensionCode: 'current',
-            dimType: '产品级',
-            dimCode: 'target-product',
-            dimName: 'Harness 平台',
-            commandCount: 1,
-            status: '设计中',
+            url: '/scenes/search',
+            method: 'GET',
+            params: { userId: 'parent-user', keyword: 'code % _ ', limit: 20 },
           },
           {
-            flowName: '代码检查 Workflow',
-            flowDescription: '可继承',
-            firstScene: '研发提效',
-            secondScene: '代码检查',
-            secondSceneDescription: '',
-            sceneExtensionCode: 'source',
-            dimType: '产品级',
-            dimCode: 'source-product',
-            dimName: '研发平台',
-            commandCount: 2,
-            status: '待发布',
-          },
-          {
-            flowName: '同名部门 Workflow',
-            flowDescription: '维度不同，不应被当成当前工作流排除',
-            firstScene: '质量保障',
-            secondScene: '缺陷复盘',
-            secondSceneDescription: '',
-            sceneExtensionCode: 'department-source',
-            dimType: '部门级',
-            dimCode: 'target-product',
-            dimName: '研发部/平台组',
-            commandCount: 1,
-            status: '设计中',
+            url: '/scenes/search',
+            method: 'GET',
+            params: { userId: 'parent-user', keyword: 'code % _ ', limit: 40 },
           },
         ],
+      );
+      assert.equal(first.list.length, 19);
+      assert.equal(first.excludedCurrent, true);
+      assert.equal(first.hasMore, true);
+      assert.equal(second.list.length, 39);
+      assert.equal(second.list[0].secondScene, 'Scene 0');
+      assert.equal(second.list[20].sourceDimType, '\u90e8\u95e8\u7ea7');
+      assert.equal(second.list[0].activityCount, 3);
+      assert.equal(second.list[0].key, '["\u4ea7\u54c1\u7ea7","source-product","source-0"]');
+    } finally {
+      request.harnessApi = originalRequest;
+    }
+  });
+
+  await test('cumulative scene search stops on a short response and at the 100-row ceiling', async () => {
+    request.harnessApi = async ({ params }) =>
+      success(Array.from({ length: Math.min(params.limit, 45) }, (_, i) => source(i)));
+    try {
+      const last = await inheritance.queryWorkflowInheritancePage({
+        userId: 'parent-user',
+        keyword: '',
+        pageNo: 3,
+        pageSize: 20,
       });
-    };
-
-    const page = await inheritance.queryWorkflowInheritancePage(
-      {
-        userId: 'designer',
-        dimName: '研发部/平台组',
-        keyword: '代码 检查',
-        pageNo: 2,
+      assert.equal(last.list.length, 45);
+      assert.equal(last.hasMore, false);
+      request.harnessApi = async ({ params }) => {
+        assert.equal(params.limit, 100);
+        return success(Array.from({ length: 100 }, (_, i) => source(i)));
+      };
+      const capped = await inheritance.queryWorkflowInheritancePage({
+        userId: 'parent-user',
+        keyword: '',
+        pageNo: 5,
         pageSize: 20,
-      },
-      {
-        dimType: '产品级',
-        dimCode: 'target-product',
-        firstScene: '质量保障',
-        secondScene: '缺陷复盘',
-      },
-    );
-
-    assert.deepEqual(requests, [
-      {
-        userId: 'designer',
-        dimName: '研发部/平台组',
-        keyword: '代码 检查',
-        pageNo: 2,
-        pageSize: 20,
-      },
-    ]);
-    assert.equal(page.total, 3);
-    assert.equal(page.excludedCurrent, true);
-    assert.equal(page.list.length, 2);
-    assert.equal(page.list[0].flowName, '代码检查 Workflow');
-    assert.equal(page.list[1].flowName, '同名部门 Workflow');
-    assert.equal(page.list[0].key, '["产品级","source-product","研发提效","代码检查"]');
+      });
+      assert.equal(capped.list.length, 100);
+      assert.equal(capped.hasMore, false);
+    } finally {
+      request.harnessApi = originalRequest;
+    }
   });
 
-  await test('inheritance detail is read from the source identity and remapped into the target scene', async () => {
-    const detailRequests = [];
-    api.queryHarnessWorkflowDetail = async (params) => {
-      detailRequests.push(params);
-      return success(workflowDetail);
-    };
-
-    const source = {
-      key: '["产品级","source-product","研发提效","代码检查"]',
-      flowName: '代码检查 Workflow',
-      flowDescription: '可继承',
-      firstScene: '研发提效',
-      secondScene: '代码检查',
-      secondSceneDescription: '',
-      sceneExtensionCode: 'source',
-      dimType: '产品级',
-      dimCode: 'source-product',
-      dimName: '研发平台',
-      commandCount: 2,
-      status: '待发布',
-    };
-    const mapped = await inheritance.loadWorkflowInheritanceDraft(source, {
-      context: {
-        userId: 'designer',
-        dimType: '产品级',
-        dimCode: 'target-product',
-        dimName: 'Harness 平台',
-        firstScene: '质量保障',
-        secondScene: '缺陷复盘',
-      },
-      scenarioId: 'target-scenario',
-      productId: 'target-product-id',
-    });
-
-    assert.deepEqual(detailRequests, [
-      {
-        userId: 'designer',
-        dimType: '产品级',
-        dimCode: 'source-product',
-        dimName: '研发平台',
-        firstScene: '研发提效',
-        secondScene: '代码检查',
-      },
-    ]);
-    assert.equal(mapped.workflow.scenarioId, 'target-scenario');
-    assert.equal(mapped.workflow.businessScenario, '缺陷复盘');
-    assert.equal(mapped.workflow.name, '代码检查 Workflow');
-    assert.equal(mapped.workflow.description, '复用代码检查编排');
-    assert.equal(mapped.workflow.commands[0].name, '/source-review');
-    assert.ok(mapped.assets[0]._id.includes('target-product'));
-    assert.equal(mapped.workflow.stages[0].steps[0].assets[0].assetId, mapped.assets[0]._id);
-  });
-
-  await test('a search that does not contain the current workflow keeps the server total unchanged', async () => {
-    api.queryHarnessWorkflowList = async () =>
-      success({
-        total: 1,
+  await test('cumulative scene responses retain newly inserted prefix identities and deduplicate one response', async () => {
+    request.harnessApi = async ({ params }) =>
+      success(
+        params.limit === 20
+          ? Array.from({ length: 20 }, (_, i) => source(i + 1))
+          : [source('X'), ...Array.from({ length: 39 }, (_, i) => source(i + 1))],
+      );
+    try {
+      const first = await inheritance.queryWorkflowInheritancePage({
+        userId: 'u',
         pageNo: 1,
         pageSize: 20,
-        list: [
-          {
-            flowName: '命中的 Workflow',
-            flowDescription: '',
-            firstScene: '研发提效',
-            secondScene: '代码生成',
-            secondSceneDescription: '',
-            sceneExtensionCode: '',
-            dimType: '产品级',
-            dimCode: 'source-product',
-            dimName: '研发平台',
-            commandCount: 0,
-            status: '设计中',
-          },
-        ],
       });
-    const page = await inheritance.queryWorkflowInheritancePage(
-      { userId: 'designer', dimName: '研发部', keyword: '代码', pageNo: 1, pageSize: 20 },
-      {
-        dimType: '产品级',
-        dimCode: 'target-product',
-        firstScene: '质量保障',
-        secondScene: '缺陷复盘',
-      },
+      const second = await inheritance.queryWorkflowInheritancePage({
+        userId: 'u',
+        pageNo: 2,
+        pageSize: 20,
+      });
+      const { mergeUniquePage } = await server.ssrLoadModule('/src/utils/infiniteScroll.ts');
+      const merged = mergeUniquePage(first.list, second.list, (row) => row.key);
+      assert.equal(merged.filter((row) => row.sceneExtensionCode === 'source-X').length, 1);
+      assert.equal(merged.length, 40);
+      request.harnessApi = async () => success([source(1), source(1), source(2)]);
+      const duplicates = await inheritance.queryWorkflowInheritancePage({
+        userId: 'u',
+        pageNo: 1,
+        pageSize: 20,
+      });
+      assert.equal(duplicates.list.length, 2);
+      assert.equal(duplicates.hasMore, false);
+    } finally {
+      request.harnessApi = originalRequest;
+    }
+  });
+
+  await test('scene identity survives rename and distinguishes identical names with different scene codes', async () => {
+    const renamed = source(1, {
+      sourceDimCode: 'target-product',
+      secondScene: 'Renamed current',
+      sceneExtensionCode: 'current-code',
+    });
+    const different = source(2, {
+      sourceDimCode: 'target-product',
+      secondScene: current.secondScene,
+      sceneExtensionCode: 'different-code',
+    });
+    request.harnessApi = async () => success([renamed, different]);
+    try {
+      const page = await inheritance.queryWorkflowInheritancePage(
+        { userId: 'u', pageNo: 1, pageSize: 20 },
+        { ...current, sceneExtensionCode: 'current-code' },
+      );
+      assert.deepEqual(
+        page.list.map((row) => row.sceneExtensionCode),
+        ['different-code'],
+      );
+      assert.equal(page.excludedCurrent, true);
+      assert.equal(
+        inheritance.workflowInheritanceKey(renamed),
+        inheritance.workflowInheritanceKey({ ...renamed, secondScene: 'Another rename' }),
+      );
+      assert.notEqual(
+        inheritance.workflowInheritanceKey(renamed),
+        inheritance.workflowInheritanceKey({ ...renamed, sceneExtensionCode: 'different-code' }),
+      );
+    } finally {
+      request.harnessApi = originalRequest;
+    }
+  });
+
+  await test('scene copy posts exact source and target dimensions and returns the new code', async () => {
+    const requests = [];
+    request.harnessApi = async (config) => {
+      requests.push(config);
+      return { meta: { isSuccess: true }, data: 'new-scene-code' };
+    };
+    try {
+      const code = await inheritance.copyWorkflowInheritance(source(1), {
+        userId: 'parent-user',
+        dimType: '\u90e8\u95e8\u7ea7',
+        dimCode: 'target-dept',
+      });
+      assert.equal(code, 'new-scene-code');
+      assert.deepEqual(requests, [
+        {
+          url: '/scene/copy',
+          method: 'POST',
+          params: { userId: 'parent-user' },
+          data: {
+            sourceDimType: '\u4ea7\u54c1\u7ea7',
+            sourceDimCode: 'source-product',
+            targetDimType: '\u90e8\u95e8\u7ea7',
+            targetDimCode: 'target-dept',
+            firstScene: 'Research',
+            secondScene: 'Scene 1',
+          },
+        },
+      ]);
+    } finally {
+      request.harnessApi = originalRequest;
+    }
+  });
+
+  await test('search and copy preserve backend errors and reject malformed success payloads', async () => {
+    request.harnessApi = async () => ({
+      meta: { success: false, message: 'Same-name scene rejected' },
+      data: null,
+    });
+    try {
+      await assert.rejects(
+        inheritance.queryWorkflowInheritancePage({
+          userId: 'parent-user',
+          pageNo: 1,
+          pageSize: 20,
+        }),
+        /Same-name scene rejected/,
+      );
+      await assert.rejects(
+        inheritance.copyWorkflowInheritance(source(1), {
+          userId: 'parent-user',
+          dimType: '\u4ea7\u54c1\u7ea7',
+          dimCode: 'target-product',
+        }),
+        /Same-name scene rejected/,
+      );
+      request.harnessApi = async () => success({ unexpected: [] });
+      await assert.rejects(
+        inheritance.queryWorkflowInheritancePage({
+          userId: 'parent-user',
+          pageNo: 1,
+          pageSize: 20,
+        }),
+        /\u573a\u666f\u641c\u7d22\u54cd\u5e94/,
+      );
+      await assert.rejects(
+        inheritance.copyWorkflowInheritance(source(1), {
+          userId: 'parent-user',
+          dimType: '\u4ea7\u54c1\u7ea7',
+          dimCode: 'target-product',
+        }),
+        /\u573a\u666f\u7f16\u7801/,
+      );
+    } finally {
+      request.harnessApi = originalRequest;
+    }
+  });
+
+  await test('HTTP confirmation copies once, reloads the target scope and selects the returned scene without client writes', async () => {
+    const { createHarnessScenarioWorkspace } = await server.ssrLoadModule(
+      '/src/composables/useHarnessScenarioWorkspace.ts',
     );
-    assert.equal(page.total, 1);
-    assert.equal(page.excludedCurrent, false);
-    assert.equal(page.list.length, 1);
+    const calls = [];
+    let copied = false;
+    api.queryProducts = async () =>
+      success([{ offeringId: 'target-product', offeringName: 'Current scene' }]);
+    api.querySceneList = async (params) => {
+      calls.push(['scenes', { ...params }]);
+      return success([
+        {
+          firstScene: 'Research',
+          secondScene: 'Current scene',
+          firstSceneId: 'root',
+          secondSceneId: 'current',
+          sceneExtensionCode: 'current-code',
+          sort: 0,
+        },
+        ...(copied
+          ? [
+              {
+                firstScene: 'Research',
+                secondScene: 'Scene 1',
+                firstSceneId: 'copied-root',
+                secondSceneId: 'copied-child',
+                sceneExtensionCode: 'new-scene-code',
+                sort: 1,
+              },
+            ]
+          : []),
+      ]);
+    };
+    api.queryHarnessWorkflowDetail = async (params) => {
+      calls.push(['detail', { ...params }]);
+      return success({
+        ...emptyDetail,
+        flowName: 'Authoritative workflow',
+        sceneExtensionCode: params.secondScene === 'Scene 1' ? 'new-scene-code' : 'current-code',
+      });
+    };
+    request.harnessApi = async (config) => {
+      calls.push(['http', config]);
+      assert.equal(
+        config.url,
+        '/scene/copy',
+        'inheritance must not write metadata, activities or bindings',
+      );
+      copied = true;
+      return success('new-scene-code');
+    };
+    const scope = effectScope();
+    try {
+      const context = reactive({
+        ready: true,
+        userId: 'parent-user',
+        departmentTree: [
+          { id: 'dept', deptCode: 'dept', name: '\u4ea7\u54c1\u7ea7', children: [] },
+        ],
+        defaultDepartmentPath: ['\u4ea7\u54c1\u7ea7'],
+        allowedDepartmentPaths: [['\u4ea7\u54c1\u7ea7']],
+        restrictToAllowedDepartments: true,
+      });
+      const workspace = scope.run(() => createHarnessScenarioWorkspace(() => context));
+      for (let i = 0; i < 100 && (!workspace.available.value || !workspace.workflows.length); i++) {
+        await nextTick();
+        await setImmediate();
+      }
+      assert.equal(workspace.available.value, true);
+      const copyRequest = request.harnessApi;
+      request.harnessApi = async (config) => {
+        assert.equal(config.url, '/scenes/search');
+        return success([
+          source(1, {
+            sourceDimCode: 'target-product',
+            secondScene: 'Renamed current',
+            sceneExtensionCode: 'current-code',
+          }),
+          source(2, {
+            sourceDimCode: 'target-product',
+            secondScene: 'Current scene',
+            sceneExtensionCode: 'other-code',
+          }),
+        ]);
+      };
+      const candidates = await workspace.queryWorkflowInheritance({
+        keyword: '',
+        pageNo: 1,
+        pageSize: 20,
+      });
+      assert.deepEqual(
+        candidates.list.map((row) => row.sceneExtensionCode),
+        ['other-code'],
+      );
+      request.harnessApi = copyRequest;
+      calls.length = 0;
+      await workspace.inheritWorkflow(source(1));
+      for (let i = 0; i < 10; i++) {
+        await nextTick();
+        await setImmediate();
+      }
+      const selected = workspace.scenarios.find(
+        (item) => item._id === workspace.selectedScenarioId.value,
+      );
+      assert.equal(selected?.code, 'new-scene-code');
+      assert.equal(selected?.name, 'Scene 1');
+      assert.equal(calls[0][0], 'http', 'source detail must not be fetched to clone a draft');
+      assert.deepEqual(calls[0][1].data, {
+        sourceDimType: '\u4ea7\u54c1\u7ea7',
+        sourceDimCode: 'source-product',
+        targetDimType: '\u4ea7\u54c1\u7ea7',
+        targetDimCode: 'target-product',
+        firstScene: 'Research',
+        secondScene: 'Scene 1',
+      });
+      assert.equal(calls.filter(([kind]) => kind === 'http').length, 1);
+      assert.ok(
+        calls.some(([kind, params]) => kind === 'scenes' && params.dimCode === 'target-product'),
+      );
+      assert.equal(
+        calls.some(([kind, params]) => kind === 'detail' && params.dimCode === 'source-product'),
+        false,
+      );
+      assert.ok(workspace.scenarios.some((item) => item.code === 'current-code'));
+    } finally {
+      scope.stop();
+      request.harnessApi = originalRequest;
+    }
   });
 
   await test('mock inheritance searches workflow and scene names, excludes the target and paginates', () => {
