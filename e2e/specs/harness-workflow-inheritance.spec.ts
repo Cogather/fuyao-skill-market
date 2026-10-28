@@ -11,9 +11,12 @@ test('从其他场景搜索并继承 Workflow，同时保留当前场景信息',
 
   const dialog = page.getByRole('dialog', { name: '继承已有 Workflow', exact: true });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('继承会覆盖当前 Workflow 配置', { exact: true })).toBeVisible();
   await expect(
-    dialog.getByText('当前场景名称、编码、说明和标签保持不变。', { exact: false }),
+    dialog.getByText('当前未输入任何关键字，未查到任何数据', { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByText('覆盖式继承，原配置不可恢复', { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText('选择 Workflow 后，将用其完整配置直接覆盖当前内容', { exact: false }),
   ).toBeVisible();
 
   const search = dialog.getByRole('searchbox', {
@@ -24,6 +27,11 @@ test('从其他场景搜索并继承 Workflow，同时保留当前场景信息',
   const option = dialog.getByRole('button', { name: /单元测试补全流程/ });
   await expect(option).toBeVisible();
   await option.click();
+  await expect(
+    dialog.getByText('确认后，将用「单元测试补全流程」的完整配置直接覆盖当前内容', {
+      exact: false,
+    }),
+  ).toBeVisible();
   await dialog.getByRole('button', { name: '确认继承', exact: true }).click();
 
   await expect(dialog).toBeHidden();

@@ -12,6 +12,11 @@ const props = withDefaults(
     open: boolean;
     busy?: boolean;
     error?: string;
+    targetConfiguration?: {
+      stageCount: number;
+      commandCount: number;
+      assetCount: number;
+    } | null;
     loadPage: (query: {
       keyword: string;
       pageNo: number;
@@ -42,7 +47,32 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let previousScrollTop = 0;
 
 const selected = computed(() => rows.value.find((row) => row.key === selectedKey.value) ?? null);
+const hasKeyword = computed(() => Boolean(keyword.value.trim()));
 const hasMore = computed(() => continuation.value ?? rows.value.length < total.value);
+const targetConfigurationSummary = computed(() => {
+  const configuration = props.targetConfiguration;
+  if (
+    !configuration ||
+    (!configuration.stageCount && !configuration.commandCount && !configuration.assetCount)
+  )
+    return '空，尚未配置';
+  return `${configuration.stageCount} 环节 / ${configuration.commandCount} Command / ${configuration.assetCount} 资产`;
+});
+const selectedWorkflowLabel = computed(() => {
+  if (!selected.value) return '';
+  const name = selected.value.flowName || '未命名 Workflow';
+  const isEmpty =
+    selected.value.activityCount === 0 &&
+    (selected.value.commandCount === null ||
+      selected.value.commandCount === undefined ||
+      selected.value.commandCount === 0);
+  return `${name}${isEmpty ? '（空，尚未配置）' : ''}`;
+});
+const inheritanceWarningText = computed(() =>
+  selected.value
+    ? `确认后，将用「${selectedWorkflowLabel.value}」的完整配置直接覆盖当前内容（被覆盖：${targetConfigurationSummary.value}），将覆盖为全新的配置。`
+    : `选择 Workflow 后，将用其完整配置直接覆盖当前内容（被覆盖：${targetConfigurationSummary.value}），将覆盖为全新的配置。`,
+);
 
 function clearSearchTimer() {
   if (searchTimer) clearTimeout(searchTimer);
@@ -72,6 +102,13 @@ async function loadPageNumber(nextPage: number, replace: boolean) {
     });
     if (sequence !== requestSequence || !props.open || keyword.value.trim() !== queryKeyword)
       return;
+    if (!queryKeyword) {
+      rows.value = [];
+      pageNo.value = result.pageNo;
+      continuation.value = false;
+      total.value = 0;
+      return;
+    }
     rows.value = mergeUniquePage(replace ? [] : rows.value, result.list, (row) => row.key);
     pageNo.value = result.pageNo;
     continuation.value = result.hasMore;
@@ -79,7 +116,8 @@ async function loadPageNumber(nextPage: number, replace: boolean) {
     total.value = Math.max(0, result.total - (excludedCurrent.value ? 1 : 0));
   } catch (cause) {
     if (sequence !== requestSequence || !props.open) return;
-    loadError.value = cause instanceof Error ? cause.message : '候选 Workflow 加载失败';
+    const message = cause instanceof Error ? cause.message : '候选 Workflow 加载失败';
+    loadError.value = !queryKeyword && message.trim() === 'keyword不能为空' ? '' : message;
   } finally {
     if (sequence === requestSequence) loading.value = false;
   }
@@ -205,7 +243,7 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="inheritance-title"
         aria-describedby="inheritance-description inheritance-warning"
-        :aria-busy="busy || loading"
+        :aria-busy="busy || (loading && hasKeyword)"
       >
         <header class="dialog-header">
           <div class="title-icon" aria-hidden="true">
@@ -261,66 +299,77 @@ onBeforeUnmount(() => {
 
         <div class="results-meta">
           <span>{{
-            loading && !rows.length ? '正在查找可继承的 Workflow…' : `找到 ${total} 个可用 Workflow`
+            !hasKeyword
+              ? '请输入关键字搜索可继承的 Workflow'
+              : loading && !rows.length
+                ? '正在查找可继承的 Workflow…'
+                : `找到 ${total} 个可用 Workflow`
           }}</span>
           <span v-if="selected">已选择 1 个</span>
         </div>
 
         <div class="results-panel" @scroll.passive="onResultsScroll">
-          <button
-            v-for="row in rows"
-            :key="row.key"
-            type="button"
-            class="workflow-option"
-            :class="{ selected: selectedKey === row.key }"
-            :aria-pressed="selectedKey === row.key"
-            :disabled="busy"
-            @click="selectRow(row)"
-          >
-            <span class="radio" aria-hidden="true"><i></i></span>
-            <span class="option-content">
-              <span class="option-heading">
-                <strong>{{ row.flowName || '未命名 Workflow' }}</strong>
-                <span v-if="!createsScene" class="status-chip">{{ row.status || '设计中' }}</span>
-              </span>
-              <span v-if="row.flowDescription" class="option-description">{{
-                row.flowDescription
-              }}</span>
-              <span class="option-meta">
-                <span class="scene-path">
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                  >
-                    <path d="M5 5h5v5H5zM14 14h5v5h-5zM10 7h4a3 3 0 0 1 3 3v4" />
-                  </svg>
-                  {{ [row.firstScene, row.secondScene].filter(Boolean).join(' / ') }}
-                </span>
-                <span>{{ row.sourceDimName || '未标注所属维度' }}</span>
-                <span v-if="createsScene">{{ row.sourceDimType }}</span>
-                <span v-if="createsScene">场景编码：{{ row.sceneExtensionCode || '未设置' }}</span>
-                <span v-if="createsScene">{{ row.activityCount ?? 0 }} 个活动</span>
-                <span v-else>{{ row.commandCount ?? 0 }} 个 Command</span>
-              </span>
-            </span>
-            <svg
-              class="selected-mark"
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+          <template v-if="hasKeyword">
+            <button
+              v-for="row in rows"
+              :key="row.key"
+              type="button"
+              class="workflow-option"
+              :class="{ selected: selectedKey === row.key }"
+              :aria-pressed="selectedKey === row.key"
+              :disabled="busy"
+              @click="selectRow(row)"
             >
-              <path d="m5 12 4 4L19 6" />
-            </svg>
-          </button>
+              <span class="radio" aria-hidden="true"><i></i></span>
+              <span class="option-content">
+                <span class="option-heading">
+                  <strong>{{ row.flowName || '未命名 Workflow' }}</strong>
+                  <span v-if="!createsScene" class="status-chip">{{ row.status || '设计中' }}</span>
+                </span>
+                <span v-if="row.flowDescription" class="option-description">{{
+                  row.flowDescription
+                }}</span>
+                <span class="option-meta">
+                  <span class="scene-path">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    >
+                      <path d="M5 5h5v5H5zM14 14h5v5h-5zM10 7h4a3 3 0 0 1 3 3v4" />
+                    </svg>
+                    {{ [row.firstScene, row.secondScene].filter(Boolean).join(' / ') }}
+                  </span>
+                  <span>{{ row.sourceDimName || '未标注所属维度' }}</span>
+                  <span v-if="createsScene">{{ row.sourceDimType }}</span>
+                  <span v-if="createsScene"
+                    >场景编码：{{ row.sceneExtensionCode || '未设置' }}</span
+                  >
+                  <span v-if="createsScene">{{ row.activityCount ?? 0 }} 个活动</span>
+                  <span v-else>{{ row.commandCount ?? 0 }} 个 Command</span>
+                </span>
+              </span>
+              <svg
+                class="selected-mark"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="m5 12 4 4L19 6" />
+              </svg>
+            </button>
+          </template>
 
-          <div v-if="loading" class="result-state" role="status">
+          <div v-if="loading && hasKeyword" class="result-state" role="status">
             <span class="spinner" aria-hidden="true"></span>
             {{ rows.length ? '正在加载更多…' : '正在加载…' }}
+          </div>
+          <div v-else-if="!hasKeyword" class="result-state empty-state keyword-empty-state">
+            <span>当前未输入任何关键字，未查到任何数据</span>
           </div>
           <div v-else-if="loadError" class="result-state error-state" role="alert">
             <span>{{ loadError }}</span>
@@ -335,26 +384,14 @@ onBeforeUnmount(() => {
         </div>
 
         <aside id="inheritance-warning" class="inheritance-warning" role="note">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-          >
-            <path d="M12 3 2.7 19a1.3 1.3 0 0 0 1.1 2h16.4a1.3 1.3 0 0 0 1.1-2L12 3Z" />
-            <path d="M12 9v5M12 17.5v.1" />
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" fill="currentColor" />
+            <rect x="11" y="6.5" width="2" height="7.5" rx="1" fill="#fff" />
+            <circle cx="12" cy="17.25" r="1.2" fill="#fff" />
           </svg>
           <div>
-            <strong v-if="createsScene">继承将在当前产品或部门下新建场景</strong>
-            <strong v-else>继承会覆盖当前 Workflow 配置</strong>
-            <span v-if="createsScene"
-              >目标下存在同名场景时将拒绝复制，不会覆盖已有场景或 Workflow 配置。</span
-            >
-            <span v-else
-              >Workflow
-              规划、Command、资产池和节点绑定将替换为所选内容；当前场景名称、编码、说明和标签保持不变。</span
-            >
+            <strong>覆盖式继承，原配置不可恢复</strong>
+            <span>{{ inheritanceWarningText }}</span>
           </div>
         </aside>
 
@@ -671,6 +708,10 @@ onBeforeUnmount(() => {
   color: #334155;
   font-size: 14px;
 }
+.keyword-empty-state {
+  color: #94a3b8;
+  font-size: 13px;
+}
 .empty-icon {
   display: grid;
   width: 44px;
@@ -683,33 +724,33 @@ onBeforeUnmount(() => {
 }
 .inheritance-warning {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
   margin: 2px 24px 0;
-  padding: 12px 14px;
-  border: 1px solid #fed7aa;
-  border-radius: 10px;
-  background: #fffaf2;
-  color: #9a4b0c;
+  padding: 16px 18px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fff5f5;
+  color: #8f2024;
 }
 .inheritance-warning > svg {
-  width: 19px;
-  height: 19px;
-  margin-top: 1px;
-  color: #e87914;
+  width: 30px;
+  height: 30px;
+  color: #dc2626;
 }
 .inheritance-warning div {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
 .inheritance-warning strong {
-  color: #8a3b08;
-  font-size: 13px;
+  color: #991b1b;
+  font-size: 14px;
+  line-height: 1.45;
 }
 .inheritance-warning span {
-  line-height: 1.5;
-  font-size: 12px;
+  line-height: 1.65;
+  font-size: 13px;
 }
 .confirm-error {
   margin: 10px 24px 0;

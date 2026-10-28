@@ -960,9 +960,11 @@ export const skillBaseService = {
     data: Omit<ExtensionBypassInheritInput, 'userId'>,
   ): Promise<unknown> =>
     httpRequest.harnessApi({ url: '/extensions/bypass/inherit', method: 'POST', params, data }),
-  searchExtensions: (
-    params: { userId: string; keyword: string; limit: number },
-  ): Promise<unknown> =>
+  searchExtensions: (params: {
+    userId: string;
+    keyword: string;
+    limit: number;
+  }): Promise<unknown> =>
     httpRequest.harnessApi({ url: '/extensions/search', method: 'GET', params }),
   // 查询用户可发布组织列表
   queryUserPublishableOrgs: (params: { userId: string; dimType: string; dimCode: string }): any => {

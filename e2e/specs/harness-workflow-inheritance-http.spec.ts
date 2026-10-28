@@ -119,6 +119,12 @@ async function interceptHarness(page: Page, authorized = true) {
         allDone: false,
       };
     else if (url.pathname.endsWith('/scenes/search')) {
+      if (!url.searchParams.get('keyword')?.trim()) {
+        await route.fulfill({
+          json: { meta: { success: false, message: 'keyword不能为空' }, data: null },
+        });
+        return;
+      }
       const limit = Number(url.searchParams.get('limit'));
       const rows = Array.from({ length: limit === 20 ? 20 : 39 }, (_, index) => source(index + 1));
       rows[0] = {
@@ -173,6 +179,10 @@ test.describe('Harness scene inheritance HTTP', () => {
     await expect(opener).toBeEnabled();
     await opener.click();
     const dialog = page.getByRole('dialog', { name: '继承已有 Workflow', exact: true });
+    await expect(
+      dialog.getByText('当前未输入任何关键字，未查到任何数据', { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.locator('.error-state')).toHaveCount(0);
     const search = dialog.getByRole('searchbox');
     await search.fill(' code % _ ');
     await search.press('Enter');
@@ -291,6 +301,7 @@ test.describe('Harness scene inheritance HTTP', () => {
       .getByRole('button', { name: '继承 Workflow', exact: true })
       .click();
     const dialog = page.getByRole('dialog', { name: '继承已有 Workflow', exact: true });
+    await dialog.getByRole('searchbox').fill('Source workflow');
     await dialog.getByRole('button', { name: /Source workflow 2 / }).click();
     await dialog.getByRole('button', { name: '确认继承', exact: true }).click();
     await expect(dialog.getByRole('alert')).toHaveText('SAME_NAME_REJECTED');

@@ -357,14 +357,24 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     await expect(page.locator('#configuration-panel-activities')).toHaveCount(0);
   });
 
-  test('开始设计 Workflow 按钮保持紧凑', async () => {
+  test('继承与开始设计 Workflow 按钮保持同行等高', async ({ page }) => {
     await harnessPage.goto();
     await harnessPage.switchToScenarios();
 
-    const buttonBox = await harnessPage.startWorkflowDesignButton.boundingBox();
+    const inheritButton = harnessPage.scenariosPanel.getByRole('button', {
+      name: '继承 Workflow',
+      exact: true,
+    });
+    const [inheritButtonBox, startButtonBox] = await Promise.all([
+      inheritButton.boundingBox(),
+      harnessPage.startWorkflowDesignButton.boundingBox(),
+    ]);
 
-    expect(buttonBox).not.toBeNull();
-    expect(buttonBox!.height).toBeLessThanOrEqual(40);
+    expect(inheritButtonBox).not.toBeNull();
+    expect(startButtonBox).not.toBeNull();
+    expect(Math.abs(inheritButtonBox!.y - startButtonBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(inheritButtonBox!.height - startButtonBox!.height)).toBeLessThanOrEqual(1);
+    expect(startButtonBox!.height).toBeLessThanOrEqual(40);
   });
 
   test('缺少 crypto.randomUUID 时仍可开始 Workflow 设计', async ({ page }) => {

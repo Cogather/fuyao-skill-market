@@ -83,7 +83,7 @@ try {
     return { state, props, events };
   }
 
-  await test('HTTP dialog explains creating a new scene and rejects overwrite expectations', async () => {
+  await test('dialog renders the destructive warning and empty-keyword guidance', async () => {
     const context = {};
     await renderToString(
       createSSRApp(Dialog, {
@@ -93,10 +93,42 @@ try {
       context,
     );
     const html = Object.values(context.teleports || {}).join('');
-    assert.match(html, /\u5f53\u524d\u4ea7\u54c1\u6216\u90e8\u95e8\u4e0b\u65b0\u5efa\u573a\u666f/);
-    assert.match(html, /\u540c\u540d\u573a\u666f.*\u62d2\u7edd/);
-    assert.match(html, /\u4e0d\u4f1a\u8986\u76d6/);
-    assert.doesNotMatch(html, /\u7ee7\u627f\u4f1a\u8986\u76d6\u5f53\u524d Workflow \u914d\u7f6e/);
+    assert.match(html, /覆盖式继承，原配置不可恢复/);
+    assert.match(html, /当前未输入任何关键字，未查到任何数据/);
+  });
+
+  await test('an empty keyword backend rejection is treated as a normal empty result', async () => {
+    const requests = [];
+    const { state } = mount(async (query) => {
+      requests.push({ ...query });
+      if (!query.keyword) throw new Error('keyword不能为空');
+      if (query.keyword === '有效关键字') {
+        return {
+          total: 1,
+          pageNo: 1,
+          pageSize: 20,
+          list: [source('valid', '有效流程', '有效场景')],
+        };
+      }
+      throw new Error('候选 Workflow 加载失败');
+    });
+    await settle();
+    assert.deepEqual(requests, [{ keyword: '', pageNo: 1, pageSize: 20 }]);
+    assert.equal(state.loadError.value, '');
+    assert.equal(state.rows.value.length, 0);
+
+    state.keyword.value = '有效关键字';
+    await state.runSearch();
+    assert.equal(state.rows.value.length, 1);
+
+    state.keyword.value = '';
+    await state.runSearch();
+    assert.equal(state.loadError.value, '');
+    assert.equal(state.rows.value.length, 0);
+
+    state.keyword.value = '其它错误';
+    await state.runSearch();
+    assert.equal(state.loadError.value, '候选 Workflow 加载失败');
   });
 
   await test('explicit cumulative-search continuation is honored even when filtering empties the reached page', async () => {
@@ -108,6 +140,8 @@ try {
       hasMore: query.pageNo === 1,
     }));
     await settle();
+    state.keyword.value = 'later';
+    await state.runSearch();
     assert.equal(state.hasMore.value, true);
     await state.loadNextPage();
     assert.equal(state.rows.value.length, 1);
@@ -149,7 +183,7 @@ try {
     const { state, events } = mount(loadPage);
     await settle();
     assert.deepEqual(requests[0], { keyword: '', pageNo: 1, pageSize: 20 });
-    assert.equal(state.rows.value[0].flowName, '初始流程');
+    assert.equal(state.rows.value.length, 0);
 
     state.keyword.value = ' 代码 ';
     await state.runSearch();
@@ -194,6 +228,8 @@ try {
             ],
     }));
     await settle();
+    state.keyword.value = 'workflow';
+    await state.runSearch();
     assert.equal(state.rows.value.length, 20);
     await state.loadNextPage();
     assert.equal(state.rows.value.length, 40);
@@ -208,6 +244,9 @@ try {
       list: [source('selected', 'Selected workflow', 'Selected scene')],
     }));
     await settle();
+
+    state.keyword.value = 'selected';
+    await state.runSearch();
 
     state.selectRow(state.rows.value[0]);
     assert.equal(state.selected.value?.key, 'selected');

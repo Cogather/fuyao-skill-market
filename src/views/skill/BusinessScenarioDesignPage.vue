@@ -222,6 +222,15 @@ const currentScenario = computed(() =>
 const currentWorkflows = computed(() =>
   workflows.filter((item) => item.scenarioId === selectedScenarioId.value),
 );
+const inheritanceTargetConfiguration = computed(() => {
+  const workflow = currentWorkflows.value[0];
+  if (!workflow) return null;
+  return {
+    stageCount: workflow.stages.length,
+    commandCount: workflow.commands.length,
+    assetCount: workflow.assets.length,
+  };
+});
 const assetById = computed(() => new Map(assets.map((item) => [item._id, item])));
 watch([scopeLevel, selectedDeptId, productId, selectedScenarioId, available], () => {
   if (
@@ -1619,7 +1628,11 @@ async function createAsset() {
                 </button>
               </div>
             </div>
-            <div v-if="currentScenario.level === 2" class="summary-actions">
+            <div
+              v-if="currentScenario.level === 2"
+              class="summary-actions"
+              :class="{ 'summary-actions--paired': !currentWorkflows.length }"
+            >
               <button
                 class="inherit-workflow-button"
                 type="button"
@@ -1645,7 +1658,8 @@ async function createAsset() {
                 :disabled="!canEdit || workflowLoading || wizardBusy || inheritanceBusy"
                 @click="openWizard()"
               >
-                + 开始设计 Workflow
+                <span class="start-workflow-button__plus">+</span>
+                <span>开始设计 Workflow</span>
               </button>
             </div>
           </header>
@@ -2086,6 +2100,7 @@ async function createAsset() {
     :open="inheritanceOpen"
     :busy="inheritanceBusy"
     :error="inheritanceError"
+    :target-configuration="inheritanceTargetConfiguration"
     :load-page="loadInheritancePage"
     @close="closeInheritanceDialog"
     @confirm="confirmWorkflowInheritance"
@@ -3100,24 +3115,29 @@ async function createAsset() {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 9px;
+  align-self: flex-start;
+  flex-wrap: nowrap;
+  gap: 10px;
+  white-space: nowrap;
 }
 .inherit-workflow-button {
   display: inline-flex;
-  height: 32px;
+  height: 38px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border: 1px solid #b9c9f8;
-  border-radius: 7px;
-  background: #f7f9ff;
-  color: #315ce8;
-  padding: 0 12px;
+  gap: 7px;
+  border: 1px solid #bfd0ff;
+  border-radius: 9px;
+  background: #fff;
+  color: #315ee9;
+  padding: 0 15px;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(49, 94, 233, 0.06);
   transition:
     border-color 0.16s ease,
     background 0.16s ease,
@@ -3125,13 +3145,13 @@ async function createAsset() {
     transform 0.16s ease;
 }
 .inherit-workflow-button svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
 }
 .inherit-workflow-button:not(:disabled):hover {
-  border-color: #7896f4;
-  background: #eef3ff;
-  box-shadow: 0 4px 12px rgba(49, 92, 232, 0.12);
+  border-color: #7898f5;
+  background: #f5f8ff;
+  box-shadow: 0 5px 14px rgba(49, 94, 233, 0.13);
   transform: translateY(-1px);
 }
 .level {
@@ -3238,9 +3258,31 @@ async function createAsset() {
   transform: translateY(-1px);
 }
 .start-workflow-button {
-  align-self: flex-start;
-  padding: 0 12px !important;
+  height: 38px;
+  align-self: center;
+  gap: 7px;
+  border-radius: 9px !important;
+  background: linear-gradient(135deg, #3f70f4 0%, #315ee9 100%) !important;
+  padding: 0 16px !important;
   line-height: 20px;
+  box-shadow: 0 5px 13px rgba(49, 94, 233, 0.22);
+  transition:
+    box-shadow 0.16s ease,
+    filter 0.16s ease,
+    transform 0.16s ease;
+}
+.start-workflow-button__plus {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+}
+.start-workflow-button:not(:disabled):hover {
+  background: linear-gradient(135deg, #315ee9 0%, #244bd0 100%) !important;
+  box-shadow: 0 7px 17px rgba(49, 94, 233, 0.28);
+}
+.summary-actions > button:active:not(:disabled) {
+  box-shadow: none;
+  transform: translateY(0);
 }
 .empty {
   display: flex;
@@ -4769,6 +4811,19 @@ h4 small {
   .summary,
   .workflow-card > header {
     flex-direction: column;
+  }
+  .summary-actions {
+    width: 100%;
+  }
+  .summary-actions--paired {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .summary-actions--paired > button {
+    width: 100%;
+    min-width: 0;
+    padding-right: 10px !important;
+    padding-left: 10px !important;
   }
   .two,
   .config-grid {

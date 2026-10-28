@@ -96,13 +96,11 @@ test.describe('Extension packaging and bypass HTTP', () => {
     const confirm = dialog.getByRole('button', { name: '确认发布', exact: true });
     await expect(confirm).toBeEnabled();
     try {
-      await panel
-        .getByTestId('upload')
-        .setInputFiles({
-          name: 'pending.zip',
-          mimeType: 'application/zip',
-          buffer: Buffer.from('zip fixture'),
-        });
+      await panel.getByTestId('upload').setInputFiles({
+        name: 'pending.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from('zip fixture'),
+      });
       await expect.poll(() => count('/extensions/bypass')).toBe(1);
       await expect(confirm).toBeDisabled();
       await confirm.dispatchEvent('click');
@@ -121,13 +119,11 @@ test.describe('Extension packaging and bypass HTTP', () => {
         element.value = 'testagent';
         element.dispatchEvent(new Event('change', { bubbles: true }));
       });
-      await panel
-        .getByTestId('upload')
-        .setInputFiles({
-          name: 'blocked.zip',
-          mimeType: 'application/zip',
-          buffer: Buffer.from('blocked'),
-        });
+      await panel.getByTestId('upload').setInputFiles({
+        name: 'blocked.zip',
+        mimeType: 'application/zip',
+        buffer: Buffer.from('blocked'),
+      });
       for (const id of ['confirm-clear', 'download', 'inherit'])
         await panel.getByTestId(id).dispatchEvent('click');
       const refresh = panel.getByRole('button', { name: '刷新目录', exact: true });
