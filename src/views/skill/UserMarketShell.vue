@@ -1012,6 +1012,8 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
+const overviewIframeSrc =  import.meta.env.VITE_AGENT_CENTER_AI_API_BASE || '';
+
 // userId 和部门树都由父页面通过 Skill_Square_Init 注入。
 function waitUserIdAndDepartmentList(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
@@ -4173,6 +4175,31 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       class="tabs-panel overview-panel"
       :style="tabPanelFillStyle"
     >
+      <!-- 原始全部技能内容隐藏，改为嵌入AgentCenter页面 -->
+      <iframe 
+        :src="overviewIframeSrc"
+        style="
+          width: 100%;
+          height: 100%;
+          display: block;
+          border-width: medium;
+          border-style: none;
+          border-color: currentColor;
+          border-image: none;
+          mix-blend-mode: multiply;
+        "
+        allow="fullscreen"
+        loading="eager"
+      />
+    </div>
+
+    <!-- 原始全部技能内容保留在下方，默认不渲染
+    <div
+      v-else-if="false && innerTab === 'overview'"
+      ref="tabPanelRef"
+      class="tabs-panel overview-panel"
+      :style="tabPanelFillStyle"
+    >
       <section>
         <div style="display: flex; justify-content: space-between; align-items: center">
           <div class="all-header-copy">
@@ -4543,6 +4570,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
         </div>
       </section>
     </div>
+    原始全部技能内容结束 -->
 
     <div v-else-if="innerTab === 'core'" class="tabs-panel overview-panel core">
       <div class="core-alert" role="note" aria-label="CoreHarness 提示">
