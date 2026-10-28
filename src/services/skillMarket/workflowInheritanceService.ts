@@ -1,8 +1,8 @@
 import { designData } from './businessScenarioDesignRepository';
 import {
   harnessWorkflowService,
+  type WorkflowSceneContext,
   type WorkflowSceneSearchRow,
-  type WorkflowDimension,
 } from './businessScenarioDesignService';
 import type {
   Department,
@@ -134,7 +134,10 @@ export async function queryWorkflowInheritancePage(
 
 export async function copyWorkflowInheritance(
   source: WorkflowInheritanceSource,
-  target: Pick<WorkflowDimension, 'userId' | 'dimType' | 'dimCode'>,
+  target: Pick<
+    WorkflowSceneContext,
+    'userId' | 'dimType' | 'dimCode' | 'firstScene' | 'secondScene'
+  >,
 ): Promise<string> {
   const code = designData<unknown>(
     await harnessWorkflowService.copyScene(
@@ -143,8 +146,8 @@ export async function copyWorkflowInheritance(
         sourceDimCode: source.sourceDimCode,
         targetDimType: target.dimType,
         targetDimCode: target.dimCode,
-        firstScene: source.firstScene,
-        secondScene: source.secondScene,
+        firstScene: target.firstScene,
+        secondScene: target.secondScene,
       },
       { userId: target.userId },
     ),

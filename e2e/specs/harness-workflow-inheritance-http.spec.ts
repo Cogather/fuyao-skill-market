@@ -232,8 +232,8 @@ test.describe('Harness scene inheritance HTTP', () => {
         sourceDimCode: 'source-product',
         targetDimType: '产品级',
         targetDimCode: 'outside-product',
-        firstScene: '来源一级',
-        secondScene: '来源场景 X',
+        firstScene: '目标一级',
+        secondScene: '当前场景',
       });
     }
     const afterCopy = fixture.requests.slice(fixture.requests.indexOf(copies[1]!));

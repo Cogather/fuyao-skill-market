@@ -452,11 +452,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       return existing ?? draft;
     }
     const targetProduct = currentProduct();
-    const targetContext = dimensionFor(targetProduct);
+    const targetContext = sceneContext(targetScenarioId);
     const targetDepartmentId = selectedDeptId.value;
     const targetLevel = scopeLevel.value;
     const stillInScope = () =>
       targetProductId === productId.value &&
+      targetScenarioId === selectedScenarioId.value &&
       targetDepartmentId === selectedDeptId.value &&
       targetLevel === scopeLevel.value &&
       targetContext.userId === context().userId;

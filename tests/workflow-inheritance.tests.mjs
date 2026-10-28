@@ -217,7 +217,7 @@ try {
     }
   });
 
-  await test('scene copy posts exact source and target dimensions and returns the new code', async () => {
+  await test('scene copy posts source dimensions with the current target scene names', async () => {
     const requests = [];
     request.harnessApi = async (config) => {
       requests.push(config);
@@ -228,6 +228,8 @@ try {
         userId: 'parent-user',
         dimType: '\u90e8\u95e8\u7ea7',
         dimCode: 'target-dept',
+        firstScene: 'Target parent',
+        secondScene: 'Target child',
       });
       assert.equal(code, 'new-scene-code');
       assert.deepEqual(requests, [
@@ -240,8 +242,8 @@ try {
             sourceDimCode: 'source-product',
             targetDimType: '\u90e8\u95e8\u7ea7',
             targetDimCode: 'target-dept',
-            firstScene: 'Research',
-            secondScene: 'Scene 1',
+            firstScene: 'Target parent',
+            secondScene: 'Target child',
           },
         },
       ]);
@@ -269,6 +271,8 @@ try {
           userId: 'parent-user',
           dimType: '\u4ea7\u54c1\u7ea7',
           dimCode: 'target-product',
+          firstScene: 'Target parent',
+          secondScene: 'Target child',
         }),
         /Same-name scene rejected/,
       );
@@ -286,6 +290,8 @@ try {
           userId: 'parent-user',
           dimType: '\u4ea7\u54c1\u7ea7',
           dimCode: 'target-product',
+          firstScene: 'Target parent',
+          secondScene: 'Target child',
         }),
         /\u573a\u666f\u7f16\u7801/,
       );
@@ -407,7 +413,7 @@ try {
         targetDimType: '\u4ea7\u54c1\u7ea7',
         targetDimCode: 'target-product',
         firstScene: 'Research',
-        secondScene: 'Scene 1',
+        secondScene: 'Current scene',
       });
       assert.equal(calls.filter(([kind]) => kind === 'http').length, 1);
       assert.ok(
