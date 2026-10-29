@@ -178,3 +178,61 @@ export interface SkillListResponse {
   pageSize: number;
   totalPages: number;
 }
+
+/* ==================== Extension → CoreALM-Next 小队转换 ==================== */
+
+/** 目标空间（CoreALM-Next 空间） */
+export interface ConvertSpaceOption {
+  spaceId: string;
+  spaceName: string;
+  description?: string;
+}
+
+/** 转换任务状态 */
+export type ConvertTaskStatus = 'processing' | 'success' | 'fail' | 'canceled';
+
+/** Agent-Skill 关系 */
+export interface ConvertAgentSkillRel {
+  agentName: string;
+  agentPrompt?: string;
+  skills: string[];
+}
+
+/** 小队成员 */
+export interface ConvertSquadMember {
+  name: string;
+  role: string;
+  prompt: string;
+}
+
+/** 转换任务详情 */
+export interface ConvertTaskDetail {
+  taskId: string;
+  extensionName: string;
+  extensionVersion?: string;
+  submitter?: string;
+  status: ConvertTaskStatus;
+  squadName?: string;
+  squadDescription?: string;
+  squadInstruction?: string;
+  members?: ConvertSquadMember[];
+  agentSkillRels?: ConvertAgentSkillRel[];
+  targetSpace?: ConvertSpaceOption;
+  createdAt?: string;
+  finishedAt?: string | null;
+  errorMessage?: string | null;
+}
+
+/** 转换任务列表行（简化） */
+export interface ConvertTaskListItem {
+  taskId: string;
+  extensionName: string;
+  extensionVersion?: string;
+  submitter?: string;
+  status: ConvertTaskStatus;
+  squadName?: string;
+  squadDescription?: string;
+  targetSpaceName?: string;
+  createdAt?: string;
+  finishedAt?: string | null;
+}

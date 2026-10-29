@@ -15,6 +15,11 @@ import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabil
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
+import ConvertSpaceSelectDialog from '../../components/skill/ConvertSpaceSelectDialog.vue';
+import ConvertTaskListPanel from '../../components/skill/ConvertTaskListPanel.vue';
+import ConvertTaskDetailPanel from '../../components/skill/ConvertTaskDetailPanel.vue';
+import { skillBaseService } from '../../services/skillMarket/skillBaseService';
+import type { ConvertSpaceOption } from '../../types/skill';
 import { atomicAssetApiType } from '../../services/skillMarket/atomicAssetPublishHttp';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
 import {
@@ -85,7 +90,72 @@ const api = getHarnessAssetApi();
 const view = ref<PageView>('list');
 const detail = ref<HarnessAssetDetail | null>(null);
 const selectedVersion = ref('');
-const detailTab = ref<'content' | 'report' | 'behavior' | 'history'>('content');
+const detailTab = ref<'content' | 'report' | 'behavior' | 'history' | 'convert'>('content');
+
+// ===== Extension → CoreALM-Next 小队转换 =====
+const convertSpaceDialogOpen = ref(false);
+const convertDetailTaskId = ref('');
+const convertDetailDialogOpen = ref(false);
+// 用于在发起转换成功后强制重建清单面板，触发重新加载
+const convertListNonce = ref(0);
+
+function openConvertSpaceDialog(): void {
+  convertSpaceDialogOpen.value = true;
+}
+
+function openConvertDetail(taskId: string): void {
+  convertDetailTaskId.value = taskId;
+  convertDetailDialogOpen.value = true;
+}
+
+function closeConvertDetailDialog(): void {
+  convertDetailDialogOpen.value = false;
+  convertDetailTaskId.value = '';
+}
+
+async function loadConvertSpaces(): Promise<ConvertSpaceOption[]> {
+  const env = await skillBaseService.queryConvertSpaces({ userId: props.userId });
+  const meta = (env.meta ?? {}) as { success?: boolean };
+  if (typeof meta.success === 'boolean' && !meta.success) {
+    throw new Error(env.message || '空间列表加载失败');
+  }
+  const data = env.data;
+  const list: unknown[] = Array.isArray(data) ? data : Array.isArray(data?.spaces) ? data.spaces : [];
+  return list.map((item) => {
+    const row = (item ?? {}) as Record<string, unknown>;
+    return {
+      spaceId: String(row.workspaceId ?? row.spaceId ?? row.id ?? ''),
+      spaceName: String(row.workspaceName ?? row.spaceName ?? row.name ?? ''),
+      description: row.description ? String(row.description) : '',
+    } satisfies ConvertSpaceOption;
+  });
+}
+
+async function startConvertTask(space: ConvertSpaceOption, version: string): Promise<void> {
+  const extensionName = selectedAsset.value?.name ?? '';
+  if (!extensionName) {
+    throw new Error('未找到当前 Extension，请返回列表后重试');
+  }
+  const env = await skillBaseService.startConvertTask({
+    extensionName,
+    extensionVersion: version,
+    workspaceId: space.spaceId,
+    workspaceName: space.spaceName,
+  });
+  const meta = (env.meta ?? {}) as { success?: boolean };
+  if (typeof meta.success === 'boolean' && !meta.success) {
+    throw new Error(env.message || '发起转换失败');
+  }
+}
+
+function closeConvertSpaceDialog(): void {
+  convertSpaceDialogOpen.value = false;
+}
+
+function onConvertSpaceSubmitted(): void {
+  convertSpaceDialogOpen.value = false;
+  convertListNonce.value += 1;
+}
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
 const atomicPublishAsset = ref<HarnessAsset | null>(null);
@@ -366,6 +436,8 @@ const isHistoryTab = computed(() => isExtensionHistoryTab.value || isAtomicHisto
 const showDetailVersionPanel = computed(() => {
   const asset = selectedAsset.value;
   if (!asset || isHistoryTab.value) return false;
+  // 转换 tab 也隐藏版本信息区（清单自带上下文）。
+  if (detailTab.value === 'convert') return false;
   // Skill 内容页在 HTTP / Mock 两种 transport 下始终保留版本信息区。
   return asset.assetType !== 'Skill' || detailTab.value === 'content';
 });
@@ -583,6 +655,8 @@ async function openDetail(asset: HarnessAsset): Promise<void> {
   selectedAssetKey.value = `${asset.assetType}:${asset.id}`;
   selectedVersion.value = transportIsHttp ? '' : asset.currentVersion || asset.versions[0] || '';
   detailTab.value = 'content';
+  convertDetailDialogOpen.value = false;
+  convertDetailTaskId.value = '';
   detail.value = null;
   detailLoading.value = false;
   detailError.value = '';
@@ -1422,6 +1496,15 @@ onBeforeUnmount(() => {
             动态评估
           </button>
           <button
+            v-if="selectedAsset.assetType === 'Extension'"
+            id="asset-detail-tab-convert"
+            type="button"
+            :class="{ 'is-active': detailTab === 'convert' }"
+            @click="detailTab = 'convert'"
+          >
+            小队转换
+          </button>
+          <button
             v-if="selectedAsset.assetType === 'Extension' && canViewAssetHistory(selectedAsset)"
             id="asset-detail-tab-history"
             type="button"
@@ -1542,6 +1625,30 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </template>
+          <div v-else-if="detailTab === 'convert'">
+            <ConvertTaskListPanel
+              :key="convertListNonce"
+              :extension-name="selectedAsset.name"
+              @start="openConvertSpaceDialog"
+              @view-detail="openConvertDetail"
+            />
+            <ConvertSpaceSelectDialog
+              v-if="convertSpaceDialogOpen"
+              :extension-name="selectedAsset.name"
+              :versions="detailVersions"
+              :default-version="selectedVersion"
+              :load-spaces="loadConvertSpaces"
+              :start-task="startConvertTask"
+              @close="closeConvertSpaceDialog"
+              @submitted="onConvertSpaceSubmitted"
+            />
+            <ConvertTaskDetailPanel
+              v-if="convertDetailDialogOpen && convertDetailTaskId"
+              :task-id="convertDetailTaskId"
+              :extension-name="selectedAsset.name"
+              @close="closeConvertDetailDialog"
+            />
+          </div>
           <AtomicAssetPublishPage
             v-else-if="isAtomicHistoryTab"
             id="atomic-asset-history-panel"

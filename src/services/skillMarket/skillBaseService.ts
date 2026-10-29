@@ -272,6 +272,42 @@ export const skillBaseService = {
     });
   },
 
+  // Extension → CoreALM-Next 小队转换：查询可选目标工作空间
+  queryConvertSpaces: (params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/api/harness/team-convert/workspaces',
+      method: 'get',
+      params,
+    });
+  },
+
+  // Extension → CoreALM-Next 小队转换：发起转换任务
+  startConvertTask: (body: any): any => {
+    return httpRequest.skill<any>({
+      url: '/api/harness/team-convert/start',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // Extension → CoreALM-Next 小队转换：任务清单
+  queryConvertTasks: (params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/api/harness/team-convert/list',
+      method: 'post',
+      data: params,
+    });
+  },
+
+  // Extension → CoreALM-Next 小队转换：单个任务详情
+  queryConvertTaskDetail: (taskId: string, params?: any): any => {
+    return httpRequest.skill<any>({
+      url: `/api/harness/team-convert/${taskId}`,
+      method: 'get',
+      params,
+    });
+  },
+
   // projSkill发布到市场接口
   publishProjSkill: (body: any): any => {
     return httpRequest.skill<any>({

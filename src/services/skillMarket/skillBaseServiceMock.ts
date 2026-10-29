@@ -1325,6 +1325,423 @@ function promoteMockOrgPublishTasks(): void {
   }
 }
 
+/** ============== Extension → CoreALM-Next 小队转换 Mock ============== */
+
+let mockConvertSpaces: { workspaceId: string; workspaceName: string; description: string }[] = [
+  { workspaceId: 'sp-fuyao', workspaceName: '扶摇空间', description: '扶摇平台默认 CoreALM-Next 工作空间，覆盖全流程能力沉淀。' },
+  { workspaceId: 'sp-yunshan', workspaceName: '云山空间', description: '云山业务线专用空间，聚焦云原生与运维场景。' },
+  { workspaceId: 'sp-haichuan', workspaceName: '海川空间', description: '海川数据智能空间，承载数据分析与 AI 能力。' },
+  { workspaceId: 'sp-tianji', workspaceName: '天玑空间', description: '天玑智能运维空间，专注告警归因与稳定性治理。' },
+];
+
+type MockConvertTask = {
+  taskId: string;
+  extensionName: string;
+  extensionVersion: string;
+  submitter: string;
+  status: 'processing' | 'success' | 'fail' | 'canceled';
+  squadName?: string;
+  squadDescription?: string;
+  squadInstruction?: string;
+  members?: { name: string; role: string; prompt: string }[];
+  agentSkillRels?: { agentName: string; agentPrompt?: string; skills: string[] }[];
+  targetSpaceId?: string;
+  targetSpaceName?: string;
+  createdAt: string;
+  finishedAt?: string | null;
+  errorMessage?: string | null;
+  submittedAtMs: number;
+};
+
+/** mock 里约 8s 后自动流转到 success */
+const MOCK_CONVERT_DURATION_MS = 8_000;
+
+function mockConvertSeedMs(days: number, hour = 0, minute = 0): number {
+  return Date.now() - days * 24 * 60 * 60 * 1000 - hour * 60 * 60 * 1000 - minute * 60 * 1000;
+}
+
+let mockConvertTasks: MockConvertTask[] = [
+  {
+    taskId: 'convert-80001',
+    extensionName: '退货退款 Extension',
+    extensionVersion: '1.2.0',
+    submitter: '张三',
+    status: 'success',
+    squadName: '退货退款小队',
+    squadDescription: '由退货退款 Extension 转换而来的 CoreALM-Next 小队，覆盖退货受理、审核决策、退款执行全流程，支持凭证核验与留档追溯。',
+    squadInstruction:
+      '你是「退货退款」小队的队长，负责统筹退货受理 / 审核决策 / 退款执行三个环节：拆解用户请求、调度小队成员、汇总执行并反馈结论，异常时升级处理。',
+    members: [
+      {
+        name: '退货退款队长',
+        role: '队长',
+        prompt:
+          '你是「退货退款」小队的队长，负责统筹退货受理 / 审核决策 / 退款执行三个环节：拆解用户请求、调度小队成员、汇总执行并反馈结论，异常时升级处理。',
+      },
+      {
+        name: '审核决策 Agent',
+        role: '执行成员',
+        prompt:
+          '负责规则匹配与审核结论生成；可调用核验 Skill / 规则审核 Skill。',
+      },
+      {
+        name: '凭证核验 Agent',
+        role: '执行成员',
+        prompt:
+          '负责凭证读取与真伪校验；可调用凭证解析 Skill / 留档 Skill。',
+      },
+    ],
+    agentSkillRels: [
+      {
+        agentName: '审核决策 Agent',
+        agentPrompt: '负责规则匹配与审核结论生成；可调用核验 Skill / 规则审核 Skill。',
+        skills: ['核验 Skill', '规则审核 Skill'],
+      },
+      {
+        agentName: '凭证核验 Agent',
+        agentPrompt: '负责凭证读取与真伪校验；可调用凭证解析 Skill / 留档 Skill。',
+        skills: ['凭证解析 Skill', '核验 Skill', '留档 Skill'],
+      },
+    ],
+    targetSpaceId: 'sp-fuyao',
+    targetSpaceName: '扶摇空间',
+    createdAt: '2026-10-20 14:30:00',
+    finishedAt: '2026-10-20 14:30:08',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(2),
+  },
+  {
+    taskId: 'convert-80002',
+    extensionName: '开票流程 Extension',
+    extensionVersion: '0.9.0',
+    submitter: '李四',
+    status: 'fail',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-18 10:15:00',
+    finishedAt: '2026-10-18 10:15:12',
+    errorMessage: 'Extension 包解析失败：缺少 codeagent-extension.json 配置文件，无法提取场景信息。',
+    submittedAtMs: mockConvertSeedMs(4),
+    targetSpaceId: 'sp-yunshan',
+    targetSpaceName: '云山空间',
+  },
+  {
+    taskId: 'convert-80003',
+    extensionName: '售后客诉 Extension',
+    extensionVersion: '2.0.0',
+    submitter: '王五',
+    status: 'success',
+    squadName: '售后客诉小队',
+    squadDescription: '由售后客诉 Extension 转换而来的 CoreALM-Next 小队，覆盖客诉工单接入、处理、回复管理，支持知识检索与方案生成。',
+    squadInstruction:
+      '你是「售后客诉」小队的队长，负责统筹客诉受理 / 问题定位 / 回复管理三个环节：拆解用户请求、调度小队成员、汇总执行并反馈结论。',
+    members: [
+      {
+        name: '售后客诉队长',
+        role: '队长',
+        prompt:
+          '你是「售后客诉」小队的队长，负责统筹客诉受理 / 问题定位 / 回复管理：拆解用户请求、调度小队成员、汇总执行并反馈结论。',
+      },
+      {
+        name: '客诉受理 Agent',
+        role: '执行成员',
+        prompt: '负责客诉工单接入与初步分类。',
+      },
+      {
+        name: '问题定位 Agent',
+        role: '执行成员',
+        prompt: '负责客诉问题根因定位与解决方案生成。',
+      },
+    ],
+    agentSkillRels: [
+      {
+        agentName: '客诉受理 Agent',
+        agentPrompt: '负责客诉工单接入与初步分类。',
+        skills: ['工单解析 Skill', '分类路由 Skill'],
+      },
+      {
+        agentName: '问题定位 Agent',
+        agentPrompt: '负责客诉问题根因定位与解决方案生成。',
+        skills: ['知识检索 Skill', '方案生成 Skill'],
+      },
+    ],
+    targetSpaceId: 'sp-haichuan',
+    targetSpaceName: '海川空间',
+    createdAt: '2026-10-15 09:20:00',
+    finishedAt: '2026-10-15 09:20:09',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(7),
+  },
+  {
+    taskId: 'convert-80004',
+    extensionName: 'Harness 流水线失败诊断 Extension',
+    extensionVersion: '1.0.0',
+    submitter: '赵六',
+    status: 'success',
+    squadName: '流水线诊断小队',
+    squadDescription: '由 Harness 流水线失败诊断 Extension 转换而来，聚合流水线执行日志、失败节点与运行上下文，输出定位结论和恢复建议。',
+    squadInstruction:
+      '你是「流水线诊断」小队的队长，负责统筹日志采集 / 根因定位 / 恢复建议三个环节：拆解流水线失败上下文、调度小队成员、汇总诊断结论并给出恢复建议。',
+    members: [
+      {
+        name: '流水线诊断队长',
+        role: '队长',
+        prompt:
+          '你是「流水线诊断」小队的队长，负责统筹日志采集 / 根因定位 / 恢复建议：拆解流水线失败上下文、调度小队成员、汇总诊断结论并给出恢复建议。',
+      },
+      {
+        name: '根因定位 Agent',
+        role: '执行成员',
+        prompt: '负责分析失败日志并定位根因；可调用日志解析 Skill / 链路追踪 Skill。',
+      },
+      {
+        name: '恢复建议 Agent',
+        role: '执行成员',
+        prompt: '负责根据根因生成恢复建议与风险评估；可调用风险评估 Skill。',
+      },
+    ],
+    agentSkillRels: [
+      {
+        agentName: '根因定位 Agent',
+        agentPrompt: '负责分析失败日志并定位根因；可调用日志解析 Skill / 链路追踪 Skill。',
+        skills: ['日志解析 Skill', '链路追踪 Skill', '根因分析 Skill'],
+      },
+      {
+        agentName: '恢复建议 Agent',
+        agentPrompt: '负责根据根因生成恢复建议与风险评估；可调用风险评估 Skill。',
+        skills: ['风险评估 Skill', '恢复建议 Skill'],
+      },
+    ],
+    targetSpaceId: 'sp-tianji',
+    targetSpaceName: '天玑空间',
+    createdAt: '2026-10-12 16:45:00',
+    finishedAt: '2026-10-12 16:45:10',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(10),
+  },
+  {
+    taskId: 'convert-80005',
+    extensionName: 'Harness 发布风险守护 Extension',
+    extensionVersion: '1.1.0',
+    submitter: '赵六',
+    status: 'success',
+    squadName: '发布风险守护小队',
+    squadDescription: '由 Harness 发布风险守护 Extension 转换而来，在发布前扫描代码、配置、依赖和历史事故，生成风险分级与门禁建议。',
+    squadInstruction:
+      '你是「发布风险守护」小队的队长，负责统筹变更采集 / 风险评估 / 门禁决策三个环节：拆解发布上下文、调度小队成员、汇总风险结论并给出门禁建议。',
+    members: [
+      {
+        name: '发布风险守护队长',
+        role: '队长',
+        prompt:
+          '你是「发布风险守护」小队的队长，负责统筹变更采集 / 风险评估 / 门禁决策：拆解发布上下文、调度小队成员、汇总风险结论并给出门禁建议。',
+      },
+      {
+        name: '风险评估 Agent',
+        role: '执行成员',
+        prompt: '负责对变更项做风险分级与影响面评估；可调用依赖分析 Skill / 历史事故 Skill。',
+      },
+      {
+        name: '门禁决策 Agent',
+        role: '执行成员',
+        prompt: '负责根据风险评估结论生成门禁策略与阻断/放行建议。',
+      },
+    ],
+    agentSkillRels: [
+      {
+        agentName: '风险评估 Agent',
+        agentPrompt: '负责对变更项做风险分级与影响面评估；可调用依赖分析 Skill / 历史事故 Skill。',
+        skills: ['依赖分析 Skill', '历史事故 Skill', '风险分级 Skill'],
+      },
+      {
+        agentName: '门禁决策 Agent',
+        agentPrompt: '负责根据风险评估结论生成门禁策略与阻断/放行建议。',
+        skills: ['门禁策略 Skill'],
+      },
+    ],
+    targetSpaceId: 'sp-tianji',
+    targetSpaceName: '天玑空间',
+    createdAt: '2026-10-10 11:00:00',
+    finishedAt: '2026-10-10 11:00:09',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(12),
+  },
+  {
+    taskId: 'convert-80006',
+    extensionName: '接口用例生成 Extension',
+    extensionVersion: '1.3.0',
+    submitter: '张三',
+    status: 'canceled',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-08 13:20:00',
+    finishedAt: '2026-10-08 13:25:00',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(14),
+    targetSpaceId: 'sp-fuyao',
+    targetSpaceName: '扶摇空间',
+  },
+  {
+    taskId: 'convert-80007',
+    extensionName: 'SQL 审查 Extension',
+    extensionVersion: '2.1.0',
+    submitter: '李四',
+    status: 'processing',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-27 21:10:00',
+    finishedAt: null,
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(0, 0, 3),
+    targetSpaceId: 'sp-haichuan',
+    targetSpaceName: '海川空间',
+  },
+  {
+    taskId: 'convert-80008',
+    extensionName: 'Harness 流水线失败诊断 Extension',
+    extensionVersion: '1.0.0',
+    submitter: '张三',
+    status: 'processing',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-27 22:15:00',
+    finishedAt: null,
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(0, 0, 2),
+    targetSpaceId: 'sp-tianji',
+    targetSpaceName: '天玑空间',
+  },
+  {
+    taskId: 'convert-80009',
+    extensionName: 'Harness 流水线失败诊断 Extension',
+    extensionVersion: '1.0.0',
+    submitter: '李四',
+    status: 'fail',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-22 09:40:00',
+    finishedAt: '2026-10-22 09:40:15',
+    errorMessage: '场景编排文件缺失：未找到 stage-0 的 node 配置，无法生成小队执行流程。',
+    submittedAtMs: mockConvertSeedMs(3, 2),
+    targetSpaceId: 'sp-fuyao',
+    targetSpaceName: '扶摇空间',
+  },
+  {
+    taskId: 'convert-80010',
+    extensionName: 'Harness 流水线失败诊断 Extension',
+    extensionVersion: '0.8.0',
+    submitter: '王五',
+    status: 'canceled',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-19 15:00:00',
+    finishedAt: '2026-10-19 15:10:00',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(6),
+    targetSpaceId: 'sp-yunshan',
+    targetSpaceName: '云山空间',
+  },
+  {
+    taskId: 'convert-80011',
+    extensionName: 'Harness 流水线失败诊断 Extension',
+    extensionVersion: '1.0.0',
+    submitter: '赵六',
+    status: 'success',
+    squadName: '流水线诊断小队（旧版）',
+    squadDescription: '由 Harness 流水线失败诊断 Extension v1.0.0 早期转换版本，覆盖日志采集与失败定位基础流程。',
+    squadInstruction:
+      '你是「流水线诊断」小队的队长，负责统筹日志采集 / 失败定位两个环节：拉取流水线执行日志、定位失败节点并反馈结论。',
+    members: [
+      {
+        name: '流水线诊断队长',
+        role: '队长',
+        prompt:
+          '你是「流水线诊断」小队的队长，负责统筹日志采集 / 失败定位两个环节：拉取流水线执行日志、定位失败节点并反馈结论。',
+      },
+      {
+        name: '日志解析 Agent',
+        role: '执行成员',
+        prompt: '负责从 Harness 平台拉取并解析失败流水线的执行日志。',
+      },
+    ],
+    agentSkillRels: [
+      {
+        agentName: '日志解析 Agent',
+        agentPrompt: '负责从 Harness 平台拉取并解析失败流水线的执行日志。',
+        skills: ['日志解析 Skill'],
+      },
+    ],
+    targetSpaceId: 'sp-fuyao',
+    targetSpaceName: '扶摇空间',
+    createdAt: '2026-10-05 08:30:00',
+    finishedAt: '2026-10-05 08:30:07',
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(15),
+  },
+  {
+    taskId: 'convert-80012',
+    extensionName: 'Harness 发布风险守护 Extension',
+    extensionVersion: '1.1.0',
+    submitter: '张三',
+    status: 'processing',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-27 22:10:00',
+    finishedAt: null,
+    errorMessage: null,
+    submittedAtMs: mockConvertSeedMs(0, 0, 1),
+    targetSpaceId: 'sp-fuyao',
+    targetSpaceName: '扶摇空间',
+  },
+  {
+    taskId: 'convert-80013',
+    extensionName: 'Harness 发布风险守护 Extension',
+    extensionVersion: '1.0.0',
+    submitter: '李四',
+    status: 'fail',
+    squadName: undefined,
+    squadDescription: undefined,
+    createdAt: '2026-10-21 14:25:00',
+    finishedAt: '2026-10-21 14:25:20',
+    errorMessage: 'Agent 配置不完整：风险评估 Agent 缺少 systemPrompt 字段，无法生成小队成员。',
+    submittedAtMs: mockConvertSeedMs(4, 3),
+    targetSpaceId: 'sp-yunshan',
+    targetSpaceName: '云山空间',
+  },
+];
+
+function promoteMockConvertTasks(): void {
+  const now = Date.now();
+  for (const task of mockConvertTasks) {
+    if (task.status === 'processing' && now - task.submittedAtMs >= MOCK_CONVERT_DURATION_MS) {
+      task.status = 'success';
+      task.finishedAt = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-');
+      task.squadName = `${task.extensionName.replace(/ Extension$/, '')}小队`;
+      task.squadDescription = `由 ${task.extensionName} 转换而来的 CoreALM-Next 小队，覆盖本场景全流程自动化执行。`;
+      task.squadInstruction = `你是「${task.squadName}」小队的队长，负责统筹本场景全流程：拆解用户请求、调度小队成员、汇总执行并反馈结论，异常时升级处理。`;
+      task.members = [
+        {
+          name: `${task.squadName}队长`,
+          role: '队长',
+          prompt: task.squadInstruction,
+        },
+        {
+          name: '主流程 Agent',
+          role: '执行成员',
+          prompt: '负责主流程执行与结果汇总。',
+        },
+      ];
+      task.agentSkillRels = [
+        {
+          agentName: '主流程 Agent',
+          agentPrompt: '负责主流程执行与结果汇总。',
+          skills: ['核心 Skill', '结果校验 Skill'],
+        },
+      ];
+    }
+  }
+}
+
 let qualityReviews: MockQualityReviewRow[] = [
   {
     id: 70_001,
@@ -2697,6 +3114,102 @@ function handleSkillRequest(
         records,
       },
       records.length,
+    );
+  }
+
+  // ===== Extension → CoreALM-Next 小队转换 =====
+
+  if (method === 'get' && path === '/api/harness/team-convert/workspaces') {
+    return ok(mockConvertSpaces, mockConvertSpaces.length);
+  }
+
+  if (method === 'post' && path === '/api/harness/team-convert/start') {
+    const body = config.data;
+    const bodyRecord =
+      body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const readField = (key: string): string =>
+      formFieldValue(body, key) || String(bodyRecord[key] ?? '').trim();
+    const extensionName = readField('extensionName');
+    const extensionVersion = readField('extensionVersion') || '1.0.0';
+    const workspaceId = readField('workspaceId');
+    const workspaceName = readField('workspaceName');
+    const submitter = readField('submitter') || '当前用户';
+    if (!extensionName) return fail('缺少 extensionName，无法发起转换任务', 400);
+    if (!workspaceId) return fail('请先选择目标工作空间', 400);
+    const nowMs = Date.now();
+    const taskId = `convert-${String(nowMs).slice(-8)}`;
+    const fmt = new Date(nowMs).toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-');
+    mockConvertTasks.unshift({
+      taskId,
+      extensionName,
+      extensionVersion,
+      submitter,
+      status: 'processing',
+      targetSpaceId: workspaceId,
+      targetSpaceName: workspaceName,
+      createdAt: fmt,
+      finishedAt: null,
+      errorMessage: null,
+      submittedAtMs: nowMs,
+    });
+    return ok({ taskId, status: 'processing', createdAt: fmt }, 1);
+  }
+
+  if (method === 'post' && path === '/api/harness/team-convert/list') {
+    promoteMockConvertTasks();
+    const body = config.data;
+    const bodyRecord =
+      body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const extensionName = String(bodyRecord.extensionName ?? '').trim();
+    const convertStatus = String(bodyRecord.convertStatus ?? '').trim();
+    const pageNum = Number(bodyRecord.pageNum ?? 1) || 1;
+    const pageSize = Number(bodyRecord.pageSize ?? 10) || 10;
+    const filtered = mockConvertTasks.filter(
+      (t) =>
+        (!extensionName || t.extensionName === extensionName) &&
+        (!convertStatus || t.status === convertStatus),
+    );
+    const start = (pageNum - 1) * pageSize;
+    const paged = filtered.slice(start, start + pageSize);
+    const rows = paged.map((t) => ({
+      taskId: t.taskId,
+      extensionName: t.extensionName,
+      extensionVersion: t.extensionVersion ?? '',
+      source: t.submitter ?? '',
+      convertStatus: t.status,
+      workspaceId: t.targetSpaceId ?? '',
+      workspaceName: t.targetSpaceName ?? '',
+      teamName: t.squadName ?? '',
+      teamDesc: t.squadDescription ?? '',
+      createAt: t.createdAt,
+      updateAt: t.finishedAt ?? '',
+    }));
+    return ok({ total: filtered.length, data: rows }, filtered.length);
+  }
+
+  if (method === 'get' && /^\/api\/harness\/team-convert\/[^/]+$/.test(path)) {
+    promoteMockConvertTasks();
+    const taskId = path.split('/').pop() ?? '';
+    const t = mockConvertTasks.find((item) => item.taskId === taskId);
+    if (!t) return fail(`未找到转换任务 ${taskId}`, 404);
+    const agents = (t.agentSkillRels ?? []).map((rel) => ({
+      agentName: rel.agentName,
+      boundSkills: rel.skills,
+    }));
+    return ok(
+      {
+        taskId: t.taskId,
+        teamName: t.squadName ?? '',
+        teamDesc: t.squadDescription ?? '',
+        workspaceId: t.targetSpaceId ?? '',
+        workspaceName: t.targetSpaceName ?? '',
+        convertStatus: t.status,
+        errorMessage: t.errorMessage ?? '',
+        createAt: t.createdAt,
+        updateAt: t.finishedAt ?? '',
+        agents,
+      },
+      1,
     );
   }
 
