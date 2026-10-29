@@ -409,6 +409,9 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     expect(detailQueries).toHaveLength(1);
     expect(detailQueries[0]!.method()).toBe('POST');
     expect(new URL(detailQueries[0]!.url()).pathname).toBe('/api/harness/extensions/detail');
+    expect(Object.fromEntries(new URL(detailQueries[0]!.url()).searchParams)).toEqual({
+      userId: 'release-user',
+    });
     expect(detailQueries[0]!.postDataJSON()).toEqual({
       dimType: '产品级',
       dimCode: 'product-b-id',
@@ -416,6 +419,7 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       extensionName: 'product-b-build-extension',
       firstScene: '开发',
       secondScene: '构建诊断',
+      userId: 'release-user',
     });
   });
 

@@ -184,7 +184,7 @@ try {
       }
     }
   });
-  await test('detail GET lookup, readiness, release summary and selected-channel publication contracts', async () => {
+  await test('detail POST lookup, readiness, release summary and selected-channel publication contracts', async () => {
     const calls = [];
     let detailResponse = success(detailData);
     request.harnessApi = async (config) => {
@@ -225,13 +225,14 @@ try {
     assert.equal(calls.length, 1, 'known Extension names must load the single-detail endpoint');
     assert.deepEqual(calls[0], {
       url: '/extensions/detail',
-      method: 'GET',
-      params: {
-        userId: 'user-001',
+      method: 'POST',
+      params: { userId: 'user-001' },
+      data: {
         dimType: '产品级',
         dimCode: '30222',
         dimName: 'Udm产品部',
         extensionName: 'scene-code-001',
+        userId: 'user-001',
       },
     });
     assert.equal(bindingCalls, 0, 'known names do not reload the entire binding tree');
@@ -286,11 +287,14 @@ try {
     assert.equal(historyCalls, 0, 'publish preparation must never request release history');
     assert.deepEqual(calls[0].params, {
       userId: 'user-001',
+    });
+    assert.deepEqual(calls[0].data, {
       dimType: scope.dimType,
       dimCode: scope.dimCode,
       dimName: scope.dimName,
       firstScene: emptyScene.primary,
       secondScene: emptyScene.name,
+      userId: 'user-001',
     });
     assert.equal(discovered.capabilities.agent[0].name, 'udm-coding-agent');
 

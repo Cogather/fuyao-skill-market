@@ -300,16 +300,16 @@ try {
             extensionName: 'demo-code',
           },
         ],
-        'GET',
+        'POST',
         '/extensions/detail',
+        { userId: scope.userId },
         {
-          userId: scope.userId,
           dimType: scope.dimType,
           dimCode: scope.dimCode,
           dimName: scope.dimName,
           extensionName: 'demo-code',
+          userId: scope.userId,
         },
-        undefined,
       ],
     ];
     for (const [name, args, method, url, params, body] of contracts) {

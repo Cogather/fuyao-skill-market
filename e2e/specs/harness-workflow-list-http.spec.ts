@@ -526,6 +526,7 @@ test.describe('Harness 工作流服务端列表', () => {
       dimCode: 'product-b-id',
       dimName: 'product-b',
       extensionName: 'product-b-api-extension',
+      userId: 'workflow-reader',
     });
 
     const publishCheckMessage = publish.locator('.publish-check-message');

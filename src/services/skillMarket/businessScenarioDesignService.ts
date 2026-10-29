@@ -551,8 +551,9 @@ export const harnessWorkflowService = {
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/extensions/detail',
-      method: 'GET',
-      params: { ...params, ...body },
+      method: 'POST',
+      params: { userId: params.userId },
+      data: { ...body, userId: params.userId },
     });
   },
 };

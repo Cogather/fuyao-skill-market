@@ -83,9 +83,9 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
           });
           return;
         }
-        const query = new URL(request.url()).searchParams;
+        const payload = request.postDataJSON() as Record<string, unknown>;
         data =
-          query.get('secondScene') === '场景二' || query.get('extensionName') === 'scene-code-2'
+          payload.secondScene === '场景二' || payload.extensionName === 'scene-code-2'
             ? { ...detail, secondScene: '场景二', sceneExtensionCode: 'scene-code-2' }
             : detail;
       } else if (path.endsWith('/extensions/orgs')) {
@@ -154,15 +154,17 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
     await expect(panel.getByRole('button', { name: '发布', exact: true })).toBeEnabled();
     expect(detailRequests).toHaveLength(1);
     expect(bindingRequests).toHaveLength(0);
-    expect(detailRequests[0]!.method()).toBe('GET');
-    expect(detailRequests[0]!.postData()).toBeNull();
+    expect(detailRequests[0]!.method()).toBe('POST');
     expect(Object.fromEntries(new URL(detailRequests[0]!.url()).searchParams)).toEqual({
       userId: 'extension-tester',
+    });
+    expect(detailRequests[0]!.postDataJSON()).toEqual({
       dimType: '产品级',
       dimCode: 'product-1',
       dimName: 'udm',
       firstScene: '应用开发',
       secondScene: '代码开发',
+      userId: 'extension-tester',
     });
     expect(historyRequests).toHaveLength(0);
 
@@ -436,13 +438,16 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
         agents: [],
       });
       expect(clears).toHaveLength(0);
-      expect(details[0]!.method()).toBe('GET');
+      expect(details[0]!.method()).toBe('POST');
       expect(Object.fromEntries(new URL(details[0]!.url()).searchParams)).toEqual({
         userId: 'context-user',
+      });
+      expect(details[0]!.postDataJSON()).toEqual({
         dimType: '产品级',
         dimCode: 'product-1',
         dimName: 'udm',
         extensionName: 'embedded-scene',
+        userId: 'context-user',
       });
     });
   }
