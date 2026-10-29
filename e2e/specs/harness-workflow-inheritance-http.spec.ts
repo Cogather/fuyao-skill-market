@@ -239,6 +239,25 @@ test.describe('Harness scene inheritance HTTP', () => {
         targetSecondScene: '当前场景',
       });
     }
+    const inheritedDetails = fixture.requests.filter((request) =>
+      new URL(request.url()).pathname.endsWith('/extensions/detail'),
+    );
+    expect(inheritedDetails).toHaveLength(1);
+    expect(inheritedDetails[0]!.method()).toBe('POST');
+    expect(Object.fromEntries(new URL(inheritedDetails[0]!.url()).searchParams)).toEqual({
+      userId: 'parent-scene-user',
+    });
+    expect(inheritedDetails[0]!.postDataJSON()).toEqual({
+      dimType: '产品级',
+      dimCode: 'outside-product',
+      dimName: 'outside-product',
+      extensionName: 'copied-code',
+      firstScene: '目标一级',
+      secondScene: '当前场景',
+    });
+    expect(fixture.requests.indexOf(inheritedDetails[0]!)).toBeGreaterThan(
+      fixture.requests.indexOf(copies[1]!),
+    );
     const afterCopy = fixture.requests.slice(fixture.requests.indexOf(copies[1]!));
     expect(
       afterCopy.some(

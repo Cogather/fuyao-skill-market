@@ -221,13 +221,16 @@ try {
     const requests = [];
     request.harnessApi = async (config) => {
       requests.push(config);
-      return { meta: { isSuccess: true }, data: 'new-scene-code' };
+      return config.url === '/scene/copy'
+        ? { meta: { isSuccess: true }, data: 'new-scene-code' }
+        : { meta: { isSuccess: true }, data: { sceneExtensionCode: 'new-scene-code' } };
     };
     try {
       const code = await inheritance.copyWorkflowInheritance(source(1), {
         userId: 'parent-user',
         dimType: '\u90e8\u95e8\u7ea7',
         dimCode: 'target-dept',
+        dimName: 'Target department',
         firstScene: 'Target parent',
         secondScene: 'Target child',
       });
@@ -249,6 +252,19 @@ try {
             targetSecondScene: 'Target child',
           },
         },
+        {
+          url: '/extensions/detail',
+          method: 'POST',
+          params: { userId: 'parent-user' },
+          data: {
+            dimType: '\u90e8\u95e8\u7ea7',
+            dimCode: 'target-dept',
+            dimName: 'Target department',
+            extensionName: 'new-scene-code',
+            firstScene: 'Target parent',
+            secondScene: 'Target child',
+          },
+        },
       ]);
       requests.length = 0;
       await assert.rejects(
@@ -256,6 +272,7 @@ try {
           userId: 'parent-user',
           dimType: '\u90e8\u95e8\u7ea7',
           dimCode: 'target-dept',
+          dimName: 'Target department',
           firstScene: 'Target parent',
           secondScene: 'Target child',
         }),
@@ -358,13 +375,12 @@ try {
     };
     request.harnessApi = async (config) => {
       calls.push(['http', config]);
-      assert.equal(
-        config.url,
-        '/scene/copy',
-        'inheritance must not write metadata, activities or bindings',
-      );
-      copied = true;
-      return success('new-scene-code');
+      if (config.url === '/scene/copy') {
+        copied = true;
+        return success('new-scene-code');
+      }
+      assert.equal(config.url, '/extensions/detail');
+      return success({ sceneExtensionCode: 'new-scene-code' });
     };
     const scope = effectScope();
     try {
@@ -433,7 +449,23 @@ try {
         targetFirstScene: 'Research',
         targetSecondScene: 'Current scene',
       });
-      assert.equal(calls.filter(([kind]) => kind === 'http').length, 1);
+      assert.deepEqual(calls[1], [
+        'http',
+        {
+          url: '/extensions/detail',
+          method: 'POST',
+          params: { userId: 'parent-user' },
+          data: {
+            dimType: '\u4ea7\u54c1\u7ea7',
+            dimCode: 'target-product',
+            dimName: 'Current scene',
+            extensionName: 'new-scene-code',
+            firstScene: 'Research',
+            secondScene: 'Current scene',
+          },
+        },
+      ]);
+      assert.equal(calls.filter(([kind]) => kind === 'http').length, 2);
       assert.ok(
         calls.some(([kind, params]) => kind === 'scenes' && params.dimCode === 'target-product'),
       );
