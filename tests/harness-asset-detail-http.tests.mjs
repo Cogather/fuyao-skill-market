@@ -317,26 +317,26 @@ try {
   assert.deepEqual(calls, [
     {
       url: '/extensions/detail',
-      method: 'GET',
-      params: {
-        userId: 'user-001',
+      method: 'POST',
+      params: { userId: 'user-001' },
+      data: {
         dimType: '产品级',
         dimCode: 'product-1',
         dimName: 'udm',
-        extensionName: 'udm-extension-二',
+        extensionName: selectedExtension.name,
         firstScene: '应用开发二',
         secondScene: '代码开发二',
       },
     },
   ]);
   console.log(
-    'PASS Extension publication carries the selected list item scene names alongside its code',
+    'PASS Extension publication queries the selected list item scene names separately from its package name',
   );
   await api.queryReleases(scope, selectedExtension);
   await api.queryPublishDetail(scope, selectedExtension);
   assert.deepEqual(
-    calls[1].params,
-    calls[0].params,
+    calls[1].data,
+    calls[0].data,
     'scene names survive release refresh and reopening publication',
   );
   selectedExtension.canPublish = false;

@@ -39,9 +39,9 @@ try {
   });
   assert.deepEqual(calls.pop(), {
     url: '/extensions/detail',
-    method: 'GET',
-    params: {
-      userId: 'user',
+    method: 'POST',
+    params: { userId: 'user' },
+    data: {
       dimType: '产品级',
       dimCode: 'P1',
       dimName: 'demo',
@@ -77,8 +77,8 @@ try {
   assert.equal(save.params.operatorName, '测试用户');
   await publishHttpExtension(input);
   assert.equal(
-    Object.hasOwn(calls.pop().data, 'inheritBypass'),
-    false,
+    calls.pop().data.inheritBypass,
+    true,
     'legacy caller keeps backend true default',
   );
   request.harnessApi = async () => ({ code: 1, message: '发布被拒绝', data: null });
@@ -87,7 +87,7 @@ try {
     '/src/services/skillMarket/legacyExtensionPublishHttp.ts',
   );
   await assert.rejects(publishLegacyExtension(input), /发布被拒绝/);
-  console.log('PASS GET detail assembly fields and save inheritBypass contract');
+  console.log('PASS POST detail assembly fields and save inheritBypass contract');
 } finally {
   await server.close();
 }

@@ -530,6 +530,7 @@ test.describe('Harness 工作流服务端列表', () => {
       dimName: 'product-b',
       extensionName: 'product-b-api-extension',
     });
+    expect(publishDetails[0]!.postDataJSON()).not.toHaveProperty('userId');
 
     const publishCheckMessage = publish.locator('.publish-check-message');
     const confirmPublish = page.getByRole('region', { name: 'Extension 发布组装' }).getByRole('button', { name: '确认发布', exact: true });

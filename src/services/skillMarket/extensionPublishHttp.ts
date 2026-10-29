@@ -8,6 +8,10 @@ import type {
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
 import { harnessWorkflowService } from './businessScenarioDesignService';
+import {
+  normalizeExtensionBypassEntries,
+  normalizeExtensionLayout,
+} from './extensionBypassService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
 import {
@@ -353,6 +357,11 @@ function mapBindingScenes(
         );
         return {
           id: sceneKey,
+          sceneExtensionCode:
+            readText(secondRecord, ['sceneExtensionCode', 'extensionName']) || null,
+          layoutMode: normalizeExtensionLayout(secondRecord.layoutMode),
+          hasBypass: secondRecord.hasBypass === true,
+          bypassEntries: normalizeExtensionBypassEntries(secondRecord.bypassEntries ?? []),
           productId: scope.productId || scope.dimCode,
           primary: firstScene,
           name: secondScene,
@@ -389,6 +398,10 @@ function mapSceneOptionGroups(
       ]);
       return {
         id: sceneKey,
+        sceneExtensionCode: null,
+        layoutMode: 'standard',
+        hasBypass: false,
+        bypassEntries: [],
         productId: scope.productId || scope.dimCode,
         primary: firstScene,
         name: secondScene,
@@ -494,11 +507,13 @@ export async function queryHttpExtensionBindings(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
-  return queryHttpExtensionDetail(userId, scope, {
-    extensionName: scene.extension.name,
+  const detail = await queryHttpExtensionDetail(userId, scope, {
+    extensionName: normalizeText(scene.sceneExtensionCode) || scene.extension.name,
     firstScene: scene.primary,
     secondScene: scene.name,
   });
+  detail.extension.name ||= scene.extension.name;
+  return detail;
 }
 
 export type ExtensionVersionSnapshot = {
@@ -597,16 +612,6 @@ export async function queryHttpExtensionDetail(
     }),
   );
   if (Object.keys(mappedPublishChecks).length > 0) detail.publishChecks = mappedPublishChecks;
-  detail.extension.name ||= extensionName;
-  detail.layoutMode = data.layoutMode === 'testagent' ? 'testagent' : 'standard';
-  detail.hasBypass = data.hasBypass === true;
-  detail.bypassEntries = detail.hasBypass
-    ? readArray(data, ['bypassEntries']).flatMap((value) => {
-        const entry = asRecord(value);
-        const path = readText(entry, ['path']);
-        return path ? [{ path, size: entry.size == null ? null : Number(entry.size) }] : [];
-      })
-    : [];
   return detail;
 }
 
@@ -672,6 +677,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     extensionName,
     description: requiredText(input.description, '请输入 Extension 描述'),
     releaseType: input.channel,
+    inheritBypass: input.inheritBypass ?? true,
     firstScene: input.scene.primary,
     secondScene: input.scene.name,
     targetOrgCode: input.organization.id,

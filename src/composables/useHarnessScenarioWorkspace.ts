@@ -42,6 +42,14 @@ import {
   harnessConfigurationRevision,
   lastHarnessConfigurationChange,
 } from '../services/skillMarket/harnessConfigurationSyncService';
+import type { HarnessScopeLevel } from '../types/harnessFilterMemory';
+import {
+  createLocalWorkflowInheritanceDraft,
+  copyWorkflowInheritance,
+  queryLocalWorkflowInheritancePage,
+  queryWorkflowInheritancePage,
+  type WorkflowInheritanceSource,
+} from '../services/skillMarket/workflowInheritanceService';
 
 export type AssetType = 'Agent' | 'Skill';
 export type Department = {
@@ -51,7 +59,13 @@ export type Department = {
   path: string[];
   deptCode: string;
 };
-export type Product = { _id: string; name: string; code: string; departmentId: string };
+export type Product = {
+  _id: string;
+  name: string;
+  code: string;
+  departmentId: string;
+  scopeLevel?: HarnessScopeLevel;
+};
 export type AssetRef = { assetId: string; type: AssetType; version?: string | null; role?: string };
 export type Node = {
   id: string;
@@ -181,6 +195,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   const commands = reactive<Command[]>([]);
   const mockWorkflowSeededDepartments = reactive<string[]>([]);
   const details = reactive<Record<string, ScenarioDetails>>({});
+  const scopeLevel = ref<HarnessScopeLevel>('产品级');
   const selectedDeptId = ref('');
   const productId = ref('');
   const selectedScenarioId = ref('');
@@ -207,21 +222,38 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       departments.some((item) => item._id === selectedDeptId.value),
   );
   const canManageDepartment = computed(() => {
-    if (!isHttp) return true;
+    if (!isHttp || scopeLevel.value === '产品级') return true;
     const department = departments.find((item) => item._id === selectedDeptId.value);
-    return Boolean(
-      department &&
-      context().allowedDepartmentPaths.some(
-        (root) => root.length > 0 && root.every((name, index) => name === department.path[index]),
-      ),
-    );
+    return Boolean(department && hasDepartmentPermission(department));
   });
+  function hasDepartmentPermission(department: Department): boolean {
+    return context().allowedDepartmentPaths.some(
+      (root) => root.length > 0 && root.every((name, index) => name === department.path[index]),
+    );
+  }
   let preferredProduct: { offeringId: string; offeringName: string } | null = null;
   const productOptions = computed(() =>
-    products.filter((item) => item.departmentId === selectedDeptId.value),
+    scopeLevel.value === '产品级'
+      ? products.filter(
+          (item) => item.departmentId === selectedDeptId.value && item.scopeLevel !== '部门级',
+        )
+      : [],
+  );
+  const scopeProducts = computed(() =>
+    products.filter(
+      (item) =>
+        item.departmentId === selectedDeptId.value &&
+        (scopeLevel.value === '部门级'
+          ? item.scopeLevel === '部门级'
+          : item.scopeLevel !== '部门级'),
+    ),
   );
   const inventoryProductOptions = computed(() =>
-    products.filter((item) => departmentIsInScope(item.departmentId, selectedDeptId.value)),
+    products.filter(
+      (item) =>
+        item.scopeLevel !== '部门级' &&
+        departmentIsInScope(item.departmentId, selectedDeptId.value),
+    ),
   );
   const workflowListScope = computed(() => {
     const department = departments.find((item) => item._id === selectedDeptId.value);
@@ -236,12 +268,13 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   function scopeFor(product: Product): TaxonomyScope {
     const dept = departments.find((item) => item._id === product.departmentId);
     if (!dept || !context().ready) throw new Error('请选择有管理权限的部门');
+    const isDepartmentLevel = product.scopeLevel === '部门级';
     return {
       departmentName: dept.name,
       deptCode: dept.deptCode,
       userId: context().userId,
-      offeringId: product.code,
-      offeringName: product.name,
+      offeringId: isDepartmentLevel ? '' : product.code,
+      offeringName: isDepartmentLevel ? '' : product.name,
     };
   }
   function assertCanManageDepartment(): void {
@@ -249,12 +282,22 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   }
   function currentProduct(forManagement = false): Product {
     if (forManagement) assertCanManageDepartment();
-    const product = productOptions.value.find((item) => item._id === productId.value);
+    const product = scopeProducts.value.find((item) => item._id === productId.value);
     if (!available.value || !product || !recordsByProduct.has(product._id))
       throw new Error('请先选择有管理权限的部门与产品，等待场景成功加载后再编辑');
     return product;
   }
   function dimensionFor(product: Product) {
+    if (product.scopeLevel === '部门级') {
+      const department = departments.find((item) => item._id === product.departmentId);
+      if (!department) throw new Error('请选择部门');
+      return {
+        userId: context().userId,
+        dimType: '部门级',
+        dimCode: department.deptCode,
+        dimName: department.name,
+      };
+    }
     return {
       userId: context().userId,
       dimType: '产品级',
@@ -346,6 +389,99 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
   }
   watch([selectedScenarioId, available], loadSelectedWorkflow);
+  async function queryWorkflowInheritance(query: {
+    keyword: string;
+    pageNo: number;
+    pageSize: number;
+  }) {
+    const targetScenarioId = selectedScenarioId.value;
+    const targetProductId = productId.value;
+    const currentScope = sceneContext(targetScenarioId);
+    if (isHttp) {
+      const listScope = workflowListScope.value;
+      if (!listScope) throw new Error('当前部门范围尚未加载完成');
+      return queryWorkflowInheritancePage(
+        { userId: listScope.userId, ...query },
+        {
+          dimType: currentScope.dimType,
+          dimCode: currentScope.dimCode,
+          firstScene: currentScope.firstScene,
+          secondScene: currentScope.secondScene,
+          sceneExtensionCode: scenarios.find((item) => item._id === targetScenarioId)?.code,
+        },
+      );
+    }
+    await ensureInventoryScope();
+    if (
+      targetScenarioId !== selectedScenarioId.value ||
+      targetProductId !== productId.value ||
+      !available.value
+    ) {
+      throw new Error('场景范围已切换，请重新打开继承面板');
+    }
+    return queryLocalWorkflowInheritancePage({
+      departments,
+      products,
+      scenarios,
+      workflows,
+      selectedDepartmentId: selectedDeptId.value,
+      currentScenarioId: targetScenarioId,
+      userId: context().userId,
+      ...query,
+    });
+  }
+  async function inheritWorkflow(source: WorkflowInheritanceSource): Promise<Workflow | undefined> {
+    assertCanManageDepartment();
+    if (saving.value) throw new Error('正在保存，请稍候');
+    const targetScenarioId = selectedScenarioId.value;
+    const targetProductId = productId.value;
+    const scenario = scenarios.find(
+      (item) => item._id === targetScenarioId && item.productId === targetProductId,
+    );
+    if (!scenario || scenario.level !== 2) throw new Error('请选择要继承 Workflow 的二级场景');
+    if (!isHttp) {
+      const sourceWorkflow = workflows.find((item) => item._id === source.localWorkflowId);
+      if (!sourceWorkflow) throw new Error('来源 Workflow 已不存在，请刷新列表后重试');
+      const draft = createLocalWorkflowInheritanceDraft(sourceWorkflow, {
+        scenarioId: targetScenarioId,
+        scenarioName: scenario.name,
+      });
+      const existing = workflows.find((item) => item.scenarioId === targetScenarioId);
+      if (existing) Object.assign(existing, draft);
+      else workflows.push(reactive(draft));
+      return existing ?? draft;
+    }
+    const targetProduct = currentProduct();
+    const targetContext = sceneContext(targetScenarioId);
+    const targetDepartmentId = selectedDeptId.value;
+    const targetLevel = scopeLevel.value;
+    const stillInScope = () =>
+      targetProductId === productId.value &&
+      targetScenarioId === selectedScenarioId.value &&
+      targetDepartmentId === selectedDeptId.value &&
+      targetLevel === scopeLevel.value &&
+      targetContext.userId === context().userId;
+    saving.value = true;
+    try {
+      const code = await copyWorkflowInheritance(source, targetContext);
+      if (!stillInScope()) throw new Error('场景已复制，但当前范围已切换，请重新加载目标范围查看');
+      const records = await loadScenarioRecords(
+        scopeFor(targetProduct),
+        businessScenarioTaxonomyClient,
+      );
+      if (!stillInScope()) throw new Error('场景已复制，但当前范围已切换，请重新加载目标范围查看');
+      applyRecords(targetProduct, records);
+      const copiedScene = scenarios.find(
+        (item) => item.productId === targetProductId && item.level === 2 && item.code === code,
+      );
+      if (!copiedScene)
+        throw new Error('场景已复制，但刷新结果中未找到新场景编码，请重新加载目标范围');
+      selectedScenarioId.value = copiedScene._id;
+    } finally {
+      saving.value = false;
+    }
+  }
+
   async function saveWorkflow(workflow: Workflow, values: ScenarioDetails): Promise<Workflow> {
     assertCanManageDepartment();
     if (!isHttp) {
@@ -460,7 +596,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     const product = currentProduct(true);
     const invalid = validateProductCatalogItemName(
       type === 'Command' ? item.name.replace(/^\/+/, '') : item.name,
-      product.name,
+      product.scopeLevel === '部门级' ? '' : product.name,
     );
     if (invalid) throw new Error(`${type} 名称不符合命名规则：${invalid}`);
     if (!isHttp) {
@@ -643,7 +779,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     error.value = '';
     try {
       const batches = await Promise.all(
-        productOptions.value.map(async (product) => ({
+        scopeProducts.value.map(async (product) => ({
           product,
           records: await loadScenarioRecords(scopeFor(product), businessScenarioTaxonomyClient),
         })),
@@ -667,23 +803,49 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     productsLoadedFor = '';
     error.value = '';
     const department = departments.find((item) => item._id === selectedDeptId.value);
-    if (!department) {
+    if (
+      !department ||
+      (isHttp && scopeLevel.value === '部门级' && !hasDepartmentPermission(department))
+    ) {
       loading.value = false;
       return;
     }
     try {
-      const options = isHttp
-        ? await loadDesignProducts(department.deptCode)
-        : await getProductPlanning('', department.name, department.deptCode);
+      const level = scopeLevel.value;
+      const options =
+        level === '产品级'
+          ? isHttp
+            ? await loadDesignProducts(department.deptCode)
+            : await getProductPlanning('', department.name, department.deptCode)
+          : [];
       if (sequence !== loadSequence) return;
-      for (let i = products.length - 1; i >= 0; i--)
-        if (products[i]?.departmentId === department._id) products.splice(i, 1);
-      const loaded = options.map((item): Product => ({
-        _id: JSON.stringify([department._id, item.offeringId || item.offeringName]),
-        name: item.offeringName,
-        code: item.offeringId,
-        departmentId: department._id,
-      }));
+      for (let i = products.length - 1; i >= 0; i--) {
+        const product = products[i];
+        if (
+          product?.departmentId === department._id &&
+          (level === '部门级' ? product.scopeLevel === '部门级' : product.scopeLevel !== '部门级')
+        ) {
+          products.splice(i, 1);
+        }
+      }
+      const loaded: Product[] =
+        level === '部门级'
+          ? [
+              {
+                _id: JSON.stringify([department._id, 'scope', 'department']),
+                name: department.name,
+                code: department.deptCode,
+                departmentId: department._id,
+                scopeLevel: '部门级',
+              },
+            ]
+          : options.map((item) => ({
+              _id: JSON.stringify([department._id, item.offeringId || item.offeringName]),
+              name: item.offeringName,
+              code: item.offeringId,
+              departmentId: department._id,
+              scopeLevel: '产品级',
+            }));
       products.push(...loaded);
       productsLoadedFor = department._id;
       productId.value =
@@ -714,10 +876,25 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
   }
   function selectDepartment(id: string) {
-    if ((id && !departments.some((item) => item._id === id)) || id === selectedDeptId.value) return;
+    const department = departments.find((item) => item._id === id);
+    if (
+      (id && !department) ||
+      id === selectedDeptId.value ||
+      (department &&
+        isHttp &&
+        scopeLevel.value === '部门级' &&
+        !hasDepartmentPermission(department))
+    )
+      return;
     selectedDeptId.value = id;
   }
+  function selectLevel(level: HarnessScopeLevel) {
+    if ((level !== '产品级' && level !== '部门级') || level === scopeLevel.value) return;
+    preferredProduct = null;
+    scopeLevel.value = level;
+  }
   function selectScope(scope: {
+    level?: HarnessScopeLevel;
     departmentPath: string[];
     offeringId: string;
     offeringName: string;
@@ -726,10 +903,14 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       (item) => item.path.join('/') === scope.departmentPath.join('/'),
     );
     if (!department) return;
-    if (department._id !== selectedDeptId.value) {
-      preferredProduct = scope;
+    const nextLevel = scope.level === '部门级' ? '部门级' : '产品级';
+    const levelChanged = scopeLevel.value !== nextLevel;
+    const departmentChanged = department._id !== selectedDeptId.value;
+    preferredProduct = nextLevel === '产品级' && (levelChanged || departmentChanged) ? scope : null;
+    if (levelChanged) scopeLevel.value = nextLevel;
+    if (departmentChanged) {
       selectDepartment(department._id);
-    } else {
+    } else if (nextLevel === '产品级') {
       const product = productOptions.value.find(
         (item) => item.code === scope.offeringId || item.name === scope.offeringName,
       );
@@ -799,10 +980,11 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
   }
   watch(selectedDeptId, loadDepartment);
+  watch(scopeLevel, loadDepartment);
   watch(productId, selectInitialScenario);
   watch(
-    context,
-    (value) => {
+    [context, scopeLevel],
+    ([value, level]) => {
       if (!value.ready) {
         sourceReady.value = false;
         loadSequence += 1;
@@ -845,10 +1027,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       walk(value.departmentTree, null, []);
       const allowed = flattened.filter(
         (item) =>
+          level !== '部门级' ||
           !value.restrictToAllowedDepartments ||
-          value.allowedDepartmentPaths.some(
-            (root) => root.length && root.every((name, i) => name === item.path[i]),
-          ),
+          hasDepartmentPermission(item),
       );
       departments.splice(0, departments.length, ...allowed);
       seedMockWorkflowInventory({
@@ -859,19 +1040,23 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         details,
         seededDepartmentIds: mockWorkflowSeededDepartments,
       });
-      if (!allowed.some((item) => item._id === selectedDeptId.value)) {
+      const selectable =
+        isHttp && level === '部门级' ? allowed.filter(hasDepartmentPermission) : allowed;
+      if (!selectable.some((item) => item._id === selectedDeptId.value)) {
         selectedDeptId.value =
           (
-            allowed.find((item) => item.path.join('/') === value.defaultDepartmentPath.join('/')) ||
-            allowed[0]
+            selectable.find(
+              (item) => item.path.join('/') === value.defaultDepartmentPath.join('/'),
+            ) || selectable[0]
           )?._id || '';
       }
     },
-    { deep: true, immediate: true },
+    // Normalize the selected department before queued scope loaders can issue a request.
+    { deep: true, immediate: true, flush: 'sync' },
   );
   watch(harnessConfigurationRevision, () => {
     const change = lastHarnessConfigurationChange.value;
-    if (!ownSave && change?.kind === 'scene' && productOptions.value.length) void reloadScenes();
+    if (!ownSave && change?.kind === 'scene' && scopeProducts.value.length) void reloadScenes();
   });
 
   async function commitRecords(
@@ -904,7 +1089,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       applyRecords(product, saved);
       onCommitted?.();
       if (import.meta.env.VITE_SKILL_MARKET_TRANSPORT !== 'http') {
-        for (const other of productOptions.value)
+        for (const other of scopeProducts.value)
           if (other._id !== product._id) applyRecords(other, saved);
       }
     } finally {
@@ -913,7 +1098,10 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     }
   }
   function assertScenarioCode(code: string, product: Product) {
-    const invalid = validateProductCatalogItemName(code, product.name);
+    const invalid = validateProductCatalogItemName(
+      code,
+      product.scopeLevel === '部门级' ? '' : product.name,
+    );
     if (invalid) throw new Error(`场景编码不符合命名规则：${invalid}`);
   }
   async function acceptScenarioMutation(
@@ -1384,6 +1572,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     workflowLoading,
     hasLoadedWorkflowDetail,
     loadSelectedWorkflow,
+    queryWorkflowInheritance,
+    inheritWorkflow,
     saveWorkflow,
     createCapability,
     attachCapability,
@@ -1396,6 +1586,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     workflows,
     assets,
     commands,
+    scopeLevel,
     selectedDeptId,
     productId,
     selectedScenarioId,
@@ -1405,6 +1596,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     ensureInventoryScope,
     departmentIsInScope,
     deptPath,
+    selectLevel,
     selectDepartment,
     selectScope,
     loading,

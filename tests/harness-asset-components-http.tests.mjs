@@ -34,7 +34,7 @@ try {
   await skillBaseService.queryHarnessAssetComponents(body);
   assert.deepEqual(requests, [
     {
-      url: '/components/query',
+      url: '/v1/harness/plans/components/query',
       method: 'post',
       data: body,
     },
@@ -101,7 +101,7 @@ try {
     const result = await api.queryAssets({ ...scope, assetType }, { pageNum: 1, pageSize: 30 });
     assert.deepEqual(requests, [
       {
-        url: '/components/query',
+        url: '/v1/harness/plans/components/query',
         method: 'post',
         data: {
           userId: 'asset-user',

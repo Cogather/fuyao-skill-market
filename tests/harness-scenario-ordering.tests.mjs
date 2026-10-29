@@ -169,9 +169,11 @@ try {
     };
   }
 
-  await test('full department filters allow reading while scenario mutations retain management permissions', async () => {
+  await test('product ordering skips department permission checks while department mutations remain protected', async () => {
     const { workspace, context, scene, writes } = await fixture();
     const child = scene('接口生成');
+    const root = scene('研发提效');
+    const lastRoot = scene('交付发布');
     workspace.selectedScenarioId.value = child._id;
     const workflow = workspace.ensureWorkflow(child._id);
     context.restrictToAllowedDepartments = false;
@@ -180,12 +182,19 @@ try {
     await workspace.loadSelectedWorkflow();
     assert.equal(workspace.available.value, true, 'unmanaged departments remain readable');
     assert.equal(workspace.error.value, '');
+    assert.equal(workspace.canManageDepartment.value, true);
+    await workspace.reorderScenario(lastRoot._id, root._id, 'before');
+    assert.equal(writes.length, 1, 'product-level ordering does not require department permission');
+
+    workspace.selectLevel('部门级');
+    await nextTick();
+    assert.equal(workspace.canManageDepartment.value, false);
     const deniedMutations = [
-      () => workspace.reorderScenario(scene('交付发布')._id, scene('研发提效')._id, 'before'),
+      () => workspace.reorderScenario(lastRoot._id, root._id, 'before'),
       () => workspace.saveScenario({ ...child, name: '重命名场景' }),
       () => workspace.removeScenario(child),
-      () => workspace.moveScenario(scene('交付发布'), -1),
-      () => workspace.setScenarioTags(scene('研发提效')._id, ['新标签']),
+      () => workspace.moveScenario(lastRoot, -1),
+      () => workspace.setScenarioTags(root._id, ['新标签']),
       () =>
         workspace.saveWorkflow(workflow, { code: 'demo-code', description: '', releaseCount: 0 }),
       () => workspace.createCapability('Command', { name: 'demo-command' }),
@@ -195,11 +204,7 @@ try {
     for (const mutate of deniedMutations) {
       await assert.rejects(mutate, /管理权限/);
     }
-    assert.equal(writes.length, 0);
-    context.allowedDepartmentPaths = [['研发部']];
-    await nextTick();
-    await workspace.reorderScenario(scene('交付发布')._id, scene('研发提效')._id, 'before');
-    assert.equal(writes.length, 1, 'authorized editing still works');
+    assert.equal(writes.length, 1, 'department-level mutations do not add any writes');
   });
 
   await test('root reordering persists once and keeps IDs, hierarchy, metadata and workflows', async () => {

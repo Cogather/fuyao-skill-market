@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from '../../components/skill/HarnessSelect.vue';
+import ExtensionPackagingPanel from '../../components/skill/ExtensionPackagingPanel.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import ExtensionReleaseAssemblyPanel from '../../components/skill/ExtensionReleaseAssemblyPanel.vue';
@@ -45,6 +46,10 @@ import {
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import type {
+  ExtensionBypassEntry,
+  ExtensionLayoutMode,
+} from '../../services/skillMarket/extensionBypassService';
 
 type DepartmentTreeNode = {
   id?: string;
@@ -257,6 +262,74 @@ const selectedSceneId = ref(visibleScenes.value[0]?.id ?? '');
 const currentScene = computed(
   () => visibleScenes.value.find((scene) => scene.id === selectedSceneId.value) ?? null,
 );
+const packagingRefreshWarning = ref('');
+let packagingRefreshSequence = 0;
+
+async function updatePackagingMetadata(metadata: {
+  sceneExtensionCode: string;
+  layoutMode: ExtensionLayoutMode;
+  hasBypass: boolean;
+  bypassEntries: ExtensionBypassEntry[];
+}): Promise<void> {
+  const scene = props.releaseContext ? modalScene.value : currentScene.value;
+  if (!transportIsHttp || !scene || scene.sceneExtensionCode !== metadata.sceneExtensionCode)
+    return;
+  // Apply the successful mutation immediately so publishing uses current metadata even if GET fails.
+  Object.assign(scene, metadata);
+  packagingRefreshWarning.value = '';
+  const scope = appliedHttpScope.value;
+  if (!scope) return;
+  const sequence = ++packagingRefreshSequence;
+  const bindingSequence = ++bindingLoadSequence;
+  bindingsLoading.value = false;
+  const requestUser = props.userId.trim();
+  const sceneId = scene.id;
+  const stillCurrent = () => {
+    const active = props.releaseContext ? modalScene.value : currentScene.value;
+    return (
+      sequence === packagingRefreshSequence &&
+      bindingSequence === bindingLoadSequence &&
+      appliedHttpScope.value === scope &&
+      props.userId.trim() === requestUser &&
+      active?.id === sceneId &&
+      active.sceneExtensionCode === metadata.sceneExtensionCode
+    );
+  };
+  try {
+    const refreshed = await queryHttpExtensionBindings(requestUser, scope, scene);
+    if (!stillCurrent()) return;
+    for (const type of ['skill', 'command', 'agent'] as const) {
+      refreshed.capabilities[type] = refreshed.capabilities[type].map((capability) => {
+        const current = scene.capabilities[type].find(
+          (item) =>
+            item.id === capability.id &&
+            item.name === capability.name &&
+            item.version === capability.version,
+        );
+        // Directory/content caches and pending loaders refer to this same capability object.
+        // Keep it only when detail still describes the exact same component version.
+        return current ? Object.assign(current, capability, { files: current.files }) : capability;
+      });
+    }
+    // Keep already loaded history and the object shared with an embedded release context.
+    Object.assign(scene, refreshed, {
+      id: sceneId,
+      releases: scene.releases,
+      publishing: scene.publishing,
+    });
+  } catch (error) {
+    if (stillCurrent()) {
+      packagingRefreshWarning.value = `打包配置已保存，详情刷新暂时失败：${errorMessage(error, '请稍后重试')}`;
+    }
+  }
+}
+watch(
+  () => currentScene.value?.sceneExtensionCode,
+  () => {
+    packagingRefreshSequence += 1;
+    packagingRefreshWarning.value = '';
+  },
+);
 const currentProduct = computed(
   () => products.value.find((product) => product.id === currentScene.value?.productId) ?? null,
 );
@@ -269,6 +342,8 @@ const expandedFolders = ref<Set<ExtensionCapabilityType>>(
 );
 const expandedCapabilities = ref<Set<string>>(new Set());
 const expandedFiles = ref<Set<string>>(new Set());
+const capabilityCacheGenerations = new WeakMap<ExtensionCapability, number>();
+let nextCapabilityCacheGeneration = 0;
 const loadedCapabilities = ref<Set<string>>(new Set());
 const loadingCapabilities = ref<Set<string>>(new Set());
 const capabilityErrors = reactive<Record<string, string>>({});
@@ -562,12 +637,36 @@ function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
   return { ...snapshot, departmentPath: [...departmentPath] };
 }
 
-function capabilityKey(scene: ExtensionScene, capability: ExtensionCapability): string {
-  return `${scene.id}|${capability.id}`;
+function capabilityKey(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  type: ExtensionCapabilityType,
+): string {
+  // Every loaded/loading/error/expanded set shares the complete content identity.
+  // Replaced objects get a new generation even if a later refresh restores an old version;
+  // loaders attached to the evicted object can never mark the replacement as loaded.
+  let generation = capabilityCacheGenerations.get(capability);
+  if (generation === undefined) {
+    generation = ++nextCapabilityCacheGeneration;
+    capabilityCacheGenerations.set(capability, generation);
+  }
+  return JSON.stringify([
+    scene.id,
+    type,
+    capability.id,
+    capability.name,
+    capability.version,
+    generation,
+  ]);
 }
 
-function fileKey(scene: ExtensionScene, capability: ExtensionCapability, fileName: string): string {
-  return `${capabilityKey(scene, capability)}|${fileName}`;
+function fileKey(
+  scene: ExtensionScene,
+  capability: ExtensionCapability,
+  fileName: string,
+  type: ExtensionCapabilityType,
+): string {
+  return JSON.stringify([capabilityKey(scene, capability, type), fileName]);
 }
 
 async function loadFileContent(
@@ -576,7 +675,7 @@ async function loadFileContent(
   type: ExtensionCapabilityType,
   fileName: string,
 ): Promise<void> {
-  const key = fileKey(scene, capability, fileName);
+  const key = fileKey(scene, capability, fileName, type);
   if (!transportIsHttp || loadedFiles.value.has(key) || loadingFiles.value.has(key)) return;
   loadingFiles.value = withSetValue(loadingFiles.value, key, true);
   delete fileErrors[key];
@@ -601,7 +700,7 @@ async function loadSkillCapabilityFiles(
   scene: ExtensionScene,
   capability: ExtensionCapability,
 ): Promise<void> {
-  const key = capabilityKey(scene, capability);
+  const key = capabilityKey(scene, capability, 'skill');
   if (!transportIsHttp || loadedCapabilities.value.has(key) || loadingCapabilities.value.has(key)) {
     return;
   }
@@ -637,7 +736,7 @@ async function toggleCapability(
     showToast('该能力暂未开发完成，无内容可查看');
     return;
   }
-  const key = capabilityKey(scene, capability);
+  const key = capabilityKey(scene, capability, type);
   const opening = !expandedCapabilities.value.has(key);
   expandedCapabilities.value = withSetValue(expandedCapabilities.value, key, opening);
   if (!opening) return;
@@ -651,7 +750,7 @@ async function toggleFile(
   type: ExtensionCapabilityType,
   fileName: string,
 ): Promise<void> {
-  const key = fileKey(scene, capability, fileName);
+  const key = fileKey(scene, capability, fileName, type);
   const opening = !expandedFiles.value.has(key);
   expandedFiles.value = withSetValue(expandedFiles.value, key, opening);
   if (opening) await loadFileContent(scene, capability, type, fileName);
@@ -765,6 +864,7 @@ const publishForm = reactive({
   description: '',
   channel: 'beta' as ExtensionPublishChannel,
   organizationId: organizations.value[0]?.id ?? '',
+  inheritBypass: true,
 });
 const assemblySources = ref<ExtensionInheritanceSource[]>([]);
 const assemblyState = ref<ExtensionAssemblyState>(createAssemblyState());
@@ -793,6 +893,18 @@ const assemblyHttpContext = computed<ExtensionHttpAssemblyContext | undefined>((
 });
 function updateAssemblySnapshot(detail: ExtensionAssemblyDetail): void {
   if (modalScene.value) Object.assign(modalScene.value, detail);
+}
+
+function formatBypassSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${Number(size.toFixed(2))} ${units[unit]}`;
 }
 
 function preferredOrganizationId(items: PublishableOrganization[]): string {
@@ -847,6 +959,30 @@ const requiredExtensionNamePrefix = computed(() =>
 const publishNameLocked = computed(() => Boolean(modalScene.value?.releases.length));
 const publishError = ref('');
 const publishSubmitting = ref(false);
+const packagingMutationScope = ref('');
+const packagingScene = computed(() =>
+  props.releaseContext ? modalScene.value : currentScene.value,
+);
+const packagingScope = computed(() =>
+  JSON.stringify([props.userId.trim(), packagingScene.value?.sceneExtensionCode ?? '']),
+);
+const packagingBusy = computed(() => packagingMutationScope.value === packagingScope.value);
+function updatePackagingMutationState(state: {
+  userId: string;
+  sceneExtensionCode: string;
+  busy: boolean;
+}) {
+  const scope = JSON.stringify([state.userId, state.sceneExtensionCode]);
+  if (scope !== packagingScope.value) return;
+  packagingMutationScope.value = state.busy ? scope : '';
+}
+watch(
+  packagingScope,
+  () => {
+    packagingMutationScope.value = '';
+  },
+  { flush: 'sync' },
+);
 const historyLoading = ref(false);
 const historyError = ref('');
 let historyLoadSequence = 0;
@@ -880,7 +1016,7 @@ async function togglePublishCapability(
   capability: ExtensionCapability,
   type: ExtensionCapabilityType,
 ): Promise<void> {
-  const key = capabilityKey(scene, capability);
+  const key = capabilityKey(scene, capability, type);
   const opening = !publishExpandedCapabilities.value.has(key);
   publishExpandedCapabilities.value = withSetValue(publishExpandedCapabilities.value, key, opening);
   if (!opening) return;
@@ -894,7 +1030,7 @@ async function togglePublishFile(
   type: ExtensionCapabilityType,
   fileName: string,
 ): Promise<void> {
-  const key = fileKey(scene, capability, fileName);
+  const key = fileKey(scene, capability, fileName, type);
   const opening = !publishExpandedFiles.value.has(key);
   publishExpandedFiles.value = withSetValue(publishExpandedFiles.value, key, opening);
   if (opening) await loadFileContent(scene, capability, type, fileName);
@@ -911,6 +1047,7 @@ const modalHistory = computed(() => {
 const visibleHistory = computed(() => modalHistory.value.slice(0, historyLimit.value));
 
 async function openPublishModal(scene: ExtensionScene): Promise<void> {
+  if (packagingBusy.value || publishSubmitting.value) return;
   const blockedReason = scene.publishing
     ? '当前已有发布进行中'
     : !scene.publishable && !(transportIsHttp && props.releaseContext)
@@ -930,6 +1067,7 @@ async function openPublishModal(scene: ExtensionScene): Promise<void> {
   }
   publishForm.description = scene.extension.description || latest?.description || '';
   publishForm.channel = 'beta';
+  publishForm.inheritBypass = true;
   activeModal.value = 'publish';
   publishError.value = blockedReason;
   organizationError.value = '';
@@ -1009,7 +1147,13 @@ function closeModal(): void {
 
 async function confirmPublish(): Promise<void> {
   const scene = modalScene.value;
-  if (!scene || publishSubmitting.value || selectedPublishCheck.value?.canPublish === false) return;
+  if (
+    !scene ||
+    publishSubmitting.value ||
+    packagingBusy.value ||
+    selectedPublishCheck.value?.canPublish === false
+  )
+    return;
   if (!scene.publishable || scene.publishing) {
     publishError.value = scene.publishing ? '当前已有发布进行中' : '场景不完备，无法发布';
     return;
@@ -1073,6 +1217,7 @@ async function confirmPublish(): Promise<void> {
         extensionName: name,
         description,
         channel: publishForm.channel,
+        inheritBypass: scene.hasBypass === true ? publishForm.inheritBypass : true,
         organization,
         ...(props.releaseContext
           ? { inheritBypass: assemblyState.value.inheritBypass !== false }
@@ -1271,6 +1416,7 @@ onMounted(() => {
   void applyFilters();
 });
 onBeforeUnmount(() => {
+  packagingRefreshSequence += 1;
   organizationLoadSequence += 1;
   assemblyLoadSequence += 1;
   historyLoadSequence += 1;
@@ -1512,7 +1658,12 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="extension-button extension-button--publish extension-button--small"
-                  :disabled="!currentScene.publishable || Boolean(currentScene.publishing)"
+                  :disabled="
+                    packagingBusy ||
+                    publishSubmitting ||
+                    !currentScene.publishable ||
+                    Boolean(currentScene.publishing)
+                  "
                   @click="openPublishModal(currentScene)"
                 >
                   {{ currentScene.publishing ? '发布中…' : '发布' }}
@@ -1526,6 +1677,22 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="scene-content">
+              <ExtensionPackagingPanel
+                v-if="transportIsHttp"
+                :key="packagingScope"
+                :user-id="props.userId"
+                :scene="currentScene"
+                :publication-locked="publishSubmitting"
+                @mutation-state="updatePackagingMutationState"
+                @updated="updatePackagingMetadata"
+              />
+              <p
+                v-if="transportIsHttp && packagingRefreshWarning"
+                class="packaging-refresh-warning"
+                role="status"
+              >
+                {{ packagingRefreshWarning }}
+              </p>
               <section
                 v-for="section in capabilitySections"
                 :key="section.type"
@@ -1564,7 +1731,7 @@ onBeforeUnmount(() => {
                       class="capability-row"
                       :class="{
                         'is-open': expandedCapabilities.has(
-                          capabilityKey(currentScene, capability),
+                          capabilityKey(currentScene, capability, section.type),
                         ),
                         'is-disabled': !capability.ready,
                       }"
@@ -1593,21 +1760,31 @@ onBeforeUnmount(() => {
                     <ul
                       v-if="
                         capability.ready &&
-                        expandedCapabilities.has(capabilityKey(currentScene, capability))
+                        expandedCapabilities.has(
+                          capabilityKey(currentScene, capability, section.type),
+                        )
                       "
                       class="file-list"
                     >
                       <li
-                        v-if="loadingCapabilities.has(capabilityKey(currentScene, capability))"
+                        v-if="
+                          loadingCapabilities.has(
+                            capabilityKey(currentScene, capability, section.type),
+                          )
+                        "
                         class="folder-empty"
                       >
                         正在加载目录…
                       </li>
                       <li
-                        v-else-if="capabilityErrors[capabilityKey(currentScene, capability)]"
+                        v-else-if="
+                          capabilityErrors[capabilityKey(currentScene, capability, section.type)]
+                        "
                         class="folder-empty folder-empty--error"
                       >
-                        {{ capabilityErrors[capabilityKey(currentScene, capability)] }}
+                        {{
+                          capabilityErrors[capabilityKey(currentScene, capability, section.type)]
+                        }}
                       </li>
                       <template v-else-if="section.type === 'skill'">
                         <li v-for="file in capability.files" :key="file.name">
@@ -1616,7 +1793,7 @@ onBeforeUnmount(() => {
                             class="file-row"
                             :class="{
                               'is-open': expandedFiles.has(
-                                fileKey(currentScene, capability, file.name),
+                                fileKey(currentScene, capability, file.name, section.type),
                               ),
                             }"
                             @click="toggleFile(currentScene, capability, section.type, file.name)"
@@ -1629,12 +1806,20 @@ onBeforeUnmount(() => {
                             <p style="font-size: 10px">{{ file.name }}</p>
                           </button>
                           <pre
-                            v-if="expandedFiles.has(fileKey(currentScene, capability, file.name))"
+                            v-if="
+                              expandedFiles.has(
+                                fileKey(currentScene, capability, file.name, section.type),
+                              )
+                            "
                             class="file-content"
                             >{{
-                              loadingFiles.has(fileKey(currentScene, capability, file.name))
+                              loadingFiles.has(
+                                fileKey(currentScene, capability, file.name, section.type),
+                              )
                                 ? '正在加载…'
-                                : fileErrors[fileKey(currentScene, capability, file.name)] ||
+                                : fileErrors[
+                                    fileKey(currentScene, capability, file.name, section.type)
+                                  ] ||
                                   file.content ||
                                   '(空)'
                             }}</pre>
@@ -1644,11 +1829,21 @@ onBeforeUnmount(() => {
                       <li v-else-if="capability.files[0]">
                         <pre class="file-content file-content--direct">{{
                           loadingFiles.has(
-                            fileKey(currentScene, capability, capability.files[0].name),
+                            fileKey(
+                              currentScene,
+                              capability,
+                              capability.files[0].name,
+                              section.type,
+                            ),
                           )
                             ? '正在加载…'
                             : fileErrors[
-                                fileKey(currentScene, capability, capability.files[0].name)
+                                fileKey(
+                                  currentScene,
+                                  capability,
+                                  capability.files[0].name,
+                                  section.type,
+                                )
                               ] ||
                               capability.files[0].content ||
                               '(空)'
@@ -1710,6 +1905,22 @@ onBeforeUnmount(() => {
         </header>
         <div class="modal-body publish-body">
           <div class="publish-content">
+            <ExtensionPackagingPanel
+              v-if="transportIsHttp && releaseContext"
+              :key="packagingScope"
+              :user-id="props.userId"
+              :scene="modalScene"
+              :publication-locked="publishSubmitting"
+              @mutation-state="updatePackagingMutationState"
+              @updated="updatePackagingMetadata"
+            />
+            <p
+              v-if="transportIsHttp && releaseContext && packagingRefreshWarning"
+              class="packaging-refresh-warning"
+              role="status"
+            >
+              {{ packagingRefreshWarning }}
+            </p>
             <section v-if="releaseContext" class="publish-overview" aria-label="Extension 信息">
               <div class="publish-overview__identity">
                 <span class="publish-overview__icon" aria-hidden="true">
@@ -1819,6 +2030,32 @@ onBeforeUnmount(() => {
                 />
               </label>
             </div>
+            <section
+              v-if="transportIsHttp && modalScene.hasBypass === true"
+              class="publish-bypass"
+              aria-label="发布时继承当前旁路文件"
+            >
+              <label class="publish-bypass__choice">
+                <input
+                  v-model="publishForm.inheritBypass"
+                  type="checkbox"
+                  :disabled="publishSubmitting"
+                />
+                <span>发布时继承当前旁路文件</span>
+              </label>
+              <p v-if="publishForm.inheritBypass" class="field-hint">
+                本次发布将包含以下编辑态旁路文件。
+              </p>
+              <p v-else class="publish-bypass__warning" role="alert">
+                本次发布将在打包前清空编辑态旁路文件，请确认后发布。
+              </p>
+              <ul>
+                <li v-for="entry in modalScene.bypassEntries" :key="entry.path">
+                  <code>{{ entry.path }}</code>
+                  <span>{{ formatBypassSize(entry.size) }}</span>
+                </li>
+              </ul>
+            </section>
             <div class="modal-field">
               <span>包含清单（{{ publishItems.length }} 项）</span>
               <div class="publish-summary">
@@ -1861,11 +2098,13 @@ onBeforeUnmount(() => {
                         class="capability-row"
                         :class="{
                           'is-open': publishExpandedCapabilities.has(
-                            capabilityKey(modalScene, capability),
+                            capabilityKey(modalScene, capability, section.type),
                           ),
                         }"
                         :aria-expanded="
-                          publishExpandedCapabilities.has(capabilityKey(modalScene, capability))
+                          publishExpandedCapabilities.has(
+                            capabilityKey(modalScene, capability, section.type),
+                          )
                         "
                         @click="togglePublishCapability(modalScene, capability, section.type)"
                       >
@@ -1887,21 +2126,31 @@ onBeforeUnmount(() => {
 
                       <ul
                         v-if="
-                          publishExpandedCapabilities.has(capabilityKey(modalScene, capability))
+                          publishExpandedCapabilities.has(
+                            capabilityKey(modalScene, capability, section.type),
+                          )
                         "
                         class="file-list"
                       >
                         <li
-                          v-if="loadingCapabilities.has(capabilityKey(modalScene, capability))"
+                          v-if="
+                            loadingCapabilities.has(
+                              capabilityKey(modalScene, capability, section.type),
+                            )
+                          "
                           class="folder-empty"
                         >
                           正在加载目录…
                         </li>
                         <li
-                          v-else-if="capabilityErrors[capabilityKey(modalScene, capability)]"
+                          v-else-if="
+                            capabilityErrors[capabilityKey(modalScene, capability, section.type)]
+                          "
                           class="folder-empty folder-empty--error"
                         >
-                          {{ capabilityErrors[capabilityKey(modalScene, capability)] }}
+                          {{
+                            capabilityErrors[capabilityKey(modalScene, capability, section.type)]
+                          }}
                         </li>
                         <template v-else-if="section.type === 'skill'">
                           <li v-for="file in capability.files" :key="file.name">
@@ -1910,11 +2159,13 @@ onBeforeUnmount(() => {
                               class="file-row"
                               :class="{
                                 'is-open': publishExpandedFiles.has(
-                                  fileKey(modalScene, capability, file.name),
+                                  fileKey(modalScene, capability, file.name, section.type),
                                 ),
                               }"
                               :aria-expanded="
-                                publishExpandedFiles.has(fileKey(modalScene, capability, file.name))
+                                publishExpandedFiles.has(
+                                  fileKey(modalScene, capability, file.name, section.type),
+                                )
                               "
                               @click="
                                 togglePublishFile(modalScene, capability, section.type, file.name)
@@ -1929,13 +2180,19 @@ onBeforeUnmount(() => {
                             </button>
                             <pre
                               v-if="
-                                publishExpandedFiles.has(fileKey(modalScene, capability, file.name))
+                                publishExpandedFiles.has(
+                                  fileKey(modalScene, capability, file.name, section.type),
+                                )
                               "
                               class="file-content"
                               >{{
-                                loadingFiles.has(fileKey(modalScene, capability, file.name))
+                                loadingFiles.has(
+                                  fileKey(modalScene, capability, file.name, section.type),
+                                )
                                   ? '正在加载…'
-                                  : fileErrors[fileKey(modalScene, capability, file.name)] ||
+                                  : fileErrors[
+                                      fileKey(modalScene, capability, file.name, section.type)
+                                    ] ||
                                     file.content ||
                                     '(空)'
                               }}</pre>
@@ -1947,11 +2204,21 @@ onBeforeUnmount(() => {
                         <li v-else-if="capability.files[0]">
                           <pre class="file-content file-content--direct">{{
                             loadingFiles.has(
-                              fileKey(modalScene, capability, capability.files[0].name),
+                              fileKey(
+                                modalScene,
+                                capability,
+                                capability.files[0].name,
+                                section.type,
+                              ),
                             )
                               ? '正在加载…'
                               : fileErrors[
-                                  fileKey(modalScene, capability, capability.files[0].name)
+                                  fileKey(
+                                    modalScene,
+                                    capability,
+                                    capability.files[0].name,
+                                    section.type,
+                                  )
                                 ] ||
                                 capability.files[0].content ||
                                 '(空)'
@@ -2014,6 +2281,7 @@ onBeforeUnmount(() => {
             :disabled="
               publishSubmitting ||
               assemblyLoading ||
+              packagingBusy ||
               organizationLoading ||
               organizations.length === 0 ||
               selectedPublishCheck?.canPublish === false ||
@@ -3105,6 +3373,15 @@ onBeforeUnmount(() => {
   overflow: auto;
 }
 
+.packaging-refresh-warning {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7e8;
+  color: #8c5c17;
+  font-size: 13px;
+}
+
 .capability-folder + .capability-folder {
   margin-top: 15px;
 }
@@ -3672,6 +3949,41 @@ onBeforeUnmount(() => {
   stroke-width: 1.5;
 }
 
+.publish-bypass {
+  padding: 16px;
+  border: 1px solid #dfe5ef;
+  border-radius: 10px;
+  background: #f8faff;
+  font-size: 13px;
+}
+.publish-bypass__choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.publish-bypass ul {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.publish-bypass li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+}
+.publish-bypass code {
+  overflow-wrap: anywhere;
+}
+.publish-bypass li > span {
+  flex-shrink: 0;
+  color: #64748b;
+}
+.publish-bypass__warning {
+  color: #975710;
+}
 .publish-settings {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

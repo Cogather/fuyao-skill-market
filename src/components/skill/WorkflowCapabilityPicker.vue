@@ -4,11 +4,13 @@ import type {
   WorkflowCapabilityOption,
   WorkflowCapabilityType,
 } from '../../services/skillMarket/workflowCapabilitySearchService';
+import type { HarnessScopeLevel } from '../../types/harnessFilterMemory';
 
 const props = defineProps<{
   types: WorkflowCapabilityType[];
   localOptions: WorkflowCapabilityOption[];
   selectedIds: string[];
+  scopeLevel?: HarnessScopeLevel;
   query: (
     type: WorkflowCapabilityType,
     keyword: string,
@@ -40,6 +42,12 @@ let previousScrollTop = 0;
 const isCommand = computed(() => props.types.length === 1 && props.types[0] === 'Command');
 const triggerLabel = computed(() =>
   isCommand.value ? '+ 选择一个 Command 加入… ▾' : '+ 从资产库添加 Agent / Skill… ▾',
+);
+const capabilityScopeLabel = computed(() => (props.scopeLevel === '部门级' ? '部门' : '产品'));
+const capabilityScopeHint = computed(() =>
+  keyword.value.trim()
+    ? `搜索结果 · 不限当前${capabilityScopeLabel.value}`
+    : `当前${capabilityScopeLabel.value} · 输入关键字可搜索其他${capabilityScopeLabel.value}`,
 );
 const options = computed(() => {
   const candidates = keyword.value.trim()
@@ -232,9 +240,7 @@ onBeforeUnmount(invalidate);
           ×
         </button>
       </div>
-      <p class="capability-scope">
-        {{ keyword.trim() ? '搜索结果 · 不限当前产品' : '当前产品 · 输入关键字可搜索其他产品' }}
-      </p>
+      <p class="capability-scope">{{ capabilityScopeHint }}</p>
       <div
         ref="scrollArea"
         class="capability-results"
