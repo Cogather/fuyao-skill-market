@@ -8,7 +8,7 @@
 
 - 现有“Extension 发布信息”区域的字段结构、样式和能力资产展开交互保持不变，只复用其表单数据与能力资产。
 - 同一发布页内切换 CodeAgent 与 TestAgent；默认 CodeAgent。
-- 切换目标时保留现有表单值和已上传附加文件，按目标重置默认继承；TestAgent 不支持发布后转换为 CoreALM-Next 小队。
+- 切换目标时保留现有表单值和已上传附加文件，按目标重置默认继承。
 - 后端尚未提供的继承、附加文件组装和发布目标接口先集中使用 mock，现有 Extension 查询与发布接口保持原有调用方式。
 
 ## 交互与打包规则
@@ -18,7 +18,6 @@
 - CodeAgent 自动继承上次发布的旁路文件，可清除；TestAgent 默认继承上次发布，也可改选上次发布或部门通用 Extension。
 - ZIP 附加包中的 `skills/`、`commands/`、`agents/`、`plugin.json`、`codeagent-extension.json` 被过滤，其余文件参与合并；同路径上传文件覆盖继承文件。
 - 最终目录树标识系统、继承、上传三类来源，并随目标、继承和上传状态实时更新。
-- CodeAgent 可选择“发布后转换为 CoreALM-Next 小队”；TestAgent 隐藏并清空该选项。
 
 ## 方案
 
@@ -30,5 +29,4 @@
 
 - 不重做现有 Extension 发布信息区域的视觉样式。
 - 不替换现有真实的 Extension 详情、组织、发布和历史接口。
-- 不在本次实现真实的 CoreALM-Next 转换接口；只把选择写入 mock 组装提交结果。
 

@@ -47,8 +47,8 @@ const emit = defineEmits<{
   'snapshot-change': [detail: ExtensionAssemblyDetail];
 }>();
 
-const inheritOpen = ref(true);
-const uploadOpen = ref(true);
+const inheritOpen = ref(false);
+const uploadOpen = ref(false);
 const sourceDialogOpen = ref(false);
 const sourceSearch = ref('');
 const pendingSourceId = ref('');
@@ -63,7 +63,9 @@ const remote = reactive(
     (detail) => emit('snapshot-change', detail),
   ),
 );
-const controlsDisabled = computed(() => props.disabled || remote.busy || archiveReading.value);
+const controlsDisabled = computed(
+  () => props.disabled || remote.mutating || archiveReading.value,
+);
 watch(
   () => remote.busy || archiveReading.value,
   (busy) => emit('busy-change', busy),
@@ -442,25 +444,6 @@ function formatSize(size: number): string {
         <span
           >当前模式：<strong>{{ targetLabel }}</strong></span
         >
-        <label
-          v-if="
-            modelValue.target === 'codeagent' &&
-            (!httpContext || httpContext.supportsConversion)
-          "
-        >
-          <input
-            type="checkbox"
-            :checked="modelValue.convertAfterPublish"
-            :disabled="disabled"
-            aria-label="发布后转换为 CoreALM-Next 小队"
-            @change="
-              updateState({
-                convertAfterPublish: ($event.target as HTMLInputElement).checked,
-              })
-            "
-          />
-          <span>发布后转换为 CoreALM-Next 小队</span>
-        </label>
       </div>
       <slot name="actions" />
     </div>
@@ -954,18 +937,6 @@ function formatSize(size: number): string {
   padding-left: 16px;
   color: #667085;
   font-size: 11px;
-}
-
-.release-assembly__status label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #475467;
-  cursor: pointer;
-}
-
-.release-assembly__status input {
-  accent-color: #2563eb;
 }
 
 .inheritance-overlay {

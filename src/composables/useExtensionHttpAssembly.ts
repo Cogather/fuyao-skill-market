@@ -20,7 +20,6 @@ export type ExtensionHttpAssemblyContext = ExtensionAssemblyDetail & {
   extensionName: string;
   components: StructureComponent[];
   hasPublishedPackage: boolean;
-  supportsConversion: boolean;
 };
 
 function message(error: unknown): string {
@@ -106,7 +105,7 @@ export function useExtensionHttpAssembly(
     request: () => Promise<T>,
     apply: (result: T) => void,
   ): Promise<boolean> {
-    if (!context() || busy.value) return false;
+    if (!context() || mutating.value) return false;
     const epoch = generation;
     mutating.value = true;
     error.value = '';
@@ -136,7 +135,6 @@ export function useExtensionHttpAssembly(
     update({
       target: result.layoutMode === 'testagent' ? 'testagent' : 'codeagent',
       inheritBypass: true,
-      convertAfterPublish: false,
       uploadedPackage,
     });
   }
@@ -150,7 +148,6 @@ export function useExtensionHttpAssembly(
         layout.value = result.layoutMode;
         update({
           target: result.layoutMode === 'testagent' ? 'testagent' : 'codeagent',
-          convertAfterPublish: false,
         });
       },
     );
@@ -202,7 +199,7 @@ export function useExtensionHttpAssembly(
   }
 
   async function download(): Promise<boolean> {
-    if (!context() || busy.value) return false;
+    if (!context() || mutating.value) return false;
     const epoch = generation;
     mutating.value = true;
     error.value = '';
@@ -267,7 +264,6 @@ export function useExtensionHttpAssembly(
       update({
         target: layout.value === 'testagent' ? 'testagent' : 'codeagent',
         inheritBypass: true,
-        convertAfterPublish: false,
         uploadedPackage: null,
       });
       void refreshTree();
@@ -294,6 +290,7 @@ export function useExtensionHttpAssembly(
     ignoredEntries,
     tree,
     busy,
+    mutating,
     blocked,
     error,
     treeError,

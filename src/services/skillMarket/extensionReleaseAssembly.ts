@@ -43,7 +43,6 @@ export type ExtensionAssemblyState = {
   target: ExtensionReleaseTarget;
   inheritanceSourceId: string;
   uploadedPackage: ExtensionUploadedPackage | null;
-  convertAfterPublish: boolean;
   inheritBypass?: boolean;
 };
 
@@ -60,12 +59,10 @@ export type SubmitExtensionAssemblyInput = {
   target: ExtensionReleaseTarget;
   inheritanceSourceId: string;
   uploadedFiles: ExtensionAssemblyFile[];
-  convertAfterPublish: boolean;
 };
 
 export type SubmitExtensionAssemblyResult = SubmitExtensionAssemblyInput & {
   taskId: string;
-  convertTaskCreated: boolean;
 };
 
 const capabilityFolders: Record<ExtensionCapabilityType, string> = {
@@ -227,7 +224,6 @@ export function createAssemblyState(
     target: 'codeagent',
     inheritanceSourceId: defaultInheritanceSourceId(sources),
     uploadedPackage: null,
-    convertAfterPublish: false,
   };
 }
 
@@ -241,7 +237,6 @@ export function switchAssemblyTarget(
     ...state,
     target,
     inheritanceSourceId: defaultInheritanceSourceId(sources),
-    convertAfterPublish: target === 'codeagent' ? state.convertAfterPublish : false,
   };
 }
 
@@ -367,9 +362,7 @@ export async function submitExtensionAssemblyMock(
   const sequence = Math.random().toString(36).slice(2, 9);
   return {
     ...input,
-    convertAfterPublish: input.target === 'codeagent' && input.convertAfterPublish,
     taskId: `mock-extension-assembly-${Date.now()}-${sequence}`,
-    convertTaskCreated: input.target === 'codeagent' && input.convertAfterPublish,
   };
 }
 

@@ -1,12 +1,17 @@
 import { expect, test } from '../fixtures/base';
 import type { Page, Request } from '@playwright/test';
 
-async function setup(page: Page) {
+async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
   const sceneExtensionCode = 'scene-code-001';
   const requests: Request[] = [];
   let layout = 'testagent';
   let files = [{ path: '.testagent/agents/custom-prompt.md', size: 1024 }];
   let failPath = '';
+  let initialTreePending = options.holdInitialTree === true;
+  let releaseInitialTree: (() => void) | undefined;
+  const initialTreeReady = new Promise<void>((resolve) => {
+    releaseInitialTree = resolve;
+  });
   const entries = () => [
     { path: `${sceneExtensionCode}/codeagent-extension.json`, type: 'file', source: 'SYSTEM', size: null },
     { path: `${sceneExtensionCode}/.cac-plugin/plugin.json`, type: 'file', source: 'SYSTEM', size: null },
@@ -46,7 +51,13 @@ async function setup(page: Page) {
         bypassEntries: files,
       };
     if (path === '/extensions/orgs') data = [{ orgCode: 'org1', orgName: '测试组织' }];
-    if (path === '/extensions/structure/tree') data = { layoutMode: layout, entries: entries() };
+    if (path === '/extensions/structure/tree') {
+      if (initialTreePending) {
+        initialTreePending = false;
+        await initialTreeReady;
+      }
+      data = { layoutMode: layout, entries: entries() };
+    }
     if (path === '/extensions/layout') {
       layout = url.searchParams.get('layout')!;
       data = { layoutMode: layout };
@@ -123,17 +134,40 @@ async function setup(page: Page) {
   });
   const assembly = page.getByRole('region', { name: 'Extension 发布组装' });
   await expect(assembly).toBeVisible();
+  const inheritanceSection = assembly.getByRole('button', { name: /继承与目录结构/ });
+  const uploadSection = assembly.getByRole('button', { name: /自定义附加文件/ });
+  await expect(inheritanceSection).toHaveAttribute('aria-expanded', 'false');
+  await expect(uploadSection).toHaveAttribute('aria-expanded', 'false');
+  await inheritanceSection.click();
+  await uploadSection.click();
   return {
     assembly,
     requests,
     failNext: (path: string) => {
       failPath = path;
     },
+    releaseInitialTree,
   };
 }
 
 test.describe('Extension HTTP 发布组装', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
+
+  test('初始目录加载期间仍可选择继承和上传旁路文件', async ({ page }) => {
+    const { assembly, releaseInitialTree } = await setup(page, { holdInitialTree: true });
+    try {
+      await expect(assembly.getByRole('status')).toContainText('正在加载目录');
+      const inheritButton = assembly.getByRole('button', { name: /(?:选择|更换)继承/ });
+      const uploadButton = assembly.getByRole('button', { name: /拖拽压缩包到此处/ });
+      await expect(inheritButton).toBeEnabled();
+      await expect(uploadButton).toBeEnabled();
+      await expect(assembly.locator('input[type="file"]')).toBeEnabled();
+      await inheritButton.click();
+      await expect(page.getByRole('dialog', { name: '选择继承源' })).toBeVisible();
+    } finally {
+      releaseInitialTree?.();
+    }
+  });
 
   test('详情回显布局和旁路，取消继承只在发布时传 false', async ({ page }) => {
     const { assembly, requests } = await setup(page);

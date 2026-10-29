@@ -903,7 +903,6 @@ const assemblyHttpContext = computed<ExtensionHttpAssemblyContext | undefined>((
     hasPublishedPackage:
       Boolean(scene.extension.version?.trim()) ||
       scene.releases?.some((release) => release.status === '成功') === true,
-    supportsConversion: !transportIsHttp,
   };
 });
 function updateAssemblySnapshot(detail: ExtensionAssemblyDetail): void {
@@ -1233,7 +1232,6 @@ async function confirmPublish(): Promise<void> {
           target: assemblyState.value.target,
           inheritanceSourceId: assemblyState.value.inheritanceSourceId,
           uploadedFiles: inheritBypass ? (assemblyState.value.uploadedPackage?.files ?? []) : [],
-          convertAfterPublish: assemblyState.value.convertAfterPublish,
         })
       : null;
 
@@ -1260,11 +1258,8 @@ async function confirmPublish(): Promise<void> {
       const targetText = assemblyResult
         ? `${assemblyResult.target === 'codeagent' ? 'CodeAgent' : 'TestAgent'} 模式 · `
         : '';
-      const conversionText = assemblyResult?.convertTaskCreated
-        ? '；发布成功后将自动发起 CoreALM-Next 小队转换任务'
-        : '';
       showToast(
-        `已提交 ${targetText}${publishForm.channel} 发布 → ${organization.name}，后台处理中${conversionText}`,
+        `已提交 ${targetText}${publishForm.channel} 发布 → ${organization.name}，后台处理中`,
       );
       return;
     }
@@ -1293,11 +1288,8 @@ async function confirmPublish(): Promise<void> {
     const targetText = assemblyResult
       ? `${assemblyResult.target === 'codeagent' ? 'CodeAgent' : 'TestAgent'} 模式 · `
       : '';
-    const conversionText = assemblyResult?.convertTaskCreated
-      ? '；发布成功后将自动发起 CoreALM-Next 小队转换任务'
-      : '';
     showToast(
-      `已提交 ${targetText}${submittedChannel} 发布 v${submittedVersion} → ${organization.name}，后台处理中${conversionText}`,
+      `已提交 ${targetText}${submittedChannel} 发布 v${submittedVersion} → ${organization.name}，后台处理中`,
     );
   } catch (error) {
     publishError.value = errorMessage(error, 'Extension 发布失败');

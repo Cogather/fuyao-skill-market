@@ -70,7 +70,6 @@ try {
 
   const withUpload = {
     ...initial,
-    convertAfterPublish: true,
     uploadedPackage: {
       name: 'custom.zip',
       size: 128,
@@ -82,7 +81,6 @@ try {
   assert.equal(testAgent.target, 'testagent');
   assert.equal(testAgent.inheritanceSourceId, 'previous');
   assert.equal(testAgent.uploadedPackage.name, 'custom.zip');
-  assert.equal(testAgent.convertAfterPublish, false);
   const codeAgentAgain = assembly.switchAssemblyTarget(testAgent, 'codeagent', sources);
   assert.equal(codeAgentAgain.uploadedPackage.name, 'custom.zip');
 
@@ -158,10 +156,8 @@ try {
     target: testAgent.target,
     inheritanceSourceId: testAgent.inheritanceSourceId,
     uploadedFiles: testAgent.uploadedPackage.files,
-    convertAfterPublish: testAgent.convertAfterPublish,
   });
   assert.equal(submitted.target, 'testagent');
-  assert.equal(submitted.convertTaskCreated, false);
   assert.match(submitted.taskId, /^mock-extension-assembly-/);
 
   console.log('PASS Extension release assembly target, merge, ZIP, and mock submission behavior');

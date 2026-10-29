@@ -20,7 +20,6 @@
 ## Review Focus
 
 - A target switch must not clear the current Extension description, channel, organization, or uploaded files.
-- TestAgent must never retain the CoreALM conversion option.
 - Protected upload paths must be rejected case-insensitively and nested paths must not bypass the filter.
 - An uploaded sidecar at the same path must replace an inherited sidecar in the preview.
 - Empty or malformed ZIP files must produce a visible error without corrupting the current preview.
@@ -36,7 +35,7 @@
 **Interfaces:**
 - Produces: `createAssemblyState`, `switchAssemblyTarget`, `buildExtensionPackageTree`, `filterExtensionArchivePaths`, `readExtensionArchive`, `createMockInheritanceSources`, and `submitExtensionAssemblyMock`.
 
-- [x] Write behavior tests for both layouts, target switching, upload filtering, precedence, and conversion reset.
+- [x] Write behavior tests for both layouts, target switching, upload filtering, and precedence.
 - [x] Run `node tests/extension-release-assembly.tests.mjs` and verify the missing module/exports fail.
 - [x] Implement the typed pure functions and PizZip adapter.
 - [x] Re-run the test and verify all assertions pass.

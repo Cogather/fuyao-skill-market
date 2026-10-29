@@ -904,3 +904,99 @@ test('scene changes invalidate old mutations and tree responses; missing identit
     ctx.app.unmount();
   }
 });
+
+test('release assembly keeps inheritance and upload interactive during initial tree loading', async () => {
+  const { extensionAssemblyHttp } = await server.ssrLoadModule(
+    '/src/services/skillMarket/extensionAssemblyHttp.ts',
+  );
+  const originalTree = extensionAssemblyHttp.tree;
+  const originalUpload = extensionAssemblyHttp.upload;
+  let resolveInitialTree;
+  let treeCalls = 0;
+  let uploadCalls = 0;
+  extensionAssemblyHttp.tree = () => {
+    treeCalls += 1;
+    if (treeCalls === 1)
+      return new Promise((resolve) => {
+        resolveInitialTree = resolve;
+      });
+    return Promise.resolve(tree('standard'));
+  };
+  extensionAssemblyHttp.upload = async () => {
+    uploadCalls += 1;
+    return result('standard');
+  };
+
+  const Component = await loadSfc(
+    path.resolve('src/components/skill/ExtensionReleaseAssemblyPanel.vue'),
+  );
+  const state = Vue.reactive({
+    target: 'codeagent',
+    inheritanceSourceId: '',
+    inheritBypass: true,
+    uploadedPackage: null,
+  });
+  const root = makeNode('root');
+  const app = renderer.createApp({
+    setup: () => () =>
+      Vue.h(Component, {
+        enabled: true,
+        modelValue: state,
+        httpContext: {
+          userId: 'parent-user',
+          extensionName: 'scene-target',
+          components: [],
+          layoutMode: 'standard',
+          hasBypass: false,
+          bypassEntries: [],
+          hasPublishedPackage: false,
+        },
+        'onUpdate:modelValue': (value) => Object.assign(state, value),
+      }),
+  });
+
+  try {
+    app.mount(root);
+    await settle();
+    assert.equal(treeCalls, 1, 'the initial authoritative tree request is still pending');
+    const headers = nodes(root).filter(
+      (node) => node.type === 'button' && node.props.class === 'assembly-card__header',
+    );
+    assert.equal(headers.length, 2);
+    await click(headers[0]);
+    await click(headers[1]);
+
+    const inheritanceActions = nodes(root).find(
+      (node) => node.props.class === 'inheritance-actions',
+    );
+    const inheritButton = nodes(inheritanceActions).find((node) => node.type === 'button');
+    const uploadButton = nodes(root).find(
+      (node) => node.type === 'button' && node.props.class === 'archive-dropzone',
+    );
+    const uploadInput = nodes(root).find(
+      (node) => node.type === 'input' && node.props.type === 'file',
+    );
+    assert.equal(inheritButton.props.disabled, false);
+    assert.equal(uploadButton.props.disabled, false);
+    assert.equal(uploadInput.props.disabled, false);
+
+    await click(inheritButton);
+    const dialog = nodes(root).find((node) => node.props.role === 'dialog');
+    assert.ok(dialog, 'the inheritance dialog opens while the tree is loading');
+    const dialogClose = nodes(dialog).find(
+      (node) => node.type === 'button' && node.parent?.type === 'header',
+    );
+    await click(dialogClose);
+
+    uploadInput.props.onChange({
+      target: { files: [new File(['zip'], 'custom.zip')], value: '' },
+    });
+    await settle();
+    assert.equal(uploadCalls, 1, 'upload is not silently rejected by tree loading');
+  } finally {
+    resolveInitialTree?.(tree('standard'));
+    app.unmount();
+    extensionAssemblyHttp.tree = originalTree;
+    extensionAssemblyHttp.upload = originalUpload;
+  }
+});
