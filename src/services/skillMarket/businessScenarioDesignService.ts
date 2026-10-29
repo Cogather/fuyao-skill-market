@@ -553,7 +553,7 @@ export const harnessWorkflowService = {
       dimType: string;
       dimCode: string;
       dimName: string;
-      extensionName: string;
+      extensionName?: string;
       firstScene?: string;
       secondScene?: string;
     },

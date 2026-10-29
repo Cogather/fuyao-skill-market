@@ -1,5 +1,14 @@
 import request from './request';
 import type { ExtensionPackageNode, ExtensionPackageSource } from './extensionReleaseAssembly';
+import {
+  clearExtensionBypass,
+  getExtensionBypassDownload,
+  inheritExtensionBypass,
+  queryExtensionInheritancePage,
+  queryExtensionStructureTree,
+  updateExtensionLayout,
+  uploadExtensionBypass,
+} from './extensionBypassService';
 
 export type ExtensionLayout = 'standard' | 'testagent';
 export type BypassEntry = { path: string; size?: number | null; reason?: string };
@@ -125,83 +134,57 @@ export const extensionAssemblyHttp = {
     return call('/scene/copy', 'POST', { userId }, body, '场景流继承失败');
   },
   async upload(input: Identity & { layout: ExtensionLayout; file: File }): Promise<BypassResult> {
-    const identity = identityParams(input);
-    if (!input.file.name.toLowerCase().endsWith('.zip')) throw new Error('仅支持 .zip 压缩包');
-    if (input.file.size > 50 * 1024 * 1024) throw new Error('压缩包不能超过 50MB');
-    const body = new FormData();
-    body.append('userId', identity.userId);
-    body.append('extensionName', identity.extensionName);
-    body.append('layout', requireLayout(input.layout));
-    body.append('file', input.file);
-    return bypassResult(await call('/extensions/bypass', 'POST', undefined, body, '旁路上传失败'));
-  },
-  clear(input: Identity): Promise<null> {
-    return call(
-      '/extensions/bypass/clear',
-      'POST',
-      identityParams(input),
-      undefined,
-      '旁路清除失败',
+    return bypassResult(
+      await uploadExtensionBypass({
+        ...identityParams(input),
+        layout: requireLayout(input.layout),
+        file: input.file,
+      }),
     );
+  },
+  async clear(input: Identity): Promise<null> {
+    await clearExtensionBypass(identityParams(input));
+    return null;
   },
   async setLayout(
     input: Identity & { layout: ExtensionLayout },
   ): Promise<{ layoutMode: ExtensionLayout }> {
-    const result = await call<{ layoutMode: ExtensionLayout }>(
-      '/extensions/layout',
-      'POST',
-      { ...identityParams(input), layout: requireLayout(input.layout) },
-      undefined,
-      '布局切换失败',
-    );
+    const result = await updateExtensionLayout({
+      ...identityParams(input),
+      layout: requireLayout(input.layout),
+    });
     requireLayout(result?.layoutMode);
     return result;
   },
   async tree(
     input: Identity & { layout: ExtensionLayout; components: StructureComponent[] },
   ): Promise<StructureResult> {
-    const result = await call<StructureResult>(
-      '/extensions/structure/tree',
-      'GET',
-      {
-        ...identityParams(input),
-        layout: requireLayout(input.layout),
-        components: JSON.stringify(input.components),
-      },
-      undefined,
-      '目录加载失败',
-    );
+    const result = await queryExtensionStructureTree({
+      ...identityParams(input),
+      layout: requireLayout(input.layout),
+      components: input.components,
+    });
     if (!result || !Array.isArray(result.entries)) throw new Error('目录响应格式不正确');
     requireLayout(result.layoutMode);
     return result;
   },
   download(input: Identity): Promise<{ downloadUrl: string; expireSeconds: number }> {
-    return call(
-      '/extensions/bypass/download',
-      'GET',
-      identityParams(input),
-      undefined,
-      '下载地址获取失败',
-    );
+    return getExtensionBypassDownload(identityParams(input));
   },
   async inherit(
     userId: string,
     body: { sourceExtensionName: string; targetExtensionName: string },
   ): Promise<BypassResult> {
-    return bypassResult(
-      await call('/extensions/bypass/inherit', 'POST', { userId }, body, '旁路继承失败'),
-    );
+    return bypassResult(await inheritExtensionBypass({ userId, ...body }));
   },
   async searchExtensions(params: Search): Promise<ExtensionSearchItem[]> {
-    const result = await call<ExtensionSearchItem[]>(
-      '/extensions/search',
-      'GET',
-      params,
-      undefined,
-      'Extension 搜索失败',
-    );
-    if (!Array.isArray(result)) throw new Error('Extension 搜索响应格式不正确');
-    return result;
+    const page = await queryExtensionInheritancePage({
+      userId: params.userId,
+      keyword: params.keyword,
+      pageNo: 1,
+      pageSize: params.limit ?? 20,
+    });
+    return page.list;
   },
 };
 

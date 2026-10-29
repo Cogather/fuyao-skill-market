@@ -32,6 +32,12 @@ const emit = defineEmits<{
 const code = computed(() => props.scene.sceneExtensionCode?.trim() ?? '');
 const userId = computed(() => props.userId.trim());
 const available = computed(() => Boolean(code.value && userId.value));
+const hasPublishedPackage = computed(
+  () =>
+    Boolean(props.scene.extension.version?.trim()) ||
+    props.scene.releases?.some((release) => release.status === '成功') === true,
+);
+const downloadAvailable = computed(() => hasBypass.value || hasPublishedPackage.value);
 const layout = ref<ExtensionLayoutMode>('standard');
 const hasBypass = ref(false);
 const accepted = ref<ExtensionBypassEntry[]>([]);
@@ -59,12 +65,12 @@ const components = computed<ExtensionStructureComponent[]>(() =>
     props.scene.capabilities[type].flatMap((item) => {
       const name = item.name.trim();
       const version = item.version?.trim();
-      return name && version
+      return name
         ? [
             {
-              componentType: type.toUpperCase() as ExtensionStructureComponent['componentType'],
+              componentType: type,
               componentName: name,
-              componentVersion: version,
+              ...(version ? { componentVersion: version } : {}),
             },
           ]
         : [];
@@ -225,7 +231,7 @@ async function clear() {
   });
 }
 async function download() {
-  if (disabled.value || !hasBypass.value) {
+  if (disabled.value || !downloadAvailable.value) {
     return;
   }
   const sequence = ++mutationSequence;
@@ -364,10 +370,10 @@ onBeforeUnmount(() => {
       <button
         data-testid="download"
         type="button"
-        :disabled="disabled || !hasBypass"
+        :disabled="disabled || !downloadAvailable"
         @click="download"
       >
-        下载旁路
+        {{ hasPublishedPackage ? '下载完整包' : '下载旁路' }}
       </button>
       <button
         data-testid="clear"

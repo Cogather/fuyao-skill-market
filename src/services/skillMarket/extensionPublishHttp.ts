@@ -685,7 +685,6 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     agents: componentBody(input.scene, 'agent'),
     skills: componentBody(input.scene, 'skill'),
     commands: componentBody(input.scene, 'command'),
-    ...(typeof input.inheritBypass === 'boolean' ? { inheritBypass: input.inheritBypass } : {}),
   };
   const response = await skillBaseService.saveExtension(params, body);
   assertHttpSuccess(response, 'Extension 发布失败');

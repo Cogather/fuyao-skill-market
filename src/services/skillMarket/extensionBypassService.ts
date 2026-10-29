@@ -1,4 +1,8 @@
 import { skillBaseService } from './skillBaseService';
+import { extensionBypassMockAdapter } from './extensionBypassMock';
+
+const transportIsHttp =
+  String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
 
 export type ExtensionLayoutMode = 'standard' | 'testagent';
 
@@ -25,7 +29,7 @@ export interface ExtensionBypassResult {
 }
 
 export interface ExtensionStructureComponent {
-  componentType: 'SKILL' | 'COMMAND' | 'AGENT';
+  componentType: 'skill' | 'command' | 'agent';
   componentName: string;
   componentVersion?: string;
 }
@@ -113,9 +117,28 @@ function nonNegativeInteger(value: unknown): number {
 
 function data(response: unknown): unknown {
   const envelope = record(response);
-  const meta = record(envelope.meta);
-  const success = meta.success ?? meta.isSuccess;
-  if (success !== true && !(success == null && meta.message === 'OK')) {
+  const meta = envelope.meta == null ? {} : record(envelope.meta);
+  const hasCode = Object.prototype.hasOwnProperty.call(envelope, 'code');
+  const code = hasCode ? Number(envelope.code) : undefined;
+  const failed =
+    envelope.success === false ||
+    meta.success === false ||
+    meta.isSuccess === false ||
+    (hasCode && (!Number.isFinite(code) || ![0, 200].includes(code!)));
+  if (failed) {
+    throw new Error(optionalText(meta.message ?? envelope.message) || 'Extension 请求失败');
+  }
+  const succeeded =
+    envelope.success === true ||
+    meta.success === true ||
+    meta.isSuccess === true ||
+    (hasCode && [0, 200].includes(code!)) ||
+    (!hasCode &&
+      envelope.success == null &&
+      meta.success == null &&
+      meta.isSuccess == null &&
+      meta.message === 'OK');
+  if (!succeeded) {
     throw new Error(optionalText(meta.message ?? envelope.message) || 'Extension 请求失败');
   }
   if (!Object.prototype.hasOwnProperty.call(envelope, 'data') || envelope.data === undefined) {
@@ -178,6 +201,9 @@ export async function uploadExtensionBypass(
   if (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > 50 * 1024 * 1024) {
     throw new Error('旁路 zip 文件不得超过 50MB');
   }
+  if (!transportIsHttp) {
+    return extensionBypassMockAdapter.uploadExtensionBypass({ ...scope, layout, file });
+  }
   const form = new FormData();
   form.append('userId', scope.userId);
   form.append('extensionName', scope.extensionName);
@@ -187,19 +213,27 @@ export async function uploadExtensionBypass(
 }
 
 export async function clearExtensionBypass(input: ExtensionBypassIdentity): Promise<void> {
-  data(await skillBaseService.clearExtensionBypass(identity(input)));
+  const scope = identity(input);
+  if (!transportIsHttp) {
+    await extensionBypassMockAdapter.clearExtensionBypass(scope);
+    return;
+  }
+  data(await skillBaseService.clearExtensionBypass(scope));
 }
 
 export async function updateExtensionLayout(
   input: ExtensionLayoutInput,
 ): Promise<{ layoutMode: ExtensionLayoutMode }> {
   const params = { ...identity(input), layout: requestLayout(input.layout) };
+  if (!transportIsHttp) {
+    return extensionBypassMockAdapter.updateExtensionLayout(params);
+  }
   const row = record(data(await skillBaseService.updateExtensionLayout(params)));
   return { layoutMode: normalizeExtensionLayout(row.layoutMode) };
 }
 
 function normalizeComponent(component: ExtensionStructureComponent): ExtensionStructureComponent {
-  if (!component || !['SKILL', 'COMMAND', 'AGENT'].includes(component.componentType)) {
+  if (!component || !['skill', 'command', 'agent'].includes(component.componentType)) {
     throw new Error('Extension 组件类型无效');
   }
   return {
@@ -219,15 +253,25 @@ export async function queryExtensionStructureTree(
   if (!Array.isArray(input.components)) {
     throw new Error('Extension 组件列表无效');
   }
-  const row = record(
-    data(
-      await skillBaseService.queryExtensionStructureTree({
-        ...scope,
-        layout,
-        components: JSON.stringify(input.components.map(normalizeComponent)),
-      }),
-    ),
+  const components = input.components.map(normalizeComponent);
+  if (!transportIsHttp) {
+    return extensionBypassMockAdapter.queryExtensionStructureTree({
+      ...scope,
+      layout,
+      components,
+    });
+  }
+  const treeData = data(
+    await skillBaseService.queryExtensionStructureTree({
+      ...scope,
+      layout,
+      components: JSON.stringify(components),
+    }),
   );
+  if (!treeData || typeof treeData !== 'object' || Array.isArray(treeData)) {
+    throw new Error('Extension 目录响应格式无效');
+  }
+  const row = record(treeData);
   if (!Array.isArray(row.entries)) {
     throw new Error('Extension 目录列表无效');
   }
@@ -242,7 +286,10 @@ export async function queryExtensionStructureTree(
     return {
       path: responsePath(entry.path),
       type: entry.type,
-      size: entry.type === 'dir' && entry.size == null ? null : nonNegativeInteger(entry.size),
+      size:
+        entry.size == null && (entry.type === 'dir' || entry.source !== 'FILE')
+          ? null
+          : nonNegativeInteger(entry.size),
       source: entry.source,
     };
   });
@@ -252,7 +299,11 @@ export async function queryExtensionStructureTree(
 export async function getExtensionBypassDownload(
   input: ExtensionBypassIdentity,
 ): Promise<{ downloadUrl: string; expireSeconds: number }> {
-  const row = record(data(await skillBaseService.getExtensionBypassDownload(identity(input))));
+  const scope = identity(input);
+  if (!transportIsHttp) {
+    return extensionBypassMockAdapter.getExtensionBypassDownload(scope);
+  }
+  const row = record(data(await skillBaseService.getExtensionBypassDownload(scope)));
   const downloadUrl = requiredText(row.downloadUrl, 'downloadUrl');
   let parsed: URL;
   try {
@@ -274,6 +325,9 @@ export async function inheritExtensionBypass(
     sourceExtensionName: requiredText(input.sourceExtensionName, 'sourceExtensionName'),
     targetExtensionName: requiredText(input.targetExtensionName, 'targetExtensionName'),
   };
+  if (!transportIsHttp) {
+    return extensionBypassMockAdapter.inheritExtensionBypass({ userId, ...body });
+  }
   return mutationResult(await skillBaseService.inheritExtensionBypass({ userId }, body));
 }
 
@@ -291,6 +345,14 @@ export async function queryExtensionInheritancePage(
     throw new Error('Extension 分页参数无效');
   }
   const keyword = optionalText(input.keyword).trim();
+  if (!transportIsHttp) {
+    return extensionBypassMockAdapter.queryExtensionInheritancePage({
+      userId,
+      keyword,
+      pageNo,
+      pageSize,
+    });
+  }
   const limit = Math.min(pageNo * pageSize, 100);
   const result = data(await skillBaseService.searchExtensions({ userId, keyword, limit }));
   if (!Array.isArray(result)) {

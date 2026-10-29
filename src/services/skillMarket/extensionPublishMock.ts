@@ -111,9 +111,13 @@ export const MOCK_EXTENSION_PRODUCTS: ExtensionProduct[] = [
   },
 ];
 
-const scenes: ExtensionScene[] = [
+const sceneSeeds: ExtensionScene[] = [
   {
     id: 'scene-harness-pipeline-failure-diagnosis',
+    sceneExtensionCode: 'harness-pipeline-failure-diagnosis',
+    layoutMode: 'testagent',
+    hasBypass: true,
+    bypassEntries: [{ path: '.testagent/prompts/recovery-guide.md', size: 672 }],
     productId: 'offering-harness-pipeline',
     primary: '版本发布',
     name: '失败定位',
@@ -1067,6 +1071,14 @@ const scenes: ExtensionScene[] = [
     publishing: null,
   },
 ];
+
+const scenes: ExtensionScene[] = sceneSeeds.map((scene) => ({
+  ...scene,
+  sceneExtensionCode: scene.sceneExtensionCode ?? scene.id.replace(/^scene-/, ''),
+  layoutMode: scene.layoutMode ?? 'standard',
+  hasBypass: scene.hasBypass ?? false,
+  bypassEntries: scene.bypassEntries?.map((entry) => ({ ...entry })) ?? [],
+}));
 
 export function createMockExtensionScenes(): ExtensionScene[] {
   return structuredClone(scenes);

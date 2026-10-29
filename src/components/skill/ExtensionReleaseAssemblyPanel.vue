@@ -272,13 +272,16 @@ function formatSize(size: number): string {
               }}</span>
             </div>
             <div class="inheritance-actions">
+              <button type="button" :disabled="controlsDisabled" @click="openSourceDialog">
+                {{ remote.hasBypass ? '更换继承' : '选择继承' }}
+              </button>
               <button
-                v-if="modelValue.target === 'testagent'"
+                v-if="remote.hasBypass || httpContext.hasPublishedPackage"
                 type="button"
                 :disabled="controlsDisabled"
-                @click="openSourceDialog"
+                @click="remote.download"
               >
-                {{ remote.hasBypass ? '更换继承' : '选择继承' }}
+                {{ httpContext.hasPublishedPackage ? '下载完整包' : '下载旁路' }}
               </button>
               <button
                 v-if="remote.hasBypass"
@@ -330,12 +333,7 @@ function formatSize(size: number): string {
               <small v-if="activeSource.kind === 'previous'">（已自动继承）</small>
             </div>
             <div class="inheritance-actions">
-              <button
-                v-if="modelValue.target === 'testagent'"
-                type="button"
-                :disabled="disabled"
-                @click="openSourceDialog"
-              >
+              <button type="button" :disabled="disabled" @click="openSourceDialog">
                 更换继承
               </button>
               <button type="button" :disabled="disabled" @click="clearInheritance">清除</button>
@@ -343,12 +341,7 @@ function formatSize(size: number): string {
           </template>
           <template v-else>
             <span class="inheritance-empty">无继承</span>
-            <button
-              v-if="modelValue.target === 'testagent'"
-              type="button"
-              :disabled="disabled"
-              @click="openSourceDialog"
-            >
+            <button type="button" :disabled="disabled" @click="openSourceDialog">
               选择继承
             </button>
           </template>
@@ -449,7 +442,12 @@ function formatSize(size: number): string {
         <span
           >当前模式：<strong>{{ targetLabel }}</strong></span
         >
-        <label v-if="modelValue.target === 'codeagent' && !httpContext">
+        <label
+          v-if="
+            modelValue.target === 'codeagent' &&
+            (!httpContext || httpContext.supportsConversion)
+          "
+        >
           <input
             type="checkbox"
             :checked="modelValue.convertAfterPublish"

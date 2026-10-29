@@ -2,22 +2,23 @@ import { expect, test } from '../fixtures/base';
 import type { Page, Request } from '@playwright/test';
 
 async function setup(page: Page) {
+  const sceneExtensionCode = 'scene-code-001';
   const requests: Request[] = [];
   let layout = 'testagent';
   let files = [{ path: '.testagent/agents/custom-prompt.md', size: 1024 }];
   let failPath = '';
   const entries = () => [
-    { path: 'demo-extension/codeagent-extension.json', type: 'file', source: 'SYSTEM', size: null },
-    { path: 'demo-extension/.cac-plugin/plugin.json', type: 'file', source: 'SYSTEM', size: null },
+    { path: `${sceneExtensionCode}/codeagent-extension.json`, type: 'file', source: 'SYSTEM', size: null },
+    { path: `${sceneExtensionCode}/.cac-plugin/plugin.json`, type: 'file', source: 'SYSTEM', size: null },
     {
-      path: `demo-extension/${layout === 'testagent' ? '.testagent/' : ''}agents/review.md`,
+      path: `${sceneExtensionCode}/${layout === 'testagent' ? '.testagent/' : ''}agents/review.md`,
       type: 'file',
       source: 'COMPONENT',
       size: null,
     },
     ...files.map((file) => ({
       ...file,
-      path: `demo-extension/${file.path}`,
+      path: `${sceneExtensionCode}/${file.path}`,
       type: 'file',
       source: 'FILE',
     })),
@@ -38,6 +39,7 @@ async function setup(page: Page) {
         secondScene: '测试',
         readyStatus: '已就绪',
         publishedExtension: { extensionName: 'demo-extension', description: '原有说明' },
+        sceneExtensionCode,
         components: { agents: [{ name: 'review', version: '1.0' }], skills: [], commands: [] },
         layoutMode: layout,
         hasBypass: files.length > 0,
@@ -161,9 +163,11 @@ test.describe('Extension HTTP 发布组装', () => {
     });
     expect(save.postDataJSON()).not.toHaveProperty('layout');
     const detail = requests.find((req) => req.url().includes('/extensions/detail'))!;
-    expect(detail.method()).toBe('GET');
-    expect(new URL(detail.url()).searchParams.get('extensionName')).toBe('demo-extension');
+    expect(detail.method()).toBe('POST');
+    expect(new URL(detail.url()).searchParams.get('userId')).toBe('user1');
+    expect(detail.postDataJSON().extensionName).toBe('demo-extension');
     const structure = requests.find((req) => req.url().includes('/structure/tree'))!;
+    expect(new URL(structure.url()).searchParams.get('extensionName')).toBe('scene-code-001');
     expect(JSON.parse(new URL(structure.url()).searchParams.get('components')!)).toEqual([
       { componentType: 'agent', componentName: 'review', componentVersion: '1.0' },
     ]);
@@ -270,7 +274,7 @@ test.describe('Extension HTTP 发布组装', () => {
     const inherit = requests.filter((req) => req.url().includes('/bypass/inherit')).at(-1)!;
     expect(inherit.postDataJSON()).toEqual({
       sourceExtensionName: 'shared-baseline',
-      targetExtensionName: 'demo-extension',
+      targetExtensionName: 'scene-code-001',
     });
   });
 

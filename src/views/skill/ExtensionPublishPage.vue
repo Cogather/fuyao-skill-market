@@ -272,11 +272,11 @@ async function updatePackagingMetadata(metadata: {
   bypassEntries: ExtensionBypassEntry[];
 }): Promise<void> {
   const scene = props.releaseContext ? modalScene.value : currentScene.value;
-  if (!transportIsHttp || !scene || scene.sceneExtensionCode !== metadata.sceneExtensionCode)
-    return;
+  if (!scene || scene.sceneExtensionCode !== metadata.sceneExtensionCode) return;
   // Apply the successful mutation immediately so publishing uses current metadata even if GET fails.
   Object.assign(scene, metadata);
   packagingRefreshWarning.value = '';
+  if (!transportIsHttp) return;
   const scope = appliedHttpScope.value;
   if (!scope) return;
   const sequence = ++packagingRefreshSequence;
@@ -873,22 +873,37 @@ const assemblyBlocked = ref(false);
 const assemblyBusy = ref(false);
 let assemblyLoadSequence = 0;
 const assemblyHttpContext = computed<ExtensionHttpAssemblyContext | undefined>(() => {
-  if (!transportIsHttp || !props.releaseContext || !modalScene.value) return undefined;
+  if (!props.releaseContext || !modalScene.value) return undefined;
   const scene = modalScene.value;
-  const components: StructureComponent[] = (['skill', 'command', 'agent'] as const).flatMap((type) =>
-    scene.capabilities[type].map((item) => ({
-      componentType: type,
-      componentName: item.name,
-      componentVersion: item.version,
-    })),
+  const sceneExtensionCode = scene.sceneExtensionCode?.trim();
+  if (!sceneExtensionCode) return undefined;
+  const components: StructureComponent[] = (['skill', 'command', 'agent'] as const).flatMap(
+    (type) =>
+      scene.capabilities[type].flatMap((item) => {
+        const componentName = item.name.trim();
+        const componentVersion = item.version?.trim();
+        return componentName
+          ? [
+              {
+                componentType: type,
+                componentName,
+                ...(componentVersion ? { componentVersion } : {}),
+              },
+            ]
+          : [];
+      }),
   );
   return {
     userId: props.userId.trim(),
-    extensionName: publishExtension.value.name,
+    extensionName: sceneExtensionCode,
     components,
     layoutMode: scene.layoutMode,
     hasBypass: scene.hasBypass,
     bypassEntries: scene.bypassEntries,
+    hasPublishedPackage:
+      Boolean(scene.extension.version?.trim()) ||
+      scene.releases?.some((release) => release.status === '成功') === true,
+    supportsConversion: !transportIsHttp,
   };
 });
 function updateAssemblySnapshot(detail: ExtensionAssemblyDetail): void {
@@ -928,13 +943,20 @@ async function initializeReleaseAssembly(scene: ExtensionScene): Promise<void> {
   const sequence = ++assemblyLoadSequence;
   assemblyBlocked.value = false;
   assemblyBusy.value = false;
-  if (transportIsHttp) {
+  if (assemblyHttpContext.value) {
     assemblySources.value = [];
     assemblyState.value = {
       ...createAssemblyState(),
       target: scene.layoutMode === 'testagent' ? 'testagent' : 'codeagent',
       inheritBypass: true,
     };
+    assemblyLoading.value = false;
+    return;
+  }
+  if (transportIsHttp) {
+    assemblySources.value = [];
+    assemblyState.value = createAssemblyState();
+    assemblyBlocked.value = true;
     assemblyLoading.value = false;
     return;
   }
@@ -1195,6 +1217,13 @@ async function confirmPublish(): Promise<void> {
     return;
   }
 
+  const inheritBypass =
+    scene.hasBypass !== true
+      ? true
+      : props.releaseContext
+        ? assemblyState.value.inheritBypass !== false
+        : publishForm.inheritBypass;
+
   publishSubmitting.value = true;
   publishError.value = '';
   try {
@@ -1203,7 +1232,7 @@ async function confirmPublish(): Promise<void> {
           extensionName: name,
           target: assemblyState.value.target,
           inheritanceSourceId: assemblyState.value.inheritanceSourceId,
-          uploadedFiles: assemblyState.value.uploadedPackage?.files ?? [],
+          uploadedFiles: inheritBypass ? (assemblyState.value.uploadedPackage?.files ?? []) : [],
           convertAfterPublish: assemblyState.value.convertAfterPublish,
         })
       : null;
@@ -1217,12 +1246,14 @@ async function confirmPublish(): Promise<void> {
         extensionName: name,
         description,
         channel: publishForm.channel,
-        inheritBypass: scene.hasBypass === true ? publishForm.inheritBypass : true,
+        inheritBypass,
         organization,
-        ...(props.releaseContext
-          ? { inheritBypass: assemblyState.value.inheritBypass !== false }
-          : {}),
       });
+      if (!inheritBypass) {
+        scene.hasBypass = false;
+        scene.bypassEntries = [];
+        assemblyState.value = { ...assemblyState.value, inheritBypass: true, uploadedPackage: null };
+      }
       const sceneId = scene.id;
       if (!props.releaseContext) await refreshHttpScenes(sceneId, false);
       finishPublish(scene);
@@ -1240,6 +1271,11 @@ async function confirmPublish(): Promise<void> {
 
     scene.extension.name = name;
     scene.extension.description = description;
+    if (!inheritBypass) {
+      scene.hasBypass = false;
+      scene.bypassEntries = [];
+      assemblyState.value = { ...assemblyState.value, inheritBypass: true, uploadedPackage: null };
+    }
     scene.publishing = {
       version: publishVersion.value,
       extensionName: name,
@@ -1678,7 +1714,6 @@ onBeforeUnmount(() => {
 
             <div class="scene-content">
               <ExtensionPackagingPanel
-                v-if="transportIsHttp"
                 :key="packagingScope"
                 :user-id="props.userId"
                 :scene="currentScene"
@@ -1687,7 +1722,7 @@ onBeforeUnmount(() => {
                 @updated="updatePackagingMetadata"
               />
               <p
-                v-if="transportIsHttp && packagingRefreshWarning"
+                v-if="packagingRefreshWarning"
                 class="packaging-refresh-warning"
                 role="status"
               >
@@ -1874,7 +1909,9 @@ onBeforeUnmount(() => {
         :sources="assemblySources"
         :extension-name="publishExtension.name"
         :capabilities="modalScene.capabilities"
-        :disabled="publishSubmitting || assemblyLoading"
+        :disabled="
+          publishSubmitting || assemblyLoading || (transportIsHttp && !assemblyHttpContext)
+        "
         :http-context="assemblyHttpContext"
         @blocked-change="assemblyBlocked = $event"
         @busy-change="assemblyBusy = $event"
@@ -1905,21 +1942,12 @@ onBeforeUnmount(() => {
         </header>
         <div class="modal-body publish-body">
           <div class="publish-content">
-            <ExtensionPackagingPanel
-              v-if="transportIsHttp && releaseContext"
-              :key="packagingScope"
-              :user-id="props.userId"
-              :scene="modalScene"
-              :publication-locked="publishSubmitting"
-              @mutation-state="updatePackagingMutationState"
-              @updated="updatePackagingMetadata"
-            />
             <p
-              v-if="transportIsHttp && releaseContext && packagingRefreshWarning"
-              class="packaging-refresh-warning"
-              role="status"
+              v-if="transportIsHttp && releaseContext && !assemblyHttpContext"
+              class="publish-bypass__warning"
+              role="alert"
             >
-              {{ packagingRefreshWarning }}
+              当前场景缺少场景编码，无法管理布局、旁路或执行发布，请返回场景配置补充编码。
             </p>
             <section v-if="releaseContext" class="publish-overview" aria-label="Extension 信息">
               <div class="publish-overview__identity">
@@ -2031,7 +2059,7 @@ onBeforeUnmount(() => {
               </label>
             </div>
             <section
-              v-if="transportIsHttp && modalScene.hasBypass === true"
+              v-if="!releaseContext && modalScene.hasBypass === true"
               class="publish-bypass"
               aria-label="发布时继承当前旁路文件"
             >

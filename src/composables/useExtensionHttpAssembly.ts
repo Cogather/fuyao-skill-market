@@ -19,6 +19,8 @@ export type ExtensionHttpAssemblyContext = ExtensionAssemblyDetail & {
   userId: string;
   extensionName: string;
   components: StructureComponent[];
+  hasPublishedPackage: boolean;
+  supportsConversion: boolean;
 };
 
 function message(error: unknown): string {
@@ -199,6 +201,24 @@ export function useExtensionHttpAssembly(
     );
   }
 
+  async function download(): Promise<boolean> {
+    if (!context() || busy.value) return false;
+    const epoch = generation;
+    mutating.value = true;
+    error.value = '';
+    try {
+      const result = await extensionAssemblyHttp.download(identity());
+      if (epoch !== generation) return false;
+      window.open(result.downloadUrl, '_blank', 'noopener,noreferrer');
+      return true;
+    } catch (cause) {
+      if (epoch === generation) error.value = message(cause);
+      return false;
+    } finally {
+      if (epoch === generation) mutating.value = false;
+    }
+  }
+
   function search(keyword: string): void {
     const sequence = ++searchSequence;
     clearTimeout(searchTimer);
@@ -286,6 +306,7 @@ export function useExtensionHttpAssembly(
     upload,
     clear,
     inherit,
+    download,
     search,
   };
 }

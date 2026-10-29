@@ -170,6 +170,8 @@ const scene = (code = 'scene-target') => ({
   hasBypass: false,
   bypassEntries: [],
   extension: { name: 'published-package', description: '' },
+  releases: [],
+  publishing: null,
   capabilities: {
     skill: [{ name: 'skill', version: ' 1.0 ', id: 's' }],
     command: [{ name: 'empty-version', version: ' ' }],
@@ -644,7 +646,8 @@ test('layout commits only server success, restores failure and refreshes source-
     );
     assert.equal(call('queryExtensionStructureTree')[0].args[0].extensionName, 'scene-target');
     assert.deepEqual(JSON.parse(call('queryExtensionStructureTree')[0].args[0].components), [
-      { componentType: 'SKILL', componentName: 'skill', componentVersion: '1.0' },
+      { componentType: 'skill', componentName: 'skill', componentVersion: '1.0' },
+      { componentType: 'command', componentName: 'empty-version' },
     ]);
     for (const sourceName of ['SYSTEM', 'COMPONENT', 'FILE'])
       assert.match(text(ctx.root), new RegExp(sourceName));
@@ -715,6 +718,30 @@ test('zip upload renders accepted and ignored reasons, downloads lazily, clears 
   }
 });
 
+test('published full package remains downloadable when the scene has no bypass', async () => {
+  const publishedScene = scene();
+  publishedScene.extension.version = '1.2.0';
+  const ctx = await mount({ scene: publishedScene });
+  const opened = [];
+  globalThis.window = { open: (...args) => opened.push(args) };
+  try {
+    handlers.getExtensionBypassDownload = () =>
+      success({ downloadUrl: 'https://example.com/package.zip', expireSeconds: 3600 });
+    const download = find(ctx.root, 'download');
+    assert.equal(download.props.disabled, false);
+    assert.match(text(download), /下载完整包/);
+    await click(download);
+    assert.deepEqual(opened[0], [
+      'https://example.com/package.zip',
+      '_blank',
+      'noopener,noreferrer',
+    ]);
+  } finally {
+    ctx.app.unmount();
+    delete globalThis.window;
+  }
+});
+
 test('component changes refresh tree; tree failure stays separate from mutation success and missing user is disabled', async () => {
   const ctx = await mount();
   try {
@@ -722,7 +749,7 @@ test('component changes refresh tree; tree failure stays separate from mutation 
     await settle();
     assert.deepEqual(
       JSON.parse(call('queryExtensionStructureTree').at(-1).args[0].components).at(-1),
-      { componentType: 'AGENT', componentName: 'agent-a', componentVersion: '2.0' },
+      { componentType: 'agent', componentName: 'agent-a', componentVersion: '2.0' },
     );
     handlers.queryExtensionStructureTree = () => {
       throw new Error('tree unavailable');

@@ -116,6 +116,33 @@ test('upload sends a single real zip in multipart with parent user and scene cod
   assert.equal(await data.get('file').text(), 'zip');
 });
 
+test('code and top-level success envelopes are accepted, including null clear data', async () => {
+  const api = await adapter();
+  calls = [];
+  response = { code: 0, message: '成功', data: null };
+  await api.clearExtensionBypass(identity);
+  assert.equal(calls.length, 1);
+
+  calls = [];
+  response = { code: 200, message: '成功', data: { layoutMode: 'testagent' } };
+  assert.deepEqual(await api.updateExtensionLayout({ ...identity, layout: 'testagent' }), {
+    layoutMode: 'testagent',
+  });
+  assert.equal(calls.length, 1);
+
+  calls = [];
+  response = { success: true, data: mutation };
+  assert.deepEqual(
+    await api.inheritExtensionBypass({
+      userId: 'u',
+      sourceExtensionName: 'source',
+      targetExtensionName: 'target',
+    }),
+    mutation,
+  );
+  assert.equal(calls.length, 1);
+});
+
 test('upload rejects wrong extension, multiple files, fake files, and over 50 MiB before sending', async () => {
   const api = await adapter();
   const large = new File(['zip'], 'large.zip');
@@ -179,8 +206,8 @@ test('structure serializes compact components and preserves typed sources and di
     ...identity,
     layout: 'testagent',
     components: [
-      { componentType: 'SKILL', componentName: 'one', componentVersion: '1.2.0', extra: 'omit' },
-      { componentType: 'COMMAND', componentName: '/run' },
+      { componentType: 'skill', componentName: 'one', componentVersion: '1.2.0', extra: 'omit' },
+      { componentType: 'command', componentName: '/run' },
     ],
   });
   assert.deepEqual(calls, [
@@ -192,7 +219,7 @@ test('structure serializes compact components and preserves typed sources and di
         extensionName: 'scene-code-001',
         layout: 'testagent',
         components:
-          '[{"componentType":"SKILL","componentName":"one","componentVersion":"1.2.0"},{"componentType":"COMMAND","componentName":"/run"}]',
+          '[{"componentType":"skill","componentName":"one","componentVersion":"1.2.0"},{"componentType":"command","componentName":"/run"}]',
       },
     },
   ]);
@@ -453,7 +480,7 @@ test('unknown request layouts, invalid components and invalid pagination never s
     {
       ...identity,
       layout: 'standard',
-      components: [{ componentType: 'SKILL', componentName: '' }],
+      components: [{ componentType: 'skill', componentName: '' }],
     },
     {
       ...identity,
@@ -561,4 +588,14 @@ test('backend errors and malformed envelopes remain errors with no second reques
     /server red line/,
   );
   assert.equal(calls.length, 1);
+
+  for (const value of [
+    { code: 500, message: 'code red line', data: null },
+    { success: false, message: 'success red line', data: null },
+  ]) {
+    calls = [];
+    response = value;
+    await assert.rejects(api.clearExtensionBypass(identity), /red line/);
+    assert.equal(calls.length, 1);
+  }
 });

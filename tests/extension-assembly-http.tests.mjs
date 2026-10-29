@@ -59,11 +59,13 @@ try {
   assert.equal(upload.data.get('userId'), 'u1');
   assert.equal(upload.data.get('layout'), 'testagent');
   assert.equal(upload.headers, undefined, 'browser must supply multipart boundary');
+  const largeFile = new File(['zip'], 'large.zip');
+  Object.defineProperty(largeFile, 'size', { value: 50 * 1024 * 1024 + 1 });
   await assert.rejects(
     extensionAssemblyHttp.upload({
       ...identity,
       layout: 'standard',
-      file: { name: 'large.zip', size: 50 * 1024 * 1024 + 1 },
+      file: largeFile,
     }),
     /50/,
   );
