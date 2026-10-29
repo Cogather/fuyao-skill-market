@@ -136,7 +136,7 @@ export async function copyWorkflowInheritance(
   source: WorkflowInheritanceSource,
   target: Pick<
     WorkflowSceneContext,
-    'userId' | 'dimType' | 'dimCode' | 'firstScene' | 'secondScene'
+    'userId' | 'dimType' | 'dimCode' | 'dimName' | 'firstScene' | 'secondScene'
   >,
 ): Promise<string> {
   const sourceSceneExtensionCode = source.sceneExtensionCode?.trim();
@@ -159,7 +159,22 @@ export async function copyWorkflowInheritance(
     '场景复制失败',
   );
   if (typeof code !== 'string' || !code.trim()) throw new Error('场景复制响应缺少有效的场景编码');
-  return code;
+  const sceneExtensionCode = code.trim();
+  designData<unknown>(
+    await harnessWorkflowService.queryExtensionSceneDetail(
+      { userId: target.userId },
+      {
+        dimType: target.dimType,
+        dimCode: target.dimCode,
+        dimName: target.dimName,
+        extensionName: sceneExtensionCode,
+        firstScene: target.firstScene,
+        secondScene: target.secondScene,
+      },
+    ),
+    '继承后的 Workflow 详情加载失败',
+  );
+  return sceneExtensionCode;
 }
 
 export function queryLocalWorkflowInheritancePage(input: {
