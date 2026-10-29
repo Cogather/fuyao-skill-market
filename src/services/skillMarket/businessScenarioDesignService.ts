@@ -20,11 +20,16 @@ export interface WorkflowSceneSearchQuery {
   keyword: string;
   limit: number;
 }
-export interface WorkflowSceneCopyBody extends WorkflowSceneKey {
+export interface WorkflowSceneCopyBody {
   sourceDimType: string;
   sourceDimCode: string;
+  sourceFirstScene: string;
+  sourceSecondScene: string;
+  sourceSceneExtensionCode: string;
   targetDimType: string;
   targetDimCode: string;
+  targetFirstScene: string;
+  targetSecondScene: string;
 }
 export type WorkflowAssetType = 'SKILL' | 'AGENT';
 export type WorkflowComponentType = WorkflowAssetType | 'COMMAND';

@@ -139,15 +139,20 @@ export async function copyWorkflowInheritance(
     'userId' | 'dimType' | 'dimCode' | 'firstScene' | 'secondScene'
   >,
 ): Promise<string> {
+  const sourceSceneExtensionCode = source.sceneExtensionCode?.trim();
+  if (!sourceSceneExtensionCode) throw new Error('来源 Workflow 缺少场景编码，无法继承');
   const code = designData<unknown>(
     await harnessWorkflowService.copyScene(
       {
         sourceDimType: source.sourceDimType,
         sourceDimCode: source.sourceDimCode,
+        sourceFirstScene: source.firstScene,
+        sourceSecondScene: source.secondScene,
+        sourceSceneExtensionCode,
         targetDimType: target.dimType,
         targetDimCode: target.dimCode,
-        firstScene: target.firstScene,
-        secondScene: target.secondScene,
+        targetFirstScene: target.firstScene,
+        targetSecondScene: target.secondScene,
       },
       { userId: target.userId },
     ),

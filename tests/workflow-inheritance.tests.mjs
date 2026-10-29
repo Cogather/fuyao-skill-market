@@ -240,13 +240,28 @@ try {
           data: {
             sourceDimType: '\u4ea7\u54c1\u7ea7',
             sourceDimCode: 'source-product',
+            sourceFirstScene: 'Research',
+            sourceSecondScene: 'Scene 1',
+            sourceSceneExtensionCode: 'source-1',
             targetDimType: '\u90e8\u95e8\u7ea7',
             targetDimCode: 'target-dept',
-            firstScene: 'Target parent',
-            secondScene: 'Target child',
+            targetFirstScene: 'Target parent',
+            targetSecondScene: 'Target child',
           },
         },
       ]);
+      requests.length = 0;
+      await assert.rejects(
+        inheritance.copyWorkflowInheritance(source(1, { sceneExtensionCode: null }), {
+          userId: 'parent-user',
+          dimType: '\u90e8\u95e8\u7ea7',
+          dimCode: 'target-dept',
+          firstScene: 'Target parent',
+          secondScene: 'Target child',
+        }),
+        /\u6765\u6e90 Workflow \u7f3a\u5c11\u573a\u666f\u7f16\u7801/,
+      );
+      assert.equal(requests.length, 0, 'missing source scene codes must not issue copy requests');
     } finally {
       request.harnessApi = originalRequest;
     }
@@ -410,10 +425,13 @@ try {
       assert.deepEqual(calls[0][1].data, {
         sourceDimType: '\u4ea7\u54c1\u7ea7',
         sourceDimCode: 'source-product',
+        sourceFirstScene: 'Research',
+        sourceSecondScene: 'Scene 1',
+        sourceSceneExtensionCode: 'source-1',
         targetDimType: '\u4ea7\u54c1\u7ea7',
         targetDimCode: 'target-product',
-        firstScene: 'Research',
-        secondScene: 'Current scene',
+        targetFirstScene: 'Research',
+        targetSecondScene: 'Current scene',
       });
       assert.equal(calls.filter(([kind]) => kind === 'http').length, 1);
       assert.ok(
