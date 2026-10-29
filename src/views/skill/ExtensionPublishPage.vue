@@ -1904,6 +1904,7 @@ onBeforeUnmount(() => {
         :disabled="
           publishSubmitting || assemblyLoading || (transportIsHttp && !assemblyHttpContext)
         "
+        :publishing="publishSubmitting"
         :http-context="assemblyHttpContext"
         @blocked-change="assemblyBlocked = $event"
         @busy-change="assemblyBusy = $event"

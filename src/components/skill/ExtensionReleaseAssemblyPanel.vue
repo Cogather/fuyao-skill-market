@@ -29,6 +29,7 @@ const props = withDefaults(
     extensionName?: string;
     capabilities?: Record<ExtensionCapabilityType, ExtensionCapability[]>;
     disabled?: boolean;
+    publishing?: boolean;
     httpContext?: ExtensionHttpAssemblyContext;
   }>(),
   {
@@ -37,6 +38,7 @@ const props = withDefaults(
     extensionName: '',
     capabilities: () => ({ skill: [], command: [], agent: [] }),
     disabled: false,
+    publishing: false,
   },
 );
 
@@ -64,7 +66,11 @@ const remote = reactive(
   ),
 );
 const controlsDisabled = computed(
-  () => props.disabled || remote.mutating || archiveReading.value,
+  () =>
+    props.publishing ||
+    remote.mutating ||
+    archiveReading.value ||
+    (!props.httpContext && props.disabled),
 );
 watch(
   () => remote.busy || archiveReading.value,

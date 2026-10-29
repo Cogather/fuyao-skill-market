@@ -941,6 +941,7 @@ test('release assembly keeps inheritance and upload interactive during initial t
     setup: () => () =>
       Vue.h(Component, {
         enabled: true,
+        disabled: true,
         modelValue: state,
         httpContext: {
           userId: 'parent-user',
