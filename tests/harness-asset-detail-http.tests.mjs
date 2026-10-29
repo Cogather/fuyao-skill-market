@@ -296,8 +296,8 @@ try {
   request.harnessApi = async (config) => {
     calls.push(config);
     return success({
-      firstScene: config.params.firstScene,
-      secondScene: config.params.secondScene,
+      firstScene: config.data.firstScene,
+      secondScene: config.data.secondScene,
       readyStatus: '已就绪',
       publishedExtension: null,
       components: { commands: [{ name: '/udm-e2e', version: '1.0.0' }], skills: [], agents: [] },
@@ -323,9 +323,9 @@ try {
         dimType: '产品级',
         dimCode: 'product-1',
         dimName: 'udm',
+        extensionName: selectedExtension.name,
         firstScene: '应用开发二',
         secondScene: '代码开发二',
-        userId: 'user-001',
       },
     },
   ]);

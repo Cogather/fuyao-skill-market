@@ -508,7 +508,7 @@ export async function queryHttpExtensionBindings(
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
   const detail = await queryHttpExtensionDetail(userId, scope, {
-    extensionName: scene.sceneExtensionCode ?? undefined,
+    extensionName: normalizeText(scene.sceneExtensionCode) || scene.extension.name,
     firstScene: scene.primary,
     secondScene: scene.name,
   });
@@ -559,15 +559,14 @@ export async function queryHttpExtensionVersionSnapshot(
 export async function queryHttpExtensionDetail(
   userId: string,
   scope: ExtensionScope,
-  identity: { extensionName?: string; firstScene?: string; secondScene?: string },
+  identity: { extensionName: string; firstScene?: string; secondScene?: string },
 ): Promise<ExtensionScene> {
-  const extensionName = normalizeText(identity.extensionName);
-  const lookup = extensionName
-    ? { extensionName }
-    : {
-        firstScene: requiredText(identity.firstScene, '请选择一级场景'),
-        secondScene: requiredText(identity.secondScene, '请选择二级场景'),
-      };
+  const extensionName = requiredText(identity.extensionName, 'Extension 缺少名称，无法加载详情');
+  const lookup = {
+    extensionName,
+    ...(normalizeText(identity.firstScene) ? { firstScene: identity.firstScene } : {}),
+    ...(normalizeText(identity.secondScene) ? { secondScene: identity.secondScene } : {}),
+  };
   const response = await harnessWorkflowService.queryExtensionSceneDetail(
     { userId: requiredText(userId, '尚未获取当前用户工号') },
     { dimType: scope.dimType, dimCode: scope.dimCode, dimName: scope.dimName, ...lookup },

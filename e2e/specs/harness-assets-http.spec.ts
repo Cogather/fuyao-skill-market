@@ -661,7 +661,6 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
       extensionName: 'harness-pipeline-build-extension',
       firstScene: '开发',
       secondScene: '构建诊断',
-      userId: 'http-user-001',
     });
     await selectHarnessOption(organizationSelect, 'org-http-target');
     await page.getByRole('button', { name: '确认发布' }).click();

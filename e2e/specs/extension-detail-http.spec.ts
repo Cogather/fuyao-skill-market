@@ -162,9 +162,9 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
       dimType: '产品级',
       dimCode: 'product-1',
       dimName: 'udm',
+      extensionName: 'scene-code-001',
       firstScene: '应用开发',
       secondScene: '代码开发',
-      userId: 'extension-tester',
     });
     expect(historyRequests).toHaveLength(0);
 
@@ -447,7 +447,6 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
         dimCode: 'product-1',
         dimName: 'udm',
         extensionName: 'embedded-scene',
-        userId: 'context-user',
       });
     });
   }

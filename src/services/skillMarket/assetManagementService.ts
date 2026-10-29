@@ -994,10 +994,11 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     if (cached && !refresh) return cached;
     const pending = pendingExtensionAssets.get(asset.id);
     if (pending) return pending;
-    // 发布包名称与场景编码不同；卡片按场景名查询发布准备详情。
+    // 发布准备按卡片中的 Extension 名称及场景定位详情。
     const load = (async () => {
       const queryScope = await resolveHttpExtensionScope(scope, asset, loadMissingProducts);
       const scene = await queryHttpExtensionDetail(scope.userId, dimensionScope(queryScope), {
+        extensionName: asset.name,
         firstScene: asset.firstScene ?? undefined,
         secondScene: asset.secondScene ?? undefined,
       });

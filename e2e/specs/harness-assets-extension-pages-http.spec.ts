@@ -419,7 +419,6 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       extensionName: 'product-b-build-extension',
       firstScene: '开发',
       secondScene: '构建诊断',
-      userId: 'release-user',
     });
   });
 

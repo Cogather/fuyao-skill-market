@@ -72,9 +72,9 @@ try {
       dimType: '产品级',
       dimCode: '30222',
       dimName: 'Udm产品部',
+      extensionName: 'udm-mml-e2e-extension',
       firstScene: '应用开发',
       secondScene: 'mml代码开发',
-      userId: 'user-001',
     },
   });
   assert.equal(context.scope.dimCode, '30222');

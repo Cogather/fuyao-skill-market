@@ -308,7 +308,6 @@ try {
           dimCode: scope.dimCode,
           dimName: scope.dimName,
           extensionName: 'demo-code',
-          userId: scope.userId,
         },
       ],
     ];

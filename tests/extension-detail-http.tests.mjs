@@ -62,6 +62,7 @@ try {
   await test('detail metadata uses top-level scene code separately from published package name', async () => {
     request.harnessApi = async () => success(detailData);
     const result = await queryHttpExtensionDetail('user-001', scope, {
+      extensionName: 'scene-code-001',
       firstScene: emptyScene.primary,
       secondScene: emptyScene.name,
     });
@@ -79,6 +80,7 @@ try {
         detailData;
       request.harnessApi = async () => success({ ...base, ...metadata });
       const normalized = await queryHttpExtensionDetail('user-001', scope, {
+        extensionName: 'scene-code-001',
         firstScene: emptyScene.primary,
         secondScene: emptyScene.name,
       });
@@ -232,7 +234,8 @@ try {
         dimCode: '30222',
         dimName: 'Udm产品部',
         extensionName: 'scene-code-001',
-        userId: 'user-001',
+        firstScene: '应用开发',
+        secondScene: 'mml代码开发',
       },
     });
     assert.equal(bindingCalls, 0, 'known names do not reload the entire binding tree');
@@ -281,7 +284,10 @@ try {
 
     calls.length = 0;
     historyCalls = 0;
-    const discovered = await queryHttpExtensionBindings('user-001', scope, emptyScene);
+    const discovered = await queryHttpExtensionBindings('user-001', scope, {
+      ...emptyScene,
+      sceneExtensionCode: 'scene-code-001',
+    });
     assert.equal(bindingCalls, 0);
     assert.equal(calls.length, 1, 'scene names directly load single detail without bulk discovery');
     assert.equal(historyCalls, 0, 'publish preparation must never request release history');
@@ -292,9 +298,9 @@ try {
       dimType: scope.dimType,
       dimCode: scope.dimCode,
       dimName: scope.dimName,
+      extensionName: 'scene-code-001',
       firstScene: emptyScene.primary,
       secondScene: emptyScene.name,
-      userId: 'user-001',
     });
     assert.equal(discovered.capabilities.agent[0].name, 'udm-coding-agent');
 
@@ -335,11 +341,12 @@ try {
 
     calls.length = 0;
     detailResponse = success({ ...detailData, publishedExtension: null });
-    const unpublished = await queryHttpExtensionBindings('user-001', scope, emptyScene);
-    assert.equal(calls.length, 1, 'unpublished scenes also load GET detail by scene names');
+    const unpublishedScene = { ...emptyScene, sceneExtensionCode: 'scene-code-001' };
+    const unpublished = await queryHttpExtensionBindings('user-001', scope, unpublishedScene);
+    assert.equal(calls.length, 1, 'unpublished scenes also load POST detail by Extension name');
     assert.equal(unpublished.capabilities.agent[0].name, 'udm-coding-agent');
     detailResponse = success({ ...detailData, readyStatus: '未配置', publishedExtension: null });
-    const unconfigured = await queryHttpExtensionBindings('user-001', scope, emptyScene);
+    const unconfigured = await queryHttpExtensionBindings('user-001', scope, unpublishedScene);
     assert.equal(unconfigured.publishable, false, '未配置 must block publication');
 
     let publishRequest;
