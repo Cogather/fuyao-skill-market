@@ -111,5 +111,5 @@
 - 在「业务场景设计」后新增「Harness 工作流」只读清单页签；增加部门/产品/状态筛选、分页、返回场景设计入口，以及跨页签共享工作区 E2E 覆盖
 - 首版：接入 E2E 冒烟 2 条（页面打开 / 切换到任务管理），全部绿色
 
-- 2026-10-30：Workflow 继承搜索 `GET /scenes/search` 改传 `userId/keyword/pageNum/pageSize`，不传 `limit`；解析 `data.list/data.total`，每页 20 条，滚动到底时去重追加，无 100 条上限。结果区域使用 `role=region`、名称「可继承的 Workflow」。更换关键词立即失效旧请求并清空列表、选择和滚动位置；下一页失败保留列表与选择，重试仍取失败页。HTTP 浏览器回归 `harness-workflow-inheritance-http.spec.ts` 覆盖三页追加、总数与当前场景排除、加载完毕停止请求、重试及搜索重置。
+- 2026-10-30：Workflow 继承搜索 `GET /scenes/search` 改传 `userId/keyword/pageNum/pageSize`，不传 `limit`；按已确认契约解析 `data` 数组、`meta.number` 总数、`meta.success` 和 `meta.message`，每页 20 条，滚动到底时去重追加，无 100 条上限。结果区域使用 `role=region`、名称「可继承的 Workflow」。更换关键词立即失效旧请求并清空列表、选择和滚动位置；下一页失败保留列表与选择，重试仍取失败页。HTTP 浏览器回归 `harness-workflow-inheritance-http.spec.ts` 使用上述数组响应，覆盖三页追加、总数与当前场景排除、加载完毕停止请求、重试及搜索重置。
 - 2026-10-30：`GET /extensions/search` 同步改传 `userId/keyword/pageNum/pageSize`，解析 `data.list/data.total`，无 `limit` 或 100 条限制。飞机入口发布页的「选择继承源」与独立旁路继承弹窗均滚动追加；发布页结果区域使用 `role=region`、名称「可继承的 Extension」。追加期间保留条目与选中项；失败可原页重试；更换关键词回到第一页、清空选择并重置滚动；关闭或切换场景使旧请求失效。`extension-assembly-http.spec.ts` 用 HTTP 受控响应覆盖三页、请求防重复、结束停止、重试、搜索重置与迟到响应。

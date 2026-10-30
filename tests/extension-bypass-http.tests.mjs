@@ -453,6 +453,29 @@ test('Extension pages deduplicate identities while preserving the backend total'
   assert.equal(duplicates.hasMore, false);
 });
 
+test('Extension search accepts array data with an envelope total', async () => {
+  const api = await adapter();
+  const row = {
+    extensionName: 'source-scene',
+    description: '',
+    layoutMode: 'standard',
+    hasBypass: false,
+    entryCount: 0,
+    latestVersion: '',
+    sourceDimName: 'Product',
+  };
+  reset();
+  response = { meta: { success: true, number: 41 }, data: [row] };
+  const page = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 2, pageSize: 20 });
+  assert.deepEqual(page.list, [row]);
+  assert.equal(page.total, 41);
+  assert.equal(page.hasMore, true);
+  response = { meta: { success: true, number: 0 }, data: [] };
+  const empty = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 1, pageSize: 20 });
+  assert.equal(empty.hasMore, false);
+  assert.deepEqual(empty.list, []);
+});
+
 test('every adapter rejects missing parent user or scene identity without transport fallback', async () => {
   const api = await adapter();
   for (const badIdentity of [

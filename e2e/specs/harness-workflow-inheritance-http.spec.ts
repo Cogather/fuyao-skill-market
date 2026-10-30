@@ -70,6 +70,7 @@ async function interceptHarness(page: Page, authorized = true) {
     }
     requests.push(request);
     let data: unknown = [];
+    let searchTotal: number | undefined;
     if (url.pathname.endsWith('/permission/user-depts'))
       data = {
         ownedOrgs: [],
@@ -122,7 +123,7 @@ async function interceptHarness(page: Page, authorized = true) {
     else if (url.pathname.endsWith('/scenes/search')) {
       if (!url.searchParams.get('keyword')?.trim()) {
         await route.fulfill({
-          json: { meta: { success: false, message: 'keyword不能为空' }, data: null },
+          json: { meta: { success: false, message: 'keyword不能为空', number: 0 }, data: [] },
         });
         return;
       }
@@ -130,7 +131,10 @@ async function interceptHarness(page: Page, authorized = true) {
       const pageSize = Number(url.searchParams.get('pageSize'));
       if (pageNum === failSearchPage) {
         await route.fulfill({
-          json: { meta: { success: false, message: '下一页查询失败，请重试' }, data: null },
+          json: {
+            meta: { success: false, message: '下一页查询失败，请重试', number: 0 },
+            data: [],
+          },
         });
         return;
       }
@@ -148,12 +152,8 @@ async function interceptHarness(page: Page, authorized = true) {
         secondScene: '当前场景',
       };
       rows[20] = source('X');
-      data = {
-        list: rows.slice((pageNum - 1) * pageSize, pageNum * pageSize),
-        total: rows.length,
-        pageNum,
-        pageSize,
-      };
+      data = rows.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+      searchTotal = rows.length;
     } else if (url.pathname.endsWith('/scene/copy')) {
       if (failCopy) {
         await route.fulfill({
@@ -164,7 +164,16 @@ async function interceptHarness(page: Page, authorized = true) {
       copied = true;
       data = 'copied-code';
     }
-    await route.fulfill({ json: { meta: { success: true, message: 'OK' }, data } });
+    await route.fulfill({
+      json: {
+        meta: {
+          success: true,
+          message: 'OK',
+          ...(searchTotal === undefined ? {} : { number: searchTotal }),
+        },
+        data,
+      },
+    });
   });
   return {
     requests,

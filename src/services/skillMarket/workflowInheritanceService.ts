@@ -1,4 +1,5 @@
 import { designData } from './businessScenarioDesignRepository';
+import { readSearchPage } from './searchPage';
 import {
   harnessWorkflowService,
   type WorkflowSceneContext,
@@ -79,18 +80,13 @@ export async function queryWorkflowInheritancePage(
 ): Promise<WorkflowInheritancePage> {
   const pageNo = Math.max(1, Math.floor(query.pageNo));
   const pageSize = Math.max(1, Math.floor(query.pageSize));
-  const data = designData<{ list: unknown[]; total: number }>(
-    await harnessWorkflowService.searchScenes({
-      userId: query.userId,
-      keyword: query.keyword ?? '',
-      pageNum: pageNo,
-      pageSize,
-    }),
-    '场景搜索失败',
-  );
-  if (!data || !Array.isArray(data.list)) throw new Error('场景搜索响应缺少有效的场景列表');
-  if (!Number.isSafeInteger(data.total) || data.total < 0)
-    throw new Error('场景搜索响应缺少有效的总数量');
+  const response = await harnessWorkflowService.searchScenes({
+    userId: query.userId,
+    keyword: query.keyword ?? '',
+    pageNum: pageNo,
+    pageSize,
+  });
+  const data = readSearchPage(response, designData(response, '场景搜索失败'), '场景搜索');
   const rows: WorkflowSceneSearchRow[] = data.list.map((value) => {
     const row = value as Record<string, unknown> | null;
     if (

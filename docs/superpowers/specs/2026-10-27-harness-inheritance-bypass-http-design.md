@@ -8,9 +8,11 @@
 
 ## 场景流继承
 
-继承面板在 HTTP 模式调用 `GET /scenes/search`，传 `userId`、trim 后的 `keyword`、`pageNum`（从 1 开始）和 `pageSize=20`，不再传 `limit`。读取响应 `data.list` 和 `data.total`；滚动到底且仍有未取完的页时请求下一页，按源维度和场景编码去重追加，不设 100 条上限。排除当前场景只调整展示总数，不影响服务端分页进度。更换关键词清空列表与选择、回到顶部并重新请求第一页；下一页失败保留已加载内容和选中项，支持重试。Mock 模式仍使用本地分页。
+继承面板在 HTTP 模式调用 `GET /scenes/search`，传 `userId`、trim 后的 `keyword`、`pageNum`（从 1 开始）和 `pageSize=20`，不再传 `limit`。已确认的响应结构为 `data` 数组及 `meta.number` 总数，`meta.success` 表示成功状态，失败时展示 `meta.message`。滚动到底且仍有未取完的页时请求下一页，按源维度和场景编码去重追加，不设 100 条上限。排除当前场景只调整展示总数，不影响服务端分页进度。更换关键词清空列表与选择、回到顶部并重新请求第一页；下一页失败保留已加载内容和选中项，支持重试。Mock 模式仍使用本地分页。
 
 搜索项展示工作流名、一级/二级场景、来源维度名称、维度类型、场景编码和活动数。当前场景按 `sourceDimType + sourceDimCode + sceneExtensionCode` 排除，避免把自身作为来源。
+
+搜索响应解析支持 `data: [...]`：列表直接取 `data`，总数优先读取 `meta.number`，兼容 `meta.total` 或响应顶层 `total`；保留 `data: { list, total }` 的兼容性。两类搜索共用此解析规则，总数缺失或无效时明确报错，不用当前页条数代替总数。记录字段仍按各接口分别映射。
 
 确认时调用 `POST /scene/copy?userId=...`，Body 使用选中项的源维度和场景名，以及当前产品/部门的目标维度。服务端返回的新 `scene_extension_code` 是最终身份。成功后重新查询当前目标维度的场景树，按返回编码选中新建场景并加载详情，不在前端复制或合并活动、Command、资产池，也不调用旧的 `/workflow/detail` 保存链。
 

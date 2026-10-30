@@ -1,4 +1,5 @@
 import request from './request';
+import { readSearchPage } from './searchPage';
 import type { WorkflowSceneSearchQuery } from './businessScenarioDesignService';
 import type { ExtensionPackageNode, ExtensionPackageSource } from './extensionReleaseAssembly';
 import {
@@ -121,21 +122,16 @@ function bypassResult(value: BypassResult): BypassResult {
 
 export const extensionAssemblyHttp = {
   async searchScenes(params: WorkflowSceneSearchQuery) {
-    const result = await call<{ list: SceneSearchItem[]; total: number }>(
-      '/scenes/search',
-      'GET',
+    const response = await request.harnessApi({
+      url: '/scenes/search',
+      method: 'GET',
       params,
-      undefined,
-      '场景流搜索失败',
+    });
+    return readSearchPage<SceneSearchItem>(
+      response,
+      extensionResponseData(response, '场景流搜索失败'),
+      '场景流搜索',
     );
-    if (
-      !result ||
-      !Array.isArray(result.list) ||
-      !Number.isSafeInteger(result.total) ||
-      result.total < 0
-    )
-      throw new Error('场景流搜索响应格式不正确');
-    return result;
   },
   copyScene(userId: string, body: SceneCopyRequest): Promise<string> {
     return call('/scene/copy', 'POST', { userId }, body, '场景流继承失败');

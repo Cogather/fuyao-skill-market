@@ -12,7 +12,7 @@ try {
     '/src/services/skillMarket/extensionAssemblyHttp.ts',
   );
   const calls = [];
-  let response = { code: 0, data: { list: [], total: 0 } };
+  let response = { code: 0, meta: { number: 0 }, data: [] };
   request.harnessApi = async (config) => {
     calls.push(config);
     return response;

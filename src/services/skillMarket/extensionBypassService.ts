@@ -1,5 +1,6 @@
 import { skillBaseService } from './skillBaseService';
 import { extensionBypassMockAdapter } from './extensionBypassMock';
+import { readSearchPage } from './searchPage';
 
 const transportIsHttp =
   String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
@@ -353,13 +354,14 @@ export async function queryExtensionInheritancePage(
       pageSize,
     });
   }
-  const result = record(
-    data(await skillBaseService.searchExtensions({ userId, keyword, pageNum: pageNo, pageSize })),
-  );
-  if (!Array.isArray(result.list)) {
-    throw new Error('Extension 搜索列表无效');
-  }
-  const total = nonNegativeInteger(result.total);
+  const response = await skillBaseService.searchExtensions({
+    userId,
+    keyword,
+    pageNum: pageNo,
+    pageSize,
+  });
+  const result = readSearchPage(response, data(response), 'Extension 搜索');
+  const total = result.total;
   const rows = result.list.map((value): ExtensionInheritanceSource => {
     const row = record(value);
     if (typeof row.hasBypass !== 'boolean') {

@@ -33,7 +33,7 @@
 
 - [ ] Write failing adapter tests requiring `GET /scenes/search` with `userId`, literal keyword, `pageNum` and `pageSize`, plus `POST /scene/copy` with exact source/target dimensions.
 - [ ] Run both tests and verify they fail on `/workflow/list`, detail mapping, and overwrite wording.
-- [ ] Implement typed search/copy service methods, response normalization, stable keys, current-scene exclusion, and lazy paging driven by `data.list` / `data.total`.
+- [ ] Implement typed search/copy service methods, response normalization, stable keys, current-scene exclusion, and lazy paging driven by the `data` array / `meta.number`, checking `meta.success` and surfacing `meta.message` on failure.
 - [ ] Change HTTP confirmation to call copy, refresh the target scope, select the returned scene code, and remove the old detail-copy-save path.
 - [ ] Update dialog fields and warning to create-new/same-name-rejected semantics; keep Mock inheritance behavior intact.
 - [ ] Re-run focused tests to green.

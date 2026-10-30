@@ -59,6 +59,64 @@ try {
   );
   const originalRequest = request.harnessApi;
 
+  await test('array data preserves scene search fields and reads the total from the response envelope', async () => {
+    const row = {
+      sourceDimType: 'xxx',
+      sourceDimCode: 'xxx',
+      sourceDimName: 'xxx',
+      firstScene: 'xxx',
+      secondScene: 'xxx',
+      sceneExtensionCode: 'xxx',
+      flowName: 'xxxx',
+      activityCount: 1,
+    };
+    try {
+      for (const envelope of [
+        { meta: { success: true, message: 'OK', number: 21 }, data: [row] },
+        { meta: { success: true, message: 'OK', number: 21, total: 1 }, total: 1, data: [row] },
+        { meta: { success: true, total: 21 }, data: [row] },
+        { meta: { success: true }, total: '21', data: [row] },
+      ]) {
+        request.harnessApi = async () => envelope;
+        const page = await inheritance.queryWorkflowInheritancePage({
+          userId: 'u',
+          pageNo: 1,
+          pageSize: 20,
+        });
+        assert.deepEqual(page.list[0], { ...row, key: inheritance.workflowInheritanceKey(row) });
+        assert.equal(page.total, 21);
+        assert.equal(page.hasMore, true);
+      }
+      request.harnessApi = async () => ({
+        meta: { success: false, message: '场景搜索暂不可用', number: 0 },
+        data: [],
+      });
+      await assert.rejects(
+        inheritance.queryWorkflowInheritancePage({ userId: 'u', pageNo: 1, pageSize: 20 }),
+        /场景搜索暂不可用/,
+      );
+      request.harnessApi = async () => ({
+        meta: { success: true, message: 'OK', number: 0 },
+        data: [],
+      });
+      const empty = await inheritance.queryWorkflowInheritancePage({
+        userId: 'u',
+        pageNo: 1,
+        pageSize: 20,
+      });
+      assert.equal(empty.total, 0);
+      assert.equal(empty.hasMore, false);
+      assert.deepEqual(empty.list, []);
+      request.harnessApi = async () => success([row]);
+      await assert.rejects(
+        inheritance.queryWorkflowInheritancePage({ userId: 'u', pageNo: 1, pageSize: 20 }),
+        /总数量/,
+      );
+    } finally {
+      request.harnessApi = originalRequest;
+    }
+  });
+
   await test('HTTP inheritance searches scenes with pageNum and pageSize, excluding only the current identity', async () => {
     const requests = [];
     request.harnessApi = async (config) => {
@@ -76,12 +134,10 @@ try {
         secondScene: 'Current scene',
       });
       const { pageNum, pageSize } = config.params;
-      return success({
-        total: 40,
-        pageNum,
-        pageSize,
-        list: list.slice((pageNum - 1) * pageSize, pageNum * pageSize),
-      });
+      return {
+        meta: { success: true, message: 'OK', number: 40 },
+        data: list.slice((pageNum - 1) * pageSize, pageNum * pageSize),
+      };
     };
     try {
       const first = await inheritance.queryWorkflowInheritancePage(
