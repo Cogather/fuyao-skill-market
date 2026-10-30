@@ -265,7 +265,7 @@ export async function queryExtensionStructureTree(
     await skillBaseService.queryExtensionStructureTree({
       ...scope,
       layout,
-      components: JSON.stringify(components),
+      components,
     }),
   );
   if (!treeData || typeof treeData !== 'object' || Array.isArray(treeData)) {

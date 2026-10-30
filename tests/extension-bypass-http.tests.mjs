@@ -54,11 +54,13 @@ for (const [name, args, expected] of [
   ],
   [
     'queryExtensionStructureTree',
-    [{ userId: 'u', extensionName: 'scene', layout: 'standard', components: '[]' }],
+    [{ userId: 'u', extensionName: 'scene', layout: 'standard', components: [] }],
     {
       url: '/extensions/structure/tree',
-      method: 'GET',
-      params: { userId: 'u', extensionName: 'scene', layout: 'standard', components: '[]' },
+      method: 'POST',
+      params: { userId: 'u' },
+      headers: { 'Content-Type': 'application/json' },
+      data: { extensionName: 'scene', layout: 'standard', components: [] },
     },
   ],
   [
@@ -192,7 +194,7 @@ test('clear accepts null data and layout maps only the returned display mode', a
   });
 });
 
-test('structure serializes compact components and preserves typed sources and directory sizes', async () => {
+test('structure posts component objects in JSON and preserves typed sources and directory sizes', async () => {
   const api = await adapter();
   reset({
     layoutMode: 'testagent',
@@ -213,13 +215,16 @@ test('structure serializes compact components and preserves typed sources and di
   assert.deepEqual(calls, [
     {
       url: '/extensions/structure/tree',
-      method: 'GET',
-      params: {
-        userId: 'user-parent',
+      method: 'POST',
+      params: { userId: 'user-parent' },
+      headers: { 'Content-Type': 'application/json' },
+      data: {
         extensionName: 'scene-code-001',
         layout: 'testagent',
-        components:
-          '[{"componentType":"skill","componentName":"one","componentVersion":"1.2.0"},{"componentType":"command","componentName":"/run"}]',
+        components: [
+          { componentType: 'skill', componentName: 'one', componentVersion: '1.2.0' },
+          { componentType: 'command', componentName: '/run' },
+        ],
       },
     },
   ]);

@@ -3,6 +3,7 @@ import type {
   ExtensionBypassIdentity,
   ExtensionBypassInheritInput,
   ExtensionLayoutInput,
+  ExtensionStructureComponent,
 } from './extensionBypassService';
 import type {
   ApiEnvelope,
@@ -949,10 +950,17 @@ export const skillBaseService = {
     httpRequest.harnessApi({ url: '/extensions/bypass/clear', method: 'POST', params }),
   updateExtensionLayout: (params: ExtensionLayoutInput): Promise<unknown> =>
     httpRequest.harnessApi({ url: '/extensions/layout', method: 'POST', params }),
-  queryExtensionStructureTree: (
-    params: ExtensionLayoutInput & { components: string },
-  ): Promise<unknown> =>
-    httpRequest.harnessApi({ url: '/extensions/structure/tree', method: 'GET', params }),
+  queryExtensionStructureTree: ({
+    userId,
+    ...data
+  }: ExtensionLayoutInput & { components: ExtensionStructureComponent[] }): Promise<unknown> =>
+    httpRequest.harnessApi({
+      url: '/extensions/structure/tree',
+      method: 'POST',
+      params: { userId },
+      headers: { 'Content-Type': 'application/json' },
+      data,
+    }),
   getExtensionBypassDownload: (params: ExtensionBypassIdentity): Promise<unknown> =>
     httpRequest.harnessApi({ url: '/extensions/bypass/download', method: 'GET', params }),
   inheritExtensionBypass: (

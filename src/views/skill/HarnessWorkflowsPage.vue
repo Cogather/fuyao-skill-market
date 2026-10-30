@@ -332,6 +332,11 @@ async function openWorkflowRelease(
       mode,
     );
     if (sequence !== workflowReleaseSequence || view.value !== 'publish') return;
+    if (isHttp && mode === 'publish' && !context.scene.sceneExtensionCode?.trim()) {
+      // 此入口的 extensionName 来自工作流列表的 sceneExtensionCode，
+      // 详情未回传时保留已知场景身份，不能用 publishedExtension 的发布包名称替代。
+      context.scene.sceneExtensionCode = row.extensionName.trim();
+    }
     workflowRelease.value = { context, mode };
   } catch (caught) {
     if (sequence !== workflowReleaseSequence || view.value !== 'publish') return;

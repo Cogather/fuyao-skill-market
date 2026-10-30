@@ -645,7 +645,7 @@ test('layout commits only server success, restores failure and refreshes source-
       ['standard', 'testagent'],
     );
     assert.equal(call('queryExtensionStructureTree')[0].args[0].extensionName, 'scene-target');
-    assert.deepEqual(JSON.parse(call('queryExtensionStructureTree')[0].args[0].components), [
+    assert.deepEqual(call('queryExtensionStructureTree')[0].args[0].components, [
       { componentType: 'skill', componentName: 'skill', componentVersion: '1.0' },
       { componentType: 'command', componentName: 'empty-version' },
     ]);
@@ -747,10 +747,11 @@ test('component changes refresh tree; tree failure stays separate from mutation 
   try {
     ctx.props.scene.capabilities.agent.push({ name: 'agent-a', version: '2.0', id: 'a' });
     await settle();
-    assert.deepEqual(
-      JSON.parse(call('queryExtensionStructureTree').at(-1).args[0].components).at(-1),
-      { componentType: 'agent', componentName: 'agent-a', componentVersion: '2.0' },
-    );
+    assert.deepEqual(call('queryExtensionStructureTree').at(-1).args[0].components.at(-1), {
+      componentType: 'agent',
+      componentName: 'agent-a',
+      componentVersion: '2.0',
+    });
     handlers.queryExtensionStructureTree = () => {
       throw new Error('tree unavailable');
     };

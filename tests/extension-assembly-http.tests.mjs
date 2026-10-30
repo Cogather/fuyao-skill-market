@@ -146,11 +146,13 @@ try {
   await extensionAssemblyHttp.tree({ ...identity, layout: 'testagent', components });
   assert.deepEqual(calls.pop(), {
     url: '/extensions/structure/tree',
-    method: 'GET',
-    params: {
-      ...identity,
+    method: 'POST',
+    params: { userId: identity.userId },
+    headers: { 'Content-Type': 'application/json' },
+    data: {
+      extensionName: identity.extensionName,
       layout: 'testagent',
-      components: '[{"componentType":"agent","componentName":"review","componentVersion":"1.0"}]',
+      components,
     },
   });
   const tree = buildHttpExtensionTree('test-extension', entries, true);

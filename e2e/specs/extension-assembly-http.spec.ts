@@ -1,7 +1,11 @@
 import { expect, test } from '../fixtures/base';
 import type { Page, Request } from '@playwright/test';
+import { APP_BASE_PATH } from '../helpers/constants';
 
-async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
+async function setup(
+  page: Page,
+  options: { holdInitialTree?: boolean; fullPage?: boolean; omitDetailSceneCode?: boolean } = {},
+) {
   const sceneExtensionCode = 'scene-code-001';
   const requests: Request[] = [];
   let layout = 'testagent';
@@ -13,8 +17,18 @@ async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
     releaseInitialTree = resolve;
   });
   const entries = () => [
-    { path: `${sceneExtensionCode}/codeagent-extension.json`, type: 'file', source: 'SYSTEM', size: null },
-    { path: `${sceneExtensionCode}/.cac-plugin/plugin.json`, type: 'file', source: 'SYSTEM', size: null },
+    {
+      path: `${sceneExtensionCode}/codeagent-extension.json`,
+      type: 'file',
+      source: 'SYSTEM',
+      size: null,
+    },
+    {
+      path: `${sceneExtensionCode}/.cac-plugin/plugin.json`,
+      type: 'file',
+      source: 'SYSTEM',
+      size: null,
+    },
     {
       path: `${sceneExtensionCode}/${layout === 'testagent' ? '.testagent/' : ''}agents/review.md`,
       type: 'file',
@@ -28,23 +42,49 @@ async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
       source: 'FILE',
     })),
   ];
-  await page.route('**/api/harness/**', async (route) => {
+  await page.route('**/api/**', async (route) => {
     const req = route.request();
     requests.push(req);
     const url = new URL(req.url());
+    if (!url.pathname.startsWith('/api/')) return route.fallback();
     const path = url.pathname.replace('/api/harness', '');
     if (failPath === path) {
       failPath = '';
       return route.fulfill({ json: { code: 1, message: '服务暂不可用，请重试', data: null } });
     }
     let data: unknown = null;
+    if (path === '/permission/user-depts')
+      data = {
+        ownedOrgs: [{ deptName: '研发部', deptCode: 'dept-root', path: ['研发部'], levelNo: 1 }],
+        adminOrgs: [],
+      };
+    if (path === '/smapi-product-by-dept') data = [{ offeringId: 'P1', offeringName: 'demo' }];
+    if (path === '/workflow/list')
+      data = {
+        total: 1,
+        pageNo: 1,
+        pageSize: 10,
+        list: [
+          {
+            flowName: 'HTTP 发布交互流程',
+            firstScene: '开发',
+            secondScene: '测试',
+            sceneExtensionCode,
+            dimType: '产品级',
+            dimCode: 'P1',
+            dimName: 'demo',
+            status: '待发布',
+            canPublish: true,
+          },
+        ],
+      };
     if (path === '/extensions/detail')
       data = {
         firstScene: '开发',
         secondScene: '测试',
         readyStatus: '已就绪',
         publishedExtension: { extensionName: 'demo-extension', description: '原有说明' },
-        sceneExtensionCode,
+        ...(options.omitDetailSceneCode ? {} : { sceneExtensionCode }),
         components: { agents: [{ name: 'review', version: '1.0' }], skills: [], commands: [] },
         layoutMode: layout,
         hasBypass: files.length > 0,
@@ -52,6 +92,14 @@ async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
       };
     if (path === '/extensions/orgs') data = [{ orgCode: 'org1', orgName: '测试组织' }];
     if (path === '/extensions/structure/tree') {
+      const body = req.postDataJSON();
+      if (
+        req.method() !== 'POST' ||
+        [...url.searchParams.keys()].join(',') !== 'userId' ||
+        !Array.isArray(body?.components)
+      ) {
+        return route.fulfill({ status: 400, json: { message: '目录树必须使用 POST JSON 契约' } });
+      }
       if (initialTreePending) {
         initialTreePending = false;
         await initialTreeReady;
@@ -95,7 +143,7 @@ async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
       };
     }
     if (path === '/extensions/history') data = [];
-    await route.fulfill({ json: { code: 0, message: '成功', data } });
+    await route.fulfill({ json: { code: 0, meta: { success: true }, message: '成功', data } });
   });
   await page.route('**/skill-market/assembly-test', (route) =>
     route.fulfill({
@@ -103,35 +151,58 @@ async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
       body: '<div id="test-host" style="height:100vh"></div>',
     }),
   );
-  await page.goto('/skill-market/assembly-test');
-  await page.evaluate(async () => {
-    const vueUrl = '/skill-market/node_modules/.vite/deps/vue.js';
-    const viewUrl = '/skill-market/src/views/skill/ExtensionPublishPage.vue';
-    const apiUrl = '/skill-market/src/services/skillMarket/extensionPublishHttp.ts';
-    const { createApp, h } = await import(vueUrl);
-    const { default: Component } = await import(viewUrl);
-    const { queryHttpExtensionDetail } = await import(apiUrl);
-    const scope = {
-      dimType: '产品级',
-      dimCode: 'P1',
-      dimName: 'demo',
-      productId: 'P1',
-      departmentPath: [],
-    };
-    const scene = await queryHttpExtensionDetail('user1', scope, {
-      extensionName: 'demo-extension',
-      firstScene: '开发',
-      secondScene: '测试',
-    });
-    createApp({
-      render: () =>
-        h(Component, {
+  if (options.fullPage) {
+    await page.addInitScript(() => {
+      sessionStorage.setItem(
+        '__skill_market_parent_context_v1__',
+        JSON.stringify({
+          type: 'Skill_Square_Init',
           userId: 'user1',
           userName: '发布用户',
-          releaseContext: { scope, scene, productName: 'demo' },
+          departmentList: [
+            { deptId: 'dept-root', deptCode: 'dept-root', deptName: '研发部', deptLevel: 1 },
+          ],
         }),
-    }).mount('#test-host');
-  });
+      );
+    });
+    await page.goto(`${APP_BASE_PATH}/harness-management`);
+    await page.locator('#harness-tab-workflows').click();
+    await page
+      .getByRole('row')
+      .filter({ hasText: 'HTTP 发布交互流程' })
+      .getByRole('button', { name: '发布', exact: true })
+      .click();
+  } else {
+    await page.goto(`${APP_BASE_PATH}/assembly-test`);
+    await page.evaluate(async () => {
+      const vueUrl = '/skill-market/node_modules/.vite/deps/vue.js';
+      const viewUrl = '/skill-market/src/views/skill/ExtensionPublishPage.vue';
+      const apiUrl = '/skill-market/src/services/skillMarket/extensionPublishHttp.ts';
+      const { createApp, h } = await import(vueUrl);
+      const { default: Component } = await import(viewUrl);
+      const { queryHttpExtensionDetail } = await import(apiUrl);
+      const scope = {
+        dimType: '产品级',
+        dimCode: 'P1',
+        dimName: 'demo',
+        productId: 'P1',
+        departmentPath: [],
+      };
+      const scene = await queryHttpExtensionDetail('user1', scope, {
+        extensionName: 'demo-extension',
+        firstScene: '开发',
+        secondScene: '测试',
+      });
+      createApp({
+        render: () =>
+          h(Component, {
+            userId: 'user1',
+            userName: '发布用户',
+            releaseContext: { scope, scene, productName: 'demo' },
+          }),
+      }).mount('#test-host');
+    });
+  }
   const assembly = page.getByRole('region', { name: 'Extension 发布组装' });
   await expect(assembly).toBeVisible();
   const inheritanceSection = assembly.getByRole('button', { name: /继承与目录结构/ });
@@ -152,6 +223,88 @@ async function setup(page: Page, options: { holdInitialTree?: boolean } = {}) {
 
 test.describe('Extension HTTP 发布组装', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
+
+  test('完整工作区中可点击发布目标、继承和上传', async ({ page }) => {
+    const { assembly, requests } = await setup(page, { fullPage: true });
+    const tree = assembly.getByRole('list', { name: '最终目录结构' });
+    await expect(tree.getByText('.testagent/', { exact: true })).toBeVisible();
+    const target = assembly.getByRole('button', { name: 'CodeAgent（标准）' });
+    await expect(target).toBeEnabled();
+    await target.click();
+    await expect(target).toHaveAttribute('aria-pressed', 'true');
+    await expect(tree.getByText('review.md', { exact: true })).toBeVisible();
+    const layoutIndex = requests.findIndex((req) =>
+      new URL(req.url()).pathname.endsWith('/extensions/layout'),
+    );
+    const refreshedTree = requests
+      .slice(layoutIndex + 1)
+      .find((req) => new URL(req.url()).pathname.endsWith('/extensions/structure/tree'))!;
+    expect(layoutIndex).toBeGreaterThanOrEqual(0);
+    expect(refreshedTree.postDataJSON()).toEqual({
+      extensionName: 'scene-code-001',
+      layout: 'standard',
+      components: [{ componentType: 'agent', componentName: 'review', componentVersion: '1.0' }],
+    });
+    await assembly.getByRole('button', { name: '更换继承', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '选择继承源' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await assembly.getByRole('button', { name: /拖拽压缩包到此处/ }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: 'custom.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from('zip-bytes'),
+    });
+    await expect(assembly.getByText('uploaded.md', { exact: true })).toBeVisible();
+  });
+
+  test('飞机入口保留列表场景编码，详情省略编码时仍可切换目标、继承和上传', async ({ page }) => {
+    const { assembly, requests } = await setup(page, {
+      fullPage: true,
+      omitDetailSceneCode: true,
+    });
+    const target = assembly.getByRole('button', { name: 'CodeAgent（标准）' });
+    await expect(target).toBeEnabled();
+    await target.click();
+    await expect(target).toHaveAttribute('aria-pressed', 'true');
+    await assembly.getByRole('button', { name: '更换继承', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '选择继承源' });
+    await dialog.getByRole('searchbox').fill('shared');
+    await dialog.getByRole('radio', { name: /shared-baseline/ }).check();
+    await dialog.getByRole('button', { name: '确认继承', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    const chooser = page.waitForEvent('filechooser');
+    await assembly.getByRole('button', { name: /拖拽压缩包到此处/ }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: 'custom.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from('zip-bytes'),
+    });
+    await expect(assembly.getByText('uploaded.md', { exact: true })).toBeVisible();
+    const layout = requests.find((req) =>
+      new URL(req.url()).pathname.endsWith('/extensions/layout'),
+    )!;
+    expect(new URL(layout.url()).searchParams.get('extensionName')).toBe('scene-code-001');
+    const structure = requests.find((req) =>
+      new URL(req.url()).pathname.endsWith('/extensions/structure/tree'),
+    )!;
+    expect(structure.postDataJSON().extensionName).toBe('scene-code-001');
+    const upload = requests.find((req) =>
+      new URL(req.url()).pathname.endsWith('/extensions/bypass'),
+    );
+    expect(upload?.postData()).toContain('name="extensionName"\r\n\r\nscene-code-001');
+    expect(upload?.postData()).not.toContain('demo-extension');
+    const inherit = requests.find((req) => new URL(req.url()).pathname.endsWith('/bypass/inherit'));
+    expect(inherit?.postDataJSON()).toEqual({
+      sourceExtensionName: 'shared-baseline',
+      targetExtensionName: 'scene-code-001',
+    });
+  });
 
   test('初始目录加载期间仍可选择继承和上传旁路文件', async ({ page }) => {
     const { assembly, releaseInitialTree } = await setup(page, { holdInitialTree: true });
@@ -196,15 +349,20 @@ test.describe('Extension HTTP 发布组装', () => {
       description: '填写后保持不变',
     });
     expect(save.postDataJSON()).not.toHaveProperty('layout');
+    expect(save.postDataJSON()).not.toHaveProperty('layoutMode');
     const detail = requests.find((req) => req.url().includes('/extensions/detail'))!;
     expect(detail.method()).toBe('POST');
     expect(new URL(detail.url()).searchParams.get('userId')).toBe('user1');
     expect(detail.postDataJSON().extensionName).toBe('demo-extension');
     const structure = requests.find((req) => req.url().includes('/structure/tree'))!;
-    expect(new URL(structure.url()).searchParams.get('extensionName')).toBe('scene-code-001');
-    expect(JSON.parse(new URL(structure.url()).searchParams.get('components')!)).toEqual([
-      { componentType: 'agent', componentName: 'review', componentVersion: '1.0' },
-    ]);
+    expect(structure.method()).toBe('POST');
+    expect(Object.fromEntries(new URL(structure.url()).searchParams)).toEqual({ userId: 'user1' });
+    expect(structure.headers()['content-type']).toContain('application/json');
+    expect(structure.postDataJSON()).toEqual({
+      extensionName: 'scene-code-001',
+      layout: 'testagent',
+      components: [{ componentType: 'agent', componentName: 'review', componentVersion: '1.0' }],
+    });
   });
 
   test('布局和旁路操作失败保留状态，上传展示服务端忽略原因', async ({ page }) => {

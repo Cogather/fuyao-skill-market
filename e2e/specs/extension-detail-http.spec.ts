@@ -162,7 +162,6 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
       dimType: '产品级',
       dimCode: 'product-1',
       dimName: 'udm',
-      extensionName: 'scene-code-001',
       firstScene: '应用开发',
       secondScene: '代码开发',
     });
@@ -400,20 +399,23 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
         '嵌入式描述',
       );
       await expect(panel).toContainText('包含清单（1 项）');
-      const bypass = panel.getByRole('region', { name: '发布时继承当前旁路文件' });
+      const assembly = page.getByRole('region', { name: 'Extension 发布组装' });
+      await assembly.getByRole('button', { name: /继承与目录结构/ }).click();
+      const inherit = assembly.getByRole('checkbox', { name: '继承当前旁路文件' });
       if (hasBypass) {
-        await expect(bypass.getByRole('checkbox')).toBeChecked();
-        await expect(bypass).toContainText('docs/readme.md');
-        await expect(bypass).toContainText('1 MB');
+        await expect(inherit).toBeChecked();
+        await expect(assembly).toContainText('docs/readme.md');
+        await expect(assembly).toContainText('1.0 MB');
       } else {
-        await expect(bypass).toHaveCount(0);
+        await expect(inherit).toHaveCount(0);
       }
-      await expect(panel.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      const confirmPublish = assembly.getByRole('button', { name: '确认发布', exact: true });
+      await expect(confirmPublish).toBeDisabled();
       await expect(panel).toContainText('beta 配置未变化');
       await panel.getByRole('combobox', { name: /发布通道/ }).click();
       await page.getByRole('option', { name: 'product', exact: true }).click();
       await expect(panel).toContainText('product 可以发布');
-      await panel.getByRole('button', { name: '确认发布', exact: true }).click();
+      await confirmPublish.click();
       await expect(panel).toBeHidden();
       expect(saves).toHaveLength(1);
       expect(saves[0]!.method()).toBe('POST');

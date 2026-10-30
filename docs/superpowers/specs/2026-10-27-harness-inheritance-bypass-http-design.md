@@ -26,7 +26,7 @@
 
 旁路接口中的 `extensionName` 是场景级身份，即 `scene_extension_code`。`ExtensionScene` 增加 `sceneExtensionCode`，优先从场景绑定/详情响应的 `sceneExtensionCode` 读取；旁路操作缺少该编码时禁用并提示先保存场景编码。发布时填写的 Extension 名称仍用于发布包名称，两者不混用。
 
-`GET /extensions/detail` 使用 Query 参数携带 `userId`、维度信息和可用的 `extensionName`（场景编码）或一、二级场景名。详情映射新增：
+`POST /extensions/detail` 使用 Query 参数携带 `userId`，JSON Body 携带维度信息和可用的 `extensionName`（场景编码）或一、二级场景名。详情映射新增：
 
 - `layoutMode`：仅接受 `standard` 或 `testagent`，否则回退 `standard`；
 - `hasBypass`：显式布尔值；
@@ -44,7 +44,7 @@ Extension 发布页在当前场景内容区增加“打包与旁路”卡片，�
 3. 移除旁路：有旁路时调用 `POST /extensions/bypass/clear`，二次确认后清空文件清单但保留当前布局。
 4. 下载：调用 `GET /extensions/bypass/download` 获取预签名 URL，再由浏览器打开；不缓存过期 URL。
 5. 继承旁路：打开独立居中弹窗，`GET /extensions/search` 按 Extension 名、二级场景名或工作流名搜索。沿用累计 limit 懒加载；条目展示来源、版本、布局和旁路文件数。确认后调用 `POST /extensions/bypass/inherit`，目标为当前场景编码。结果中的接受项和被剥离项立即显示，布局跟随服务端响应，并刷新完整目录树。
-6. 完整目录树：根据当前 `sceneExtensionCode`、布局和页面现有组件清单调用 `GET /extensions/structure/tree`。组件清单序列化为紧凑 JSON Query；响应按 `SYSTEM`、`COMPONENT`、`FILE` 着色，布局、组件或旁路变化后刷新。
+6. 完整目录树：根据当前 `sceneExtensionCode`、布局和页面现有组件清单调用 `POST /extensions/structure/tree?userId=...`，Content-Type 为 `application/json`。Body 为 `{ extensionName, layout, components }`，组件清单以对象数组传递；响应按 `SYSTEM`、`COMPONENT`、`FILE` 着色，布局、组件或旁路变化后刷新。
 
 异步操作分别维护 loading/error 状态；请求期间禁用会产生冲突的按钮，旧响应不能覆盖已经切换的场景。
 
