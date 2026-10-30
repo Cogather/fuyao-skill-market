@@ -48,17 +48,19 @@ export function useExtensionHttpAssembly(
   const treeEntries = ref<StructureEntry[]>([]);
   const treeLoading = ref(false);
   const mutating = ref(false);
+  const pendingLayout = ref<ExtensionLayout | null>(null);
   const error = ref('');
   const treeError = ref('');
   const searchError = ref('');
   const searchLoading = ref(false);
   const searchResults = ref<ExtensionSearchItem[]>([]);
   let generation = 0;
+  let layoutDrainGeneration: number | null = null;
   let treeSequence = 0;
   let searchSequence = 0;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const busy = computed(() => mutating.value || treeLoading.value);
+  const busy = computed(() => mutating.value || treeLoading.value || pendingLayout.value !== null);
   const blocked = computed(() => Boolean(context()) && (busy.value || Boolean(treeError.value)));
   const tree = computed(() =>
     buildHttpExtensionTree(
@@ -139,19 +141,41 @@ export function useExtensionHttpAssembly(
     });
   }
 
-  async function selectTarget(target: ExtensionReleaseTarget): Promise<boolean> {
-    const next = target === 'testagent' ? 'testagent' : 'standard';
-    if (next === layout.value) return true;
-    return mutate(
-      () => extensionAssemblyHttp.setLayout({ ...identity(), layout: next }),
-      (result) => {
-        layout.value = result.layoutMode;
-        update({
-          target: result.layoutMode === 'testagent' ? 'testagent' : 'codeagent',
-        });
-      },
-    );
+  async function savePendingLayout(): Promise<void> {
+    if (!context() || mutating.value || layoutDrainGeneration === generation) return;
+    const epoch = generation;
+    layoutDrainGeneration = epoch;
+    try {
+      // 布局保存串行执行，等待期间的点击只保留最后一次选择。
+      while (epoch === generation && pendingLayout.value !== null) {
+        const next = pendingLayout.value;
+        if (next !== layout.value) {
+          await mutate(
+            () => extensionAssemblyHttp.setLayout({ ...identity(), layout: next }),
+            (result) => {
+              layout.value = result.layoutMode;
+              update({ target: result.layoutMode === 'testagent' ? 'testagent' : 'codeagent' });
+            },
+          );
+        }
+        if (epoch !== generation) return;
+        // 没有新选择时结束；失败也恢复已保存的布局，避免自动重复请求。
+        if (pendingLayout.value === next) pendingLayout.value = null;
+      }
+    } finally {
+      if (layoutDrainGeneration === epoch) layoutDrainGeneration = null;
+    }
   }
+
+  function selectTarget(target: ExtensionReleaseTarget): void {
+    if (!context()) return;
+    pendingLayout.value = target === 'testagent' ? 'testagent' : 'standard';
+    void savePendingLayout();
+  }
+
+  watch(mutating, (value) => {
+    if (!value && pendingLayout.value !== null) void savePendingLayout();
+  });
 
   async function upload(file: File): Promise<boolean> {
     return mutate(
@@ -247,6 +271,7 @@ export function useExtensionHttpAssembly(
     () => (context() ? JSON.stringify([context()!.userId, context()!.extensionName]) : ''),
     () => {
       generation += 1;
+      pendingLayout.value = null;
       treeSequence += 1;
       search('');
       mutating.value = false;
@@ -279,11 +304,13 @@ export function useExtensionHttpAssembly(
   );
   onBeforeUnmount(() => {
     generation += 1;
+    pendingLayout.value = null;
     searchSequence += 1;
     clearTimeout(searchTimer);
   });
   return {
     layout,
+    pendingLayout,
     currentEntries,
     hasBypass,
     sourceName,

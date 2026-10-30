@@ -1011,6 +1011,24 @@ const retryingReleaseId = ref('');
 const publishVersion = computed(() => (modalScene.value ? nextVersion(modalScene.value) : '0.1'));
 const publishItems = computed(() => (modalScene.value ? capabilityItems(modalScene.value) : []));
 const selectedPublishCheck = computed(() => modalScene.value?.publishChecks?.[publishForm.channel]);
+const publishBlockReason = computed(() => {
+  const scene = modalScene.value;
+  if (!scene) return '发布信息尚未加载';
+  if (publishSubmitting.value) return '正在提交发布…';
+  if (assemblyLoading.value || packagingBusy.value || (props.releaseContext && assemblyBusy.value))
+    return '正在保存发布配置或加载目录，请稍候…';
+  if (props.releaseContext && transportIsHttp && !assemblyHttpContext.value)
+    return '当前场景缺少场景编码，无法发布';
+  if (props.releaseContext && assemblyBlocked.value)
+    return '目录预览未就绪，请展开“继承与目录结构”查看错误并重试';
+  if (organizationLoading.value) return '正在加载目标组织…';
+  if (!selectedOrganization.value) return organizationError.value || '请选择可发布的目标组织';
+  if (selectedPublishCheck.value?.canPublish === false)
+    return selectedPublishCheck.value.message || '当前通道不允许发布';
+  if (scene.publishing) return '当前已有发布进行中';
+  if (!scene.publishable) return '场景不完备，无法发布';
+  return '';
+});
 const publishExpandedFolders = ref<Set<ExtensionCapabilityType>>(
   new Set(capabilitySections.map((section) => section.type)),
 );
@@ -1187,7 +1205,7 @@ async function confirmPublish(): Promise<void> {
       : '请输入 Extension 名称';
     return;
   }
-  if (!props.releaseContext) {
+  if (!props.releaseContext && name !== scene.extension.name.trim()) {
     if (!isCatalogItemNameValid(name)) {
       publishError.value = 'Extension 名称仅允许小写字母、数字、连字符，最长 64 字符';
       return;
@@ -1899,8 +1917,6 @@ onBeforeUnmount(() => {
         v-model="assemblyState"
         :enabled="Boolean(releaseContext)"
         :sources="assemblySources"
-        :extension-name="publishExtension.name"
-        :capabilities="modalScene.capabilities"
         :disabled="
           publishSubmitting || assemblyLoading || (transportIsHttp && !assemblyHttpContext)
         "
@@ -2276,7 +2292,9 @@ onBeforeUnmount(() => {
                 重新加载组织
               </button>
             </div>
-            <p v-if="publishError" class="modal-error" role="alert">{{ publishError }}</p>
+            <p v-if="publishError && !releaseContext" class="modal-error" role="alert">
+              {{ publishError }}
+            </p>
             <button
               v-if="releaseContext && (!modalScene.publishable || modalScene.publishing)"
               type="button"
@@ -2318,6 +2336,15 @@ onBeforeUnmount(() => {
 
         <template #actions>
           <footer v-if="releaseContext" class="modal-footer extension-assembly-footer">
+            <p
+              v-if="publishError || publishBlockReason"
+              class="extension-publish-feedback"
+              :class="{ 'is-error': Boolean(publishError) }"
+              :role="publishError ? 'alert' : undefined"
+              aria-live="polite"
+            >
+              {{ publishError || publishBlockReason }}
+            </p>
             <button
               type="button"
               class="extension-button extension-button--ghost extension-button--modal-action"
@@ -2337,16 +2364,8 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="extension-button extension-button--publish extension-button--modal-action"
-              :disabled="
-                publishSubmitting ||
-                assemblyLoading ||
-                assemblyBlocked ||
-                organizationLoading ||
-                organizations.length === 0 ||
-                selectedPublishCheck?.canPublish === false ||
-                !modalScene.publishable ||
-                Boolean(modalScene.publishing)
-              "
+              :disabled="Boolean(publishBlockReason)"
+              :title="publishBlockReason || undefined"
               @click="confirmPublish"
             >
               {{ publishSubmitting ? '发布中…' : '确认发布' }}
@@ -2739,9 +2758,25 @@ onBeforeUnmount(() => {
 
 .extension-assembly-footer {
   margin-left: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
   padding: 10px 14px;
   border-top: 0;
   background: transparent;
+}
+
+.extension-publish-feedback {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.extension-publish-feedback.is-error {
+  color: #dc2626;
 }
 
 .extension-page button,

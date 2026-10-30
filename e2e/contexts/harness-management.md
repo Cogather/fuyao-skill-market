@@ -5,6 +5,10 @@
 
 ## 基本信息
 
+- HTTP 确认发布沿用详情提供的现有 Extension 名称，不对不可编辑的既有名称重复套用新建时的产品前缀/字符规则；新建或改名仍校验。飞机入口的发布校验/接口错误放在底部按钮旁，加载目录、缺场景编码、组织不可用、通道禁止发布等禁用原因同样在底部显示。
+
+- HTTP 发布目标在保存布局和刷新目录期间保持可点击，立即回显最近选择；请求串行保存，只保留等待期间的最后一个目标。发布按钮等待所有布局保存和目录刷新完成后恢复。保存失败恢复已保存目标，场景切换时丢弃旧目标队列。
+
 - 目录树接口为 `POST /extensions/structure/tree?userId=...`，`Content-Type: application/json`，Body 为 `{ extensionName, layout, components }`，`components` 必须是对象数组。HTTP 发布流程先读取详情的 `layoutMode/hasBypass/bypassEntries`；切换布局调用 `/extensions/layout` 成功后再按返回布局刷新目录，上传/清除/继承成功后同样刷新目录。发布调用 `/extensions/save`，只传继承选择 `inheritBypass`，不传 `layout/layoutMode`。飞机入口当前在页面的「继承与目录结构」中展示旁路清单和勾选框，点击「确认发布」直接提交，没有额外的发布确认弹窗。
 
 - Extension 发布组装的 HTTP 回归除独立挂载外，还应从 `/harness-management` 的「Harness 工作流」列表点击行内「发布」进入，验证发布目标切换、继承弹窗和点击上传唤起文件选择器。`e2e/specs/extension-assembly-http.spec.ts` 覆盖此入口；运行时显式设置 `VITE_SKILL_MARKET_TRANSPORT=http`，因为 `.env.development` 的 `mock` 会覆盖 `.env`。完整入口的接口拦截须检查 URL pathname 以 `/api/` 开头，避免 `**/api/**` 误拦截依赖中的 JS 模块。

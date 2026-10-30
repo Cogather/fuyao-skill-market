@@ -76,11 +76,24 @@ try {
   assert.equal(save.data.layoutMode, undefined);
   assert.equal(save.params.operatorName, '测试用户');
   await publishHttpExtension(input);
-  assert.equal(
-    calls.pop().data.inheritBypass,
-    true,
-    'legacy caller keeps backend true default',
+  assert.equal(calls.pop().data.inheritBypass, true, 'legacy caller keeps backend true default');
+  for (const name of ['pipeline-analysis', '问题分析 Extension']) {
+    await publishHttpExtension({
+      ...input,
+      scene: { ...scene, extension: { ...scene.extension, name } },
+      extensionName: name,
+    });
+    assert.equal(
+      calls.pop().data.extensionName,
+      name,
+      'existing names must be submitted unchanged',
+    );
+  }
+  await assert.rejects(
+    publishHttpExtension({ ...input, extensionName: 'new-package' }),
+    /名称需以/,
   );
+  await assert.rejects(publishHttpExtension({ ...input, extensionName: '新的名称' }), /仅允许小写/);
   request.harnessApi = async () => ({ code: 1, message: '发布被拒绝', data: null });
   await assert.rejects(publishHttpExtension(input), /发布被拒绝/);
   const { publishHttpExtension: publishLegacyExtension } = await server.ssrLoadModule(

@@ -6,13 +6,20 @@ import type { ExtensionPackageNode } from '../../services/skillMarket/extensionR
 const props = withDefaults(
   defineProps<{
     node: ExtensionPackageNode;
-    depth?: number;
+    prefix?: string;
+    isLast?: boolean;
+    path?: string;
+    selectedPath?: string;
   }>(),
-  { depth: 0 },
+  { prefix: '', isLast: true, path: '', selectedPath: '' },
 );
 
+const emit = defineEmits<{ select: [path: string] }>();
 const expanded = ref(true);
 const isFolder = computed(() => props.node.type === 'folder');
+const nodePath = computed(() => props.path || props.node.name);
+const branch = computed(() => `${props.prefix}${props.isLast ? '└─ ' : '├─ '}`);
+const childPrefix = computed(() => `${props.prefix}${props.isLast ? '   ' : '│  '}`);
 const sourceLabel = computed(() => {
   if (props.node.source === 'system') return '系统';
   if (props.node.source === 'inherited') return '继承';
@@ -23,6 +30,7 @@ const sourceLabel = computed(() => {
 });
 
 function toggle(): void {
+  emit('select', nodePath.value);
   if (isFolder.value) expanded.value = !expanded.value;
 }
 </script>
@@ -32,22 +40,16 @@ function toggle(): void {
     <button
       type="button"
       class="package-tree-row"
-      :class="[`is-${node.type}`, `is-${node.source || 'plain'}`]"
-      :style="{ '--tree-depth': depth }"
+      :class="[
+        `is-${node.type}`,
+        `is-${node.source || 'plain'}`,
+        { 'is-selected': selectedPath === nodePath },
+      ]"
       :aria-expanded="isFolder ? expanded : undefined"
-      :disabled="!isFolder"
+      :aria-current="selectedPath === nodePath ? 'true' : undefined"
       @click="toggle"
     >
-      <span class="package-tree-caret" :class="{ 'is-open': isFolder && expanded }">
-        {{ isFolder ? '›' : '' }}
-      </span>
-      <svg v-if="isFolder" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z" />
-      </svg>
-      <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M6 3.5h8l4 4V20H6V3.5Z" />
-        <path d="M14 3.5v4h4" />
-      </svg>
+      <span class="package-tree-branch" aria-hidden="true">{{ branch }}</span>
       <span class="package-tree-name">{{ node.name }}</span>
       <span v-if="sourceLabel" class="package-tree-source" :class="`is-${node.source}`">
         {{ sourceLabel }}
@@ -55,10 +57,14 @@ function toggle(): void {
     </button>
     <ul v-if="isFolder && expanded && node.children?.length" class="package-tree-children">
       <ExtensionPackageTreeNode
-        v-for="child in node.children"
+        v-for="(child, index) in node.children"
         :key="`${node.name}-${child.name}-${child.source || ''}`"
         :node="child"
-        :depth="depth + 1"
+        :prefix="childPrefix"
+        :is-last="index === node.children.length - 1"
+        :path="`${nodePath}${child.name}`"
+        :selected-path="selectedPath"
+        @select="emit('select', $event)"
       />
     </ul>
   </li>
@@ -75,76 +81,55 @@ function toggle(): void {
 .package-tree-row {
   display: flex;
   width: 100%;
-  min-height: 32px;
+  min-height: 26px;
   align-items: center;
-  gap: 7px;
-  padding: 5px 10px 5px calc(10px + var(--tree-depth) * 20px);
+  padding: 4px 16px;
   border: 0;
-  border-radius: 6px;
   background: transparent;
-  color: #344054;
-  font: inherit;
+  color: #334155;
+  font-family: Consolas, 'Courier New', monospace;
   font-size: 12px;
+  line-height: 1.55;
   text-align: left;
-}
-
-.package-tree-row:not(:disabled) {
+  white-space: pre;
   cursor: pointer;
 }
 
-.package-tree-row:not(:disabled):hover {
-  background: #f7f9fc;
+.package-tree-row:hover {
+  background: #f8fafc;
 }
 
-.package-tree-row:disabled {
-  opacity: 1;
+.package-tree-row.is-selected {
+  background: #eef6ff;
+  color: #1d4ed8;
+  box-shadow: inset 3px 0 0 #2f7df6;
 }
 
-.package-tree-row svg {
-  width: 15px;
-  height: 15px;
+.package-tree-row:focus-visible {
+  outline: 2px solid #2f7df6;
+  outline-offset: -2px;
+}
+
+.package-tree-node {
+  min-width: max-content;
+}
+
+.package-tree-branch,
+.package-tree-name {
   flex: 0 0 auto;
-  fill: #eef2ff;
-  stroke: #8492ad;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-}
-
-.package-tree-row.is-folder svg {
-  fill: #fbbf24;
-  stroke: #d49a00;
-}
-
-.package-tree-row.is-system.is-folder > .package-tree-name {
-  font-weight: 700;
-}
-
-.package-tree-caret {
-  display: inline-grid;
-  width: 12px;
-  flex: 0 0 auto;
-  place-items: center;
-  color: #98a2b3;
-  font-size: 16px;
-  transform: rotate(0deg);
-  transition: transform 0.15s ease;
-}
-
-.package-tree-caret.is-open {
-  transform: rotate(90deg);
 }
 
 .package-tree-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
+  margin-right: 12px;
 }
 
 .package-tree-source {
+  flex: 0 0 auto;
   margin-left: auto;
   padding: 1px 6px;
   border: 1px solid;
   border-radius: 999px;
+  font-family: sans-serif;
   font-size: 9px;
   font-weight: 700;
   line-height: 16px;
@@ -168,11 +153,5 @@ function toggle(): void {
   border-color: #bbf7d0;
   background: #ecfdf3;
   color: #15803d;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .package-tree-caret {
-    transition: none;
-  }
 }
 </style>

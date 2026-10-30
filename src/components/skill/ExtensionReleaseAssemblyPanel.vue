@@ -6,12 +6,7 @@ import {
 } from '../../composables/useExtensionHttpAssembly';
 import type { ExtensionAssemblyDetail } from '../../services/skillMarket/extensionAssemblyHttp';
 
-import type {
-  ExtensionCapability,
-  ExtensionCapabilityType,
-} from '../../services/skillMarket/extensionPublishMock';
 import {
-  buildExtensionPackageTree,
   countPackageFiles,
   readExtensionArchive,
   switchAssemblyTarget,
@@ -26,8 +21,6 @@ const props = withDefaults(
     enabled?: boolean;
     modelValue: ExtensionAssemblyState;
     sources?: ExtensionInheritanceSource[];
-    extensionName?: string;
-    capabilities?: Record<ExtensionCapabilityType, ExtensionCapability[]>;
     disabled?: boolean;
     publishing?: boolean;
     httpContext?: ExtensionHttpAssemblyContext;
@@ -35,8 +28,6 @@ const props = withDefaults(
   {
     enabled: false,
     sources: () => [],
-    extensionName: '',
-    capabilities: () => ({ skill: [], command: [], agent: [] }),
     disabled: false,
     publishing: false,
   },
@@ -57,6 +48,7 @@ const pendingSourceId = ref('');
 const archiveError = ref('');
 const archiveReading = ref(false);
 const uploadInput = ref<HTMLInputElement | null>(null);
+const selectedTreePath = ref('');
 const remote = reactive(
   useExtensionHttpAssembly(
     () => props.httpContext,
@@ -71,6 +63,14 @@ const controlsDisabled = computed(
     remote.mutating ||
     archiveReading.value ||
     (!props.httpContext && props.disabled),
+);
+const targetDisabled = computed(() => props.publishing || (!props.httpContext && props.disabled));
+const selectedTarget = computed(() =>
+  remote.pendingLayout === null
+    ? props.modelValue.target
+    : remote.pendingLayout === 'testagent'
+      ? 'testagent'
+      : 'codeagent',
 );
 watch(
   () => remote.busy || archiveReading.value,
@@ -100,27 +100,21 @@ const filteredSources = computed(() => {
     ),
   );
 });
-const packageTree = computed(() =>
-  props.httpContext
-    ? remote.tree
-    : buildExtensionPackageTree({
-        extensionName: props.extensionName,
-        target: props.modelValue.target,
-        capabilities: props.capabilities,
-        inheritedFiles: activeSource.value?.files ?? [],
-        uploadedFiles: props.modelValue.uploadedPackage?.files ?? [],
-      }),
+// Directory paths come only from structure/tree; component names and the layout
+// selection must never synthesize extra folders or files in this preview.
+const packageTree = computed(() => (props.httpContext ? remote.tree : null));
+const packageFileCount = computed(() =>
+  packageTree.value ? countPackageFiles(packageTree.value) : 0,
 );
-const packageFileCount = computed(() => countPackageFiles(packageTree.value));
 const targetDescription = computed(() =>
-  props.modelValue.target === 'codeagent'
+  selectedTarget.value === 'codeagent'
     ? '标准模式：三目录 + 两 JSON，直推 Agent Center'
     : props.httpContext
       ? 'TestAgent 模式：组件置于 .testagent/，合并当前旁路文件后推送'
       : 'TestAgent 模式：.testagent/ 包裹，合并继承与上传文件后推送',
 );
 const targetLabel = computed(() =>
-  props.modelValue.target === 'codeagent' ? 'CodeAgent' : 'TestAgent',
+  selectedTarget.value === 'codeagent' ? 'CodeAgent' : 'TestAgent',
 );
 
 function updateState(patch: Partial<ExtensionAssemblyState>): void {
@@ -128,7 +122,7 @@ function updateState(patch: Partial<ExtensionAssemblyState>): void {
 }
 
 function selectTarget(target: ExtensionReleaseTarget): void {
-  if (controlsDisabled.value) return;
+  if (targetDisabled.value) return;
   if (props.httpContext) {
     void remote.selectTarget(target);
     return;
@@ -214,18 +208,18 @@ function formatSize(size: number): string {
       <div class="release-target-tabs" role="group" aria-label="发布目标">
         <button
           type="button"
-          :class="{ 'is-active': modelValue.target === 'codeagent' }"
-          :aria-pressed="modelValue.target === 'codeagent'"
-          :disabled="controlsDisabled"
+          :class="{ 'is-active': selectedTarget === 'codeagent' }"
+          :aria-pressed="selectedTarget === 'codeagent'"
+          :disabled="targetDisabled"
           @click="selectTarget('codeagent')"
         >
           CodeAgent（标准）
         </button>
         <button
           type="button"
-          :class="{ 'is-active is-testagent': modelValue.target === 'testagent' }"
-          :aria-pressed="modelValue.target === 'testagent'"
-          :disabled="controlsDisabled"
+          :class="{ 'is-active is-testagent': selectedTarget === 'testagent' }"
+          :aria-pressed="selectedTarget === 'testagent'"
+          :disabled="targetDisabled"
           @click="selectTarget('testagent')"
         >
           TestAgent
@@ -341,17 +335,13 @@ function formatSize(size: number): string {
               <small v-if="activeSource.kind === 'previous'">（已自动继承）</small>
             </div>
             <div class="inheritance-actions">
-              <button type="button" :disabled="disabled" @click="openSourceDialog">
-                更换继承
-              </button>
+              <button type="button" :disabled="disabled" @click="openSourceDialog">更换继承</button>
               <button type="button" :disabled="disabled" @click="clearInheritance">清除</button>
             </div>
           </template>
           <template v-else>
             <span class="inheritance-empty">无继承</span>
-            <button type="button" :disabled="disabled" @click="openSourceDialog">
-              选择继承
-            </button>
+            <button type="button" :disabled="disabled" @click="openSourceDialog">选择继承</button>
           </template>
         </div>
 
@@ -359,15 +349,20 @@ function formatSize(size: number): string {
           <span>最终目录结构预览</span>
           <span class="assembly-card__badge is-neutral">{{ packageFileCount }} 个文件</span>
         </div>
-        <p v-if="httpContext && remote.treeLoading" role="status">正在加载目录…</p>
+        <p v-if="!httpContext" role="status">缺少场景信息，暂无法加载目录。</p>
+        <p v-else-if="remote.treeLoading" role="status">正在加载目录…</p>
         <div v-else-if="httpContext && remote.treeError" class="archive-error" role="alert">
           {{ remote.treeError }}
           <button type="button" :disabled="controlsDisabled" @click="remote.refreshTree">
             重试目录加载
           </button>
         </div>
-        <ul v-else class="package-tree" aria-label="最终目录结构">
-          <ExtensionPackageTreeNode :node="packageTree" />
+        <ul v-else-if="packageTree" class="package-tree" aria-label="最终目录结构">
+          <ExtensionPackageTreeNode
+            :node="packageTree"
+            :selected-path="selectedTreePath"
+            @select="selectedTreePath = $event"
+          />
         </ul>
       </div>
     </article>
@@ -824,10 +819,11 @@ function formatSize(size: number): string {
 
 .package-tree {
   margin: 0;
-  padding: 7px;
-  border: 1px solid #e3e8f0;
+  padding: 14px 0;
+  overflow: auto;
+  border: 1px solid #e9edf3;
   border-radius: 7px;
-  background: #fbfcfe;
+  background: #fff;
 }
 
 .archive-dropzone {

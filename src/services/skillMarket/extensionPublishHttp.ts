@@ -659,12 +659,18 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     throw new Error(publishCheck.message);
   }
   const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
-  if (!isCatalogItemNameValid(extensionName)) {
-    throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');
-  }
-  const requiredPrefix = getProductCatalogItemNamePrefix(input.scope.dimType, input.scope.dimName);
-  if (requiredPrefix && !extensionName.startsWith(requiredPrefix)) {
-    throw new Error(`Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`);
+  // 详情/工作流提供的既有名称在发布页不可编辑，不再套用新建名称规则。
+  if (extensionName !== normalizeText(input.scene.extension.name)) {
+    if (!isCatalogItemNameValid(extensionName)) {
+      throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');
+    }
+    const requiredPrefix = getProductCatalogItemNamePrefix(
+      input.scope.dimType,
+      input.scope.dimName,
+    );
+    if (requiredPrefix && !extensionName.startsWith(requiredPrefix)) {
+      throw new Error(`Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`);
+    }
   }
   const params = {
     userId: requiredText(input.userId, '尚未获取当前用户工号'),

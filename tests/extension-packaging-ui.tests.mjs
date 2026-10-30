@@ -906,6 +906,203 @@ test('scene changes invalidate old mutations and tree responses; missing identit
   }
 });
 
+test('release tree follows API paths, preserves real directories, and never fabricates a fallback', async () => {
+  const Component = await loadSfc(
+    path.resolve('src/components/skill/ExtensionReleaseAssemblyPanel.vue'),
+  );
+  const { extensionAssemblyHttp } = await server.ssrLoadModule(
+    '/src/services/skillMarket/extensionAssemblyHttp.ts',
+  );
+  const originalTree = extensionAssemblyHttp.tree;
+  const originalLayout = extensionAssemblyHttp.setLayout;
+  const state = Vue.reactive({ target: 'codeagent', inheritBypass: true });
+  const context = Vue.ref(undefined);
+  const requests = [];
+  let failTree = false;
+  extensionAssemblyHttp.tree = async (input) => {
+    requests.push(input);
+    if (failTree) throw new Error('tree unavailable');
+    const prefix = input.layout === 'testagent' ? '.testagent/' : '';
+    return {
+      layoutMode: input.layout,
+      entries: [
+        { path: `scene-target/${prefix}commands/build.md`, type: 'file', source: 'COMPONENT' },
+        { path: `scene-target/${prefix}agents/review.md`, type: 'file', source: 'COMPONENT' },
+        {
+          path: `scene-target/${prefix}commands/tools/check.md`,
+          type: 'file',
+          source: 'COMPONENT',
+        },
+        { path: `scene-target/${prefix}agents/team/`, type: 'dir', source: 'COMPONENT' },
+        { path: 'scene-target/docs/guide.md', type: 'file', source: 'FILE', size: 18 },
+      ],
+    };
+  };
+  extensionAssemblyHttp.setLayout = async ({ layout }) => ({ layoutMode: layout });
+  const root = makeNode('root');
+  const app = renderer.createApp({
+    setup: () => () =>
+      Vue.h(Component, {
+        enabled: true,
+        modelValue: state,
+        httpContext: context.value,
+        'onUpdate:modelValue': (value) => Object.assign(state, value),
+      }),
+  });
+  const packageTree = () => nodes(root).find((node) => node.props['aria-label'] === '最终目录结构');
+  const rows = () =>
+    nodes(packageTree()).filter(
+      (node) => node.type === 'button' && node.props.class?.includes('package-tree-row'),
+    );
+  const nameOf = (row) =>
+    text(row.children.find((node) => node.props.class === 'package-tree-name'));
+  const branchOf = (row) =>
+    text(row.children.find((node) => node.props.class === 'package-tree-branch'));
+  try {
+    app.mount(root);
+    await settle();
+    assert.equal(packageTree(), undefined, 'missing context must not synthesize a prototype tree');
+    assert.match(text(root), /暂无法加载目录/);
+    assert.equal(requests.length, 0);
+
+    context.value = {
+      userId: 'parent-user',
+      extensionName: 'scene-target',
+      layoutMode: 'standard',
+      hasBypass: true,
+      bypassEntries: [{ path: 'not-in-tree.md', size: 1 }],
+      hasPublishedPackage: false,
+      components: [
+        { componentType: 'command', componentName: 'Display Command', componentVersion: '1.0' },
+        { componentType: 'agent', componentName: 'Display Agent', componentVersion: '2.0' },
+      ],
+    };
+    await settle();
+    assert.deepEqual(rows().map(nameOf), [
+      'scene-target/',
+      'commands/',
+      'tools/',
+      'check.md',
+      'build.md',
+      'agents/',
+      'team/',
+      'review.md',
+      'docs/',
+      'guide.md',
+    ]);
+    assert.doesNotMatch(
+      text(packageTree()),
+      /Display Command|Display Agent|plugin.json|not-in-tree/,
+    );
+    assert.equal(branchOf(rows().find((row) => nameOf(row) === 'build.md')), '   │  └─ ');
+    assert.equal(branchOf(rows().find((row) => nameOf(row) === 'check.md')), '   │  │  └─ ');
+    const build = rows().find((row) => nameOf(row) === 'build.md');
+    await click(build);
+    assert.ok(build.props.class.includes('is-selected'));
+    const commands = rows().find((row) => nameOf(row) === 'commands/');
+    await click(commands);
+    assert.equal(commands.props['aria-expanded'], false);
+    assert.ok(!rows().some((row) => nameOf(row) === 'build.md'));
+    await click(commands);
+
+    const target = (label) =>
+      nodes(root).find((node) => node.type === 'button' && text(node).trim() === label);
+    await click(target('TestAgent'));
+    assert.equal(requests.at(-1).layout, 'testagent');
+    assert.ok(rows().some((row) => nameOf(row) === '.testagent/'));
+    assert.equal(branchOf(rows().find((row) => nameOf(row) === 'build.md')), '   │  │  └─ ');
+    assert.doesNotMatch(text(packageTree()), /Display Command|Display Agent/);
+
+    failTree = true;
+    await click(target('CodeAgent（标准）'));
+    assert.equal(packageTree(), undefined, 'tree failures must not display guessed or stale paths');
+    assert.match(text(root), /tree unavailable/);
+    failTree = false;
+    await click(target('重试目录加载'));
+    assert.ok(rows().some((row) => nameOf(row) === 'build.md'));
+    assert.ok(!rows().some((row) => nameOf(row) === '.testagent/'));
+  } finally {
+    app.unmount();
+    extensionAssemblyHttp.tree = originalTree;
+    extensionAssemblyHttp.setLayout = originalLayout;
+  }
+});
+
+test('queued layouts stay scene-scoped and failed saves release the queue for retry', async () => {
+  const { useExtensionHttpAssembly } = await server.ssrLoadModule(
+    '/src/composables/useExtensionHttpAssembly.ts',
+  );
+  const { extensionAssemblyHttp } = await server.ssrLoadModule(
+    '/src/services/skillMarket/extensionAssemblyHttp.ts',
+  );
+  const originalTree = extensionAssemblyHttp.tree;
+  const originalLayout = extensionAssemblyHttp.setLayout;
+  const requests = [];
+  extensionAssemblyHttp.tree = async () => tree('standard');
+  extensionAssemblyHttp.setLayout = (input) =>
+    new Promise((resolve, reject) => {
+      requests.push({ input, resolve, reject });
+    });
+  const context = Vue.ref({
+    userId: 'parent-user',
+    extensionName: 'first-scene',
+    components: [],
+    layoutMode: 'standard',
+    hasBypass: false,
+    bypassEntries: [],
+    hasPublishedPackage: false,
+  });
+  const state = Vue.reactive({ target: 'codeagent', inheritBypass: true });
+  let remote;
+  const app = renderer.createApp({
+    setup() {
+      remote = useExtensionHttpAssembly(
+        () => context.value,
+        () => state,
+        (patch) => Object.assign(state, patch),
+        (detail) => Object.assign(context.value, detail),
+      );
+      return () => Vue.h('div');
+    },
+  });
+  try {
+    app.mount(makeNode('root'));
+    await settle();
+    remote.selectTarget('testagent');
+    remote.selectTarget('codeagent');
+    assert.equal(requests.length, 1);
+    context.value = { ...context.value, extensionName: 'second-scene' };
+    await settle();
+    requests[0].resolve({ layoutMode: 'testagent' });
+    await settle();
+    assert.equal(requests.length, 1, 'old queued selection cannot write into the new scene');
+    assert.equal(remote.pendingLayout.value, null);
+    assert.equal(state.target, 'codeagent');
+    assert.equal(remote.busy.value, false);
+
+    remote.selectTarget('testagent');
+    assert.equal(requests[1].input.extensionName, 'second-scene');
+    requests[1].reject(new Error('layout save failed'));
+    await settle();
+    assert.equal(remote.pendingLayout.value, null);
+    assert.equal(state.target, 'codeagent', 'failed selection reverts to the saved layout');
+    assert.equal(remote.busy.value, false);
+    assert.match(remote.error.value, /layout save failed/);
+    assert.equal(requests.length, 2, 'a failed save is not retried automatically');
+
+    remote.selectTarget('testagent');
+    requests[2].resolve({ layoutMode: 'testagent' });
+    await settle();
+    assert.equal(state.target, 'testagent');
+    assert.equal(remote.busy.value, false);
+    assert.equal(remote.error.value, '');
+  } finally {
+    app.unmount();
+    extensionAssemblyHttp.tree = originalTree;
+    extensionAssemblyHttp.setLayout = originalLayout;
+  }
+});
+
 test('release assembly keeps inheritance and upload interactive during initial tree loading', async () => {
   const { extensionAssemblyHttp } = await server.ssrLoadModule(
     '/src/services/skillMarket/extensionAssemblyHttp.ts',
