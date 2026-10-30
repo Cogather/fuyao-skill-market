@@ -70,7 +70,7 @@ try {
   };
   await publishHttpExtension({ ...input, inheritBypass: false });
   const save = calls.pop();
-  assert.equal(save.url, '/extensions/save');
+  assert.equal(save.url, '/extensions');
   assert.equal(save.data.inheritBypass, false);
   assert.equal(save.data.layout, undefined);
   assert.equal(save.data.layoutMode, undefined);

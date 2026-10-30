@@ -1,4 +1,5 @@
 import request from './request';
+import type { WorkflowSceneSearchQuery } from './businessScenarioDesignService';
 import type { ExtensionPackageNode, ExtensionPackageSource } from './extensionReleaseAssembly';
 import {
   clearExtensionBypass,
@@ -62,7 +63,7 @@ export type StructureEntry = {
 };
 export type StructureResult = { layoutMode: ExtensionLayout; entries: StructureEntry[] };
 type Identity = { userId: string; extensionName: string };
-type Search = { userId: string; keyword: string; limit?: number };
+type Search = { userId: string; keyword: string; pageNum: number; pageSize: number };
 
 /** Both the existing meta envelope and the new code envelope are supported. */
 export function extensionResponseData<T>(response: unknown, fallback: string): T {
@@ -119,15 +120,21 @@ function bypassResult(value: BypassResult): BypassResult {
 }
 
 export const extensionAssemblyHttp = {
-  async searchScenes(params: Search): Promise<SceneSearchItem[]> {
-    const result = await call<SceneSearchItem[]>(
+  async searchScenes(params: WorkflowSceneSearchQuery) {
+    const result = await call<{ list: SceneSearchItem[]; total: number }>(
       '/scenes/search',
       'GET',
       params,
       undefined,
       '场景流搜索失败',
     );
-    if (!Array.isArray(result)) throw new Error('场景流搜索响应格式不正确');
+    if (
+      !result ||
+      !Array.isArray(result.list) ||
+      !Number.isSafeInteger(result.total) ||
+      result.total < 0
+    )
+      throw new Error('场景流搜索响应格式不正确');
     return result;
   },
   copyScene(userId: string, body: SceneCopyRequest): Promise<string> {
@@ -177,14 +184,13 @@ export const extensionAssemblyHttp = {
   ): Promise<BypassResult> {
     return bypassResult(await inheritExtensionBypass({ userId, ...body }));
   },
-  async searchExtensions(params: Search): Promise<ExtensionSearchItem[]> {
-    const page = await queryExtensionInheritancePage({
+  searchExtensions(params: Search) {
+    return queryExtensionInheritancePage({
       userId: params.userId,
       keyword: params.keyword,
-      pageNo: 1,
-      pageSize: params.limit ?? 20,
+      pageNo: params.pageNum,
+      pageSize: params.pageSize,
     });
-    return page.list;
   },
 };
 

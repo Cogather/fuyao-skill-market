@@ -59,7 +59,7 @@ try {
   );
   const originalRequest = request.harnessApi;
 
-  await test('HTTP inheritance searches scenes with literal keywords and cumulative limits, excluding only the current identity', async () => {
+  await test('HTTP inheritance searches scenes with pageNum and pageSize, excluding only the current identity', async () => {
     const requests = [];
     request.harnessApi = async (config) => {
       requests.push(config);
@@ -75,11 +75,13 @@ try {
         firstScene: 'Research',
         secondScene: 'Current scene',
       });
-      return success(
-        config.url === '/scenes/search'
-          ? list.slice(0, config.params.limit)
-          : { total: 40, pageNo: 2, pageSize: 20, list },
-      );
+      const { pageNum, pageSize } = config.params;
+      return success({
+        total: 40,
+        pageNum,
+        pageSize,
+        list: list.slice((pageNum - 1) * pageSize, pageNum * pageSize),
+      });
     };
     try {
       const first = await inheritance.queryWorkflowInheritancePage(
@@ -96,31 +98,34 @@ try {
           {
             url: '/scenes/search',
             method: 'GET',
-            params: { userId: 'parent-user', keyword: 'code % _ ', limit: 20 },
+            params: { userId: 'parent-user', keyword: 'code % _ ', pageNum: 1, pageSize: 20 },
           },
           {
             url: '/scenes/search',
             method: 'GET',
-            params: { userId: 'parent-user', keyword: 'code % _ ', limit: 40 },
+            params: { userId: 'parent-user', keyword: 'code % _ ', pageNum: 2, pageSize: 20 },
           },
         ],
       );
       assert.equal(first.list.length, 19);
       assert.equal(first.excludedCurrent, true);
       assert.equal(first.hasMore, true);
-      assert.equal(second.list.length, 39);
-      assert.equal(second.list[0].secondScene, 'Scene 0');
-      assert.equal(second.list[20].sourceDimType, '\u90e8\u95e8\u7ea7');
+      assert.equal(first.total, 40);
+      assert.equal(second.total, 40);
+      assert.equal(second.hasMore, false);
+      assert.equal(second.list.length, 20);
+      assert.equal(second.list[0].secondScene, 'Scene 20');
+      assert.equal(second.list[1].sourceDimType, '\u90e8\u95e8\u7ea7');
       assert.equal(second.list[0].activityCount, 3);
-      assert.equal(second.list[0].key, '["\u4ea7\u54c1\u7ea7","source-product","source-0"]');
+      assert.equal(second.list[0].key, '["\u4ea7\u54c1\u7ea7","source-product","source-20"]');
     } finally {
       request.harnessApi = originalRequest;
     }
   });
 
-  await test('cumulative scene search stops on a short response and at the 100-row ceiling', async () => {
+  await test('scene search uses the backend total and can load beyond 100 rows', async () => {
     request.harnessApi = async ({ params }) =>
-      success(Array.from({ length: Math.min(params.limit, 45) }, (_, i) => source(i)));
+      success({ total: 45, list: Array.from({ length: 5 }, (_, i) => source(i + 40)) });
     try {
       const last = await inheritance.queryWorkflowInheritancePage({
         userId: 'parent-user',
@@ -128,32 +133,37 @@ try {
         pageNo: 3,
         pageSize: 20,
       });
-      assert.equal(last.list.length, 45);
+      assert.equal(last.list.length, 5);
+      assert.equal(last.total, 45);
       assert.equal(last.hasMore, false);
       request.harnessApi = async ({ params }) => {
-        assert.equal(params.limit, 100);
-        return success(Array.from({ length: 100 }, (_, i) => source(i)));
+        assert.equal(params.pageNum, 6);
+        assert.equal(params.pageSize, 20);
+        assert.equal('limit' in params, false);
+        return success({ total: 140, list: Array.from({ length: 20 }, (_, i) => source(i + 100)) });
       };
-      const capped = await inheritance.queryWorkflowInheritancePage({
+      const beyond = await inheritance.queryWorkflowInheritancePage({
         userId: 'parent-user',
         keyword: '',
-        pageNo: 5,
+        pageNo: 6,
         pageSize: 20,
       });
-      assert.equal(capped.list.length, 100);
-      assert.equal(capped.hasMore, false);
+      assert.equal(beyond.list.length, 20);
+      assert.equal(beyond.hasMore, true);
     } finally {
       request.harnessApi = originalRequest;
     }
   });
 
-  await test('cumulative scene responses retain newly inserted prefix identities and deduplicate one response', async () => {
+  await test('scene pages deduplicate repeated identities without replacing backend totals', async () => {
     request.harnessApi = async ({ params }) =>
-      success(
-        params.limit === 20
-          ? Array.from({ length: 20 }, (_, i) => source(i + 1))
-          : [source('X'), ...Array.from({ length: 39 }, (_, i) => source(i + 1))],
-      );
+      success({
+        total: 40,
+        list:
+          params.pageNum === 1
+            ? Array.from({ length: 20 }, (_, i) => source(i + 1))
+            : [source('X'), ...Array.from({ length: 19 }, (_, i) => source(i + 20))],
+      });
     try {
       const first = await inheritance.queryWorkflowInheritancePage({
         userId: 'u',
@@ -168,14 +178,17 @@ try {
       const { mergeUniquePage } = await server.ssrLoadModule('/src/utils/infiniteScroll.ts');
       const merged = mergeUniquePage(first.list, second.list, (row) => row.key);
       assert.equal(merged.filter((row) => row.sceneExtensionCode === 'source-X').length, 1);
-      assert.equal(merged.length, 40);
-      request.harnessApi = async () => success([source(1), source(1), source(2)]);
+      assert.equal(merged.length, 39);
+      assert.equal(second.hasMore, false);
+      request.harnessApi = async () =>
+        success({ total: 3, list: [source(1), source(1), source(2)] });
       const duplicates = await inheritance.queryWorkflowInheritancePage({
         userId: 'u',
         pageNo: 1,
         pageSize: 20,
       });
       assert.equal(duplicates.list.length, 2);
+      assert.equal(duplicates.total, 3);
       assert.equal(duplicates.hasMore, false);
     } finally {
       request.harnessApi = originalRequest;
@@ -193,7 +206,7 @@ try {
       secondScene: current.secondScene,
       sceneExtensionCode: 'different-code',
     });
-    request.harnessApi = async () => success([renamed, different]);
+    request.harnessApi = async () => success({ total: 2, list: [renamed, different] });
     try {
       const page = await inheritance.queryWorkflowInheritancePage(
         { userId: 'u', pageNo: 1, pageSize: 20 },
@@ -403,18 +416,21 @@ try {
       const copyRequest = request.harnessApi;
       request.harnessApi = async (config) => {
         assert.equal(config.url, '/scenes/search');
-        return success([
-          source(1, {
-            sourceDimCode: 'target-product',
-            secondScene: 'Renamed current',
-            sceneExtensionCode: 'current-code',
-          }),
-          source(2, {
-            sourceDimCode: 'target-product',
-            secondScene: 'Current scene',
-            sceneExtensionCode: 'other-code',
-          }),
-        ]);
+        return success({
+          total: 2,
+          list: [
+            source(1, {
+              sourceDimCode: 'target-product',
+              secondScene: 'Renamed current',
+              sceneExtensionCode: 'current-code',
+            }),
+            source(2, {
+              sourceDimCode: 'target-product',
+              secondScene: 'Current scene',
+              sceneExtensionCode: 'other-code',
+            }),
+          ],
+        });
       };
       const candidates = await workspace.queryWorkflowInheritance({
         keyword: '',

@@ -106,7 +106,7 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
       } else if (path.endsWith('/retry')) {
         retryRequests.push(request);
         data = 'retry-1';
-      } else if (path === '/api/harness/extensions/save' && request.method() === 'POST') {
+      } else if (path === '/api/harness/extensions' && request.method() === 'POST') {
         publishRequests.push(request);
         data = 'release-1';
       } else if (path.endsWith('/extensions/bypass/clear')) {
@@ -353,7 +353,7 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
           data = [{ orgCode: 'org-embedded', orgName: '嵌入式组织' }];
         } else if (endpoint.endsWith('/extensions/structure/tree')) {
           data = { layoutMode: 'standard', entries: [] };
-        } else if (endpoint === '/api/harness/extensions/save') {
+        } else if (endpoint === '/api/harness/extensions') {
           saves.push(request);
           data = 'release-embedded';
         } else if (endpoint.endsWith('/extensions/bypass/clear')) {

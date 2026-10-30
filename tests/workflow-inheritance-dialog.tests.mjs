@@ -131,7 +131,7 @@ try {
     assert.equal(state.loadError.value, '候选 Workflow 加载失败');
   });
 
-  await test('explicit cumulative-search continuation is honored even when filtering empties the reached page', async () => {
+  await test('a page filtered to zero candidates can still load the next page at the bottom', async () => {
     const { state } = mount(async (query) => ({
       total: query.pageNo === 1 ? 0 : 1,
       pageNo: query.pageNo,
@@ -143,7 +143,11 @@ try {
     state.keyword.value = 'later';
     await state.runSearch();
     assert.equal(state.hasMore.value, true);
-    await state.loadNextPage();
+    state.onResultsWheel({
+      deltaY: 120,
+      currentTarget: { scrollTop: 0, scrollHeight: 300, clientHeight: 300 },
+    });
+    await settle();
     assert.equal(state.rows.value.length, 1);
     assert.equal(state.hasMore.value, false);
   });
@@ -206,12 +210,12 @@ try {
     assert.equal(events[0][1].key, 'code-2');
   });
 
-  await test('dialog deduplicates its first cumulative response and appends an unseen prefix once', async () => {
+  await test('dialog deduplicates repeated identities across pages', async () => {
     const { state } = mount(async (query) => ({
       total: 40,
       pageNo: query.pageNo,
       pageSize: 20,
-      hasMore: true,
+      hasMore: query.pageNo === 1,
       list:
         query.pageNo === 1
           ? [
@@ -222,8 +226,8 @@ try {
             ]
           : [
               source('X', 'Inserted', 'Inserted'),
-              ...Array.from({ length: 39 }, (_, i) =>
-                source(`A${i + 1}`, `Workflow ${i + 1}`, `Scene ${i + 1}`),
+              ...Array.from({ length: 19 }, (_, i) =>
+                source(`A${i + 20}`, `Workflow ${i + 20}`, `Scene ${i + 20}`),
               ),
             ],
     }));
@@ -232,7 +236,8 @@ try {
     await state.runSearch();
     assert.equal(state.rows.value.length, 20);
     await state.loadNextPage();
-    assert.equal(state.rows.value.length, 40);
+    assert.equal(state.rows.value.length, 39);
+    assert.equal(state.hasMore.value, false);
     assert.equal(state.rows.value.filter((row) => row.key === 'X').length, 1);
   });
 
@@ -257,6 +262,80 @@ try {
 
     assert.equal(state.selected.value, null);
     assert.deepEqual(events, []);
+  });
+
+  await test('search edits reset scroll and prevent next-page queries during debounce', async () => {
+    const requests = [];
+    const { state } = mount(async (query) => {
+      requests.push({ ...query });
+      return {
+        total: 40,
+        pageNo: query.pageNo,
+        pageSize: 20,
+        list: [source('old', 'Old workflow', 'Old scene')],
+        hasMore: true,
+      };
+    });
+    await settle();
+    state.keyword.value = 'old';
+    await state.runSearch();
+    state.resultsPanel.value = { scrollTop: 200 };
+    state.keyword.value = 'new';
+    await nextTick();
+    assert.equal(state.resultsPanel.value.scrollTop, 0);
+    assert.equal(state.rows.value.length, 0);
+    await state.loadNextPage();
+    assert.equal(requests.filter((query) => query.keyword === 'new').length, 0);
+    await state.runSearch();
+    assert.deepEqual(requests.at(-1), { keyword: 'new', pageNo: 1, pageSize: 20 });
+  });
+
+  await test('scroll loads once while pending and retries a failed next page without losing selection', async () => {
+    const requests = [];
+    let release;
+    let fail = true;
+    const { state } = mount(async (query) => {
+      requests.push({ ...query });
+      if (query.pageNo === 2) {
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+        if (fail) throw new Error('下一页加载失败');
+      }
+      return {
+        total: 21,
+        pageNo: query.pageNo,
+        pageSize: 20,
+        hasMore: query.pageNo === 1,
+        list: [source(`page-${query.pageNo}`, 'Candidate', 'Scene')],
+      };
+    });
+    await settle();
+    state.keyword.value = 'candidate';
+    await state.runSearch();
+    state.selectRow(state.rows.value[0]);
+    const bottom = {
+      deltaY: 100,
+      currentTarget: { scrollTop: 200, scrollHeight: 500, clientHeight: 300 },
+    };
+    state.onResultsWheel(bottom);
+    state.onResultsWheel(bottom);
+    assert.equal(requests.filter((query) => query.pageNo === 2).length, 1);
+    release();
+    await settle();
+    assert.equal(state.loadError.value, '下一页加载失败');
+    assert.equal(state.selected.value.key, 'page-1');
+    fail = false;
+    const retry = state.loadNextPage();
+    release();
+    await retry;
+    assert.deepEqual(
+      state.rows.value.map((row) => row.key),
+      ['page-1', 'page-2'],
+    );
+    assert.equal(state.loadError.value, '');
+    await state.loadNextPage();
+    assert.equal(requests.filter((query) => query.pageNo === 3).length, 0);
   });
 
   await test('an excluded current workflow keeps the adjusted total across lazy pages', async () => {

@@ -54,7 +54,7 @@ test.describe('Extension packaging and bypass HTTP', () => {
       else if (path.endsWith('/extensions/bypass')) {
         await uploadGate;
         data = { layoutMode: 'standard', acceptedEntries: entries, ignoredEntries: [] };
-      } else if (path.endsWith('/extensions/save')) {
+      } else if (path.endsWith('/extensions')) {
         await saveGate;
         await route.fulfill({
           json: { meta: { success: false, message: 'SAVE_RETRY_REQUIRED' }, data: null },
@@ -105,13 +105,13 @@ test.describe('Extension packaging and bypass HTTP', () => {
       await expect(confirm).toBeDisabled();
       await confirm.dispatchEvent('click');
       await page.evaluate(() => new Promise(requestAnimationFrame));
-      expect(count('/extensions/save')).toBe(0);
+      expect(count('/extensions')).toBe(0);
       releaseUpload();
       await expect(confirm).toBeEnabled();
       // Keep a clear confirmation open while publication is pending.
       await panel.getByTestId('clear').dispatchEvent('click');
       await confirm.click();
-      await expect.poll(() => count('/extensions/save')).toBe(1);
+      await expect.poll(() => count('/extensions')).toBe(1);
       const before = requests.length;
       for (const id of ['layout', 'upload', 'clear', 'confirm-clear', 'download', 'inherit'])
         await expect(panel.getByTestId(id)).toBeDisabled();
@@ -204,15 +204,18 @@ test.describe('Extension packaging and bypass HTTP', () => {
         entries = accepted;
         data = { layoutMode, acceptedEntries: accepted, ignoredEntries: ignored };
       } else if (endpoint.endsWith('/extensions/search')) {
-        data = ['scene-target', 'source-one'].map((extensionName) => ({
-          extensionName,
-          description: 'Reusable source',
-          layoutMode: 'standard',
-          hasBypass: true,
-          entryCount: 1,
-          latestVersion: '2.0.0',
-          sourceDimName: 'Team A',
-        }));
+        data = {
+          total: 2,
+          list: ['scene-target', 'source-one'].map((extensionName) => ({
+            extensionName,
+            description: 'Reusable source',
+            layoutMode: 'standard',
+            hasBypass: true,
+            entryCount: 1,
+            latestVersion: '2.0.0',
+            sourceDimName: 'Team A',
+          })),
+        };
       } else if (endpoint.endsWith('/extensions/structure/tree')) {
         if (delayTree) {
           delayedTreeRequests += 1;

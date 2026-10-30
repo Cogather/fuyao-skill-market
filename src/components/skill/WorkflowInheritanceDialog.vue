@@ -42,6 +42,7 @@ const loading = ref(false);
 const loadError = ref('');
 const searchInput = ref<HTMLInputElement | null>(null);
 const dialogElement = ref<HTMLElement | null>(null);
+const resultsPanel = ref<HTMLElement | null>(null);
 let requestSequence = 0;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let previousScrollTop = 0;
@@ -79,21 +80,26 @@ function clearSearchTimer() {
   searchTimer = undefined;
 }
 
+function resetSearch() {
+  requestSequence += 1;
+  loading.value = false;
+  loadError.value = '';
+  rows.value = [];
+  selectedKey.value = '';
+  pageNo.value = 0;
+  total.value = 0;
+  excludedCurrent.value = false;
+  continuation.value = undefined;
+  previousScrollTop = 0;
+  if (resultsPanel.value) resultsPanel.value.scrollTop = 0;
+}
+
 async function loadPageNumber(nextPage: number, replace: boolean) {
   if (!props.open || loading.value) return;
   const sequence = ++requestSequence;
   const queryKeyword = keyword.value.trim();
   loading.value = true;
   loadError.value = '';
-  if (replace) {
-    rows.value = [];
-    selectedKey.value = '';
-    pageNo.value = 0;
-    total.value = 0;
-    excludedCurrent.value = false;
-    continuation.value = undefined;
-    previousScrollTop = 0;
-  }
   try {
     const result = await props.loadPage({
       keyword: queryKeyword,
@@ -124,8 +130,7 @@ async function loadPageNumber(nextPage: number, replace: boolean) {
 }
 
 async function loadFirstPage() {
-  requestSequence += 1;
-  loading.value = false;
+  resetSearch();
   await loadPageNumber(1, true);
 }
 
@@ -135,7 +140,7 @@ async function runSearch() {
 }
 
 async function loadNextPage() {
-  if (loading.value || !hasMore.value) return;
+  if (!hasKeyword.value || loading.value || !hasMore.value) return;
   await loadPageNumber(pageNo.value + 1, false);
 }
 
@@ -153,6 +158,12 @@ function onResultsScroll(event: Event) {
   });
   previousScrollTop = currentScrollTop;
   if (shouldLoad) void loadNextPage();
+}
+
+function onResultsWheel(event: WheelEvent) {
+  if (event.deltaY <= 0) return;
+  const element = event.currentTarget as HTMLElement;
+  if (element.scrollHeight - element.scrollTop - element.clientHeight <= 72) void loadNextPage();
 }
 
 function selectRow(row: WorkflowInheritanceSource) {
@@ -207,6 +218,7 @@ watch(
     loading.value = false;
     if (!open) return;
     keyword.value = '';
+    clearSearchTimer();
     selectedKey.value = '';
     void loadFirstPage();
     void nextTick(() => searchInput.value?.focus());
@@ -214,12 +226,16 @@ watch(
   { immediate: true },
 );
 
-watch(keyword, () => {
-  if (!props.open) return;
-  selectedKey.value = '';
-  clearSearchTimer();
-  searchTimer = setTimeout(() => void loadFirstPage(), 280);
-});
+watch(
+  keyword,
+  () => {
+    if (!props.open) return;
+    clearSearchTimer();
+    resetSearch();
+    searchTimer = setTimeout(() => void loadFirstPage(), 280);
+  },
+  { flush: 'sync' },
+);
 
 onBeforeUnmount(() => {
   clearSearchTimer();
@@ -308,7 +324,14 @@ onBeforeUnmount(() => {
           <span v-if="selected">已选择 1 个</span>
         </div>
 
-        <div class="results-panel" @scroll.passive="onResultsScroll">
+        <div
+          ref="resultsPanel"
+          class="results-panel"
+          role="region"
+          aria-label="可继承的 Workflow"
+          @scroll.passive="onResultsScroll"
+          @wheel.passive="onResultsWheel"
+        >
           <template v-if="hasKeyword">
             <button
               v-for="row in rows"

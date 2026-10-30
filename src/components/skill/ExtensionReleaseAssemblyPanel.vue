@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
+import { shouldLoadNextPage } from '../../utils/infiniteScroll';
 import {
   useExtensionHttpAssembly,
   type ExtensionHttpAssemblyContext,
@@ -44,6 +45,8 @@ const inheritOpen = ref(false);
 const uploadOpen = ref(false);
 const sourceDialogOpen = ref(false);
 const sourceSearch = ref('');
+const sourceResults = ref<HTMLElement | null>(null);
+let previousSourceScrollTop = 0;
 const pendingSourceId = ref('');
 const archiveError = ref('');
 const archiveReading = ref(false);
@@ -82,11 +85,47 @@ watch(
   (blocked) => emit('blocked-change', blocked),
   { immediate: true },
 );
-watch([sourceSearch, sourceDialogOpen], ([keyword, open]) => {
-  if (!props.httpContext) return;
-  pendingSourceId.value = '';
-  remote.search(open ? keyword : '');
-});
+watch(
+  [sourceSearch, sourceDialogOpen],
+  ([keyword, open]) => {
+    if (!props.httpContext) return;
+    pendingSourceId.value = '';
+    previousSourceScrollTop = 0;
+    if (sourceResults.value) sourceResults.value.scrollTop = 0;
+    remote.search(open ? keyword : '');
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => JSON.stringify([props.httpContext?.extensionName, props.httpContext?.userId]),
+  () => {
+    pendingSourceId.value = '';
+    sourceDialogOpen.value = false;
+  },
+  { flush: 'sync' },
+);
+
+function onSourcesScroll(event: Event): void {
+  const element = event.currentTarget as HTMLElement;
+  const shouldLoad = shouldLoadNextPage({
+    previousScrollTop: previousSourceScrollTop,
+    scrollTop: element.scrollTop,
+    scrollHeight: element.scrollHeight,
+    clientHeight: element.clientHeight,
+    threshold: 72,
+    loading: remote.searchLoading || controlsDisabled.value,
+    hasMore: remote.searchHasMore,
+  });
+  previousSourceScrollTop = element.scrollTop;
+  if (shouldLoad) void remote.loadMoreSearch();
+}
+
+function onSourcesWheel(event: WheelEvent): void {
+  if (event.deltaY <= 0 || controlsDisabled.value) return;
+  const element = event.currentTarget as HTMLElement;
+  if (element.scrollHeight - element.scrollTop - element.clientHeight <= 72)
+    void remote.loadMoreSearch();
+}
 
 const activeSource = computed(
   () => props.sources.find((source) => source.id === props.modelValue.inheritanceSourceId) ?? null,
@@ -228,9 +267,21 @@ function formatSize(size: number): string {
       <span>{{ targetDescription }}</span>
     </div>
 
+    <p
+      v-if="httpContext && remote.layoutError"
+      class="archive-error release-target-error"
+      role="alert"
+    >
+      {{ remote.layoutError }}
+    </p>
+
     <slot />
 
-    <p v-if="httpContext && remote.error && !sourceDialogOpen" class="archive-error" role="alert">
+    <p
+      v-if="httpContext && remote.error && remote.error !== remote.layoutError && !sourceDialogOpen"
+      class="archive-error"
+      role="alert"
+    >
       {{ remote.error }}
     </p>
     <div v-if="httpContext && remote.ignoredEntries.length" class="bypass-warning" role="alert">
@@ -483,38 +534,64 @@ function formatSize(size: number): string {
           role="alert"
         >
           {{ remote.searchError || remote.error }}
+          <button
+            v-if="remote.searchError"
+            type="button"
+            :disabled="remote.searchLoading || controlsDisabled"
+            @click="remote.retrySearch()"
+          >
+            重试
+          </button>
         </p>
-        <div v-if="httpContext" class="inheritance-options">
-          <p v-if="remote.searchLoading" role="status">正在搜索…</p>
-          <template v-else>
-            <label
-              v-for="source in remote.searchResults"
-              :key="source.extensionName"
-              class="inheritance-option"
-            >
-              <input
-                v-model="pendingSourceId"
-                type="radio"
-                :disabled="controlsDisabled"
-                :value="source.extensionName"
-              />
-              <span>
-                <strong>{{ source.extensionName }}</strong>
-                <span v-if="source.latestVersion"
-                  >v{{ source.latestVersion.replace(/^v/i, '') }}</span
-                >
-                <span>{{ source.sourceDimName }}</span>
-                <span>{{ source.layoutMode === 'testagent' ? 'TestAgent' : 'CodeAgent' }}</span>
-                <small>{{ source.description }}</small>
-                <small>{{
-                  source.hasBypass ? `含 ${source.entryCount} 个旁路文件` : '无旁路文件，仅继承布局'
-                }}</small>
-              </span>
-            </label>
-            <p v-if="!remote.searchResults.length && !remote.searchError" class="inheritance-empty">
-              {{ sourceSearch.trim() ? '未找到匹配的 Extension' : '输入关键字搜索继承来源' }}
-            </p>
-          </template>
+        <div
+          v-if="httpContext"
+          ref="sourceResults"
+          class="inheritance-options"
+          role="region"
+          aria-label="可继承的 Extension"
+          :aria-busy="remote.searchLoading"
+          @scroll.passive="onSourcesScroll"
+          @wheel.passive="onSourcesWheel"
+        >
+          <label
+            v-for="source in remote.searchResults"
+            :key="source.extensionName"
+            class="inheritance-option"
+          >
+            <input
+              v-model="pendingSourceId"
+              type="radio"
+              :disabled="controlsDisabled"
+              :value="source.extensionName"
+            />
+            <span>
+              <strong>{{ source.extensionName }}</strong>
+              <span v-if="source.latestVersion"
+                >v{{ source.latestVersion.replace(/^v/i, '') }}</span
+              >
+              <span>{{ source.sourceDimName }}</span>
+              <span>{{ source.layoutMode === 'testagent' ? 'TestAgent' : 'CodeAgent' }}</span>
+              <small>{{ source.description }}</small>
+              <small>{{
+                source.hasBypass ? `含 ${source.entryCount} 个旁路文件` : '无旁路文件，仅继承布局'
+              }}</small>
+            </span>
+          </label>
+          <p v-if="remote.searchLoading" role="status">
+            {{ remote.searchResults.length ? '正在加载更多…' : '正在搜索…' }}
+          </p>
+          <p
+            v-else-if="!remote.searchResults.length && !remote.searchError"
+            class="inheritance-empty"
+          >
+            {{ sourceSearch.trim() ? '未找到匹配的 Extension' : '输入关键字搜索继承来源' }}
+          </p>
+          <p
+            v-else-if="remote.searchResults.length && !remote.searchHasMore && !remote.searchError"
+            class="inheritance-empty"
+          >
+            已加载全部结果
+          </p>
         </div>
         <div v-else class="inheritance-options">
           <label v-for="source in filteredSources" :key="source.id" class="inheritance-option">
@@ -880,6 +957,15 @@ function formatSize(size: number): string {
   color: #dc2626;
   font-size: 11px;
   font-weight: 600;
+}
+
+.release-target-error {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fef2f2;
+  font-size: 12px;
 }
 
 .archive-file {

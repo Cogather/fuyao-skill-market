@@ -291,7 +291,7 @@ test('page guards publication during deferred upload and packaging during deferr
     if (url === '/scene-activity/scene')
       return success([{ firstScene: '开发', secondScene: '构建', sort: 0 }]);
     if (url === '/extensions/orgs') return success([{ orgCode: 'org-a', orgName: 'Org A' }]);
-    if (url === '/extensions/save') {
+    if (url === '/extensions') {
       saves += 1;
       return new Promise((r) => {
         resolveSave = r;
@@ -774,7 +774,7 @@ test('component changes refresh tree; tree failure stays separate from mutation 
 test('inherit keyword edit invalidates old search and clears selected source before submitting again', async () => {
   const ctx = await mount();
   try {
-    handlers.searchExtensions = () => success([source('old-source')]);
+    handlers.searchExtensions = () => success({ total: 1, list: [source('old-source')] });
     await click(find(ctx.root, 'inherit'));
     await click(find(ctx.root, 'source-old-source'));
     let staleResolve;
@@ -788,12 +788,12 @@ test('inherit keyword edit invalidates old search and clears selected source bef
     const form = nodes(ctx.root).find((node) => node.type === 'form');
     const pending = form.props.onSubmit({ preventDefault() {} });
     await settle();
-    handlers.searchExtensions = () => success([source('fresh-source')]);
+    handlers.searchExtensions = () => success({ total: 1, list: [source('fresh-source')] });
     find(ctx.root, 'inherit-search').props['onUpdate:modelValue']('fresh');
     await Vue.nextTick();
     await form.props.onSubmit({ preventDefault() {} });
     await settle();
-    staleResolve(success([source('stale-source')]));
+    staleResolve(success({ total: 1, list: [source('stale-source')] }));
     await pending;
     await settle();
     assert.match(text(find(ctx.root, 'inherit-results')), /fresh-source/);
@@ -804,20 +804,26 @@ test('inherit keyword edit invalidates old search and clears selected source bef
   }
 });
 
-test('inherit searches cumulatively, excludes target, keeps errors open and applies response', async () => {
+test('inherit searches by page, excludes target, keeps errors open and applies response', async () => {
   const ctx = await mount();
   try {
-    handlers.searchExtensions = ({ limit }) =>
-      success([
-        source('scene-target'),
-        ...Array.from({ length: limit - 1 }, (_, i) => source(`source-${i}`)),
-      ]);
+    handlers.searchExtensions = ({ pageNum, pageSize }) =>
+      success({
+        total: 40,
+        list: [
+          source('scene-target'),
+          ...Array.from({ length: 39 }, (_, i) => source(`source-${i}`)),
+        ].slice((pageNum - 1) * pageSize, pageNum * pageSize),
+      });
     await click(find(ctx.root, 'inherit'));
-    assert.equal(call('searchExtensions')[0].args[0].limit, 20);
+    assert.equal(call('searchExtensions')[0].args[0].pageNum, 1);
+    assert.equal(call('searchExtensions')[0].args[0].pageSize, 20);
     assert.doesNotMatch(text(find(ctx.root, 'inherit-results')), /scene-target/);
     assert.match(text(ctx.root), /Source description.*Product A.*1.2.3.*testagent/);
     await click(find(ctx.root, 'load-more'));
-    assert.equal(call('searchExtensions').at(-1).args[0].limit, 40);
+    assert.equal(call('searchExtensions').at(-1).args[0].pageNum, 2);
+    assert.equal('limit' in call('searchExtensions').at(-1).args[0], false);
+    assert.equal(nodes(ctx.root).filter((n) => n.props.role === 'option').length, 39);
     await click(find(ctx.root, 'source-source-0'));
     handlers.inheritExtensionBypass = () => {
       throw new Error('inherit denied');
@@ -840,20 +846,23 @@ test('inherit searches cumulatively, excludes target, keeps errors open and appl
   }
 });
 
-test('inherit dialog merges an inserted cumulative prefix exactly once and removes backend duplicates', async () => {
+test('inherit dialog merges pages and removes duplicate identities', async () => {
   const ctx = await mount();
   try {
-    handlers.searchExtensions = ({ limit }) =>
-      success(
-        limit === 20
-          ? Array.from({ length: 20 }, (_, i) => source(`A${i + 1}`))
-          : [source('X'), ...Array.from({ length: 39 }, (_, i) => source(`A${i + 1}`))],
-      );
+    handlers.searchExtensions = ({ pageNum }) =>
+      success({
+        total: 40,
+        list:
+          pageNum === 1
+            ? Array.from({ length: 20 }, (_, i) => source(`A${i + 1}`))
+            : [source('X'), ...Array.from({ length: 19 }, (_, i) => source(`A${i + 20}`))],
+      });
     await click(find(ctx.root, 'inherit'));
     await click(find(ctx.root, 'load-more'));
     assert.equal(nodes(ctx.root).filter((n) => n.props['data-testid'] === 'source-X').length, 1);
-    assert.equal(nodes(ctx.root).filter((n) => n.props.role === 'option').length, 40);
-    handlers.searchExtensions = () => success([source('X'), source('X'), source('A1')]);
+    assert.equal(nodes(ctx.root).filter((n) => n.props.role === 'option').length, 39);
+    handlers.searchExtensions = () =>
+      success({ total: 3, list: [source('X'), source('X'), source('A1')] });
     find(ctx.root, 'inherit-search').props['onUpdate:modelValue']('duplicates');
     await Vue.nextTick();
     await nodes(ctx.root)

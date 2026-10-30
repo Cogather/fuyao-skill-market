@@ -25,6 +25,7 @@ const hasMore = ref(false);
 const page = ref(0);
 const searchInput = ref<HTMLInputElement | null>(null);
 const dialog = ref<HTMLElement | null>(null);
+const results = ref<HTMLElement | null>(null);
 const selected = computed(() => rows.value.find((row) => row.extensionName === selectedName.value));
 let sequence = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -82,6 +83,7 @@ function reset() {
   page.value = 0;
   hasMore.value = false;
   loadError.value = '';
+  if (results.value) results.value.scrollTop = 0;
 }
 async function search() {
   clearTimeout(timer);
@@ -103,6 +105,9 @@ function scroll(event: Event) {
   if (element.scrollHeight - element.scrollTop - element.clientHeight < 72 && hasMore.value) {
     void loadPage(page.value + 1);
   }
+}
+function wheel(event: WheelEvent) {
+  if (event.deltaY > 0) scroll(event);
 }
 function keydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
@@ -153,20 +158,25 @@ watch(
       previousFocus = document.activeElement as HTMLElement | null;
     }
     keyword.value = '';
+    clearTimeout(timer);
     void loadPage(1);
     void nextTick(() => searchInput.value?.focus());
   },
   { immediate: true },
 );
-watch(keyword, () => {
-  clearTimeout(timer);
-  reset();
-  if (props.open) {
-    timer = setTimeout(() => {
-      void loadPage(1);
-    }, 250);
-  }
-});
+watch(
+  keyword,
+  () => {
+    clearTimeout(timer);
+    reset();
+    if (props.open) {
+      timer = setTimeout(() => {
+        void loadPage(1);
+      }, 250);
+    }
+  },
+  { flush: 'sync' },
+);
 onBeforeUnmount(() => {
   sequence += 1;
   clearTimeout(timer);
@@ -206,12 +216,14 @@ onBeforeUnmount(() => {
         继承会更新当前 Extension 的目录布局与旁路配置。目标保护冲突产生的忽略文件将在成功后展示。
       </p>
       <div
+        ref="results"
         data-testid="inherit-results"
         class="inherit-results"
         role="listbox"
         aria-label="可继承的 Extension"
         :aria-busy="loading"
-        @scroll="scroll"
+        @scroll.passive="scroll"
+        @wheel.passive="wheel"
       >
         <button
           v-for="row in rows"
@@ -233,7 +245,9 @@ onBeforeUnmount(() => {
             ><span>{{ row.hasBypass ? `含 ${row.entryCount} 个旁路文件` : '仅继承布局' }}</span>
           </div>
         </button>
-        <p v-if="loading" class="empty" role="status">正在搜索…</p>
+        <p v-if="loading" class="empty" role="status">
+          {{ rows.length ? '正在加载更多…' : '正在搜索…' }}
+        </p>
         <p v-else-if="!rows.length && !loadError" class="empty">未找到可继承的 Extension</p>
         <button
           v-if="hasMore"
@@ -245,8 +259,19 @@ onBeforeUnmount(() => {
         >
           加载更多
         </button>
+        <p v-if="!loading && rows.length && !hasMore" class="empty">已加载全部结果</p>
       </div>
-      <p v-if="loadError || error" class="inherit-error" role="alert">{{ error || loadError }}</p>
+      <p v-if="loadError || error" class="inherit-error" role="alert">
+        {{ error || loadError }}
+        <button
+          v-if="loadError"
+          type="button"
+          :disabled="busy || loading"
+          @click="loadPage(page + 1)"
+        >
+          重试
+        </button>
+      </p>
       <footer>
         <button type="button" :disabled="busy" @click="close">取消</button
         ><button

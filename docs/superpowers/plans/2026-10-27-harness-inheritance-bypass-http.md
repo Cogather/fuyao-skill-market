@@ -31,9 +31,9 @@
 - Test: `tests/workflow-inheritance.tests.mjs`
 - Test: `tests/workflow-inheritance-dialog.tests.mjs`
 
-- [ ] Write failing adapter tests requiring `GET /scenes/search` with `userId`, literal keyword, and cumulative limit, plus `POST /scene/copy` with exact source/target dimensions.
+- [ ] Write failing adapter tests requiring `GET /scenes/search` with `userId`, literal keyword, `pageNum` and `pageSize`, plus `POST /scene/copy` with exact source/target dimensions.
 - [ ] Run both tests and verify they fail on `/workflow/list`, detail mapping, and overwrite wording.
-- [ ] Implement typed search/copy service methods, response normalization, stable keys, current-scene exclusion, and cumulative-limit paging.
+- [ ] Implement typed search/copy service methods, response normalization, stable keys, current-scene exclusion, and lazy paging driven by `data.list` / `data.total`.
 - [ ] Change HTTP confirmation to call copy, refresh the target scope, select the returned scene code, and remove the old detail-copy-save path.
 - [ ] Update dialog fields and warning to create-new/same-name-rejected semantics; keep Mock inheritance behavior intact.
 - [ ] Re-run focused tests to green.
@@ -62,7 +62,7 @@
 - Modify: `src/services/skillMarket/extensionPublishMock.ts`
 - Test: `tests/extension-bypass-http.tests.mjs`
 
-- [ ] Write failing tests for upload FormData, clear, layout, structure tree, download URL validation, bypass inheritance, and Extension search with cumulative limit.
+- [ ] Write failing tests for upload FormData, clear, layout, structure tree, download URL validation, bypass inheritance, and Extension search with `pageNum/pageSize` and total-driven lazy loading.
 - [ ] Run the new test and verify every missing method fails.
 - [ ] Add exact HTTP methods and typed normalization. Reject missing user/scene identity, non-zip or >50MB uploads, malformed responses, and unsafe download URLs.
 - [ ] Re-run adapter tests to green.
@@ -78,7 +78,7 @@
 - Test: `tests/extension-detail-http.tests.mjs`
 - Test: `tests/extension-detail-release-type.tests.mjs`
 
-- [ ] Change tests to require `GET /extensions/detail`, map `sceneExtensionCode`, `layoutMode`, `hasBypass`, and `bypassEntries`, and require `POST /extensions/save` with `inheritBypass` but no layout.
+- [ ] Change tests to require `GET /extensions/detail`, map `sceneExtensionCode`, `layoutMode`, `hasBypass`, and `bypassEntries`, and require `POST /extensions` with `inheritBypass` but no layout.
 - [ ] Run tests and verify red on the old methods and missing fields.
 - [ ] Implement the minimal route, query, type, mapping, and publish input changes.
 - [ ] Re-run focused tests to green.
@@ -107,7 +107,7 @@
 - Test: `tests/extension-detail-http.tests.mjs`
 - Test: `e2e/specs/extension-detail-http.spec.ts`
 
-- [ ] Add a failing HTTP test showing bypass entries in the publish dialog, unchecking inheritance, and sending `inheritBypass: false` to `/extensions/save`.
+- [ ] Add a failing HTTP test showing bypass entries in the publish dialog, unchecking inheritance, and sending `inheritBypass: false` to `/extensions`.
 - [ ] Implement the default-checked state, file list, warning, and publish input wiring; omit layout from save.
 - [ ] Re-run service and E2E publication tests.
 

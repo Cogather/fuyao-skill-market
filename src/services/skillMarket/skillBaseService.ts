@@ -971,7 +971,8 @@ export const skillBaseService = {
   searchExtensions: (params: {
     userId: string;
     keyword: string;
-    limit: number;
+    pageNum: number;
+    pageSize: number;
   }): Promise<unknown> =>
     httpRequest.harnessApi({ url: '/extensions/search', method: 'GET', params }),
   // 查询用户可发布组织列表
@@ -994,7 +995,7 @@ export const skillBaseService = {
   // Extension 保存
   saveExtension: (params: any, body: any): any => {
     return httpRequest.harnessApi<any>({
-      url: '/extensions/save',
+      url: '/extensions',
       method: 'POST',
       data: { ...body, inheritBypass: body.inheritBypass ?? true },
       params,

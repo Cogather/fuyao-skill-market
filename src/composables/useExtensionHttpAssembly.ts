@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { mergeUniquePage } from '../utils/infiniteScroll';
 import {
   buildHttpExtensionTree,
   extensionAssemblyHttp,
@@ -50,10 +51,14 @@ export function useExtensionHttpAssembly(
   const mutating = ref(false);
   const pendingLayout = ref<ExtensionLayout | null>(null);
   const error = ref('');
+  const layoutError = ref('');
   const treeError = ref('');
   const searchError = ref('');
   const searchLoading = ref(false);
   const searchResults = ref<ExtensionSearchItem[]>([]);
+  const searchHasMore = ref(false);
+  let searchPage = 0;
+  let searchKeyword = '';
   let generation = 0;
   let layoutDrainGeneration: number | null = null;
   let treeSequence = 0;
@@ -111,6 +116,7 @@ export function useExtensionHttpAssembly(
     const epoch = generation;
     mutating.value = true;
     error.value = '';
+    layoutError.value = '';
     try {
       const result = await request();
       if (epoch !== generation) return false;
@@ -150,13 +156,14 @@ export function useExtensionHttpAssembly(
       while (epoch === generation && pendingLayout.value !== null) {
         const next = pendingLayout.value;
         if (next !== layout.value) {
-          await mutate(
+          const saved = await mutate(
             () => extensionAssemblyHttp.setLayout({ ...identity(), layout: next }),
             (result) => {
               layout.value = result.layoutMode;
               update({ target: result.layoutMode === 'testagent' ? 'testagent' : 'codeagent' });
             },
           );
+          if (epoch === generation) layoutError.value = saved ? '' : error.value;
         }
         if (epoch !== generation) return;
         // 没有新选择时结束；失败也恢复已保存的布局，避免自动重复请求。
@@ -169,6 +176,8 @@ export function useExtensionHttpAssembly(
 
   function selectTarget(target: ExtensionReleaseTarget): void {
     if (!context()) return;
+    if (error.value === layoutError.value) error.value = '';
+    layoutError.value = '';
     pendingLayout.value = target === 'testagent' ? 'testagent' : 'standard';
     void savePendingLayout();
   }
@@ -227,6 +236,7 @@ export function useExtensionHttpAssembly(
     const epoch = generation;
     mutating.value = true;
     error.value = '';
+    layoutError.value = '';
     try {
       const result = await extensionAssemblyHttp.download(identity());
       if (epoch !== generation) return false;
@@ -240,31 +250,54 @@ export function useExtensionHttpAssembly(
     }
   }
 
+  async function loadSearchPage(pageNum: number): Promise<void> {
+    if (!context() || !searchKeyword) return;
+    const sequence = searchSequence;
+    const epoch = generation;
+    searchLoading.value = true;
+    searchError.value = '';
+    try {
+      const result = await extensionAssemblyHttp.searchExtensions({
+        userId: identity().userId,
+        keyword: searchKeyword,
+        pageNum,
+        pageSize: 20,
+      });
+      if (epoch !== generation || sequence !== searchSequence) return;
+      searchResults.value = mergeUniquePage(
+        searchResults.value,
+        result.list.filter((item) => item.extensionName !== identity().extensionName),
+        (item) => item.extensionName,
+      );
+      searchPage = result.pageNo;
+      searchHasMore.value = result.hasMore;
+    } catch (cause) {
+      if (epoch === generation && sequence === searchSequence) searchError.value = message(cause);
+    } finally {
+      if (epoch === generation && sequence === searchSequence) searchLoading.value = false;
+    }
+  }
+
+  async function loadMoreSearch(): Promise<void> {
+    if (searchLoading.value || !searchHasMore.value) return;
+    await loadSearchPage(searchPage + 1);
+  }
+
+  async function retrySearch(): Promise<void> {
+    if (searchLoading.value) return;
+    await loadSearchPage(searchPage + 1);
+  }
+
   function search(keyword: string): void {
-    const sequence = ++searchSequence;
+    searchSequence += 1;
     clearTimeout(searchTimer);
+    searchKeyword = keyword.trim();
+    searchPage = 0;
+    searchHasMore.value = false;
     searchResults.value = [];
     searchError.value = '';
-    searchLoading.value = Boolean(keyword.trim());
-    if (!keyword.trim() || !context()) return;
-    const epoch = generation;
-    searchTimer = setTimeout(async () => {
-      try {
-        const results = await extensionAssemblyHttp.searchExtensions({
-          userId: identity().userId,
-          keyword: keyword.trim(),
-          limit: 20,
-        });
-        if (epoch === generation && sequence === searchSequence)
-          searchResults.value = results.filter(
-            (result) => result.extensionName !== identity().extensionName,
-          );
-      } catch (cause) {
-        if (epoch === generation && sequence === searchSequence) searchError.value = message(cause);
-      } finally {
-        if (epoch === generation && sequence === searchSequence) searchLoading.value = false;
-      }
-    }, 300);
+    searchLoading.value = Boolean(searchKeyword && context());
+    if (searchLoading.value) searchTimer = setTimeout(() => void loadSearchPage(1), 300);
   }
 
   watch(
@@ -277,6 +310,7 @@ export function useExtensionHttpAssembly(
       mutating.value = false;
       treeLoading.value = false;
       error.value = '';
+      layoutError.value = '';
       treeError.value = '';
       treeEntries.value = [];
       sourceName.value = '';
@@ -320,11 +354,15 @@ export function useExtensionHttpAssembly(
     mutating,
     blocked,
     error,
+    layoutError,
     treeError,
     treeLoading,
     searchError,
     searchLoading,
     searchResults,
+    searchHasMore,
+    loadMoreSearch,
+    retrySearch,
     refreshTree,
     selectTarget,
     upload,

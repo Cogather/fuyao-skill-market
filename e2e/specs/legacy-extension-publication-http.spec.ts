@@ -113,7 +113,7 @@ test.describe('旧资产清单 Extension 场景绑定与发布', () => {
       } else if (path.endsWith('/retry')) {
         retryRequests.push(request);
         data = 'retry-1';
-      } else if (path === '/api/harness/extensions/save' && request.method() === 'POST') {
+      } else if (path === '/api/harness/extensions' && request.method() === 'POST') {
         publishRequests.push(request);
         data = 'release-1';
       }

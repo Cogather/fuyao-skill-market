@@ -12,16 +12,21 @@ try {
     '/src/services/skillMarket/extensionAssemblyHttp.ts',
   );
   const calls = [];
-  let response = { code: 0, data: [] };
+  let response = { code: 0, data: { list: [], total: 0 } };
   request.harnessApi = async (config) => {
     calls.push(config);
     return response;
   };
-  await extensionAssemblyHttp.searchScenes({ userId: 'u1', keyword: '测试%_', limit: 20 });
+  await extensionAssemblyHttp.searchScenes({
+    userId: 'u1',
+    keyword: '测试%_',
+    pageNum: 1,
+    pageSize: 20,
+  });
   assert.deepEqual(calls.pop(), {
     url: '/scenes/search',
     method: 'GET',
-    params: { userId: 'u1', keyword: '测试%_', limit: 20 },
+    params: { userId: 'u1', keyword: '测试%_', pageNum: 1, pageSize: 20 },
   });
   const copy = {
     sourceDimType: '部门级',
@@ -112,22 +117,25 @@ try {
     method: 'GET',
     params: identity,
   });
-  const search = { userId: 'u1', keyword: 'unit', limit: 20 };
+  const search = { userId: 'u1', keyword: 'unit', pageNum: 1, pageSize: 20 };
   response = {
     code: 0,
-    data: [
-      {
-        extensionName: 'source',
-        hasBypass: false,
-        entryCount: 0,
-        layoutMode: 'testagent',
-        description: '',
-        sourceDimName: '研发部',
-        latestVersion: '',
-      },
-    ],
+    data: {
+      total: 1,
+      list: [
+        {
+          extensionName: 'source',
+          hasBypass: false,
+          entryCount: 0,
+          layoutMode: 'testagent',
+          description: '',
+          sourceDimName: '研发部',
+          latestVersion: '',
+        },
+      ],
+    },
   };
-  assert.equal((await extensionAssemblyHttp.searchExtensions(search))[0].hasBypass, false);
+  assert.equal((await extensionAssemblyHttp.searchExtensions(search)).list[0].hasBypass, false);
   assert.deepEqual(calls.pop(), { url: '/extensions/search', method: 'GET', params: search });
   const entries = [
     { path: 'test-extension/codeagent-extension.json', type: 'file', size: null, source: 'SYSTEM' },

@@ -6,7 +6,7 @@
 
 **Scope:** Endpoints 3–6 and 8–11 power the existing release UI. Endpoints 1, 2 and 7 get tested service methods only. Existing red-box form markup stays intact.
 
-**Contract changes:** Scene detail uses GET with the existing lookup fields as query parameters. Save uses POST /extensions/save and conditionally adds inheritBypass. Save never includes layout; layout uses standard/testagent through /extensions/layout. ZIP uploads contain the original file and userId/extensionName/layout as multipart fields, with a 50 MiB limit.
+**Contract changes:** Scene detail uses GET with the existing lookup fields as query parameters. Save uses POST /extensions and conditionally adds inheritBypass. Save never includes layout; layout uses standard/testagent through /extensions/layout. ZIP uploads contain the original file and userId/extensionName/layout as multipart fields, with a 50 MiB limit.
 
 ## Tasks
 

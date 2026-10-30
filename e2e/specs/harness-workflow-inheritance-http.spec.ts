@@ -50,6 +50,7 @@ async function interceptHarness(page: Page, authorized = true) {
   const requests: Request[] = [];
   let copied = false;
   let failCopy = true;
+  let failSearchPage: number | null = null;
   const source = (index: number | string) => ({
     sourceDimType: '产品级',
     sourceDimCode: 'source-product',
@@ -125,8 +126,15 @@ async function interceptHarness(page: Page, authorized = true) {
         });
         return;
       }
-      const limit = Number(url.searchParams.get('limit'));
-      const rows = Array.from({ length: limit === 20 ? 20 : 39 }, (_, index) => source(index + 1));
+      const pageNum = Number(url.searchParams.get('pageNum'));
+      const pageSize = Number(url.searchParams.get('pageSize'));
+      if (pageNum === failSearchPage) {
+        await route.fulfill({
+          json: { meta: { success: false, message: '下一页查询失败，请重试' }, data: null },
+        });
+        return;
+      }
+      const rows = Array.from({ length: 41 }, (_, index) => source(index + 1));
       rows[0] = {
         ...source(1),
         sourceDimCode: 'outside-product',
@@ -139,7 +147,13 @@ async function interceptHarness(page: Page, authorized = true) {
         firstScene: '目标一级',
         secondScene: '当前场景',
       };
-      data = limit === 20 ? rows : [source('X'), ...rows];
+      rows[20] = source('X');
+      data = {
+        list: rows.slice((pageNum - 1) * pageSize, pageNum * pageSize),
+        total: rows.length,
+        pageNum,
+        pageSize,
+      };
     } else if (url.pathname.endsWith('/scene/copy')) {
       if (failCopy) {
         await route.fulfill({
@@ -154,6 +168,9 @@ async function interceptHarness(page: Page, authorized = true) {
   });
   return {
     requests,
+    setFailedSearchPage: (pageNum: number | null) => {
+      failSearchPage = pageNum;
+    },
     allowCopy: () => {
       failCopy = false;
     },
@@ -163,7 +180,7 @@ async function interceptHarness(page: Page, authorized = true) {
 test.describe('Harness scene inheritance HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', 'Requires HTTP transport');
 
-  test('parent identity, cumulative search, copy retry and returned-code selection use the current Harness workspace', async ({
+  test('parent identity, paged search, copy retry and returned-code selection use the current Harness workspace', async ({
     page,
   }) => {
     const fixture = await interceptHarness(page);
@@ -191,12 +208,22 @@ test.describe('Harness scene inheritance HTTP', () => {
     await expect(first).toContainText('产品级');
     await expect(first).toContainText('source-2');
     await expect(first).toContainText('3 个活动');
+    const results = dialog.getByRole('region', { name: '可继承的 Workflow' });
+    await expect(results.getByRole('button')).toHaveCount(19);
+    await expect(dialog.getByText('找到 40 个可用 Workflow', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: /Renamed current scene/ })).toHaveCount(0);
-    await dialog.locator('.results-panel').evaluate((element) => {
+    await results.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
     });
     const inserted = dialog.getByRole('button', { name: /Source workflow X/ });
     await expect(inserted).toHaveCount(1);
+    await expect(results.getByRole('button')).toHaveCount(39);
+    await results.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(results.getByRole('button')).toHaveCount(40);
+    await expect(results.getByText('已加载全部结果', { exact: true })).toBeVisible();
+    await results.dispatchEvent('wheel', { deltaY: 300 });
     await inserted.click();
     const confirm = dialog.getByRole('button', { name: '确认继承', exact: true });
     await confirm.click();
@@ -214,10 +241,13 @@ test.describe('Harness scene inheritance HTTP', () => {
     expect(
       searchRequests
         .filter((request) => new URL(request.url()).searchParams.get('keyword') === 'code % _')
-        .map((request) => Number(new URL(request.url()).searchParams.get('limit'))),
-    ).toEqual([20, 40]);
-    for (const request of searchRequests)
+        .map((request) => Number(new URL(request.url()).searchParams.get('pageNum'))),
+    ).toEqual([1, 2, 3]);
+    for (const request of searchRequests) {
       expect(new URL(request.url()).searchParams.get('userId')).toBe('parent-scene-user');
+      expect(new URL(request.url()).searchParams.get('pageSize')).toBe('20');
+      expect(new URL(request.url()).searchParams.has('limit')).toBe(false);
+    }
     const copies = fixture.requests.filter((request) =>
       new URL(request.url()).pathname.endsWith('/scene/copy'),
     );
@@ -285,7 +315,10 @@ test.describe('Harness scene inheritance HTTP', () => {
           new URL(request.url()).searchParams.get('dimCode') === 'source-product',
       ),
     ).toBe(false);
-    expect(fixture.requests.filter((request) => request.method() === 'POST')).toEqual(copies);
+    expect(fixture.requests.filter((request) => request.method() === 'POST')).toEqual([
+      ...copies,
+      ...inheritedDetails,
+    ]);
 
     const start = fixture.requests.length;
     await selectHarnessOption(harness.scenariosPanel.getByRole('combobox', { name: '选择层级' }), {
@@ -310,6 +343,53 @@ test.describe('Harness scene inheritance HTTP', () => {
         expect(params.get('dimCode')).toBe('allowed-code');
       }
     }
+  });
+
+  test('next-page failure keeps candidates for retry and a new search resets pagination', async ({
+    page,
+  }) => {
+    const fixture = await interceptHarness(page);
+    await mountHarness(page);
+    const harness = new HarnessManagementPage(page);
+    await harness.scenariosPanel
+      .getByRole('button', { name: '继承 Workflow', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: '继承已有 Workflow', exact: true });
+    const search = dialog.getByRole('searchbox');
+    const results = dialog.getByRole('region', { name: '可继承的 Workflow' });
+    await search.fill('Source');
+    await search.press('Enter');
+    await expect(results.getByRole('button')).toHaveCount(19);
+    const selected = results.getByRole('button', { name: /Source workflow 2 / });
+    await selected.click();
+    fixture.setFailedSearchPage(2);
+    await results.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(results.getByRole('alert')).toContainText('下一页查询失败，请重试');
+    await expect(selected).toHaveAttribute('aria-pressed', 'true');
+    fixture.setFailedSearchPage(null);
+    await results.getByRole('button', { name: '重试', exact: true }).click();
+    await expect(results.getByRole('button')).toHaveCount(39);
+    await expect(selected).toHaveAttribute('aria-pressed', 'true');
+    await search.fill('new keyword');
+    await search.press('Enter');
+    await expect(results.getByRole('button')).toHaveCount(19);
+    await expect(dialog.getByRole('button', { name: '确认继承', exact: true })).toBeDisabled();
+    expect(await results.evaluate((element) => element.scrollTop)).toBe(0);
+    const searches = fixture.requests.filter((request) =>
+      new URL(request.url()).pathname.endsWith('/scenes/search'),
+    );
+    expect(
+      searches
+        .filter((request) => new URL(request.url()).searchParams.get('keyword') === 'Source')
+        .map((request) => new URL(request.url()).searchParams.get('pageNum')),
+    ).toEqual(['1', '2', '2']);
+    expect(
+      searches
+        .filter((request) => new URL(request.url()).searchParams.get('keyword') === 'new keyword')
+        .map((request) => new URL(request.url()).searchParams.get('pageNum')),
+    ).toEqual(['1']);
   });
 
   test('product writes remain reachable without department grants; department scope sends no request', async ({

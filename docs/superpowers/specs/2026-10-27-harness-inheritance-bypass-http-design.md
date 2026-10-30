@@ -8,7 +8,7 @@
 
 ## 场景流继承
 
-继承面板在 HTTP 模式调用 `GET /scenes/search`，传 `userId`、trim 后的 `keyword` 和递增的 `limit`。接口没有页码或游标，因此懒加载使用 20、40、60、80、100 的累计上限：每次响应按源维度、场景和场景编码生成稳定键并去重，只追加新条目；返回条数小于本次 limit 或 limit 已到 100 时结束加载。Mock 模式仍使用本地分页。
+继承面板在 HTTP 模式调用 `GET /scenes/search`，传 `userId`、trim 后的 `keyword`、`pageNum`（从 1 开始）和 `pageSize=20`，不再传 `limit`。读取响应 `data.list` 和 `data.total`；滚动到底且仍有未取完的页时请求下一页，按源维度和场景编码去重追加，不设 100 条上限。排除当前场景只调整展示总数，不影响服务端分页进度。更换关键词清空列表与选择、回到顶部并重新请求第一页；下一页失败保留已加载内容和选中项，支持重试。Mock 模式仍使用本地分页。
 
 搜索项展示工作流名、一级/二级场景、来源维度名称、维度类型、场景编码和活动数。当前场景按 `sourceDimType + sourceDimCode + sceneExtensionCode` 排除，避免把自身作为来源。
 
@@ -43,7 +43,7 @@ Extension 发布页在当前场景内容区增加“打包与旁路”卡片，�
 2. 旁路文件：选择一个 `.zip`，前端先校验扩展名和 50MB 上限，再以 multipart 调用 `POST /extensions/bypass`。接受项普通展示，忽略项使用警示样式显示 `reason`。
 3. 移除旁路：有旁路时调用 `POST /extensions/bypass/clear`，二次确认后清空文件清单但保留当前布局。
 4. 下载：调用 `GET /extensions/bypass/download` 获取预签名 URL，再由浏览器打开；不缓存过期 URL。
-5. 继承旁路：打开独立居中弹窗，`GET /extensions/search` 按 Extension 名、二级场景名或工作流名搜索。沿用累计 limit 懒加载；条目展示来源、版本、布局和旁路文件数。确认后调用 `POST /extensions/bypass/inherit`，目标为当前场景编码。结果中的接受项和被剥离项立即显示，布局跟随服务端响应，并刷新完整目录树。
+5. 继承旁路：打开独立居中弹窗，`GET /extensions/search` 按 Extension 名、二级场景名或工作流名搜索，传 `userId/keyword/pageNum/pageSize`，每页 20 条，不传 `limit`。发布页「选择继承源」和旁路继承弹窗均读取 `data.list/data.total`，滚动到底按页去重追加，无 100 条上限；排除当前 Extension 不影响分页进度。追加加载和失败重试保留已有条目及选择，更换关键词清空列表、选择与滚动位置，并忽略迟到响应。条目展示来源、版本、布局和旁路文件数。确认后调用 `POST /extensions/bypass/inherit`，目标为当前场景编码。结果中的接受项和被剥离项立即显示，布局跟随服务端响应，并刷新完整目录树。
 6. 完整目录树：根据当前 `sceneExtensionCode`、布局和页面现有组件清单调用 `POST /extensions/structure/tree?userId=...`，Content-Type 为 `application/json`。Body 为 `{ extensionName, layout, components }`，组件清单以对象数组传递；响应按 `SYSTEM`、`COMPONENT`、`FILE` 着色，布局、组件或旁路变化后刷新。
 
 异步操作分别维护 loading/error 状态；请求期间禁用会产生冲突的按钮，旧响应不能覆盖已经切换的场景。
@@ -52,7 +52,7 @@ Extension 发布页在当前场景内容区增加“打包与旁路”卡片，�
 
 打开发布弹窗时使用已加载的详情元数据。`hasBypass=true` 时显示“发布时继承当前旁路文件”复选框，默认勾选，并列出 `bypassEntries` 的路径和格式化大小；取消勾选只影响本次发布，不立即清除编辑态旁路。
 
-`POST /extensions/save` 保留现有用户、维度、组织、组件和发布通道参数，Body 增加 `inheritBypass`：有旁路时发送用户当前选择；无旁路时发送 `true` 以保持存量零感知。发布请求不传 layout。发布成功后沿用现有刷新和历史逻辑。
+`POST /extensions` 保留现有用户、维度、组织、组件和发布通道参数，Body 增加 `inheritBypass`：有旁路时发送用户当前选择；无旁路时发送 `true` 以保持存量零感知。发布请求不传 layout。发布成功后沿用现有刷新和历史逻辑。
 
 ## 错误、安全与兼容
 

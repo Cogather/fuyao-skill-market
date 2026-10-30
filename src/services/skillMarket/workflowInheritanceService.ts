@@ -79,52 +79,54 @@ export async function queryWorkflowInheritancePage(
 ): Promise<WorkflowInheritancePage> {
   const pageNo = Math.max(1, Math.floor(query.pageNo));
   const pageSize = Math.max(1, Math.floor(query.pageSize));
-  const limit = Math.min(pageNo * pageSize, 100);
-  const data = designData<unknown>(
+  const data = designData<{ list: unknown[]; total: number }>(
     await harnessWorkflowService.searchScenes({
       userId: query.userId,
       keyword: query.keyword ?? '',
-      limit,
+      pageNum: pageNo,
+      pageSize,
     }),
     '场景搜索失败',
   );
-  if (!Array.isArray(data)) throw new Error('场景搜索响应缺少有效的场景列表');
-  const rows: WorkflowSceneSearchRow[] = data
-    .map((value) => {
-      if (
-        !value ||
-        typeof value !== 'object' ||
-        !['sourceDimType', 'sourceDimCode', 'firstScene', 'secondScene'].every(
-          (key) => typeof value[key] === 'string',
-        )
+  if (!data || !Array.isArray(data.list)) throw new Error('场景搜索响应缺少有效的场景列表');
+  if (!Number.isSafeInteger(data.total) || data.total < 0)
+    throw new Error('场景搜索响应缺少有效的总数量');
+  const rows: WorkflowSceneSearchRow[] = data.list.map((value) => {
+    const row = value as Record<string, unknown> | null;
+    if (
+      !row ||
+      typeof row !== 'object' ||
+      !['sourceDimType', 'sourceDimCode', 'firstScene', 'secondScene'].every(
+        (key) => typeof row[key] === 'string',
       )
-        throw new Error('场景搜索响应缺少有效的场景标识');
-      return {
-        sourceDimType: value.sourceDimType,
-        sourceDimCode: value.sourceDimCode,
-        sourceDimName: typeof value.sourceDimName === 'string' ? value.sourceDimName : '',
-        firstScene: value.firstScene,
-        secondScene: value.secondScene,
-        sceneExtensionCode:
-          typeof value.sceneExtensionCode === 'string' ? value.sceneExtensionCode : null,
-        flowName: typeof value.flowName === 'string' ? value.flowName : null,
-        activityCount:
-          Number.isSafeInteger(value.activityCount) && value.activityCount >= 0
-            ? value.activityCount
-            : null,
-      };
-    })
-    .slice(0, limit);
-  const hasMore = data.length >= limit && limit < 100;
+    )
+      throw new Error('场景搜索响应缺少有效的场景标识');
+    return {
+      sourceDimType: row.sourceDimType as string,
+      sourceDimCode: row.sourceDimCode as string,
+      sourceDimName: typeof row.sourceDimName === 'string' ? row.sourceDimName : '',
+      firstScene: row.firstScene as string,
+      secondScene: row.secondScene as string,
+      sceneExtensionCode:
+        typeof row.sceneExtensionCode === 'string' ? row.sceneExtensionCode : null,
+      flowName: typeof row.flowName === 'string' ? row.flowName : null,
+      activityCount:
+        typeof row.activityCount === 'number' &&
+        Number.isSafeInteger(row.activityCount) &&
+        row.activityCount >= 0
+          ? row.activityCount
+          : null,
+    };
+  });
   const uniqueRows = [...new Map(rows.map((row) => [workflowInheritanceKey(row), row])).values()];
   const currentIncluded = Boolean(
     current && uniqueRows.some((row) => isSameWorkflow(row, current)),
   );
   return {
-    total: uniqueRows.length,
+    total: data.total,
     pageNo,
     pageSize,
-    hasMore,
+    hasMore: pageNo * pageSize < data.total,
     excludedCurrent: currentIncluded,
     list: uniqueRows
       .filter((row) => !current || !isSameWorkflow(row, current))

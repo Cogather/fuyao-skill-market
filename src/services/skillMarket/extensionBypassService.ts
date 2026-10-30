@@ -353,34 +353,34 @@ export async function queryExtensionInheritancePage(
       pageSize,
     });
   }
-  const limit = Math.min(pageNo * pageSize, 100);
-  const result = data(await skillBaseService.searchExtensions({ userId, keyword, limit }));
-  if (!Array.isArray(result)) {
+  const result = record(
+    data(await skillBaseService.searchExtensions({ userId, keyword, pageNum: pageNo, pageSize })),
+  );
+  if (!Array.isArray(result.list)) {
     throw new Error('Extension 搜索列表无效');
   }
-  const rows = result
-    .map((value): ExtensionInheritanceSource => {
-      const row = record(value);
-      if (typeof row.hasBypass !== 'boolean') {
-        throw new Error('Extension 搜索旁路状态无效');
-      }
-      return {
-        extensionName: requiredText(row.extensionName, 'extensionName'),
-        description: optionalText(row.description),
-        layoutMode: normalizeExtensionLayout(row.layoutMode),
-        hasBypass: row.hasBypass,
-        entryCount: nonNegativeInteger(row.entryCount),
-        latestVersion: optionalText(row.latestVersion),
-        sourceDimName: optionalText(row.sourceDimName),
-      };
-    })
-    .slice(0, limit);
+  const total = nonNegativeInteger(result.total);
+  const rows = result.list.map((value): ExtensionInheritanceSource => {
+    const row = record(value);
+    if (typeof row.hasBypass !== 'boolean') {
+      throw new Error('Extension 搜索旁路状态无效');
+    }
+    return {
+      extensionName: requiredText(row.extensionName, 'extensionName'),
+      description: optionalText(row.description),
+      layoutMode: normalizeExtensionLayout(row.layoutMode),
+      hasBypass: row.hasBypass,
+      entryCount: nonNegativeInteger(row.entryCount),
+      latestVersion: optionalText(row.latestVersion),
+      sourceDimName: optionalText(row.sourceDimName),
+    };
+  });
   const uniqueRows = [...new Map(rows.map((row) => [row.extensionName, row])).values()];
   return {
     list: uniqueRows,
-    total: uniqueRows.length,
+    total,
     pageNo,
     pageSize,
-    hasMore: result.length >= limit && limit < 100,
+    hasMore: pageNo * pageSize < total,
   };
 }

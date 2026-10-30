@@ -499,7 +499,7 @@ test.describe('Harness 工作流服务端列表', () => {
           : '# 执行 Command\n\n执行接口生成命令。';
       return route.fulfill({ json: success({ content }) });
     });
-    await page.route(/\/api\/harness\/extensions\/save(?:\?.*)?$/, (route) => {
+    await page.route(/\/api\/harness\/extensions(?:\?.*)?$/, (route) => {
       publishRequests.push(route.request());
       return route.fulfill({ json: success({ extensionId: 'extension-release-1' }) });
     });

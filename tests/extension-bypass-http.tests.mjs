@@ -84,8 +84,12 @@ for (const [name, args, expected] of [
   ],
   [
     'searchExtensions',
-    [{ userId: 'u', keyword: '%_', limit: 40 }],
-    { url: '/extensions/search', method: 'GET', params: { userId: 'u', keyword: '%_', limit: 40 } },
+    [{ userId: 'u', keyword: '%_', pageNum: 2, pageSize: 20 }],
+    {
+      url: '/extensions/search',
+      method: 'GET',
+      params: { userId: 'u', keyword: '%_', pageNum: 2, pageSize: 20 },
+    },
   ],
 ]) {
   test(`HTTP ${name} sends its exact contract`, async () => {
@@ -357,7 +361,7 @@ test('inherit puts user in query and source/target scene identities in JSON', as
   ]);
 });
 
-test('search uses cumulative limits, literal trimmed keyword, full responses and explicit exhaustion', async () => {
+test('search uses pageNum/pageSize, literal trimmed keywords and backend totals without a 100-row cap', async () => {
   const api = await adapter();
   const rows = Array.from({ length: 100 }, (_, i) => ({
     extensionName: `scene-${i + 1}`,
@@ -368,7 +372,7 @@ test('search uses cumulative limits, literal trimmed keyword, full responses and
     latestVersion: '1.0',
     sourceDimName: 'Product',
   }));
-  reset(rows.slice(0, 40));
+  reset({ list: rows.slice(20, 40), total: 140 });
   const page = await api.queryExtensionInheritancePage({
     userId: ' user-parent ',
     keyword: ' %_ ',
@@ -379,13 +383,14 @@ test('search uses cumulative limits, literal trimmed keyword, full responses and
     {
       url: '/extensions/search',
       method: 'GET',
-      params: { userId: 'user-parent', keyword: '%_', limit: 40 },
+      params: { userId: 'user-parent', keyword: '%_', pageNum: 2, pageSize: 20 },
     },
   ]);
   assert.equal(page.hasMore, true);
-  assert.equal(page.list.length, 40);
+  assert.equal(page.total, 140);
+  assert.equal(page.list.length, 20);
   assert.deepEqual(page.list[0], {
-    extensionName: 'scene-1',
+    extensionName: 'scene-21',
     description: 'description',
     layoutMode: 'testagent',
     hasBypass: true,
@@ -393,19 +398,20 @@ test('search uses cumulative limits, literal trimmed keyword, full responses and
     latestVersion: '1.0',
     sourceDimName: 'Product',
   });
-  reset(rows.slice(0, 23));
+  reset({ list: rows.slice(20, 23), total: 23 });
   const short = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 2, pageSize: 20 });
   assert.equal(short.hasMore, false);
   assert.deepEqual(
     short.list.map((row) => row.extensionName),
-    rows.slice(0, 23).map((row) => row.extensionName),
+    rows.slice(20, 23).map((row) => row.extensionName),
   );
-  reset(rows);
-  const capped = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 4, pageSize: 30 });
-  assert.equal(calls[0].params.limit, 100);
-  assert.equal(capped.hasMore, false);
-  assert.equal(capped.list.length, 100);
-  reset([{ ...rows[0], layoutMode: 'future-layout' }]);
+  reset({ list: rows.slice(0, 20), total: 140 });
+  const beyond = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 6, pageSize: 20 });
+  assert.equal(calls[0].params.pageNum, 6);
+  assert.equal('limit' in calls[0].params, false);
+  assert.equal(beyond.hasMore, true);
+  assert.equal(beyond.list.length, 20);
+  reset({ list: [{ ...rows[0], layoutMode: 'future-layout' }], total: 1 });
   assert.equal(
     (await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 1, pageSize: 20 })).list[0]
       .layoutMode,
@@ -413,7 +419,7 @@ test('search uses cumulative limits, literal trimmed keyword, full responses and
   );
 });
 
-test('cumulative Extension responses retain new prefix identities and deduplicate one response', async () => {
+test('Extension pages deduplicate identities while preserving the backend total', async () => {
   const api = await adapter();
   const row = (extensionName) => ({
     extensionName,
@@ -424,21 +430,26 @@ test('cumulative Extension responses retain new prefix identities and deduplicat
     latestVersion: '1.0',
     sourceDimName: 'Product',
   });
-  reset(Array.from({ length: 20 }, (_, i) => row(`A${i + 1}`)));
+  reset({ list: Array.from({ length: 20 }, (_, i) => row(`A${i + 1}`)), total: 40 });
   const first = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 1, pageSize: 20 });
-  reset([row('X'), ...Array.from({ length: 39 }, (_, i) => row(`A${i + 1}`))]);
+  reset({
+    list: [row('X'), ...Array.from({ length: 19 }, (_, i) => row(`A${i + 20}`))],
+    total: 40,
+  });
   const second = await api.queryExtensionInheritancePage({ userId: 'u', pageNo: 2, pageSize: 20 });
   const { mergeUniquePage } = await server.ssrLoadModule('/src/utils/infiniteScroll.ts');
   const merged = mergeUniquePage(first.list, second.list, (item) => item.extensionName);
   assert.equal(merged.filter((item) => item.extensionName === 'X').length, 1);
-  assert.equal(merged.length, 40);
-  reset([row('X'), row('X'), row('A1')]);
+  assert.equal(merged.length, 39);
+  assert.equal(second.hasMore, false);
+  reset({ list: [row('X'), row('X'), row('A1')], total: 3 });
   const duplicates = await api.queryExtensionInheritancePage({
     userId: 'u',
     pageNo: 1,
     pageSize: 20,
   });
   assert.equal(duplicates.list.length, 2);
+  assert.equal(duplicates.total, 3);
   assert.equal(duplicates.hasMore, false);
 });
 
@@ -558,10 +569,13 @@ test('malformed mutation, tree and search rows are rejected instead of invented'
   for (const data of [
     null,
     {},
-    [{ ...row, extensionName: '' }],
-    [{ ...row, hasBypass: 'false' }],
-    [{ ...row, entryCount: -1 }],
-    [{ ...row, entryCount: 1.5 }],
+    { list: [row] },
+    { list: [row], total: -1 },
+    { list: [row], total: 1.5 },
+    { list: [{ ...row, extensionName: '' }], total: 1 },
+    { list: [{ ...row, hasBypass: 'false' }], total: 1 },
+    { list: [{ ...row, entryCount: -1 }], total: 1 },
+    { list: [{ ...row, entryCount: 1.5 }], total: 1 },
   ]) {
     reset(data);
     await assert.rejects(

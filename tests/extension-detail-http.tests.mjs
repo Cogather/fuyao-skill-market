@@ -122,7 +122,7 @@ try {
         ...(choice === undefined ? {} : { inheritBypass: choice }),
       });
       assert.deepEqual(saves.pop(), {
-        url: '/extensions/save',
+        url: '/extensions',
         method: 'POST',
         params: {
           userId: 'parent-user',
@@ -178,7 +178,7 @@ try {
       await harnessWorkflowService.saveExtension(input, params);
       for (const config of saves.splice(0)) {
         assert.deepEqual(config, {
-          url: '/extensions/save',
+          url: '/extensions',
           method: 'POST',
           params,
           data: { ...body, inheritBypass: inheritBypass ?? true },

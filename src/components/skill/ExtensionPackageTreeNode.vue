@@ -50,6 +50,27 @@ function toggle(): void {
       @click="toggle"
     >
       <span class="package-tree-branch" aria-hidden="true">{{ branch }}</span>
+      <svg
+        class="package-tree-icon"
+        :class="isFolder ? 'is-folder' : 'is-file'"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <template v-if="isFolder">
+          <path
+            d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4H9l2 2h8.5A1.5 1.5 0 0 1 21 7.5V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"
+          />
+          <path
+            v-if="expanded"
+            d="M3 10h17a1 1 0 0 1 1 1.2l-1.5 7.6A1.5 1.5 0 0 1 18 20H5a2 2 0 0 1-2-2V10Z"
+          />
+        </template>
+        <template v-else>
+          <path d="M6 3.5h8l4 4V20H6V3.5Z" />
+          <path d="M14 3.5v4h4M9 12h6M9 15.5h5" fill="none" />
+        </template>
+      </svg>
       <span class="package-tree-name">{{ node.name }}</span>
       <span v-if="sourceLabel" class="package-tree-source" :class="`is-${node.source}`">
         {{ sourceLabel }}
@@ -121,6 +142,32 @@ function toggle(): void {
 
 .package-tree-name {
   margin-right: 12px;
+}
+
+.package-tree-icon {
+  width: 1.1667em;
+  height: 1.1667em;
+  flex: 0 0 auto;
+  margin-right: 6px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.package-tree-icon.is-folder {
+  color: #b58a3b;
+  fill: #fff6df;
+}
+
+.package-tree-icon.is-file {
+  color: #7b8ca6;
+  fill: #f8fafc;
+}
+
+.package-tree-row.is-selected .package-tree-icon.is-file {
+  color: #3974cf;
+  fill: #eef6ff;
 }
 
 .package-tree-source {

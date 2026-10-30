@@ -274,7 +274,7 @@ try {
         'saveExtension',
         [extension, { ...scope, operatorName: '设计者' }],
         'POST',
-        '/extensions/save',
+        '/extensions',
         { ...scope, operatorName: '设计者' },
         { ...extension, inheritBypass: true },
       ],

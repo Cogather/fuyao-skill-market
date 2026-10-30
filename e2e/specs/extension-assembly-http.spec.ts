@@ -53,6 +53,10 @@ async function setup(
     const url = new URL(req.url());
     if (!url.pathname.startsWith('/api/')) return route.fallback();
     const path = url.pathname.replace('/api/harness', '');
+    // 后端没有 /extensions/save；旧错误地址不能被默认成功响应掩盖。
+    if (path === '/extensions/save') {
+      return route.fulfill({ status: 404, json: { code: 404, message: '接口不存在' } });
+    }
     if (failPath === path) {
       failPath = '';
       return route.fulfill({ json: { code: 1, message: '服务暂不可用，请重试', data: null } });
@@ -128,17 +132,20 @@ async function setup(
     }
     if (path === '/extensions/bypass/clear') files = [];
     if (path === '/extensions/search')
-      data = [
-        {
-          extensionName: 'shared-baseline',
-          description: '按工作流名匹配',
-          layoutMode: 'standard',
-          hasBypass: false,
-          entryCount: 0,
-          latestVersion: '1.0',
-          sourceDimName: '平台开发部',
-        },
-      ];
+      data = {
+        total: 1,
+        list: [
+          {
+            extensionName: 'shared-baseline',
+            description: '按工作流名匹配',
+            layoutMode: 'standard',
+            hasBypass: false,
+            entryCount: 0,
+            latestVersion: '1.0',
+            sourceDimName: '平台开发部',
+          },
+        ],
+      };
     if (path === '/extensions/bypass/inherit') {
       layout = 'standard';
       files = [];
@@ -232,6 +239,38 @@ async function setup(
 test.describe('Extension HTTP 发布组装', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
+  test('已发布布局被后端锁定时，在目标按钮旁显示原因并保留原目标', async ({ page }) => {
+    const { assembly, requests } = await setup(page, { fullPage: true });
+    const standard = assembly.getByRole('button', { name: 'CodeAgent（标准）' });
+    const testagent = assembly.getByRole('button', { name: 'TestAgent', exact: true });
+    const publish = assembly.getByRole('button', { name: '确认发布', exact: true });
+    await standard.click();
+    await expect(publish).toBeEnabled();
+    const treeCount = () =>
+      requests.filter((req) => new URL(req.url()).pathname.endsWith('/extensions/structure/tree'))
+        .length;
+    const previousTreeCount = treeCount();
+    const lockedMessage = '该Extension已发布，布局（形态）已锁定，不允许切换。';
+    let locked = true;
+    await page.route('**/api/harness/extensions/layout**', (route) =>
+      locked
+        ? route.fulfill({ json: { meta: { success: false, message: lockedMessage }, data: null } })
+        : route.fallback(),
+    );
+    await testagent.click();
+    const warning = assembly.getByRole('alert').filter({ hasText: lockedMessage });
+    await expect(warning).toHaveCount(1);
+    await expect(warning).toBeInViewport();
+    await expect(standard).toHaveAttribute('aria-pressed', 'true');
+    await expect(publish).toBeEnabled();
+    expect(treeCount()).toBe(previousTreeCount);
+    locked = false;
+    await testagent.click();
+    await expect(publish).toBeEnabled();
+    await expect(testagent).toHaveAttribute('aria-pressed', 'true');
+    await expect(warning).toHaveCount(0);
+  });
+
   test('飞机入口可直接发布接口已有名称，不再被新建名称前缀规则拦截', async ({ page }) => {
     const { assembly, requests } = await setup(page, {
       fullPage: true,
@@ -242,12 +281,23 @@ test.describe('Extension HTTP 发布组装', () => {
     await publish.click();
     await expect
       .poll(
-        () =>
-          requests.filter((req) => new URL(req.url()).pathname.endsWith('/extensions/save')).length,
+        () => requests.filter((req) => new URL(req.url()).pathname.endsWith('/extensions')).length,
       )
       .toBe(1);
-    const save = requests.find((req) => new URL(req.url()).pathname.endsWith('/extensions/save'))!;
+    const save = requests.find((req) => new URL(req.url()).pathname.endsWith('/extensions'))!;
+    expect(new URL(save.url()).pathname).toBe('/api/harness/extensions');
+    expect(save.method()).toBe('POST');
+    expect(Object.fromEntries(new URL(save.url()).searchParams)).toEqual({
+      userId: 'user1',
+      operatorName: '发布用户',
+      dimType: '产品级',
+      dimCode: 'P1',
+      dimName: 'demo',
+    });
     expect(save.postDataJSON().extensionName).toBe('pipeline-analysis');
+    expect(save.postDataJSON().inheritBypass).toBe(true);
+    expect(save.postDataJSON()).not.toHaveProperty('layout');
+    expect(save.postDataJSON()).not.toHaveProperty('layoutMode');
     await expect(page.getByRole('heading', { name: '发布历史', exact: true })).toBeVisible();
   });
 
@@ -262,11 +312,9 @@ test.describe('Extension HTTP 发布组装', () => {
     await publish.click();
     await expect(footer.getByRole('alert')).toHaveText('请输入 Extension 描述');
     await expect(footer.getByRole('alert')).toBeInViewport();
-    expect(requests.some((req) => new URL(req.url()).pathname.endsWith('/extensions/save'))).toBe(
-      false,
-    );
+    expect(requests.some((req) => new URL(req.url()).pathname.endsWith('/extensions'))).toBe(false);
     await description.fill('问题分析说明');
-    failNext('/extensions/save');
+    failNext('/extensions');
     await publish.click();
     await expect(footer.getByRole('alert')).toContainText('服务暂不可用');
     await expect(footer.getByRole('alert')).toBeInViewport();
@@ -274,7 +322,7 @@ test.describe('Extension HTTP 发布组装', () => {
     await publish.click();
     await expect(page.getByRole('heading', { name: '发布历史', exact: true })).toBeVisible();
     expect(
-      requests.filter((req) => new URL(req.url()).pathname.endsWith('/extensions/save')),
+      requests.filter((req) => new URL(req.url()).pathname.endsWith('/extensions')),
     ).toHaveLength(2);
   });
 
@@ -461,7 +509,7 @@ test.describe('Extension HTTP 发布组装', () => {
     expect(requests.some((req) => req.url().includes('/bypass/clear'))).toBe(false);
     await assembly.getByRole('button', { name: '确认发布', exact: true }).click();
     await expect(page.getByRole('heading', { name: '发布历史', exact: true })).toBeVisible();
-    const save = requests.find((req) => new URL(req.url()).pathname.endsWith('/extensions/save'))!;
+    const save = requests.find((req) => new URL(req.url()).pathname.endsWith('/extensions'))!;
     expect(save.postDataJSON()).toMatchObject({
       inheritBypass: false,
       description: '填写后保持不变',
@@ -557,7 +605,7 @@ test.describe('Extension HTTP 发布组装', () => {
     ).toBeVisible();
     await assembly.getByRole('button', { name: '确认发布', exact: true }).click();
     await expect(page.getByRole('heading', { name: '发布历史', exact: true })).toBeVisible();
-    const save = requests.find((req) => new URL(req.url()).pathname.endsWith('/extensions/save'))!;
+    const save = requests.find((req) => new URL(req.url()).pathname.endsWith('/extensions'))!;
     expect(save.postDataJSON().inheritBypass).toBe(true);
   });
 
@@ -587,6 +635,98 @@ test.describe('Extension HTTP 发布组装', () => {
       sourceExtensionName: 'shared-baseline',
       targetExtensionName: 'scene-code-001',
     });
+  });
+
+  test('飞机入口的继承源按页滚动加载，保留选择、支持失败重试和搜索重置', async ({ page }) => {
+    const { assembly } = await setup(page, { fullPage: true });
+    const queries: { keyword: string; pageNum: number }[] = [];
+    const source = (extensionName: string) => ({
+      extensionName,
+      description: '分页继承来源',
+      layoutMode: 'standard',
+      hasBypass: false,
+      entryCount: 0,
+      latestVersion: '1.0',
+      sourceDimName: '研发部',
+    });
+    const rows = [
+      source('scene-code-001'),
+      ...Array.from({ length: 40 }, (_, i) => source(`paged-source-${i + 1}`)),
+    ];
+    let releaseSecond!: () => void;
+    const secondReady = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    let secondAttempts = 0;
+    await page.route('**/api/harness/extensions/search**', async (route) => {
+      const request = route.request();
+      const params = new URL(request.url()).searchParams;
+      expect(request.method()).toBe('GET');
+      expect(params.get('userId')).toBe('user1');
+      expect(params.get('pageSize')).toBe('20');
+      expect(params.has('limit')).toBe(false);
+      const keyword = params.get('keyword')!;
+      const pageNum = Number(params.get('pageNum'));
+      queries.push({ keyword, pageNum });
+      if (keyword === 'paged' && pageNum === 2 && ++secondAttempts === 1) {
+        await secondReady;
+        await route.fulfill({
+          json: { meta: { success: false, message: '下一页查询失败' }, data: null },
+        });
+        return;
+      }
+      const matches = keyword === 'paged' ? rows : [source('new-result')];
+      await route.fulfill({
+        json: {
+          meta: { success: true },
+          data: { total: matches.length, list: matches.slice((pageNum - 1) * 20, pageNum * 20) },
+        },
+      });
+    });
+    try {
+      await assembly.getByRole('button', { name: '更换继承', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: '选择继承源' });
+      const search = dialog.getByRole('searchbox');
+      const results = dialog.getByRole('region', { name: '可继承的 Extension' });
+      await search.fill('paged');
+      await expect(results.getByRole('radio')).toHaveCount(19);
+      const selected = results.getByRole('radio', { name: /^paged-source-1 v/ });
+      await selected.check();
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(results.getByRole('status')).toHaveText('正在加载更多…');
+      await expect(results.getByRole('radio')).toHaveCount(19);
+      await expect(selected).toBeChecked();
+      await results.dispatchEvent('wheel', { deltaY: 200 });
+      expect(queries.filter((query) => query.pageNum === 2)).toHaveLength(1);
+      releaseSecond();
+      await expect(dialog.getByRole('alert')).toContainText('下一页查询失败');
+      await expect(selected).toBeChecked();
+      await dialog.getByRole('button', { name: '重试', exact: true }).click();
+      await expect(results.getByRole('radio')).toHaveCount(39);
+      await expect(selected).toBeChecked();
+      await results.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect(results.getByRole('radio')).toHaveCount(40);
+      await expect(results.getByText('已加载全部结果', { exact: true })).toBeVisible();
+      await results.dispatchEvent('wheel', { deltaY: 200 });
+      await search.fill('new');
+      await expect(results.getByRole('radio')).toHaveCount(1);
+      await expect(results.getByRole('radio', { name: /new-result/ })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: '确认继承', exact: true })).toBeDisabled();
+      expect(await results.evaluate((element) => element.scrollTop)).toBe(0);
+      expect(queries).toEqual([
+        { keyword: 'paged', pageNum: 1 },
+        { keyword: 'paged', pageNum: 2 },
+        { keyword: 'paged', pageNum: 2 },
+        { keyword: 'paged', pageNum: 3 },
+        { keyword: 'new', pageNum: 1 },
+      ]);
+    } finally {
+      releaseSecond();
+    }
   });
 
   test('目录刷新失败显示重试且不回退到 Mock 目录', async ({ page }) => {
@@ -699,17 +839,20 @@ test.describe('Extension HTTP 发布组装', () => {
       return route.fulfill({
         json: {
           code: 0,
-          data: [
-            {
-              extensionName: 'stale-result',
-              description: '',
-              layoutMode: 'standard',
-              hasBypass: false,
-              entryCount: 0,
-              latestVersion: '',
-              sourceDimName: '',
-            },
-          ],
+          data: {
+            total: 1,
+            list: [
+              {
+                extensionName: 'stale-result',
+                description: '',
+                layoutMode: 'standard',
+                hasBypass: false,
+                entryCount: 0,
+                latestVersion: '',
+                sourceDimName: '',
+              },
+            ],
+          },
         },
       });
     });

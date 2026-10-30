@@ -18,7 +18,8 @@ export interface WorkflowSceneSearchRow extends WorkflowSceneKey {
 export interface WorkflowSceneSearchQuery {
   userId: string;
   keyword: string;
-  limit: number;
+  pageNum: number;
+  pageSize: number;
 }
 export interface WorkflowSceneCopyBody {
   sourceDimType: string;
@@ -518,7 +519,7 @@ export const harnessWorkflowService = {
     },
   ): Promise<any> => {
     return httpRequest.harnessApi({
-      url: '/extensions/save',
+      url: '/extensions',
       method: 'POST',
       data: { ...body, inheritBypass: body.inheritBypass ?? true },
       params: params,
