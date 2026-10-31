@@ -516,9 +516,32 @@ onBeforeRouteLeave(() => {
         </template>
       </nav>
 
-      <div class="harness-topbar__identity" aria-label="当前工作台">
-        <span class="harness-topbar__mark" aria-hidden="true">H</span>
-        <span><strong>Harness 管理</strong><small>能力规划工作台</small></span>
+      <div class="harness-topbar__tools">
+        <a
+          class="harness-topbar__help"
+          href="xxx"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Harness 规划使用指导"
+          aria-label="Harness 规划使用指导"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4M12 17h.01" />
+          </svg>
+        </a>
+        <div class="harness-topbar__identity" aria-label="当前工作台">
+          <span class="harness-topbar__mark" aria-hidden="true">H</span>
+          <span><strong>Harness 管理</strong><small>能力规划工作台</small></span>
+        </div>
       </div>
     </header>
 
@@ -907,6 +930,39 @@ onBeforeRouteLeave(() => {
   border-radius: 5px 5px 0 0;
   outline: 3px solid rgba(24, 144, 255, 0.2);
   outline-offset: -3px;
+}
+
+.harness-topbar__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+
+.harness-topbar__help {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.harness-topbar__help svg {
+  width: 20px;
+  height: 20px;
+}
+
+.harness-topbar__help:hover {
+  background: rgba(107, 114, 128, 0.1);
+  color: #4b5563;
+}
+
+.harness-topbar__help:focus-visible {
+  outline: 2px solid #94a3b8;
+  outline-offset: 2px;
 }
 
 .harness-topbar__identity {
