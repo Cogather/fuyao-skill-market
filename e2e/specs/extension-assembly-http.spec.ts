@@ -499,7 +499,7 @@ test.describe('Extension HTTP 发布组装', () => {
     await expect(tree.getByText('custom-prompt.md', { exact: true })).toBeVisible();
     await expect(
       assembly.getByText('.testagent/agents/custom-prompt.md', { exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     const inherit = assembly.getByLabel('继承当前旁路文件');
     await expect(inherit).toBeChecked();
     await page.getByLabel('Extension 描述', { exact: true }).fill('填写后保持不变');

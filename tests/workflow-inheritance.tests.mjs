@@ -322,14 +322,11 @@ try {
           },
         },
         {
-          url: '/extensions/detail',
-          method: 'POST',
-          params: { userId: 'parent-user' },
-          data: {
-            dimType: '\u90e8\u95e8\u7ea7',
+          url: '/workflow/detail',
+          method: 'GET',
+          params: {
+            userId: 'parent-user',
             dimCode: 'target-dept',
-            dimName: 'Target department',
-            extensionName: 'new-scene-code',
             firstScene: 'Target parent',
             secondScene: 'Target child',
           },
@@ -444,12 +441,9 @@ try {
     };
     request.harnessApi = async (config) => {
       calls.push(['http', config]);
-      if (config.url === '/scene/copy') {
-        copied = true;
-        return success('new-scene-code');
-      }
-      assert.equal(config.url, '/extensions/detail');
-      return success({ sceneExtensionCode: 'new-scene-code' });
+      assert.equal(config.url, '/scene/copy');
+      copied = true;
+      return success('new-scene-code');
     };
     const scope = effectScope();
     try {
@@ -522,22 +516,15 @@ try {
         targetSecondScene: 'Current scene',
       });
       assert.deepEqual(calls[1], [
-        'http',
+        'detail',
         {
-          url: '/extensions/detail',
-          method: 'POST',
-          params: { userId: 'parent-user' },
-          data: {
-            dimType: '\u4ea7\u54c1\u7ea7',
-            dimCode: 'target-product',
-            dimName: 'Current scene',
-            extensionName: 'new-scene-code',
-            firstScene: 'Research',
-            secondScene: 'Current scene',
-          },
+          userId: 'parent-user',
+          dimCode: 'target-product',
+          firstScene: 'Research',
+          secondScene: 'Current scene',
         },
       ]);
-      assert.equal(calls.filter(([kind]) => kind === 'http').length, 2);
+      assert.equal(calls.filter(([kind]) => kind === 'http').length, 1);
       assert.ok(
         calls.some(([kind, params]) => kind === 'scenes' && params.dimCode === 'target-product'),
       );

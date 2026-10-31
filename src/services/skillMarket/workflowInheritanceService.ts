@@ -31,6 +31,13 @@ export interface WorkflowInheritancePage {
   hasMore?: boolean;
 }
 
+export interface WorkflowInheritanceConfiguration {
+  flowName: string;
+  stageCount: number;
+  commandCount: number;
+  assetCount: number;
+}
+
 export interface WorkflowInheritanceIdentity {
   dimType: string;
   dimCode: string;
@@ -159,17 +166,12 @@ export async function copyWorkflowInheritance(
   if (typeof code !== 'string' || !code.trim()) throw new Error('场景复制响应缺少有效的场景编码');
   const sceneExtensionCode = code.trim();
   designData<unknown>(
-    await harnessWorkflowService.queryExtensionSceneDetail(
-      { userId: target.userId },
-      {
-        dimType: target.dimType,
-        dimCode: target.dimCode,
-        dimName: target.dimName,
-        extensionName: sceneExtensionCode,
-        firstScene: target.firstScene,
-        secondScene: target.secondScene,
-      },
-    ),
+    await harnessWorkflowService.queryHarnessWorkflowDetail({
+      userId: target.userId,
+      dimCode: target.dimCode,
+      firstScene: target.firstScene,
+      secondScene: target.secondScene,
+    }),
     '继承后的 Workflow 详情加载失败',
   );
   return sceneExtensionCode;

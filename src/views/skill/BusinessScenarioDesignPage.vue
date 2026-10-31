@@ -224,11 +224,11 @@ const currentWorkflows = computed(() =>
 );
 const inheritanceTargetConfiguration = computed(() => {
   const workflow = currentWorkflows.value[0];
-  if (!workflow) return null;
   return {
-    stageCount: workflow.stages.length,
-    commandCount: workflow.commands.length,
-    assetCount: workflow.assets.length,
+    flowName: workflow?.name || currentScenario.value?.name || '',
+    stageCount: workflow?.stages.length ?? 0,
+    commandCount: workflow?.commands.length ?? 0,
+    assetCount: workflow?.assets.length ?? 0,
   };
 });
 const assetById = computed(() => new Map(assets.map((item) => [item._id, item])));

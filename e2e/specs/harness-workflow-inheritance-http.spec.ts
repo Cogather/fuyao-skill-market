@@ -46,7 +46,7 @@ async function mountHarness(page: Page) {
   });
 }
 
-async function interceptHarness(page: Page, authorized = true) {
+async function interceptHarness(page: Page, authorized = true, currentDetail: object = {}) {
   const requests: Request[] = [];
   let copied = false;
   let failCopy = true;
@@ -103,7 +103,7 @@ async function interceptHarness(page: Page, authorized = true) {
             ]
           : []),
       ];
-    else if (url.pathname.endsWith('/workflow/detail'))
+    else if (url.pathname.endsWith('/workflow/detail')) {
       data = {
         flowName:
           url.searchParams.get('secondScene') === '服务端规范场景'
@@ -119,8 +119,9 @@ async function interceptHarness(page: Page, authorized = true) {
         steps: [],
         nextStep: 0,
         allDone: false,
+        ...(url.searchParams.get('secondScene') === '当前场景' ? currentDetail : {}),
       };
-    else if (url.pathname.endsWith('/scenes/search')) {
+    } else if (url.pathname.endsWith('/scenes/search')) {
       if (!url.searchParams.get('keyword')?.trim()) {
         await route.fulfill({
           json: { meta: { success: false, message: 'keyword不能为空', number: 0 }, data: [] },
@@ -189,6 +190,63 @@ async function interceptHarness(page: Page, authorized = true) {
 test.describe('Harness scene inheritance HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', 'Requires HTTP transport');
 
+  test('inheritance uses the loaded current workflow without extra detail requests', async ({
+    page,
+  }) => {
+    const fixture = await interceptHarness(page, true, {
+      flowName: '当前目标工作流',
+      stages: Array.from({ length: 3 }, (_, index) => ({
+        activityNodeName: `环节 ${index + 1}`,
+        sort: index,
+        steps: [],
+      })),
+      commands: [
+        { commandName: '/review', description: '' },
+        { commandName: '/submit', description: '' },
+      ],
+      assetPool: [
+        { assetType: 'SKILL', assetName: 'Skill A' },
+        { assetType: 'AGENT', assetName: 'Agent B' },
+      ],
+    });
+    await mountHarness(page);
+    const harness = new HarnessManagementPage(page);
+    await expect(harness.workflowCard('当前目标工作流')).toBeVisible();
+    const detailRequests = () =>
+      fixture.requests.filter((request) =>
+        new URL(request.url()).pathname.endsWith('/workflow/detail'),
+      );
+    const initialDetails = detailRequests().length;
+    expect(initialDetails).toBeGreaterThan(0);
+    await harness.scenariosPanel
+      .getByRole('button', { name: '继承 Workflow', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', { name: '继承已有 Workflow', exact: true });
+    const warning = dialog.locator('.inheritance-warning');
+    const confirm = dialog.getByRole('button', { name: '确认覆盖并继承', exact: true });
+    await expect(dialog.locator('#inheritance-description')).toHaveText(
+      '将所选工作流的 E2E 配置覆盖到「当前目标工作流」',
+    );
+    await expect(warning).toHaveCount(0);
+    await expect(confirm).toBeDisabled();
+    await dialog.getByRole('searchbox').fill('Source workflow');
+    await dialog.getByRole('button', { name: /Source workflow 3 / }).click();
+    await expect(warning).toContainText('「Source workflow 3」');
+    await expect(warning).toContainText('被覆盖：3 环节 / 2 Command / 2 资产');
+    await expect(confirm).toBeEnabled();
+    expect(detailRequests()).toHaveLength(initialDetails);
+    await dialog.getByRole('button', { name: /Source workflow 4 / }).click();
+    await expect(warning).toContainText('「Source workflow 4」');
+    await expect(warning).toContainText('被覆盖：3 环节 / 2 Command / 2 资产');
+    expect(detailRequests()).toHaveLength(initialDetails);
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await harness.scenariosPanel
+      .getByRole('button', { name: '继承 Workflow', exact: true })
+      .click();
+    await expect(warning).toHaveCount(0);
+    expect(detailRequests()).toHaveLength(initialDetails);
+  });
+
   test('parent identity, paged search, copy retry and returned-code selection use the current Harness workspace', async ({
     page,
   }) => {
@@ -234,7 +292,7 @@ test.describe('Harness scene inheritance HTTP', () => {
     await expect(results.getByText('已加载全部结果', { exact: true })).toBeVisible();
     await results.dispatchEvent('wheel', { deltaY: 300 });
     await inserted.click();
-    const confirm = dialog.getByRole('button', { name: '确认继承', exact: true });
+    const confirm = dialog.getByRole('button', { name: '确认覆盖并继承', exact: true });
     await confirm.click();
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('alert')).toHaveText('SAME_NAME_REJECTED');
@@ -278,26 +336,26 @@ test.describe('Harness scene inheritance HTTP', () => {
         targetSecondScene: '当前场景',
       });
     }
-    const inheritedDetails = fixture.requests.filter((request) =>
-      new URL(request.url()).pathname.endsWith('/extensions/detail'),
+    const afterCopy = fixture.requests.slice(fixture.requests.indexOf(copies[1]!));
+    const inheritedDetails = afterCopy.filter((request) =>
+      new URL(request.url()).pathname.endsWith('/workflow/detail') &&
+      new URL(request.url()).searchParams.get('secondScene') === '当前场景',
     );
     expect(inheritedDetails).toHaveLength(1);
-    expect(inheritedDetails[0]!.method()).toBe('POST');
+    expect(inheritedDetails[0]!.method()).toBe('GET');
     expect(Object.fromEntries(new URL(inheritedDetails[0]!.url()).searchParams)).toEqual({
       userId: 'parent-scene-user',
-    });
-    expect(inheritedDetails[0]!.postDataJSON()).toEqual({
-      dimType: '产品级',
       dimCode: 'outside-product',
-      dimName: 'outside-product',
-      extensionName: 'copied-code',
       firstScene: '目标一级',
       secondScene: '当前场景',
     });
-    expect(fixture.requests.indexOf(inheritedDetails[0]!)).toBeGreaterThan(
-      fixture.requests.indexOf(copies[1]!),
-    );
-    const afterCopy = fixture.requests.slice(fixture.requests.indexOf(copies[1]!));
+    expect(afterCopy[1]).toBe(inheritedDetails[0]);
+    expect(inheritedDetails[0]!.postData()).toBeNull();
+    expect(
+      fixture.requests.filter((request) =>
+        new URL(request.url()).pathname.endsWith('/extensions/detail'),
+      ),
+    ).toHaveLength(0);
     expect(
       afterCopy.some(
         (request) =>
@@ -324,10 +382,7 @@ test.describe('Harness scene inheritance HTTP', () => {
           new URL(request.url()).searchParams.get('dimCode') === 'source-product',
       ),
     ).toBe(false);
-    expect(fixture.requests.filter((request) => request.method() === 'POST')).toEqual([
-      ...copies,
-      ...inheritedDetails,
-    ]);
+    expect(fixture.requests.filter((request) => request.method() === 'POST')).toEqual(copies);
 
     const start = fixture.requests.length;
     await selectHarnessOption(harness.scenariosPanel.getByRole('combobox', { name: '选择层级' }), {
@@ -384,7 +439,9 @@ test.describe('Harness scene inheritance HTTP', () => {
     await search.fill('new keyword');
     await search.press('Enter');
     await expect(results.getByRole('button')).toHaveCount(19);
-    await expect(dialog.getByRole('button', { name: '确认继承', exact: true })).toBeDisabled();
+    await expect(
+      dialog.getByRole('button', { name: '确认覆盖并继承', exact: true }),
+    ).toBeDisabled();
     expect(await results.evaluate((element) => element.scrollTop)).toBe(0);
     const searches = fixture.requests.filter((request) =>
       new URL(request.url()).pathname.endsWith('/scenes/search'),
@@ -414,7 +471,7 @@ test.describe('Harness scene inheritance HTTP', () => {
     const dialog = page.getByRole('dialog', { name: '继承已有 Workflow', exact: true });
     await dialog.getByRole('searchbox').fill('Source workflow');
     await dialog.getByRole('button', { name: /Source workflow 2 / }).click();
-    await dialog.getByRole('button', { name: '确认继承', exact: true }).click();
+    await dialog.getByRole('button', { name: '确认覆盖并继承', exact: true }).click();
     await expect(dialog.getByRole('alert')).toHaveText('SAME_NAME_REJECTED');
     expect(
       fixture.requests.filter((request) => new URL(request.url()).pathname.endsWith('/scene/copy')),

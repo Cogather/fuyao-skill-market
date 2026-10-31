@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { mergeUniquePage, shouldLoadNextPage } from '../../utils/infiniteScroll';
 import type {
   WorkflowInheritancePage,
+  WorkflowInheritanceConfiguration,
   WorkflowInheritanceSource,
 } from '../../services/skillMarket/workflowInheritanceService';
 
@@ -12,11 +13,7 @@ const props = withDefaults(
     open: boolean;
     busy?: boolean;
     error?: string;
-    targetConfiguration?: {
-      stageCount: number;
-      commandCount: number;
-      assetCount: number;
-    } | null;
+    targetConfiguration: WorkflowInheritanceConfiguration;
     loadPage: (query: {
       keyword: string;
       pageNo: number;
@@ -50,29 +47,20 @@ let previousScrollTop = 0;
 const selected = computed(() => rows.value.find((row) => row.key === selectedKey.value) ?? null);
 const hasKeyword = computed(() => Boolean(keyword.value.trim()));
 const hasMore = computed(() => continuation.value ?? rows.value.length < total.value);
+const canConfirm = computed(() =>
+  Boolean(props.open && selected.value && !props.busy && !loading.value),
+);
 const targetConfigurationSummary = computed(() => {
   const configuration = props.targetConfiguration;
-  if (
-    !configuration ||
-    (!configuration.stageCount && !configuration.commandCount && !configuration.assetCount)
-  )
+  if (!configuration.stageCount && !configuration.commandCount && !configuration.assetCount)
     return '空，尚未配置';
   return `${configuration.stageCount} 环节 / ${configuration.commandCount} Command / ${configuration.assetCount} 资产`;
 });
-const selectedWorkflowLabel = computed(() => {
-  if (!selected.value) return '';
-  const name = selected.value.flowName || '未命名 Workflow';
-  const isEmpty =
-    selected.value.activityCount === 0 &&
-    (selected.value.commandCount === null ||
-      selected.value.commandCount === undefined ||
-      selected.value.commandCount === 0);
-  return `${name}${isEmpty ? '（空，尚未配置）' : ''}`;
-});
+const selectedWorkflowLabel = computed(() => selected.value?.flowName || '未命名 Workflow');
 const inheritanceWarningText = computed(() =>
   selected.value
     ? `确认后，将用「${selectedWorkflowLabel.value}」的完整配置直接覆盖当前内容（被覆盖：${targetConfigurationSummary.value}），将覆盖为全新的配置。`
-    : `选择 Workflow 后，将用其完整配置直接覆盖当前内容（被覆盖：${targetConfigurationSummary.value}），将覆盖为全新的配置。`,
+    : '',
 );
 
 function clearSearchTimer() {
@@ -171,7 +159,7 @@ function selectRow(row: WorkflowInheritanceSource) {
 }
 
 function confirmSelection() {
-  if (selected.value && !props.busy && !loading.value) emit('confirm', selected.value);
+  if (selected.value && canConfirm.value) emit('confirm', selected.value);
 }
 
 function requestClose() {
@@ -258,7 +246,9 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="inheritance-title"
-        aria-describedby="inheritance-description inheritance-warning"
+        :aria-describedby="
+          selected ? 'inheritance-description inheritance-warning' : 'inheritance-description'
+        "
         :aria-busy="busy || (loading && hasKeyword)"
       >
         <header class="dialog-header">
@@ -273,9 +263,9 @@ onBeforeUnmount(() => {
             <h2 id="inheritance-title">继承已有 Workflow</h2>
             <p id="inheritance-description">
               {{
-                createsScene
-                  ? '选择已有场景，在当前产品或部门下新建场景并复用流程编排。'
-                  : '选择一个成熟工作流，将其流程编排复用到当前场景。'
+                targetConfiguration.flowName
+                  ? `将所选工作流的 E2E 配置覆盖到「${targetConfiguration.flowName}」`
+                  : '选择已有工作流，在当前场景下复用工作流编排'
               }}
             </p>
           </div>
@@ -406,7 +396,7 @@ onBeforeUnmount(() => {
           <div v-else-if="!hasMore" class="result-end">已加载全部结果</div>
         </div>
 
-        <aside id="inheritance-warning" class="inheritance-warning" role="note">
+        <aside v-if="selected" id="inheritance-warning" class="inheritance-warning" role="note">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" fill="currentColor" />
             <rect x="11" y="6.5" width="2" height="7.5" rx="1" fill="#fff" />
@@ -422,11 +412,7 @@ onBeforeUnmount(() => {
 
         <footer class="dialog-footer">
           <span class="selection-summary">
-            {{
-              selected
-                ? `将继承「${selected.flowName || '未命名 Workflow'}」`
-                : '请选择一个 Workflow'
-            }}
+            {{ selected ? `将继承「${selectedWorkflowLabel}」` : '请选择一个 Workflow' }}
           </span>
           <div>
             <button class="secondary-button" type="button" :disabled="busy" @click="requestClose">
@@ -435,10 +421,10 @@ onBeforeUnmount(() => {
             <button
               class="confirm-button"
               type="button"
-              :disabled="!selected || busy || loading"
+              :disabled="!canConfirm"
               @click="confirmSelection"
             >
-              {{ busy ? '正在继承…' : '确认继承' }}
+              {{ busy ? '正在继承…' : '确认覆盖并继承' }}
             </button>
           </div>
         </footer>
@@ -579,7 +565,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 .results-panel {
-  min-height: 250px;
+  min-height: 120px;
   max-height: 360px;
   overflow-y: auto;
   padding: 2px 16px 12px 24px;
@@ -611,10 +597,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 5px 16px rgba(49, 92, 232, 0.08);
   transform: translateY(-1px);
 }
-.workflow-option.selected {
-  border-color: #5b7cfa;
-  background: #f5f8ff;
-  box-shadow: 0 0 0 2px rgba(91, 124, 250, 0.1);
+.workflow-option.selected,
+.workflow-option.selected:not(:disabled):hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px #2563eb;
 }
 .radio {
   display: grid;
@@ -747,18 +734,19 @@ onBeforeUnmount(() => {
 }
 .inheritance-warning {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 12px;
-  margin: 2px 24px 0;
-  padding: 16px 18px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  flex-shrink: 0;
+  gap: 16px;
+  margin: 8px 24px 0;
+  padding: 20px;
   border: 1px solid #fecaca;
   border-radius: 14px;
   background: #fff5f5;
   color: #8f2024;
 }
 .inheritance-warning > svg {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   color: #dc2626;
 }
 .inheritance-warning div {
@@ -768,12 +756,13 @@ onBeforeUnmount(() => {
 }
 .inheritance-warning strong {
   color: #991b1b;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.45;
 }
 .inheritance-warning span {
-  line-height: 1.65;
-  font-size: 13px;
+  line-height: 1.75;
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
 .confirm-error {
   margin: 10px 24px 0;
@@ -816,13 +805,16 @@ onBeforeUnmount(() => {
 .secondary-button {
   border: 1px solid #cbd5e1;
   background: #fff;
-  color: #334155;
+  color: #2563eb;
 }
 .confirm-button {
-  border: 1px solid #315ce8;
-  background: #315ce8;
+  border: 1px solid #dc2626;
+  background: #dc2626;
   color: #fff;
-  box-shadow: 0 5px 12px rgba(49, 92, 232, 0.2);
+}
+.confirm-button:not(:disabled):hover {
+  border-color: #b91c1c;
+  background: #b91c1c;
 }
 button:not(:disabled) {
   cursor: pointer;

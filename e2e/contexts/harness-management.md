@@ -34,7 +34,7 @@
 - 资产清单面板：`#harness-panel-capabilities`；内部 `role=tablist` 的 aria-label 为「资产清单分区」，依次包含 Command 清单 / Skill 清单 / Agent 清单 / Extension 发布。默认打开 Command 清单，四个分区复用原业务组件并按首次访问懒挂载，切换后保活。
 - 业务场景面板：`#harness-panel-scenarios`，包含 heading「业务场景设计台」；场景树复用配置管理，mock 默认「研发提效 → 代码生成」，初始无 Workflow。「开始设计 Workflow」或「继续设计」打开设计 dialog。
 - Harness 工作流面板：`#harness-panel-workflows`，包含 heading「Harness 工作流」、aria-label「选择部门」按钮、aria-label「筛选产品」下拉框、accessible name「Harness 工作流清单」的表格，以及「前往场景设计 →」按钮。每行固定提供「查看」，符合发布条件时提供「发布」。
-- Harness 工作流表格列为名称 / 产品 /（Mock 下显示部门）/ 状态 / 所属业务场景 / Command 入口 / 操作；状态统一展示为「设计中」「待发布」「已发布」，其中旧接口值「开发中」兼容归一为「设计中」，Mock 的 `releaseCount > 0` 仍优先归一为「已发布」
+- Harness 工作流表格列为「名称」「层级」「部门 / 产品」「状态」「所属业务场景」「Command 入口」「操作」。HTTP 和 Mock 均将部门与产品合并成一列，直接完整显示每行 `dimName`，缺失时显示 `-`；不再单独展示产品列、部门列，也不截取末级部门名称。层级按每行 `dimType` 展示「部门级」或「产品级」，缺失时显示 `-`。HTTP 选择「全部产品」时不传 `productCode`，结果可同时包含部门级与产品级；选定具体产品后传该产品编码，仅返回该产品的产品级数据。状态统一展示为「设计中」「待发布」「已发布」，其中旧接口值「开发中」兼容归一为「设计中」，Mock 的 `releaseCount > 0` 仍优先归一为「已发布」
 - 默认部门「持续交付组」、产品 `harness-pipeline`；初始工作流清单为空。部门筛选包含已关联工作流的下级部门，产品筛选进一步收窄结果；状态按钮 accessible name 为「全部」「设计中」「待发布」「已发布」。
 - Harness 工作流每页 10 条；切换部门、产品或状态会把页码重置为第一页，分页按钮 accessible name 为「上一页」「下一页」
 - Harness 工作流「查看」直接进入旧版 Extension 发布历史页面，不调用 `/api/harness/workflow/detail`；历史通过 `POST /api/harness/extensions/history` 查询，请求使用列表记录的 `dimType/dimCode/dimName/firstScene/secondScene`，返回后保留工作流列表筛选与分页状态。
@@ -68,6 +68,7 @@
 
 ## 场景与活动统一关系
 
+- HTTP 确认继承 Workflow：`POST /scene/copy` 成功后立即调用 `queryHarnessWorkflowDetail`（`GET /workflow/detail`），Query 传目标场景的 `userId/dimCode/firstScene/secondScene`，不调用 `/extensions/detail`。随后刷新场景列表，用复制返回的场景编码选中对应场景；场景切换触发原有工作流详情加载。
 - 产品 → 一级场景 → 二级场景 → 至多一个 Harness 工作流 → 环节 → 节点。
 - 配置管理的「场景管理」与业务场景设计共用 `harnessScenarioTaxonomyService`。HTTP 复用现有产品维度场景接口；mock 保留原有按部门保存的场景库（同部门产品共享 mock 场景），工作流仍按部门、产品、场景隔离。
 - 原「活动管理」入口改为「环节与节点」。环节对应旧归属活动，节点对应旧子活动；新增/编辑均操作所选二级场景的工作流。

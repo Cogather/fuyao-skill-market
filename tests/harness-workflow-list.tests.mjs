@@ -160,7 +160,7 @@ try {
     assert.equal(state.totalPages.value, 3);
     assert.equal(state.visibleRows.value[0].name, 'page-1');
     assert.equal(state.visibleRows.value[0].productName, '服务端产品');
-    assert.equal(state.visibleRows.value[0].departmentName, '');
+    assert.equal(state.visibleRows.value[0].departmentName, '-');
     assert.equal(state.visibleRows.value[0].commandCount, 7);
     assert.equal(state.visibleRows.value[0].scenarioPath, '研发 / 接口生成');
     assert.equal(state.visibleRows.value[0].status, '待发布');

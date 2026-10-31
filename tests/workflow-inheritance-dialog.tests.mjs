@@ -42,6 +42,12 @@ const source = (key, flowName, secondScene) => ({
   commandCount: 1,
   status: '待发布',
 });
+const configuration = (flowName, stageCount = 0, commandCount = 0, assetCount = 0) => ({
+  flowName,
+  stageCount,
+  commandCount,
+  assetCount,
+});
 
 let app;
 let failures = 0;
@@ -65,8 +71,8 @@ try {
     '/src/components/skill/WorkflowInheritanceDialog.vue',
   );
 
-  function mount(loadPage) {
-    const props = reactive({ open: true, busy: false, error: '', loadPage });
+  function mount(loadPage, targetConfiguration = configuration('Current workflow', 3, 2, 2)) {
+    const props = reactive({ open: true, busy: false, error: '', loadPage, targetConfiguration });
     const events = [];
     let state;
     app = renderer.createApp({
@@ -83,18 +89,65 @@ try {
     return { state, props, events };
   }
 
-  await test('dialog renders the destructive warning and empty-keyword guidance', async () => {
+  await test('dialog hides the destructive warning before a workflow is selected', async () => {
     const context = {};
     await renderToString(
       createSSRApp(Dialog, {
         open: true,
         loadPage: async () => ({ total: 0, pageNo: 1, pageSize: 20, list: [] }),
+        targetConfiguration: configuration('Current workflow', 3, 2, 2),
       }),
       context,
     );
     const html = Object.values(context.teleports || {}).join('');
-    assert.match(html, /覆盖式继承，原配置不可恢复/);
+    assert.doesNotMatch(html, /覆盖式继承，原配置不可恢复/);
     assert.match(html, /当前未输入任何关键字，未查到任何数据/);
+  });
+
+  const candidates = async () => ({
+    total: 2,
+    pageNo: 1,
+    pageSize: 20,
+    list: [source('first', '列表名称一', '场景一'), source('second', '列表名称二', '场景二')],
+  });
+  const searchCandidates = async (state) => {
+    await settle();
+    state.keyword.value = '流程';
+    await state.runSearch();
+  };
+
+  await test('selection immediately shows the current workflow counts and can be confirmed', async () => {
+    const { state, events } = mount(candidates, configuration('被覆盖的工作流', 3, 2, 4));
+    await searchCandidates(state);
+    assert.equal(state.inheritanceWarningText.value, '');
+    assert.equal(state.canConfirm.value, false);
+    state.selectRow(state.rows.value[0]);
+    assert.equal(state.targetConfigurationSummary.value, '3 环节 / 2 Command / 4 资产');
+    assert.match(state.inheritanceWarningText.value, /「列表名称一」/);
+    assert.match(state.inheritanceWarningText.value, /被覆盖：3 环节 \/ 2 Command \/ 4 资产/);
+    assert.equal(state.canConfirm.value, true);
+    state.confirmSelection();
+    assert.equal(events[0][1].key, 'first');
+  });
+
+  await test('switching sources preserves the target counts and does not infer empty source configuration', async () => {
+    const { state } = mount(candidates, configuration('当前流程', 0, 0, 2));
+    await searchCandidates(state);
+    state.rows.value[0].activityCount = 0;
+    state.rows.value[0].commandCount = 0;
+    state.selectRow(state.rows.value[0]);
+    assert.equal(state.selectedWorkflowLabel.value, '列表名称一');
+    assert.equal(state.targetConfigurationSummary.value, '0 环节 / 0 Command / 2 资产');
+    state.selectRow(state.rows.value[1]);
+    assert.equal(state.selectedWorkflowLabel.value, '列表名称二');
+    assert.equal(state.targetConfigurationSummary.value, '0 环节 / 0 Command / 2 资产');
+  });
+
+  await test('a target with no configuration is shown as empty', async () => {
+    const { state } = mount(candidates, configuration('空目标'));
+    await searchCandidates(state);
+    state.selectRow(state.rows.value[0]);
+    assert.match(state.inheritanceWarningText.value, /被覆盖：空，尚未配置/);
   });
 
   await test('an empty keyword backend rejection is treated as a normal empty result', async () => {
@@ -203,7 +256,7 @@ try {
     );
     assert.equal(state.hasMore.value, false);
 
-    state.selectRow(state.rows.value[2]);
+    await state.selectRow(state.rows.value[2]);
     state.confirmSelection();
     assert.equal(events.length, 1);
     assert.equal(events[0][0], 'confirm');

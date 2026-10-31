@@ -404,8 +404,8 @@ test.describe('Extension 详情与发布旁路 HTTP', () => {
       const inherit = assembly.getByRole('checkbox', { name: '继承当前旁路文件' });
       if (hasBypass) {
         await expect(inherit).toBeChecked();
-        await expect(assembly).toContainText('docs/readme.md');
-        await expect(assembly).toContainText('1.0 MB');
+        await expect(assembly).not.toContainText('docs/readme.md');
+        await expect(assembly).not.toContainText('1.0 MB');
       } else {
         await expect(inherit).toHaveCount(0);
       }

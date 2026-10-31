@@ -430,8 +430,8 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
 
     await expect(harnessPage.workflowsTable.getByRole('columnheader')).toHaveText([
       '名称',
-      '产品',
-      '部门',
+      '层级',
+      '部门 / 产品',
       '状态',
       '所属业务场景',
       'Command 入口',
@@ -444,8 +444,8 @@ test.describe('Harness 管理冒烟', { tag: '@smoke' }, () => {
     const draftRow = harnessPage.workflowInventoryRow('未命名 Workflow');
     await expect(draftRow.getByRole('cell')).toHaveText([
       '未命名 Workflow',
+      '产品级',
       'harness-pipeline',
-      '持续交付组',
       '设计中',
       '研发提效 / 代码生成',
       '0 个',

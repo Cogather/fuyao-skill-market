@@ -329,14 +329,6 @@ function formatSize(size: number): string {
                 {{ remote.hasBypass ? '更换继承' : '选择继承' }}
               </button>
               <button
-                v-if="remote.hasBypass || httpContext.hasPublishedPackage"
-                type="button"
-                :disabled="controlsDisabled"
-                @click="remote.download"
-              >
-                {{ httpContext.hasPublishedPackage ? '下载完整包' : '下载旁路' }}
-              </button>
-              <button
                 v-if="remote.hasBypass"
                 type="button"
                 :disabled="controlsDisabled"
@@ -357,19 +349,9 @@ function formatSize(size: number): string {
                 "
               />继承当前旁路文件</label
             >
-            <p>
-              {{
-                modelValue.inheritBypass !== false
-                  ? '当前会继承以下旁路文件：'
-                  : '本次发布不继承以下旁路文件；确认发布时将清除当前旁路。'
-              }}
+            <p v-if="modelValue.inheritBypass === false">
+              本次发布不继承旁路文件；确认发布时将清除当前旁路。
             </p>
-            <ul>
-              <li v-for="entry in remote.currentEntries" :key="entry.path">
-                <code>{{ entry.path }}</code
-                ><span v-if="entry.size != null">{{ formatSize(entry.size) }}</span>
-              </li>
-            </ul>
           </div>
         </template>
         <div v-else class="inheritance-summary">
@@ -399,6 +381,15 @@ function formatSize(size: number): string {
         <div class="assembly-subtitle assembly-subtitle--tree">
           <span>最终目录结构预览</span>
           <span class="assembly-card__badge is-neutral">{{ packageFileCount }} 个文件</span>
+          <button
+            v-if="httpContext && (remote.hasBypass || httpContext.hasPublishedPackage)"
+            class="package-download-button"
+            type="button"
+            :disabled="controlsDisabled"
+            @click="remote.download"
+          >
+            {{ httpContext.hasPublishedPackage ? '下载完整包' : '下载旁路' }}
+          </button>
         </div>
         <p v-if="!httpContext" role="status">缺少场景信息，暂无法加载目录。</p>
         <p v-else-if="remote.treeLoading" role="status">正在加载目录…</p>
@@ -636,14 +627,6 @@ function formatSize(size: number): string {
   gap: 6px;
   align-items: center;
 }
-.bypass-current li {
-  overflow-wrap: anywhere;
-  margin: 5px 0;
-}
-.bypass-current li span {
-  margin-left: 12px;
-  color: #667085;
-}
 .bypass-warning {
   padding: 12px 16px;
   border: 1px solid #f5cd80;
@@ -871,6 +854,7 @@ function formatSize(size: number): string {
 }
 
 .inheritance-summary button,
+.package-download-button,
 .inheritance-dialog button {
   min-height: 28px;
   padding: 0 9px;
@@ -884,9 +868,16 @@ function formatSize(size: number): string {
 }
 
 .inheritance-summary button:disabled,
+.package-download-button:disabled,
 .inheritance-dialog button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.package-download-button {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-weight: 400;
 }
 
 .inheritance-empty {
