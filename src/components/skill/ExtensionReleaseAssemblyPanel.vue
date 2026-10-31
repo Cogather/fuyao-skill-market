@@ -407,10 +407,9 @@ function formatSize(size: number): string {
           </button>
           <span class="assembly-card__badge is-neutral">{{ packageFileCount }} 个文件</span>
           <button
-            v-if="httpContext && (remote.hasBypass || httpContext.hasPublishedPackage)"
             class="package-download-button"
             type="button"
-            :disabled="controlsDisabled"
+            :disabled="controlsDisabled || !httpContext"
             @click="remote.download"
           >
             下载完整包

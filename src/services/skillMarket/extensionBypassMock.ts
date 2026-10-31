@@ -27,6 +27,8 @@ const COMPONENT_FOLDERS: Record<ExtensionCapabilityType, string> = {
   command: 'commands',
   agent: 'agents',
 };
+// Keep uploaded bytes as well as the metadata shown in the directory preview.
+const bypassContents = new Map<string, Map<string, Uint8Array>>();
 
 function requiredText(value: unknown, field: string): string {
   if (typeof value !== 'string' || !value.trim()) {
@@ -166,6 +168,7 @@ export async function uploadExtensionBypassMock(
     [...protectedFiles(scene, layout)].map((path) => path.toLowerCase()),
   );
   const accepted = new Map<string, ExtensionBypassEntry>();
+  const contents = new Map<string, Uint8Array>();
   const ignored: ExtensionBypassEntry[] = [];
   const rows = Object.values(
     archive.files as Record<string, { name: string; dir: boolean; asUint8Array(): Uint8Array }>,
@@ -178,7 +181,8 @@ export async function uploadExtensionBypassMock(
       }
       continue;
     }
-    const size = row.asUint8Array().byteLength;
+    const bytes = row.asUint8Array();
+    const size = bytes.byteLength;
     if (knownProtectedFiles.has(path.toLowerCase()) || SYSTEM_FILES.has(path.toLowerCase())) {
       ignored.push({ path, size, reason: '系统或组件保护文件，已忽略' });
       continue;
@@ -187,10 +191,12 @@ export async function uploadExtensionBypassMock(
       throw new Error(`旁路 zip 试图变更保护区目录结构：${path}，已拒绝整包`);
     }
     accepted.set(path, { path, size });
+    contents.set(path, bytes);
   }
   scene.layoutMode = layout;
   scene.bypassEntries = [...accepted.values()].map((entry) => ({ ...entry }));
   scene.hasBypass = scene.bypassEntries.length > 0;
+  bypassContents.set(scope.extensionName, contents);
   return mutationResult(scene, ignored);
 }
 
@@ -199,6 +205,7 @@ export async function clearExtensionBypassMock(input: ExtensionBypassIdentity): 
   const scene = sceneFor(scope.extensionName);
   scene.hasBypass = false;
   scene.bypassEntries = [];
+  bypassContents.delete(scope.extensionName);
 }
 
 export async function updateExtensionLayoutMock(
@@ -221,6 +228,29 @@ function componentPath(
       ? `${folder}/${name}/SKILL.md`
       : `${folder}/${name}.md`;
   return `${layoutPrefix(layout)}${relative}`;
+}
+
+function componentFiles(
+  scene: ExtensionScene,
+  layout: ExtensionLayoutMode,
+  component: ExtensionStructureComponent,
+): Map<string, string> {
+  const mainPath = componentPath(layout, component);
+  const capability = scene.capabilities[component.componentType].find(
+    (item) => item.name.trim() === component.componentName.trim(),
+  );
+  const files = new Map<string, string>();
+  const mainName = component.componentType === 'skill' ? 'SKILL.md' : mainPath.split('/').at(-1);
+  const mainFile =
+    capability?.files.find((file) => file.name === mainName) ??
+    capability?.files.find((file) => /\.md$/i.test(file.name));
+  files.set(mainPath, mainFile?.content ?? `# ${component.componentName}\n`);
+  for (const file of capability?.files ?? []) {
+    if (file === mainFile) continue;
+    const directory = `${layoutPrefix(layout)}${COMPONENT_FOLDERS[component.componentType]}/${safeName(component.componentName)}`;
+    files.set(`${directory}/${normalizePath(file.name)}`, file.content);
+  }
+  return files;
 }
 
 function addTreeFile(
@@ -259,7 +289,9 @@ export async function queryExtensionStructureTreeMock(
     if (!['skill', 'command', 'agent'].includes(component.componentType)) {
       throw new Error('Extension 组件类型无效');
     }
-    addTreeFile(entries, scope.extensionName, componentPath(layout, component), 'COMPONENT', null);
+    componentFiles(scene, layout, component).forEach((_content, path) => {
+      addTreeFile(entries, scope.extensionName, path, 'COMPONENT', null);
+    });
   });
   cloneEntries(scene.bypassEntries).forEach((entry) => {
     addTreeFile(entries, scope.extensionName, normalizePath(entry.path), 'FILE', entry.size);
@@ -279,15 +311,40 @@ export async function getExtensionBypassDownloadMock(
 ): Promise<{ downloadUrl: string; expireSeconds: number }> {
   const scope = identity(input);
   const scene = sceneFor(scope.extensionName);
-  const published =
-    Boolean(scene.extension.version?.trim()) ||
-    scene.releases.some((release) => release.status === '成功');
-  if (!published && !scene.hasBypass) {
-    throw new Error('当前 Extension 暂无可下载的发布包或旁路文件');
-  }
-  const file = published ? 'package.zip' : 'bypass.zip';
+  const archive = new PizZip();
+  const root = safeName(scope.extensionName);
+  const layout = scene.layoutMode ?? 'standard';
+  const metadata = {
+    name: scene.extension.name,
+    description: scene.extension.description,
+    version: scene.extension.version ?? '0.0.0',
+  };
+  archive.file(
+    `${root}/codeagent-extension.json`,
+    JSON.stringify({ ...metadata, layoutMode: layout }, null, 2),
+  );
+  archive.file(`${root}/.cac-plugin/plugin.json`, JSON.stringify(metadata, null, 2));
+  (Object.keys(COMPONENT_FOLDERS) as ExtensionCapabilityType[]).forEach((type) => {
+    scene.capabilities[type].forEach((capability) => {
+      componentFiles(scene, layout, {
+        componentType: type,
+        componentName: capability.name,
+        componentVersion: capability.version,
+      }).forEach((content, path) => archive.file(`${root}/${path}`, content));
+    });
+  });
+  cloneEntries(scene.bypassEntries).forEach((entry) => {
+    const path = normalizePath(entry.path);
+    if (archive.file(`${root}/${path}`)) return;
+    // Seeded Mock entries contain metadata only; uploaded/inherited files retain their bytes.
+    const content =
+      bypassContents.get(scope.extensionName)?.get(path) ?? `# Mock bypass file\n\n${path}\n`;
+    archive.file(`${root}/${path}`, content);
+  });
   return {
-    downloadUrl: `https://mock.invalid/extensions/${encodeURIComponent(scope.extensionName)}/${file}?expires=3600`,
+    downloadUrl: URL.createObjectURL(
+      archive.generate({ type: 'blob', mimeType: 'application/zip' }),
+    ),
     expireSeconds: 3600,
   };
 }
@@ -322,6 +379,12 @@ export async function inheritExtensionBypassMock(
   target.layoutMode = layout;
   target.bypassEntries = accepted.map((entry) => ({ ...entry }));
   target.hasBypass = target.bypassEntries.length > 0;
+  const contents = new Map<string, Uint8Array>();
+  accepted.forEach((entry) => {
+    const bytes = bypassContents.get(sourceName)?.get(entry.path);
+    if (bytes) contents.set(entry.path, bytes.slice());
+  });
+  bypassContents.set(targetName, contents);
   return mutationResult(target, ignored);
 }
 
