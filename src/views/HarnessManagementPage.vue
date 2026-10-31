@@ -37,6 +37,7 @@ const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
 const permissionContextReady = ref(false);
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const harnessGuideUrl = `${(import.meta.env.VITE_AI_ENABLE || '').trim().replace(/\/+$/, '')}/post/P202609161114150001`;
 const harnessPermissions = ref(createEmptyHarnessDepartmentPermissions());
 const MOCK_HARNESS_USER_ID = 'w30000001';
 const MOCK_HARNESS_DEPARTMENT_PATH = [
@@ -519,7 +520,7 @@ onBeforeRouteLeave(() => {
       <div class="harness-topbar__tools">
         <a
           class="harness-topbar__help"
-          href="xxx"
+          :href="harnessGuideUrl"
           target="_blank"
           rel="noopener noreferrer"
           title="Harness 规划使用指导"
