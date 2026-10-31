@@ -296,8 +296,8 @@ try {
   request.harnessApi = async (config) => {
     calls.push(config);
     return success({
-      firstScene: config.data.firstScene,
-      secondScene: config.data.secondScene,
+      firstScene: config.params.firstScene,
+      secondScene: config.params.secondScene,
       readyStatus: '已就绪',
       publishedExtension: null,
       components: { commands: [{ name: '/udm-e2e', version: '1.0.0' }], skills: [], agents: [] },
@@ -323,14 +323,14 @@ try {
         dimType: '产品级',
         dimCode: 'product-1',
         dimName: 'udm',
-        extensionName: 'udm-extension-二',
+        extensionName: selectedExtension.name,
         firstScene: '应用开发二',
         secondScene: '代码开发二',
       },
     },
   ]);
   console.log(
-    'PASS Extension publication carries the selected list item scene names alongside its code',
+    'PASS Extension publication queries the selected list item scene names separately from its package name',
   );
   await api.queryReleases(scope, selectedExtension);
   await api.queryPublishDetail(scope, selectedExtension);

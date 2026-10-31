@@ -158,6 +158,19 @@ const pageNumbers = computed(() =>
     (_, index) => Math.max(1, Math.min(page.value - 3, totalPages.value - 6)) + index,
   ),
 );
+function httpWorkflowDepartment(row: HarnessWorkflowListRow) {
+  const departmentPath =
+    row.dimType === '部门级'
+      ? row.dimName
+          .split('/')
+          .map((name) => name.trim())
+          .filter(Boolean)
+      : [];
+  return {
+    departmentName: departmentPath.at(-1) || '-',
+    departmentPath,
+  };
+}
 const visibleRows = computed<WorkflowDisplayRow[]>(() => {
   if (isHttp) {
     return httpRows.value.map((row, index) => ({
@@ -166,8 +179,7 @@ const visibleRows = computed<WorkflowDisplayRow[]>(() => {
       description: row.flowDescription || '',
       extensionName: row.sceneExtensionCode || '',
       productName: row.dimType === '产品级' ? row.dimName || '-' : '-',
-      departmentName: '',
-      departmentPath: [],
+      ...httpWorkflowDepartment(row),
       scenarioPath: [row.firstScene, row.secondScene].filter(Boolean).join(' / ') || '未关联场景',
       firstScene: row.firstScene || '',
       secondScene: row.secondScene || '',
@@ -332,6 +344,11 @@ async function openWorkflowRelease(
       mode,
     );
     if (sequence !== workflowReleaseSequence || view.value !== 'publish') return;
+    if (isHttp && mode === 'publish' && !context.scene.sceneExtensionCode?.trim()) {
+      // 此入口的 extensionName 来自工作流列表的 sceneExtensionCode，
+      // 详情未回传时保留已知场景身份，不能用 publishedExtension 的发布包名称替代。
+      context.scene.sceneExtensionCode = row.extensionName.trim();
+    }
     workflowRelease.value = { context, mode };
   } catch (caught) {
     if (sequence !== workflowReleaseSequence || view.value !== 'publish') return;
@@ -588,8 +605,8 @@ onBeforeUnmount(() => {
                 <thead>
                   <tr>
                     <th scope="col">名称</th>
-                    <th scope="col">产品</th>
-                    <th v-if="!isHttp" scope="col">部门</th>
+                    <th scope="col">层级</th>
+                    <th scope="col">部门 / 产品</th>
                     <th scope="col">状态</th>
                     <th scope="col">所属业务场景</th>
                     <th scope="col">Command 入口</th>
@@ -599,8 +616,8 @@ onBeforeUnmount(() => {
                 <tbody>
                   <tr v-for="row in visibleRows" :key="row.id">
                     <td class="wf-name" :title="row.description">{{ row.name }}</td>
-                    <td>{{ row.productName }}</td>
-                    <td v-if="!isHttp">{{ row.departmentName }}</td>
+                    <td class="wf-scope-level">{{ row.dimType || '-' }}</td>
+                    <td :title="row.dimName">{{ row.dimName || '-' }}</td>
                     <td>
                       <span
                         class="workflow-status-badge"
@@ -1002,6 +1019,9 @@ onBeforeUnmount(() => {
 .workflows-table .wf-name {
   color: #111827;
   font-weight: 600;
+}
+.workflows-table .wf-scope-level {
+  white-space: nowrap;
 }
 .workflow-status-badge,
 .wf-count-pill {

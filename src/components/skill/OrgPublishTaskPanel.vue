@@ -28,13 +28,7 @@ const effectiveUserId = computed(() => {
   return String(userStore.userInfo?.w3Id ?? '').trim();
 });
 
-type StatusFilter =
-  | 'all'
-  | 'processing'
-  | 'pending_approval'
-  | 'success'
-  | 'fail'
-  | 'rejected';
+type StatusFilter = 'all' | 'processing' | 'pending_approval' | 'success' | 'fail' | 'rejected';
 
 /**
  * 状态映射（真实接口枚举 → 展示）：
@@ -69,9 +63,7 @@ const orgFilter = ref('all');
 const statusFilter = ref<StatusFilter>('all');
 
 const orgOptions = computed(() =>
-  Array.from(new Set(tasks.value.map((t) => String(t.targetOrgName ?? '').trim()))).filter(
-    Boolean,
-  ),
+  Array.from(new Set(tasks.value.map((t) => String(t.targetOrgName ?? '').trim()))).filter(Boolean),
 );
 
 const filteredTasks = computed(() => {
@@ -117,7 +109,10 @@ function formatDateTime(value: string | undefined): string {
     return isNaN(d.getTime()) ? raw : formatFromDate(d);
   }
   // ISO 或 yyyy-MM-ddTHH:mm:ss / yyyy-MM-dd HH:mm:ss 等
-  const normalized = raw.replace('T', ' ').replace(/\.\d+.*$/, '').replace(/([+-]\d{2}:?\d{2}|Z)$/, '');
+  const normalized = raw
+    .replace('T', ' ')
+    .replace(/\.\d+.*$/, '')
+    .replace(/([+-]\d{2}:?\d{2}|Z)$/, '');
   const d = new Date(normalized.replace(' ', 'T'));
   if (!isNaN(d.getTime())) {
     return formatFromDate(d);
@@ -151,7 +146,9 @@ const pagedTasks = computed(() => {
 });
 
 function hasAnyFilter(): boolean {
-  return Boolean(nameKeyword.value.trim()) || orgFilter.value !== 'all' || statusFilter.value !== 'all';
+  return (
+    Boolean(nameKeyword.value.trim()) || orgFilter.value !== 'all' || statusFilter.value !== 'all'
+  );
 }
 
 function clearHeaderFilters(): void {
@@ -271,8 +268,16 @@ function normalizeTasks(raw: unknown): SkillOrgPublishTask[] {
       version: row.version ? String(row.version) : undefined,
       publisher: row.publisher ? String(row.publisher) : undefined,
       publisherName: row.publisherName ? String(row.publisherName) : undefined,
-      targetOrgId: row.orgCode ? String(row.orgCode) : row.targetOrgId ? String(row.targetOrgId) : undefined,
-      targetOrgName: row.orgName ? String(row.orgName) : row.targetOrgName ? String(row.targetOrgName) : undefined,
+      targetOrgId: row.orgCode
+        ? String(row.orgCode)
+        : row.targetOrgId
+          ? String(row.targetOrgId)
+          : undefined,
+      targetOrgName: row.orgName
+        ? String(row.orgName)
+        : row.targetOrgName
+          ? String(row.targetOrgName)
+          : undefined,
       publishDate: String(row.submitTime ?? row.publishDate ?? row.createdAt ?? ''),
       status: normalizeStatus(row.status ?? row.taskStatus),
       approvalUrl: row.approvalUrl ? String(row.approvalUrl) : undefined,
@@ -348,11 +353,7 @@ onMounted(() => {
             <th class="th-filter th-org">
               <span class="th-caption">目标组织</span>
               <label class="filter-chip" :class="{ active: orgFilter !== 'all' }">
-                <select
-                  v-model="orgFilter"
-                  class="filter-chip-control"
-                  aria-label="按目标组织过滤"
-                >
+                <select v-model="orgFilter" class="filter-chip-control" aria-label="按目标组织过滤">
                   <option value="all">全部组织</option>
                   <option v-for="name in orgOptions" :key="name" :value="name">{{ name }}</option>
                 </select>
@@ -371,11 +372,7 @@ onMounted(() => {
                   :class="filterDotClass(statusFilter)"
                 >
                 </span>
-                <select
-                  v-model="statusFilter"
-                  class="filter-chip-control"
-                  aria-label="按状态过滤"
-                >
+                <select v-model="statusFilter" class="filter-chip-control" aria-label="按状态过滤">
                   <option v-for="opt in STATUS_OPTIONS" :key="opt.value" :value="opt.value">
                     {{ opt.label }}
                   </option>
@@ -393,7 +390,9 @@ onMounted(() => {
             <td>
               <strong class="skill-name">{{ task.skillName }}</strong>
             </td>
-            <td><span class="version-text">{{ task.version || '—' }}</span></td>
+            <td>
+              <span class="version-text">{{ task.version || '—' }}</span>
+            </td>
             <td>{{ task.targetOrgName || '—' }}</td>
             <td>{{ formatDateTime(task.publishDate) }}</td>
             <td>
@@ -403,10 +402,7 @@ onMounted(() => {
               <span v-if="task.rejectReason" class="reject-reason" :title="task.rejectReason">
                 驳回原因：{{ task.rejectReason }}
               </span>
-              <span
-                v-else-if="task.status === 'success' && task.finishedDate"
-                class="finish-date"
-              >
+              <span v-else-if="task.status === 'success' && task.finishedDate" class="finish-date">
                 {{ task.finishedDate }}
               </span>
             </td>
@@ -458,7 +454,12 @@ onMounted(() => {
             下一页
           </button>
         </div>
-        <button v-if="activeFilterCount > 0" type="button" class="clear-filter" @click="clearHeaderFilters">
+        <button
+          v-if="activeFilterCount > 0"
+          type="button"
+          class="clear-filter"
+          @click="clearHeaderFilters"
+        >
           清空筛选<span class="clear-count">{{ activeFilterCount }}</span>
         </button>
       </div>

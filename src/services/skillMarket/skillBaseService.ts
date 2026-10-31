@@ -1,5 +1,11 @@
 import httpRequest from '@/services/skillMarket/request';
 import type {
+  ExtensionBypassIdentity,
+  ExtensionBypassInheritInput,
+  ExtensionLayoutInput,
+  ExtensionStructureComponent,
+} from './extensionBypassService';
+import type {
   ApiEnvelope,
   BatchDeleteSkillPlanningSupplementBody,
   CreateAgentMasterManagementBody,
@@ -938,6 +944,37 @@ export const skillBaseService = {
   },
 
   // Extension 相关接口
+  uploadExtensionBypass: (data: FormData): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass', method: 'POST', data }),
+  clearExtensionBypass: (params: ExtensionBypassIdentity): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass/clear', method: 'POST', params }),
+  updateExtensionLayout: (params: ExtensionLayoutInput): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/layout', method: 'POST', params }),
+  queryExtensionStructureTree: ({
+    userId,
+    ...data
+  }: ExtensionLayoutInput & { components: ExtensionStructureComponent[] }): Promise<unknown> =>
+    httpRequest.harnessApi({
+      url: '/extensions/structure/tree',
+      method: 'POST',
+      params: { userId },
+      headers: { 'Content-Type': 'application/json' },
+      data,
+    }),
+  getExtensionBypassDownload: (params: ExtensionBypassIdentity): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass/download', method: 'GET', params }),
+  inheritExtensionBypass: (
+    params: { userId: string },
+    data: Omit<ExtensionBypassInheritInput, 'userId'>,
+  ): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass/inherit', method: 'POST', params, data }),
+  searchExtensions: (params: {
+    userId: string;
+    keyword: string;
+    pageNum: number;
+    pageSize: number;
+  }): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/search', method: 'GET', params }),
   // 查询用户可发布组织列表
   queryUserPublishableOrgs: (params: { userId: string; dimType: string; dimCode: string }): any => {
     return httpRequest.harnessApi<any>({
@@ -959,8 +996,8 @@ export const skillBaseService = {
   saveExtension: (params: any, body: any): any => {
     return httpRequest.harnessApi<any>({
       url: '/extensions',
-      method: 'post',
-      data: body,
+      method: 'POST',
+      data: { ...body, inheritBypass: body.inheritBypass ?? true },
       params,
     });
   },

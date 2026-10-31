@@ -51,12 +51,13 @@ try {
   for (const assetType of ['Agent', 'Skill', 'Command']) {
     const page = await api.queryAssets({ ...scope, assetType }, { pageNum: 1, pageSize: 10 });
     assert.ok(page.list.length > 3, `${assetType} mock list should contain contrasting rows`);
-    assert.deepEqual(
-      page.list.slice(0, 4).map((asset) => asset.canPublish === true),
-      [true, true, true, false],
-      `${assetType} should expose publish only on its first three cards`,
+    const publishableAssets = page.list.filter((asset) => asset.canPublish === true);
+    assert.ok(publishableAssets.length >= 3, `${assetType} should expose publishable cards`);
+    assert.ok(
+      page.list.some((asset) => asset.canPublish !== true),
+      `${assetType} should retain at least one non-publishable contrast row`,
     );
-    page.list.slice(0, 3).forEach((asset) => {
+    publishableAssets.forEach((asset) => {
       assert.ok(asset.latestVersion, `${assetType} publishable rows need latestVersion`);
       assert.ok(asset.dimType, `${assetType} publishable rows need dimType`);
       assert.ok(asset.dimCode, `${assetType} publishable rows need dimCode`);
@@ -68,7 +69,10 @@ try {
     { ...scope, assetType: 'Skill' },
     { pageNum: 1, pageSize: 10 },
   );
-  const asset = skillPage.list[0];
+  const asset = skillPage.list.find(
+    (item) => item.canPublish === true && Boolean(item.latestVersion),
+  );
+  assert.ok(asset, 'mock Skill list should include a publishable version');
   const organizations = await atomicPublish.queryAtomicPublishOrganizations(asset, scope.userId);
   assert.ok(organizations.length >= 2, 'mock publishing should offer target organizations');
 

@@ -7,6 +7,31 @@ export interface WorkflowSceneKey {
   secondScene: string;
 }
 export type WorkflowSceneContext = WorkflowDimension & WorkflowSceneKey;
+export interface WorkflowSceneSearchRow extends WorkflowSceneKey {
+  sourceDimType: string;
+  sourceDimCode: string;
+  sourceDimName: string;
+  sceneExtensionCode: string | null;
+  flowName: string | null;
+  activityCount: number | null;
+}
+export interface WorkflowSceneSearchQuery {
+  userId: string;
+  keyword: string;
+  pageNum: number;
+  pageSize: number;
+}
+export interface WorkflowSceneCopyBody {
+  sourceDimType: string;
+  sourceDimCode: string;
+  sourceFirstScene: string;
+  sourceSecondScene: string;
+  sourceSceneExtensionCode: string;
+  targetDimType: string;
+  targetDimCode: string;
+  targetFirstScene: string;
+  targetSecondScene: string;
+}
 export type WorkflowAssetType = 'SKILL' | 'AGENT';
 export type WorkflowComponentType = WorkflowAssetType | 'COMMAND';
 export interface WorkflowSceneRow extends WorkflowSceneKey {
@@ -73,6 +98,10 @@ interface updateSceneMetadataBody {
 }
 
 export const harnessWorkflowService = {
+  searchScenes: (params: WorkflowSceneSearchQuery): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/scenes/search', method: 'GET', params }),
+  copyScene: (body: WorkflowSceneCopyBody, params: { userId: string }): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/scene/copy', method: 'POST', params, data: body }),
   // Supporting requests for this tab use the same service, including lookup of binding IDs.
   queryConfigurationBindings: (
     type: WorkflowComponentType,
@@ -271,6 +300,7 @@ export const harnessWorkflowService = {
     dimName: string;
     productCode?: string;
     status?: string;
+    keyword?: string;
     pageNo?: number;
     pageSize?: number;
   }): Promise<any> => {
@@ -468,6 +498,7 @@ export const harnessWorkflowService = {
    */
   saveExtension: (
     body: {
+      extensionName?: string;
       description?: string;
       firstScene: string;
       secondScene: string;
@@ -477,6 +508,7 @@ export const harnessWorkflowService = {
       commands?: { name: string; version: string }[];
       skills?: { name: string; version: string }[];
       releaseType?: string;
+      inheritBypass?: boolean;
     },
     params: {
       dimType: string;
@@ -489,7 +521,7 @@ export const harnessWorkflowService = {
     return httpRequest.harnessApi({
       url: '/extensions',
       method: 'POST',
-      data: body,
+      data: { ...body, inheritBypass: body.inheritBypass ?? true },
       params: params,
     });
   },
@@ -518,15 +550,19 @@ export const harnessWorkflowService = {
    */
   queryExtensionSceneDetail: (
     params: { userId: string },
-    body: { dimType: string; dimCode: string; dimName: string } & (
-      | { extensionName: string; firstScene?: string; secondScene?: string }
-      | { extensionName?: string; firstScene: string; secondScene: string }
-    ),
+    body: {
+      dimType: string;
+      dimCode: string;
+      dimName: string;
+      extensionName?: string;
+      firstScene?: string;
+      secondScene?: string;
+    },
   ): Promise<any> => {
     return httpRequest.harnessApi({
       url: '/extensions/detail',
       method: 'POST',
-      params: params,
+      params: { userId: params.userId },
       data: body,
     });
   },

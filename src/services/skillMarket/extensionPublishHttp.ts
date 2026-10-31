@@ -8,6 +8,10 @@ import type {
 } from './extensionPublishMock';
 import { skillBaseService } from './skillBaseService';
 import { harnessWorkflowService } from './businessScenarioDesignService';
+import {
+  normalizeExtensionBypassEntries,
+  normalizeExtensionLayout,
+} from './extensionBypassService';
 import { getProductPlanning, querySkillPlanningSceneOptionGroups } from './skillPlanningService';
 import type { SkillPlanningOptionGroup } from './skillPlanningShared';
 import {
@@ -47,6 +51,7 @@ export type PublishExtensionInput = {
   description: string;
   channel: ExtensionPublishChannel;
   organization: PublishableOrganization;
+  inheritBypass?: boolean;
 };
 
 type HttpExtensionRelease = ExtensionRelease & {
@@ -103,7 +108,7 @@ function assertHttpSuccess(response: unknown, fallback: string): void {
   if (
     meta.success === false ||
     record.success === false ||
-    (Number.isFinite(code) && code >= 400)
+    (record.code != null && ![0, 200].includes(code))
   ) {
     throw new Error(responseMessage(response, fallback));
   }
@@ -352,6 +357,11 @@ function mapBindingScenes(
         );
         return {
           id: sceneKey,
+          sceneExtensionCode:
+            readText(secondRecord, ['sceneExtensionCode', 'extensionName']) || null,
+          layoutMode: normalizeExtensionLayout(secondRecord.layoutMode),
+          hasBypass: secondRecord.hasBypass === true,
+          bypassEntries: normalizeExtensionBypassEntries(secondRecord.bypassEntries ?? []),
           productId: scope.productId || scope.dimCode,
           primary: firstScene,
           name: secondScene,
@@ -388,6 +398,10 @@ function mapSceneOptionGroups(
       ]);
       return {
         id: sceneKey,
+        sceneExtensionCode: null,
+        layoutMode: 'standard',
+        hasBypass: false,
+        bypassEntries: [],
         productId: scope.productId || scope.dimCode,
         primary: firstScene,
         name: secondScene,
@@ -493,11 +507,13 @@ export async function queryHttpExtensionBindings(
   scope: ExtensionScope,
   scene: ExtensionScene,
 ): Promise<ExtensionScene> {
-  return queryHttpExtensionDetail(userId, scope, {
-    extensionName: scene.extension.name,
+  const detail = await queryHttpExtensionDetail(userId, scope, {
+    extensionName: normalizeText(scene.sceneExtensionCode) || scene.extension.name,
     firstScene: scene.primary,
     secondScene: scene.name,
   });
+  detail.extension.name ||= scene.extension.name;
+  return detail;
 }
 
 export type ExtensionVersionSnapshot = {
@@ -596,7 +612,6 @@ export async function queryHttpExtensionDetail(
     }),
   );
   if (Object.keys(mappedPublishChecks).length > 0) detail.publishChecks = mappedPublishChecks;
-  detail.extension.name ||= extensionName;
   return detail;
 }
 
@@ -644,12 +659,18 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     throw new Error(publishCheck.message);
   }
   const extensionName = requiredText(input.extensionName, '请输入 Extension 名称');
-  if (!isCatalogItemNameValid(extensionName)) {
-    throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');
-  }
-  const requiredPrefix = getProductCatalogItemNamePrefix(input.scope.dimType, input.scope.dimName);
-  if (requiredPrefix && !extensionName.startsWith(requiredPrefix)) {
-    throw new Error(`Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`);
+  // 详情/工作流提供的既有名称在发布页不可编辑，不再套用新建名称规则。
+  if (extensionName !== normalizeText(input.scene.extension.name)) {
+    if (!isCatalogItemNameValid(extensionName)) {
+      throw new Error('Extension 名称仅允许小写字母、数字、连字符，最长 64 字符');
+    }
+    const requiredPrefix = getProductCatalogItemNamePrefix(
+      input.scope.dimType,
+      input.scope.dimName,
+    );
+    if (requiredPrefix && !extensionName.startsWith(requiredPrefix)) {
+      throw new Error(`Extension 名称需以产品名称的小写形式“${requiredPrefix}”开头`);
+    }
   }
   const params = {
     userId: requiredText(input.userId, '尚未获取当前用户工号'),
@@ -662,6 +683,7 @@ export async function publishHttpExtension(input: PublishExtensionInput): Promis
     extensionName,
     description: requiredText(input.description, '请输入 Extension 描述'),
     releaseType: input.channel,
+    inheritBypass: input.inheritBypass ?? true,
     firstScene: input.scene.primary,
     secondScene: input.scene.name,
     targetOrgCode: input.organization.id,

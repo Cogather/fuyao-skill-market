@@ -651,6 +651,9 @@ test.describe('Agent / Skill 资产 HTTP 统一列表', () => {
     expect(componentDetailRequests).toHaveLength(cardDetailCount);
     expect(publishDetailRequests).toHaveLength(preparationCount + 1);
     expect(publishDetailRequests.at(-1)!.method()).toBe('POST');
+    expect(Object.fromEntries(new URL(publishDetailRequests.at(-1)!.url()).searchParams)).toEqual({
+      userId: 'http-user-001',
+    });
     expect(publishDetailRequests.at(-1)!.postDataJSON()).toEqual({
       dimType: '产品级',
       dimCode: 'http-product',

@@ -34,6 +34,8 @@ async function prepare(page: Page) {
       };
     else if (path.endsWith('/smapi-product-by-dept'))
       data = [{ offeringId: 'remote-product', offeringName: '产品筛选项' }];
+    else if (path.endsWith('/extensions/structure/tree'))
+      data = { layoutMode: 'standard', entries: [] };
     // A scene endpoint failure must not prevent the independent workflow inventory from loading.
     else if (path.endsWith('/scene-activity/scene'))
       return route.fulfill({
@@ -128,12 +130,13 @@ test.describe('Harness 工作流服务端列表', () => {
     });
     const row = harness.workflowInventoryRow('服务端第1页');
     await expect(row).toBeVisible();
-    await expect(row.getByRole('cell').nth(1)).toHaveText('服务端产品');
+    await expect(row.getByRole('cell').nth(1)).toHaveText('产品级');
+    await expect(row.getByRole('cell').nth(2)).toHaveText('服务端产品');
     await expect(row).toContainText('研发提效 / 接口生成');
     await expect(row).toContainText('7 个');
     await expect(
-      harness.workflowsTable.getByRole('columnheader', { name: '部门', exact: true }),
-    ).toHaveCount(0);
+      harness.workflowsTable.getByRole('columnheader', { name: '部门 / 产品', exact: true }),
+    ).toBeVisible();
     await expect(harness.workflowsPanel.locator('.wf-status-count')).toHaveCount(0);
     await expect(
       harness.workflowsPanel.getByRole('button', { name: '待发布', exact: true }),
@@ -148,6 +151,7 @@ test.describe('Harness 工作流服务端列表', () => {
     expect(queries.at(-1)?.params).toMatchObject({ status: '已发布', pageNo: '1' });
     await harness.selectWorkflowProduct('产品筛选项');
     await expect.poll(() => queries.at(-1)?.params.productCode).toBe('remote-product');
+    await expect(harness.workflowsTable.locator('tbody .wf-scope-level')).toHaveText(['产品级']);
     await harness.selectWorkflowDepartment('平台组');
     await expect.poll(() => queries.at(-1)?.params.dimName).toBe('研发部/平台组');
     expect(queries.at(-1)?.params).toEqual({
@@ -167,7 +171,14 @@ test.describe('Harness 工作流服务端列表', () => {
           pageNo: 1,
           pageSize: 10,
           list: [
-            { ...workflow('设计中可发布', '开发中'), canPublish: true, changed: true },
+            {
+              ...workflow('设计中可发布', '开发中'),
+              dimType: '部门级',
+              dimCode: 'dept-child',
+              dimName: '研发部/平台组',
+              canPublish: true,
+              changed: true,
+            },
             { ...workflow('待发布允许', '待发布'), canPublish: true, changed: false },
             { ...workflow('待发布拒绝', '待发布'), canPublish: false, changed: true },
             { ...workflow('已发布有变更', '已发布'), canPublish: true, changed: true },
@@ -182,7 +193,26 @@ test.describe('Harness 工作流服务端列表', () => {
     await expect(
       harness.workflowsTable.getByRole('columnheader', { name: '操作', exact: true }),
     ).toBeVisible();
-    await expect(harness.workflowInventoryRow('设计中可发布').getByRole('cell').nth(2)).toHaveText(
+    await expect(harness.workflowsTable.getByRole('columnheader')).toHaveText([
+      '名称',
+      '层级',
+      '部门 / 产品',
+      '状态',
+      '所属业务场景',
+      'Command 入口',
+      '操作',
+    ]);
+    await expect(harness.workflowsTable.locator('tbody .wf-scope-level')).toHaveText([
+      '部门级',
+      '产品级',
+      '产品级',
+      '产品级',
+      '产品级',
+    ]);
+    const departmentCell = harness.workflowInventoryRow('设计中可发布').getByRole('cell').nth(2);
+    await expect(departmentCell).toHaveText('研发部/平台组');
+    await expect(departmentCell).toHaveAttribute('title', '研发部/平台组');
+    await expect(harness.workflowInventoryRow('设计中可发布').getByRole('cell').nth(3)).toHaveText(
       '设计中',
     );
     const actionableRow = harness.workflowInventoryRow('待发布允许');
@@ -521,15 +551,17 @@ test.describe('Harness 工作流服务端列表', () => {
     expect(publishDetails).toHaveLength(1);
     const detailUrl = new URL(publishDetails[0]!.url());
     expect(detailUrl.searchParams.get('userId')).toBe('workflow-reader');
-    expect(publishDetails[0]!.postDataJSON()).toMatchObject({
+    expect(publishDetails[0]!.method()).toBe('GET');
+    expect(Object.fromEntries(detailUrl.searchParams)).toMatchObject({
       dimType: '产品级',
       dimCode: 'product-b-id',
       dimName: 'product-b',
       extensionName: 'product-b-api-extension',
     });
+    expect(publishDetails[0]!.postDataJSON()).not.toHaveProperty('userId');
 
     const publishCheckMessage = publish.locator('.publish-check-message');
-    const confirmPublish = publish.getByRole('button', { name: '确认发布', exact: true });
+    const confirmPublish = page.getByRole('region', { name: 'Extension 发布组装' }).getByRole('button', { name: '确认发布', exact: true });
     await expect(publishCheckMessage).toHaveText(
       '当前配置与已发布版本 v1.3.0 完全一致，无需重新发布',
     );
@@ -661,7 +693,7 @@ test.describe('Harness 工作流服务端列表', () => {
     await expect(publish).not.toContainText(
       '清单中的 Skill、Command 和 Agent 将随 Extension 一起发布至 Agent Center 平台。',
     );
-    await expect(publish.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+    await expect(page.getByRole('region', { name: 'Extension 发布组装' }).getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
   });
 
   test('失败可重试，空筛选仍可切换，过期请求不能覆盖新的状态结果', async ({ page }) => {

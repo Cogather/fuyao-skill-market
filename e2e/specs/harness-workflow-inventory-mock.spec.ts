@@ -141,14 +141,14 @@ test('Mock 工作流首次打开即可跨产品和子部门分页，并按状态
   await expect(harness.workflowStatusButton('全部')).toHaveAttribute('aria-pressed', 'true');
   await expect(harness.workflowsProductFilter).toHaveAttribute('data-value', '');
   await expect(rows).toHaveCount(3);
-  await expect(rows.locator('td:nth-child(3)')).toHaveText(Array(3).fill('流水线平台小组'));
+  await expect(rows.locator('.wf-scope-level')).toHaveText(Array(3).fill('产品级'));
 
   await harness.selectWorkflowDepartment('持续交付组');
   await expect(harness.workflowsPanel.getByText('共 26 条', { exact: true })).toBeVisible();
   await harness.workflowsNextPageButton.click();
   await harness.selectWorkflowProduct('devops-center-v2');
   await expect(rows).toHaveCount(4);
-  await expect(rows.locator('td:nth-child(2)')).toHaveText(Array(4).fill('devops-center-v2'));
+  await expect(rows.locator('td:nth-child(3)')).toHaveText(Array(4).fill('devops-center-v2'));
   await expect(harness.workflowsPreviousPageButton).toBeDisabled();
   await expect(harness.workflowsNextPageButton).toBeDisabled();
 
@@ -178,8 +178,7 @@ test('不同部门提供独立的 Mock 工作流，返回父部门仍包含下�
     await harness.selectWorkflowDepartment(department);
     const rows = harness.workflowsTable.locator('tbody').getByRole('row');
     await expect(rows).toHaveCount(count);
-    await expect(rows.locator('td:nth-child(2)')).toHaveText(Array(count).fill(product));
-    await expect(rows.locator('td:nth-child(3)')).toHaveText(Array(count).fill(department));
+    await expect(rows.locator('td:nth-child(3)')).toHaveText(Array(count).fill(product));
   }
 
   await harness.selectWorkflowDepartment('持续交付组');

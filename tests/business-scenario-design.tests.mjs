@@ -276,7 +276,7 @@ try {
         'POST',
         '/extensions',
         { ...scope, operatorName: '设计者' },
-        extension,
+        { ...extension, inheritBypass: true },
       ],
       [
         'querySceneBinding',

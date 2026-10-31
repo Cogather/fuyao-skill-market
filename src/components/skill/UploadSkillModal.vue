@@ -69,8 +69,7 @@ const userName = computed(() => {
     return fromMarket;
   }
   return (
-    String(userStore.userInfo?.nameCn ?? '').trim() ||
-    String(userStore.userInfo?.name ?? '').trim()
+    String(userStore.userInfo?.nameCn ?? '').trim() || String(userStore.userInfo?.name ?? '').trim()
   );
 });
 
@@ -167,8 +166,8 @@ const canSubmit = computed(
     !uploading.value,
 );
 
-const selectedOrg = computed(() =>
-  orgOptions.value.find((org) => org.orgId === selectedOrgId.value) ?? null,
+const selectedOrg = computed(
+  () => orgOptions.value.find((org) => org.orgId === selectedOrgId.value) ?? null,
 );
 
 /** 已有选中、但该组织已不在可选列表中（数据变化后校验） */
@@ -252,12 +251,8 @@ function normalizeOrgOptions(raw: unknown): SkillPublishOrgOption[] {
   return list
     .map((item) => {
       const row = readEnvelopeRecord(item);
-      const orgId = String(
-        row.orgId ?? row.id ?? row.orgCode ?? row.organizationCode ?? '',
-      ).trim();
-      const orgName = String(
-        row.orgName ?? row.organizationName ?? row.name ?? '',
-      ).trim();
+      const orgId = String(row.orgId ?? row.id ?? row.orgCode ?? row.organizationCode ?? '').trim();
+      const orgName = String(row.orgName ?? row.organizationName ?? row.name ?? '').trim();
       return {
         orgId,
         orgCode: String(row.orgCode ?? row.organizationCode ?? '').trim() || undefined,
@@ -697,12 +692,22 @@ const onSubmit = async (): Promise<void> => {
         </section>
         <p v-if="publishScope === 'org' && orgOptionsError" class="org-hint org-hint-bar error">
           {{ orgOptionsError }}
-          <button type="button" class="org-hint-retry" :disabled="orgOptionsLoading" @click="ensureOrgOptions">
+          <button
+            type="button"
+            class="org-hint-retry"
+            :disabled="orgOptionsLoading"
+            @click="ensureOrgOptions"
+          >
             重试
           </button>
         </p>
         <p
-          v-else-if="publishScope === 'org' && !orgOptionsLoading && orgOptionsLoaded && orgOptions.length === 0"
+          v-else-if="
+            publishScope === 'org' &&
+            !orgOptionsLoading &&
+            orgOptionsLoaded &&
+            orgOptions.length === 0
+          "
           class="org-hint org-hint-bar"
         >
           暂无可发布的目标组织，请联系组织管理员添加权限。
@@ -837,7 +842,15 @@ const onSubmit = async (): Promise<void> => {
           <span class="actions-spacer" aria-hidden="true" />
           <button type="button" class="btn ghost" @click="close">取消</button>
           <button type="button" class="btn primary" :disabled="!canSubmit" @click="onSubmit">
-            {{ uploading ? (publishScope === 'org' ? '提交中...' : '上传中...') : publishScope === 'org' ? '提交发布' : '确定上传' }}
+            {{
+              uploading
+                ? publishScope === 'org'
+                  ? '提交中...'
+                  : '上传中...'
+                : publishScope === 'org'
+                  ? '提交发布'
+                  : '确定上传'
+            }}
           </button>
         </footer>
 

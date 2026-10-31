@@ -41,6 +41,23 @@ try {
   const { default: HarnessManagementPage } = await server.ssrLoadModule(
     '/src/views/HarnessManagementPage.vue',
   );
+  const { harnessWorkflowService: scenarioApi } = await server.ssrLoadModule(
+    '/src/services/skillMarket/businessScenarioDesignService.ts',
+  );
+  const sceneQueries = [];
+  const capabilityWrites = [];
+  scenarioApi.queryProducts = async () => ({
+    meta: { success: true },
+    data: [{ offeringId: 'injected-product', offeringName: 'injected-product' }],
+  });
+  scenarioApi.querySceneList = async (scope) => {
+    sceneQueries.push(structuredClone(scope));
+    return { meta: { success: true }, data: [] };
+  };
+  scenarioApi.createCapability = async (type, body, scope) => {
+    capabilityWrites.push({ type, body, scope: structuredClone(scope) });
+    return { meta: { success: true }, data: 'created-command' };
+  };
   globalThis.window = {
     location: { href: 'http://localhost/' },
     scrollY: 0,
@@ -99,14 +116,66 @@ try {
   const taskOnly = await mountHarness({ ownedOrgs: [], adminOrgs: [] });
   assert.deepEqual(
     taskOnly.state.visibleHarnessTabs.value.map((tab) => tab.key),
-    alwaysVisibleTabKeys,
-    'users without owner or admin scope only see the unrestricted Harness tabs',
+    ['scenarios', ...alwaysVisibleTabKeys],
+    'users without department management scope can reach product-level scenario design',
   );
   assert.equal(
     taskOnly.state.activeHarnessTab.value,
-    'workflows',
-    'users without management scope land on the first visible tab',
+    'scenarios',
+    'users without department management scope land on scenario design',
   );
+  assert.equal(taskOnly.state.harnessAccessLevel.value, 'task-only');
+  assert.deepEqual(taskOnly.state.permissionDepartmentPaths.value, []);
+  const workspace = taskOnly.state.scenarioWorkspace;
+  for (let attempt = 0; attempt < 100 && !workspace.available.value; attempt += 1) {
+    await settle();
+  }
+  assert.equal(
+    workspace.available.value,
+    true,
+    'the real page workspace loads from the injected tree',
+  );
+  assert.equal(workspace.selectedDeptId.value, 'dept-root');
+  assert.equal(workspace.scopeLevel.value, '产品级');
+  assert.equal(workspace.canManageDepartment.value, true);
+  assert.deepEqual(sceneQueries.at(-1), {
+    userId: 'permission-user',
+    dimType: '产品级',
+    dimCode: 'injected-product',
+    dimName: 'injected-product',
+  });
+  const command = {
+    _id: 'draft-command',
+    name: '/injected-product-check',
+    description: '产品检查',
+    owner: 'owner',
+    ownerId: 'owner',
+    developer: 'developer',
+    developerId: 'developer',
+    version: null,
+    dueDate: null,
+  };
+  await workspace.createCapability('Command', command);
+  assert.equal(
+    capabilityWrites.length,
+    1,
+    'the page allows a product-level write without department permissions',
+  );
+  assert.deepEqual(capabilityWrites[0].scope, {
+    userId: 'permission-user',
+    dimType: '产品级',
+    dimCode: 'injected-product',
+    dimName: 'injected-product',
+  });
+  sceneQueries.length = 0;
+  workspace.selectLevel('部门级');
+  await settle();
+  assert.equal(workspace.available.value, false);
+  assert.equal(workspace.canManageDepartment.value, false);
+  assert.deepEqual(sceneQueries, [], 'the page never requests an unauthorized department scope');
+  await assert.rejects(() => workspace.createCapability('Command', command), /无管理权限/);
+  assert.equal(capabilityWrites.length, 1, 'department writes remain blocked');
+  assert.deepEqual(taskOnly.state.permissionDepartmentPaths.value, []);
   taskOnly.app.unmount();
 
   async function renderTaskOnlyPanel(activeTab) {
@@ -138,6 +207,17 @@ try {
     workflowPanel,
     /class="workflows-page harness-viewport-page"/,
     'the public workflow panel renders without management scope',
+  );
+  const scenarioPanel = await renderTaskOnlyPanel('scenarios');
+  assert.match(
+    scenarioPanel,
+    /id="harness-tab-scenarios"/,
+    'the scenario navigation control renders without department permissions',
+  );
+  assert.match(
+    scenarioPanel,
+    /业务场景设计台/,
+    'the scenario workspace renders without department permissions',
   );
 
   const adminOnly = await mountHarness({

@@ -2528,7 +2528,10 @@ type UploadSubmitPayload = SkillUploadPayload & {
 async function onUploadSubmit(payload: UploadSubmitPayload): Promise<void> {
   if (payload.scope === 'org') {
     const orgText = payload.targetOrgName ? `，目标组织「${payload.targetOrgName}」` : '';
-    showToast(`已提交组织级发布「${payload.name}」${payload.version ? ` v${payload.version}` : ''}${orgText}，请在任务清单中跟踪进度`, 5200);
+    showToast(
+      `已提交组织级发布「${payload.name}」${payload.version ? ` v${payload.version}` : ''}${orgText}，请在任务清单中跟踪进度`,
+      5200,
+    );
     goOrgPublishTasks();
     return;
   }
@@ -4176,7 +4179,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       :style="tabPanelFillStyle"
     >
       <!-- 原始全部技能内容隐藏，改为嵌入AgentCenter页面 -->
-      <iframe 
+      <iframe
         :src="overviewIframeSrc"
         style="
           width: 100%;
