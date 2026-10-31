@@ -1,7 +1,8 @@
-import { designData } from './businessScenarioDesignRepository';
+import { designData, loadDesignDetail } from './businessScenarioDesignRepository';
 import { readSearchPage } from './searchPage';
 import {
   harnessWorkflowService,
+  type WorkflowDetail,
   type WorkflowSceneContext,
   type WorkflowSceneSearchRow,
 } from './businessScenarioDesignService';
@@ -36,6 +37,11 @@ export interface WorkflowInheritanceConfiguration {
   stageCount: number;
   commandCount: number;
   assetCount: number;
+}
+
+export interface WorkflowInheritanceResult {
+  sceneExtensionCode: string;
+  detail: WorkflowDetail;
 }
 
 export interface WorkflowInheritanceIdentity {
@@ -143,7 +149,7 @@ export async function copyWorkflowInheritance(
     WorkflowSceneContext,
     'userId' | 'dimType' | 'dimCode' | 'dimName' | 'firstScene' | 'secondScene'
   >,
-): Promise<string> {
+): Promise<WorkflowInheritanceResult> {
   const sourceSceneExtensionCode = source.sceneExtensionCode?.trim();
   if (!sourceSceneExtensionCode) throw new Error('来源 Workflow 缺少场景编码，无法继承');
   const code = designData<unknown>(
@@ -165,16 +171,8 @@ export async function copyWorkflowInheritance(
   );
   if (typeof code !== 'string' || !code.trim()) throw new Error('场景复制响应缺少有效的场景编码');
   const sceneExtensionCode = code.trim();
-  designData<unknown>(
-    await harnessWorkflowService.queryHarnessWorkflowDetail({
-      userId: target.userId,
-      dimCode: target.dimCode,
-      firstScene: target.firstScene,
-      secondScene: target.secondScene,
-    }),
-    '继承后的 Workflow 详情加载失败',
-  );
-  return sceneExtensionCode;
+  const detail = await loadDesignDetail(target);
+  return { sceneExtensionCode, detail };
 }
 
 export function queryLocalWorkflowInheritancePage(input: {

@@ -68,7 +68,7 @@
 
 ## 场景与活动统一关系
 
-- HTTP 确认继承 Workflow：`POST /scene/copy` 成功后立即调用 `queryHarnessWorkflowDetail`（`GET /workflow/detail`），Query 传目标场景的 `userId/dimCode/firstScene/secondScene`，不调用 `/extensions/detail`。随后刷新场景列表，用复制返回的场景编码选中对应场景；场景切换触发原有工作流详情加载。
+- HTTP 确认继承 Workflow：`POST /scene/copy` 成功后立即调用 `queryHarnessWorkflowDetail`（`GET /workflow/detail`），Query 传目标场景的 `userId/dimCode/firstScene/secondScene`，不调用 `/extensions/detail`。复用设计详情的校验和归一化，保留完整返回数据；刷新场景列表并按复制返回的场景编码选中对应场景后，直接更新工作流、Command、资产池、环节/节点、场景信息和详情缓存。覆盖同一场景时也必须立即回填；继承期间失效旧详情请求，选中场景变化不重复查询详情，随后打开设计向导复用已回填的缓存。
 - 产品 → 一级场景 → 二级场景 → 至多一个 Harness 工作流 → 环节 → 节点。
 - 配置管理的「场景管理」与业务场景设计共用 `harnessScenarioTaxonomyService`。HTTP 复用现有产品维度场景接口；mock 保留原有按部门保存的场景库（同部门产品共享 mock 场景），工作流仍按部门、产品、场景隔离。
 - 原「活动管理」入口改为「环节与节点」。环节对应旧归属活动，节点对应旧子活动；新增/编辑均操作所选二级场景的工作流。

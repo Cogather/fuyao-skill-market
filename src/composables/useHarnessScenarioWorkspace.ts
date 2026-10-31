@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import {
   harnessWorkflowService,
   type WorkflowProgressStep,
@@ -462,8 +462,10 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       targetLevel === scopeLevel.value &&
       targetContext.userId === context().userId;
     saving.value = true;
+    workflowLoadSequence += 1;
+    workflowLoading.value = false;
     try {
-      const code = await copyWorkflowInheritance(source, targetContext);
+      const { sceneExtensionCode, detail } = await copyWorkflowInheritance(source, targetContext);
       if (!stillInScope()) throw new Error('场景已复制，但当前范围已切换，请重新加载目标范围查看');
       const records = await loadScenarioRecords(
         scopeFor(targetProduct),
@@ -472,11 +474,24 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       if (!stillInScope()) throw new Error('场景已复制，但当前范围已切换，请重新加载目标范围查看');
       applyRecords(targetProduct, records);
       const copiedScene = scenarios.find(
-        (item) => item.productId === targetProductId && item.level === 2 && item.code === code,
+        (item) =>
+          item.productId === targetProductId &&
+          item.level === 2 &&
+          item.code === sceneExtensionCode,
       );
       if (!copiedScene)
         throw new Error('场景已复制，但刷新结果中未找到新场景编码，请重新加载目标范围');
       selectedScenarioId.value = copiedScene._id;
+      const workflow = applyWorkflowDetail(
+        sceneContext(copiedScene._id),
+        detail,
+        copiedScene._id,
+        targetProductId,
+      );
+      error.value = '';
+      // Flush the selection watcher while saving so it cannot refetch over this response.
+      await nextTick();
+      return workflow;
     } finally {
       saving.value = false;
     }

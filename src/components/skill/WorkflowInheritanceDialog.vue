@@ -168,7 +168,8 @@ function requestClose() {
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    requestClose();
+    event.preventDefault();
+    event.stopPropagation();
     return;
   }
   if (event.key !== 'Tab') return;
@@ -233,12 +234,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      class="inheritance-overlay"
-      @mousedown.self="requestClose"
-      @keydown="handleKeydown"
-    >
+    <div v-if="open" class="inheritance-overlay" @keydown="handleKeydown">
       <section
         ref="dialogElement"
         class="inheritance-dialog"
@@ -262,11 +258,7 @@ onBeforeUnmount(() => {
           <div>
             <h2 id="inheritance-title">继承已有 Workflow</h2>
             <p id="inheritance-description">
-              {{
-                targetConfiguration.flowName
-                  ? `将所选工作流的 E2E 配置覆盖到「${targetConfiguration.flowName}」`
-                  : '选择已有工作流，在当前场景下复用工作流编排'
-              }}
+              选择已有工作流，在当前场景下复用工作流编排
             </p>
           </div>
           <button

@@ -388,7 +388,7 @@ function formatSize(size: number): string {
             :disabled="controlsDisabled"
             @click="remote.download"
           >
-            {{ httpContext.hasPublishedPackage ? '下载完整包' : '下载旁路' }}
+            下载完整包
           </button>
         </div>
         <p v-if="!httpContext" role="status">缺少场景信息，暂无法加载目录。</p>
@@ -491,11 +491,7 @@ function formatSize(size: number): string {
       <slot name="actions" />
     </div>
 
-    <div
-      v-if="sourceDialogOpen"
-      class="inheritance-overlay"
-      @click.self="!controlsDisabled && (sourceDialogOpen = false)"
-    >
+    <div v-if="sourceDialogOpen" class="inheritance-overlay" @keydown.esc.stop.prevent>
       <section class="inheritance-dialog" role="dialog" aria-modal="true" aria-label="选择继承源">
         <header>
           <h3>选择继承源</h3>

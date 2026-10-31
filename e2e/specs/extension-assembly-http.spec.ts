@@ -414,7 +414,18 @@ test.describe('Extension HTTP 发布组装', () => {
     await assembly.getByRole('button', { name: '更换继承', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '选择继承源' });
     await expect(dialog).toBeVisible();
+    await dialog.locator('..').click({ position: { x: 8, y: 8 } });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('heading', { name: '选择继承源', exact: true }).click();
+    await dialog.locator('footer').click({ position: { x: 8, y: 8 } });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('searchbox').press('Escape');
+    await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await assembly.getByRole('button', { name: '更换继承', exact: true }).click();
+    await dialog.getByRole('button', { name: '关闭选择继承源', exact: true }).click();
+    await expect(dialog).toBeHidden();
     const chooser = page.waitForEvent('filechooser');
     await assembly.getByRole('button', { name: /拖拽压缩包到此处/ }).click();
     await (
@@ -616,6 +627,12 @@ test.describe('Extension HTTP 发布组装', () => {
     await dialog.getByRole('searchbox').fill('测试工作流');
     await dialog.getByRole('radio', { name: /shared-baseline/ }).check();
     await expect(dialog.getByText('无旁路文件，仅继承布局')).toBeVisible();
+    await dialog.locator('..').click({ position: { x: 8, y: 8 } });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('searchbox').press('Escape');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('searchbox')).toHaveValue('测试工作流');
+    await expect(dialog.getByRole('radio', { name: /shared-baseline/ })).toBeChecked();
     failNext('/extensions/bypass/inherit');
     await dialog.getByRole('button', { name: '确认继承' }).click();
     await expect(dialog).toBeVisible();
