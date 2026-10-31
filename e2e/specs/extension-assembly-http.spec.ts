@@ -1,5 +1,7 @@
 import { expect, test } from '../fixtures/base';
 import type { Page, Request } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import PizZip from 'pizzip';
 import { APP_BASE_PATH } from '../helpers/constants';
 
 async function setup(
@@ -238,6 +240,62 @@ async function setup(
 
 test.describe('Extension HTTP 发布组装', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
+
+  test('未发布 Extension 移除旁路后仍可下载完整包，折叠目录不影响下载', async ({
+    page,
+    context,
+  }) => {
+    const { assembly, requests, failNext } = await setup(page);
+    await assembly.getByRole('button', { name: '移除旁路', exact: true }).click();
+    await expect(
+      assembly
+        .getByRole('list', { name: '最终目录结构' })
+        .getByText('custom-prompt.md', { exact: true }),
+    ).toHaveCount(0);
+    const button = assembly.getByRole('button', { name: '下载完整包', exact: true });
+    await expect(button).toBeVisible();
+    await expect(button).toBeEnabled();
+    await assembly.getByRole('button', { name: '最终目录结构预览', exact: true }).click();
+    await expect(assembly.getByRole('list', { name: '最终目录结构' })).toBeHidden();
+    await expect(button).toBeVisible();
+    failNext('/extensions/bypass/download');
+    await button.click();
+    await expect(assembly.getByRole('alert').filter({ hasText: '服务暂不可用' })).toBeVisible();
+    await expect(button).toBeEnabled();
+    const archive = new PizZip();
+    archive.file('scene-code-001/.testagent/agents/review.md', '# Review');
+    archive.file('scene-code-001/codeagent-extension.json', '{}');
+    await context.route('**/test-package.zip', (route) =>
+      route.fulfill({
+        contentType: 'application/zip',
+        headers: { 'content-disposition': 'attachment; filename="complete.zip"' },
+        body: archive.generate({ type: 'nodebuffer' }),
+      }),
+    );
+    let downloadRequest: Request | undefined;
+    await page.route('**/api/harness/extensions/bypass/download**', (route) => {
+      downloadRequest = route.request();
+      return route.fulfill({
+        json: {
+          code: 0,
+          data: { downloadUrl: new URL('/test-package.zip', page.url()).href, expireSeconds: 3600 },
+        },
+      });
+    });
+    const downloaded = page.waitForEvent('download');
+    await button.click();
+    const download = await downloaded;
+    expect(await download.failure()).toBeNull();
+    const zip = new PizZip(await readFile((await download.path())!));
+    expect(zip.file('scene-code-001/.testagent/agents/review.md')?.asText()).toBe('# Review');
+    expect(zip.file('scene-code-001/codeagent-extension.json')).toBeTruthy();
+    expect(downloadRequest!.method()).toBe('GET');
+    expect(Object.fromEntries(new URL(downloadRequest!.url()).searchParams)).toEqual({
+      userId: 'user1',
+      extensionName: 'scene-code-001',
+    });
+    expect(requests.some((req) => req.url().includes('/extensions/bypass/clear'))).toBe(true);
+  });
 
   test('已发布布局被后端锁定时，在目标按钮旁显示原因并保留原目标', async ({ page }) => {
     const { assembly, requests } = await setup(page, { fullPage: true });

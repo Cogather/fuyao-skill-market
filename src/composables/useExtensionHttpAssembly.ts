@@ -240,7 +240,17 @@ export function useExtensionHttpAssembly(
     try {
       const result = await extensionAssemblyHttp.download(identity());
       if (epoch !== generation) return false;
-      window.open(result.downloadUrl, '_blank', 'noopener,noreferrer');
+      if (result.downloadUrl.startsWith('blob:')) {
+        const link = document.createElement('a');
+        link.href = result.downloadUrl;
+        link.download = `${identity().extensionName}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(result.downloadUrl), 60_000);
+      } else {
+        window.open(result.downloadUrl, '_blank', 'noopener,noreferrer');
+      }
       return true;
     } catch (cause) {
       if (epoch === generation) error.value = message(cause);

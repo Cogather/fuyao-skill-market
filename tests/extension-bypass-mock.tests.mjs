@@ -18,6 +18,17 @@ function zipFile(name, entries) {
   return new File([bytes], name);
 }
 
+async function readDownload(result) {
+  assert.match(result.downloadUrl, /^blob:/);
+  try {
+    const response = await fetch(result.downloadUrl);
+    assert.equal(response.headers.get('content-type'), 'application/zip');
+    return new PizZip(await response.arrayBuffer());
+  } finally {
+    URL.revokeObjectURL(result.downloadUrl);
+  }
+}
+
 try {
   const mock = await server.ssrLoadModule('/src/services/skillMarket/extensionBypassMock.ts');
   const service = await server.ssrLoadModule('/src/services/skillMarket/extensionBypassService.ts');
@@ -81,6 +92,28 @@ try {
     /保护区目录结构/,
   );
   assert.deepEqual(source.bypassEntries, uploaded.acceptedEntries, 'rejected upload is atomic');
+  const uploadedPackage = await readDownload(
+    await service.getExtensionBypassDownload({ userId, extensionName: sourceName }),
+  );
+  assert.equal(uploadedPackage.file(`${sourceName}/docs/readme.md`).asText(), 'hello');
+  assert.equal(
+    uploadedPackage.file(`${sourceName}/.testagent/agents/custom-prompt.md`).asText(),
+    'custom',
+  );
+  assert.ok(uploadedPackage.file(`${sourceName}/.cac-plugin/plugin.json`));
+  assert.equal(
+    JSON.parse(uploadedPackage.file(`${sourceName}/codeagent-extension.json`).asText()).tampered,
+    undefined,
+  );
+  await mock.inheritExtensionBypassMock({
+    userId,
+    sourceExtensionName: sourceName,
+    targetExtensionName: targetName,
+  });
+  const inheritedPackage = await readDownload(
+    await service.getExtensionBypassDownload({ userId, extensionName: targetName }),
+  );
+  assert.equal(inheritedPackage.file(`${targetName}/docs/readme.md`).asText(), 'hello');
 
   const tree = await mock.queryExtensionStructureTreeMock({
     userId,
@@ -163,17 +196,45 @@ try {
     userId,
     extensionName: targetName,
   });
-  assert.match(bypassDownload.downloadUrl, /bypass\.zip/);
+  const draftPackage = await readDownload(bypassDownload);
+  assert.ok(draftPackage.file(`${targetName}/docs/copied.md`));
+  assert.ok(draftPackage.file(`${targetName}/codeagent-extension.json`));
   assert.equal(bypassDownload.expireSeconds, 3600);
   const packageDownload = await mock.getExtensionBypassDownloadMock({
     userId,
     extensionName: sourceName,
   });
-  assert.match(packageDownload.downloadUrl, /package\.zip/);
+  const publishedPackage = await readDownload(packageDownload);
+  assert.ok(publishedPackage.file(`${sourceName}/codeagent-extension.json`));
   await mock.clearExtensionBypassMock({ userId, extensionName: targetName });
-  await assert.rejects(
-    mock.getExtensionBypassDownloadMock({ userId, extensionName: targetName }),
-    /暂无可下载/,
+  const clearedPackage = await readDownload(
+    await service.getExtensionBypassDownload({ userId, extensionName: targetName }),
+  );
+  assert.equal(clearedPackage.file(`${targetName}/docs/copied.md`), null);
+  assert.ok(clearedPackage.file(`${targetName}/.cac-plugin/plugin.json`));
+  const components = Object.entries(target.capabilities).flatMap(([componentType, values]) =>
+    values.map((item) => ({
+      componentType,
+      componentName: item.name,
+      componentVersion: item.version,
+    })),
+  );
+  const clearedTree = await service.queryExtensionStructureTree({
+    userId,
+    extensionName: targetName,
+    layout: target.layoutMode,
+    components,
+  });
+  assert.deepEqual(
+    Object.values(clearedPackage.files)
+      .filter((file) => !file.dir)
+      .map((file) => file.name)
+      .sort(),
+    clearedTree.entries
+      .filter((entry) => entry.type === 'file')
+      .map((entry) => entry.path)
+      .sort(),
+    'the complete archive still matches the directory preview after bypass removal',
   );
 
   const noBypassScene = scenes.find((scene) => !scene.hasBypass && scene.name);
