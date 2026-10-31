@@ -301,7 +301,15 @@ function formatSize(size: number): string {
         :aria-expanded="inheritOpen"
         @click="inheritOpen = !inheritOpen"
       >
-        <span class="assembly-card__caret" :class="{ 'is-open': inheritOpen }">›</span>
+        <svg
+          class="assembly-card__caret"
+          :class="{ 'is-open': inheritOpen }"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path d="m6 4 4 4-4 4" />
+        </svg>
         <strong>继承与目录结构</strong>
         <span class="assembly-card__badge" :class="`is-${modelValue.target}`">
           {{
@@ -386,9 +394,15 @@ function formatSize(size: number): string {
             :aria-expanded="treeOpen"
             @click="treeOpen = !treeOpen"
           >
-            <span class="assembly-card__caret" :class="{ 'is-open': treeOpen }" aria-hidden="true"
-              >›</span
+            <svg
+              class="assembly-card__caret"
+              :class="{ 'is-open': treeOpen }"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
             >
+              <path d="m6 4 4 4-4 4" />
+            </svg>
             <span>最终目录结构预览</span>
           </button>
           <span class="assembly-card__badge is-neutral">{{ packageFileCount }} 个文件</span>
@@ -429,7 +443,15 @@ function formatSize(size: number): string {
         :aria-expanded="uploadOpen"
         @click="uploadOpen = !uploadOpen"
       >
-        <span class="assembly-card__caret" :class="{ 'is-open': uploadOpen }">›</span>
+        <svg
+          class="assembly-card__caret"
+          :class="{ 'is-open': uploadOpen }"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path d="m6 4 4 4-4 4" />
+        </svg>
         <strong>自定义附加文件</strong>
         <span class="assembly-card__badge is-uploaded">
           {{ modelValue.uploadedPackage?.files.length ?? 0 }} 个文件
@@ -749,8 +771,15 @@ function formatSize(size: number): string {
 }
 
 .assembly-card__caret {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
   color: #98a2b3;
-  font-size: 18px;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   transform: rotate(0deg);
   transition: transform 0.15s ease;
 }
@@ -919,6 +948,7 @@ function formatSize(size: number): string {
   display: grid;
   width: 100%;
   min-height: 104px;
+  margin-top: 12px;
   place-items: center;
   align-content: center;
   gap: 5px;
