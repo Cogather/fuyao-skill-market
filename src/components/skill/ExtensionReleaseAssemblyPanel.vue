@@ -42,6 +42,7 @@ const emit = defineEmits<{
 }>();
 
 const inheritOpen = ref(false);
+const treeOpen = ref(true);
 const uploadOpen = ref(false);
 const sourceDialogOpen = ref(false);
 const sourceSearch = ref('');
@@ -379,7 +380,17 @@ function formatSize(size: number): string {
         </div>
 
         <div class="assembly-subtitle assembly-subtitle--tree">
-          <span>最终目录结构预览</span>
+          <button
+            class="package-tree-toggle"
+            type="button"
+            :aria-expanded="treeOpen"
+            @click="treeOpen = !treeOpen"
+          >
+            <span class="assembly-card__caret" :class="{ 'is-open': treeOpen }" aria-hidden="true"
+              >›</span
+            >
+            <span>最终目录结构预览</span>
+          </button>
           <span class="assembly-card__badge is-neutral">{{ packageFileCount }} 个文件</span>
           <button
             v-if="httpContext && (remote.hasBypass || httpContext.hasPublishedPackage)"
@@ -391,21 +402,23 @@ function formatSize(size: number): string {
             下载完整包
           </button>
         </div>
-        <p v-if="!httpContext" role="status">缺少场景信息，暂无法加载目录。</p>
-        <p v-else-if="remote.treeLoading" role="status">正在加载目录…</p>
-        <div v-else-if="httpContext && remote.treeError" class="archive-error" role="alert">
-          {{ remote.treeError }}
-          <button type="button" :disabled="controlsDisabled" @click="remote.refreshTree">
-            重试目录加载
-          </button>
+        <div v-show="treeOpen">
+          <p v-if="!httpContext" role="status">缺少场景信息，暂无法加载目录。</p>
+          <p v-else-if="remote.treeLoading" role="status">正在加载目录…</p>
+          <div v-else-if="httpContext && remote.treeError" class="archive-error" role="alert">
+            {{ remote.treeError }}
+            <button type="button" :disabled="controlsDisabled" @click="remote.refreshTree">
+              重试目录加载
+            </button>
+          </div>
+          <ul v-else-if="packageTree" class="package-tree" aria-label="最终目录结构">
+            <ExtensionPackageTreeNode
+              :node="packageTree"
+              :selected-path="selectedTreePath"
+              @select="selectedTreePath = $event"
+            />
+          </ul>
         </div>
-        <ul v-else-if="packageTree" class="package-tree" aria-label="最终目录结构">
-          <ExtensionPackageTreeNode
-            :node="packageTree"
-            :selected-path="selectedTreePath"
-            @select="selectedTreePath = $event"
-          />
-        </ul>
       </div>
     </article>
 
@@ -790,6 +803,18 @@ function formatSize(size: number): string {
 
 .assembly-subtitle--tree {
   margin-top: 18px;
+}
+
+.package-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .inheritance-summary {
