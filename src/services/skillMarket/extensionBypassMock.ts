@@ -1,6 +1,7 @@
 import PizZip from 'pizzip';
 
 import type {
+  ExtensionBypassDownloadInput,
   ExtensionBypassEntry,
   ExtensionBypassIdentity,
   ExtensionBypassInheritInput,
@@ -307,7 +308,7 @@ export async function queryExtensionStructureTreeMock(
 }
 
 export async function getExtensionBypassDownloadMock(
-  input: ExtensionBypassIdentity,
+  input: ExtensionBypassDownloadInput,
 ): Promise<{ downloadUrl: string; expireSeconds: number }> {
   const scope = identity(input);
   const scene = sceneFor(scope.extensionName);
@@ -333,7 +334,8 @@ export async function getExtensionBypassDownloadMock(
       }).forEach((content, path) => archive.file(`${root}/${path}`, content));
     });
   });
-  cloneEntries(scene.bypassEntries).forEach((entry) => {
+  const bypassEntries = input.inheritBypass === false ? [] : cloneEntries(scene.bypassEntries);
+  bypassEntries.forEach((entry) => {
     const path = normalizePath(entry.path);
     if (archive.file(`${root}/${path}`)) return;
     // Seeded Mock entries contain metadata only; uploaded/inherited files retain their bytes.

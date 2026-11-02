@@ -47,6 +47,16 @@ test('Mock 完整包在无旁路、上传后、移除后均可下载', async ({ 
   const uploaded = await downloadPackage();
   const bypassPath = paths(uploaded).find((path) => path.endsWith('/docs/custom.md'))!;
   expect(uploaded.file(bypassPath)?.asText()).toBe('uploaded content');
+  const checkbox = assembly.getByLabel('继承当前旁路文件');
+  await checkbox.uncheck();
+  const withoutBypass = await downloadPackage();
+  expect(withoutBypass.file(bypassPath)).toBeNull();
+  expect(paths(withoutBypass).sort()).toEqual(paths(initial).sort());
+  await expect(checkbox).not.toBeChecked();
+  await checkbox.check();
+  const restored = await downloadPackage();
+  expect(restored.file(bypassPath)?.asText()).toBe('uploaded content');
+  expect(paths(restored).sort()).toEqual(paths(uploaded).sort());
   await assembly.getByRole('button', { name: '移除旁路', exact: true }).click();
   await expect(
     assembly.getByRole('list', { name: '最终目录结构' }).getByText('custom.md', { exact: true }),

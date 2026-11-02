@@ -13,6 +13,11 @@ export interface ExtensionBypassIdentity {
   extensionName: string;
 }
 
+export interface ExtensionBypassDownloadInput extends ExtensionBypassIdentity {
+  /** Defaults to true for callers without a bypass selection. */
+  inheritBypass?: boolean;
+}
+
 export interface ExtensionLayoutInput extends ExtensionBypassIdentity {
   layout: ExtensionLayoutMode;
 }
@@ -298,9 +303,9 @@ export async function queryExtensionStructureTree(
 }
 
 export async function getExtensionBypassDownload(
-  input: ExtensionBypassIdentity,
+  input: ExtensionBypassDownloadInput,
 ): Promise<{ downloadUrl: string; expireSeconds: number }> {
-  const scope = identity(input);
+  const scope = { ...identity(input), inheritBypass: input.inheritBypass ?? true };
   if (!transportIsHttp) {
     return extensionBypassMockAdapter.getExtensionBypassDownload(scope);
   }

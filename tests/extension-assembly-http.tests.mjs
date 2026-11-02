@@ -111,12 +111,17 @@ try {
     code: 0,
     data: { downloadUrl: 'https://example.test/file.zip', expireSeconds: 3600 },
   };
-  assert.equal((await extensionAssemblyHttp.download(identity)).expireSeconds, 3600);
-  assert.deepEqual(calls.pop(), {
-    url: '/extensions/bypass/download',
-    method: 'GET',
-    params: identity,
-  });
+  for (const inheritBypass of [true, false]) {
+    assert.equal(
+      (await extensionAssemblyHttp.download({ ...identity, inheritBypass })).expireSeconds,
+      3600,
+    );
+    assert.deepEqual(calls.pop(), {
+      url: '/extensions/bypass/download',
+      method: 'GET',
+      params: { ...identity, inheritBypass },
+    });
+  }
   const search = { userId: 'u1', keyword: 'unit', pageNum: 1, pageSize: 20 };
   response = {
     code: 0,

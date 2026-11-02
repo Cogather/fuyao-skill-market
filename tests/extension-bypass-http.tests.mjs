@@ -65,11 +65,11 @@ for (const [name, args, expected] of [
   ],
   [
     'getExtensionBypassDownload',
-    [{ userId: 'u', extensionName: 'scene' }],
+    [{ userId: 'u', extensionName: 'scene', inheritBypass: false }],
     {
       url: '/extensions/bypass/download',
       method: 'GET',
-      params: { userId: 'u', extensionName: 'scene' },
+      params: { userId: 'u', extensionName: 'scene', inheritBypass: false },
     },
   ],
   [
@@ -320,7 +320,7 @@ test('download accepts absolute HTTP(S) URLs and rejects unsafe URLs or invalid 
       {
         url: '/extensions/bypass/download',
         method: 'GET',
-        params: { userId: 'user-parent', extensionName: 'scene-code-001' },
+        params: { userId: 'user-parent', extensionName: 'scene-code-001', inheritBypass: true },
       },
     ]);
   }

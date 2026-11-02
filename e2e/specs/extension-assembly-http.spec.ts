@@ -246,6 +246,25 @@ test.describe('Extension HTTP 发布组装', () => {
     context,
   }) => {
     const { assembly, requests, failNext } = await setup(page);
+    const checkbox = assembly.getByLabel('继承当前旁路文件');
+    for (const inheritBypass of [true, false, true]) {
+      await checkbox.setChecked(inheritBypass);
+      failNext('/extensions/bypass/download');
+      const pending = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith('/extensions/bypass/download'),
+      );
+      await assembly.getByRole('button', { name: '下载完整包', exact: true }).click();
+      const request = await pending;
+      expect(request.method()).toBe('GET');
+      expect(Object.fromEntries(new URL(request.url()).searchParams)).toEqual({
+        userId: 'user1',
+        extensionName: 'scene-code-001',
+        inheritBypass: String(inheritBypass),
+      });
+      await expect(assembly.getByRole('alert').filter({ hasText: '服务暂不可用' })).toBeVisible();
+      await expect(assembly.getByRole('button', { name: '下载完整包', exact: true })).toBeEnabled();
+      await expect(checkbox).toBeChecked({ checked: inheritBypass });
+    }
     await assembly.getByRole('button', { name: '移除旁路', exact: true }).click();
     await expect(
       assembly
@@ -293,6 +312,7 @@ test.describe('Extension HTTP 发布组装', () => {
     expect(Object.fromEntries(new URL(downloadRequest!.url()).searchParams)).toEqual({
       userId: 'user1',
       extensionName: 'scene-code-001',
+      inheritBypass: 'true',
     });
     expect(requests.some((req) => req.url().includes('/extensions/bypass/clear'))).toBe(true);
   });

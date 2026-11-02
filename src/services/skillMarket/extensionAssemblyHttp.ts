@@ -10,6 +10,7 @@ import {
   queryExtensionStructureTree,
   updateExtensionLayout,
   uploadExtensionBypass,
+  type ExtensionBypassDownloadInput,
 } from './extensionBypassService';
 
 export type ExtensionLayout = 'standard' | 'testagent';
@@ -171,8 +172,13 @@ export const extensionAssemblyHttp = {
     requireLayout(result.layoutMode);
     return result;
   },
-  download(input: Identity): Promise<{ downloadUrl: string; expireSeconds: number }> {
-    return getExtensionBypassDownload(identityParams(input));
+  download(
+    input: ExtensionBypassDownloadInput,
+  ): Promise<{ downloadUrl: string; expireSeconds: number }> {
+    return getExtensionBypassDownload({
+      ...identityParams(input),
+      inheritBypass: input.inheritBypass,
+    });
   },
   async inherit(
     userId: string,

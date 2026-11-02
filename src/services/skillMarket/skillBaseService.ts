@@ -1,5 +1,6 @@
 import httpRequest from '@/services/skillMarket/request';
 import type {
+  ExtensionBypassDownloadInput,
   ExtensionBypassIdentity,
   ExtensionBypassInheritInput,
   ExtensionLayoutInput,
@@ -961,7 +962,7 @@ export const skillBaseService = {
       headers: { 'Content-Type': 'application/json' },
       data,
     }),
-  getExtensionBypassDownload: (params: ExtensionBypassIdentity): Promise<unknown> =>
+  getExtensionBypassDownload: (params: ExtensionBypassDownloadInput): Promise<unknown> =>
     httpRequest.harnessApi({ url: '/extensions/bypass/download', method: 'GET', params }),
   inheritExtensionBypass: (
     params: { userId: string },
