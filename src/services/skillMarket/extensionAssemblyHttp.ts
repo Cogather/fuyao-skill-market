@@ -178,6 +178,7 @@ export const extensionAssemblyHttp = {
     return getExtensionBypassDownload({
       ...identityParams(input),
       inheritBypass: input.inheritBypass,
+      ...(input.version === undefined ? {} : { version: input.version }),
     });
   },
   async inherit(

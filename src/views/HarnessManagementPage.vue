@@ -257,6 +257,7 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   // 场景设计仅在部门级应用管理权限；产品级和只读工作流清单保留完整部门树。
   restrictToAllowedDepartments:
     restrictToPermissionDepartments.value && activeHarnessTab.value === 'scenarios',
+  departmentMaxLevel: activeHarnessTab.value === 'scenarios' ? 5 : undefined,
 }));
 const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
   const level = scenarioWorkspace.scopeLevel.value;

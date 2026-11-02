@@ -165,6 +165,7 @@ export type ScenarioWorkspaceContext = {
   defaultDepartmentPath: string[];
   allowedDepartmentPaths: string[][];
   restrictToAllowedDepartments: boolean;
+  departmentMaxLevel?: number;
 };
 type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'> & { name?: string };
 
@@ -196,6 +197,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   const mockWorkflowSeededDepartments = reactive<string[]>([]);
   const details = reactive<Record<string, ScenarioDetails>>({});
   const scopeLevel = ref<HarnessScopeLevel>('产品级');
+  const departmentMaxLevel = computed(() =>
+    isHttp && scopeLevel.value === '部门级' ? (context().departmentMaxLevel ?? 6) : 6,
+  );
   const selectedDeptId = ref('');
   const productId = ref('');
   const selectedScenarioId = ref('');
@@ -1040,11 +1044,18 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         }
       }
       walk(value.departmentTree, null, []);
+      const maxLevel = isHttp && level === '部门级' ? value.departmentMaxLevel : undefined;
+      const previousPath = flattened.find((item) => item._id === selectedDeptId.value)?.path;
+      const cappedPath =
+        maxLevel !== undefined && previousPath && previousPath.length > maxLevel
+          ? previousPath.slice(0, maxLevel).join('/')
+          : undefined;
       const allowed = flattened.filter(
         (item) =>
-          level !== '部门级' ||
-          !value.restrictToAllowedDepartments ||
-          hasDepartmentPermission(item),
+          (level !== '部门级' ||
+            !value.restrictToAllowedDepartments ||
+            hasDepartmentPermission(item)) &&
+          (maxLevel === undefined || item.path.length <= maxLevel),
       );
       departments.splice(0, departments.length, ...allowed);
       seedMockWorkflowInventory({
@@ -1060,9 +1071,11 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       if (!selectable.some((item) => item._id === selectedDeptId.value)) {
         selectedDeptId.value =
           (
+            selectable.find((item) => item.path.join('/') === cappedPath) ||
             selectable.find(
               (item) => item.path.join('/') === value.defaultDepartmentPath.join('/'),
-            ) || selectable[0]
+            ) ||
+            selectable[0]
           )?._id || '';
       }
     },
@@ -1596,6 +1609,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     listDesignTags,
     queryDesignUsers,
     departments,
+    departmentMaxLevel,
     products,
     scenarios,
     workflows,

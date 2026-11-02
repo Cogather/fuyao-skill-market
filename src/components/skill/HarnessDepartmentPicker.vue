@@ -9,8 +9,9 @@ const props = withDefaults(
     departments: Department[];
     disabled?: boolean;
     active?: boolean;
+    maxLevel?: number;
   }>(),
-  { active: true },
+  { active: true, maxLevel: 6 },
 );
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 const selectionError = ref('');
@@ -73,6 +74,7 @@ watch(
       v-if="active"
       v-model="selectedPath"
       :tree="tree"
+      :max-level="maxLevel"
       :disabled="disabled"
       :before-done="beforeDone"
       all-label="选部门…"

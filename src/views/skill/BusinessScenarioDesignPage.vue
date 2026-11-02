@@ -32,6 +32,7 @@ const props = withDefaults(
 );
 const {
   departments,
+  departmentMaxLevel,
   products,
   scenarios,
   workflows,
@@ -1347,6 +1348,7 @@ async function createAsset() {
         :active="props.active"
         :model-value="selectedDeptId"
         :departments="departments"
+        :max-level="departmentMaxLevel"
         :disabled="saving"
         @update:model-value="selectDepartment"
       />

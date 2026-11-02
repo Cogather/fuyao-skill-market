@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from './HarnessSelect.vue';
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import MarketDeptCascader, { type MarketDeptCascaderNode } from './MarketDeptCascader.vue';
 import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
@@ -36,6 +36,20 @@ const emit = defineEmits<{
 }>();
 const departmentError = ref('');
 const productSelectRef = ref<{ element: HTMLButtonElement | null } | null>(null);
+const departmentMaxLevel = computed(() =>
+  import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http' && props.level === '部门级' ? 5 : 6,
+);
+
+// A product-level selection or remembered scope may be deeper than the department-level limit.
+watch(
+  [departmentMaxLevel, () => props.departmentPath],
+  ([maxLevel, path]) => {
+    if (maxLevel !== 5 || path.length <= maxLevel) return;
+    const nextPath = path.slice(0, maxLevel);
+    emit('department-change', confirmDepartment(nextPath) ? nextPath : []);
+  },
+  { immediate: true },
+);
 
 function confirmDepartment(path: string[]): boolean {
   const allowedPaths = props.allowedDepartmentPaths.length
@@ -80,7 +94,7 @@ function confirmDepartment(path: string[]): boolean {
         :model-value="props.departmentPath"
         :tree="props.departmentTree"
         :disabled="props.disabled"
-        :max-level="6"
+        :max-level="departmentMaxLevel"
         all-label="请选择部门"
         :aria-label="props.departmentAriaLabel"
         selection-mode="confirm"

@@ -286,6 +286,34 @@ try {
   });
   assert.deepEqual(literalWildcard.list, [], 'wildcards are matched literally');
 
+  for (const [version, skillVersion] of [
+    ['0.1', '1.0.0'],
+    ['0.3', '1.2.0'],
+  ]) {
+    const archive = await readDownload(
+      await service.getExtensionBypassDownload({
+        userId,
+        extensionName: '问题分析 Extension',
+        version,
+      }),
+    );
+    assert.equal(
+      JSON.parse(archive.file('问题分析 Extension/codeagent-extension.json').asText()).version,
+      version,
+    );
+    assert.match(
+      archive.file(/SKILL\.md$/)[0].asText(),
+      new RegExp(`版本：${skillVersion.replaceAll('.', '\\.')}`),
+    );
+  }
+  await assert.rejects(
+    service.getExtensionBypassDownload({
+      userId,
+      extensionName: '问题分析 Extension',
+      version: 'missing',
+    }),
+    /未找到已发布/,
+  );
   console.log('PASS Extension bypass Mock persistence, tree, download, inheritance and search');
 } finally {
   await server.close();

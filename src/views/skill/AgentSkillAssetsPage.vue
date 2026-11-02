@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from '../../components/skill/HarnessSelect.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
 import HarnessExtensionDetailContent from '../../components/skill/HarnessExtensionDetailContent.vue';
@@ -17,6 +17,7 @@ import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
 import { atomicAssetApiType } from '../../services/skillMarket/atomicAssetPublishHttp';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
+import { getExtensionBypassDownload } from '../../services/skillMarket/extensionBypassService';
 import {
   getHarnessAssetApi,
   usesHttpHarnessAssetApi,
@@ -124,6 +125,10 @@ const exportScope = ref<HarnessScopeSnapshot>({
 });
 const detailLoading = ref(false);
 const detailError = ref('');
+const extensionDownloadLoading = ref(false);
+const extensionDownloadError = ref('');
+let extensionDownloadSequence = 0;
+let extensionDownloadWindow: Window | null = null;
 const detailDraft = ref<{
   name: string;
   description: string;
@@ -370,6 +375,74 @@ const showDetailVersionPanel = computed(() => {
   return asset.assetType !== 'Skill' || detailTab.value === 'content';
 });
 const detailComponent = computed(() => detail.value?.component);
+const canDownloadExtension = computed(
+  () =>
+    selectedAsset.value?.assetType === 'Extension' &&
+    Boolean(
+      props.userId.trim() && selectedAsset.value.name.trim() && selectedVersion.value.trim(),
+    ) &&
+    !detailLoading.value &&
+    !detailError.value &&
+    !extensionDownloadLoading.value,
+);
+function resetExtensionDownload(): void {
+  extensionDownloadSequence += 1;
+  extensionDownloadLoading.value = false;
+  extensionDownloadError.value = '';
+  extensionDownloadWindow?.close();
+  extensionDownloadWindow = null;
+}
+watch([view, selectedAssetKey, selectedVersion, () => props.userId], resetExtensionDownload, {
+  flush: 'sync',
+});
+
+async function downloadExtension(): Promise<void> {
+  if (!canDownloadExtension.value || !selectedAsset.value) return;
+  const extensionName = detailComponent.value?.name?.trim() || selectedAsset.value.name.trim();
+  const version = selectedVersion.value.trim();
+  const sequence = ++extensionDownloadSequence;
+  extensionDownloadLoading.value = true;
+  extensionDownloadError.value = '';
+  // Open during the click so slow package generation does not lose the user gesture.
+  const downloadWindow = transportIsHttp ? window.open('about:blank', '_blank') : null;
+  if (downloadWindow) downloadWindow.opener = null;
+  extensionDownloadWindow = downloadWindow;
+  try {
+    if (transportIsHttp && !downloadWindow)
+      throw new Error('浏览器阻止了下载窗口，请允许弹出窗口后重试');
+    const result = await getExtensionBypassDownload({
+      userId: props.userId.trim(),
+      extensionName,
+      version,
+    });
+    if (sequence !== extensionDownloadSequence) {
+      if (result.downloadUrl.startsWith('blob:')) URL.revokeObjectURL(result.downloadUrl);
+      return;
+    }
+    if (result.downloadUrl.startsWith('blob:')) {
+      const link = document.createElement('a');
+      link.href = result.downloadUrl;
+      link.download = `${extensionName}-${version}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(result.downloadUrl), 60_000);
+    } else if (downloadWindow && !downloadWindow.closed) {
+      downloadWindow.location.replace(result.downloadUrl);
+      extensionDownloadWindow = null;
+    } else {
+      throw new Error('下载窗口已关闭，请重新点击下载');
+    }
+  } catch (cause) {
+    downloadWindow?.close();
+    if (sequence === extensionDownloadSequence) {
+      extensionDownloadError.value = errorMessage(cause, '下载失败，请重试');
+      extensionDownloadWindow = null;
+    }
+  } finally {
+    if (sequence === extensionDownloadSequence) extensionDownloadLoading.value = false;
+  }
+}
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
 );
@@ -893,6 +966,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  resetExtensionDownload();
   document.removeEventListener('pointerdown', handleCardMenuPointerDown);
   document.removeEventListener('keydown', handleCardMenuKeydown);
   disposeList();
@@ -1478,7 +1552,24 @@ onBeforeUnmount(() => {
                 :disabled="detailLoading || detailSaving"
                 @change="changeDetailVersion"
               />
+              <button
+                v-if="selectedAsset.assetType === 'Extension'"
+                type="button"
+                class="asset-button is-primary asset-detail__download"
+                :disabled="!canDownloadExtension"
+                :aria-busy="extensionDownloadLoading"
+                @click="downloadExtension"
+              >
+                {{ extensionDownloadLoading ? '下载中…' : '下载' }}
+              </button>
             </div>
+            <p
+              v-if="selectedAsset.assetType === 'Extension' && extensionDownloadError"
+              class="asset-detail__download-error"
+              role="alert"
+            >
+              {{ extensionDownloadError }}
+            </p>
             <p v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__hint">
               Extension
               由场景编排生成并发布，新版本发布请前往工作流页面的对应场景操作；本页面仅展示已发布的产物。
@@ -2826,6 +2917,18 @@ onBeforeUnmount(() => {
   color: #5a6478;
   font-size: 13px;
   line-height: 20px;
+}
+
+.asset-detail__download {
+  flex-shrink: 0;
+  min-width: 88px;
+  margin-left: auto;
+}
+
+.asset-detail__download-error {
+  margin: 0 0 12px;
+  color: #b91c1c;
+  font-size: 13px;
 }
 
 .asset-detail__release-type {

@@ -305,6 +305,31 @@ test('structure preserves response file and directory path whitespace', async ()
   }
 });
 
+test('published download forwards Extension name and selected version', async () => {
+  const api = await adapter();
+  reset({ downloadUrl: 'https://download.example/version.zip', expireSeconds: 300 });
+  await api.getExtensionBypassDownload({
+    userId: ' user-parent ',
+    extensionName: ' published-extension ',
+    version: ' 1.2.0 ',
+  });
+  assert.deepEqual(calls, [
+    {
+      url: '/extensions/bypass/download',
+      method: 'GET',
+      params: {
+        userId: 'user-parent',
+        extensionName: 'published-extension',
+        version: '1.2.0',
+        inheritBypass: true,
+      },
+    },
+  ]);
+  reset();
+  await assert.rejects(api.getExtensionBypassDownload({ ...identity, version: ' ' }), /version/);
+  assert.equal(calls.length, 0);
+});
+
 test('download accepts absolute HTTP(S) URLs and rejects unsafe URLs or invalid expiry', async () => {
   const api = await adapter();
   for (const downloadUrl of [
