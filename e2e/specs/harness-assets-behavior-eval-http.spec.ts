@@ -5,6 +5,9 @@ import { APP_BASE_PATH } from '../helpers/constants';
 
 const SKILL_NAME = 'HTTP 行为评测 Skill';
 const DEPARTMENT_PATH = ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组'];
+const LONG_ASSERTION_REASON = '检查返回字段、上下文和处理结果，保留接口提供的完整判断依据。'.repeat(
+  12,
+);
 
 function envelope<T>(data: T): { meta: { success: true; message: string }; data: T } {
   return { meta: { success: true, message: 'OK' }, data };
@@ -289,18 +292,74 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
               : {
                   agent_name: 'CodeAgent',
                   model: 'quality-model-from-report',
-                  pass_rate: '100.00%',
-                  total_cost_time: '3.20s',
+                  pass_rate: '66.67%',
+                  total_cost_time: '7.20s',
                   results: [
                     {
                       case_id: 'Q-001',
                       task: '识别高风险发布项',
                       expect: '列出高风险项',
                       output: '已列出两个高风险项',
-                      score: 92,
+                      score: 62,
                       cost_time: 3.2,
                       passed: true,
                       reason: '风险识别准确',
+                      assertions: [
+                        {
+                          item_id: 'item_0',
+                          priority: 'must',
+                          verdict: 'pass',
+                          confidence: 1,
+                          check_point: '列出所有高风险项',
+                          reason: '实际输出包含两个高风险项。',
+                        },
+                        {
+                          item_id: 'item_5',
+                          priority: 'should',
+                          verdict: 'fail',
+                          confidence: 0.9567,
+                          check_point: '提供风险恢复建议',
+                          reason: LONG_ASSERTION_REASON,
+                        },
+                      ],
+                    },
+                    {
+                      case_id: 'Q-002',
+                      task: '核对异常风险',
+                      expect: '提供可核实的判断',
+                      output: '待复核',
+                      score: 35,
+                      cost_time: 3.2,
+                      passed: false,
+                      reason: '需要进一步核实',
+                      assertions: [
+                        {
+                          item_id: 'item_0',
+                          priority: 'custom-priority',
+                          verdict: 'needs_review',
+                          confidence: 0,
+                          check_point: '保留未知枚举原值',
+                          reason: '当前证据不足。',
+                        },
+                        {
+                          item_id: 'item_0',
+                          priority: null,
+                          verdict: null,
+                          confidence: null,
+                          check_point: null,
+                          reason: null,
+                        },
+                      ],
+                    },
+                    {
+                      case_id: 'Q-003',
+                      task: '查看旧报告',
+                      expect: '兼容无检查项的报告',
+                      output: '旧格式输出',
+                      score: 85,
+                      cost_time: 0.8,
+                      passed: true,
+                      reason: '保留旧报告评分分析',
                     },
                   ],
                 },
@@ -362,13 +421,13 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     await expect(panel.getByText('66.67', { exact: true }).first()).toBeVisible();
     const versionSelect = panel.getByRole('combobox', { name: '版本', exact: true });
     await versionSelect.click();
-    await expect(page.getByRole('option', { name: '1.10.0', exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: '0.9.0', exact: true })).toBeVisible();
-    await expect(page.getByRole('option', { name: '0.8.0', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: /^1\.10\.0\b/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /^0\.9\.0\b/ })).toBeVisible();
+    await expect(page.getByRole('option', { name: /^0\.8\.0\b/ })).toBeVisible();
     await versionSelect.press('Escape');
     await panel.getByRole('tab', { name: '质量评测' }).click();
     await expect(panel.getByText('quality-model-from-report', { exact: true })).toBeVisible();
-    await expect(panel.getByText('3.20s', { exact: true })).toBeVisible();
+    await expect(panel.getByText('7.20s', { exact: true })).toBeVisible();
     const distributionAxes = panel.locator('.behavior-distribution__axis');
     await expect(distributionAxes).toHaveCount(2);
     await expect(distributionAxes.nth(0).locator('span')).toHaveText(['4', '3', '2', '1', '0']);
@@ -395,6 +454,100 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     expect(Math.max(...distributionAlignmentOffsets)).toBeLessThanOrEqual(1);
     await panel.getByRole('button', { name: /展开用例 Q-001/ }).click();
     await expect(panel.getByText('风险识别准确', { exact: true })).toBeVisible();
+
+    const assertionRequestsBefore = behaviorRequests.length;
+    const firstAssertions = panel.getByRole('region', {
+      name: '用例 Q-001 的诊断明细',
+      exact: true,
+    });
+    const firstAssertionToggle = panel.getByRole('button', {
+      name: '展开用例 Q-001 的诊断明细，共 2 项',
+      exact: true,
+    });
+    await expect(firstAssertionToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(firstAssertions).toHaveCount(0);
+    await firstAssertionToggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(firstAssertions).toBeVisible();
+    await expect(firstAssertions.getByRole('listitem')).toHaveCount(2);
+    await expect(firstAssertions.getByText('must', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText('should', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText('pass', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText('fail', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText('置信度 100%', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText('置信度 95.67%', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText('列出所有高风险项', { exact: true })).toBeVisible();
+    await expect(firstAssertions.getByText(LONG_ASSERTION_REASON, { exact: false })).toBeVisible();
+    const firstRow = panel
+      .getByRole('row')
+      .filter({ has: page.getByText('Q-001', { exact: true }) });
+    await expect(firstRow.getByText('62', { exact: true })).toBeVisible();
+    await expect(firstRow.getByText('通过', { exact: true })).toBeVisible();
+    await expect(firstAssertions.locator('.quality-assertions__summary')).toContainText(
+      'pass 1 · fail 1',
+    );
+    const layout = await firstAssertions.evaluate((element) => {
+      const grid = element.parentElement!.querySelector('.behavior-case-detail__grid')!;
+      return {
+        width: element.getBoundingClientRect().width,
+        gridWidth: grid.getBoundingClientRect().width,
+        overflow: element.scrollWidth > element.clientWidth,
+      };
+    });
+    expect(Math.abs(layout.width - layout.gridWidth)).toBeLessThanOrEqual(1);
+    expect(layout.overflow).toBe(false);
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await firstRow.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: test.info().outputPath('quality-assertions-expanded.png'),
+      fullPage: true,
+    });
+
+    await panel.getByRole('button', { name: '展开用例 Q-002', exact: true }).click();
+    await panel
+      .getByRole('button', { name: '展开用例 Q-002 的诊断明细，共 2 项', exact: true })
+      .click();
+    const secondAssertions = panel.getByRole('region', {
+      name: '用例 Q-002 的诊断明细',
+      exact: true,
+    });
+    await expect(firstAssertions).toBeVisible();
+    await expect(secondAssertions.getByText('custom-priority', { exact: true })).toBeVisible();
+    await expect(secondAssertions.getByText('needs_review', { exact: true })).toBeVisible();
+    await expect(secondAssertions.getByText('置信度 0%', { exact: true })).toBeVisible();
+    await expect(secondAssertions.getByText('置信度 —', { exact: true })).toBeVisible();
+    await expect(
+      secondAssertions.getByRole('listitem').nth(1).locator('.quality-assertions__check-point'),
+    ).toHaveText('—');
+    await panel
+      .getByRole('button', { name: '收起用例 Q-001 的诊断明细，共 2 项', exact: true })
+      .click();
+    await expect(firstAssertions).toHaveCount(0);
+    await expect(secondAssertions).toBeVisible();
+    await expect(panel.getByText('风险识别准确', { exact: true })).toBeVisible();
+    await firstAssertionToggle.focus();
+    await page.keyboard.press('Space');
+    await expect(firstAssertions).toBeVisible();
+
+    await panel.getByRole('button', { name: '收起用例 Q-001', exact: true }).click();
+    await expect(firstAssertions).toHaveCount(0);
+    await expect(secondAssertions).toBeVisible();
+    await panel.getByRole('button', { name: '展开用例 Q-001', exact: true }).click();
+    await expect(firstAssertions).toBeVisible();
+    await panel.getByRole('button', { name: '不通过 1', exact: true }).click();
+    await expect(firstAssertions).toHaveCount(0);
+    await expect(secondAssertions).toBeVisible();
+    await panel.getByRole('button', { name: '全部 3', exact: true }).click();
+    await expect(firstAssertions).toBeVisible();
+    await panel.getByRole('button', { name: '展开用例 Q-003', exact: true }).click();
+    await expect(panel.getByText('暂无诊断明细', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /Q-003 的诊断明细/ })).toHaveCount(0);
+    await expect(panel.getByText('保留旧报告评分分析', { exact: true })).toBeVisible();
+    expect(behaviorRequests).toHaveLength(assertionRequestsBefore);
+    await page.screenshot({
+      path: test.info().outputPath('quality-assertions.png'),
+      fullPage: true,
+    });
 
     await panel.getByRole('button', { name: '版本趋势', exact: true }).click();
     const trendDialog = page.getByRole('dialog', { name: '版本通过率趋势' });
@@ -468,7 +621,10 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
       .locator('.behavior-state.is-running')
       .getByRole('button', { name: '刷新状态' })
       .click();
-    await expect(panel.getByText('3.20s', { exact: true })).toBeVisible();
+    await expect(panel.getByText('7.20s', { exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: '展开用例 Q-001', exact: true }).click();
+    await expect(firstAssertionToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(firstAssertions).toHaveCount(0);
     await expect
       .poll(
         () =>
@@ -493,11 +649,11 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     expect(new URL(trend!.url()).searchParams.get('skillName')).toBe(SKILL_NAME);
 
     await versionSelect.click();
-    await page.getByRole('option', { name: '0.9.0', exact: true }).click();
+    await page.getByRole('option', { name: /^0\.9\.0\b/ }).click();
     await expect(panel.getByText('当前版本暂无触发评测数据', { exact: true })).toBeVisible();
 
     await versionSelect.click();
-    await page.getByRole('option', { name: '0.7.0', exact: true }).click();
+    await page.getByRole('option', { name: /^0\.7\.0\b/ }).click();
     await expect(panel.getByText('触发评测进行中', { exact: true })).toBeVisible();
     await expect(panel.getByText('评测报告格式不完整', { exact: true })).toHaveCount(0);
     await expect(
@@ -505,7 +661,7 @@ test.describe('Skill 行为评测 HTTP 接口', () => {
     ).toBeVisible();
 
     await versionSelect.click();
-    await page.getByRole('option', { name: '0.8.0', exact: true }).click();
+    await page.getByRole('option', { name: /^0\.8\.0\b/ }).click();
     await expect(panel.getByText('触发评测失败', { exact: true })).toBeVisible();
     await expect(panel.getByText('外部评测服务执行失败', { exact: true })).toBeVisible();
     await panel.getByRole('button', { name: '重新发起', exact: true }).click();

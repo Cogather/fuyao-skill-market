@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useId, watch } from 'vue';
 
 import HarnessVersionPicker from './HarnessVersionPicker.vue';
+import SkillQualityAssertionDetails from './SkillQualityAssertionDetails.vue';
 import type {
   SkillBehaviorCaseFilter,
   SkillBehaviorEvaluationKind,
@@ -39,6 +40,7 @@ const activeKind = ref<SkillBehaviorEvaluationKind>('trigger');
 const triggerFilter = ref<SkillBehaviorCaseFilter>('all');
 const qualityFilter = ref<SkillBehaviorCaseFilter>('all');
 const expandedQualityCases = ref<string[]>([]);
+const expandedQualityAssertions = ref<string[]>([]);
 const activeDialog = ref<'trigger' | 'trend' | null>(null);
 const selectedTypes = ref<SkillBehaviorEvaluationKind[]>([]);
 const submittingTypes = ref<SkillBehaviorEvaluationKind[]>([]);
@@ -116,6 +118,11 @@ const qualityCases = computed<SkillQualityEvaluationCase[]>(() =>
     score: item.score,
     duration: `${item.cost_time}s`,
     passed: item.passed,
+    assertions: Array.isArray(item.assertions)
+      ? item.assertions.filter(
+          (assertion) => assertion && typeof assertion === 'object' && !Array.isArray(assertion),
+        )
+      : [],
     details: [
       { label: '期望结果', content: item.expect },
       { label: '实际输出', content: item.output },
@@ -257,6 +264,16 @@ function toggleQualityCase(id: string): void {
 
 function isQualityCaseExpanded(id: string): boolean {
   return expandedQualityCases.value.includes(id);
+}
+
+function toggleQualityAssertions(id: string): void {
+  expandedQualityAssertions.value = expandedQualityAssertions.value.includes(id)
+    ? expandedQualityAssertions.value.filter((value) => value !== id)
+    : [...expandedQualityAssertions.value, id];
+}
+
+function isQualityAssertionsExpanded(id: string): boolean {
+  return expandedQualityAssertions.value.includes(id);
 }
 
 function openDialog(kind: 'trigger' | 'trend', event?: Event): void {
@@ -449,6 +466,11 @@ function onDocumentKeydown(event: KeyboardEvent): void {
     first?.focus();
   }
 }
+
+watch(qualityReport, () => {
+  expandedQualityCases.value = [];
+  expandedQualityAssertions.value = [];
+});
 
 watch(
   () => [props.assetName, props.version],
@@ -1034,10 +1056,35 @@ onBeforeUnmount(() => {
                     <td colspan="6">
                       <div class="behavior-case-detail__grid">
                         <article v-for="detail in item.details" :key="detail.label">
-                          <strong>{{ detail.label }}</strong>
+                          <div class="behavior-case-detail__heading">
+                            <strong>{{ detail.label }}</strong>
+                            <template v-if="detail.label === '评分分析'">
+                              <button
+                                v-if="item.assertions.length"
+                                type="button"
+                                class="behavior-case-toggle behavior-assertions-toggle"
+                                :aria-expanded="isQualityAssertionsExpanded(item.id)"
+                                :aria-controls="`${instanceId}-quality-assertions-${item.id}`"
+                                :aria-label="`${isQualityAssertionsExpanded(item.id) ? '收起' : '展开'}用例 ${item.id} 的诊断明细，共 ${item.assertions.length} 项`"
+                                @click="toggleQualityAssertions(item.id)"
+                              >
+                                <svg viewBox="0 0 16 16" aria-hidden="true">
+                                  <path d="m6 4 4 4-4 4" />
+                                </svg>
+                                诊断明细（{{ item.assertions.length }}）
+                              </button>
+                              <span v-else class="behavior-assertions-empty">暂无诊断明细</span>
+                            </template>
+                          </div>
                           <p>{{ detail.content }}</p>
                         </article>
                       </div>
+                      <SkillQualityAssertionDetails
+                        v-if="item.assertions.length && isQualityAssertionsExpanded(item.id)"
+                        :id="`${instanceId}-quality-assertions-${item.id}`"
+                        :case-id="item.id"
+                        :assertions="item.assertions"
+                      />
                     </td>
                   </tr>
                 </template>
@@ -2008,6 +2055,37 @@ onBeforeUnmount(() => {
 }
 .behavior-case-detail.is-quality .behavior-case-detail__grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.behavior-case-detail__grid > article {
+  min-width: 0;
+}
+.behavior-case-detail__heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 24px;
+}
+.behavior-assertions-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.behavior-assertions-toggle svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.behavior-assertions-toggle[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+.behavior-assertions-empty {
+  color: #64748b;
+  font-size: 11px;
 }
 .behavior-case-detail article strong {
   display: inline-flex;

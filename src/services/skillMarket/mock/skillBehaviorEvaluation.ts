@@ -1,3 +1,5 @@
+import type { SkillQualityAssertionDto } from '../skillBehaviorEvaluationService';
+
 export type SkillBehaviorEvaluationKind = 'trigger' | 'quality';
 
 export type SkillBehaviorCaseFilter = 'all' | 'passed' | 'failed';
@@ -31,6 +33,7 @@ export interface SkillQualityEvaluationCase {
   duration: string;
   passed: boolean;
   details: SkillBehaviorCaseDetail[];
+  assertions: SkillQualityAssertionDto[];
 }
 
 export interface SkillBehaviorEvaluationMock {
@@ -130,6 +133,24 @@ const qualityCases: SkillQualityEvaluationCase[] = [
     score: 92,
     duration: '2.1s',
     passed: true,
+    assertions: [
+      {
+        item_id: 'item_0',
+        priority: 'must',
+        verdict: 'pass',
+        confidence: 1,
+        check_point: '正确汇总机票与酒店费用，总金额应为 ¥1960。',
+        reason: '实际输出中的总金额正确，审批节点为直属主管。',
+      },
+      {
+        item_id: 'item_1',
+        priority: 'should',
+        verdict: 'fail',
+        confidence: 0.96,
+        check_point: '在审批结果中附带费用合规提示语。',
+        reason: '实际输出未附合规提示语，该检查项未满足。',
+      },
+    ],
     details: [
       { label: '期望结果', content: '识别金额合计 ¥1960，校验合规，输出审批节点为“直属主管”。' },
       { label: '实际输出', content: '合计 ¥1960，合规校验通过，流转至直属主管审批。' },
@@ -145,6 +166,24 @@ const qualityCases: SkillQualityEvaluationCase[] = [
     score: 52,
     duration: '2.4s',
     passed: false,
+    assertions: [
+      {
+        item_id: 'item_0',
+        priority: 'must',
+        verdict: 'fail',
+        confidence: 1,
+        check_point: '将住宿单价与差旅标准比对，识别超标 ¥180/晚。',
+        reason: '输出仅核对总金额，未识别单价超出差旅标准。',
+      },
+      {
+        item_id: 'item_1',
+        priority: 'should',
+        verdict: 'fail',
+        confidence: 0.95,
+        check_point: '为超标费用生成标记并提示额外审批。',
+        reason: '输出未包含超标标记或额外审批提示。',
+      },
+    ],
     details: [
       { label: '期望结果', content: '提示住宿费超出标准 ¥180/晚，需额外审批，并生成超标标记。' },
       { label: '实际输出', content: '住宿费合计 ¥1960，校验通过，已提交审批；未识别超标。' },
@@ -160,6 +199,7 @@ const qualityCases: SkillQualityEvaluationCase[] = [
     score: 68,
     duration: '1.8s',
     passed: false,
+    assertions: [],
     details: [
       { label: '期望结果', content: '提示补填“出差事由”字段并阻断提交。' },
       { label: '实际输出', content: '未提示缺字段，直接提交，仅在备注中标记“事由缺失”。' },
@@ -167,6 +207,14 @@ const qualityCases: SkillQualityEvaluationCase[] = [
     ],
   },
 ];
+
+// Only TC-Q-001 / item_0 in the root cause Skill uses long text to demonstrate truncation.
+const rootCauseSkillFirstAssertionText = {
+  check_point:
+    '正确汇总机票与酒店费用，总金额应为 ¥1960。除了核对机票 ¥1280 和酒店 ¥680 的加总结果，还需要检查币种、发票日期、出差起止时间、费用归属部门以及报销申请人与实际出行人的对应关系，识别重复票据和同一笔费用被拆分提交的情况；所有必填字段通过校验后，输出明确的费用分类、计算过程、合规判断和审批节点，并说明本次申请将流转至直属主管，确保用户能够根据返回信息逐项核对原始凭证，而不是仅得到一个无法追溯计算依据的总金额。',
+  reason:
+    '实际输出中的总金额正确，审批节点为直属主管。评测逐项比对了机票金额、酒店金额、汇总结果和预期审批路径，确认金额计算未出现重复累计、币种混用或小数精度丢失，关键字段与输入材料保持一致；同时检查了申请人、费用归属部门及出差日期之间的关联信息，未发现必须阻断提交的异常。虽然输出中仍缺少建议性的合规提示语，但该问题由另一条 should 检查项单独记录，不改变本条 must 检查项对于金额识别和审批流转正确性的 pass 判定。',
+};
 
 function normalizedVersion(version: string): string {
   return version.trim().replace(/^v/i, '');
@@ -192,6 +240,7 @@ export function skillBehaviorVersionHasData(version: string): boolean {
 
 export function getSkillBehaviorEvaluationMock(input: {
   version: string;
+  skillName?: string;
   userName?: string;
   userId?: string;
 }): SkillBehaviorEvaluationMock | null {
@@ -247,6 +296,14 @@ export function getSkillBehaviorEvaluationMock(input: {
     qualityCases: qualityCases.map((item) => ({
       ...item,
       details: item.details.map((detail) => ({ ...detail })),
+      assertions: item.assertions.map((assertion) => ({
+        ...assertion,
+        ...(input.skillName === 'Harness 流水线失败根因分析 Skill' &&
+        item.id === 'TC-Q-001' &&
+        assertion.item_id === 'item_0'
+          ? rootCauseSkillFirstAssertionText
+          : undefined),
+      })),
     })),
     durationDistribution: [
       { label: '<1min', value: 5 },
