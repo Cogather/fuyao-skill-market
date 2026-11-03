@@ -7,6 +7,7 @@ const path = http
   ? ['部门根', '产品线', '业务部', '研发组', '交付小组', '执行分组', '项目组', '实施小组']
   : ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组', '流水线平台小组'];
 const departmentDepth = path.length;
+const productDepth = http ? 4 : 6;
 const deepestCode = `dept-${departmentDepth + 2}`;
 
 async function prepare(page: Page, departmentPath = path) {
@@ -98,12 +99,12 @@ async function chooseDeepest(page: Page, trigger: Locator, depth: number) {
   await expect(trigger).toContainText(path[depth - 1]!);
 }
 
-test('场景部门级支持完整八层部门树，产品级与 Mock 保持原深度', async ({ page }) => {
+test('场景 HTTP 产品级限四层、部门级支持完整八层，Mock 保持原深度', async ({ page }) => {
   const requests = await prepare(page);
   const panel = page.locator('#harness-panel-scenarios');
   const level = panel.getByLabel('选择层级', { exact: true });
   const department = panel.getByRole('button', { name: '选择部门', exact: true });
-  await chooseDeepest(page, department, 6);
+  await chooseDeepest(page, department, productDepth);
   await selectHarnessOption(level, '部门级');
   await chooseDeepest(page, department, departmentDepth);
   if (http) {
@@ -119,8 +120,18 @@ test('场景部门级支持完整八层部门树，产品级与 Mock 保持原�
       .toBe(deepestCode);
   }
   await selectHarnessOption(level, '产品级');
-  if (http) await expect(department).not.toContainText(path[6]!);
-  await chooseDeepest(page, department, 6);
+  if (http) await expect(department).not.toContainText(path[productDepth]!);
+  await chooseDeepest(page, department, productDepth);
+  if (http) {
+    await expect
+      .poll(() =>
+        requests
+          .filter((item) => new URL(item.url()).pathname.endsWith('/smapi-product-by-dept'))
+          .map((item) => new URL(item.url()).searchParams.get('deptCode'))
+          .at(-1),
+      )
+      .toBe(`dept-${productDepth + 2}`);
+  }
 });
 
 test('HTTP 部门树只有四层时按实际层数展示', async ({ page }) => {
@@ -152,7 +163,7 @@ test('工作流与资产列表筛选保持原深度', async ({ page }) => {
 });
 
 for (const type of ['Agent', 'Skill', 'Command']) {
-  test(`${type} 新增、导入、导出部门级深度与请求一致`, async ({ page }) => {
+  test(`${type} 新增、导入、导出产品级限四层，部门级深度与请求一致`, async ({ page }) => {
     const requests = await prepare(page);
     await page.locator('#harness-tab-assets').click();
     await page.getByRole('button', { name: type, exact: true }).click();
@@ -164,7 +175,30 @@ for (const type of ['Agent', 'Skill', 'Command']) {
       const level = dialog.getByLabel('层级', { exact: true });
       const department = dialog.getByRole('button', { name: `${action}资产部门`, exact: true });
       await selectHarnessOption(level, '产品级');
-      await chooseDeepest(page, department, 6);
+      await chooseDeepest(page, department, productDepth);
+      await selectHarnessOption(level, '部门级');
+      await chooseDeepest(page, department, departmentDepth);
+      await selectHarnessOption(level, '产品级');
+      if (http) await expect(department).not.toContainText(path[productDepth]!);
+      await chooseDeepest(page, department, productDepth);
+      if (http) {
+        await expect
+          .poll(() =>
+            requests
+              .filter((item) => new URL(item.url()).pathname.endsWith('/smapi-product-by-dept'))
+              .map((item) => new URL(item.url()).searchParams.get('deptCode'))
+              .at(-1),
+          )
+          .toBe(`dept-${productDepth + 2}`);
+      }
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await page
+        .getByRole('button', { name: action === '新增' ? '＋ 新增' : action, exact: true })
+        .click();
+      await expect(level).toHaveAttribute('data-value', '产品级');
+      await expect(department).toContainText(path[productDepth - 1]!);
+      if (http) await expect(department).not.toContainText(path[productDepth]!);
       await selectHarnessOption(level, '部门级');
       await chooseDeepest(page, department, departmentDepth);
       await dialog.getByRole('button', { name: '取消', exact: true }).click();

@@ -22,6 +22,7 @@ import {
   attachDesignCapability,
 } from '../services/skillMarket/businessScenarioDesignRepository';
 import { validateProductCatalogItemName } from '../utils/scenarioCreationCode';
+import { getHarnessDepartmentMaxLevel } from '../utils/harnessDepartmentDepth';
 import {
   queryWorkflowCapabilityOptions,
   type WorkflowCapabilityType,
@@ -197,9 +198,13 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   const mockWorkflowSeededDepartments = reactive<string[]>([]);
   const details = reactive<Record<string, ScenarioDetails>>({});
   const scopeLevel = ref<HarnessScopeLevel>('产品级');
-  const departmentMaxLevel = computed(() =>
-    isHttp && scopeLevel.value === '部门级' ? (context().departmentMaxLevel ?? 6) : 6,
-  );
+  const departmentMaxLevel = computed(() => {
+    const configuredMaxLevel = context().departmentMaxLevel;
+    if (!isHttp || configuredMaxLevel === undefined) return 6;
+    return scopeLevel.value === '部门级'
+      ? configuredMaxLevel
+      : getHarnessDepartmentMaxLevel(scopeLevel.value);
+  });
   const selectedDeptId = ref('');
   const productId = ref('');
   const selectedScenarioId = ref('');

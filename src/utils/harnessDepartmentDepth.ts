@@ -1,6 +1,5 @@
-/** HTTP department scopes follow every level in the supplied tree; other scopes keep their limit. */
+/** Scoped Harness pickers: HTTP products use four levels, departments use the full tree. */
 export function getHarnessDepartmentMaxLevel(level: string): number {
-  return import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http' && level === '部门级'
-    ? Number.POSITIVE_INFINITY
-    : 6;
+  if (import.meta.env.VITE_SKILL_MARKET_TRANSPORT !== 'http') return 6;
+  return level === '部门级' ? Number.POSITIVE_INFINITY : 4;
 }
