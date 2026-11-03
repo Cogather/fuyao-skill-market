@@ -10,6 +10,180 @@ const departmentDepth = path.length;
 const productDepth = http ? 4 : 6;
 const deepestCode = `dept-${departmentDepth + 2}`;
 
+async function selectTabDepartment(page: Page, tab: string, depth: number) {
+  await page.locator(`#harness-tab-${tab}`).click();
+  const trigger = page
+    .locator(`#harness-panel-${tab}`)
+    .getByRole('button', { name: '选择部门', exact: true });
+  await trigger.click();
+  const picker = page.getByRole('listbox');
+  for (const [index, name] of path.slice(0, depth).entries()) {
+    await picker
+      .locator('.market-dept-cascader-col')
+      .nth(index)
+      .getByRole('option')
+      .filter({ has: page.getByText(name, { exact: true }) })
+      .click();
+  }
+  await picker.getByRole('button', { name: '完成', exact: true }).click();
+  await expect(picker).toBeHidden();
+  return trigger;
+}
+
+const tabProduct = (page: Page, tab: string) =>
+  page.locator(`#harness-panel-${tab}`).getByRole('combobox', {
+    name: tab === 'scenarios' ? '选择产品' : tab === 'workflows' ? '筛选产品' : '产品筛选',
+    exact: true,
+  });
+
+test('三个页签独立记忆部门产品，并记住清空部门和全部产品', async ({ page }) => {
+  const requests = await prepare(page);
+  const choices = [
+    { tab: 'scenarios', depth: http ? 3 : 5, product: http ? '第二个产品' : 'devops-center-v2' },
+    { tab: 'workflows', depth: http ? 2 : 4, product: '深层部门产品' },
+    { tab: 'assets', depth: http ? 4 : 6, product: http ? '第二个产品' : 'DevOps 管理工作台' },
+  ];
+  const remembered = new Map<string, string>();
+  for (const choice of choices) {
+    await selectTabDepartment(page, choice.tab, choice.depth);
+    const product = tabProduct(page, choice.tab);
+    await selectHarnessOption(
+      product,
+      choice.tab === 'workflows' ? { index: 1 } : { label: choice.product },
+    );
+    remembered.set(choice.tab, (await product.getAttribute('data-value'))!);
+  }
+  for (const tab of ['scenarios', 'workflows', 'assets', 'workflows', 'scenarios']) {
+    await page.locator(`#harness-tab-${tab}`).click();
+    const choice = choices.find((item) => item.tab === tab)!;
+    const department = page
+      .locator(`#harness-panel-${tab}`)
+      .getByRole('button', { name: '选择部门', exact: true });
+    await expect(department.locator('.market-dept-cascader-trigger-text')).toHaveText(
+      path.slice(0, choice.depth).join(' / '),
+    );
+    await expect(tabProduct(page, tab)).toHaveAttribute('data-value', remembered.get(tab)!);
+  }
+  if (http) {
+    await expect
+      .poll(() =>
+        requests
+          .filter((r) => new URL(r.url()).pathname.endsWith('/workflow/list'))
+          .map((r) => new URL(r.url()).searchParams)
+          .at(-1)
+          ?.get('productCode'),
+      )
+      .toBe('product-1');
+    const assetQuery = requests
+      .filter((r) => new URL(r.url()).pathname.endsWith('/components/query'))
+      .at(-1)!
+      .postDataJSON();
+    expect(assetQuery.productCode).toBe('product-2');
+  }
+  // The same department can still have a different selected product on each tab.
+  await selectTabDepartment(page, 'workflows', http ? 3 : 5);
+  await selectHarnessOption(tabProduct(page, 'workflows'), { label: '全部产品' });
+  await page.locator('#harness-tab-scenarios').click();
+  await expect(tabProduct(page, 'scenarios')).toHaveAttribute(
+    'data-value',
+    remembered.get('scenarios')!,
+  );
+  await page.locator('#harness-tab-workflows').click();
+  await expect(tabProduct(page, 'workflows')).toHaveAttribute('data-value', '');
+
+  for (const tab of ['scenarios', 'workflows', 'assets']) {
+    await page.locator(`#harness-tab-${tab}`).click();
+    await page
+      .locator(`#harness-panel-${tab}`)
+      .getByRole('button', { name: '选择部门', exact: true })
+      .click();
+    const picker = page.getByRole('listbox');
+    await picker.getByRole('button', { name: '清空部门', exact: true }).click();
+    if (await picker.isVisible())
+      await picker.getByRole('button', { name: '完成', exact: true }).click();
+  }
+  for (const tab of ['scenarios', 'workflows', 'assets']) {
+    await page.locator(`#harness-tab-${tab}`).click();
+    await expect(
+      page.locator(`#harness-panel-${tab}`).getByRole('button', { name: '选择部门', exact: true }),
+    ).toContainText('选部门…');
+  }
+});
+
+test('页签筛选记忆在刷新或离开路由后重置', async ({ page }) => {
+  await prepare(page);
+  const defaultDepth = http ? 1 : 5;
+  for (const reset of ['route', 'refresh']) {
+    for (const tab of ['scenarios', 'workflows', 'assets']) {
+      await selectTabDepartment(page, tab, http ? 3 : 6);
+      if (tab !== 'scenarios') await selectHarnessOption(tabProduct(page, tab), { index: 1 });
+    }
+    if (reset === 'refresh') await page.reload();
+    else {
+      await page.evaluate(() =>
+        window.postMessage({ type: 'Skill_Square_Init', tab: 'hot' }, location.origin),
+      );
+      await expect(page).toHaveURL(/\/skill-square/);
+      await page.evaluate(() =>
+        window.postMessage({ type: 'Skill_Square_Init', tab: 'planning' }, location.origin),
+      );
+      await expect(page).toHaveURL(/\/harness-management/);
+    }
+    for (const tab of ['scenarios', 'workflows', 'assets']) {
+      await page.locator(`#harness-tab-${tab}`).click();
+      await expect(
+        page
+          .locator(`#harness-panel-${tab}`)
+          .getByRole('button', { name: '选择部门', exact: true })
+          .locator('.market-dept-cascader-trigger-text'),
+      ).toHaveText(path.slice(0, defaultDepth).join(' / '));
+      if (tab !== 'scenarios')
+        await expect(tabProduct(page, tab)).toHaveAttribute('data-value', '');
+    }
+  }
+});
+
+test('HTTP 产品恢复请求未完成时快速切换页签仍保留所选产品', async ({ page }) => {
+  test.skip(!http, '需要控制 HTTP 产品响应时机');
+  await prepare(page);
+  await selectTabDepartment(page, 'scenarios', 3);
+  await selectHarnessOption(tabProduct(page, 'scenarios'), { label: '第二个产品' });
+  await selectTabDepartment(page, 'assets', 4);
+  await selectHarnessOption(tabProduct(page, 'assets'), { label: '第二个产品' });
+  await page.locator('#harness-tab-scenarios').click();
+  await expect(tabProduct(page, 'scenarios')).toHaveAttribute('title', '第二个产品');
+
+  const releaseRequests: Array<() => void> = [];
+  await page.route('**/smapi-product-by-dept**', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('deptCode') !== 'dept-6') {
+      await route.fallback();
+      return;
+    }
+    await new Promise<void>((resolve) => releaseRequests.push(resolve));
+    await route.fulfill({
+      json: {
+        meta: { success: true },
+        data: [
+          { offeringId: 'product-1', offeringName: '深层部门产品' },
+          { offeringId: 'product-2', offeringName: '第二个产品' },
+        ],
+      },
+    });
+  });
+  try {
+    await page.locator('#harness-tab-assets').click();
+    await expect.poll(() => releaseRequests.length).toBe(1);
+    await page.locator('#harness-tab-workflows').click();
+    await page.locator('#harness-tab-assets').click();
+    await expect.poll(() => releaseRequests.length).toBe(2);
+  } finally {
+    releaseRequests.forEach((release) => release());
+  }
+  await expect(tabProduct(page, 'assets')).toHaveAttribute('data-value', 'product-2');
+  await page.locator('#harness-tab-scenarios').click();
+  await expect(tabProduct(page, 'scenarios')).toHaveAttribute('title', '第二个产品');
+});
+
 async function prepare(page: Page, departmentPath = path, permissionPath = path.slice(0, 1)) {
   const requests: Request[] = [];
   if (http) {
@@ -56,7 +230,10 @@ async function prepare(page: Page, departmentPath = path, permissionPath = path.
           ],
         };
       } else if (url.pathname.endsWith('/smapi-product-by-dept')) {
-        data = [{ offeringId: 'product-1', offeringName: '深层部门产品' }];
+        data = [
+          { offeringId: 'product-1', offeringName: '深层部门产品' },
+          { offeringId: 'product-2', offeringName: '第二个产品' },
+        ];
       } else if (url.pathname.endsWith('/workflow/list')) {
         data = { list: [], total: 0, pageNo: 1, pageSize: 10 };
       } else if (url.pathname.endsWith('/components/query')) {

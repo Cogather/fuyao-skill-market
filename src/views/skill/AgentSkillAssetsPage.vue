@@ -34,6 +34,7 @@ import type {
   HarnessCatalogAssetType,
   HarnessCatalogScopeChange,
   HarnessCatalogScopeSnapshots,
+  HarnessListFilterSnapshot,
   HarnessScopeSnapshot,
 } from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
@@ -61,6 +62,7 @@ const props = withDefaults(
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
     scopeSnapshots?: HarnessCatalogScopeSnapshots;
+    initialListFilters?: HarnessListFilterSnapshot;
   }>(),
   {
     userId: '',
@@ -74,6 +76,7 @@ const props = withDefaults(
 );
 const emit = defineEmits<{
   'scope-change': [change: HarnessCatalogScopeChange];
+  'list-filter-change': [snapshot: HarnessListFilterSnapshot];
 }>();
 
 const PERSON_FIELDS = [
@@ -189,6 +192,10 @@ const {
   initializeList,
   disposeList,
 } = useHarnessAssetCatalogList(props, { api, transportIsHttp });
+
+watch([selectedDepartmentId, selectedProductId], ([departmentId, productId]) => {
+  emit('list-filter-change', { departmentId, productId });
+});
 
 function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
   const component = detailComponent.value;
@@ -963,7 +970,7 @@ async function onAssetCreated(): Promise<void> {
 onMounted(async () => {
   document.addEventListener('pointerdown', handleCardMenuPointerDown);
   document.addEventListener('keydown', handleCardMenuKeydown);
-  await initializeList();
+  await initializeList(props.initialListFilters);
 });
 
 onBeforeUnmount(() => {

@@ -30,6 +30,7 @@ import type {
   HarnessCatalogScopeChange,
   HarnessCatalogScopeSnapshots,
   HarnessDepartmentSnapshot,
+  HarnessListFilterSnapshot,
   HarnessScopeSnapshot,
 } from '../types/harnessFilterMemory';
 
@@ -113,6 +114,7 @@ const publicHarnessTabKeys = new Set<HarnessTab>(['workflows', 'capabilities', '
 const legacyPlanningTabKeys = new Set<HarnessTab>(['command', 'planning', 'agent', 'extension']);
 
 const activeHarnessTab = ref<HarnessTab>('scenarios');
+const workspaceFilterTab = ref<'scenarios' | 'workflows'>('scenarios');
 const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
 const planningPage = ref<InstanceType<typeof SkillPlanningPage> | null>(null);
 const capabilityManagementActivated = ref(false);
@@ -120,6 +122,7 @@ const extensionTabActivated = ref(false);
 const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
 const assetCatalogScopeSnapshotsByUser = ref<Record<string, HarnessCatalogScopeSnapshots>>({});
+const assetListFiltersByUser = ref<Record<string, HarnessListFilterSnapshot>>({});
 const extensionScopeSnapshot = ref<HarnessScopeSnapshot>();
 const capabilityScopeSnapshots = computed<
   Partial<Record<PlanningScopeChange['capabilityType'], HarnessScopeSnapshot>>
@@ -256,14 +259,15 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   allowedDepartmentPaths: permissionDepartmentPaths.value,
   // 场景设计的部门级受管理权限约束；工作流列表可以按上级部门筛选。
   restrictToAllowedDepartments:
-    restrictToPermissionDepartments.value && activeHarnessTab.value === 'scenarios',
+    restrictToPermissionDepartments.value && workspaceFilterTab.value === 'scenarios',
   departmentMaxLevel:
-    activeHarnessTab.value === 'scenarios'
+    workspaceFilterTab.value === 'scenarios'
       ? Number.POSITIVE_INFINITY
-      : activeHarnessTab.value === 'workflows'
+      : workspaceFilterTab.value === 'workflows'
         ? 4
         : undefined,
-  readOnlyDepartmentSelection: activeHarnessTab.value === 'workflows',
+  readOnlyDepartmentSelection: workspaceFilterTab.value === 'workflows',
+  filterKey: workspaceFilterTab.value,
 }));
 const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
   const level = scenarioWorkspace.scopeLevel.value;
@@ -452,6 +456,8 @@ function selectHarnessTab(tab: HarnessTab): void {
   }
   if (tab === 'capabilities') capabilityManagementActivated.value = true;
   if (tab === 'extension') extensionTabActivated.value = true;
+  if (tab === 'scenarios' || tab === 'workflows') workspaceFilterTab.value = tab;
+  if (tab === 'settings') workspaceFilterTab.value = 'scenarios';
   activeHarnessTab.value = tab;
 }
 
@@ -478,7 +484,7 @@ onMounted(async () => {
   try {
     if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
-    activeHarnessTab.value = visibleHarnessTabs.value[0]?.key ?? 'workflows';
+    selectHarnessTab(visibleHarnessTabs.value[0]?.key ?? 'workflows');
   } finally {
     permissionContextReady.value = true;
   }
@@ -646,7 +652,9 @@ onBeforeRouteLeave(() => {
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
         :scope-snapshots="assetCatalogScopeSnapshots"
+        :initial-list-filters="assetListFiltersByUser[userId]"
         @scope-change="updateAssetCatalogScopeSnapshot"
+        @list-filter-change="assetListFiltersByUser[userId] = $event"
       />
     </section>
 

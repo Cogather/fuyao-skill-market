@@ -9,6 +9,7 @@ import {
   type HarnessAssetScope,
 } from '../../services/skillMarket/assetManagementTypes';
 import { mergeUniquePage, shouldLoadNextPage } from '../../utils/infiniteScroll';
+import type { HarnessListFilterSnapshot } from '../../types/harnessFilterMemory';
 
 export type AssetStatusFilter = 'all' | 'developing' | 'pending' | 'published';
 
@@ -395,12 +396,12 @@ export function useHarnessAssetCatalogList(
     void loadNextAssetPage();
   }
 
-  async function reloadProductsAndAssets(): Promise<void> {
+  async function reloadProductsAndAssets(preferredProductId = ''): Promise<void> {
     const sequence = ++productSequence;
     const scope = currentScope.value;
     resetAssetListState();
     products.value = [];
-    selectedProductId.value = '';
+    selectedProductId.value = preferredProductId;
     productError.value = '';
     if (!scope) {
       await reloadAssets();
@@ -411,6 +412,9 @@ export function useHarnessAssetCatalogList(
       const nextProducts = await api.queryProducts(scope);
       if (sequence !== productSequence) return;
       products.value = nextProducts;
+      if (!nextProducts.some((product) => product.id === selectedProductId.value)) {
+        selectedProductId.value = '';
+      }
     } catch (error) {
       if (sequence !== productSequence) return;
       productError.value = errorMessage(error, '产品列表加载失败');
@@ -442,14 +446,24 @@ export function useHarnessAssetCatalogList(
     await reloadAssets();
   }
 
-  async function initializeList(): Promise<void> {
-    const row = defaultDepartmentRow();
+  async function initializeList(snapshot?: HarnessListFilterSnapshot): Promise<void> {
+    const remembered = snapshot?.departmentId
+      ? normalizeListDepartmentRow(
+          allDepartmentRows.value.find((row) => row.id === snapshot.departmentId) ?? null,
+        )
+      : null;
+    if (snapshot && !snapshot.departmentId) {
+      selectedDepartmentId.value = '';
+      await reloadProductsAndAssets(snapshot.productId);
+      return;
+    }
+    const row = remembered ?? defaultDepartmentRow();
     if (!row) {
       listError.value = '暂无可用部门范围';
       return;
     }
     selectedDepartmentId.value = row.id;
-    await reloadProductsAndAssets();
+    await reloadProductsAndAssets(remembered ? snapshot?.productId : '');
   }
 
   function disposeList(): void {
