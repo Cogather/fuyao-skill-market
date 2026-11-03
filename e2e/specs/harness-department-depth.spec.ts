@@ -10,7 +10,7 @@ const departmentDepth = path.length;
 const productDepth = http ? 4 : 6;
 const deepestCode = `dept-${departmentDepth + 2}`;
 
-async function prepare(page: Page, departmentPath = path) {
+async function prepare(page: Page, departmentPath = path, permissionPath = path.slice(0, 1)) {
   const requests: Request[] = [];
   if (http) {
     await page.addInitScript((names) => {
@@ -46,7 +46,14 @@ async function prepare(page: Page, departmentPath = path) {
       if (url.pathname.endsWith('/permission/user-depts')) {
         data = {
           ownedOrgs: [],
-          adminOrgs: [{ deptName: path[0], deptCode: 'dept-3', path: [path[0]], levelNo: 3 }],
+          adminOrgs: [
+            {
+              deptName: permissionPath.at(-1),
+              deptCode: `dept-${permissionPath.length + 2}`,
+              path: permissionPath,
+              levelNo: permissionPath.length + 2,
+            },
+          ],
         };
       } else if (url.pathname.endsWith('/smapi-product-by-dept')) {
         data = [{ offeringId: 'product-1', offeringName: '深层部门产品' }];
@@ -142,15 +149,32 @@ test('HTTP 部门树只有四层时按实际层数展示', async ({ page }) => {
   await chooseDeepest(page, panel.getByRole('button', { name: '选择部门', exact: true }), 4);
 });
 
-test('工作流与资产列表筛选保持原深度', async ({ page }) => {
-  await prepare(page);
+test('工作流与资产顶部筛选 HTTP 限四层，Mock 保持原深度', async ({ page }) => {
+  const requests = await prepare(page);
   for (const tab of ['workflows', 'assets']) {
     await page.locator(`#harness-tab-${tab}`).click();
     await chooseDeepest(
       page,
       page.locator(`#harness-panel-${tab}`).getByRole('button', { name: '选择部门', exact: true }),
-      6,
+      productDepth,
     );
+    if (http) {
+      await expect
+        .poll(() => {
+          const request = requests
+            .filter((item) =>
+              new URL(item.url()).pathname.endsWith(
+                tab === 'workflows' ? '/workflow/list' : '/components/query',
+              ),
+            )
+            .at(-1);
+          if (!request) return null;
+          return tab === 'workflows'
+            ? new URL(request.url()).searchParams.get('dimName')
+            : request.postDataJSON().deptCode;
+        })
+        .toBe(tab === 'workflows' ? path.slice(0, 4).join('/') : 'dept-6');
+    }
   }
   await page.locator('#harness-tab-scenarios').click();
   const panel = page.locator('#harness-panel-scenarios');
@@ -160,6 +184,66 @@ test('工作流与资产列表筛选保持原深度', async ({ page }) => {
     panel.getByRole('button', { name: '选择部门', exact: true }),
     departmentDepth,
   );
+});
+
+test('HTTP 顶部筛选归一化深层默认值，返回场景仍保留部门级权限和完整深度', async ({ page }) => {
+  test.skip(!http, '需要 HTTP 模式');
+  const requests = await prepare(page, path, path.slice(0, 5));
+  const scenarios = page.locator('#harness-panel-scenarios');
+  const scenarioDepartment = scenarios.getByRole('button', { name: '选择部门', exact: true });
+  await selectHarnessOption(scenarios.getByLabel('选择层级', { exact: true }), '部门级');
+  await chooseDeepest(page, scenarioDepartment, departmentDepth);
+
+  for (const tab of ['workflows', 'assets']) {
+    await page.locator(`#harness-tab-${tab}`).click();
+    const department = page
+      .locator(`#harness-panel-${tab}`)
+      .getByRole('button', { name: '选择部门', exact: true });
+    await expect(department).toContainText(path[3]!);
+    await expect(department).not.toContainText(path[4]!);
+    await chooseDeepest(page, department, 4);
+    await department.click();
+    const picker = page.getByRole('listbox');
+    await picker
+      .locator('.market-dept-cascader-col')
+      .nth(2)
+      .getByRole('option')
+      .filter({ hasText: path[2] })
+      .click();
+    await picker.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(picker).toBeHidden();
+    await expect(department).toContainText(path[2]!);
+    await expect(department).not.toContainText(path[3]!);
+  }
+  const workflowScopes = requests
+    .filter((item) => new URL(item.url()).pathname.endsWith('/workflow/list'))
+    .map((item) => new URL(item.url()).searchParams.get('dimName'));
+  expect(workflowScopes).toContain(path.slice(0, 4).join('/'));
+  expect(workflowScopes.every((scope) => (scope?.split('/').length ?? 0) <= 4)).toBe(true);
+  const assetScopes = requests
+    .filter((item) => new URL(item.url()).pathname.endsWith('/components/query'))
+    .map((item) => item.postDataJSON().deptCode);
+  expect(assetScopes).toContain('dept-6');
+  expect(assetScopes.every((code) => ['dept-5', 'dept-6'].includes(code))).toBe(true);
+
+  await page.locator('#harness-tab-scenarios').click();
+  await expect(scenarios.getByLabel('选择层级', { exact: true })).toHaveAttribute(
+    'data-value',
+    '部门级',
+  );
+  await scenarioDepartment.click();
+  const picker = page.getByRole('listbox');
+  await picker
+    .locator('.market-dept-cascader-col')
+    .nth(3)
+    .getByRole('option')
+    .filter({ hasText: path[3] })
+    .click();
+  await picker.getByRole('button', { name: '完成', exact: true }).click();
+  await expect(picker).toBeVisible();
+  await expect(scenarios.getByRole('alert')).toContainText('请选择有管理权限的部门');
+  await page.keyboard.press('Escape');
+  await chooseDeepest(page, scenarioDepartment, departmentDepth);
 });
 
 for (const type of ['Agent', 'Skill', 'Command']) {

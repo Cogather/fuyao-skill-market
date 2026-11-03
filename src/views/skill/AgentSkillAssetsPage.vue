@@ -167,6 +167,7 @@ const {
   normalizedAllowedPaths,
   defaultCatalogDepartmentPath,
   manageableDepartmentTree,
+  listDepartmentMaxLevel,
   pickerDepartments,
   selectedDepartment,
   selectedProduct,
@@ -1071,6 +1072,7 @@ onBeforeUnmount(() => {
           class="asset-department"
           :model-value="selectedDepartmentId"
           :departments="pickerDepartments"
+          :max-level="listDepartmentMaxLevel"
           @update:model-value="selectDepartment"
         />
 

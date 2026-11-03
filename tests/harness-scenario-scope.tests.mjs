@@ -398,6 +398,86 @@ try {
     });
   }
 
+  await test('read-only filters cap selections without losing descendant metadata or granting write access', async () => {
+    api.queryProducts = async () => success([{ offeringId: 'product', offeringName: 'product' }]);
+    api.querySceneList = async () => success([]);
+    const names = Array.from({ length: 8 }, (_, index) => `部门${index + 1}`);
+    const context = reactive({
+      ready: true,
+      userId: 'list-depth-user',
+      departmentTree: names.reduceRight(
+        (children, name, index) => [{ id: `dept-${index + 1}`, name, children }],
+        [],
+      ),
+      defaultDepartmentPath: names.slice(0, 5),
+      allowedDepartmentPaths: [names.slice(0, 5)],
+      restrictToAllowedDepartments: true,
+      departmentMaxLevel: Number.POSITIVE_INFINITY,
+      readOnlyDepartmentSelection: false,
+    });
+    const scope = effectScope();
+    scopes.push(scope);
+    const workspace = scope.run(() => createHarnessScenarioWorkspace(() => context));
+    workspace.selectLevel('部门级');
+    await settleUntil(() => workspace.available.value, 'department scope should load');
+    workspace.selectDepartment('dept-8');
+    await settleUntil(() => workspace.available.value, 'deep department should load');
+    workspace.products.push({
+      _id: 'deep-product',
+      name: '下级产品',
+      code: 'deep-product',
+      departmentId: 'dept-8',
+    });
+
+    Object.assign(context, {
+      restrictToAllowedDepartments: false,
+      readOnlyDepartmentSelection: true,
+      departmentMaxLevel: 4,
+    });
+    await nextTick();
+    assert.equal(workspace.selectedDeptId.value, 'dept-4');
+    assert.equal(workspace.departments.length, 8, 'keep metadata for deep workflow rows');
+    assert.equal(workspace.workflowListScope.value.dimName, names.slice(0, 4).join('/'));
+    assert.ok(workspace.inventoryProductOptions.value.some((item) => item._id === 'deep-product'));
+    workspace.selectDepartment('dept-8');
+    assert.equal(
+      workspace.selectedDeptId.value,
+      'dept-4',
+      'filter cannot select beyond four levels',
+    );
+    workspace.selectDepartment('dept-3');
+    assert.equal(
+      workspace.selectedDeptId.value,
+      'dept-3',
+      'read-only filters can select ancestors',
+    );
+    assert.equal(workspace.canManageDepartment.value, false);
+    await assert.rejects(
+      () => workspace.createCapability('Command', { name: '/check' }),
+      /无管理权限/,
+    );
+
+    Object.assign(context, {
+      readOnlyDepartmentSelection: false,
+      restrictToAllowedDepartments: true,
+      departmentMaxLevel: Number.POSITIVE_INFINITY,
+    });
+    await settleUntil(() => workspace.available.value, 'authorized scenario scope should reload');
+    assert.equal(workspace.selectedDeptId.value, 'dept-5');
+    workspace.selectDepartment('dept-4');
+    assert.equal(
+      workspace.selectedDeptId.value,
+      'dept-5',
+      'scenario ancestors remain navigation only',
+    );
+    workspace.selectDepartment('dept-8');
+    assert.equal(
+      workspace.selectedDeptId.value,
+      'dept-8',
+      'scenario department depth stays unlimited',
+    );
+  });
+
   await test('switching to department scope without any authorized node blocks data and writes', async () => {
     const sceneQueries = [];
     let writes = 0;

@@ -82,6 +82,7 @@ export function useHarnessAssetCatalogList(
 ) {
   const { api, transportIsHttp } = options;
   const assetPageSize = transportIsHttp ? 30 : 24;
+  const listDepartmentMaxLevel = transportIsHttp ? 4 : 6;
 
   const filter = ref<HarnessAssetFilter>('Agent');
   const assetSearchQuery = ref('');
@@ -156,13 +157,15 @@ export function useHarnessAssetCatalogList(
   });
 
   const pickerDepartments = computed(() =>
-    allDepartmentRows.value.map((row) => ({
-      _id: row.id,
-      name: row.name,
-      deptCode: row.code,
-      parentId: null,
-      path: row.path,
-    })),
+    allDepartmentRows.value
+      .filter((row) => !transportIsHttp || row.path.length <= listDepartmentMaxLevel)
+      .map((row) => ({
+        _id: row.id,
+        name: row.name,
+        deptCode: row.code,
+        parentId: null,
+        path: row.path,
+      })),
   );
   const selectedDepartment = computed(
     () => allDepartmentRows.value.find((row) => row.id === selectedDepartmentId.value) ?? null,
@@ -242,14 +245,24 @@ export function useHarnessAssetCatalogList(
       normalizePath(props.currentUserDepartmentPath),
     ].filter((path) => path.length > 0);
     for (const path of preferredPaths) {
+      const listPath = transportIsHttp ? path.slice(0, listDepartmentMaxLevel) : path;
       const match = allDepartmentRows.value.find(
-        (row) => row.path.join('\u0001') === path.join('\u0001'),
+        (row) => row.path.join('\u0001') === listPath.join('\u0001'),
       );
       if (match) return match;
     }
-    return (
+    return normalizeListDepartmentRow(
       [...allDepartmentRows.value].reverse().find((row) => !row.hasChildren) ??
-      allDepartmentRows.value[0] ??
+        allDepartmentRows.value[0] ??
+        null,
+    );
+  }
+
+  function normalizeListDepartmentRow(row: DepartmentRow | null): DepartmentRow | null {
+    if (!transportIsHttp || !row || row.path.length <= listDepartmentMaxLevel) return row;
+    const path = row.path.slice(0, listDepartmentMaxLevel);
+    return (
+      allDepartmentRows.value.find((item) => item.path.join('\u0001') === path.join('\u0001')) ??
       null
     );
   }
@@ -407,10 +420,13 @@ export function useHarnessAssetCatalogList(
   }
 
   async function selectDepartment(id: string): Promise<void> {
-    const target = allDepartmentRows.value.find((row) => row.id === id);
+    const target = normalizeListDepartmentRow(
+      allDepartmentRows.value.find((row) => row.id === id) ?? null,
+    );
     if (id && !target) return;
-    if (selectedDepartmentId.value === id) return;
-    selectedDepartmentId.value = id;
+    const nextId = target?.id ?? '';
+    if (selectedDepartmentId.value === nextId) return;
+    selectedDepartmentId.value = nextId;
     await reloadProductsAndAssets();
   }
 
@@ -465,6 +481,7 @@ export function useHarnessAssetCatalogList(
     normalizedAllowedPaths,
     defaultCatalogDepartmentPath,
     manageableDepartmentTree,
+    listDepartmentMaxLevel,
     pickerDepartments,
     selectedDepartment,
     selectedProduct,

@@ -506,6 +506,7 @@ onBeforeUnmount(() => {
           :active="props.active"
           :model-value="selectedDeptId"
           :departments="departments"
+          :max-level="isHttp ? 4 : 6"
           @update:model-value="selectDept"
         />
         <template v-if="productOptions.length">

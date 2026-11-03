@@ -254,10 +254,16 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   defaultDepartmentPath:
     permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
   allowedDepartmentPaths: permissionDepartmentPaths.value,
-  // 场景设计仅在部门级应用管理权限；产品级和只读工作流清单保留完整部门树。
+  // 场景设计的部门级受管理权限约束；工作流列表可以按上级部门筛选。
   restrictToAllowedDepartments:
     restrictToPermissionDepartments.value && activeHarnessTab.value === 'scenarios',
-  departmentMaxLevel: activeHarnessTab.value === 'scenarios' ? Number.POSITIVE_INFINITY : undefined,
+  departmentMaxLevel:
+    activeHarnessTab.value === 'scenarios'
+      ? Number.POSITIVE_INFINITY
+      : activeHarnessTab.value === 'workflows'
+        ? 4
+        : undefined,
+  readOnlyDepartmentSelection: activeHarnessTab.value === 'workflows',
 }));
 const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
   const level = scenarioWorkspace.scopeLevel.value;

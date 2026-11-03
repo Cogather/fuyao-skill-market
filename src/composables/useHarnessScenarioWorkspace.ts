@@ -167,6 +167,8 @@ export type ScenarioWorkspaceContext = {
   allowedDepartmentPaths: string[][];
   restrictToAllowedDepartments: boolean;
   departmentMaxLevel?: number;
+  /** Read-only list filters can select navigation ancestors; management checks remain separate. */
+  readOnlyDepartmentSelection?: boolean;
 };
 type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'> & { name?: string };
 
@@ -906,7 +908,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       id === selectedDeptId.value ||
       (department &&
         isHttp &&
+        context().readOnlyDepartmentSelection &&
+        department.path.length > departmentMaxLevel.value) ||
+      (department &&
+        isHttp &&
         scopeLevel.value === '部门级' &&
+        !context().readOnlyDepartmentSelection &&
         !hasDepartmentPermission(department))
     )
       return;
@@ -1061,7 +1068,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
           (level !== '部门级' ||
             !value.restrictToAllowedDepartments ||
             hasDepartmentPermission(item)) &&
-          (maxLevel === undefined || item.path.length <= maxLevel),
+          (maxLevel === undefined ||
+            item.path.length <= maxLevel ||
+            value.readOnlyDepartmentSelection),
       );
       departments.splice(0, departments.length, ...allowed);
       seedMockWorkflowInventory({
@@ -1072,8 +1081,15 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         details,
         seededDepartmentIds: mockWorkflowSeededDepartments,
       });
-      const selectable =
-        isHttp && level === '部门级' ? allowed.filter(hasDepartmentPermission) : allowed;
+      // List rows and descendant products still need the full department metadata.
+      const selectable = allowed.filter(
+        (item) =>
+          (maxLevel === undefined || item.path.length <= maxLevel) &&
+          (!isHttp ||
+            level !== '部门级' ||
+            value.readOnlyDepartmentSelection ||
+            hasDepartmentPermission(item)),
+      );
       if (!selectable.some((item) => item._id === selectedDeptId.value)) {
         selectedDeptId.value =
           (
