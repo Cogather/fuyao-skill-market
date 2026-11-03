@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import MarketDeptCascader, { type MarketDeptCascaderNode } from './MarketDeptCascader.vue';
 import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { getHarnessDepartmentMaxLevel } from '../../utils/harnessDepartmentDepth';
 
 const props = withDefaults(
   defineProps<{
@@ -36,15 +37,13 @@ const emit = defineEmits<{
 }>();
 const departmentError = ref('');
 const productSelectRef = ref<{ element: HTMLButtonElement | null } | null>(null);
-const departmentMaxLevel = computed(() =>
-  import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http' && props.level === '部门级' ? 5 : 6,
-);
+const departmentMaxLevel = computed(() => getHarnessDepartmentMaxLevel(props.level));
 
-// A product-level selection or remembered scope may be deeper than the department-level limit.
+// Returning to product scope must not retain a department deeper than its original limit.
 watch(
   [departmentMaxLevel, () => props.departmentPath],
   ([maxLevel, path]) => {
-    if (maxLevel !== 5 || path.length <= maxLevel) return;
+    if (import.meta.env.VITE_SKILL_MARKET_TRANSPORT !== 'http' || path.length <= maxLevel) return;
     const nextPath = path.slice(0, maxLevel);
     emit('department-change', confirmDepartment(nextPath) ? nextPath : []);
   },

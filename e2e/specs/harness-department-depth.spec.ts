@@ -4,11 +4,12 @@ import { selectHarnessOption } from '../helpers/selectHarnessOption';
 
 const http = process.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const path = http
-  ? ['部门根', '产品线', '业务部', '研发组', '交付小组', '执行分组']
+  ? ['部门根', '产品线', '业务部', '研发组', '交付小组', '执行分组', '项目组', '实施小组']
   : ['部门1', '平台产品线', '平台工具组', 'DevOps部', '持续交付组', '流水线平台小组'];
-const departmentDepth = http ? 5 : 6;
+const departmentDepth = path.length;
+const deepestCode = `dept-${departmentDepth + 2}`;
 
-async function prepare(page: Page) {
+async function prepare(page: Page, departmentPath = path) {
   const requests: Request[] = [];
   if (http) {
     await page.addInitScript((names) => {
@@ -26,7 +27,15 @@ async function prepare(page: Page) {
           departmentList,
         }),
       );
-    }, path);
+    }, departmentPath);
+    await page.route('**/dataengineering/config-center/hw-userinfo**', (route) =>
+      route.fulfill({
+        json: {
+          meta: { success: true },
+          data: [{ id: 'u1', chName: '张三', sAMAccountName: 'u1', deptName: path[0] }],
+        },
+      }),
+    );
     await page.route('**/api/**', async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -46,6 +55,8 @@ async function prepare(page: Page) {
         data = { records: [], total: 0, pageNo: 1, pageSize: 30 };
       } else if (url.pathname.endsWith('/management/import')) {
         data = { successCount: 1, failCount: 0 };
+      } else if (url.pathname.endsWith('/management/add')) {
+        data = { id: 'created-deep-asset' };
       } else if (url.pathname.endsWith('/management/export')) {
         await route.fulfill({ contentType: 'application/octet-stream', body: 'test-export' });
         return;
@@ -69,41 +80,55 @@ async function chooseDeepest(page: Page, trigger: Locator, depth: number) {
       .click();
   }
   await expect(picker.locator('.market-dept-cascader-col')).toHaveCount(depth);
-  if (depth === 5) {
-    await expect(picker.getByRole('option').filter({ hasText: path[5] })).toHaveCount(0);
-    await picker.getByPlaceholder('搜索部门').fill(path[5]!);
-    await expect(picker.getByRole('option')).toHaveCount(0);
+  if (depth < path.length) {
+    await expect(picker.getByRole('option').filter({ hasText: path[depth] })).toHaveCount(0);
+    await picker.getByPlaceholder('搜索部门').fill(path[depth]!);
+    await expect(picker.locator('.market-dept-cascader-result')).toHaveCount(0);
     await picker.getByPlaceholder('搜索部门').fill('');
+  } else {
+    await picker.getByPlaceholder('搜索部门').fill(path[depth - 1]!);
+    await picker
+      .getByRole('button')
+      .filter({ hasText: path[depth - 1] })
+      .click();
+    await expect(picker.locator('.market-dept-cascader-col')).toHaveCount(depth);
   }
   await picker.getByRole('button', { name: '完成', exact: true }).click();
   await expect(picker).toBeHidden();
   await expect(trigger).toContainText(path[depth - 1]!);
 }
 
-test('场景部门级最多五列，产品级与 Mock 保持原深度', async ({ page }) => {
+test('场景部门级支持完整八层部门树，产品级与 Mock 保持原深度', async ({ page }) => {
   const requests = await prepare(page);
   const panel = page.locator('#harness-panel-scenarios');
   const level = panel.getByLabel('选择层级', { exact: true });
   const department = panel.getByRole('button', { name: '选择部门', exact: true });
   await chooseDeepest(page, department, 6);
   await selectHarnessOption(level, '部门级');
-  if (http) await expect(department).not.toContainText(path[5]!);
   await chooseDeepest(page, department, departmentDepth);
   if (http) {
     await expect
-      .poll(() => [
-        ...new Set(
-          requests
-            .filter((item) => new URL(item.url()).pathname.endsWith('/scene-activity/scene'))
-            .map((item) => new URL(item.url()).searchParams)
-            .filter((query) => query.get('dimType') === '部门级')
-            .map((query) => query.get('dimCode')),
-        ),
-      ])
-      .toEqual(['dept-7']);
+      .poll(() =>
+        requests
+          .filter((item) => new URL(item.url()).pathname.endsWith('/scene-activity/scene'))
+          .map((item) => new URL(item.url()).searchParams)
+          .filter((query) => query.get('dimType') === '部门级')
+          .at(-1)
+          ?.get('dimCode'),
+      )
+      .toBe(deepestCode);
   }
   await selectHarnessOption(level, '产品级');
+  if (http) await expect(department).not.toContainText(path[6]!);
   await chooseDeepest(page, department, 6);
+});
+
+test('HTTP 部门树只有四层时按实际层数展示', async ({ page }) => {
+  test.skip(!http, '需要 HTTP 模式');
+  await prepare(page, path.slice(0, 4));
+  const panel = page.locator('#harness-panel-scenarios');
+  await selectHarnessOption(panel.getByLabel('选择层级', { exact: true }), '部门级');
+  await chooseDeepest(page, panel.getByRole('button', { name: '选择部门', exact: true }), 4);
 });
 
 test('工作流与资产列表筛选保持原深度', async ({ page }) => {
@@ -141,9 +166,25 @@ for (const type of ['Agent', 'Skill', 'Command']) {
       await selectHarnessOption(level, '产品级');
       await chooseDeepest(page, department, 6);
       await selectHarnessOption(level, '部门级');
-      if (http) await expect(department).not.toContainText(path[5]!);
       await chooseDeepest(page, department, departmentDepth);
-      if (http && action === '导入') {
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await page
+        .getByRole('button', { name: action === '新增' ? '＋ 新增' : action, exact: true })
+        .click();
+      await expect(level).toHaveAttribute('data-value', '部门级');
+      await expect(department).toContainText(path.at(-1)!);
+      if (http && action === '新增') {
+        await dialog.locator('input[maxlength="64"]').fill(`deep-${type.toLowerCase()}`);
+        await dialog.locator('textarea').first().fill('验证完整部门路径的新增归属');
+        for (const picker of await dialog.locator('.person-search:visible').all()) {
+          await picker.locator('input').fill('u1');
+          await picker.locator('.person-search__panel button').first().click();
+        }
+        await dialog.locator('input[type="date"]').fill('2099-12-31');
+        await dialog.getByRole('button', { name: '保存', exact: true }).click();
+        await expect(page.getByText(`${type} 已新增，可继续添加`, { exact: true })).toBeVisible();
+      } else if (http && action === '导入') {
         await dialog.locator('input[type="file"]').setInputFiles({
           name: 'assets.xlsx',
           mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -153,8 +194,8 @@ for (const type of ['Agent', 'Skill', 'Command']) {
       } else if (http && action === '导出') {
         await dialog.getByRole('button', { name: '下载', exact: true }).click();
       }
-      if (http && action !== '新增') {
-        const endpoint = `/${type.toLowerCase()}s/management/${action === '导入' ? 'import' : 'export'}`;
+      if (http) {
+        const endpoint = `/${type.toLowerCase()}s/management/${action === '新增' ? 'add' : action === '导入' ? 'import' : 'export'}`;
         await expect
           .poll(() => {
             const request = requests
@@ -163,7 +204,7 @@ for (const type of ['Agent', 'Skill', 'Command']) {
             const query = request ? new URL(request.url()).searchParams : null;
             return [query?.get('dimType'), query?.get('dimCode')];
           })
-          .toEqual(['部门级', 'dept-7']);
+          .toEqual(['部门级', deepestCode]);
       }
       await dialog
         .getByRole('button', {

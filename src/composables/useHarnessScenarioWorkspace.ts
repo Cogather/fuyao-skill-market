@@ -1044,7 +1044,8 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         }
       }
       walk(value.departmentTree, null, []);
-      const maxLevel = isHttp && level === '部门级' ? value.departmentMaxLevel : undefined;
+      const maxLevel =
+        isHttp && value.departmentMaxLevel !== undefined ? departmentMaxLevel.value : undefined;
       const previousPath = flattened.find((item) => item._id === selectedDeptId.value)?.path;
       const cappedPath =
         maxLevel !== undefined && previousPath && previousPath.length > maxLevel

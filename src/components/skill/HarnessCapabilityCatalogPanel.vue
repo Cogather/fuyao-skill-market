@@ -30,6 +30,7 @@ import {
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { getHarnessDepartmentMaxLevel } from '../../utils/harnessDepartmentDepth';
 
 type DepartmentNode = {
   id?: string;
@@ -158,11 +159,11 @@ function showToast(message: string, duration = 2600): void {
   }, duration);
 }
 
-function normalizePath(path: string[]): string[] {
+function normalizePath(path: string[], level = filterForm.level): string[] {
   return path
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, 6);
+    .slice(0, props.createOnly ? getHarnessDepartmentMaxLevel(level) : 6);
 }
 
 function pathExists(nodes: DepartmentNode[], path: string[]): boolean {
@@ -316,7 +317,7 @@ function emitScopeSnapshot(): void {
 
 function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
   const snapshot = props.initialScope;
-  const path = normalizePath(snapshot?.departmentPath ?? []);
+  const path = normalizePath(snapshot?.departmentPath ?? [], snapshot?.level);
   if (
     !snapshot ||
     !['产品级', '部门级'].includes(snapshot.level) ||
@@ -898,7 +899,7 @@ function triggerImport(): void {
 }
 
 function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
-  const path = normalizePath(scope.departmentPath);
+  const path = normalizePath(scope.departmentPath, scope.level);
   if (!['产品级', '部门级'].includes(scope.level) || !pathExists(props.departmentTree, path)) {
     showToast('资产范围已失效，请重新选择部门和产品');
     return false;
