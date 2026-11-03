@@ -200,7 +200,7 @@ async function prepare(
 test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
 
-  test('Extension 详情下载传名称和所选版本，支持等待、失败重试和切换版本', async ({
+  test('Extension 详情在当前页下载，传名称和所选版本，支持等待、失败重试和切换版本', async ({
     page,
     context,
   }, testInfo) => {
@@ -219,6 +219,15 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       route.fulfill({ json: envelope({ skills: [], commands: [], agents: [] }) }),
     );
     const downloads: Request[] = [];
+    const packageRequests: Request[] = [];
+    let popupCount = 0;
+    page.on('popup', () => {
+      popupCount += 1;
+    });
+    const detailUrl = page.url();
+    // Edge may expose its built-in downloads panel as a Page; only website tabs count here.
+    const websitePages = () =>
+      context.pages().filter((tab) => !/^(?:edge|chrome):\/\//.test(tab.url()));
     let finishRequest: (() => void) | undefined;
     let reject = true;
     await page.route('**/api/harness/extensions/bypass/download**', async (route) => {
@@ -231,12 +240,13 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
       const version = new URL(route.request().url()).searchParams.get('version');
       return route.fulfill({
         json: envelope({
-          downloadUrl: new URL(`/extension-test.zip?version=${version}`, page.url()).href,
+          downloadUrl: `https://extension-packages.example.test/extension-test.zip?version=${version}`,
           expireSeconds: 300,
         }),
       });
     });
     await context.route('**/extension-test.zip?*', (route) => {
+      packageRequests.push(route.request());
       const zip = new PizZip();
       zip.file(
         'codeagent-extension.json',
@@ -256,11 +266,12 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     const downloadButton = panel.getByRole('button', { name: '下载', exact: true });
     await expect(downloadButton).toBeEnabled();
     await panel.screenshot({ path: testInfo.outputPath('extension-detail-download.png') });
-    const pendingPopup = page.waitForEvent('popup');
     await downloadButton.click();
-    const popup = await pendingPopup;
     await expect.poll(() => downloads.length).toBe(1);
     await expect(panel.getByRole('button', { name: '下载中…' })).toBeDisabled();
+    expect(popupCount).toBe(0);
+    expect(websitePages()).toEqual([page]);
+    await expect(page).toHaveURL(detailUrl);
     expect(Object.fromEntries(new URL(downloads[0].url()).searchParams)).toEqual({
       userId: 'release-user',
       extensionName: 'product-b-build-extension',
@@ -269,33 +280,44 @@ test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
     });
     finishRequest!();
     await expect(panel.getByRole('alert')).toContainText('下载暂时失败');
-    await expect.poll(() => popup.isClosed()).toBe(true);
+    expect(packageRequests).toHaveLength(0);
+    expect(popupCount).toBe(0);
     reject = false;
     await panel.getByRole('combobox', { name: '版本', exact: true }).click();
     await page.getByRole('option', { name: /^0\.3\s/ }).click();
     await expect(panel.getByRole('alert')).toHaveCount(0);
     await expect(downloadButton).toBeEnabled();
-    const nextPopup = page.waitForEvent('popup');
     await downloadButton.click();
-    const nextWindow = await nextPopup;
     await expect.poll(() => downloads.length).toBe(2);
     expect(new URL(downloads[1].url()).searchParams.get('version')).toBe('0.3');
-    const downloaded = nextWindow.waitForEvent('download');
+    const downloaded = page.waitForEvent('download');
     finishRequest!();
     const file = await downloaded;
     expect(await file.failure()).toBeNull();
     const zip = new PizZip(await readFile((await file.path())!));
     expect(JSON.parse(zip.file('codeagent-extension.json')!.asText()).version).toBe('0.3');
-    await nextWindow.close();
-    const lastPopup = page.waitForEvent('popup');
+    await expect(page).toHaveURL(detailUrl);
+    await expect(panel).toBeVisible();
+    expect(packageRequests).toHaveLength(1);
+    expect(popupCount).toBe(0);
+    expect(websitePages()).toEqual([page]);
     await downloadButton.click();
-    const lastWindow = await lastPopup;
     await expect.poll(() => downloads.length).toBe(3);
     await panel.getByRole('combobox', { name: '版本', exact: true }).click();
     await page.getByRole('option', { name: /^0\.4\s/ }).click();
-    await expect.poll(() => lastWindow.isClosed()).toBe(true);
+    const staleResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/extensions/bypass/download'),
+    );
     finishRequest!();
+    await (await staleResponse).finished();
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
     await expect(downloadButton).toBeEnabled();
+    expect(packageRequests).toHaveLength(1);
+    expect(popupCount).toBe(0);
+    expect(websitePages()).toEqual([page]);
+    await expect(page).toHaveURL(detailUrl);
   });
 
   test('资产卡片操作菜单不展示发布入口', async ({ page }) => {

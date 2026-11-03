@@ -131,7 +131,6 @@ const detailError = ref('');
 const extensionDownloadLoading = ref(false);
 const extensionDownloadError = ref('');
 let extensionDownloadSequence = 0;
-let extensionDownloadWindow: Window | null = null;
 const detailDraft = ref<{
   name: string;
   description: string;
@@ -397,8 +396,6 @@ function resetExtensionDownload(): void {
   extensionDownloadSequence += 1;
   extensionDownloadLoading.value = false;
   extensionDownloadError.value = '';
-  extensionDownloadWindow?.close();
-  extensionDownloadWindow = null;
 }
 watch([view, selectedAssetKey, selectedVersion, () => props.userId], resetExtensionDownload, {
   flush: 'sync',
@@ -411,13 +408,7 @@ async function downloadExtension(): Promise<void> {
   const sequence = ++extensionDownloadSequence;
   extensionDownloadLoading.value = true;
   extensionDownloadError.value = '';
-  // Open during the click so slow package generation does not lose the user gesture.
-  const downloadWindow = transportIsHttp ? window.open('about:blank', '_blank') : null;
-  if (downloadWindow) downloadWindow.opener = null;
-  extensionDownloadWindow = downloadWindow;
   try {
-    if (transportIsHttp && !downloadWindow)
-      throw new Error('浏览器阻止了下载窗口，请允许弹出窗口后重试');
     const result = await getExtensionBypassDownload({
       userId: props.userId.trim(),
       extensionName,
@@ -427,25 +418,18 @@ async function downloadExtension(): Promise<void> {
       if (result.downloadUrl.startsWith('blob:')) URL.revokeObjectURL(result.downloadUrl);
       return;
     }
+    const link = document.createElement('a');
+    link.href = result.downloadUrl;
+    link.download = `${extensionName}-${version}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     if (result.downloadUrl.startsWith('blob:')) {
-      const link = document.createElement('a');
-      link.href = result.downloadUrl;
-      link.download = `${extensionName}-${version}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
       setTimeout(() => URL.revokeObjectURL(result.downloadUrl), 60_000);
-    } else if (downloadWindow && !downloadWindow.closed) {
-      downloadWindow.location.replace(result.downloadUrl);
-      extensionDownloadWindow = null;
-    } else {
-      throw new Error('下载窗口已关闭，请重新点击下载');
     }
   } catch (cause) {
-    downloadWindow?.close();
     if (sequence === extensionDownloadSequence) {
       extensionDownloadError.value = errorMessage(cause, '下载失败，请重试');
-      extensionDownloadWindow = null;
     }
   } finally {
     if (sequence === extensionDownloadSequence) extensionDownloadLoading.value = false;
