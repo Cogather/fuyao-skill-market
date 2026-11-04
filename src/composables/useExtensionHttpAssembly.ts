@@ -34,7 +34,7 @@ function message(error: unknown): string {
   );
 }
 
-/** HTTP edit state is persisted by each mutation; inheritBypass is a publish-only choice. */
+/** HTTP edits persist immediately; inheritBypass controls download and publication contents. */
 export function useExtensionHttpAssembly(
   context: () => ExtensionHttpAssemblyContext | undefined,
   model: () => ExtensionAssemblyState,
@@ -238,7 +238,10 @@ export function useExtensionHttpAssembly(
     error.value = '';
     layoutError.value = '';
     try {
-      const result = await extensionAssemblyHttp.download(identity());
+      const result = await extensionAssemblyHttp.download({
+        ...identity(),
+        inheritBypass: model().inheritBypass !== false,
+      });
       if (epoch !== generation) return false;
       if (result.downloadUrl.startsWith('blob:')) {
         const link = document.createElement('a');

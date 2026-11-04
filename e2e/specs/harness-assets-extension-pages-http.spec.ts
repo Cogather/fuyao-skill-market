@@ -3,6 +3,8 @@ import { clickAssetCardAction, openAssetCardMenu } from '../helpers/assetCardAct
 import type { Page, Request } from '@playwright/test';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
+import { readFile } from 'node:fs/promises';
+import PizZip from 'pizzip';
 
 const envelope = (data: unknown) => ({ meta: { success: true }, data });
 
@@ -197,6 +199,126 @@ async function prepare(
 
 test.describe('资产卡片 Extension 发布和历史 HTTP', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT !== 'http', '需要 HTTP 模式');
+
+  test('Extension 详情在当前页下载，传名称和所选版本，支持等待、失败重试和切换版本', async ({
+    page,
+    context,
+  }, testInfo) => {
+    await prepare(page, true);
+    await page.route('**/api/v1/harness/plans/components/detail**', (route) =>
+      route.fulfill({
+        json: envelope({
+          name: 'product-b-build-extension',
+          type: 'EXTENSION',
+          category: '产品级/product-b',
+          versions: [{ version: '0.4' }, { version: '0.3' }],
+        }),
+      }),
+    );
+    await page.route('**/api/harness/extensions/version-history**', (route) =>
+      route.fulfill({ json: envelope({ skills: [], commands: [], agents: [] }) }),
+    );
+    const downloads: Request[] = [];
+    const packageRequests: Request[] = [];
+    let popupCount = 0;
+    page.on('popup', () => {
+      popupCount += 1;
+    });
+    const detailUrl = page.url();
+    // Edge may expose its built-in downloads panel as a Page; only website tabs count here.
+    const websitePages = () =>
+      context.pages().filter((tab) => !/^(?:edge|chrome):\/\//.test(tab.url()));
+    let finishRequest: (() => void) | undefined;
+    let reject = true;
+    await page.route('**/api/harness/extensions/bypass/download**', async (route) => {
+      downloads.push(route.request());
+      await new Promise<void>((resolve) => {
+        finishRequest = resolve;
+      });
+      if (reject)
+        return route.fulfill({ json: { meta: { success: false, message: '下载暂时失败' } } });
+      const version = new URL(route.request().url()).searchParams.get('version');
+      return route.fulfill({
+        json: envelope({
+          downloadUrl: `https://extension-packages.example.test/extension-test.zip?version=${version}`,
+          expireSeconds: 300,
+        }),
+      });
+    });
+    await context.route('**/extension-test.zip?*', (route) => {
+      packageRequests.push(route.request());
+      const zip = new PizZip();
+      zip.file(
+        'codeagent-extension.json',
+        JSON.stringify({ version: new URL(route.request().url()).searchParams.get('version') }),
+      );
+      return route.fulfill({
+        contentType: 'application/zip',
+        headers: { 'content-disposition': 'attachment; filename="extension.zip"' },
+        body: zip.generate({ type: 'nodebuffer' }),
+      });
+    });
+    await page
+      .locator('.asset-card')
+      .getByRole('heading', { name: 'product-b-build-extension', exact: true })
+      .click();
+    const panel = page.getByRole('region', { name: '版本信息' });
+    const downloadButton = panel.getByRole('button', { name: '下载', exact: true });
+    await expect(downloadButton).toBeEnabled();
+    await panel.screenshot({ path: testInfo.outputPath('extension-detail-download.png') });
+    await downloadButton.click();
+    await expect.poll(() => downloads.length).toBe(1);
+    await expect(panel.getByRole('button', { name: '下载中…' })).toBeDisabled();
+    expect(popupCount).toBe(0);
+    expect(websitePages()).toEqual([page]);
+    await expect(page).toHaveURL(detailUrl);
+    expect(Object.fromEntries(new URL(downloads[0].url()).searchParams)).toEqual({
+      userId: 'release-user',
+      extensionName: 'product-b-build-extension',
+      version: '0.4',
+      inheritBypass: 'true',
+    });
+    finishRequest!();
+    await expect(panel.getByRole('alert')).toContainText('下载暂时失败');
+    expect(packageRequests).toHaveLength(0);
+    expect(popupCount).toBe(0);
+    reject = false;
+    await panel.getByRole('combobox', { name: '版本', exact: true }).click();
+    await page.getByRole('option', { name: /^0\.3\s/ }).click();
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+    await expect(downloadButton).toBeEnabled();
+    await downloadButton.click();
+    await expect.poll(() => downloads.length).toBe(2);
+    expect(new URL(downloads[1].url()).searchParams.get('version')).toBe('0.3');
+    const downloaded = page.waitForEvent('download');
+    finishRequest!();
+    const file = await downloaded;
+    expect(await file.failure()).toBeNull();
+    const zip = new PizZip(await readFile((await file.path())!));
+    expect(JSON.parse(zip.file('codeagent-extension.json')!.asText()).version).toBe('0.3');
+    await expect(page).toHaveURL(detailUrl);
+    await expect(panel).toBeVisible();
+    expect(packageRequests).toHaveLength(1);
+    expect(popupCount).toBe(0);
+    expect(websitePages()).toEqual([page]);
+    await downloadButton.click();
+    await expect.poll(() => downloads.length).toBe(3);
+    await panel.getByRole('combobox', { name: '版本', exact: true }).click();
+    await page.getByRole('option', { name: /^0\.4\s/ }).click();
+    const staleResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/extensions/bypass/download'),
+    );
+    finishRequest!();
+    await (await staleResponse).finished();
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    await expect(downloadButton).toBeEnabled();
+    expect(packageRequests).toHaveLength(1);
+    expect(popupCount).toBe(0);
+    expect(websitePages()).toEqual([page]);
+    await expect(page).toHaveURL(detailUrl);
+  });
 
   test('资产卡片操作菜单不展示发布入口', async ({ page }) => {
     await prepare(page);

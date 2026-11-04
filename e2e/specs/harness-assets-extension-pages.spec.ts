@@ -1,6 +1,8 @@
 import { selectHarnessOption } from '../helpers/selectHarnessOption';
 import { expect, test } from '../fixtures/base';
 import { APP_BASE_PATH } from '../helpers/constants';
+import { readFile } from 'node:fs/promises';
+import PizZip from 'pizzip';
 
 test.describe('资产卡片 Extension 发布页面', () => {
   test.skip(process.env.VITE_SKILL_MARKET_TRANSPORT === 'http', '使用 Mock 场景');
@@ -10,6 +12,37 @@ test.describe('资产卡片 Extension 发布页面', () => {
     await page.locator('#harness-tab-assets').click();
     await selectHarnessOption(page.getByLabel('产品筛选'), { label: 'harness-pipeline' });
     await page.getByRole('button', { name: 'Extension', exact: true }).click();
+  });
+
+  test('Extension 详情下载所选 Mock 历史版本', async ({ page }, testInfo) => {
+    await page
+      .locator('.asset-card')
+      .getByRole('heading', { name: '问题分析 Extension', exact: true })
+      .click();
+    const panel = page.getByRole('region', { name: '版本信息' });
+    for (const [version, skillVersion] of [
+      ['0.3', '1.2.0'],
+      ['0.1', '1.0.0'],
+    ]) {
+      await panel.getByRole('combobox', { name: '版本', exact: true }).click();
+      await page
+        .getByRole('option', { name: new RegExp(`^${version.replaceAll('.', '\\.')}\\s`) })
+        .click();
+      const button = panel.getByRole('button', { name: '下载', exact: true });
+      await expect(button).toBeEnabled();
+      const downloaded = page.waitForEvent('download');
+      await button.click();
+      const file = await downloaded;
+      expect(file.suggestedFilename()).toBe(`问题分析 Extension-${version}.zip`);
+      const zip = new PizZip(await readFile((await file.path())!));
+      expect(
+        JSON.parse(zip.file('问题分析 Extension/codeagent-extension.json')!.asText()).version,
+      ).toBe(version);
+      expect(zip.file(/SKILL\.md$/)[0].asText()).toContain(`版本：${skillVersion}`);
+    }
+    await page
+      .locator('.asset-detail')
+      .screenshot({ path: testInfo.outputPath('extension-detail-download-mock.png') });
   });
 
   test('Extension 列表仅显示已发布资产', async ({ page }) => {

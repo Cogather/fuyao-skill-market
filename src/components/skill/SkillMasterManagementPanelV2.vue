@@ -51,6 +51,7 @@ import {
   skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
 import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { getHarnessDepartmentMaxLevel } from '../../utils/harnessDepartmentDepth';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
@@ -252,6 +253,13 @@ function normalizeDepartmentPath(segments: string[] | undefined): string[] {
   return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
 }
 
+function normalizeScopeDepartmentPath(segments: string[], level = masterScopeForm.level): string[] {
+  return normalizeDepartmentPath(segments).slice(
+    0,
+    props.createOnly ? getHarnessDepartmentMaxLevel(level) : 6,
+  );
+}
+
 function sameDepartmentPath(left: string[], right: string[]): boolean {
   const normalizedLeft = normalizeDepartmentPath(left);
   const normalizedRight = normalizeDepartmentPath(right);
@@ -378,7 +386,7 @@ const masterScopeErrorMessage = computed(() => {
 const hasCompleteMasterScope = computed(() => !masterScopeErrorMessage.value);
 
 function syncMasterDepartment(segments = masterDepartmentSegments.value): void {
-  const nextSegments = normalizeDepartmentPath(segments).slice(0, 6);
+  const nextSegments = normalizeScopeDepartmentPath(segments);
   masterDepartmentSegments.value = nextSegments;
   masterScopeForm.planningDeptName = nextSegments[nextSegments.length - 1] ?? '';
 }
@@ -604,7 +612,10 @@ function restoreMasterScopeSnapshot(): HarnessScopeSnapshot | undefined {
     return undefined;
   }
   masterScopeForm.level = snapshot.level;
-  masterDepartmentSegments.value = normalizeDepartmentPath(snapshot.departmentPath).slice(0, 6);
+  masterDepartmentSegments.value = normalizeScopeDepartmentPath(
+    snapshot.departmentPath,
+    snapshot.level,
+  );
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = true;
   masterScopeForm.offeringId = snapshot.level === '产品级' ? snapshot.offeringId.trim() : '';
@@ -1800,7 +1811,7 @@ function triggerMasterImport(): void {
 }
 
 function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
-  const path = normalizeDepartmentPath(scope.departmentPath).slice(0, 6);
+  const path = normalizeScopeDepartmentPath(scope.departmentPath, scope.level);
   if (
     !planningLevelOptions.includes(scope.level) ||
     !findMasterDepartmentNode(path) ||
@@ -1972,7 +1983,7 @@ function onMasterDepartmentChange(segments: string[]): void {
 
 async function applyMasterDepartmentQuery(segments: string[]): Promise<void> {
   masterPageNum.value = 1;
-  masterDepartmentSegments.value = normalizeDepartmentPath(segments).slice(0, 6);
+  masterDepartmentSegments.value = normalizeScopeDepartmentPath(segments);
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = masterDepartmentSegments.value.length > 0;
   await loadMasterProducts();

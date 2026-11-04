@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import HarnessSelect from '../../components/skill/HarnessSelect.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
 import HarnessExtensionDetailContent from '../../components/skill/HarnessExtensionDetailContent.vue';
@@ -17,6 +17,7 @@ import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
 import { atomicAssetApiType } from '../../services/skillMarket/atomicAssetPublishHttp';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
+import { getExtensionBypassDownload } from '../../services/skillMarket/extensionBypassService';
 import {
   getHarnessAssetApi,
   usesHttpHarnessAssetApi,
@@ -33,6 +34,7 @@ import type {
   HarnessCatalogAssetType,
   HarnessCatalogScopeChange,
   HarnessCatalogScopeSnapshots,
+  HarnessListFilterSnapshot,
   HarnessScopeSnapshot,
 } from '../../types/harnessFilterMemory';
 import type { SkillPlanningUserOption } from '../../services/skillMarket/skillPlanningShared';
@@ -60,6 +62,7 @@ const props = withDefaults(
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
     scopeSnapshots?: HarnessCatalogScopeSnapshots;
+    initialListFilters?: HarnessListFilterSnapshot;
   }>(),
   {
     userId: '',
@@ -73,6 +76,7 @@ const props = withDefaults(
 );
 const emit = defineEmits<{
   'scope-change': [change: HarnessCatalogScopeChange];
+  'list-filter-change': [snapshot: HarnessListFilterSnapshot];
 }>();
 
 const PERSON_FIELDS = [
@@ -124,6 +128,9 @@ const exportScope = ref<HarnessScopeSnapshot>({
 });
 const detailLoading = ref(false);
 const detailError = ref('');
+const extensionDownloadLoading = ref(false);
+const extensionDownloadError = ref('');
+let extensionDownloadSequence = 0;
 const detailDraft = ref<{
   name: string;
   description: string;
@@ -162,6 +169,7 @@ const {
   normalizedAllowedPaths,
   defaultCatalogDepartmentPath,
   manageableDepartmentTree,
+  listDepartmentMaxLevel,
   pickerDepartments,
   selectedDepartment,
   selectedProduct,
@@ -183,6 +191,10 @@ const {
   initializeList,
   disposeList,
 } = useHarnessAssetCatalogList(props, { api, transportIsHttp });
+
+watch([selectedDepartmentId, selectedProductId], ([departmentId, productId]) => {
+  emit('list-filter-change', { departmentId, productId });
+});
 
 function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
   const component = detailComponent.value;
@@ -370,6 +382,59 @@ const showDetailVersionPanel = computed(() => {
   return asset.assetType !== 'Skill' || detailTab.value === 'content';
 });
 const detailComponent = computed(() => detail.value?.component);
+const canDownloadExtension = computed(
+  () =>
+    selectedAsset.value?.assetType === 'Extension' &&
+    Boolean(
+      props.userId.trim() && selectedAsset.value.name.trim() && selectedVersion.value.trim(),
+    ) &&
+    !detailLoading.value &&
+    !detailError.value &&
+    !extensionDownloadLoading.value,
+);
+function resetExtensionDownload(): void {
+  extensionDownloadSequence += 1;
+  extensionDownloadLoading.value = false;
+  extensionDownloadError.value = '';
+}
+watch([view, selectedAssetKey, selectedVersion, () => props.userId], resetExtensionDownload, {
+  flush: 'sync',
+});
+
+async function downloadExtension(): Promise<void> {
+  if (!canDownloadExtension.value || !selectedAsset.value) return;
+  const extensionName = detailComponent.value?.name?.trim() || selectedAsset.value.name.trim();
+  const version = selectedVersion.value.trim();
+  const sequence = ++extensionDownloadSequence;
+  extensionDownloadLoading.value = true;
+  extensionDownloadError.value = '';
+  try {
+    const result = await getExtensionBypassDownload({
+      userId: props.userId.trim(),
+      extensionName,
+      version,
+    });
+    if (sequence !== extensionDownloadSequence) {
+      if (result.downloadUrl.startsWith('blob:')) URL.revokeObjectURL(result.downloadUrl);
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = result.downloadUrl;
+    link.download = `${extensionName}-${version}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (result.downloadUrl.startsWith('blob:')) {
+      setTimeout(() => URL.revokeObjectURL(result.downloadUrl), 60_000);
+    }
+  } catch (cause) {
+    if (sequence === extensionDownloadSequence) {
+      extensionDownloadError.value = errorMessage(cause, '下载失败，请重试');
+    }
+  } finally {
+    if (sequence === extensionDownloadSequence) extensionDownloadLoading.value = false;
+  }
+}
 const detailRequiredNamePrefix = computed(() =>
   selectedAsset.value ? getAssetCatalogItemNamePrefix(selectedAsset.value) : '',
 );
@@ -889,10 +954,11 @@ async function onAssetCreated(): Promise<void> {
 onMounted(async () => {
   document.addEventListener('pointerdown', handleCardMenuPointerDown);
   document.addEventListener('keydown', handleCardMenuKeydown);
-  await initializeList();
+  await initializeList(props.initialListFilters);
 });
 
 onBeforeUnmount(() => {
+  resetExtensionDownload();
   document.removeEventListener('pointerdown', handleCardMenuPointerDown);
   document.removeEventListener('keydown', handleCardMenuKeydown);
   disposeList();
@@ -997,6 +1063,7 @@ onBeforeUnmount(() => {
           class="asset-department"
           :model-value="selectedDepartmentId"
           :departments="pickerDepartments"
+          :max-level="listDepartmentMaxLevel"
           @update:model-value="selectDepartment"
         />
 
@@ -1478,7 +1545,24 @@ onBeforeUnmount(() => {
                 :disabled="detailLoading || detailSaving"
                 @change="changeDetailVersion"
               />
+              <button
+                v-if="selectedAsset.assetType === 'Extension'"
+                type="button"
+                class="asset-button is-primary asset-detail__download"
+                :disabled="!canDownloadExtension"
+                :aria-busy="extensionDownloadLoading"
+                @click="downloadExtension"
+              >
+                {{ extensionDownloadLoading ? '下载中…' : '下载' }}
+              </button>
             </div>
+            <p
+              v-if="selectedAsset.assetType === 'Extension' && extensionDownloadError"
+              class="asset-detail__download-error"
+              role="alert"
+            >
+              {{ extensionDownloadError }}
+            </p>
             <p v-if="selectedAsset.assetType === 'Extension'" class="asset-detail__hint">
               Extension
               由场景编排生成并发布，新版本发布请前往工作流页面的对应场景操作；本页面仅展示已发布的产物。
@@ -2826,6 +2910,18 @@ onBeforeUnmount(() => {
   color: #5a6478;
   font-size: 13px;
   line-height: 20px;
+}
+
+.asset-detail__download {
+  flex-shrink: 0;
+  min-width: 88px;
+  margin-left: auto;
+}
+
+.asset-detail__download-error {
+  margin: 0 0 12px;
+  color: #b91c1c;
+  font-size: 13px;
 }
 
 .asset-detail__release-type {

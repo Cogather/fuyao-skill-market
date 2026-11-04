@@ -27,6 +27,15 @@ export interface SkillTriggerEvaluationReportDto {
   results: SkillTriggerEvaluationResultDto[];
 }
 
+export interface SkillQualityAssertionDto {
+  item_id?: string;
+  priority?: string | null;
+  confidence?: number | null;
+  verdict?: string | null;
+  check_point?: string | null;
+  reason?: string | null;
+}
+
 export interface SkillQualityEvaluationResultDto {
   case_id: string;
   task: string;
@@ -36,6 +45,7 @@ export interface SkillQualityEvaluationResultDto {
   cost_time: number;
   passed: boolean;
   reason: string;
+  assertions?: SkillQualityAssertionDto[] | null;
 }
 
 export interface SkillQualityEvaluationReportDto {
@@ -155,11 +165,12 @@ function mockRecord(
   skillName: string,
   version: string,
   mode: SkillBehaviorEvaluationMode,
+  reportSkillName = skillName,
 ): SkillBehaviorEvaluationRecordDto | null {
   const overridden = mockRecords.get(mockKey(skillName, version, mode));
   if (overridden) return structuredClone(overridden);
   if (isMockUnevaluatedSkill(skillName)) return null;
-  const evaluation = getSkillBehaviorEvaluationMock({ version });
+  const evaluation = getSkillBehaviorEvaluationMock({ version, skillName: reportSkillName });
   if (!evaluation) return null;
   const report: SkillBehaviorEvaluationReportDto =
     mode === 'TRIGGER'
@@ -199,6 +210,7 @@ function mockRecord(
             cost_time: Number.parseFloat(item.duration) || 0,
             passed: item.passed,
             reason: item.details[2]?.content ?? '',
+            assertions: item.assertions,
           })),
         };
   return {
@@ -221,7 +233,7 @@ function completedMockRecord(
   body: TriggerSkillBehaviorEvaluationBody,
   taskId: string,
 ): SkillBehaviorEvaluationRecordDto {
-  const seeded = mockRecord('__mock_behavior_seed__', '1.10.0', body.mode);
+  const seeded = mockRecord('__mock_behavior_seed__', '1.10.0', body.mode, body.skillName);
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
   return {
     ...(seeded as SkillBehaviorEvaluationRecordDto),

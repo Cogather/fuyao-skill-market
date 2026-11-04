@@ -1,6 +1,11 @@
 import PizZip from 'pizzip';
+import {
+  queryPlanningTaskDetailFileContent,
+  queryPlanningTaskDetailFilePaths,
+} from './planningTaskDetailService';
 
 import type {
+  ExtensionBypassDownloadInput,
   ExtensionBypassEntry,
   ExtensionBypassIdentity,
   ExtensionBypassInheritInput,
@@ -306,11 +311,61 @@ export async function queryExtensionStructureTreeMock(
   };
 }
 
+async function downloadScene(input: ExtensionBypassDownloadInput): Promise<ExtensionScene> {
+  if (input.version === undefined) return sceneFor(input.extensionName);
+  const version = requiredText(input.version, 'version').replace(/^v/i, '');
+  const matches = (release: ExtensionScene['releases'][number]) =>
+    release.extensionName.trim() === input.extensionName &&
+    release.version.replace(/^v/i, '') === version &&
+    release.status === '成功';
+  const scene = getSharedMockExtensionScenes().find((item) => item.releases.some(matches));
+  const release = scene?.releases.find(matches);
+  if (!scene || !release)
+    throw new Error(`未找到已发布的 Extension 版本：${input.extensionName} ${version}`);
+  const capabilities: ExtensionScene['capabilities'] = { skill: [], command: [], agent: [] };
+  const items = await Promise.all(
+    release.items.map(async (item, index) => {
+      const identity = {
+        userId: input.userId,
+        capabilityType: item.type,
+        capabilityName: item.name,
+        version: item.version,
+      };
+      const paths = await queryPlanningTaskDetailFilePaths(identity);
+      const files = await Promise.all(
+        paths.map(async (path) => ({
+          name: path,
+          content: await queryPlanningTaskDetailFileContent(identity, path),
+        })),
+      );
+      return {
+        type: item.type,
+        capability: {
+          id: `download-${index}`,
+          name: item.name,
+          version: item.version,
+          publishDate: release.publishedAt,
+          ready: true,
+          files,
+        },
+      };
+    }),
+  );
+  items.forEach(({ type, capability }) => capabilities[type].push(capability));
+  return {
+    ...scene,
+    extension: { name: release.extensionName, description: release.description, version },
+    capabilities,
+    // Published Mock fixtures only contain component snapshots, not editable bypass files.
+    bypassEntries: [],
+  };
+}
+
 export async function getExtensionBypassDownloadMock(
-  input: ExtensionBypassIdentity,
+  input: ExtensionBypassDownloadInput,
 ): Promise<{ downloadUrl: string; expireSeconds: number }> {
   const scope = identity(input);
-  const scene = sceneFor(scope.extensionName);
+  const scene = await downloadScene({ ...input, ...scope });
   const archive = new PizZip();
   const root = safeName(scope.extensionName);
   const layout = scene.layoutMode ?? 'standard';
@@ -333,7 +388,8 @@ export async function getExtensionBypassDownloadMock(
       }).forEach((content, path) => archive.file(`${root}/${path}`, content));
     });
   });
-  cloneEntries(scene.bypassEntries).forEach((entry) => {
+  const bypassEntries = input.inheritBypass === false ? [] : cloneEntries(scene.bypassEntries);
+  bypassEntries.forEach((entry) => {
     const path = normalizePath(entry.path);
     if (archive.file(`${root}/${path}`)) return;
     // Seeded Mock entries contain metadata only; uploaded/inherited files retain their bytes.

@@ -22,6 +22,7 @@ import {
   attachDesignCapability,
 } from '../services/skillMarket/businessScenarioDesignRepository';
 import { validateProductCatalogItemName } from '../utils/scenarioCreationCode';
+import { getHarnessDepartmentMaxLevel } from '../utils/harnessDepartmentDepth';
 import {
   queryWorkflowCapabilityOptions,
   type WorkflowCapabilityType,
@@ -165,6 +166,11 @@ export type ScenarioWorkspaceContext = {
   defaultDepartmentPath: string[];
   allowedDepartmentPaths: string[][];
   restrictToAllowedDepartments: boolean;
+  departmentMaxLevel?: number;
+  /** Read-only list filters can select navigation ancestors; management checks remain separate. */
+  readOnlyDepartmentSelection?: boolean;
+  /** Remember each tab's selection only for this workspace instance. */
+  filterKey?: string;
 };
 type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'> & { name?: string };
 
@@ -196,6 +202,13 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   const mockWorkflowSeededDepartments = reactive<string[]>([]);
   const details = reactive<Record<string, ScenarioDetails>>({});
   const scopeLevel = ref<HarnessScopeLevel>('产品级');
+  const departmentMaxLevel = computed(() => {
+    const configuredMaxLevel = context().departmentMaxLevel;
+    if (!isHttp || configuredMaxLevel === undefined) return 6;
+    return scopeLevel.value === '部门级'
+      ? configuredMaxLevel
+      : getHarnessDepartmentMaxLevel(scopeLevel.value);
+  });
   const selectedDeptId = ref('');
   const productId = ref('');
   const selectedScenarioId = ref('');
@@ -232,6 +245,14 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     );
   }
   let preferredProduct: { offeringId: string; offeringName: string } | null = null;
+  type FilterSnapshot = {
+    level: HarnessScopeLevel;
+    departmentId: string;
+    product: { offeringId: string; offeringName: string } | null;
+  };
+  const filterSnapshots = new Map<string, FilterSnapshot>();
+  let currentFilterKey: string | undefined;
+  let syncingContext = false;
   const productOptions = computed(() =>
     scopeLevel.value === '产品级'
       ? products.filter(
@@ -897,7 +918,12 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       id === selectedDeptId.value ||
       (department &&
         isHttp &&
+        context().readOnlyDepartmentSelection &&
+        department.path.length > departmentMaxLevel.value) ||
+      (department &&
+        isHttp &&
         scopeLevel.value === '部门级' &&
+        !context().readOnlyDepartmentSelection &&
         !hasDepartmentPermission(department))
     )
       return;
@@ -999,71 +1025,143 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
   watch(productId, selectInitialScenario);
   watch(
     [context, scopeLevel],
-    ([value, level]) => {
-      if (!value.ready) {
-        sourceReady.value = false;
-        loadSequence += 1;
-        selectedDeptId.value = '';
-        productId.value = '';
-        selectedScenarioId.value = '';
-        departments.splice(0);
-        products.splice(0);
-        scenarios.splice(0);
-        recordsByProduct.clear();
-        workflowDetails.clear();
-        return;
-      }
-      const userChanged = contextUser !== value.userId;
-      contextUser = value.userId;
-      if (userChanged) {
-        loadSequence += 1;
-        selectedDeptId.value = '';
-        products.splice(0);
-        scenarios.splice(0);
-        recordsByProduct.clear();
-        workflowDetails.clear();
-      }
-      restore(value.userId);
-      const flattened: Department[] = [];
-      function walk(nodes: DepartmentTreeNode[], parentId: string | null, path: string[]) {
-        for (const item of nodes) {
-          const itemPath = [...path, item.name];
-          const id = item.deptCode || item.id || itemPath.join('/');
-          flattened.push({
-            _id: id,
-            name: item.name,
-            parentId,
-            path: itemPath,
-            deptCode: item.deptCode || item.id || '',
-          });
-          walk(item.children || [], id, itemPath);
+    ([value]) => {
+      if (syncingContext) return;
+      syncingContext = true;
+      try {
+        if (!value.ready) {
+          sourceReady.value = false;
+          loadSequence += 1;
+          selectedDeptId.value = '';
+          productId.value = '';
+          selectedScenarioId.value = '';
+          departments.splice(0);
+          products.splice(0);
+          scenarios.splice(0);
+          recordsByProduct.clear();
+          workflowDetails.clear();
+          return;
         }
-      }
-      walk(value.departmentTree, null, []);
-      const allowed = flattened.filter(
-        (item) =>
-          level !== '部门级' ||
-          !value.restrictToAllowedDepartments ||
-          hasDepartmentPermission(item),
-      );
-      departments.splice(0, departments.length, ...allowed);
-      seedMockWorkflowInventory({
-        departments,
-        workflows,
-        assets,
-        commands,
-        details,
-        seededDepartmentIds: mockWorkflowSeededDepartments,
-      });
-      const selectable =
-        isHttp && level === '部门级' ? allowed.filter(hasDepartmentPermission) : allowed;
-      if (!selectable.some((item) => item._id === selectedDeptId.value)) {
-        selectedDeptId.value =
-          (
-            selectable.find(
-              (item) => item.path.join('/') === value.defaultDepartmentPath.join('/'),
-            ) || selectable[0]
-          )?._id || '';
+        const userChanged = contextUser !== value.userId;
+        contextUser = value.userId;
+        if (userChanged) {
+          loadSequence += 1;
+          filterSnapshots.clear();
+          currentFilterKey = undefined;
+          preferredProduct = null;
+          selectedDeptId.value = '';
+          products.splice(0);
+          scenarios.splice(0);
+          recordsByProduct.clear();
+          workflowDetails.clear();
+        }
+        const nextFilterKey = value.filterKey;
+        const filterChanged = nextFilterKey !== currentFilterKey;
+        let restoredFilter: FilterSnapshot | undefined;
+        const previousDepartmentId = selectedDeptId.value;
+        const previousLevel = scopeLevel.value;
+        if (filterChanged) {
+          if (currentFilterKey !== undefined) {
+            const product = products.find((item) => item._id === productId.value);
+            filterSnapshots.set(currentFilterKey, {
+              level: previousLevel,
+              departmentId: selectedDeptId.value,
+              product:
+                preferredProduct ??
+                (product ? { offeringId: product.code, offeringName: product.name } : null),
+            });
+          }
+          currentFilterKey = nextFilterKey;
+          restoredFilter =
+            nextFilterKey === undefined ? undefined : filterSnapshots.get(nextFilterKey);
+          scopeLevel.value = restoredFilter?.level ?? '产品级';
+          selectedDeptId.value = restoredFilter?.departmentId ?? '';
+          preferredProduct = restoredFilter?.product ?? null;
+        }
+        const level = scopeLevel.value;
+        restore(value.userId);
+        const flattened: Department[] = [];
+        function walk(nodes: DepartmentTreeNode[], parentId: string | null, path: string[]) {
+          for (const item of nodes) {
+            const itemPath = [...path, item.name];
+            const id = item.deptCode || item.id || itemPath.join('/');
+            flattened.push({
+              _id: id,
+              name: item.name,
+              parentId,
+              path: itemPath,
+              deptCode: item.deptCode || item.id || '',
+            });
+            walk(item.children || [], id, itemPath);
+          }
+        }
+        walk(value.departmentTree, null, []);
+        const maxLevel =
+          isHttp && value.departmentMaxLevel !== undefined ? departmentMaxLevel.value : undefined;
+        const previousPath = flattened.find((item) => item._id === selectedDeptId.value)?.path;
+        const cappedPath =
+          maxLevel !== undefined && previousPath && previousPath.length > maxLevel
+            ? previousPath.slice(0, maxLevel).join('/')
+            : undefined;
+        const allowed = flattened.filter(
+          (item) =>
+            (level !== '部门级' ||
+              !value.restrictToAllowedDepartments ||
+              hasDepartmentPermission(item)) &&
+            (maxLevel === undefined ||
+              item.path.length <= maxLevel ||
+              value.readOnlyDepartmentSelection),
+        );
+        departments.splice(0, departments.length, ...allowed);
+        seedMockWorkflowInventory({
+          departments,
+          workflows,
+          assets,
+          commands,
+          details,
+          seededDepartmentIds: mockWorkflowSeededDepartments,
+        });
+        // List rows and descendant products still need the full department metadata.
+        const selectable = allowed.filter(
+          (item) =>
+            (maxLevel === undefined || item.path.length <= maxLevel) &&
+            (!isHttp ||
+              level !== '部门级' ||
+              value.readOnlyDepartmentSelection ||
+              hasDepartmentPermission(item)),
+        );
+        if (
+          !(restoredFilter && !restoredFilter.departmentId) &&
+          !selectable.some((item) => item._id === selectedDeptId.value)
+        ) {
+          selectedDeptId.value =
+            (
+              selectable.find((item) => item.path.join('/') === cappedPath) ||
+              selectable.find(
+                (item) =>
+                  item.path.join('/') === value.defaultDepartmentPath.slice(0, maxLevel).join('/'),
+              ) ||
+              selectable[0]
+            )?._id || '';
+        }
+        // A tab may use the same department but a different product, without reloading it.
+        if (
+          filterChanged &&
+          previousDepartmentId === selectedDeptId.value &&
+          previousLevel === level
+        ) {
+          const product = productOptions.value.find(
+            (item) =>
+              item.code === preferredProduct?.offeringId ||
+              item.name === preferredProduct?.offeringName,
+          );
+          if (!loading.value) {
+            productId.value = product?._id || scopeProducts.value[0]?._id || '';
+            preferredProduct = null;
+          }
+        }
+      } finally {
+        syncingContext = false;
       }
     },
     // Normalize the selected department before queued scope loaders can issue a request.
@@ -1596,6 +1694,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     listDesignTags,
     queryDesignUsers,
     departments,
+    departmentMaxLevel,
     products,
     scenarios,
     workflows,

@@ -399,18 +399,15 @@ function goToPage() {
 watch(page, (currentPage) => {
   jumpPage.value = String(currentPage);
 });
-watch(selectedDeptId, () => {
-  productFilter.value = '';
-  statusFilter.value = '全部';
-  page.value = 1;
-});
 watch([productFilter, statusFilter], () => {
   page.value = 1;
 });
 watch(totalPages, (lastPage) => {
   if (!isHttp) page.value = Math.max(1, Math.min(page.value, lastPage));
 });
-watch(productOptions, (options) => {
+watch([productOptions, loading, () => props.active], ([options, isLoading, active]) => {
+  // The shared workspace may temporarily show another tab's department or be loading products.
+  if (!active || isLoading) return;
   if (productFilter.value && !options.some((product) => product._id === productFilter.value)) {
     productFilter.value = '';
   }
@@ -506,6 +503,7 @@ onBeforeUnmount(() => {
           :active="props.active"
           :model-value="selectedDeptId"
           :departments="departments"
+          :max-level="isHttp ? 4 : 6"
           @update:model-value="selectDept"
         />
         <template v-if="productOptions.length">

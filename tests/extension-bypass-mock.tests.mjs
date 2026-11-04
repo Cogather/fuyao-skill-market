@@ -101,6 +101,35 @@ try {
     'custom',
   );
   assert.ok(uploadedPackage.file(`${sourceName}/.cac-plugin/plugin.json`));
+  const packageWithoutBypass = await readDownload(
+    await service.getExtensionBypassDownload({
+      userId,
+      extensionName: sourceName,
+      inheritBypass: false,
+    }),
+  );
+  assert.equal(packageWithoutBypass.file(`${sourceName}/docs/readme.md`), null);
+  assert.equal(packageWithoutBypass.file(`${sourceName}/.testagent/agents/custom-prompt.md`), null);
+  assert.deepEqual(
+    source.bypassEntries,
+    uploaded.acceptedEntries,
+    'excluding bypass in a download must not remove saved files',
+  );
+  const componentPaths = Object.values(uploadedPackage.files)
+    .filter(
+      (file) =>
+        !file.dir &&
+        !uploaded.acceptedEntries.some((entry) => file.name === `${sourceName}/${entry.path}`),
+    )
+    .map((file) => file.name)
+    .sort();
+  assert.deepEqual(
+    Object.values(packageWithoutBypass.files)
+      .filter((file) => !file.dir)
+      .map((file) => file.name)
+      .sort(),
+    componentPaths,
+  );
   assert.equal(
     JSON.parse(uploadedPackage.file(`${sourceName}/codeagent-extension.json`).asText()).tampered,
     undefined,
@@ -257,6 +286,34 @@ try {
   });
   assert.deepEqual(literalWildcard.list, [], 'wildcards are matched literally');
 
+  for (const [version, skillVersion] of [
+    ['0.1', '1.0.0'],
+    ['0.3', '1.2.0'],
+  ]) {
+    const archive = await readDownload(
+      await service.getExtensionBypassDownload({
+        userId,
+        extensionName: '问题分析 Extension',
+        version,
+      }),
+    );
+    assert.equal(
+      JSON.parse(archive.file('问题分析 Extension/codeagent-extension.json').asText()).version,
+      version,
+    );
+    assert.match(
+      archive.file(/SKILL\.md$/)[0].asText(),
+      new RegExp(`版本：${skillVersion.replaceAll('.', '\\.')}`),
+    );
+  }
+  await assert.rejects(
+    service.getExtensionBypassDownload({
+      userId,
+      extensionName: '问题分析 Extension',
+      version: 'missing',
+    }),
+    /未找到已发布/,
+  );
   console.log('PASS Extension bypass Mock persistence, tree, download, inheritance and search');
 } finally {
   await server.close();

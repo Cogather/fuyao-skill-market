@@ -11,6 +11,11 @@ export type HarnessDepartmentSnapshot = {
   departmentPath: string[];
 };
 
+export type HarnessListFilterSnapshot = {
+  departmentId: string;
+  productId: string;
+};
+
 export type HarnessCatalogAssetType = 'Agent' | 'Skill' | 'Command';
 export type HarnessCatalogAction = 'create' | 'import' | 'export';
 
