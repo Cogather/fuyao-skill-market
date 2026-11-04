@@ -15,7 +15,10 @@ import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabil
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
-import { atomicAssetApiType } from '../../services/skillMarket/atomicAssetPublishHttp';
+import {
+  atomicAssetApiType,
+  canPublishAtomicAsset,
+} from '../../services/skillMarket/atomicAssetPublishHttp';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
 import { getExtensionBypassDownload } from '../../services/skillMarket/extensionBypassService';
 import {
@@ -694,7 +697,7 @@ function deleteCardAsset(asset: HarnessAsset): void {
 
 function openAtomicPublish(asset: HarnessAsset): void {
   closeCardMenu();
-  if (asset.assetType === 'Extension' || asset.canPublish !== true) return;
+  if (!canPublishAtomicAsset(asset)) return;
   try {
     atomicAssetApiType(asset);
   } catch (error) {
@@ -1257,7 +1260,7 @@ onBeforeUnmount(() => {
                 编辑信息
               </button>
               <button
-                v-if="asset.assetType !== 'Extension' && asset.canPublish === true"
+                v-if="canPublishAtomicAsset(asset)"
                 type="button"
                 role="menuitem"
                 @click="openAtomicPublish(asset)"

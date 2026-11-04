@@ -225,6 +225,11 @@ function requiredText(value: unknown, message: string): string {
   return result;
 }
 
+export function canPublishAtomicAsset(asset: HarnessAsset): boolean {
+  // 与 Harness 工作流一致，只接受接口明确返回的 true；不根据状态或编辑权限推断。
+  return asset.assetType !== 'Extension' && asset.canPublish === true;
+}
+
 export function atomicAssetApiType(asset: HarnessAsset): HarnessAtomicAssetApiType {
   if (asset.assetType === 'Extension') throw new Error('Extension 不支持独立资产发布接口');
   const expectedType = API_TYPES[asset.assetType];

@@ -235,7 +235,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
       departments.some((item) => item._id === selectedDeptId.value),
   );
   const canManageDepartment = computed(() => {
-    if (!isHttp || scopeLevel.value === '产品级') return true;
+    if (!isHttp) return true;
     const department = departments.find((item) => item._id === selectedDeptId.value);
     return Boolean(department && hasDepartmentPermission(department));
   });
@@ -841,7 +841,9 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     const department = departments.find((item) => item._id === selectedDeptId.value);
     if (
       !department ||
-      (isHttp && scopeLevel.value === '部门级' && !hasDepartmentPermission(department))
+      (isHttp &&
+        (scopeLevel.value === '部门级' || !context().readOnlyDepartmentSelection) &&
+        !hasDepartmentPermission(department))
     ) {
       loading.value = false;
       return;
@@ -922,7 +924,6 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         department.path.length > departmentMaxLevel.value) ||
       (department &&
         isHttp &&
-        scopeLevel.value === '部门级' &&
         !context().readOnlyDepartmentSelection &&
         !hasDepartmentPermission(department))
     )
@@ -1105,9 +1106,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
             : undefined;
         const allowed = flattened.filter(
           (item) =>
-            (level !== '部门级' ||
-              !value.restrictToAllowedDepartments ||
-              hasDepartmentPermission(item)) &&
+            (!value.restrictToAllowedDepartments || hasDepartmentPermission(item)) &&
             (maxLevel === undefined ||
               item.path.length <= maxLevel ||
               value.readOnlyDepartmentSelection),
@@ -1125,10 +1124,7 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         const selectable = allowed.filter(
           (item) =>
             (maxLevel === undefined || item.path.length <= maxLevel) &&
-            (!isHttp ||
-              level !== '部门级' ||
-              value.readOnlyDepartmentSelection ||
-              hasDepartmentPermission(item)),
+            (!isHttp || value.readOnlyDepartmentSelection || hasDepartmentPermission(item)),
         );
         if (
           !(restoredFilter && !restoredFilter.departmentId) &&

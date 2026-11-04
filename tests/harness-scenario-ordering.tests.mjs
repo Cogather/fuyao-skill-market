@@ -169,7 +169,7 @@ try {
     };
   }
 
-  await test('product ordering skips department permission checks while department mutations remain protected', async () => {
+  await test('revoked permissions block mutations at both product and department levels', async () => {
     const { workspace, context, scene, writes } = await fixture();
     const child = scene('接口生成');
     const root = scene('研发提效');
@@ -180,14 +180,8 @@ try {
     context.allowedDepartmentPaths = [['其他部门']];
     await nextTick();
     await workspace.loadSelectedWorkflow();
-    assert.equal(workspace.available.value, true, 'unmanaged departments remain readable');
+    assert.equal(workspace.available.value, false, 'revoked departments cannot remain selected');
     assert.equal(workspace.error.value, '');
-    assert.equal(workspace.canManageDepartment.value, true);
-    await workspace.reorderScenario(lastRoot._id, root._id, 'before');
-    assert.equal(writes.length, 1, 'product-level ordering does not require department permission');
-
-    workspace.selectLevel('部门级');
-    await nextTick();
     assert.equal(workspace.canManageDepartment.value, false);
     const deniedMutations = [
       () => workspace.reorderScenario(lastRoot._id, root._id, 'before'),
@@ -201,10 +195,14 @@ try {
       () => workspace.attachCapability('Command', { name: 'demo-command' }),
       () => workspace.removePoolAsset({ name: 'demo-asset', assetType: 'Skill' }),
     ];
-    for (const mutate of deniedMutations) {
-      await assert.rejects(mutate, /管理权限/);
+    for (const level of ['产品级', '部门级']) {
+      workspace.selectLevel(level);
+      await nextTick();
+      for (const mutate of deniedMutations) {
+        await assert.rejects(mutate, /管理权限/);
+      }
     }
-    assert.equal(writes.length, 1, 'department-level mutations do not add any writes');
+    assert.equal(writes.length, 0, 'unauthorized mutations never reach the backend');
   });
 
   await test('root reordering persists once and keeps IDs, hierarchy, metadata and workflows', async () => {

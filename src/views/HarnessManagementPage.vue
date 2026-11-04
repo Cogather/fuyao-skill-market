@@ -159,7 +159,14 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
-const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
+const userName = computed(() => {
+  const injectedUserName = String(skillMarketStore.userName ?? '').trim();
+  if (injectedUserName || transportIsHttp) return injectedUserName;
+  return (
+    String(profileStore.userInfo?.nameCn || profileStore.userInfo?.name || '').trim() ||
+    'Mock 发布人'
+  );
+});
 const assetCatalogScopeSnapshots = computed<HarnessCatalogScopeSnapshots>(
   () => assetCatalogScopeSnapshotsByUser.value[userId.value] ?? {},
 );
@@ -257,7 +264,7 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   defaultDepartmentPath:
     permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
   allowedDepartmentPaths: permissionDepartmentPaths.value,
-  // 场景设计的部门级受管理权限约束；工作流列表可以按上级部门筛选。
+  // 场景设计的产品级和部门级均受管理权限约束；工作流列表可以按上级部门筛选。
   restrictToAllowedDepartments:
     restrictToPermissionDepartments.value && workspaceFilterTab.value === 'scenarios',
   departmentMaxLevel:
