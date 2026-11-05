@@ -8208,6 +8208,10 @@ span {
   min-width: 116px;
   max-width: 116px;
   align-items: center;
+
+  &:empty {
+    display: none;
+  }
 }
 
 .my-release-panel .my-rel-upgraded,
