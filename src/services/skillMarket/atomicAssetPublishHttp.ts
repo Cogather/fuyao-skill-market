@@ -5,6 +5,7 @@ import type {
 } from './assetManagementTypes';
 import { queryHttpPublishableOrganizations } from './extensionPublishHttp';
 import { skillBaseService } from './skillBaseService';
+import { batchAssetPublishMock } from './batchAssetPublishMock';
 
 export type HarnessAtomicAssetApiType = 'AGENT' | 'SKILL' | 'COMMAND';
 
@@ -378,7 +379,10 @@ export async function queryAtomicAssetPublishHistory(
   const assetName = requiredText(query.assetName, '资产名称不能为空');
   const operatorId = requiredText(query.operatorId, '尚未获取当前用户工号');
   if (!transportIsHttp) {
-    const allRecords = getMockHistoryRecords(normalizedAssetType, assetName, operatorId);
+    const allRecords = [
+      ...batchAssetPublishMock.assetHistory(normalizedAssetType, assetName, operatorId),
+      ...getMockHistoryRecords(normalizedAssetType, assetName, operatorId),
+    ];
     const start = (pageNum - 1) * pageSize;
     return {
       records: allRecords.slice(start, start + pageSize).map((record) => ({ ...record })),
@@ -418,6 +422,11 @@ export async function retryAtomicAssetPublish(taskId: string, userId: string): P
   const requiredTaskId = requiredText(taskId, '发布记录缺少任务 ID');
   const requiredUserId = requiredText(userId, '尚未获取当前用户工号');
   if (!transportIsHttp) {
+    if (batchAssetPublishMock.hasTask(requiredTaskId)) {
+      const response = await batchAssetPublishMock.retry(requiredTaskId, requiredUserId);
+      assertSuccess(response, '发布任务重试失败');
+      return;
+    }
     for (const records of mockHistoryByAsset.values()) {
       const record = records.find(
         (item) => item.id === requiredTaskId && item.operatorId === requiredUserId,
