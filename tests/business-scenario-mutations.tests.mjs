@@ -1,0 +1,979 @@
+import assert from 'node:assert/strict';
+import { setImmediate } from 'node:timers/promises';
+import { createSSRApp, effectScope, nextTick } from 'vue';
+import { renderToString } from '@vue/server-renderer';
+import { createServer } from 'vite';
+
+process.env.VITE_SKILL_MARKET_TRANSPORT = 'http';
+const previousWindow = globalThis.window;
+const previousDocument = globalThis.document;
+const previousHTMLElement = globalThis.HTMLElement;
+const storage = new Map();
+globalThis.window = {
+  localStorage: {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, String(value)),
+  },
+};
+
+const server = await createServer({ appType: 'custom', server: { middlewareMode: true } });
+const success = (data) => ({ meta: { success: true }, data });
+const clone = (value) => structuredClone(value);
+let failed = 0;
+let scope;
+async function test(name, run) {
+  try {
+    await run();
+    console.log(`PASS ${name}`);
+  } catch (error) {
+    failed++;
+    console.error(`FAIL ${name}`, error);
+  } finally {
+    scope?.stop();
+    await nextTick();
+  }
+}
+try {
+  const { createHarnessScenarioWorkspace } = await server.ssrLoadModule(
+    '/src/composables/useHarnessScenarioWorkspace.ts',
+  );
+  const { harnessWorkflowService: api } = await server.ssrLoadModule(
+    '/src/services/skillMarket/businessScenarioDesignService.ts',
+  );
+  const { default: ScenarioPage } = await server.ssrLoadModule(
+    '/src/views/skill/BusinessScenarioDesignPage.vue',
+  );
+  const { getSuggestedProductCatalogItemNamePrefix } = await server.ssrLoadModule(
+    '/src/utils/catalogItemName.ts',
+  );
+  globalThis.document = { activeElement: null };
+  globalThis.HTMLElement = class {};
+  async function mountScenarioPage(workspace) {
+    let state;
+    await renderToString(
+      createSSRApp({
+        setup(_, context) {
+          state = ScenarioPage.setup({ workspace, active: true }, context);
+          return () => null;
+        },
+      }),
+    );
+    return state;
+  }
+  async function renderMountedScenarioPage(state, workspace) {
+    const context = {};
+    const html = await renderToString(
+      createSSRApp(
+        {
+          props: ScenarioPage.props,
+          setup: () => state,
+          ssrRender: ScenarioPage.ssrRender,
+        },
+        { workspace, active: true },
+      ),
+      context,
+    );
+    return [html, ...Object.values(context.teleports ?? {})].join('\n');
+  }
+  function assertSuggestedPrefixCopy(html, suggestion) {
+    assert.match(html, new RegExp(`建议使用“${suggestion}”作为名称前缀`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
+    assert.doesNotMatch(html, /产品名称不符合命名规范/);
+  }
+  function assertRequiredPrefixCopy(html, prefix) {
+    assert.match(html, new RegExp(`以 ${prefix} 开头`));
+    assert.match(html, /仅使用小写字母、数字和连字符。/);
+  }
+  async function fixture({
+    bound = false,
+    commandVersion,
+    failReadbackOnce = false,
+    sceneCode = 'demo-old',
+    productName = 'demo',
+  } = {}) {
+    storage.clear();
+    const calls = [];
+    let rows = [
+      {
+        firstScene: '研发',
+        firstSceneDescription: '一级研发说明',
+        secondScene: '代码生成',
+        sort: 0,
+        sceneExtensionCode: sceneCode,
+        secondSceneDescription: '旧目标',
+        flowName: '原流程',
+        flowDescription: '',
+      },
+    ];
+    let detail = {
+      ...rows[0],
+      commands: bound
+        ? [
+            {
+              commandName: '/demo-entry',
+              description: '',
+              ...(commandVersion === undefined ? {} : { version: commandVersion }),
+            },
+          ]
+        : [],
+      assetPool: [],
+      stages: [
+        {
+          activityNodeName: '编码',
+          sort: 0,
+          steps: [{ subActivityNodeName: '生成', sort: 0, boundAssets: [] }],
+        },
+      ],
+      steps: [],
+      nextStep: 0,
+      allDone: false,
+    };
+    api.queryProducts = async () =>
+      success([{ offeringId: 'product-demo', offeringName: productName }]);
+    api.querySceneList = async () => {
+      if (failReadbackOnce && calls.some(([op]) => ['refresh', 'rename'].includes(op))) {
+        failReadbackOnce = false;
+        throw new Error('list readback outage');
+      }
+      return success(clone(rows));
+    };
+    api.queryHarnessWorkflowDetail = async (params) => {
+      calls.push(['detail', params]);
+      if (params.secondScene !== detail.secondScene) throw new Error('SCENE_NOT_FOUND');
+      return success(clone(detail));
+    };
+    api.refreshScene = async (_params, body) => {
+      calls.push(['refresh', clone(body)]);
+      rows = clone(body.scenes);
+      // Reproduce the backend deleting the old scene then inserting its renamed replacement.
+      detail = {
+        ...detail,
+        ...rows[0],
+        sceneExtensionCode: null,
+        secondSceneDescription: null,
+        flowName: null,
+        flowDescription: null,
+      };
+      return success(null);
+    };
+    api.renameScene = async (body, params) => {
+      calls.push(['rename', clone(body), clone(params)]);
+      assert.equal(params.userId, 'designer');
+      for (const row of rows) {
+        if (
+          row.firstScene === body.oldFirstScene &&
+          (!body.oldSecondScene || row.secondScene === body.oldSecondScene)
+        ) {
+          row.firstScene = body.newFirstScene;
+          if (body.oldSecondScene) row.secondScene = body.newSecondScene;
+        }
+      }
+      detail.firstScene = body.newFirstScene;
+      if (body.oldSecondScene) detail.secondScene = body.newSecondScene;
+      return { meta: { isSuccess: true }, data: null };
+    };
+    api.deleteScene = async (params) => {
+      calls.push(['delete-scene', clone(params)]);
+      rows = rows.filter(
+        (row) =>
+          row.firstScene !== params.firstScene ||
+          (params.secondScene && row.secondScene !== params.secondScene),
+      );
+      return success(null);
+    };
+    api.queryActivitiesByScene = async () =>
+      success(
+        detail.stages.flatMap((stage) =>
+          (stage.steps.length ? stage.steps : [null]).map((node) => ({
+            firstScene: detail.firstScene,
+            secondScene: detail.secondScene,
+            activityNodeName: stage.activityNodeName,
+            subActivityNodeName: node?.subActivityNodeName || null,
+            sort: 0,
+          })),
+        ),
+      );
+    api.deleteActivity = async (params) => {
+      calls.push(['delete-activity', clone(params)]);
+      const stage = detail.stages.find((item) => item.activityNodeName === params.activityNodeName);
+      if (params.subActivityNodeName)
+        stage.steps = stage.steps.filter(
+          (node) => node.subActivityNodeName !== params.subActivityNodeName,
+        );
+      else detail.stages = detail.stages.filter((item) => item !== stage);
+      return success(null);
+    };
+    api.updateSecondSceneCode = async (body) => {
+      calls.push(['code', clone(body)]);
+      Object.assign(detail, body);
+      Object.assign(rows[0], body);
+      return success(null);
+    };
+    api.updateSceneMetadata = async (body) => {
+      calls.push(['meta', clone(body)]);
+      Object.assign(detail, body);
+      Object.assign(rows[0], body);
+      return success(null);
+    };
+    api.querySceneAssetPool = async () => success(clone(detail.assetPool));
+    api.queryConfigurationBindings = async () => success([]);
+    api.refreshActivities = async () => {
+      calls.push(['activities']);
+      return success(null);
+    };
+    api.commandBindScene = async (body, params) => {
+      calls.push(['command-bind', clone(body), clone(params)]);
+      detail.commands.push({ commandName: body.commandName, description: '' });
+      return success('binding');
+    };
+    api.componentEnterPool = async (body, params) => {
+      assert.deepEqual(params, { userId: 'designer' });
+      assert.equal(Object.hasOwn(body, 'userId'), false);
+      calls.push(['pool-add', clone(body)]);
+      detail.assetPool.push(clone(body));
+      return success(null);
+    };
+    api.createCapability = async (type, body) => {
+      calls.push(['create', type, clone(body)]);
+      return success('created-id');
+    };
+    api.skillUnbindScene = async () => {
+      calls.push(['unbind']);
+      return success(null);
+    };
+    const context = {
+      ready: true,
+      userId: 'designer',
+      departmentTree: [{ name: '研发部', deptCode: 'dept-demo' }],
+      defaultDepartmentPath: ['研发部'],
+      allowedDepartmentPaths: [['研发部']],
+      restrictToAllowedDepartments: true,
+    };
+    scope = effectScope();
+    const workspace = scope.run(() => createHarnessScenarioWorkspace(() => context));
+    for (
+      let i = 0;
+      i < 100 &&
+      (!workspace.available.value ||
+        workspace.workflowLoading.value ||
+        !workspace.workflows.length);
+      i++
+    ) {
+      await nextTick();
+      await setImmediate();
+    }
+    assert.equal(workspace.available.value, true);
+    const scenario = workspace.scenarios.find((item) => item.level === 2);
+    const workflow = clone(JSON.parse(JSON.stringify(workspace.workflows[0])));
+    calls.length = 0;
+    return { workspace, scenario, workflow, calls, detail: () => detail };
+  }
+  await test('HTTP scene loading maps first and second scene descriptions to their respective levels', async () => {
+    const f = await fixture();
+    assert.equal(
+      f.workspace.scenarios.find((item) => item.level === 1).description,
+      '一级研发说明',
+    );
+    assert.equal(f.scenario.description, '旧目标');
+  });
+  await test('workflow save reuses the loaded detail and performs one authoritative readback', async () => {
+    const f = await fixture();
+    f.workflow.name = '更新后的流程';
+    await f.workspace.saveWorkflow(f.workflow, {
+      code: 'demo-old',
+      description: '旧目标',
+    });
+    assert.equal(f.calls.filter(([op]) => op === 'detail').length, 1);
+  });
+  await test('unchanged wizard navigation does not save and backward navigation keeps invalid drafts local', async () => {
+    const f = await fixture();
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 1);
+    assert.equal(await state.saveWizard(), true);
+    assert.deepEqual(f.calls, []);
+    await state.goNext();
+    assert.equal(state.wizard.value.step, 2);
+    assert.deepEqual(f.calls, []);
+    await state.goStep(0);
+    assert.equal(state.wizard.value.step, 0);
+    assert.deepEqual(f.calls, []);
+
+    state.wizard.value.step = 1;
+    state.wizard.value.form.name = '';
+    await state.goStep(0);
+    assert.equal(state.wizard.value.step, 0);
+    assert.equal(state.wizard.value.form.name, '');
+    assert.deepEqual(f.calls, []);
+  });
+  await test('selecting capabilities stays local until one workflow save persists them', async () => {
+    const f = await fixture();
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 2);
+    state.selectCapability({
+      _id: 'remote-command',
+      name: '/demo-command',
+      type: 'Command',
+      description: '命令入口',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    state.selectCapability({
+      _id: 'remote-skill',
+      name: 'demo-skill',
+      type: 'Skill',
+      assetType: 'Skill',
+      status: 'active',
+      description: '技能资产',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    await setImmediate();
+    assert.deepEqual(f.calls, []);
+    assert.equal(state.wizard.value.workflow.commands.length, 1);
+    assert.deepEqual(state.wizard.value.poolIds, ['remote-skill']);
+
+    assert.equal(await state.saveWizard(), true);
+    assert.deepEqual(
+      f.calls.map(([op]) => op),
+      ['command-bind', 'pool-add', 'detail'],
+    );
+  });
+  await test('workflow structure and capability chips render distinct visual markers', async () => {
+    const f = await fixture();
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 1);
+    let html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /data-structure-icon="stage"/);
+    assert.match(html, /data-structure-icon="node"/);
+
+    state.wizard.value.step = 3;
+    state.selectCapability({
+      _id: 'visual-agent',
+      name: 'demo-agent',
+      type: 'Agent',
+      assetType: 'Agent',
+      status: 'active',
+      description: '',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    state.selectCapability({
+      _id: 'visual-skill',
+      name: 'demo-skill',
+      type: 'Skill',
+      assetType: 'Skill',
+      status: 'active',
+      description: '',
+      owner: '',
+      developer: '',
+      version: null,
+    });
+    const nodeId = state.wizard.value.workflow.stages[0].steps[0].id;
+    state.toggleNodeAsset(nodeId, 'visual-agent');
+    state.toggleNodeAsset(nodeId, 'visual-skill');
+    html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /class="asset-chip" data-asset-type="Agent"/);
+    assert.match(html, /class="asset-chip" data-asset-type="Skill"/);
+  });
+  await test('versioned Commands reuse the asset package ready marker', async () => {
+    const f = await fixture({ bound: true, commandVersion: '1.2.3' });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 2);
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.equal((html.match(/class="asset-package-status"/g) || []).length, 2);
+    assert.equal((html.match(/class="command-version-ready"/g) || []).length, 0);
+    assert.equal((html.match(/已有发布版本：1\.2\.3/g) || []).length, 4);
+  });
+  await test('creating a root scene sends firstSceneDescription and restores it after reloading', async () => {
+    const f = await fixture();
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    const saved = await f.workspace.saveScenario({
+      ...root,
+      _id: 'new-root',
+      sourceId: undefined,
+      name: '交付发布',
+      description: '  发布目标\n输入输出与业务边界  ',
+      tags: [],
+    });
+    const writes = f.calls.filter(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['refresh'],
+    );
+    const created = writes[0][1].scenes.find((item) => item.firstScene === '交付发布');
+    assert.equal(created.secondScene, '');
+    assert.equal(created.firstSceneDescription, '发布目标\n输入输出与业务边界');
+    assert.equal(
+      writes[0][1].scenes.find((item) => item.firstScene === '研发').firstSceneDescription,
+      '一级研发说明',
+    );
+    await f.workspace.reloadScenes();
+    assert.equal(
+      f.workspace.scenarios.find((item) => item._id === saved._id).description,
+      '发布目标\n输入输出与业务边界',
+    );
+  });
+  await test('updating, renaming and clearing a root description persists firstSceneDescription without changing child metadata', async () => {
+    const f = await fixture();
+    const rootId = f.workspace.scenarios.find((item) => item.level === 1)._id;
+    for (const [name, description, expected] of [
+      ['研发', '  修改后的一级说明  ', '修改后的一级说明'],
+      ['研发设计', '改名后的一级说明', '改名后的一级说明'],
+      ['研发设计', '   ', ''],
+    ]) {
+      const root = f.workspace.scenarios.find((item) => item._id === rootId);
+      await f.workspace.saveScenario({ ...root, name, description });
+      const rows = f.calls.filter(([op]) => op === 'refresh').at(-1)[1].scenes;
+      assert.equal(rows[0].firstScene, name);
+      assert.equal(rows[0].firstSceneDescription, expected);
+      assert.equal(rows[0].secondSceneDescription, '旧目标');
+      assert.equal(rows[0].sceneExtensionCode, 'demo-old');
+      await f.workspace.reloadScenes();
+      assert.equal(f.workspace.scenarios.find((item) => item._id === rootId).description, expected);
+    }
+    assert.equal(
+      f.calls.some(([op]) => ['code', 'meta'].includes(op)),
+      false,
+    );
+  });
+  await test('creating a child scene sends its entered code and description in the initial scene refresh', async () => {
+    const f = await fixture();
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    const saved = await f.workspace.saveScenario({
+      _id: 'new-child',
+      name: '新增下级场景',
+      code: '  demo-child-extension  ',
+      description: '  下级场景说明  ',
+      parentId: root._id,
+      productId: root.productId,
+      level: 2,
+      tags: [],
+      status: 'draft',
+      releaseCount: 0,
+    });
+    const writes = f.calls.filter(([op]) => ['refresh', 'code'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['refresh', 'code'],
+    );
+    const rows = writes[0][1].scenes;
+    assert.deepEqual(
+      rows.map((item) => item.firstSceneDescription),
+      ['一级研发说明', '一级研发说明'],
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '新增下级场景').sceneExtensionCode,
+      'demo-child-extension',
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '新增下级场景').secondSceneDescription,
+      '下级场景说明',
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '代码生成').sceneExtensionCode,
+      'demo-old',
+    );
+    assert.equal(
+      rows.find((item) => item.secondScene === '代码生成').secondSceneDescription,
+      '旧目标',
+    );
+    assert.equal(writes[1][1].sceneExtensionCode, 'demo-child-extension');
+    assert.equal(writes[1][1].secondSceneDescription, '下级场景说明');
+    assert.equal(saved.code.trim(), 'demo-child-extension');
+    assert.equal(saved.description.trim(), '下级场景说明');
+  });
+  for (const productName of [
+    'Harness平台',
+    'Harness Pipeline',
+    'Harness_Pipeline',
+    '-harness-pipeline',
+    'harness-pipeline-',
+    'harness--pipeline',
+    'a'.repeat(63),
+    'a'.repeat(64),
+    'a'.repeat(65),
+  ]) {
+    await test(`new child scenes omit invalid product-name prefixes: ${productName}`, async () => {
+      const f = await fixture({ productName });
+      const state = await mountScenarioPage(f.workspace);
+      state.openScenario(f.scenario.parentId);
+      assert.equal(state.scenarioForm.code, '');
+      const suggestion = getSuggestedProductCatalogItemNamePrefix(productName);
+      assert.ok(suggestion);
+      const suggestionHtml = await renderMountedScenarioPage(state, f.workspace);
+      assert.match(suggestionHtml, /placeholder="请输入场景编码"/);
+      assertSuggestedPrefixCopy(suggestionHtml, suggestion);
+      state.scenarioForm.name = '新增下级场景';
+      for (const code of ['INVALID', 'invalid_code', 'invalid--code', 'invalid-', 'a'.repeat(65)]) {
+        state.scenarioForm.code = code;
+        await state.saveScenario();
+        assert.ok(state.scenarioError.value);
+        assert.equal(
+          f.calls.some(([op]) => op === 'refresh'),
+          false,
+        );
+      }
+      state.scenarioForm.code = 'custom-extension';
+      await state.saveScenario();
+      assert.equal(state.scenarioError.value, '');
+      assert.equal(state.scenarioDialog.value, null);
+      const created = f.workspace.scenarios.find((item) => item.name === '新增下级场景');
+      assert.equal(created.code, 'custom-extension');
+      assert.equal(f.calls.find(([op]) => op === 'code')[1].sceneExtensionCode, 'custom-extension');
+      await assert.doesNotReject(() =>
+        f.workspace.saveScenario({ ...f.scenario, code: 'custom-extension' }),
+      );
+    });
+  }
+  await test('Workflow wizard omits the fallback product code for an invalid product name', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow);
+    assert.equal(f.calls.filter(([op]) => op === 'detail').length, 0);
+    assert.equal(state.wizard.value.form.code, '');
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /placeholder="请输入场景编码"/);
+    assert.doesNotMatch(html, /以产品前缀 product-demo- 开头/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
+  });
+  await test('Workflow wizard accepts a valid standalone code when the product name is invalid', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline', sceneCode: null });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow);
+    state.wizard.value.form.code = 'custom-extension';
+    assert.equal(await state.saveWizard(), true);
+    assert.equal(state.wizard.value.error, '');
+    assert.equal(f.detail().sceneExtensionCode, 'custom-extension');
+  });
+  await test('custom Command omits the fallback product code and accepts a standalone name', async () => {
+    const f = await fixture({ productName: 'Harness Pipeline' });
+    const state = await mountScenarioPage(f.workspace);
+    await state.openWizard(f.workflow, 2);
+    state.openCommandDraft();
+    const wizard = state.wizard.value;
+    assert.equal(wizard.commandDraft.name, '');
+    const html = await renderMountedScenarioPage(state, f.workspace);
+    assert.match(html, /placeholder="请输入 Command 名称"/);
+    assert.doesNotMatch(html, /\/product-demo-e2e-codec|以 product-demo- 开头/);
+    assertSuggestedPrefixCopy(html, 'harness-pipeline-');
+    Object.assign(wizard.commandDraft, {
+      name: '/invalid command',
+      description: '自定义 Command',
+      developer: { id: 'u1', label: '开发者', deptName: '研发部' },
+      owner: { id: 'u2', label: '责任人', deptName: '研发部' },
+      dueDate: '2026-12-31',
+    });
+    await state.createCommand();
+    assert.match(wizard.error, /只能包含小写字母、数字和连字符/);
+    assert.equal(
+      f.calls.some(([op]) => op === 'create'),
+      false,
+    );
+    wizard.commandDraft.name = '/custom-command';
+    await state.createCommand();
+    assert.equal(wizard.error, '');
+    assert.equal(
+      f.calls.find(([op, type]) => op === 'create' && type === 'COMMAND')[2].commandName,
+      'custom-command',
+    );
+  });
+  for (const assetType of ['Agent', 'Skill']) {
+    await test(`custom ${assetType} omits the fallback product code and accepts a standalone name`, async () => {
+      const f = await fixture({ productName: 'Harness Pipeline' });
+      const state = await mountScenarioPage(f.workspace);
+      await state.openWizard(f.workflow, 3);
+      state.openAssetDraft(assetType);
+      const wizard = state.wizard.value;
+      assert.equal(wizard.assetDraft.name, '');
+      const html = await renderMountedScenarioPage(state, f.workspace);
+      assert.match(html, new RegExp(`placeholder="请输入 ${assetType} 名称"`));
+      assert.doesNotMatch(html, /以 product-demo- 开头/);
+      assertSuggestedPrefixCopy(html, 'harness-pipeline-');
+      Object.assign(wizard.assetDraft, {
+        name: `invalid ${assetType.toLowerCase()}`,
+        description: `自定义 ${assetType}`,
+        developer: { id: 'u1', label: '开发者', deptName: '研发部' },
+        owner: { id: 'u2', label: '责任人', deptName: '研发部' },
+        dueDate: '2026-12-31',
+      });
+      await state.createAsset();
+      assert.match(wizard.error, /只能包含小写字母、数字和连字符/);
+      assert.equal(
+        f.calls.some(([op]) => op === 'create'),
+        false,
+      );
+      wizard.assetDraft.name = `custom-${assetType.toLowerCase()}`;
+      await state.createAsset();
+      assert.equal(wizard.error, '');
+      assert.equal(
+        f.calls.find(([op, type]) => op === 'create' && type === assetType.toUpperCase())[2][
+          `${assetType.toLowerCase()}Name`
+        ],
+        `custom-${assetType.toLowerCase()}`,
+      );
+    });
+  }
+  for (const productName of ['harness-pipeline', 'Harness-Pipeline']) {
+    await test(`custom capabilities retain the lowercase valid product-name prefix: ${productName}`, async () => {
+      const f = await fixture({ productName });
+      const state = await mountScenarioPage(f.workspace);
+      await state.openWizard(f.workflow);
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      state.closeWizard();
+      await state.openWizard(f.workflow, 2);
+      state.openCommandDraft();
+      assert.equal(state.wizard.value.commandDraft.name, '/harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      state.openAssetDraft('Agent');
+      assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      state.openAssetDraft('Skill');
+      assert.equal(state.wizard.value.assetDraft.name, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      const common = {
+        description: '能力说明',
+        owner: '责任人 u1',
+        ownerId: 'u1',
+        developer: '开发者 u2',
+        developerId: 'u2',
+        version: null,
+      };
+      await assert.rejects(
+        () =>
+          f.workspace.createCapability('Command', {
+            _id: 'invalid-command',
+            name: '/standalone-command',
+            ...common,
+          }),
+        /必须以产品名开头/,
+      );
+      for (const assetType of ['Agent', 'Skill']) {
+        await assert.rejects(
+          () =>
+            f.workspace.createCapability(assetType, {
+              _id: `invalid-${assetType.toLowerCase()}`,
+              name: `standalone-${assetType.toLowerCase()}`,
+              assetType,
+              status: 'draft',
+              ...common,
+            }),
+          /必须以产品名开头/,
+        );
+      }
+      assert.equal(
+        f.calls.some(([op]) => op === 'create'),
+        false,
+      );
+    });
+  }
+  for (const productName of ['harness-pipeline', 'Harness-Pipeline']) {
+    await test(`new child scenes require the lowercase valid product-name prefix: ${productName}`, async () => {
+      const f = await fixture({ productName });
+      const state = await mountScenarioPage(f.workspace);
+      state.openScenario(f.scenario.parentId);
+      assert.equal(state.scenarioForm.code, 'harness-pipeline-');
+      assertRequiredPrefixCopy(
+        await renderMountedScenarioPage(state, f.workspace),
+        'harness-pipeline-',
+      );
+      state.scenarioForm.name = '新增下级场景';
+      for (const code of ['custom-extension', 'product-demo-extension', 'harness-pipeline-']) {
+        state.scenarioForm.code = code;
+        await state.saveScenario();
+        assert.ok(state.scenarioError.value);
+        assert.equal(
+          f.calls.some(([op]) => op === 'refresh'),
+          false,
+        );
+      }
+      state.scenarioForm.code = 'harness-pipeline-extension';
+      await state.saveScenario();
+      assert.equal(state.scenarioError.value, '');
+      assert.equal(state.scenarioDialog.value, null);
+      assert.equal(
+        f.workspace.scenarios.find((item) => item.name === '新增下级场景').code,
+        'harness-pipeline-extension',
+      );
+    });
+  }
+  await test('retrying new child creation with an invalid product name preserves the committed identity', async () => {
+    const f = await fixture({ productName: 'Harness平台', failReadbackOnce: true });
+    const state = await mountScenarioPage(f.workspace);
+    state.openScenario(f.scenario.parentId);
+    state.scenarioForm.name = '新增下级场景';
+    state.scenarioForm.code = 'custom-extension';
+    await state.saveScenario();
+    assert.match(state.scenarioError.value, /list readback outage/);
+    assert.ok(state.scenarioDialog.value.savedIdentity.sourceId);
+    await state.saveScenario();
+    assert.equal(state.scenarioError.value, '');
+    assert.equal(state.scenarioDialog.value, null);
+    assert.equal(f.calls.filter(([op]) => op === 'refresh').length, 1);
+    assert.equal(f.workspace.scenarios.filter((item) => item.name === '新增下级场景').length, 1);
+  });
+  await test('renaming a scene migrates its identity before updating changed code and description', async () => {
+    const f = await fixture();
+    await f.workspace.saveWorkflow(f.workflow, {
+      name: '新场景',
+      code: 'demo-new',
+      description: '新目标',
+    });
+    const writes = f.calls.filter(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['rename', 'code'],
+    );
+    assert.equal(writes[0][1].oldSecondScene, '代码生成');
+    assert.equal(writes[0][1].newSecondScene, '新场景');
+    assert.equal(writes[1][1].secondScene, '新场景');
+    assert.equal(writes[1][1].secondSceneDescription, '新目标');
+    assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
+  });
+  await test('renaming an undesigned child preserves an empty code without bypassing normal scene validation', async () => {
+    const f = await fixture({ sceneCode: null });
+    const renamed = { ...f.scenario, name: '新的二级场景' };
+    await assert.rejects(() => f.workspace.saveScenario(renamed), /编码/);
+    const saved = await f.workspace.saveScenario(renamed, { nameOnly: true });
+    const writes = f.calls.filter(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op));
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['rename'],
+    );
+    assert.equal(writes[0][1].newSecondScene, '新的二级场景');
+    assert.equal(f.detail().flowName, '原流程');
+    assert.equal(saved._id, f.scenario._id);
+    assert.equal(saved.parentId, f.scenario.parentId);
+    assert.equal(saved.code, '');
+  });
+  await test('a committed rename survives failed list readback and retries with the new scene name', async () => {
+    const f = await fixture({ failReadbackOnce: true });
+    const values = { name: '新场景', code: 'demo-new', description: '新目标' };
+    await assert.rejects(
+      () => f.workspace.saveWorkflow(f.workflow, values),
+      /list readback outage/,
+    );
+    assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
+    await f.workspace.saveWorkflow(f.workflow, values);
+    assert.equal(f.calls.filter(([op]) => op === 'rename').length, 1);
+    assert.equal(f.detail().secondSceneDescription, '新目标');
+    assert.equal(f.detail().sceneExtensionCode, 'demo-new');
+  });
+  await test('a newly committed scene exposes its identity even when list readback fails', async () => {
+    const f = await fixture({ failReadbackOnce: true });
+    const scene = {
+      ...f.workspace.scenarios.find((item) => item.level === 1),
+      _id: 'draft-id',
+      sourceId: undefined,
+      name: '新一级场景',
+      description: '刷新失败也要保留的一级说明',
+      tags: [],
+    };
+    await assert.rejects(() => f.workspace.saveScenario(scene), /list readback outage/);
+    assert.ok(scene.sourceId);
+    const committedId = scene._id;
+    assert.equal(
+      f.workspace.scenarios.find((item) => item._id === committedId).description,
+      '刷新失败也要保留的一级说明',
+    );
+    await f.workspace.saveScenario(scene);
+    assert.equal(scene._id, committedId);
+    assert.equal(f.workspace.scenarios.filter((item) => item.name === scene.name).length, 1);
+    await f.workspace.reloadScenes();
+    assert.equal(
+      f.workspace.scenarios.find((item) => item._id === committedId).description,
+      '刷新失败也要保留的一级说明',
+    );
+  });
+  await test('bound child and parent renames cascade without unbinding or refreshing scenes', async () => {
+    const f = await fixture({ bound: true });
+    await f.workspace.saveWorkflow(f.workflow, {
+      name: '新场景',
+      code: 'demo-old',
+      description: '旧目标',
+    });
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    await f.workspace.saveScenario({ ...root, name: '新一级场景' }, { nameOnly: true });
+    const writes = f.calls.filter(([op]) =>
+      ['refresh', 'rename', 'code', 'meta', 'unbind'].includes(op),
+    );
+    assert.deepEqual(
+      writes.map(([op]) => op),
+      ['rename', 'rename'],
+    );
+    assert.equal(writes[1][1].oldSecondScene, '');
+    assert.equal(writes[1][1].newSecondScene, '');
+    assert.equal(f.detail().firstScene, '新一级场景');
+    assert.equal(f.detail().commands[0].commandName, '/demo-entry');
+  });
+  await test('deleting a referenced child uses the scene DELETE and keeps unrelated assets', async () => {
+    const f = await fixture({ bound: true });
+    f.scenario.skillCount = 3;
+    await f.workspace.removeScenario(f.scenario);
+    assert.equal(f.calls.find(([op]) => op === 'delete-scene')[1].secondScene, '代码生成');
+    assert.equal(
+      f.calls.some(([op]) => ['refresh', 'unbind'].includes(op)),
+      false,
+    );
+    assert.equal(
+      f.workspace.scenarios.some((item) => item._id === f.scenario._id),
+      false,
+    );
+  });
+  await test('a published Extension rejection leaves the scene and workflow intact', async () => {
+    const f = await fixture({ bound: true });
+    api.deleteScene = async () => ({
+      meta: { isSuccess: false, message: '该场景下存在已发布的Extension，不允许删除' },
+      data: null,
+    });
+    await assert.rejects(() => f.workspace.removeScenario(f.scenario), /Extension/);
+    assert.ok(f.workspace.scenarios.some((item) => item._id === f.scenario._id));
+    assert.ok(f.workspace.workflows.some((item) => item.scenarioId === f.scenario._id));
+  });
+  await test('root deletion requires deleting children first and omits the second scene query key', async () => {
+    const f = await fixture();
+    const root = f.workspace.scenarios.find((item) => item.level === 1);
+    await assert.rejects(() => f.workspace.removeScenario(root), /二级场景/);
+    assert.equal(
+      f.calls.some(([op]) => op === 'delete-scene'),
+      false,
+    );
+    // This fixture keeps an explicit empty root after the last child is deleted.
+    const query = api.querySceneList;
+    let keepRoot = true;
+    api.querySceneList = async () => {
+      const result = await query();
+      return keepRoot && result.data.length === 0
+        ? success([{ firstScene: root.name, secondScene: '', sort: 0 }])
+        : result;
+    };
+    await f.workspace.removeScenario(f.scenario);
+    keepRoot = false;
+    await f.workspace.removeScenario(root);
+    const deletes = f.calls.filter(([op]) => op === 'delete-scene');
+    assert.equal(deletes.length, 2);
+    assert.equal(Object.hasOwn(deletes[1][1], 'secondScene'), false);
+    assert.equal(deletes[1][1].firstScene, '研发');
+  });
+  await test('code lock failure preserves the already migrated scene name for retry', async () => {
+    const f = await fixture({ bound: true });
+    api.updateSecondSceneCode = async () => ({
+      meta: { isSuccess: false, message: 'Extension编码已锁定' },
+    });
+    await assert.rejects(
+      () =>
+        f.workspace.saveWorkflow(f.workflow, {
+          name: '新场景',
+          code: 'demo-new',
+          description: '旧目标',
+        }),
+      /锁定/,
+    );
+    assert.equal(f.workspace.scenarios.find((item) => item._id === f.scenario._id).name, '新场景');
+    assert.equal(f.detail().sceneExtensionCode, 'demo-old');
+    await f.workspace.saveWorkflow(f.workflow, {
+      name: '新场景',
+      code: 'demo-old',
+      description: '旧目标',
+    });
+    assert.equal(f.calls.filter(([op]) => op === 'rename').length, 1);
+  });
+  await test('invalid extension names are rejected on every save before HTTP mutations', async () => {
+    const f = await fixture();
+    for (const code of [
+      '',
+      'demo-',
+      'Demo-name',
+      'demo_name',
+      'demo--name',
+      'other-name',
+      'demo-' + 'x'.repeat(65),
+    ]) {
+      await assert.rejects(
+        () => f.workspace.saveWorkflow(f.workflow, { code, description: '目标' }),
+        /命名|编码/,
+      );
+    }
+    assert.equal(
+      f.calls.some(([op]) => ['refresh', 'rename', 'code', 'meta'].includes(op)),
+      false,
+    );
+  });
+  await test('creating Command and Skill only creates records until the workflow is saved', async () => {
+    const f = await fixture();
+    const item = {
+      _id: 'new-command',
+      name: '/demo-command',
+      description: '入口',
+      owner: '张三 u1',
+      ownerId: 'u1',
+      developer: '李四 u2',
+      developerId: 'u2',
+      version: null,
+    };
+    await f.workspace.createCapability('Command', item);
+    await f.workspace.createCapability('Skill', {
+      ...item,
+      _id: 'new-skill',
+      name: 'demo-skill',
+      assetType: 'Skill',
+      status: 'draft',
+    });
+    assert.deepEqual(
+      f.calls.filter(([op]) => op !== 'detail').map(([op]) => op),
+      ['create', 'create'],
+    );
+  });
+  await test('creation failure returns the API error without attempting attachment', async () => {
+    const f = await fixture();
+    const item = {
+      _id: 'new-agent',
+      name: 'demo-agent',
+      description: '',
+      owner: '',
+      developer: '',
+      version: null,
+      assetType: 'Agent',
+      status: 'draft',
+    };
+    api.createCapability = async () => ({ meta: { success: false, message: '创建失败' } });
+    await assert.rejects(() => f.workspace.createCapability('Agent', item), /创建失败/);
+    assert.equal(
+      f.calls.some(([op]) => op === 'pool-add'),
+      false,
+    );
+  });
+  await test('removing a bound node uses cascade DELETE without explicit unbinding', async () => {
+    const f = await fixture();
+    f.detail().stages[0].steps[0].boundAssets.push({ assetType: 'Skill', assetName: 'demo-skill' });
+    f.workflow.stages[0].steps = [];
+    await f.workspace.saveWorkflow(f.workflow, { code: 'demo-old', description: '旧目标' });
+    const deleted = f.calls.find(([op]) => op === 'delete-activity')[1];
+    assert.equal(deleted.activityNodeName, '编码');
+    assert.equal(deleted.subActivityNodeName, '生成');
+    assert.equal(
+      f.calls.some(([op]) => op === 'unbind'),
+      false,
+    );
+  });
+} finally {
+  await server.close();
+  globalThis.window = previousWindow;
+  globalThis.document = previousDocument;
+  globalThis.HTMLElement = previousHTMLElement;
+}
+if (failed) process.exitCode = 1;

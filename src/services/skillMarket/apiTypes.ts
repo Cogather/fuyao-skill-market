@@ -631,6 +631,93 @@ export type ExpertReviewSubmitBody = {
   overallOpinion?: string;
 };
 
+/** Skill 清单详情中的统一评估查询参数；后端契约确认后可在 service 层集中调整。 */
+export type SkillEvaluationDetailParams = {
+  skillName: string;
+  version: string;
+};
+
+export type SkillEvaluationDimensionDto = {
+  id: string;
+  name: string;
+  score: number;
+  max: number;
+  confidence?: string;
+  low_confidence?: boolean;
+  evidence?: string;
+  rationale?: string;
+  raw_score?: number;
+  adjusted_by_precheck?: boolean;
+  adjustment_reason?: string;
+  derivation_reason?: string;
+};
+
+export type SkillEvaluationFindingDto = {
+  id: string;
+  severity?: string;
+  dimensions?: string[];
+  evidence?: string;
+  message: string;
+};
+
+export type SkillEvaluationImprovementDto = {
+  action: string;
+  linked_finding_ids?: string[];
+  linked_dimensions?: string[];
+};
+
+export type SkillEvaluationCriticalIssueDto =
+  | string
+  | {
+      id?: string;
+      severity?: string;
+      dimensions?: string[];
+      evidence?: string;
+      message?: string;
+      title?: string;
+      description?: string;
+    };
+
+export type SkillEvaluationMetricGlossaryDto = {
+  dimensions?: Record<string, string>;
+  knowledge_ratio?: string;
+  confidence?: string;
+  pattern?: string;
+};
+
+/** Skill 清单详情中的统一评估响应数据。 */
+export type SkillEvaluationDetailDto = {
+  skillName: string;
+  version: string;
+  taskId?: string;
+  state?: string;
+  modelName?: string;
+  total?: number;
+  max?: number;
+  percent?: number;
+  grade?: string;
+  pattern?: string;
+  knowledgeRatio?: {
+    E?: number;
+    A?: number;
+    R?: number;
+  };
+  dimensions?: SkillEvaluationDimensionDto[];
+  findings?: SkillEvaluationFindingDto[];
+  improvements?: SkillEvaluationImprovementDto[];
+  criticalIssues?: SkillEvaluationCriticalIssueDto[];
+  top3Improvements?: string[];
+  metricGlossary?: SkillEvaluationMetricGlossaryDto;
+  createTime?: string;
+  updateTime?: string;
+};
+
+/** 评估接口不返回公共响应中的 code 字段，因此单独定义响应结构。 */
+export type SkillEvaluationDetailResponseDto = {
+  meta: ApiMeta;
+  data: SkillEvaluationDetailDto | null;
+};
+
 /** Skill 清单新增（POST /management/add） */
 export type CreateSkillMasterManagementParams = {
   userId: string;
@@ -638,6 +725,9 @@ export type CreateSkillMasterManagementParams = {
   dimCode: string;
   dimName: string;
 };
+
+/** Skill 清单新增来源：规划（直接新建）/ 引用（从 Skill 广场引入） */
+export type SkillMasterSkillSource = '规划' | '引用';
 
 export type CreateSkillMasterManagementBody = {
   skillName: string;
@@ -647,6 +737,8 @@ export type CreateSkillMasterManagementBody = {
   developOwnerName: string;
   developOwnerId: string;
   planFinishDate: string;
+  /** 来源标识：规划（直接新建）/ 引用（从 Skill 广场引入） */
+  skillSource?: SkillMasterSkillSource;
 };
 
 export type CreateCommandMasterManagementBody = Omit<
@@ -663,6 +755,120 @@ export type CreateAgentMasterManagementBody = Omit<
 > & {
   agentName: string;
   agentDescription: string;
+};
+
+export type HarnessAssetQueryStatus = '开发中' | '待发布' | '已发布';
+
+/** 资产清单统一筛选列表（POST /api/harness/components/query）。 */
+export type QueryHarnessAssetComponentsBody = {
+  userId: string;
+  deptCode?: string;
+  productCode?: string;
+  keyword?: string;
+  status?: HarnessAssetQueryStatus;
+  type: 'AGENT' | 'SKILL' | 'COMMAND' | 'EXTENSION';
+  sortBy: 'updatedAt';
+  sortOrder: 'desc';
+  pageNo: number;
+  pageSize: number;
+};
+
+export type HarnessAssetComponentDto = {
+  name: string;
+  description: string;
+  /** 组件查询记录返回的资产类型。 */
+  type?: QueryHarnessAssetComponentsBody['type'];
+  latestVersion: string | null;
+  status: string;
+  skillId?: string | null;
+  agentId?: string | null;
+  commandId?: string | null;
+  owner?: string | null;
+  developer?: string | null;
+  /** Extension 当前版本的发布人；原子资产不使用。 */
+  publisher?: string | null;
+  /** 兼容组件列表以版本上传人命名发布人的响应。 */
+  uploadedBy?: string | null;
+  category: string;
+  updatedAt: string;
+  dimType?: string | null;
+  dimCode?: string | null;
+  dimName?: string | null;
+  firstScene?: string | null;
+  secondScene?: string | null;
+  canPublish?: boolean;
+  canEdit?: boolean | null;
+};
+
+export type HarnessAssetComponentsResponse = {
+  meta: ApiMeta;
+  data: {
+    records: HarnessAssetComponentDto[];
+    total: number;
+    pageNo: number;
+    pageSize: number;
+  };
+};
+
+/** 点击资产卡片查询详情；Extension 的 name 为二级场景编码。 */
+export type QueryHarnessAssetComponentDetailParams = {
+  userId: string;
+  type: QueryHarnessAssetComponentsBody['type'];
+  name: string;
+};
+
+export type HarnessAssetComponentDetailDto = {
+  name: string;
+  description: string;
+  category: string;
+  ownerName: string | null;
+  ownerId: string | null;
+  developerName: string | null;
+  developerId: string | null;
+  /** 仅明确返回 true 时允许编辑，未返回时使用列表的显式权限。 */
+  canEdit?: boolean | null;
+  type: QueryHarnessAssetComponentsBody['type'];
+  firstScene: string | null;
+  secondScene: string | null;
+  versions: Array<{
+    version: string;
+    uploadedAt: string | null;
+    uploadedBy: string;
+    /** 当前版本对应的来源仓地址。 */
+    reportUrl?: string | null;
+    /** 兼容部分环境返回的来源仓字段名。 */
+    repoUrl?: string | null;
+  }>;
+};
+
+export type QueryExtensionVersionHistoryParams = {
+  userId: string;
+  dimType: string;
+  dimCode: string;
+  name: string;
+  version?: string;
+};
+
+export type ExtensionFrozenComponentDto = {
+  name: string;
+  version: string;
+};
+
+export type ExtensionVersionHistoryDto = {
+  extensionName: string;
+  version: string;
+  description: string;
+  dimType: string;
+  dimCode: string;
+  dimName: string;
+  targetOrgCode: string;
+  targetOrgName: string;
+  operatorName: string;
+  publishStatus: string;
+  releaseType: string;
+  agents: ExtensionFrozenComponentDto[];
+  commands: ExtensionFrozenComponentDto[];
+  skills: ExtensionFrozenComponentDto[];
 };
 
 /** Skill 清单查询（POST /management/query）；字段均可为空 */
@@ -682,6 +888,15 @@ export type QuerySkillMasterManagementBody = {
 };
 
 /** Skill 清单查询行 */
+export type SkillMasterManagementVersionDto = {
+  version: string;
+  uploadedAt?: string | null;
+  mrId?: string | null;
+  repoUrl?: string | null;
+  reportUrl?: string | null;
+  tagName?: string | null;
+};
+
 export type SkillMasterManagementItemDto = {
   id: string | number;
   skillName: string;
@@ -699,6 +914,15 @@ export type SkillMasterManagementItemDto = {
   updatedAt?: number[] | string | null;
   skillMatchId?: string | null;
   skillMatchLevel?: string | null;
+  /** 来源：规划（直接新建）/ 引用（从 Skill 广场引入） */
+  skillSource?: string;
+  referenceCount?: number;
+  planningCount?: number;
+  planningReferenceCount?: number;
+  supplementCount?: number;
+  configCount?: number;
+  relatedPlanningCount?: number;
+  versions?: SkillMasterManagementVersionDto[] | null;
 };
 
 /** Skill 清单更新（PUT /management/update） */
@@ -718,6 +942,8 @@ export type UpdateSkillMasterManagementBody = {
   developOwnerName?: string;
   developOwnerId?: string;
   planFinishDate?: string;
+  /** 来源标识：规划（直接新建）/ 引用（从 Skill 广场引入） */
+  skillSource?: SkillMasterSkillSource;
 };
 
 export type UpdateCommandMasterManagementBody = Omit<

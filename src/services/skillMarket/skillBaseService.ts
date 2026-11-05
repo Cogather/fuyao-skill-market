@@ -1,5 +1,12 @@
 import httpRequest from '@/services/skillMarket/request';
 import type {
+  ExtensionBypassDownloadInput,
+  ExtensionBypassIdentity,
+  ExtensionBypassInheritInput,
+  ExtensionLayoutInput,
+  ExtensionStructureComponent,
+} from './extensionBypassService';
+import type {
   ApiEnvelope,
   BatchDeleteSkillPlanningSupplementBody,
   CreateAgentMasterManagementBody,
@@ -10,8 +17,16 @@ import type {
   CreateSkillMasterManagementParams,
   CreateSkillPlanningSupplementBody,
   ExpertCheckDto,
+  SkillEvaluationDetailParams,
+  SkillEvaluationDetailResponseDto,
   SkillPlanningDepartmentAdminsBody,
   QuerySkillMasterManagementBody,
+  QueryHarnessAssetComponentsBody,
+  HarnessAssetComponentsResponse,
+  QueryHarnessAssetComponentDetailParams,
+  HarnessAssetComponentDetailDto,
+  QueryExtensionVersionHistoryParams,
+  ExtensionVersionHistoryDto,
   QueryHarnessPermissionUsersParams,
   QuerySkillPlanningSupplementParams,
   SkillPlanningSupplementMutationParams,
@@ -38,7 +53,9 @@ export interface SceneOptionGroupRow {
   deptCode: string;
   deptName: string;
   firstScene: string;
+  firstSceneDescription?: string | null;
   secondScene: string;
+  tags: string[];
   sort: number;
   referenceCount: number;
 }
@@ -55,11 +72,11 @@ export interface ActivityOptionGroupRow {
 }
 
 export type ActivityOptionGroupsResponse =
-  | ApiEnvelope<ActivityOptionGroupRow[]>
-  | ActivityOptionGroupRow[];
+  ApiEnvelope<ActivityOptionGroupRow[]> | ActivityOptionGroupRow[];
 
 export interface RefreshTaxonomyItem {
   firstScene?: string;
+  firstSceneDescription?: string | null;
   secondScene?: string;
   activityNodeName?: string;
   subActivityNodeName?: string;
@@ -74,12 +91,63 @@ export interface RefreshActivityOptionGroupsBody {
   activities: RefreshTaxonomyItem[];
 }
 
+export interface QueryHarnessDeptProductsParams {
+  deptCode: string;
+  userName?: string;
+}
+
 const _corecode_env = import.meta.env.VITE_SKILL_CORE_CODE_PROD_URL;
 
 export const corecode = _corecode_env;
 
 export const ai = import.meta.env.VITE_SKILL_CORE_CODE_URL;
 export const webfrondUrl = import.meta.env.VITE_WEBFROND_APP_BASE;
+
+const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+let departmentLinkLogSequence = 0;
+
+function errorResponseData(error: unknown): unknown {
+  if (!error || typeof error !== 'object') return error;
+  const response = (error as Record<string, unknown>).response;
+  if (!response || typeof response !== 'object') return response ?? error;
+  return (response as Record<string, unknown>).data ?? response;
+}
+
+/** HTTP 模式部门选择链路日志：同时保留原始 response，便于排查权限、产品和部门树问题。 */
+function withDepartmentLinkResponseLog<T>(
+  methodName: string,
+  endpoint: string,
+  requestParams: unknown,
+  request: () => Promise<T>,
+): Promise<T> {
+  if (!transportIsHttp) return request();
+
+  departmentLinkLogSequence += 1;
+  const traceId = `dept-link-${Date.now()}-${departmentLinkLogSequence}`;
+  const startedAt = Date.now();
+  return request().then(
+    (response) => {
+      console.info(`[部门选择链路][${methodName}] response`, {
+        traceId,
+        endpoint,
+        requestParams,
+        durationMs: Date.now() - startedAt,
+        response,
+      });
+      return response;
+    },
+    (error: unknown) => {
+      console.error(`[部门选择链路][${methodName}] error response`, {
+        traceId,
+        endpoint,
+        requestParams,
+        durationMs: Date.now() - startedAt,
+        response: errorResponseData(error),
+      });
+      return Promise.reject(error);
+    },
+  );
+}
 
 export const skillBaseService = {
   // 获取用户部门信息
@@ -161,10 +229,51 @@ export const skillBaseService = {
     });
   },
 
+  // skill清单列表引入skill广场列表接口
+  querySkillmarketList: (params: any): any => {
+    return httpRequest.harnessSkill<any>({
+      url: '/management/market-skills',
+      method: 'get',
+      params,
+    });
+  },
+
   // 我的发布列表查询接口
   queryMySkills: (params: any): any => {
     return httpRequest.skill<any>({
       url: '/my',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 组织级发布-当前用户有发布权限的组织列表
+  querySkillOrgPublishOrganizations: (params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/org-publish/orgs',
+      method: 'get',
+      params,
+    });
+  },
+
+  // 组织级发布提交（FormData 创建发布任务，进入解析/校验 -> 组织审批流程）
+  submitSkillOrgPublish: (formData: FormData, params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/org-publish',
+      method: 'post',
+      withCredentials: true,
+      data: formData,
+      params: params,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  // 组织级发布任务清单（进度页）
+  querySkillOrgPublishTasks: (params?: any): any => {
+    return httpRequest.skill<any>({
+      url: '/org-publish/tasks',
       method: 'get',
       params,
     });
@@ -427,6 +536,37 @@ export const skillBaseService = {
   exportSkillPlanningSupplement: (params: SkillTransferParams): Promise<ApiEnvelope<string>> => {
     return httpRequest.harnessSkill<ApiEnvelope<string>>({
       url: '/config/supplement/export',
+      method: 'get',
+      params,
+    });
+  },
+
+  /** 资产页的统一筛选列表。 */
+  queryHarnessAssetComponents: (
+    body: QueryHarnessAssetComponentsBody,
+  ): Promise<HarnessAssetComponentsResponse> => {
+    return httpRequest.api<HarnessAssetComponentsResponse>({
+      url: '/v1/harness/plans/components/query',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  queryHarnessAssetComponentDetail: (
+    params: QueryHarnessAssetComponentDetailParams,
+  ): Promise<ApiEnvelope<HarnessAssetComponentDetailDto>> => {
+    return httpRequest.api<ApiEnvelope<HarnessAssetComponentDetailDto>>({
+      url: '/v1/harness/plans/components/detail',
+      method: 'get',
+      params,
+    });
+  },
+
+  queryExtensionVersionHistory: (
+    params: QueryExtensionVersionHistoryParams,
+  ): Promise<ApiEnvelope<ExtensionVersionHistoryDto>> => {
+    return httpRequest.harnessApi<ApiEnvelope<ExtensionVersionHistoryDto>>({
+      url: '/extensions/version-history',
       method: 'get',
       params,
     });
@@ -804,15 +944,141 @@ export const skillBaseService = {
     });
   },
 
+  // Extension 相关接口
+  uploadExtensionBypass: (data: FormData): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass', method: 'POST', data }),
+  clearExtensionBypass: (params: ExtensionBypassIdentity): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass/clear', method: 'POST', params }),
+  updateExtensionLayout: (params: ExtensionLayoutInput): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/layout', method: 'POST', params }),
+  queryExtensionStructureTree: ({
+    userId,
+    ...data
+  }: ExtensionLayoutInput & { components: ExtensionStructureComponent[] }): Promise<unknown> =>
+    httpRequest.harnessApi({
+      url: '/extensions/structure/tree',
+      method: 'POST',
+      params: { userId },
+      headers: { 'Content-Type': 'application/json' },
+      data,
+    }),
+  getExtensionBypassDownload: (params: ExtensionBypassDownloadInput): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass/download', method: 'GET', params }),
+  inheritExtensionBypass: (
+    params: { userId: string },
+    data: Omit<ExtensionBypassInheritInput, 'userId'>,
+  ): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/bypass/inherit', method: 'POST', params, data }),
+  searchExtensions: (params: {
+    userId: string;
+    keyword: string;
+    pageNum: number;
+    pageSize: number;
+  }): Promise<unknown> =>
+    httpRequest.harnessApi({ url: '/extensions/search', method: 'GET', params }),
+  // 查询用户可发布组织列表
+  queryUserPublishableOrgs: (params: { userId: string; dimType: string; dimCode: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/extensions/orgs',
+      method: 'get',
+      params,
+    });
+  },
+  // 查询场景及绑定规划件
+  querySceneAndBindingPlanningItems: (params: { userId: string }, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scenes/bindings',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+  // Extension 保存
+  saveExtension: (params: any, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/extensions',
+      method: 'POST',
+      data: { ...body, inheritBypass: body.inheritBypass ?? true },
+      params,
+    });
+  },
+  // 查询发布历史清单
+  queryPublishedHistoryList: (body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/extensions/history',
+      method: 'post',
+      data: body,
+    });
+  },
+  // 规划件目录树
+  queryPlanningItemTree: (params: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/packages/tree',
+      method: 'get',
+      params,
+    });
+  },
+  // 规划件文件内容
+  queryPlanningItemContent: (params: any): Promise<unknown> => {
+    return httpRequest.harnessApi<unknown>({
+      url: '/packages/file',
+      method: 'get',
+      params,
+    });
+  },
+
+  // Extension 重试发布
+  retryPublishExtension: (id: string, params: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: `/extensions/${id}/retry`,
+      method: 'post',
+      params,
+    });
+  },
+
+  // Agent / Skill / Command 独立发布
+  publishHarnessAssets: (params: { userId: string; userName: string }, body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/assets/publish',
+      method: 'post',
+      data: body,
+      params,
+    });
+  },
+
+  // Agent / Skill / Command 发布历史
+  queryHarnessAssetPublishHistory: (body: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/assets/publish/history',
+      method: 'post',
+      data: body,
+    });
+  },
+
+  // Agent / Skill / Command 独立发布失败重试
+  retryHarnessAssetPublish: (taskId: string, params: { userId: string }): any => {
+    return httpRequest.harnessApi<any>({
+      url: `/assets/publish/${encodeURIComponent(taskId)}/retry`,
+      method: 'post',
+      params,
+    });
+  },
+
   // harness 查询接口
 
   // 查询当前用户的部门管理权限（有哪些部门可以管理）
   queryHarnessDeptPermissions: (params: { userId: string }): any => {
-    return httpRequest.harnessApi<any>({
-      url: '/permission/user-depts',
-      method: 'get',
-      params, // { userId }
-    });
+    return withDepartmentLinkResponseLog(
+      'queryHarnessDeptPermissions',
+      '/api/harness/permission/user-depts',
+      params,
+      () =>
+        httpRequest.harnessApi<any>({
+          url: '/permission/user-depts',
+          method: 'get',
+          params, // { userId }
+        }),
+    );
   },
 
   // harness 权限人员列表查询
@@ -835,12 +1101,18 @@ export const skillBaseService = {
 
   // 产品
   // 查询某个部门的产品列表
-  queryHarnessDeptProducts: (params: { deptCode: string }): any => {
-    return httpRequest.harnessApi<any>({
-      url: '/smapi-product-by-dept',
-      method: 'get',
-      params, // { deptCode }
-    });
+  queryHarnessDeptProducts: (params: QueryHarnessDeptProductsParams): any => {
+    return withDepartmentLinkResponseLog(
+      'queryHarnessDeptProducts',
+      '/api/harness/smapi-product-by-dept',
+      params,
+      () =>
+        httpRequest.harnessApi<any>({
+          url: '/smapi-product-by-dept',
+          method: 'get',
+          params,
+        }),
+    );
   },
 
   // 获取场景列表
@@ -886,6 +1158,24 @@ export const skillBaseService = {
       method: 'post',
       params,
       data: body,
+    });
+  },
+
+  // 查询场景可选标签列表（后端契约待对齐，暂定 GET /scene-activity/scene/tags）
+  querySceneTags: (): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scene-tag/tags',
+      method: 'get',
+    });
+  },
+
+  // 保存一级场景标签绑定（后端契约待对齐，暂定 POST /scene-activity/scene/tags）
+  saveSceneTags: (body: any, params: any): any => {
+    return httpRequest.harnessApi<any>({
+      url: '/scene-tag/bindings/refresh',
+      method: 'post',
+      data: body,
+      params,
     });
   },
 
@@ -959,6 +1249,20 @@ export const skillBaseService = {
   getSkillReviewDetail: (skillId: string, params: any): any => {
     return httpRequest.skill<any>({
       url: `/review/${skillId}/detail`,
+      method: 'get',
+      params,
+    });
+  },
+
+  /**
+   * Skill 清单详情中的统一评估接口。
+   * 查询参数仅包含 skillName 和 version。
+   */
+  getSkillEvaluationDetail: (
+    params: SkillEvaluationDetailParams,
+  ): Promise<SkillEvaluationDetailResponseDto> => {
+    return httpRequest.api<SkillEvaluationDetailResponseDto>({
+      url: '/v1/harness/plans/skill/eval',
       method: 'get',
       params,
     });
@@ -1138,15 +1442,7 @@ export const skillBaseService = {
    * 对接后端 SkillBatchPublishController
    */
 
-  // 1. 部门树
-  queryDeptReviewDepartments: (): any => {
-    return httpRequest.api<any>({
-      url: 'versioninfo/v1/hrms/departments/product/ai',
-      method: 'get',
-    });
-  },
-
-  // 1.1 可视部门树（用于部门评审可选性控制）
+  // 1. 可视部门树（用于部门评审可选性控制）
   queryVisibleDepts: (params?: { userId?: string }): any => {
     return httpRequest.api<any>({
       url: '/api/skills/personal-batch/visible-depts',

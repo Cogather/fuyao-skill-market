@@ -30,3 +30,9 @@ package-lock.json
 # Keep source tree TypeScript/Vue only.
 src/**/*.js
 src/**/*.jsx
+
+# Playwright
+.npm-cache/
+.pw-browsers/
+playwright-report/
+test-results/

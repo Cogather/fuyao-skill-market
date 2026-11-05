@@ -19,6 +19,7 @@ import {
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import type { HarnessDepartmentSnapshot } from '../../types/harnessFilterMemory';
 
 type DepartmentNode = {
   id?: string;
@@ -55,6 +56,7 @@ const props = withDefaults(
     ownerDepartments?: HarnessAuthorizedDepartment[];
     allowedDepartmentNames?: string[];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessDepartmentSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -63,8 +65,13 @@ const props = withDefaults(
     ownerDepartments: () => [],
     allowedDepartmentNames: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessDepartmentSnapshot];
+}>();
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
 const DEPARTMENT_PERMISSION_MAX_DEPTH = 3;
@@ -567,11 +574,19 @@ async function reload(): Promise<void> {
     return;
   }
 
+  const restoredOption = props.initialScope
+    ? ownerManageableDepartmentOptions.value.find((option) =>
+        sameDepartmentPath(option.path, props.initialScope?.departmentPath ?? []),
+      )
+    : undefined;
   const currentOption =
     ownerManageableDepartmentOptions.value.find((option) =>
       sameDepartmentPath(option.path, selectedDepartmentPath.value),
-    ) ?? ownerOptions[0];
+    ) ??
+    restoredOption ??
+    ownerOptions[0];
   selectedDepartmentPath.value = [...currentOption.path];
+  emit('scope-change', { departmentPath: [...currentOption.path] });
 
   if (transportIsHttp) {
     const userId = props.userId.trim();
@@ -738,6 +753,7 @@ function selectDepartment(path: string[]): void {
     return;
   }
   selectedDepartmentPath.value = [...path];
+  emit('scope-change', { departmentPath: [...path] });
   closePersonSearch();
   if (transportIsHttp) {
     reloadSafely();
@@ -1079,11 +1095,16 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .permission-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 18px;
   color: #17233d;
 }
 .permission-hero {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1147,7 +1168,9 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 .permission-workspace {
-  min-height: 430px;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid #dfe6f1;
   border-radius: 12px;
@@ -1155,8 +1178,13 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 30px rgba(35, 52, 84, 0.06);
 }
 .member-pane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   padding: 20px;
+  box-sizing: border-box;
 }
 .member-pane__head {
   display: flex;
@@ -1299,6 +1327,8 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 .member-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   border: 1px solid #e4e9f1;
   border-radius: 9px;
@@ -1535,6 +1565,15 @@ onBeforeUnmount(() => {
   font-size: 9px;
 }
 @media (max-width: 980px) {
+  .permission-panel {
+    height: auto;
+    overflow: visible;
+  }
+
+  .permission-workspace {
+    flex: 0 0 auto;
+  }
+
   .permission-hero,
   .member-pane__head {
     align-items: stretch;
@@ -1584,5 +1623,14 @@ onBeforeUnmount(() => {
   .member-pane__head strong {
     font-size: clamp(16px, 1vw, 20px);
   }
+}
+/* The permission confirmation is teleported outside the Harness shell. */
+:where(body:has(.harness-management-shell)) .permission-dialog footer button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
 }
 </style>

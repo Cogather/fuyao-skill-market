@@ -40,6 +40,8 @@ const props = withDefaults(
     searchable?: boolean;
     searchPlaceholder?: string;
     disabled?: boolean;
+    matchTriggerWidth?: boolean;
+    panelRightAnchor?: HTMLElement | null;
   }>(),
   {
     maxLevel: 6,
@@ -52,6 +54,7 @@ const props = withDefaults(
     searchable: false,
     searchPlaceholder: '搜索部门',
     disabled: false,
+    matchTriggerWidth: false,
     allLabel: '全部部门',
     emptyText: '暂无部门数据（可先调整组织/分类或等待列表加载）',
     clearText: '清空部门',
@@ -247,6 +250,8 @@ function updatePanelLayout(): void {
   const rect = wrap.getBoundingClientRect();
   const margin = 16;
   const fromLeft = Math.max(0, rect.left);
+  const alignedRight = props.panelRightAnchor?.getBoundingClientRect().right ?? rect.right;
+  const alignedWidth = Math.max(rect.width, alignedRight - fromLeft);
   const usable = Math.max(220, Math.floor(window.innerWidth - fromLeft - margin));
   const gap = 4;
   const availableBelow = Math.max(0, window.innerHeight - rect.bottom - margin - gap);
@@ -264,9 +269,9 @@ function updatePanelLayout(): void {
     ? Math.max(margin, Math.floor(rect.top - renderedHeight - gap))
     : Math.floor(rect.bottom + gap);
   panelLayout.value = {
-    left: Math.floor(fromLeft),
+    left: fromLeft,
     top: Math.floor(rect.bottom + 4),
-    maxWidth: Math.min(720, usable),
+    maxWidth: Math.min(props.matchTriggerWidth ? alignedWidth : 720, usable),
   };
   if (panelLayout.value) panelLayout.value.top = nextTop;
   panelMaxHeight.value = maxHeight;
@@ -281,6 +286,7 @@ const panelStyle = computed((): CSSProperties => {
     position: 'fixed',
     left: `${layout.left}px`,
     top: `${layout.top}px`,
+    ...(props.matchTriggerWidth ? { width: `${layout.maxWidth}px` } : {}),
     maxWidth: `${layout.maxWidth}px`,
     maxHeight: `${panelMaxHeight.value}px`,
     zIndex: 2400,
@@ -380,6 +386,8 @@ function onDocumentKeydown(event: KeyboardEvent): void {
   }
 }
 
+watch(() => props.panelRightAnchor, updatePanelLayout, { flush: 'post' });
+
 watch(open, (isOpen) => {
   panelScrollCleanup?.();
   panelScrollCleanup = null;
@@ -421,6 +429,7 @@ onBeforeUnmount(() => {
       class="market-dept-cascader-trigger"
       :class="{ 'is-open': open }"
       :disabled="disabled"
+      :aria-label="ariaLabel"
       aria-haspopup="true"
       :aria-expanded="open"
       @click.stop="toggle"
@@ -436,6 +445,7 @@ onBeforeUnmount(() => {
         v-if="open"
         ref="panelRef"
         class="market-dept-cascader-panel"
+        :class="{ 'market-dept-cascader-panel--wide': matchTriggerWidth }"
         :style="panelStyle"
         role="listbox"
         @mousedown.stop
@@ -600,6 +610,12 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 
+.market-dept-cascader-panel--wide,
+.market-dept-cascader-panel--wide .market-dept-cascader-results,
+.market-dept-cascader-panel--wide .market-dept-cascader-result {
+  min-width: 0;
+}
+
 .market-dept-cascader-search {
   position: relative;
   display: flex;
@@ -696,6 +712,11 @@ onBeforeUnmount(() => {
 
 .market-dept-cascader-col:last-of-type {
   border-right: 0;
+}
+
+.market-dept-cascader-panel--wide .market-dept-cascader-col {
+  flex: 1 0 140px;
+  max-width: none;
 }
 
 .market-dept-cascader-item {

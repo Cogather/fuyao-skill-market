@@ -1,4 +1,4 @@
-import { skillBaseService } from './skillBaseService';
+import { skillBaseService, type QueryHarnessDeptProductsParams } from './skillBaseService';
 import type {
   ApiEnvelope,
   CreateSkillPlanningSupplementBody,
@@ -386,7 +386,7 @@ function toSkillTransferParams(query: SkillPlanningQuery): SkillTransferParams {
   });
 }
 
-function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
+export function normalizeProductPlanningOptions(response: unknown): ProductPlanningOption[] {
   assertHttpSuccess(response, '产品列表加载失败');
   const data = unwrapResponseData<unknown>(response);
   const source = Array.isArray(data)
@@ -501,7 +501,7 @@ function readDeepestDepartment(record: Record<string, unknown>): string {
   return hwDepartment || readFirstText(record, userDepartmentKeys);
 }
 
-function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOption[] {
+export function normalizeUserDepartmentOptions(response: unknown): SkillPlanningUserOption[] {
   const data = unwrapResponseData<unknown>(response);
   const source = Array.isArray(data)
     ? data
@@ -651,6 +651,7 @@ export async function getProductPlanning(
   offeringName: string,
   planningDeptName: string,
   deptCode: string,
+  userName?: string,
 ): Promise<ProductPlanningOption[]> {
   const params = {
     offeringName: normalizeText(offeringName),
@@ -669,9 +670,11 @@ export async function getProductPlanning(
     );
   }
 
-  const response = await skillBaseService.queryHarnessDeptProducts({
+  const productParams: QueryHarnessDeptProductsParams = {
     deptCode: normalizedDeptCode,
-  });
+    ...(userName !== undefined ? { userName: normalizeText(userName) } : {}),
+  };
+  const response = await skillBaseService.queryHarnessDeptProducts(productParams);
   const keyword = params.offeringName.toLowerCase();
   return normalizeProductPlanningOptions(response)
     .map((option) => ({
@@ -694,10 +697,6 @@ export async function querySkillPlanningUsers(info = ''): Promise<SkillPlanningU
 export async function querySkillPlanningSupplement(
   query: SkillPlanningQuery = {},
 ): Promise<SkillPlanningListResult> {
-  if (!useHttpTransport()) {
-    return (await loadMockService()).querySkillPlanningSupplement(query);
-  }
-
   // 新版 GET 接口只接收维度、关键词和分页；表头多选条件需要在当前维度全集上细化。
   if (hasHttpPlanningHeaderFilters(query)) {
     return queryHttpPlanningWithHeaderFilters(query);

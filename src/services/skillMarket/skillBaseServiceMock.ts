@@ -1,6 +1,7 @@
-﻿import PizZip from 'pizzip';
+import PizZip from 'pizzip';
 import type { AxiosRequestConfig } from 'axios';
 import type { Skill, SkillVersionEntry } from '../../types/skill';
+import type { SkillEvaluationDetailDto } from './apiTypes';
 import { buildOpsDashboardBundle, parseDeptNamePath } from '../../utils/opsExcelImport';
 import { stableNumericId } from './mappers';
 import { getBuiltInSkills } from './mock/builtInSkills';
@@ -151,10 +152,21 @@ type MockSkillMasterManagementRecord = {
   updatedAt: number[];
   skillMatchId: string | null;
   skillMatchLevel: string | null;
+  /** created 直接新建 / imported 从 Skill 广场引入 */
+  skillSource: 'created' | 'imported';
+  versions?: Array<{
+    version: string;
+    uploadedAt: string;
+    mrId?: string;
+    repoUrl?: string;
+    reportUrl?: string;
+    tagName?: string | null;
+  }>;
 };
 
 type MockSkillPlanningSupplementRecord = {
   id: string;
+  skillId?: string;
   skillName: string;
   name?: string;
   firstScene: string;
@@ -227,6 +239,253 @@ const mockSkillPlanningSupplementRecords: MockSkillPlanningSupplementRecord[] = 
 
 const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
   {
+    id: '504',
+    skillName: '流水线失败诊断 Skill',
+    skillDescription: '分析流水线日志和失败节点，输出定位结论与恢复建议',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李明',
+    developOwnerId: 'w30000006',
+    status: '已完成',
+    planFinishDate: '2026-08-18',
+    createdAt: [2026, 7, 10, 9, 0, 0, 0],
+    updatedAt: [2026, 8, 18, 18, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [
+      { version: '0.9.0', uploadedAt: '2026-08-10 10:00:00' },
+      { version: '1.0.0', uploadedAt: '2026-08-18 18:00:00' },
+      {
+        version: '1.1.0',
+        uploadedAt: '2026-09-01 10:00:00',
+        repoUrl: 'https://git.example.com/fuyao/skill/504',
+        reportUrl: 'https://git.example.com/fuyao/skill/504?ref=1.1.0',
+      },
+    ],
+  },
+  {
+    id: '505',
+    skillName: '发布风险扫描 Skill',
+    skillDescription: '扫描发布变更、依赖服务和历史事故，生成风险检查清单',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '李四',
+    ownerId: 'w30000002',
+    developOwnerName: '周扬',
+    developOwnerId: 'w30000007',
+    status: '进行中',
+    planFinishDate: '2026-09-08',
+    createdAt: [2026, 8, 1, 9, 0, 0, 0],
+    updatedAt: [2026, 8, 25, 19, 39, 59, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'imported',
+    versions: [
+      { version: '1.9.0', uploadedAt: '2026-08-20 10:00:00' },
+      { version: '1.10.0', uploadedAt: '2026-08-25 19:39:59' },
+    ],
+  },
+  {
+    id: '506',
+    skillName: '交付指标汇总 Skill',
+    skillDescription: '汇总构建成功率、平均耗时和发布频次等交付指标',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '王五',
+    ownerId: 'w30000003',
+    developOwnerName: '陈七',
+    developOwnerId: 'w30000008',
+    status: '进行中',
+    planFinishDate: '2026-09-15',
+    createdAt: [2026, 8, 5, 10, 0, 0, 0],
+    updatedAt: [2026, 8, 24, 15, 30, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [
+      { version: '0.0.1', uploadedAt: '2026-08-15 10:00:00' },
+      { version: '0.0.2', uploadedAt: '2026-08-24 15:30:00' },
+    ],
+  },
+  {
+    id: '507',
+    skillName: '流水线配置巡检 Skill',
+    skillDescription: '巡检流水线配置完整性、权限和环境变量引用情况',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '赵六',
+    ownerId: 'w30000004',
+    developOwnerName: '刘岚',
+    developOwnerId: 'w30000009',
+    status: '未开始',
+    planFinishDate: '2026-09-28',
+    createdAt: [2026, 8, 10, 11, 0, 0, 0],
+    updatedAt: [2026, 8, 20, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '508',
+    skillName: '发布回滚预案校验 Skill',
+    skillDescription: '校验发布单中的回滚步骤、依赖备份和恢复验证项是否完整',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '孙睿',
+    ownerId: 'w30000010',
+    developOwnerName: '林晓',
+    developOwnerId: 'w30000011',
+    status: '开发中',
+    planFinishDate: '2026-09-30',
+    createdAt: [2026, 8, 18, 9, 20, 0, 0],
+    updatedAt: [2026, 8, 31, 17, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '509',
+    skillName: '变更窗口冲突检测 Skill',
+    skillDescription: '识别同一服务、集群或共享依赖上的发布时间冲突与冻结期风险',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '陈宇',
+    ownerId: 'w30000012',
+    developOwnerName: '郑宁',
+    developOwnerId: 'w30000013',
+    status: '开发中',
+    planFinishDate: '2026-10-03',
+    createdAt: [2026, 8, 19, 10, 0, 0, 0],
+    updatedAt: [2026, 8, 30, 16, 10, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '510',
+    skillName: '依赖服务健康预检 Skill',
+    skillDescription: '在发布前检查上下游服务、关键接口与基础资源健康状态',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline-valid',
+    dimName: 'harness-pipeline',
+    ownerName: '郭文',
+    ownerId: 'w30000014',
+    developOwnerName: '高远',
+    developOwnerId: 'w30000015',
+    status: '开发中',
+    planFinishDate: '2026-10-08',
+    createdAt: [2026, 8, 20, 14, 30, 0, 0],
+    updatedAt: [2026, 8, 29, 15, 45, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '604',
+    skillName: 'Harness 流水线失败根因分析 Skill',
+    skillDescription: '聚合 Harness 执行日志、步骤状态与历史失败样本，输出根因和修复建议',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '张三',
+    ownerId: 'w30000001',
+    developOwnerName: '李明',
+    developOwnerId: 'w30000006',
+    status: '已完成',
+    planFinishDate: '2026-09-18',
+    createdAt: [2026, 8, 12, 9, 30, 0, 0],
+    updatedAt: [2026, 9, 19, 16, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [
+      { version: '0.9.0', uploadedAt: '2026-09-08 14:00:00' },
+      { version: '1.0.0', uploadedAt: '2026-09-18 18:10:00' },
+      {
+        version: '1.1.0',
+        uploadedAt: '2026-09-19 16:20:00',
+        repoUrl: 'https://git.example.com/fuyao/skill/604',
+        reportUrl: 'https://git.example.com/fuyao/skill/604?ref=1.1.0',
+      },
+    ],
+  },
+  {
+    id: '605',
+    skillName: 'Harness 部署风险门禁 Skill',
+    skillDescription: '在部署前识别变更范围、服务依赖和历史事故风险，生成可执行的门禁结论',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '李四',
+    ownerId: 'w30000002',
+    developOwnerName: '周扬',
+    developOwnerId: 'w30000007',
+    status: '进行中',
+    planFinishDate: '2026-10-05',
+    createdAt: [2026, 9, 1, 10, 0, 0, 0],
+    updatedAt: [2026, 9, 24, 17, 45, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'imported',
+    versions: [
+      { version: '0.6.0', uploadedAt: '2026-09-12 11:30:00' },
+      { version: '0.7.0', uploadedAt: '2026-09-24 17:45:00' },
+    ],
+  },
+  {
+    id: '606',
+    skillName: 'Harness 流水线模板生成 Skill',
+    skillDescription: '根据服务技术栈、构建规则和目标环境生成标准化 Harness 流水线模板',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '王五',
+    ownerId: 'w30000003',
+    developOwnerName: '陈七',
+    developOwnerId: 'w30000008',
+    status: '开发中',
+    planFinishDate: '2026-10-15',
+    createdAt: [2026, 9, 10, 9, 15, 0, 0],
+    updatedAt: [2026, 9, 27, 15, 20, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
+    id: '607',
+    skillName: 'Harness 环境漂移巡检 Skill',
+    skillDescription: '对比预期配置与各部署环境的实际参数，标记密钥、变量和服务版本偏差',
+    dimType: '产品级',
+    dimCode: 'offering-harness-pipeline',
+    dimName: 'Harness 流水线平台',
+    ownerName: '赵六',
+    ownerId: 'w30000004',
+    developOwnerName: '刘岚',
+    developOwnerId: 'w30000009',
+    status: '未开始',
+    planFinishDate: '2026-10-22',
+    createdAt: [2026, 9, 25, 11, 0, 0, 0],
+    updatedAt: [2026, 9, 25, 11, 0, 0, 0],
+    skillMatchId: null,
+    skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
+  },
+  {
     id: '501',
     skillName: '稳定性日报 Skill',
     skillDescription: '汇总稳定性指标并生成日报摘要',
@@ -243,6 +502,12 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 6, 26, 18, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [
+      { version: '0.0.2', uploadedAt: '2026-06-20 18:00:00' },
+      { version: '0.0.3', uploadedAt: '2026-06-26 18:00:00' },
+      { version: '0.0.4', uploadedAt: '2026-07-03 18:00:00' },
+    ],
   },
   {
     id: '502',
@@ -261,6 +526,11 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 7, 20, 11, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'imported',
+    versions: [
+      { version: '1.9.0', uploadedAt: '2026-07-18 11:00:00' },
+      { version: '1.10.0', uploadedAt: '2026-07-20 11:00:00' },
+    ],
   },
   {
     id: '503',
@@ -279,8 +549,74 @@ const mockSkillMasterManagementRecords: MockSkillMasterManagementRecord[] = [
     updatedAt: [2026, 7, 10, 8, 0, 0, 0],
     skillMatchId: null,
     skillMatchLevel: null,
+    skillSource: 'created',
+    versions: [],
   },
 ];
+
+type MockSkillDetailsPatch = Pick<
+  MockSkillMasterManagementRecord,
+  'skillName' | 'skillDescription'
+> &
+  Partial<
+    Pick<
+      MockSkillMasterManagementRecord,
+      'ownerName' | 'ownerId' | 'developOwnerName' | 'developOwnerId' | 'planFinishDate'
+    >
+  >;
+const SKILL_DETAILS_STORAGE_KEY = 'harness-mock-skill-details-v1';
+const savedSkillDetails: Record<string, MockSkillDetailsPatch> = {};
+if (typeof window !== 'undefined') {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SKILL_DETAILS_STORAGE_KEY) || '{}');
+    for (const record of mockSkillMasterManagementRecords) {
+      const patch = saved?.[record.id];
+      if (
+        !patch ||
+        typeof patch.skillName !== 'string' ||
+        typeof patch.skillDescription !== 'string'
+      )
+        continue;
+      const clean: MockSkillDetailsPatch = {
+        skillName: patch.skillName,
+        skillDescription: patch.skillDescription,
+      };
+      for (const key of [
+        'ownerName',
+        'ownerId',
+        'developOwnerName',
+        'developOwnerId',
+        'planFinishDate',
+      ] as const) {
+        if (typeof patch[key] === 'string') clean[key] = patch[key];
+      }
+      Object.assign(record, clean);
+      savedSkillDetails[record.id] = clean;
+    }
+  } catch {
+    /* An invalid local draft must not prevent loading Mock fixtures. */
+  }
+}
+
+export function getMockSkillMasterManagementRecord(
+  id: string,
+): MockSkillMasterManagementRecord | undefined {
+  const record = mockSkillMasterManagementRecords.find((item) => item.id === id);
+  return record ? { ...record } : undefined;
+}
+
+export function updateMockSkillMasterManagementDetails(
+  id: string,
+  patch: MockSkillDetailsPatch,
+): void {
+  const record = mockSkillMasterManagementRecords.find((item) => item.id === id);
+  if (!record) throw new Error('未找到对应资产，请刷新后重试');
+  const next = { ...savedSkillDetails, [id]: { ...savedSkillDetails[id], ...patch } };
+  if (typeof window !== 'undefined')
+    window.localStorage.setItem(SKILL_DETAILS_STORAGE_KEY, JSON.stringify(next));
+  Object.assign(savedSkillDetails, next);
+  Object.assign(record, patch, { updatedAt: nowLocalDateTimeArray() });
+}
 
 function readSkillRequestBody(data: unknown): unknown {
   if (data === undefined || data === null || data === '') {
@@ -579,12 +915,22 @@ type MockAiReviewDimensionScore = {
   deductionBreakdown: string;
 };
 
+type MockAiReviewIssue = {
+  issueId: string;
+  severity: 'high' | 'medium' | 'low' | 'suggestion';
+  title: string;
+  description: string;
+  evidence: string;
+  dimension: string;
+};
+
 type MockAiReviewDetail = {
   aiModel: string;
   evaluateTime: string;
   aiScore: number;
   dimensionScores: MockAiReviewDimensionScore[];
-  advices: Record<'SKILL.md' | 'references' | 'scripts', string>;
+  advices: Record<string, string>;
+  issues: MockAiReviewIssue[];
 };
 
 type MockCurrentUserReview = {
@@ -776,6 +1122,209 @@ let syncDone: MockSyncRow[] = [
     completedAt: '2026-04-21 18:06',
   },
 ];
+
+/** ============== 组织级 Skill 发布（弹窗 + 任务进度页）Mock ============== */
+
+let mockOrgPublishOrgOptions: {
+  orgId: string;
+  orgCode: string;
+  orgName: string;
+  owner: string;
+}[] = [
+  { orgId: 'org-fuyao', orgCode: 'ORG_FUYAO', orgName: '扶摇组织', owner: '张三（zhangsan）' },
+  { orgId: 'org-yunshan', orgCode: 'ORG_YUNSHAN', orgName: '云山组织', owner: '李四（lisi）' },
+  { orgId: 'org-haichuan', orgCode: 'ORG_HAICHUAN', orgName: '海川组织', owner: '王五（wangwu）' },
+];
+
+type MockOrgPublishTask = {
+  id: string;
+  skillName: string;
+  version: string;
+  publisher: string;
+  publisherName: string;
+  targetOrgId: string;
+  targetOrgName: string;
+  publishDate: string;
+  status: 'processing' | 'pending_approval' | 'success' | 'rejected';
+  approvalUrl?: string;
+  finishedDate?: string | null;
+  rejectReason?: string | null;
+  submittedAtMs: number;
+};
+
+/** mock 里校验约 15s 后自动流转到「待审批」 */
+const MOCK_ORG_VALIDATING_MS = 15_000;
+
+function mockOrgNamesFromUserId(userId: string): string {
+  const user =
+    MOCK_USER_DEPARTMENT_OPTIONS.find((item) => item.id === userId) ??
+    MOCK_USER_DEPARTMENT_OPTIONS[0];
+  return user?.chName ?? userId;
+}
+
+function mockOrgUniqueSkillSlug(): string {
+  return `org-skill-${String(Date.now() % 100_000).padStart(5, '0')}`;
+}
+
+function mockOrgSeedMs(days: number, hour = 0, minute = 0): number {
+  return Date.now() - days * 24 * 60 * 60 * 1000 - hour * 60 * 60 * 1000 - minute * 60 * 1000;
+}
+
+let mockOrgPublishTasks: MockOrgPublishTask[] = [
+  {
+    id: 'org-task-91001',
+    skillName: '接口用例生成 Skill',
+    version: '1.0.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-fuyao',
+    targetOrgName: '扶摇组织',
+    publishDate: '2026-10-19 09:32',
+    status: 'processing',
+    finishedDate: null,
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(0, 0, 40),
+  },
+  {
+    id: 'org-task-91002',
+    skillName: '日志分析 Skill',
+    version: '1.3.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-haichuan',
+    targetOrgName: '海川组织',
+    publishDate: '2026-10-18 16:48',
+    status: 'pending_approval',
+    approvalUrl: 'https://fuyao.example.com/approval/center?task=org-task-91002',
+    finishedDate: null,
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(1),
+  },
+  {
+    id: 'org-task-91003',
+    skillName: 'PDF 表格抽取 Skill',
+    version: '2.1.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-fuyao',
+    targetOrgName: '扶摇组织',
+    publishDate: '2026-10-17 11:20',
+    status: 'pending_approval',
+    approvalUrl: 'https://fuyao.example.com/approval/center?task=org-task-91003',
+    finishedDate: null,
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(2),
+  },
+  {
+    id: 'org-task-91004',
+    skillName: 'SQL 语句优化 Skill',
+    version: '1.2.3',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-yunshan',
+    targetOrgName: '云山组织',
+    publishDate: '2026-10-16 14:05',
+    status: 'pending_approval',
+    approvalUrl: 'https://fuyao.example.com/approval/center?task=org-task-91004',
+    finishedDate: null,
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(3),
+  },
+  {
+    id: 'org-task-91005',
+    skillName: '前端组件脚手架 Skill',
+    version: '0.9.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-fuyao',
+    targetOrgName: '扶摇组织',
+    publishDate: '2026-10-14 10:21',
+    status: 'success',
+    finishedDate: '2026-10-15 09:12',
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(5),
+  },
+  {
+    id: 'org-task-91006',
+    skillName: '单测自动生成 Skill',
+    version: '2.1.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-yunshan',
+    targetOrgName: '云山组织',
+    publishDate: '2026-10-11 15:40',
+    status: 'success',
+    finishedDate: '2026-10-13 09:12',
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(8),
+  },
+  {
+    id: 'org-task-91007',
+    skillName: '文档格式化 Skill',
+    version: '1.1.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-haichuan',
+    targetOrgName: '海川组织',
+    publishDate: '2026-10-07 09:55',
+    status: 'success',
+    finishedDate: '2026-10-08 17:26',
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(12),
+  },
+  {
+    id: 'org-task-91008',
+    skillName: '接口 Mock 生成 Skill',
+    version: '1.0.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-fuyao',
+    targetOrgName: '扶摇组织',
+    publishDate: '2026-10-09 11:05',
+    status: 'rejected',
+    finishedDate: '2026-10-10 17:36',
+    rejectReason: '描述缺少使用场景与限制条件，请补充后重新提交。',
+    submittedAtMs: mockOrgSeedMs(10),
+  },
+  {
+    id: 'org-task-91009',
+    skillName: '会议纪要摘要 Skill',
+    version: '1.0.1',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-yunshan',
+    targetOrgName: '云山组织',
+    publishDate: '2026-10-05 19:12',
+    status: 'fail',
+    finishedDate: '2026-10-06 10:40',
+    rejectReason: '压缩包解析失败：entry 中未找到 SKILL.md，版本号需为 1.0.1 以上。',
+    submittedAtMs: mockOrgSeedMs(14),
+  },
+  {
+    id: 'org-task-91010',
+    skillName: '需求拆解 Skill',
+    version: '3.0.0',
+    publisher: 'w30000001',
+    publisherName: '张三',
+    targetOrgId: 'org-haichuan',
+    targetOrgName: '海川组织',
+    publishDate: '2026-10-02 08:30',
+    status: 'success',
+    finishedDate: '2026-10-03 15:02',
+    rejectReason: null,
+    submittedAtMs: mockOrgSeedMs(17),
+  },
+];
+
+function promoteMockOrgPublishTasks(): void {
+  const now = Date.now();
+  for (const task of mockOrgPublishTasks) {
+    if (task.status === 'processing' && now - task.submittedAtMs >= MOCK_ORG_VALIDATING_MS) {
+      task.status = 'pending_approval';
+      task.approvalUrl = `https://fuyao.example.com/approval/center?task=${task.id}`;
+    }
+  }
+}
 
 let qualityReviews: MockQualityReviewRow[] = [
   {
@@ -1034,7 +1583,11 @@ function mockReviewTime(seed: number, dayOffset = 0): string {
   return `2026-05-${day} ${hour}:${minute}`;
 }
 
-function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiReviewDetail {
+function createMockAiReview(
+  skillId: string,
+  skill?: MockSkillRecord,
+  skillNameOverride?: string,
+): MockAiReviewDetail {
   const seed = mockSeedFromSkillId(skillId);
   const dimensionScores = MOCK_AI_REVIEW_DIMENSIONS.map((dimension, index) => {
     const ratio = 0.78 + ((seed + index * 9) % 16) / 100;
@@ -1046,7 +1599,7 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
     };
   });
   const aiScore = roundToTwo(dimensionScores.reduce((sum, item) => sum + item.score, 0));
-  const skillName = skill?.name ?? `Mock Skill ${skillId}`;
+  const skillName = skillNameOverride ?? skill?.name ?? `Mock Skill ${skillId}`;
 
   return {
     aiModel: 'mock-ai-review-v2',
@@ -1057,7 +1610,242 @@ function createMockAiReview(skillId: string, skill?: MockSkillRecord): MockAiRev
       'SKILL.md': `${skillName} 的目标、输入输出和适用场景描述较完整，可补充失败示例。`,
       references: '引用材料覆盖核心场景，建议增加边界样例和反例说明。',
       scripts: '脚本结构清晰，建议补充参数校验和异常日志。',
+      safety: '高风险操作执行前应增加用户明确确认，并限制可操作目录范围。',
+      output: '补充输出文件的命名、关键字段、格式要求和失败返回标准。',
+      logging: '记录输入文件、处理结果、异常堆栈与耗时，便于复盘和定位。',
+      dependencies: '声明运行时版本、依赖包版本和平台限制，降低环境差异。',
+      consistency: '统一文档中的术语、参数和字段命名，减少执行过程中的理解偏差。',
     },
+    issues: [
+      {
+        issueId: 'SEC-003',
+        severity: 'high',
+        title: 'Skill 允许直接执行未经确认的删除命令',
+        description: '脚本中包含递归删除动作，未要求用户确认。',
+        evidence: 'scripts/clean.sh',
+        dimension: '安全性',
+      },
+      {
+        issueId: 'SEC-007',
+        severity: 'medium',
+        title: '未对输入文件类型与大小进行校验',
+        description: '缺少文件类型验证与大小限制，存在覆盖风险。',
+        evidence: 'scripts/export.sh',
+        dimension: '安全性',
+      },
+      {
+        issueId: 'QLT-012',
+        severity: 'medium',
+        title: '脚本失败时缺少异常处理逻辑',
+        description: '未捕获异常，可能直接输出错误结果。',
+        evidence: 'docs/usage.md',
+        dimension: '任务可执行性',
+      },
+      {
+        issueId: 'QLT-017',
+        severity: 'low',
+        title: '缺少输出结果的验收标准',
+        description: '未说明输出文件关键字段和格式要求。',
+        evidence: 'docs/output.md',
+        dimension: '内容组织',
+      },
+      {
+        issueId: 'QLT-021',
+        severity: 'low',
+        title: '日志记录不完整',
+        description: '部分关键操作未记录日志，排查困难。',
+        evidence: 'scripts/main.py',
+        dimension: '可维护性',
+      },
+      {
+        issueId: 'QLT-026',
+        severity: 'suggestion',
+        title: '缺少正反示例支撑触发边界',
+        description: 'description 只描述了可用场景，未说明不该使用的近似场景。',
+        evidence: 'SKILL.md',
+        dimension: '指令完整性',
+      },
+      {
+        issueId: 'QLT-030',
+        severity: 'suggestion',
+        title: 'content_manifest 缺少资源用途说明',
+        description: '部分脚本与引用资料的用途关系不明确。',
+        evidence: 'content_manifest',
+        dimension: '评估范围',
+      },
+    ],
+  };
+}
+
+const MOCK_SKILL_EVALUATION_DIMENSIONS = [
+  { id: 'D1', name: '目标与边界清晰度', score: 17, max: 20, confidence: 'M' },
+  { id: 'D2', name: '输入规范完整性', score: 11, max: 12, confidence: 'M' },
+  { id: 'D3', name: '输出规范完整性', score: 11, max: 12, confidence: 'M' },
+  { id: 'D4', name: '流程与步骤可执行性', score: 15, max: 15, confidence: 'H' },
+  { id: 'D5', name: '异常与边界处理', score: 12, max: 12, confidence: 'H' },
+  { id: 'D6', name: '示例与验证充分性', score: 10, max: 10, confidence: 'M' },
+  { id: 'D7', name: '依赖与环境说明', score: 8, max: 8, confidence: 'H' },
+  { id: 'D8', name: '内容组织与可维护性', score: 13, max: 13, confidence: 'H' },
+  { id: 'D9', name: '安全与权限约束', score: 13, max: 13, confidence: 'H' },
+  { id: 'D10', name: '知识独特性', score: 5, max: 5, confidence: 'L' },
+] as const;
+
+const MOCK_SKILL_EVALUATION_DIMENSION_NAMES: Record<string, string> = {
+  D1: '目标清晰度',
+  D2: '输入规范',
+  D3: '输出规范',
+  D4: '流程可执行性',
+  D5: '边界处理',
+  D6: '示例验证',
+  D7: '环境依赖',
+  D8: '内容维护',
+  D9: '安全约束',
+  D10: '知识独特性',
+};
+
+function createMockSkillEvaluationDetail(
+  skillName: string,
+  params: Record<string, unknown> = {},
+): SkillEvaluationDetailDto {
+  const skill = findSkill(skillName);
+  const version = readString(params.version, skill?.currentVersion ?? skill?.version ?? '1.0.0');
+  const seed = mockSeedFromSkillId(String(skill?.id ?? skillName));
+  const createTime = `${mockReviewTime(seed, 1)}:34`;
+  const updateTime = `${mockReviewTime(seed, 2)}:44`;
+  const improvements = [
+    {
+      action: `${skillName} 的目标、输入输出和适用场景描述较完整，建议补充失败示例。`,
+      linked_finding_ids: ['F2'],
+      linked_dimensions: ['D1'],
+    },
+    {
+      action: '高风险操作执行前增加用户明确确认，并限制可操作目录范围。',
+      linked_finding_ids: [],
+      linked_dimensions: ['D9'],
+    },
+    {
+      action: '补充参数校验、异常日志以及失败返回标准。',
+      linked_finding_ids: ['SEC-007'],
+      linked_dimensions: [],
+    },
+    {
+      action: '引用材料增加边界样例和反例说明。',
+      linked_finding_ids: ['F1'],
+      linked_dimensions: ['D6'],
+    },
+    {
+      action: '补充输出文件的命名、关键字段和格式要求。',
+      linked_finding_ids: ['F3'],
+      linked_dimensions: ['D3'],
+    },
+    {
+      action: '记录输入文件、处理结果、异常堆栈与执行耗时。',
+      linked_finding_ids: [],
+      linked_dimensions: [],
+    },
+    {
+      action: '声明运行时、依赖包版本和平台限制。',
+      linked_finding_ids: [],
+      linked_dimensions: ['D7'],
+    },
+    {
+      action: '统一文档中的术语、参数和字段命名。',
+      linked_finding_ids: ['F5'],
+      linked_dimensions: ['D4'],
+    },
+  ];
+
+  return {
+    skillName,
+    version,
+    taskId: `mock-eval-${seed}`,
+    state: 'completed',
+    modelName: 'fuyao-DeepSeekV4-PD',
+    total: 115,
+    max: 120,
+    percent: 95.8,
+    grade: 'A',
+    pattern: 'Process',
+    knowledgeRatio: { E: 0.5, A: 0.35, R: 0.15 },
+    dimensions: MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => ({
+      ...dimension,
+      low_confidence: dimension.confidence === 'L',
+      evidence: `${skillName}/SKILL.md 中与 ${dimension.id} 相关的说明。`,
+      rationale: `${dimension.name}覆盖较完整，当前得分 ${dimension.score}/${dimension.max}。`,
+      raw_score: dimension.id === 'D1' ? 16 : dimension.score,
+      adjusted_by_precheck: dimension.id === 'D1',
+      adjustment_reason: dimension.id === 'D1' ? '根据内容构成预检结果上调 1 分。' : '',
+      derivation_reason:
+        dimension.id === 'D1' ? 'D1 分数由系统按 E+A 非冗余占比推导：E=0.5，A=0.35。' : '',
+    })),
+    criticalIssues: [
+      {
+        id: 'SEC-003',
+        severity: 'high',
+        dimensions: ['D9'],
+        evidence: 'scripts/clean.sh',
+        message: 'Skill 允许直接执行未经确认的删除命令。',
+      },
+      {
+        id: 'SEC-007',
+        severity: 'high',
+        dimensions: ['D5', 'D9'],
+        evidence: 'scripts/export.sh',
+        message: '未对输入文件类型与大小进行校验。',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'low',
+        dimensions: ['D6'],
+        evidence: 'references/usage.md',
+        message: '引用资料缺少边界场景和反例说明。',
+      },
+      {
+        id: 'F2',
+        severity: 'low',
+        dimensions: ['D1'],
+        evidence: 'SKILL.md L1-L7',
+        message: '版本号表明 Skill 可能仍处于早期开发阶段，需要补充实战验证说明。',
+      },
+      {
+        id: 'F3',
+        severity: 'low',
+        dimensions: ['D3'],
+        evidence: 'docs/output.md',
+        message: '输出文件关键字段和格式要求不够明确。',
+      },
+      {
+        id: 'F4',
+        severity: 'low',
+        dimensions: ['D8'],
+        evidence: 'scripts/main.py',
+        message: '部分关键操作没有记录日志。',
+      },
+      {
+        id: 'F5',
+        severity: 'low',
+        dimensions: ['D4'],
+        evidence: 'SKILL.md',
+        message: '文档中的少量术语和参数命名不一致。',
+      },
+    ],
+    improvements,
+    top3Improvements: improvements.slice(0, 3).map((item) => item.action),
+    metricGlossary: {
+      dimensions: Object.fromEntries(
+        MOCK_SKILL_EVALUATION_DIMENSIONS.map((dimension) => [
+          dimension.id,
+          `${dimension.name}（${MOCK_SKILL_EVALUATION_DIMENSION_NAMES[dimension.id]}）：评估该维度的内容完整度与可执行性。`,
+        ]),
+      ),
+      knowledge_ratio: '内容构成 = 独家知识(E) : 行动框架(A) : 通用套话(R)，之和为 1.0。',
+      confidence: 'H=高 / M=中 / L=低；D10 强制为 L。',
+      pattern: '技能形态：思维型、导航型、理念型、流程型、工具型。',
+    },
+    createTime,
+    updateTime,
   };
 }
 
@@ -1612,6 +2400,17 @@ function fileFromFormData(data: unknown): File | undefined {
   return undefined;
 }
 
+function formFieldValue(data: unknown, key: string): string {
+  if (typeof FormData === 'undefined' || !(data instanceof FormData)) {
+    return '';
+  }
+  const value = data.get(key);
+  if (typeof value === 'string') {
+    return value;
+  }
+  return '';
+}
+
 function fileBaseName(file: File | undefined, fallback: string): string {
   const raw = file?.name?.replace(/\.[^.]+$/, '').trim();
   return raw || fallback;
@@ -1808,6 +2607,105 @@ function handleSkillRequest(
     return ok({ ok: true, status: '个人级', skillStatus: '个人级' });
   }
 
+  if (method === 'get' && path === '/org-publish/orgs') {
+    return ok(mockOrgPublishOrgOptions.map((o) => ({ ...o })));
+  }
+
+  if (method === 'post' && path === '/org-publish') {
+    const uploadFile = fileFromFormData(config.data);
+    if (!uploadFile) {
+      return fail('缺少必填参数: file', null);
+    }
+    const formOrgCode = String(
+      params.orgCode ?? formFieldValue(config.data, 'orgCode') ?? '',
+    ).trim();
+    if (!formOrgCode) {
+      return fail('缺少必填参数: orgCode', null);
+    }
+    // mock 演示兜底：standalone 直接打开 dev 页面时父页面不注入 userId，这里代位使用演示身份
+    const MOCK_DEMO_USER_ID = MOCK_USER_DEPARTMENT_OPTIONS[0]?.id ?? 'w30000001';
+    const formUserId =
+      String(params.userId ?? formFieldValue(config.data, 'userId') ?? MOCK_DEMO_USER_ID).trim() ||
+      MOCK_DEMO_USER_ID;
+    const formUserName =
+      String(params.userName ?? formFieldValue(config.data, 'userName') ?? '').trim() ||
+      mockOrgNamesFromUserId(formUserId);
+    const org = mockOrgPublishOrgOptions.find(
+      (o) => o.orgId === formOrgCode || o.orgCode === formOrgCode,
+    );
+    if (!org) {
+      return fail(`目标组织不存在或无发布权限: ${formOrgCode}`, null);
+    }
+    const parsed = parsedSkillFromFile(uploadFile);
+    const task: MockOrgPublishTask = {
+      id: `org-task-${Date.now()}`,
+      skillName: String(parsed.name ?? fileBaseName(uploadFile, mockOrgUniqueSkillSlug())),
+      version: String(parsed.version ?? '1.0.0'),
+      publisher: formUserId,
+      publisherName: formUserName,
+      targetOrgId: org.orgId,
+      targetOrgName: org.orgName,
+      publishDate: nowText(),
+      status: 'validating',
+      finishedDate: null,
+      rejectReason: null,
+      submittedAtMs: Date.now(),
+    };
+    mockOrgPublishTasks.unshift(task);
+    return ok({ taskId: task.id, status: task.status });
+  }
+
+  if (method === 'get' && path === '/org-publish/tasks') {
+    promoteMockOrgPublishTasks();
+    let rows = [...mockOrgPublishTasks];
+    const queryUserId = String(params.userId ?? '').trim();
+    if (queryUserId) {
+      const mine = rows.filter((t) => t.publisher === queryUserId);
+      // 演示兜底：当前操作者没有历史任务时回退为全量，便于本地联调查看种子数据
+      rows = mine.length > 0 ? mine : rows;
+    }
+    const skillNameKeyword = String(params.skillName ?? '')
+      .trim()
+      .toLowerCase();
+    if (skillNameKeyword) {
+      rows = rows.filter((t) => t.skillName.toLowerCase().includes(skillNameKeyword));
+    }
+    const orgNameFilter = String(params.orgName ?? '').trim();
+    if (orgNameFilter) {
+      rows = rows.filter((t) => t.targetOrgName === orgNameFilter);
+    }
+    // 返回结构与真实接口一致：分页信息 + records（taskId/orgCode/orgName/status/...）
+    const records = rows.map((t) => ({
+      taskId: t.id,
+      skillName: t.skillName,
+      version: t.version,
+      orgCode: t.targetOrgId,
+      orgName: t.targetOrgName,
+      status:
+        t.status === 'pending_approval'
+          ? 'PENDING_APPROVAL'
+          : t.status === 'success'
+            ? 'SUCCESS'
+            : t.status === 'rejected'
+              ? 'REJECTED'
+              : t.status === 'fail'
+                ? 'FAIL'
+                : 'PROCESSING',
+      errorMessage: t.rejectReason ?? '',
+      submitTime: t.publishDate,
+      approvalUrl: t.approvalUrl ?? '',
+    }));
+    return ok(
+      {
+        total: records.length,
+        pageNo: 1,
+        pageSize: Math.max(records.length, 10),
+        records,
+      },
+      records.length,
+    );
+  }
+
   const isSkillPlanningSupplementQuery =
     path === '/config/query' || path === '/config/supplement/query';
   const isSkillPlanningSupplementUpdate =
@@ -1815,8 +2713,10 @@ function handleSkillRequest(
   const isSkillPlanningSupplementBatchDelete =
     path === '/config/batch_delete' || path === '/config/supplement/batch_delete';
   const supplementDeleteMatch = /^\/config\/(?:supplement\/)?delete\/([^/]+)$/.exec(path);
+  const isSkillPlanningSupplementCreate =
+    path === '/config/add' || path === '/config/supplement/add';
   const skillPlanningSupplementRequiresUserId =
-    path === '/config/add' ||
+    isSkillPlanningSupplementCreate ||
     isSkillPlanningSupplementQuery ||
     isSkillPlanningSupplementUpdate ||
     isSkillPlanningSupplementBatchDelete ||
@@ -1825,7 +2725,11 @@ function handleSkillRequest(
     return fail('缺少必填参数: userId', null);
   }
 
-  if (path === '/config/add' || isSkillPlanningSupplementQuery || isSkillPlanningSupplementUpdate) {
+  if (
+    isSkillPlanningSupplementCreate ||
+    isSkillPlanningSupplementQuery ||
+    isSkillPlanningSupplementUpdate
+  ) {
     const missingMutationParams = ['dimCode', 'dimType', 'dimName'].filter(
       (key) => !String(params[key] ?? '').trim(),
     );
@@ -1844,7 +2748,7 @@ function handleSkillRequest(
         : {};
     return { ...body, ...entity };
   };
-  if (method === 'post' && path === '/config/add') {
+  if (method === 'post' && isSkillPlanningSupplementCreate) {
     const entity = readPlanningSupplementPayload();
     entity.name = entity.skillName ?? entity.name;
     entity.level = entity.dimType ?? entity.level;
@@ -1877,6 +2781,7 @@ function handleSkillRequest(
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
     const record: MockSkillPlanningSupplementRecord = {
       id: nextMockSkillPlanningSupplementId(),
+      skillId: master?.id,
       skillName,
       name: skillName,
       firstScene: String(entity.firstScene).trim(),
@@ -1973,6 +2878,7 @@ function handleSkillRequest(
     const skillName = String(entity.name).trim();
     const master = mockSkillMasterManagementRecords.find((item) => item.skillName === skillName);
     Object.assign(target, {
+      skillId: master?.id,
       skillName,
       name: skillName,
       firstScene: String(entity.firstScene).trim(),
@@ -2081,6 +2987,9 @@ function handleSkillRequest(
     if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
       return fail('status 不应传入', null);
     }
+    const rawSkillSource = String(payload.skillSource ?? '').trim();
+    const skillSource: 'created' | 'imported' =
+      rawSkillSource === '引用' || rawSkillSource === 'imported' ? 'imported' : 'created';
     const stamp = nowLocalDateTimeArray();
     const record: MockSkillMasterManagementRecord = {
       id: nextMockSkillMasterManagementId(),
@@ -2099,6 +3008,8 @@ function handleSkillRequest(
       updatedAt: stamp,
       skillMatchId: null,
       skillMatchLevel: null,
+      skillSource,
+      versions: [],
     };
     if (
       mockSkillMasterManagementRecords.some(
@@ -2118,6 +3029,11 @@ function handleSkillRequest(
     return ok(
       list.map((item) => ({
         ...item,
+        referenceCount: mockSkillPlanningSupplementRecords.filter(
+          (planning) =>
+            planning.skillId === item.id ||
+            (!planning.skillId && planning.skillName === item.skillName),
+        ).length,
       })),
       total,
     );
@@ -2151,6 +3067,12 @@ function handleSkillRequest(
     if (!target) {
       return fail(`未找到 Skill: ${id}`, null);
     }
+    const rawSkillSource = String(payload.skillSource ?? '').trim();
+    const skillSource: 'created' | 'imported' = rawSkillSource
+      ? rawSkillSource === '引用' || rawSkillSource === 'imported'
+        ? 'imported'
+        : 'created'
+      : target.skillSource;
     Object.assign(target, {
       skillName: String(payload.skillName).trim(),
       skillDescription: String(payload.skillDescription).trim(),
@@ -2162,6 +3084,7 @@ function handleSkillRequest(
       developOwnerName: String(payload.developOwnerName).trim(),
       developOwnerId: String(payload.developOwnerId).trim(),
       planFinishDate: String(payload.planFinishDate).trim(),
+      skillSource,
       updatedAt: nowLocalDateTimeArray(),
     });
     return ok({
@@ -2179,6 +3102,14 @@ function handleSkillRequest(
     if (index < 0) {
       return fail(`未找到 Skill: ${id}`, null);
     }
+    const target = mockSkillMasterManagementRecords[index];
+    const referenceCount = mockSkillPlanningSupplementRecords.filter(
+      (planning) =>
+        planning.skillId === id || (!planning.skillId && planning.skillName === target?.skillName),
+    ).length;
+    if (referenceCount > 0) {
+      return fail(`Skill 已关联 ${referenceCount} 个规划项，不能删除`, null);
+    }
     const [removed] = mockSkillMasterManagementRecords.splice(index, 1);
     return ok({
       id,
@@ -2195,6 +3126,21 @@ function handleSkillRequest(
       return fail('批量删除列表不能为空', null);
     }
     const idSet = new Set(ids);
+    const referenced = mockSkillMasterManagementRecords.filter(
+      (master) =>
+        idSet.has(master.id) &&
+        mockSkillPlanningSupplementRecords.some(
+          (planning) =>
+            planning.skillId === master.id ||
+            (!planning.skillId && planning.skillName === master.skillName),
+        ),
+    );
+    if (referenced.length > 0) {
+      return fail(
+        `${referenced.map((item) => item.skillName).join('、')}已关联规划项，不能删除`,
+        null,
+      );
+    }
     const before = mockSkillMasterManagementRecords.length;
     for (let index = mockSkillMasterManagementRecords.length - 1; index >= 0; index -= 1) {
       const current = mockSkillMasterManagementRecords[index];
@@ -2522,6 +3468,12 @@ function handleApiRequest(
   config: AxiosRequestConfig,
 ): MockEnvelope<unknown> | null {
   const params = readParams(config);
+  if (method === 'get' && path === '/v1/harness/plans/skill/eval') {
+    const skillName = String(params.skillName ?? '').trim();
+    if (!skillName) return fail('缺少必填参数：skillName', null);
+    return ok(createMockSkillEvaluationDetail(skillName, params));
+  }
+
   const reviewMatch = /^\/sync-applications\/([^/]+)\/review$/.exec(path);
   if (method === 'post' && reviewMatch) {
     const id = readNumber(reviewMatch[1], 0);

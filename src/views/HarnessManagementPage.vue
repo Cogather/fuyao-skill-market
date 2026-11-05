@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
+import '../style/skill/HarnessWorkspace.scss';
 
 import HarnessConfigurationPage from './skill/HarnessConfigurationPage.vue';
+import AgentSkillAssetsPage from './skill/AgentSkillAssetsPage.vue';
+import BusinessScenarioDesignPage from './skill/BusinessScenarioDesignPage.vue';
+import HarnessCapabilityManagementPage from './skill/HarnessCapabilityManagementPage.vue';
+import HarnessWorkflowsPage from './skill/HarnessWorkflowsPage.vue';
+import ExtensionPublishPage from './skill/LegacyExtensionPublishPage.vue';
 import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
+import { createHarnessScenarioWorkspace } from '../composables/useHarnessScenarioWorkspace';
 import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
@@ -18,11 +26,19 @@ import { getMockMarketDepartmentsTree } from '../services/skillMarket/mock/marke
 import { skillBaseService } from '../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../stores/skillMarketStore';
 import { useProfileStore } from '../stores/userStore';
+import type {
+  HarnessCatalogScopeChange,
+  HarnessCatalogScopeSnapshots,
+  HarnessDepartmentSnapshot,
+  HarnessListFilterSnapshot,
+  HarnessScopeSnapshot,
+} from '../types/harnessFilterMemory';
 
 const skillMarketStore = useSkillMarketStore();
 const profileStore = useProfileStore();
 const permissionContextReady = ref(false);
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
+const harnessGuideUrl = `${(import.meta.env.VITE_AI_ENABLE || '').trim().replace(/\/+$/, '')}/post/P202609161114150001`;
 const harnessPermissions = ref(createEmptyHarnessDepartmentPermissions());
 const MOCK_HARNESS_USER_ID = 'w30000001';
 const MOCK_HARNESS_DEPARTMENT_PATH = [
@@ -44,21 +60,94 @@ const harnessPermissionLoadState = ref<HarnessPermissionLoadState>(
 const harnessPermissionError = ref('');
 const HARNESS_PERMISSION_LOAD_FAILED_MESSAGE =
   '\u6743\u9650\u4fe1\u606f\u83b7\u53d6\u5931\u8d25\uff0c\u5df2\u7981\u7528\u90e8\u95e8\u9009\u62e9\u4e0e\u63d0\u4ea4\u3002';
+const HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE =
+  '未从父页面获取到部门树，请检查初始化参数后重新进入。';
 
-type HarnessTab = 'command' | 'planning' | 'tasks' | 'agent' | 'extension' | 'settings';
+type HarnessTab =
+  | 'scenarios'
+  | 'capabilities'
+  | 'workflows'
+  | 'assets'
+  | 'command'
+  | 'planning'
+  | 'tasks'
+  | 'agent'
+  | 'extension'
+  | 'settings';
+
+type PlanningMemoryKey = 'command' | 'planning' | 'agent';
+type PlanningScopeChange = {
+  capabilityType: 'command' | 'skill' | 'agent';
+  snapshot: HarnessScopeSnapshot;
+};
 
 const harnessTabs: Array<{ key: HarnessTab; label: string; description: string }> = [
+  {
+    key: 'scenarios',
+    label: '业务场景设计',
+    description: '按产品与场景逐层组织业务，并编排端到端 Workflow。',
+  },
+  {
+    key: 'workflows',
+    label: 'Harness 工作流',
+    description: '集中查看所选部门及各业务场景关联的 Harness 工作流。',
+  },
+  {
+    key: 'capabilities',
+    label: '资产清单',
+    description: '统一管理 Command、Skill、Agent 清单与 Extension 发布。',
+  },
+  {
+    key: 'assets',
+    label: '资产清单',
+    description: '统一查看 Agent、Skill、Command 与 Extension 资产。',
+  },
   { key: 'command', label: 'Command 规划', description: '统一规划和管理 Command 能力。' },
   { key: 'planning', label: 'Skill 规划', description: '统一管理各部门规划建设中的 Skill。' },
   { key: 'agent', label: 'Agent 规划', description: '统一规划和管理 Agent 能力。' },
   { key: 'extension', label: 'Extension 发布', description: '集中管理 Extension 的发布流程。' },
-  { key: 'settings', label: '配置管理', description: '维护 Harness 管理相关的公共配置。' },
-  { key: 'tasks', label: '任务管理', description: '集中跟踪当前用户负责的 Skill 任务。' },
+  { key: 'settings', label: '权限管理', description: '维护 Harness 管理相关的公共配置。' },
+  { key: 'tasks', label: '待办任务', description: '集中跟踪当前用户负责的 Skill 任务。' },
 ];
+const showLegacyPlanningTabs = false;
+const publicHarnessTabKeys = new Set<HarnessTab>(['workflows', 'capabilities', 'assets', 'tasks']);
+const legacyPlanningTabKeys = new Set<HarnessTab>(['command', 'planning', 'agent', 'extension']);
 
-const activeHarnessTab = ref<HarnessTab>('planning');
+const activeHarnessTab = ref<HarnessTab>('scenarios');
+const workspaceFilterTab = ref<'scenarios' | 'workflows'>('scenarios');
+const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | null>(null);
+const planningPage = ref<InstanceType<typeof SkillPlanningPage> | null>(null);
+const capabilityManagementActivated = ref(false);
+const extensionTabActivated = ref(false);
+const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
+const assetCatalogScopeSnapshotsByUser = ref<Record<string, HarnessCatalogScopeSnapshots>>({});
+const assetListFiltersByUser = ref<Record<string, HarnessListFilterSnapshot>>({});
+const extensionScopeSnapshot = ref<HarnessScopeSnapshot>();
+const capabilityScopeSnapshots = computed<
+  Partial<Record<PlanningScopeChange['capabilityType'], HarnessScopeSnapshot>>
+>(() => {
+  const snapshots: Partial<Record<PlanningScopeChange['capabilityType'], HarnessScopeSnapshot>> =
+    {};
+  if (catalogScopeSnapshots.value.command) {
+    snapshots.command = catalogScopeSnapshots.value.command;
+  }
+  if (catalogScopeSnapshots.value.planning) {
+    snapshots.skill = catalogScopeSnapshots.value.planning;
+  }
+  if (catalogScopeSnapshots.value.agent) {
+    snapshots.agent = catalogScopeSnapshots.value.agent;
+  }
+  return snapshots;
+});
+const configurationScopeSnapshots = ref<
+  Partial<Record<'scene' | 'activity', HarnessScopeSnapshot>>
+>({});
+const configurationDepartmentSnapshots = ref<
+  Partial<Record<'permission', HarnessDepartmentSnapshot>>
+>({});
 const activeHarnessTabMeta = computed(
-  () => harnessTabs.find((tab) => tab.key === activeHarnessTab.value) ?? harnessTabs[1],
+  () => harnessTabs.find((tab) => tab.key === activeHarnessTab.value) ?? harnessTabs[0]!,
 );
 const topbarElevated = ref(false);
 
@@ -70,14 +159,20 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
+const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
+const assetCatalogScopeSnapshots = computed<HarnessCatalogScopeSnapshots>(
+  () => assetCatalogScopeSnapshotsByUser.value[userId.value] ?? {},
+);
+
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
-  const source =
-    transportIsHttp && Array.isArray(injectedDepartments) && injectedDepartments.length > 0
-      ? injectedDepartments
-      : getMockMarketDepartmentsTree();
+  // HTTP 模式只使用父页面注入的数据，不请求部门树接口，也不回退 Mock。
+  const source = transportIsHttp ? injectedDepartments : getMockMarketDepartmentsTree();
   return mapDepartmentTreeDtoToForest(coerceDepartmentTreeFromUnknown(source));
 });
+const departmentTreeUnavailable = computed(
+  () => transportIsHttp && permissionContextReady.value && departmentTree.value.length === 0,
+);
 
 function departmentLevelByPath(path: string[]): number {
   let nodes = departmentTree.value;
@@ -155,11 +250,49 @@ const permissionDepartmentPaths = computed(() =>
     : [[...MOCK_HARNESS_DEPARTMENT_PATH]],
 );
 
+const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
+  ready: permissionContextReady.value && harnessPermissionLoadState.value === 'ready',
+  userId: userId.value,
+  departmentTree: departmentTree.value,
+  defaultDepartmentPath:
+    permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
+  allowedDepartmentPaths: permissionDepartmentPaths.value,
+  // 场景设计的部门级受管理权限约束；工作流列表可以按上级部门筛选。
+  restrictToAllowedDepartments:
+    restrictToPermissionDepartments.value && workspaceFilterTab.value === 'scenarios',
+  departmentMaxLevel:
+    workspaceFilterTab.value === 'scenarios'
+      ? Number.POSITIVE_INFINITY
+      : workspaceFilterTab.value === 'workflows'
+        ? 4
+        : undefined,
+  readOnlyDepartmentSelection: workspaceFilterTab.value === 'workflows',
+  filterKey: workspaceFilterTab.value,
+}));
+const scenarioScopeSnapshot = computed<HarnessScopeSnapshot | undefined>(() => {
+  const level = scenarioWorkspace.scopeLevel.value;
+  const product = scenarioWorkspace.products.find(
+    (item) => item._id === scenarioWorkspace.productId.value,
+  );
+  const department = scenarioWorkspace.departments.find(
+    (item) => item._id === scenarioWorkspace.selectedDeptId.value,
+  );
+  return product && department
+    ? {
+        level,
+        departmentPath: department.path,
+        offeringId: level === '产品级' ? product.code : '',
+        offeringName: level === '产品级' ? product.name : '',
+      }
+    : undefined;
+});
+
 function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment): string[] {
   const expectedPath = department.path.map((item) => item.trim()).filter(Boolean);
   const expectedLevelNo = Number(department.levelNo);
   const hasExpectedLevelNo = Number.isFinite(expectedLevelNo) && expectedLevelNo > 0;
   const matchingPaths: string[][] = [];
+  let strictCodeMatch: string[] | null = null;
   let codeMatch: string[] | null = null;
 
   const visit = (nodes: typeof departmentTree.value, parentPath: string[]): void => {
@@ -167,10 +300,10 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
       const path = [...parentPath, node.name];
       if (
         department.deptCode &&
-        (node.deptCode === department.deptCode || node.id === department.deptCode) &&
-        (!hasExpectedLevelNo || node.levelNo === expectedLevelNo)
+        (node.deptCode === department.deptCode || node.id === department.deptCode)
       ) {
         codeMatch = path;
+        if (!hasExpectedLevelNo || node.levelNo === expectedLevelNo) strictCodeMatch = path;
       }
       if (node.name === department.deptName || pathEndsWith(path, expectedPath)) {
         matchingPaths.push(path);
@@ -180,6 +313,8 @@ function resolveAuthorizedDepartmentPath(department: HarnessAuthorizedDepartment
   };
 
   visit(departmentTree.value, []);
+  if (strictCodeMatch) return [...strictCodeMatch];
+  // 权限接口可能使用 L3-L8，而部门树使用 L1-L6；编码一致时不能被层级编号差异挡住。
   if (codeMatch) return [...codeMatch];
 
   const suffixMatch = matchingPaths.find((path) => pathEndsWith(path, expectedPath));
@@ -202,9 +337,16 @@ const harnessAccessLevel = computed<HarnessAccessLevel>(() => {
 });
 
 const visibleHarnessTabs = computed(() =>
-  harnessAccessLevel.value === 'task-only'
-    ? harnessTabs.filter((tab) => tab.key === 'tasks')
-    : harnessTabs,
+  harnessTabs.filter((tab) => {
+    if (tab.key === 'scenarios') return transportIsHttp || harnessAccessLevel.value !== 'task-only';
+    if (tab.key === 'settings') return harnessAccessLevel.value === 'owner';
+    if (publicHarnessTabKeys.has(tab.key)) return true;
+    return (
+      showLegacyPlanningTabs &&
+      harnessAccessLevel.value !== 'task-only' &&
+      legacyPlanningTabKeys.has(tab.key)
+    );
+  }),
 );
 
 async function loadHarnessDepartmentScope(): Promise<void> {
@@ -232,19 +374,16 @@ async function loadHarnessDepartmentScope(): Promise<void> {
   }
 }
 
-function waitForInjectedContext(timeout = 5000): Promise<void> {
+function waitForInjectedContext(timeout = 8000): Promise<void> {
   return new Promise((resolve) => {
-    if (userId.value && skillMarketStore.departmentList.length > 0) {
+    if (userId.value && departmentTree.value.length > 0) {
       resolve();
       return;
     }
 
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      if (
-        (userId.value && skillMarketStore.departmentList.length > 0) ||
-        Date.now() - startedAt > timeout
-      ) {
+      if ((userId.value && departmentTree.value.length > 0) || Date.now() - startedAt > timeout) {
         window.clearInterval(timer);
         resolve();
       }
@@ -256,13 +395,96 @@ function updateTopbarElevation(): void {
   topbarElevated.value = window.scrollY > 8;
 }
 
+function planningMemoryKey(
+  capabilityType: PlanningScopeChange['capabilityType'],
+): PlanningMemoryKey {
+  return capabilityType === 'skill' ? 'planning' : capabilityType;
+}
+
+function activePlanningMemoryKey(): PlanningMemoryKey {
+  return activeHarnessTab.value === 'command' || activeHarnessTab.value === 'agent'
+    ? activeHarnessTab.value
+    : 'planning';
+}
+
+function updatePlanningScopeSnapshot(change: PlanningScopeChange): void {
+  planningScopeSnapshots.value[planningMemoryKey(change.capabilityType)] = {
+    ...change.snapshot,
+    departmentPath: [...change.snapshot.departmentPath],
+  };
+}
+
+function updateCatalogScopeSnapshot(change: PlanningScopeChange): void {
+  catalogScopeSnapshots.value[planningMemoryKey(change.capabilityType)] = {
+    ...change.snapshot,
+    departmentPath: [...change.snapshot.departmentPath],
+  };
+}
+
+function updateAssetCatalogScopeSnapshot(change: HarnessCatalogScopeChange): void {
+  const memoryKey = userId.value;
+  if (!memoryKey) return;
+  assetCatalogScopeSnapshotsByUser.value = {
+    ...assetCatalogScopeSnapshotsByUser.value,
+    [memoryKey]: {
+      ...(assetCatalogScopeSnapshotsByUser.value[memoryKey] ?? {}),
+      [change.assetType]: {
+        ...(assetCatalogScopeSnapshotsByUser.value[memoryKey]?.[change.assetType] ?? {}),
+        [change.action]: {
+          ...change.snapshot,
+          departmentPath: [...change.snapshot.departmentPath],
+        },
+      },
+    },
+  };
+}
+
+function updateExtensionScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
+  extensionScopeSnapshot.value = {
+    ...snapshot,
+    departmentPath: [...snapshot.departmentPath],
+  };
+}
+
+function selectHarnessTab(tab: HarnessTab): void {
+  if (
+    tab !== activeHarnessTab.value &&
+    activeHarnessTab.value === 'settings' &&
+    configurationPage.value?.validateBeforeLeave() === false
+  ) {
+    return;
+  }
+  if (tab === 'capabilities') capabilityManagementActivated.value = true;
+  if (tab === 'extension') extensionTabActivated.value = true;
+  if (tab === 'scenarios' || tab === 'workflows') workspaceFilterTab.value = tab;
+  if (tab === 'settings') workspaceFilterTab.value = 'scenarios';
+  activeHarnessTab.value = tab;
+}
+
+function updateConfigurationScopeSnapshot(
+  key: 'scene' | 'activity',
+  snapshot: HarnessScopeSnapshot,
+): void {
+  configurationScopeSnapshots.value[key] = {
+    ...snapshot,
+    departmentPath: [...snapshot.departmentPath],
+  };
+  if (key === 'scene') scenarioWorkspace.selectScope(snapshot);
+}
+
+function updateConfigurationDepartmentSnapshot(snapshot: HarnessDepartmentSnapshot): void {
+  configurationDepartmentSnapshots.value.permission = {
+    departmentPath: [...snapshot.departmentPath],
+  };
+}
+
 onMounted(async () => {
   window.addEventListener('scroll', updateTopbarElevation, { passive: true });
   updateTopbarElevation();
   try {
     if (transportIsHttp) await waitForInjectedContext();
     if (transportIsHttp) await loadHarnessDepartmentScope();
-    activeHarnessTab.value = harnessAccessLevel.value === 'task-only' ? 'tasks' : 'planning';
+    selectHarnessTab(visibleHarnessTabs.value[0]?.key ?? 'workflows');
   } finally {
     permissionContextReady.value = true;
   }
@@ -271,36 +493,78 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', updateTopbarElevation);
 });
+
+onBeforeRouteLeave(() => {
+  if (activeHarnessTab.value !== 'settings') return true;
+  return configurationPage.value?.validateBeforeLeave() ?? true;
+});
 </script>
 
 <template>
-  <main class="harness-management-shell" :class="{ 'is-topbar-elevated': topbarElevated }">
+  <main
+    class="harness-management-shell"
+    :class="{
+      'is-topbar-elevated': topbarElevated,
+    }"
+  >
     <header class="harness-topbar">
       <nav class="harness-tabs" role="tablist" aria-label="Harness 管理分区">
-        <button
-          v-for="tab in visibleHarnessTabs"
-          :id="`harness-tab-${tab.key}`"
-          :key="tab.key"
-          type="button"
-          class="harness-tab"
-          role="tab"
-          :class="{ 'is-active': activeHarnessTab === tab.key }"
-          :aria-selected="activeHarnessTab === tab.key"
-          :aria-controls="`harness-panel-${tab.key}`"
-          @click="activeHarnessTab = tab.key"
-        >
-          {{ tab.label }}
-        </button>
+        <template v-for="tab in visibleHarnessTabs" :key="tab.key">
+          <button
+            v-if="
+              tab.key !== 'capabilities' &&
+              (showLegacyPlanningTabs ||
+                !['command', 'planning', 'agent', 'extension'].includes(tab.key))
+            "
+            :id="`harness-tab-${tab.key}`"
+            type="button"
+            class="harness-tab"
+            role="tab"
+            :class="{ 'is-active': activeHarnessTab === tab.key }"
+            :aria-selected="activeHarnessTab === tab.key"
+            :aria-controls="`harness-panel-${tab.key}`"
+            @click="selectHarnessTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </template>
       </nav>
 
-      <div class="harness-topbar__identity" aria-label="当前工作台">
-        <span class="harness-topbar__mark" aria-hidden="true">H</span>
-        <span><strong>Harness 管理</strong><small>能力规划工作台</small></span>
+      <div class="harness-topbar__tools">
+        <a
+          class="harness-topbar__help"
+          :href="harnessGuideUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Harness 规划使用指导"
+          aria-label="Harness 规划使用指导"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4M12 17h.01" />
+          </svg>
+        </a>
+        <div class="harness-topbar__identity" aria-label="当前工作台">
+          <span class="harness-topbar__mark" aria-hidden="true">H</span>
+          <span><strong>Harness 管理</strong><small>能力规划工作台</small></span>
+        </div>
       </div>
     </header>
 
+    <div v-if="departmentTreeUnavailable" class="harness-permission-alert" role="alert">
+      {{ HARNESS_DEPARTMENT_TREE_MISSING_MESSAGE }}
+    </div>
+
     <div
-      v-if="harnessPermissionLoadState === 'error'"
+      v-else-if="harnessPermissionLoadState === 'error'"
       class="harness-permission-alert"
       role="alert"
     >
@@ -321,14 +585,91 @@ onBeforeUnmount(() => {
     </section>
 
     <section
-      v-else-if="['command', 'planning', 'agent'].includes(activeHarnessTab)"
+      v-if="permissionContextReady"
+      v-show="activeHarnessTab === 'scenarios'"
+      id="harness-panel-scenarios"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-scenarios"
+    >
+      <BusinessScenarioDesignPage
+        :workspace="scenarioWorkspace"
+        :active="activeHarnessTab === 'scenarios'"
+      />
+    </section>
+
+    <section
+      v-if="permissionContextReady && capabilityManagementActivated"
+      v-show="activeHarnessTab === 'capabilities'"
+      id="harness-panel-capabilities"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-capabilities"
+    >
+      <HarnessCapabilityManagementPage
+        :user-id="userId"
+        :user-name="userName"
+        :department-tree="departmentTree"
+        :current-user-department-path="currentUserDepartmentPermission.path"
+        :allowed-department-names="permissionDepartmentNames"
+        :allowed-department-paths="permissionDepartmentPaths"
+        :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :scope-snapshots="capabilityScopeSnapshots"
+        :extension-initial-scope="extensionScopeSnapshot"
+        @catalog-scope-change="updateCatalogScopeSnapshot"
+        @extension-scope-change="updateExtensionScopeSnapshot"
+      />
+    </section>
+
+    <section
+      v-if="permissionContextReady"
+      v-show="activeHarnessTab === 'workflows'"
+      id="harness-panel-workflows"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-workflows"
+    >
+      <HarnessWorkflowsPage
+        :workspace="scenarioWorkspace"
+        :active="activeHarnessTab === 'workflows'"
+        :user-name="userName"
+        @open-scenarios="selectHarnessTab('scenarios')"
+      />
+    </section>
+
+    <section
+      v-if="permissionContextReady && activeHarnessTab === 'assets'"
+      id="harness-panel-assets"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-assets"
+    >
+      <AgentSkillAssetsPage
+        :user-id="userId"
+        :user-name="userName"
+        :department-tree="departmentTree"
+        :current-user-department-path="currentUserDepartmentPermission.path"
+        :allowed-department-paths="permissionDepartmentPaths"
+        :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :scope-snapshots="assetCatalogScopeSnapshots"
+        :initial-list-filters="assetListFiltersByUser[userId]"
+        @scope-change="updateAssetCatalogScopeSnapshot"
+        @list-filter-change="assetListFiltersByUser[userId] = $event"
+      />
+    </section>
+
+    <section
+      v-else-if="
+        permissionContextReady && ['command', 'planning', 'agent'].includes(activeHarnessTab)
+      "
       :id="`harness-panel-${activeHarnessTab}`"
       class="harness-tab-panel"
       role="tabpanel"
       :aria-labelledby="`harness-tab-${activeHarnessTab}`"
     >
       <SkillPlanningPage
-        :key="transportIsHttp ? activeHarnessTab : 'shared-planning-page'"
+        ref="planningPage"
+        :key="activeHarnessTab"
         :capability-type="
           activeHarnessTab === 'command'
             ? 'command'
@@ -342,13 +683,17 @@ onBeforeUnmount(() => {
         :allowed-department-names="permissionDepartmentNames"
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :initial-scope="planningScopeSnapshots[activePlanningMemoryKey()]"
+        :initial-catalog-scope="catalogScopeSnapshots[activePlanningMemoryKey()]"
+        @scope-change="updatePlanningScopeSnapshot"
+        @catalog-scope-change="updateCatalogScopeSnapshot"
       />
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'tasks'"
+      v-else-if="permissionContextReady && activeHarnessTab === 'tasks'"
       id="harness-panel-tasks"
-      class="harness-tab-panel harness-tab-panel--tasks"
+      class="harness-tab-panel"
       role="tabpanel"
       aria-labelledby="harness-tab-tasks"
     >
@@ -356,13 +701,15 @@ onBeforeUnmount(() => {
     </section>
 
     <section
-      v-else-if="activeHarnessTab === 'settings'"
+      v-else-if="permissionContextReady && activeHarnessTab === 'settings'"
       id="harness-panel-settings"
       class="harness-tab-panel"
       role="tabpanel"
       aria-labelledby="harness-tab-settings"
     >
       <HarnessConfigurationPage
+        :workspace="scenarioWorkspace"
+        ref="configurationPage"
         :department-permission-path="currentUserDepartmentPermission.path"
         :department-tree="departmentTree"
         :user-id="userId"
@@ -374,11 +721,23 @@ onBeforeUnmount(() => {
         :restrict-to-permission-departments="restrictToPermissionDepartments"
         :department-permissions-loading="harnessPermissionLoadState === 'loading'"
         :department-permissions-error="harnessPermissionError"
+        :scene-initial-scope="scenarioScopeSnapshot || configurationScopeSnapshots.scene"
+        :activity-initial-scope="configurationScopeSnapshots.activity"
+        :permission-initial-scope="configurationDepartmentSnapshots.permission"
+        @scene-scope-change="updateConfigurationScopeSnapshot('scene', $event)"
+        @activity-scope-change="updateConfigurationScopeSnapshot('activity', $event)"
+        @permission-scope-change="updateConfigurationDepartmentSnapshot($event)"
       />
     </section>
 
     <section
-      v-else
+      v-else-if="
+        permissionContextReady &&
+        activeHarnessTab !== 'capabilities' &&
+        activeHarnessTab !== 'extension' &&
+        activeHarnessTab !== 'scenarios' &&
+        activeHarnessTab !== 'workflows'
+      "
       :id="`harness-panel-${activeHarnessTab}`"
       class="harness-tab-panel harness-placeholder-panel"
       role="tabpanel"
@@ -391,6 +750,26 @@ onBeforeUnmount(() => {
         <small>当前页签内容待接入</small>
       </div>
     </section>
+
+    <section
+      v-if="permissionContextReady && extensionTabActivated"
+      v-show="activeHarnessTab === 'extension'"
+      id="harness-panel-extension"
+      class="harness-tab-panel"
+      role="tabpanel"
+      aria-labelledby="harness-tab-extension"
+    >
+      <ExtensionPublishPage
+        :user-id="userId"
+        :user-name="userName"
+        :department-tree="departmentTree"
+        :current-user-department-path="currentUserDepartmentPermission.path"
+        :allowed-department-paths="permissionDepartmentPaths"
+        :restrict-to-allowed-departments="restrictToPermissionDepartments"
+        :initial-scope="extensionScopeSnapshot"
+        @scope-change="updateExtensionScopeSnapshot"
+      />
+    </section>
   </main>
 </template>
 
@@ -402,9 +781,11 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   padding-top: var(--harness-topbar-height);
-  overflow-x: hidden;
+  overflow: hidden;
   color: #0f172a;
   background:
     radial-gradient(circle at 11% -8%, rgba(105, 166, 255, 0.22), transparent 28%),
@@ -422,6 +803,51 @@ onBeforeUnmount(() => {
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
+}
+
+.harness-management-shell :deep(.harness-page-heading) {
+  flex-shrink: 0;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.harness-management-shell :deep(.harness-viewport-page:not(.asset-page) > .harness-page-heading) {
+  margin-bottom: 0;
+}
+
+.harness-management-shell :deep(.harness-page-title) {
+  margin: 0;
+  color: #111827;
+  font-size: 22.4px;
+  font-weight: 700;
+  line-height: normal;
+  letter-spacing: normal;
+}
+
+.harness-management-shell :deep(.harness-page-description) {
+  margin: 3.2px 0 0;
+  color: #6b7280;
+  font-size: 13.12px;
+  font-weight: 400;
+  line-height: normal;
+  letter-spacing: normal;
+}
+
+.harness-management-shell :deep(.planning-tab),
+.harness-management-shell :deep(.configuration-tab) {
+  min-width: 144px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0 12px;
+}
+
+.harness-management-shell :deep(.capability-management-page .planning-tab),
+.harness-management-shell :deep(#configuration-tab-permissions) {
+  flex: 0 0 auto;
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .harness-management-shell::before {
@@ -486,14 +912,14 @@ onBeforeUnmount(() => {
 
 .harness-tab {
   flex: 0 0 auto;
-  min-height: 48px;
-  padding: 12px 16px 10px;
+  min-height: 44px;
+  padding: 10px 12px 8px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: rgba(0, 0, 0, 0.65);
   font: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
@@ -520,6 +946,39 @@ onBeforeUnmount(() => {
   border-radius: 5px 5px 0 0;
   outline: 3px solid rgba(24, 144, 255, 0.2);
   outline-offset: -3px;
+}
+
+.harness-topbar__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+
+.harness-topbar__help {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.harness-topbar__help svg {
+  width: 20px;
+  height: 20px;
+}
+
+.harness-topbar__help:hover {
+  background: rgba(107, 114, 128, 0.1);
+  color: #4b5563;
+}
+
+.harness-topbar__help:focus-visible {
+  outline: 2px solid #94a3b8;
+  outline-offset: 2px;
 }
 
 .harness-topbar__identity {
@@ -575,17 +1034,25 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 30px rgba(180, 35, 24, 0.12);
   font-size: 13px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .harness-tab-panel {
   box-sizing: border-box;
   width: 100%;
-  min-height: calc(100vh - var(--harness-topbar-height));
+  height: calc(100vh - var(--harness-topbar-height));
+  height: calc(100dvh - var(--harness-topbar-height));
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px 50px 34px;
 }
 
-.harness-tab-panel--tasks {
-  padding-inline: clamp(12px, 1.25vw, 24px);
+#harness-panel-workflows,
+#harness-panel-capabilities,
+#harness-panel-tasks {
+  overflow: hidden;
 }
 
 .harness-placeholder-panel {
@@ -638,6 +1105,24 @@ onBeforeUnmount(() => {
   margin-top: 24px;
   color: #98a2b3;
   font-size: 12px;
+}
+
+@media (min-width: 1101px) {
+  #harness-panel-scenarios {
+    overflow: hidden;
+  }
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .harness-tab-panel {
+    overflow: hidden;
+  }
+
+  .harness-management-shell :deep(.harness-viewport-page) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
 }
 
 @media (max-width: 1180px) {

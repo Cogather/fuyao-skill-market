@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import HarnessSelect from './HarnessSelect.vue';
+import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
+import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import {
   getHarnessCapabilityPlanningApi,
+  queryHarnessCapabilityCatalogPage,
   type HarnessCapabilityType,
 } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import type { SkillTransferParams } from '../../services/skillMarket/apiTypes';
@@ -13,15 +18,19 @@ import {
   type SkillPlanningUserOption,
 } from '../../services/skillMarket/skillPlanningService';
 import type { ProductPlanningOption } from '../../services/skillMarket/skillPlanningShared';
-import type {
-  SkillMasterPayload,
-  SkillMasterRecord,
-  SkillMasterStatus,
+import {
+  latestSkillMasterVersion,
+  type SkillMasterPayload,
+  type SkillMasterRecord,
+  type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { getHarnessDepartmentMaxLevel } from '../../utils/harnessDepartmentDepth';
 
 type DepartmentNode = {
   id?: string;
@@ -62,20 +71,32 @@ const props = withDefaults(
     userId?: string;
     currentUserDepartmentPath?: string[];
     defaultDepartmentPath?: string[];
+    initialScope?: HarnessScopeSnapshot;
+    createOnly?: boolean;
+    allowedDepartmentPaths?: string[][];
   }>(),
   {
     departmentTree: () => [],
     userId: '',
     currentUserDepartmentPath: () => [],
     defaultDepartmentPath: () => [],
+    initialScope: undefined,
+    createOnly: false,
+    allowedDepartmentPaths: () => [],
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  created: [];
+}>();
 
 const api = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => api.value.label);
 const departmentSegments = ref<string[]>([]);
 const filterForm = reactive({
-  level: '部门级',
+  level: '产品级',
   departmentName: '',
   product: '',
   keyword: '',
@@ -83,11 +104,13 @@ const filterForm = reactive({
 const productOptions = ref<ProductPlanningOption[]>([]);
 const productsLoading = ref(false);
 const records = ref<SkillMasterRecord[]>([]);
+const total = ref(0);
+const detailRecord = ref<SkillMasterRecord | null>(null);
 const loading = ref(false);
 const selectedIds = ref<string[]>([]);
 const pageNum = ref(1);
 const pageSize = ref(10);
-const pageSizeOptions = [5, 10, 20, 50];
+const tableScroll = ref<HTMLElement | null>(null);
 const toast = ref('');
 let toastTimer: number | null = null;
 const importInputRef = ref<HTMLInputElement | null>(null);
@@ -96,6 +119,8 @@ const exporting = ref(false);
 let productLoadSequence = 0;
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
+const initialPlannedCompleteDate = ref('');
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
 let ownerSearchSequence = 0;
@@ -134,11 +159,11 @@ function showToast(message: string, duration = 2600): void {
   }, duration);
 }
 
-function normalizePath(path: string[]): string[] {
+function normalizePath(path: string[], level = filterForm.level): string[] {
   return path
     .map((item) => item.trim())
     .filter(Boolean)
-    .slice(0, 6);
+    .slice(0, props.createOnly ? getHarnessDepartmentMaxLevel(level) : 6);
 }
 
 function pathExists(nodes: DepartmentNode[], path: string[]): boolean {
@@ -179,6 +204,10 @@ const selectedProduct = computed(() =>
 const requiredCapabilityNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(filterForm.level, filterForm.product);
 });
+const suggestedCapabilityNamePrefix = computed(() => {
+  if (filterForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(filterForm.product);
+});
 
 const catalogScopeErrorMessage = computed(() => {
   if (!props.userId.trim()) return '尚未获取当前用户工号';
@@ -218,7 +247,7 @@ function requireCatalogScope(): SkillTransferParams {
   return scope;
 }
 
-async function loadProductOptions(): Promise<void> {
+async function loadProductOptions(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSequence = ++productLoadSequence;
   productOptions.value = [];
   productsLoading.value = false;
@@ -233,8 +262,26 @@ async function loadProductOptions(): Promise<void> {
       departmentCode,
     );
     if (requestSequence !== productLoadSequence) return;
-    productOptions.value = options;
-    if (!options.some((item) => item.offeringName === filterForm.product)) {
+    const restoredOption = preferredScope
+      ? (options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
+      : undefined;
+    const externalOption =
+      !restoredOption && preferredScope?.offeringName
+        ? {
+            offeringId: preferredScope.offeringId,
+            offeringName: preferredScope.offeringName,
+            planningDeptName: filterForm.departmentName,
+          }
+        : undefined;
+    productOptions.value = externalOption ? [...options, externalOption] : options;
+    const firstOption = restoredOption ?? externalOption ?? options[0];
+    if (firstOption) {
+      filterForm.product = firstOption.offeringName;
+    }
+    if (!productOptions.value.some((item) => item.offeringName === filterForm.product)) {
       filterForm.product = '';
     }
   } catch (error) {
@@ -258,14 +305,35 @@ function applyDefaultDepartment(): void {
   filterForm.departmentName = path.at(-1) ?? '';
 }
 
-const total = computed(() => records.value.length);
+function emitScopeSnapshot(): void {
+  if (!filterForm.departmentName.trim()) return;
+  emit('scope-change', {
+    level: filterForm.level as HarnessScopeSnapshot['level'],
+    departmentPath: [...departmentSegments.value],
+    offeringId: filterForm.level === '产品级' ? (selectedProduct.value?.offeringId ?? '') : '',
+    offeringName: filterForm.level === '产品级' ? filterForm.product.trim() : '',
+  });
+}
+
+function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  const path = normalizePath(snapshot?.departmentPath ?? [], snapshot?.level);
+  if (
+    !snapshot ||
+    !['产品级', '部门级'].includes(snapshot.level) ||
+    !pathExists(props.departmentTree, path)
+  ) {
+    return undefined;
+  }
+  filterForm.level = snapshot.level;
+  departmentSegments.value = path;
+  filterForm.departmentName = path.at(-1) ?? '';
+  filterForm.product = snapshot.level === '产品级' ? snapshot.offeringName.trim() : '';
+  return { ...snapshot, departmentPath: [...path] };
+}
+
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-const pageRecords = computed(() => {
-  const start = (pageNum.value - 1) * pageSize.value;
-  return records.value.slice(start, start + pageSize.value);
-});
-const pageStart = computed(() => (total.value ? (pageNum.value - 1) * pageSize.value + 1 : 0));
-const pageEnd = computed(() => Math.min(total.value, pageNum.value * pageSize.value));
+const pageRecords = computed(() => records.value);
 const allPageSelected = computed(
   () =>
     pageRecords.value.length > 0 &&
@@ -273,27 +341,45 @@ const allPageSelected = computed(
 );
 
 async function reload(): Promise<void> {
+  if (props.createOnly) return;
+  tableScroll.value?.scrollTo({ top: 0 });
   const scope = currentCatalogScope.value;
   if (!scope) {
     records.value = [];
+    total.value = 0;
     selectedIds.value = [];
     return;
   }
   loading.value = true;
   try {
-    records.value = await api.value.queryCatalog({
+    let result = await queryHarnessCapabilityCatalogPage(props.capabilityType, {
       ...scope,
       keyword: filterForm.keyword,
       departmentName: filterForm.departmentName,
       level: filterForm.level,
       product: filterForm.product,
+      pageNum: pageNum.value,
+      pageSize: pageSize.value,
     });
-    if (pageNum.value > totalPages.value) pageNum.value = totalPages.value;
-    selectedIds.value = selectedIds.value.filter((id) =>
-      records.value.some((record) => record.id === id),
-    );
+    records.value = result.list;
+    total.value = result.total;
+    if (pageNum.value > totalPages.value) {
+      pageNum.value = totalPages.value;
+      result = await queryHarnessCapabilityCatalogPage(props.capabilityType, {
+        ...scope,
+        keyword: filterForm.keyword,
+        departmentName: filterForm.departmentName,
+        level: filterForm.level,
+        product: filterForm.product,
+        pageNum: pageNum.value,
+        pageSize: pageSize.value,
+      });
+      records.value = result.list;
+      total.value = result.total;
+    }
   } catch (error) {
     records.value = [];
+    total.value = 0;
     showToast(error instanceof Error ? error.message : '清单加载失败');
   } finally {
     loading.value = false;
@@ -304,36 +390,45 @@ async function onDepartmentDone(path: string[] = []): Promise<void> {
   departmentSegments.value = normalizePath(path);
   filterForm.departmentName = departmentSegments.value.at(-1) ?? '';
   filterForm.product = '';
-  await loadProductOptions();
   pageNum.value = 1;
+  selectedIds.value = [];
+  await loadProductOptions();
   await reload();
+  emitScopeSnapshot();
 }
 
 async function applyQuery(): Promise<void> {
   pageNum.value = 1;
+  selectedIds.value = [];
   await reload();
 }
 
 async function resetQuery(): Promise<void> {
-  filterForm.level = '部门级';
+  filterForm.level = '产品级';
   filterForm.product = '';
   filterForm.keyword = '';
   applyDefaultDepartment();
-  await loadProductOptions();
   pageNum.value = 1;
+  selectedIds.value = [];
+  await loadProductOptions();
   await reload();
+  emitScopeSnapshot();
 }
 
 async function onLevelChange(): Promise<void> {
   filterForm.product = '';
   pageNum.value = 1;
+  selectedIds.value = [];
   await loadProductOptions();
   await reload();
+  emitScopeSnapshot();
 }
 
 async function onProductChange(): Promise<void> {
   pageNum.value = 1;
+  selectedIds.value = [];
   await reload();
+  emitScopeSnapshot();
 }
 
 function toggleSelection(id: string): void {
@@ -375,6 +470,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function resetPersonPicker(picker: PersonPickerState): void {
@@ -529,7 +638,7 @@ function hydratePersonPicker(picker: PersonPickerState, label: string, departmen
   };
 }
 
-function resetEditor(): void {
+function resetEditor(options: { preserveSubmitting?: boolean } = {}): void {
   Object.assign(editor, {
     id: '',
     name: '',
@@ -541,10 +650,33 @@ function resetEditor(): void {
     plannedCompleteDate: '',
     status: '未开始' as SkillMasterStatus,
     error: '',
-    submitting: false,
+    submitting: options.preserveSubmitting ? editor.submitting : false,
   });
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+}
+
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function ensurePlannedCompleteDate(): boolean {
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return false;
+  }
+  const plannedCompleteDateChanged =
+    editor.mode === 'create' || editor.plannedCompleteDate !== initialPlannedCompleteDate.value;
+  if (plannedCompleteDateChanged && editor.plannedCompleteDate < currentLocalDate()) {
+    editor.error = '计划完成时间不能早于当前日期';
+    return false;
+  }
+  return true;
 }
 
 function ensureProductCapabilityNamePrefix(): boolean {
@@ -575,6 +707,23 @@ function openCreate(): void {
   editor.open = true;
 }
 
+async function prepareNextCreate(): Promise<void> {
+  resetEditor({ preserveSubmitting: true });
+  editor.mode = 'create';
+  editor.name = requiredCapabilityNamePrefix.value;
+  editor.open = true;
+  await nextTick();
+  editorFormRef.value?.querySelector<HTMLInputElement>('input[maxlength="64"]')?.focus();
+}
+
+function openDetail(record: SkillMasterRecord): void {
+  detailRecord.value = record;
+}
+
+function closeDetail(): void {
+  detailRecord.value = null;
+}
+
 function openEdit(record: SkillMasterRecord): void {
   Object.assign(editor, {
     open: true,
@@ -591,6 +740,7 @@ function openEdit(record: SkillMasterRecord): void {
     error: '',
     submitting: false,
   });
+  initialPlannedCompleteDate.value = record.plannedCompleteDate;
   hydratePersonPicker(ownerPicker, record.owner, record.department);
   hydratePersonPicker(developOwnerPicker, record.developOwner, record.developOwnerDepartment);
 }
@@ -599,8 +749,24 @@ function closeEditor(): void {
   if (editor.submitting) return;
   editor.open = false;
   editor.error = '';
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+  if (props.createOnly) emit('close');
+}
+
+function onEditorFormEnter(event: KeyboardEvent): void {
+  const target = event.target;
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) {
+    return;
+  }
+  event.preventDefault();
+}
+
+function onEditorFormSubmit(event: SubmitEvent): void {
+  if (event.submitter instanceof HTMLButtonElement) {
+    void submitEditor();
+  }
 }
 
 function editorPayload(): CapabilityCatalogEditorPayload {
@@ -644,15 +810,18 @@ async function submitEditor(): Promise<void> {
     editor.error = '请选择开发责任人，不能只输入文本';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
   try {
     editor.submitting = true;
     const scope = requireCatalogScope();
     if (editor.mode === 'create') {
       await api.value.createCatalog(editorPayload(), scope);
+      if (props.createOnly) {
+        emit('created');
+        showToast(`${capabilityLabel.value} 已新增，可继续添加`);
+        await prepareNextCreate();
+        return;
+      }
       showToast(`已新增 ${capabilityLabel.value}`);
     } else {
       await api.value.updateCatalog(editor.id, editorPayload(), scope);
@@ -667,18 +836,26 @@ async function submitEditor(): Promise<void> {
   }
 }
 
-function requestDelete(record: SkillMasterRecord): void {
+async function requestDelete(record: SkillMasterRecord): Promise<void> {
+  if ((record.referenceCount ?? 0) > 0) {
+    showToast(`“${record.name}”已关联 ${record.referenceCount} 个规划项，不能删除`, 5000);
+    return;
+  }
   Object.assign(deleteDialog, {
     open: true,
     ids: [record.id],
     title: `删除“${record.name}”？`,
-    message: '删除后将不能用于新规划，已有规划仍保留历史快照。',
+    message: '',
   });
 }
 
-function requestBatchDelete(): void {
-  if (!selectedIds.value.length) {
-    showToast('请先勾选需要批量删除的数据');
+async function requestBatchCatalogDelete(): Promise<void> {
+  const referencedRecords = records.value.filter(
+    (record) => selectedIds.value.includes(record.id) && (record.referenceCount ?? 0) > 0,
+  );
+  if (referencedRecords.length) {
+    const names = referencedRecords.map((record) => `“${record.name}”`);
+    showToast(`${names.join('、')}已关联规划项，不能删除`, 5000);
     return;
   }
   Object.assign(deleteDialog, {
@@ -687,6 +864,14 @@ function requestBatchDelete(): void {
     title: `批量删除 ${capabilityLabel.value}？`,
     message: `确认删除已勾选的 ${selectedIds.value.length} 条数据吗？删除后将不能用于新规划。`,
   });
+}
+
+function requestBatchDelete(): void {
+  if (!selectedIds.value.length) {
+    showToast('请先勾选需要批量删除的数据');
+    return;
+  }
+  void requestBatchCatalogDelete();
 }
 
 async function confirmDelete(): Promise<void> {
@@ -712,6 +897,28 @@ async function confirmDelete(): Promise<void> {
 function triggerImport(): void {
   importInputRef.value?.click();
 }
+
+function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
+  const path = normalizePath(scope.departmentPath, scope.level);
+  if (!['产品级', '部门级'].includes(scope.level) || !pathExists(props.departmentTree, path)) {
+    showToast('资产范围已失效，请重新选择部门和产品');
+    return false;
+  }
+  filterForm.level = scope.level;
+  departmentSegments.value = path;
+  filterForm.departmentName = path.at(-1) ?? '';
+  filterForm.product = scope.level === '产品级' ? scope.offeringName.trim() : '';
+  pageNum.value = 1;
+  selectedIds.value = [];
+  void (async () => {
+    await loadProductOptions(scope);
+    await reload();
+    emitScopeSnapshot();
+  })();
+  return true;
+}
+
+defineExpose({ openCreate, triggerImport, applyExternalScope });
 
 async function handleImport(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
@@ -740,7 +947,17 @@ async function exportCurrent(): Promise<void> {
   try {
     exporting.value = true;
     const scope = requireCatalogScope();
-    await api.value.exportCatalog(records.value, scope);
+    const exportRecords =
+      total.value > records.value.length
+        ? await api.value.queryCatalog({
+            ...scope,
+            keyword: filterForm.keyword,
+            departmentName: filterForm.departmentName,
+            level: filterForm.level,
+            product: filterForm.product,
+          })
+        : records.value;
+    await api.value.exportCatalog(exportRecords, scope);
     showToast(`已开始导出 ${capabilityLabel.value} 清单`);
   } catch (error) {
     showToast(error instanceof Error ? error.message : '导出失败');
@@ -749,23 +966,35 @@ async function exportCurrent(): Promise<void> {
   }
 }
 
-function goPage(next: number): void {
+async function goPage(next: number): Promise<void> {
   pageNum.value = Math.max(1, Math.min(totalPages.value, next));
+  await reload();
 }
 
-watch(
-  requiredCapabilityNamePrefix,
-  (nextPrefix, previousPrefix) => {
-    if (!editor.open || editor.mode !== 'create') return;
-    if (!editor.name || editor.name === previousPrefix) {
-      editor.name = nextPrefix;
-      return;
-    }
-    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
-      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
-    }
-  },
-);
+async function changePageSize(size: number): Promise<void> {
+  pageSize.value = size;
+  pageNum.value = 1;
+  selectedIds.value = [];
+  await reload();
+}
+
+watch(requiredCapabilityNamePrefix, (nextPrefix, previousPrefix) => {
+  if (!editor.open || editor.mode !== 'create') return;
+  if (!editor.name || editor.name === previousPrefix) {
+    editor.name = nextPrefix;
+    return;
+  }
+  if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+    editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  } else if (
+    props.createOnly &&
+    nextPrefix &&
+    !previousPrefix &&
+    !editor.name.startsWith(nextPrefix)
+  ) {
+    editor.name = nextPrefix + editor.name;
+  }
+});
 
 watch(
   () => props.capabilityType,
@@ -780,6 +1009,8 @@ watch(
 watch(
   () => props.userId,
   async () => {
+    pageNum.value = 1;
+    selectedIds.value = [];
     await reload();
   },
 );
@@ -791,23 +1022,21 @@ watch(
     () => props.defaultDepartmentPath,
   ],
   async () => {
-    const defaultPath = normalizePath(props.defaultDepartmentPath);
-    const shouldApplyPermissionDefault =
-      defaultPath.length > 0 &&
-      normalizePath(departmentSegments.value).join('\u0001') !== defaultPath.join('\u0001');
-    if (
-      shouldApplyPermissionDefault ||
-      !pathExists(props.departmentTree, departmentSegments.value)
-    ) {
+    pageNum.value = 1;
+    selectedIds.value = [];
+    if (!pathExists(props.departmentTree, departmentSegments.value)) {
       applyDefaultDepartment();
     }
     await loadProductOptions();
     await reload();
+    emitScopeSnapshot();
   },
   { deep: true },
 );
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
+  productLoadSequence += 1;
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   clearOwnerSearchTimer();
   clearDevelopOwnerSearchTimer();
@@ -816,25 +1045,40 @@ onBeforeUnmount(() => {
 });
 
 onMounted(async () => {
-  applyDefaultDepartment();
-  await loadProductOptions();
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
+  const restoredScope = restoreScopeSnapshot();
+  if (!restoredScope) applyDefaultDepartment();
+  if (props.createOnly) openCreate();
+  await loadProductOptions(restoredScope);
   await reload();
+  emitScopeSnapshot();
 });
 </script>
 
 <template>
-  <section class="capability-master-panel" :aria-label="`${capabilityLabel} 清单管理`">
+  <section
+    class="capability-master-panel"
+    :class="{ 'is-create-only': props.createOnly }"
+    :aria-label="`${capabilityLabel} 清单管理`"
+  >
     <section
+      v-if="!props.createOnly"
       class="capability-master-filter"
       :class="{ 'is-product-level': filterForm.level === '产品级' }"
       :aria-label="`${capabilityLabel} 清单查询`"
     >
       <label class="capability-master-field capability-master-field--level">
         <span>层级 <em>*</em></span>
-        <select v-model="filterForm.level" @change="onLevelChange">
-          <option value="部门级">部门级</option>
-          <option value="产品级">产品级</option>
-        </select>
+        <HarnessSelect
+          v-model="filterForm.level"
+          @change="onLevelChange"
+          :searchable="false"
+          :options="[
+            { value: '部门级', label: '部门级' },
+            { value: '产品级', label: '产品级' },
+          ]"
+        />
       </label>
       <div class="capability-master-field capability-master-field--dept">
         <span>{{ filterForm.level === '产品级' ? '产品所属部门' : '归属部门' }} <em>*</em></span>
@@ -855,28 +1099,25 @@ onMounted(async () => {
         class="capability-master-field capability-master-field--product"
       >
         <span>产品 <em>*</em></span>
-        <select
+        <HarnessSelect
           v-model="filterForm.product"
           :disabled="!filterForm.departmentName || productsLoading"
           @change="onProductChange"
-        >
-          <option value="">
-            {{
-              productsLoading
+          :options="[
+            {
+              value: '',
+              label: productsLoading
                 ? '产品加载中...'
                 : filterForm.departmentName
                   ? '请选择产品'
-                  : '请先选择部门'
-            }}
-          </option>
-          <option
-            v-for="product in productOptions"
-            :key="product.offeringId"
-            :value="product.offeringName"
-          >
-            {{ product.offeringName }}
-          </option>
-        </select>
+                  : '请先选择部门',
+            },
+            ...productOptions.map((product) => ({
+              value: product.offeringName,
+              label: product.offeringName,
+            })),
+          ]"
+        />
       </label>
       <label class="capability-master-field capability-master-field--keyword">
         <span>关键词</span>
@@ -884,6 +1125,7 @@ onMounted(async () => {
           v-model.trim="filterForm.keyword"
           type="search"
           :placeholder="`搜索 ${capabilityLabel} 或 Owner`"
+          @input="applyQuery"
           @keydown.enter.prevent="applyQuery"
         />
       </label>
@@ -901,10 +1143,9 @@ onMounted(async () => {
       </div>
     </section>
 
-    <section class="capability-master-board">
+    <section v-if="!props.createOnly" class="capability-master-board">
       <header class="capability-master-toolbar">
         <div class="capability-master-toolbar__summary">
-          <strong>{{ capabilityLabel }} 原子清单</strong>
           <small
             >已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条 · 可被不同部门的规划复用</small
           >
@@ -962,8 +1203,25 @@ onMounted(async () => {
         </div>
       </header>
 
-      <div class="capability-master-table-wrap">
+      <div
+        ref="tableScroll"
+        class="capability-master-table-wrap"
+        role="region"
+        :aria-label="`${capabilityLabel} 清单表格`"
+        tabindex="0"
+      >
         <table class="capability-master-table">
+          <colgroup>
+            <col class="is-check-column" />
+            <col class="is-name-column" />
+            <col class="is-description-column" />
+            <col class="is-person-column" />
+            <col class="is-person-column" />
+            <col class="is-date-column" />
+            <col class="is-status-column" />
+            <col class="is-version-column" />
+            <col class="is-action-column" />
+          </colgroup>
           <thead>
             <tr>
               <th class="is-check">
@@ -980,12 +1238,14 @@ onMounted(async () => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
+              <th>版本</th>
+              <!-- <th class="is-reference">关联规划项</th> -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="8" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
+              <td colspan="9" class="is-empty">正在加载 {{ capabilityLabel }} 清单...</td>
             </tr>
             <tr v-for="record in loading ? [] : pageRecords" :key="record.id">
               <td class="is-check">
@@ -997,18 +1257,36 @@ onMounted(async () => {
               </td>
               <td>
                 <div class="capability-name-cell">
-                  <strong class="capability-name">{{ record.name }}</strong>
+                  <strong class="capability-name" :title="record.name">{{ record.name }}</strong>
                 </div>
               </td>
-              <td class="is-description">{{ record.description }}</td>
+              <td class="is-description">
+                <span :title="record.description || '—'">{{ record.description || '—' }}</span>
+              </td>
               <td>{{ record.owner }}</td>
               <td>{{ record.developOwner }}</td>
               <td>{{ record.plannedCompleteDate || '—' }}</td>
               <td>
-                <span class="capability-status" :class="`is-${record.status}`">{{
-                  record.status
+                <span
+                  class="capability-status"
+                  :class="{
+                    'is-done': record.status === '已完成',
+                    'is-inProgress': record.status === '进行中',
+                  }"
+                  >{{ record.status }}</span
+                >
+              </td>
+              <td>
+                <span class="capability-version">{{
+                  latestSkillMasterVersion(record)?.version || '—'
                 }}</span>
               </td>
+              <!-- <td class="is-reference">
+                <span
+                  class="capability-reference-count"
+                  :class="{ 'is-linked': (record.referenceCount ?? 0) > 0 }"
+                >{{ record.referenceCount ?? 0 }}</span>
+              </td> -->
               <td class="is-action">
                 <div class="capability-row-actions">
                   <button type="button" title="编辑" aria-label="编辑" @click="openEdit(record)">
@@ -1028,48 +1306,101 @@ onMounted(async () => {
                       <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
                     </svg>
                   </button>
+                  <button
+                    v-if="latestSkillMasterVersion(record)"
+                    type="button"
+                    class="is-view"
+                    :title="`查看 ${capabilityLabel}`"
+                    :aria-label="`查看 ${capabilityLabel}`"
+                    @click="openDetail(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  </button>
                 </div>
               </td>
             </tr>
             <tr v-if="!loading && !pageRecords.length">
-              <td colspan="8" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
+              <td colspan="9" class="is-empty">暂无符合条件的 {{ capabilityLabel }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <footer class="capability-master-pagination">
-        <span>第 {{ pageStart }}-{{ pageEnd }} 条，共 {{ total }} 条</span>
-        <div class="capability-master-pagination__controls">
-          <select v-model.number="pageSize" @change="pageNum = 1">
-            <option v-for="size in pageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
-          <button type="button" :disabled="pageNum <= 1" @click="goPage(pageNum - 1)">
-            上一页
-          </button>
-          <span>{{ pageNum }} / {{ totalPages }}</span>
-          <button type="button" :disabled="pageNum >= totalPages" @click="goPage(pageNum + 1)">
-            下一页
-          </button>
-        </div>
-      </footer>
+      <HarnessCatalogPagination
+        :page="pageNum"
+        :page-size="pageSize"
+        :total="total"
+        :loading="loading"
+        @page-change="goPage"
+        @page-size-change="changePageSize"
+      />
     </section>
 
+    <HarnessCatalogDetailDialog
+      :open="Boolean(detailRecord)"
+      :record="detailRecord"
+      :user-id="props.userId"
+      :capability-type="props.capabilityType"
+      @close="closeDetail"
+    />
+
     <Teleport to="body">
-      <div v-if="editor.open" class="capability-master-overlay" @click.self="closeEditor">
-        <form class="capability-master-dialog" @submit.prevent="submitEditor">
+      <div
+        v-if="editor.open"
+        class="capability-master-overlay"
+        :class="{ 'harness-workspace-overlay': props.createOnly }"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
+      >
+        <form
+          ref="editorFormRef"
+          class="capability-master-dialog"
+          :class="{ 'is-create-dialog': props.createOnly }"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="`${editor.mode === 'create' ? '添加' : '编辑'} ${capabilityLabel}`"
+          @click.stop
+          @pointerdown.stop
+          @pointerup.stop
+          @submit.prevent="onEditorFormSubmit"
+          @keydown.enter="onEditorFormEnter"
+        >
           <header>
             <div>
-              <small>{{ capabilityLabel.toUpperCase() }} MASTER</small>
+              <small v-if="!props.createOnly">{{ capabilityLabel.toUpperCase() }} MASTER</small>
               <strong>{{
                 editor.mode === 'create' ? `添加 ${capabilityLabel}` : `编辑 ${capabilityLabel}`
               }}</strong>
-              <p>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p>
+              <p v-if="props.createOnly">选择资产归属并填写基本信息。</p>
+              <p v-else>这里只维护可复用的原子能力；场景、活动、层级和部门/产品请在规划页配置。</p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
-          <div class="capability-master-note">
+          <HarnessCatalogCreateScope
+            v-if="props.createOnly"
+            :level="filterForm.level"
+            :department-path="departmentSegments"
+            :department-tree="props.departmentTree"
+            :product-name="filterForm.product"
+            :products="productOptions"
+            :products-loading="productsLoading"
+            :disabled="editor.submitting"
+            :permission-path="props.defaultDepartmentPath"
+            :allowed-department-paths="props.allowedDepartmentPaths"
+            @level-change="
+              filterForm.level = $event;
+              onLevelChange();
+            "
+            @department-change="onDepartmentDone"
+            @product-change="
+              filterForm.product = $event;
+              onProductChange();
+            "
+          />
+          <div v-if="!props.createOnly" class="capability-master-note">
             <b>部门语义</b>
             <span>Owner 所在部门是人员属性，不作为 {{ capabilityLabel }} 的规划归属。</span>
           </div>
@@ -1085,15 +1416,20 @@ onMounted(async () => {
                 {{
                   '\u9700\u4ee5\u4ea7\u54c1\u540d\u79f0\u201c' +
                   requiredCapabilityNamePrefix +
-                  '\u201d\u5f00\u5934'
+                  '\u201d\u5f00\u5934\uff0c\u4ec5\u4f7f\u7528\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u548c\u8fde\u5b57\u7b26\u3002'
                 }}
+              </small>
+              <small v-else-if="suggestedCapabilityNamePrefix" class="capability-name-prefix-hint">
+                建议使用“{{
+                  suggestedCapabilityNamePrefix
+                }}”作为名称前缀，仅使用小写字母、数字和连字符。
               </small>
             </label>
             <label class="is-wide">
               <span>{{ capabilityLabel }} 说明 *</span>
               <textarea v-model.trim="editor.description" rows="4" maxlength="300" />
             </label>
-            <label class="person-search" @keydown.esc="closeOwnerPersonSearch">
+            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
               <span>责任 Owner *</span>
               <div class="person-search__control">
                 <input
@@ -1138,7 +1474,10 @@ onMounted(async () => {
                 </template>
               </div>
             </label>
-            <label class="person-search" @keydown.esc="closeDevelopOwnerPersonSearch">
+            <label
+              class="develop-owner-picker person-search"
+              @keydown.esc="closeDevelopOwnerPersonSearch"
+            >
               <span>开发责任人 *</span>
               <div class="person-search__control">
                 <input
@@ -1187,13 +1526,13 @@ onMounted(async () => {
             </label>
             <label>
               <span>计划完成时间 *</span>
-              <input v-model="editor.plannedCompleteDate" type="date" />
+              <input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()" />
             </label>
           </div>
           <p v-if="editor.error" class="capability-master-error">{{ editor.error }}</p>
           <footer>
             <button type="button" @click="closeEditor">取消</button>
-            <button type="submit" class="is-primary" :disabled="editor.submitting">
+            <button type="submit" class="is-primary" formnovalidate :disabled="editor.submitting">
               {{ editor.submitting ? '保存中...' : '保存' }}
             </button>
           </footer>
@@ -1235,13 +1574,22 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.capability-master-panel.is-create-only {
+  display: contents;
+}
+
 .capability-master-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 16px;
   color: #17233d;
   font-size: 13px;
 }
 .capability-master-filter {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: minmax(120px, 0.65fr) minmax(360px, 1.75fr) minmax(320px, 2fr) auto;
   gap: 14px;
@@ -1272,7 +1620,7 @@ onMounted(async () => {
   font-style: normal;
 }
 .capability-master-field input,
-.capability-master-field select {
+.capability-master-field :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   height: 38px;
@@ -1298,7 +1646,7 @@ onMounted(async () => {
   box-shadow: none;
 }
 .capability-master-field input:focus,
-.capability-master-field select:focus {
+.capability-master-field :is(select, .harness-select):focus {
   border-color: #6285f5;
   box-shadow: 0 0 0 3px rgba(75, 103, 241, 0.11);
 }
@@ -1364,7 +1712,9 @@ onMounted(async () => {
   opacity: 0.45;
 }
 .capability-master-board {
-  height: clamp(520px, calc(100vh - 395px), 880px);
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1374,6 +1724,7 @@ onMounted(async () => {
   box-shadow: 0 10px 28px rgba(35, 52, 84, 0.06);
 }
 .capability-master-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1384,11 +1735,6 @@ onMounted(async () => {
 .capability-master-toolbar__summary {
   display: grid;
   gap: 4px;
-}
-.capability-master-toolbar__summary strong {
-  color: #101828;
-  font-size: 17px;
-  font-weight: 900;
 }
 .capability-master-toolbar__summary small {
   color: #64748b;
@@ -1409,7 +1755,7 @@ onMounted(async () => {
 }
 .capability-master-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1280px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -1424,7 +1770,7 @@ onMounted(async () => {
   border-bottom: 1px solid #edf2f7;
   color: #334155;
   font-size: 13px;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   word-break: break-word;
 }
@@ -1439,27 +1785,51 @@ onMounted(async () => {
   font-weight: 900;
   white-space: nowrap;
 }
-th:nth-child(1) {
-  width: 52px;
+.capability-master-table td:nth-child(2) {
+  padding-left: 24px;
+  text-align: left;
 }
-th:nth-child(2) {
-  width: 220px;
+.capability-master-table col.is-check-column {
+  width: 4%;
 }
-th:nth-child(3) {
-  width: 300px;
+.capability-master-table col.is-name-column {
+  width: 18%;
 }
-th:nth-child(4),
-th:nth-child(5) {
-  width: 150px;
+.capability-master-table col.is-description-column {
+  width: 20%;
 }
-th:nth-child(6) {
-  width: 118px;
+.capability-master-table col.is-person-column {
+  width: 11%;
 }
-th:nth-child(7) {
-  width: 110px;
+.capability-master-table col.is-date-column {
+  width: 10%;
 }
-th:nth-child(8) {
-  width: 120px;
+.capability-master-table col.is-status-column {
+  width: 8%;
+}
+.capability-master-table col.is-version-column {
+  width: 7%;
+}
+.capability-master-table col.is-action-column {
+  width: 11%;
+}
+.capability-master-table .is-reference {
+  text-align: center;
+}
+.capability-reference-count {
+  display: inline-flex;
+  min-width: 30px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 800;
+}
+.capability-reference-count.is-linked {
+  background: #eef2ff;
+  color: #4f46e5;
 }
 .capability-master-table tbody tr:hover td {
   background: #f8fbff;
@@ -1467,16 +1837,34 @@ th:nth-child(8) {
 td.is-description {
   color: #334155;
 }
+td.is-description > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
 .is-check {
   text-align: center;
 }
 .capability-name-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
 }
 .capability-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: #10243e;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .capability-status {
   display: inline-flex;
@@ -1492,9 +1880,45 @@ td.is-description {
   font-size: 12px;
   font-weight: 900;
 }
+.capability-status.is-inProgress {
+  gap: 5px;
+  border-color: #c5d7ff;
+  background: linear-gradient(135deg, #f1f6ff, #e7efff);
+  color: #3156b5;
+  box-shadow: 0 2px 8px rgba(70, 109, 224, 0.1);
+}
+.capability-status.is-inProgress::before,
+.capability-status.is-done::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  content: '';
+}
+.capability-status.is-inProgress::before {
+  background: #5b7fe5;
+  box-shadow: 0 0 0 3px rgba(91, 127, 229, 0.12);
+}
+.capability-status.is-done {
+  gap: 5px;
+  border-color: #bce8d1;
+  background: linear-gradient(135deg, #effaf4, #e4f6ed);
+  color: #18794e;
+  box-shadow: 0 2px 8px rgba(39, 129, 93, 0.1);
+}
+.capability-status.is-done::before {
+  background: #2fac78;
+  box-shadow: 0 0 0 3px rgba(47, 172, 120, 0.12);
+}
+.capability-version {
+  color: #53627a;
+  font-weight: 700;
+}
 .capability-row-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 .capability-row-actions button {
@@ -1513,6 +1937,19 @@ td.is-description {
 .capability-row-actions button:hover:not(:disabled) {
   border-color: #b9ccff;
   background: #eff6ff;
+}
+.capability-row-actions button.is-view {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-color: #dbe5f2;
+  background: #ffffff;
+  color: #526b9d;
+}
+.capability-row-actions button.is-view:hover:not(:disabled) {
+  border-color: #b9ccff;
+  background: #eff6ff;
+  color: #3569e8;
 }
 .capability-row-actions button.is-danger {
   color: #dc2626;
@@ -1535,41 +1972,6 @@ td.is-description {
   color: #64748b;
   text-align: center;
 }
-.capability-master-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  color: #64748b;
-  font-size: 13px;
-}
-.capability-master-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.capability-master-pagination select,
-.capability-master-pagination button {
-  height: 32px;
-  border: 1px solid #dbe5f2;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #253857;
-  font: inherit;
-  font-size: 13px;
-}
-.capability-master-pagination select {
-  padding: 0 8px;
-}
-.capability-master-pagination button {
-  padding: 0 10px;
-  cursor: pointer;
-}
-.capability-master-pagination button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
 .capability-master-overlay {
   position: fixed;
   z-index: 1300;
@@ -1589,6 +1991,32 @@ td.is-description {
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
+}
+.capability-master-dialog.is-create-dialog {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(1206px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+.capability-master-dialog.is-create-dialog > header,
+.capability-master-dialog.is-create-dialog > .catalog-create-scope,
+.capability-master-dialog.is-create-dialog > .capability-master-error,
+.capability-master-dialog.is-create-dialog > footer {
+  flex: 0 0 auto;
+}
+.capability-master-dialog.is-create-dialog > .catalog-create-scope {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(210px, 0.6fr);
+}
+.capability-master-dialog.is-create-dialog > .capability-master-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
 }
 .capability-master-dialog > header {
   display: flex;
@@ -1658,7 +2086,7 @@ td.is-description {
 }
 .capability-master-form input,
 .capability-master-form textarea,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   padding: 11px 13px;
@@ -1708,13 +2136,13 @@ td.is-description {
 }
 .capability-master-form input,
 .capability-master-form textarea,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   padding: 0 11px;
   border-color: #d7dfeb;
   font-size: 11px;
 }
 .capability-master-form input,
-.capability-master-form select {
+.capability-master-form :is(select, .harness-select) {
   height: 40px;
 }
 .capability-master-form textarea {
@@ -1868,6 +2296,21 @@ td.is-description {
   font-size: 13px;
   font-weight: 700;
 }
+@media (max-height: 760px) {
+  .capability-master-dialog.is-create-dialog {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    padding: 18px 22px;
+  }
+  .capability-master-dialog.is-create-dialog > header {
+    margin-bottom: 12px;
+  }
+  .capability-master-dialog.is-create-dialog > footer {
+    margin-top: 12px;
+  }
+}
 @media (max-width: 1100px) {
   .capability-master-filter {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1879,5 +2322,27 @@ td.is-description {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+/* Keep Harness actions compact, including dialogs teleported to body. */
+:where(body:has(.harness-management-shell)) .capability-master-btn,
+:where(body:has(.harness-management-shell)) .capability-master-dialog > footer button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+:where(body:has(.harness-management-shell)) .capability-row-actions {
+  grid-template-columns: repeat(3, 28px);
+}
+
+:where(body:has(.harness-management-shell)) .capability-row-actions button,
+:where(body:has(.harness-management-shell)) .capability-row-actions button.is-view {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  align-self: center;
 }
 </style>

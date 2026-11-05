@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
   getActivityOptionGroups,
   getDefaultActivityRecords,
@@ -10,11 +10,18 @@ import {
 import {
   getDefaultSceneRecords,
   getSceneOptionGroups,
-  listScenes,
-  replaceScenesForDepartment,
-  type SceneRecord,
 } from '../../services/skillMarket/sceneManagementService';
+import { getSceneTags, type SceneTag } from '../../services/skillMarket/sceneTagService';
 import { notifyHarnessConfigurationChanged } from '../../services/skillMarket/harnessConfigurationSyncService';
+import {
+  loadLegacyActivityRecords,
+  loadScenarioRecords,
+  listScenarioTags,
+  saveScenarioRecords,
+  saveScenarioTagBindings,
+  type TaxonomyRecord,
+  type TaxonomyScope,
+} from '../../services/skillMarket/harnessScenarioTaxonomyService';
 import {
   skillBaseService,
   type RefreshTaxonomyItem,
@@ -28,9 +35,9 @@ import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillP
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 
 type TaxonomyKind = 'scene' | 'activity';
-type TaxonomyRecord = SceneRecord | ActivityRecord;
 type ConfigurationLevel = '产品级' | '部门级';
 
 interface DepartmentTreeNode {
@@ -59,6 +66,7 @@ const props = withDefaults(
     manageableDepartments?: HarnessAuthorizedDepartment[];
     departmentPermissionsLoading?: boolean;
     departmentPermissionsError?: string;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -70,6 +78,7 @@ const props = withDefaults(
     manageableDepartments: () => [],
     departmentPermissionsLoading: false,
     departmentPermissionsError: '',
+    initialScope: undefined,
   },
 );
 
@@ -78,6 +87,7 @@ const useHttpTaxonomySource = transportIsHttp;
 
 const emit = defineEmits<{
   changed: [groups: SkillPlanningOptionGroup[], departmentName: string];
+  'scope-change': [snapshot: HarnessScopeSnapshot];
 }>();
 
 const labels = computed(() =>
@@ -193,9 +203,9 @@ const departmentOptions = computed(() => {
 const departmentCascadeMaxLevel = computed(() =>
   Math.max(1, departmentTreeDepth(props.departmentTree)),
 );
-const configurationLevelOptions: ConfigurationLevel[] = ['产品级', '部门级'];
+const configurationLevelOptions: ConfigurationLevel[] = ['产品级'];
 const scopeForm = reactive({
-  level: '部门级' as ConfigurationLevel,
+  level: '产品级' as ConfigurationLevel,
   offeringId: '',
   offeringName: '',
 });
@@ -243,11 +253,23 @@ const collapsedPrimaryIds = ref(new Set<string>());
 const notice = ref('');
 const toast = ref('');
 const loading = ref(false);
+const taxonomyLoaded = ref(false);
 let departmentLoadSequence = 0;
 let productLoadSequence = 0;
-let toastTimer: ReturnType<typeof window.setTimeout> | null = null;
+let toastTimer: number | null = null;
 const importInput = ref<HTMLInputElement | null>(null);
 const draggedId = ref('');
+
+// 一级场景标签（仅 kind === 'scene' 时启用）
+const sceneTagBindings = ref<Record<string, string[]>>({});
+const tagDialogOpen = ref(false);
+const tagDialogSceneId = ref('');
+const tagDialogSceneName = ref('');
+const tagOptions = ref<SceneTag[]>([]);
+const tagSelected = ref<string[]>([]);
+const tagLoading = ref(false);
+const tagSaving = ref(false);
+const tagError = ref('');
 
 const DEPARTMENT_PERMISSION_MESSAGE =
   '\u8bf7\u9009\u62e9\u60a8\u6709\u7ba1\u7406\u6743\u9650\u7684\u90e8\u95e8\u3002';
@@ -313,6 +335,18 @@ const selectedPrimary = computed(
 );
 
 const dirty = computed(() => JSON.stringify(draftRecords.value) !== savedSnapshot.value);
+const incompletePrimaryRecords = computed(() =>
+  primaryRecords.value.filter(
+    (primary) => !draftRecords.value.some((record) => record.parentId === primary.id),
+  ),
+);
+const hasIncompletePrimaryDraft = computed(
+  () => dirty.value && incompletePrimaryRecords.value.length > 0,
+);
+const incompleteDraftMessage = computed(() => {
+  const names = incompletePrimaryRecords.value.map((record) => `“${record.name}”`).join('、');
+  return `请先为${labels.value.primary}${names ? ` ${names}` : ''}添加${labels.value.secondary}，仅有第一层的配置不会更新。`;
+});
 const totalSkillCount = computed(() =>
   draftRecords.value.reduce((sum, item) => sum + item.skillCount, 0),
 );
@@ -338,112 +372,30 @@ function readText(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 }
 
-interface HttpTaxonomyRow {
-  deptCode: string;
-  deptName: string;
-  primary: string;
-  secondary: string;
-  sort: number;
-  referenceCount: number;
-}
-
 function assertHttpSuccess(response: unknown, fallbackMessage: string): void {
-  if (!response?.meta?.success) {
-    throw new Error(readText(response?.meta?.message) || fallbackMessage);
+  const meta = asRecord(asRecord(response).meta);
+  if (meta.success !== true) {
+    throw new Error(readText(meta.message) || fallbackMessage);
   }
 }
 
-function responseRows(response: unknown): unknown[] {
-  const responseRecord = asRecord(response);
-  const data = responseRecord.data ?? response;
-  const dataRecord = asRecord(data);
-  return Array.isArray(data)
-    ? data
-    : (['list', 'records', 'items', 'rows']
-        .map((key) => dataRecord[key])
-        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
-}
-
-function normalizeHttpTaxonomyRows(response: unknown): HttpTaxonomyRow[] {
-  assertHttpSuccess(response, labels.value.item + '列表加载失败');
-  const primaryKey = props.kind === 'scene' ? 'firstScene' : 'activityNodeName';
-  const secondaryKey = props.kind === 'scene' ? 'secondScene' : 'subActivityNodeName';
-
-  return responseRows(response).flatMap((item, index) => {
-    const record = asRecord(item);
-    const primary = readText(record[primaryKey]);
-    if (!primary) return [];
-    const parsedSort = Number(record.sort);
-    const parsedReferenceCount = Number(record.referenceCount);
-    return [
-      {
-        deptCode: readText(record.deptCode),
-        deptName: readText(record.deptName),
-        primary,
-        secondary: readText(record[secondaryKey]),
-        sort: Number.isFinite(parsedSort) ? parsedSort : index + 1,
-        referenceCount:
-          Number.isFinite(parsedReferenceCount) && parsedReferenceCount > 0
-            ? parsedReferenceCount
-            : 0,
-      },
-    ];
-  });
-}
-
-function mapHttpTaxonomyRowsToRecords(rows: HttpTaxonomyRow[]): TaxonomyRecord[] {
-  const groupedRows = new Map<string, Array<{ row: HttpTaxonomyRow; sourceIndex: number }>>();
-
-  rows.forEach((row, sourceIndex) => {
-    const group = groupedRows.get(row.primary) ?? [];
-    group.push({ row, sourceIndex });
-    groupedRows.set(row.primary, group);
-  });
-
-  const prefix = props.kind === 'scene' ? 'http-scene' : 'http-activity';
-  const records: TaxonomyRecord[] = [];
-  Array.from(groupedRows).forEach(([primary, children], primaryIndex) => {
-    const parentId = prefix + '-primary-' + (primaryIndex + 1);
-    const directReferenceCount = children.reduce(
-      (sum, { row }) => sum + (row.secondary ? 0 : row.referenceCount),
-      0,
-    );
-    records.push({
-      id: parentId,
-      parentId: null,
-      name: primary,
-      sort: primaryIndex + 1,
-      status: 'enabled',
-      skillCount: directReferenceCount,
-    });
-
-    const seenChildren = new Set<string>();
-    children
-      .sort((left, right) => left.row.sort - right.row.sort || left.sourceIndex - right.sourceIndex)
-      .forEach(({ row }, childIndex) => {
-        if (!row.secondary || seenChildren.has(row.secondary)) return;
-        seenChildren.add(row.secondary);
-        records.push({
-          id: parentId + '-child-' + (childIndex + 1),
-          parentId,
-          name: row.secondary,
-          sort: row.sort,
-          status: 'enabled',
-          skillCount: row.referenceCount,
-        });
-      });
-  });
-
-  return records;
+function currentTaxonomyScope(departmentName: string): TaxonomyScope {
+  const department = departmentByPath(selectedDepartmentPath.value);
+  return {
+    departmentName,
+    deptCode: department?.deptCode ?? '',
+    userId: props.userId,
+    offeringId: scopeForm.level === '产品级' ? scopeForm.offeringId : '',
+    offeringName: scopeForm.level === '产品级' ? scopeForm.offeringName : '',
+  };
 }
 
 async function fetchHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
-  const params = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
-  const response =
-    props.kind === 'scene'
-      ? await skillBaseService.getSceneOptionGroups(params)
-      : await skillBaseService.getActivityOptionGroups(params);
-  return mapHttpTaxonomyRowsToRecords(normalizeHttpTaxonomyRows(response));
+  if (props.kind === 'scene') {
+    tagOptions.value = await listScenarioTags();
+    return loadScenarioRecords(currentTaxonomyScope(departmentName));
+  }
+  return loadLegacyActivityRecords(currentTaxonomyScope(departmentName));
 }
 
 function toHttpTaxonomyItems(records: TaxonomyRecord[]): RefreshTaxonomyItem[] {
@@ -491,45 +443,46 @@ function recordsToOptionGroups(records: TaxonomyRecord[]): SkillPlanningOptionGr
 }
 
 async function saveHttpTaxonomyRecords(departmentName: string): Promise<TaxonomyRecord[]> {
+  if (props.kind === 'scene') {
+    return saveScenarioRecords(currentTaxonomyScope(departmentName), draftRecords.value);
+  }
+
   const context = httpDimContext(departmentName, props.userId, scopeForm, departmentOptions.value);
   const items = toHttpTaxonomyItems(draftRecords.value);
-  const response =
-    props.kind === 'scene'
-      ? await skillBaseService.refreshSceneOptionGroups(
-          {
-            scenes: items,
-          },
-          context,
-        )
-      : await skillBaseService.refreshActivityOptionGroups(
-          {
-            activities: items,
-          },
-          context,
-        );
+  const response = await skillBaseService.refreshActivityOptionGroups(
+    {
+      activities: items,
+    },
+    context,
+  );
   assertHttpSuccess(response, labels.value.item + '配置保存失败');
-  return fetchHttpTaxonomyRecords(departmentName);
+  return loadLegacyActivityRecords(currentTaxonomyScope(departmentName));
 }
 
 async function loadDepartment(departmentName: string): Promise<void> {
   const requestSequence = ++departmentLoadSequence;
   loading.value = true;
+  taxonomyLoaded.value = false;
   notice.value = '';
 
   try {
     const records = useHttpTaxonomySource
       ? await fetchHttpTaxonomyRecords(departmentName)
       : props.kind === 'scene'
-        ? listScenes(departmentName)
+        ? await loadScenarioRecords(currentTaxonomyScope(departmentName))
         : listActivities(departmentName);
     if (requestSequence !== departmentLoadSequence) return;
 
     draftRecords.value = cloneRecords(records);
     savedSnapshot.value = JSON.stringify(draftRecords.value);
+    taxonomyLoaded.value = true;
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
     collapsedPrimaryIds.value = new Set<string>();
+    await refreshSceneTagBindings();
+    if (requestSequence !== departmentLoadSequence) return;
   } catch (error) {
     if (requestSequence !== departmentLoadSequence) return;
+    taxonomyLoaded.value = false;
     draftRecords.value = [];
     savedSnapshot.value = '[]';
     selectedPrimaryId.value = '';
@@ -542,6 +495,7 @@ async function loadDepartment(departmentName: string): Promise<void> {
 }
 
 function resetProductScope(): void {
+  taxonomyLoaded.value = false;
   scopeForm.offeringId = '';
   scopeForm.offeringName = '';
   productOptions.value = [];
@@ -557,12 +511,12 @@ function setSelectedDepartment(path: string[], committed: boolean): DepartmentOp
 }
 
 function applyDefaultScopeSelection(): void {
-  scopeForm.level = '部门级';
+  scopeForm.level = '产品级';
   resetProductScope();
   setSelectedDepartment(defaultDepartmentPath.value, true);
 }
 
-async function loadProducts(): Promise<void> {
+async function loadProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSequence = ++productLoadSequence;
   resetProductScope();
   productsLoading.value = false;
@@ -575,6 +529,20 @@ async function loadProducts(): Promise<void> {
     const options = await getProductPlanning('', departmentName, department?.deptCode ?? '');
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = options;
+    const restoredOption = preferredScope
+      ? (options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
+      : undefined;
+    const firstOption = restoredOption ?? options[0];
+    if (firstOption) {
+      scopeForm.offeringName = firstOption.offeringName;
+      scopeForm.offeringId = firstOption.offeringId;
+      if (hasCompleteScope.value && selectedDepartment.value) {
+        await loadDepartment(selectedDepartment.value);
+      }
+    }
   } catch (error) {
     if (requestSequence !== productLoadSequence) return;
     productOptions.value = [];
@@ -586,6 +554,28 @@ async function loadProducts(): Promise<void> {
       productsLoading.value = false;
     }
   }
+}
+
+function emitScopeSnapshot(): void {
+  if (!scopeDepartmentCommitted.value || !selectedDepartment.value) return;
+  const product = selectedProduct.value;
+  emit('scope-change', {
+    level: scopeForm.level,
+    departmentPath: [...selectedDepartmentPath.value],
+    offeringId: scopeForm.level === '产品级' ? (product?.offeringId ?? '') : '',
+    offeringName: scopeForm.level === '产品级' ? scopeForm.offeringName : '',
+  });
+}
+
+function restoreScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  const department = snapshot ? departmentByPath(snapshot.departmentPath) : undefined;
+  if (!snapshot || !department || !configurationLevelOptions.includes(snapshot.level)) {
+    return undefined;
+  }
+  scopeForm.level = snapshot.level;
+  setSelectedDepartment(department.path, true);
+  return { ...snapshot, departmentPath: [...department.path] };
 }
 
 async function onScopeLevelChange(): Promise<void> {
@@ -608,6 +598,7 @@ async function onScopeLevelChange(): Promise<void> {
   if (nextDepartment && hasCompleteScope.value) {
     await loadDepartment(nextDepartment.name);
   }
+  emitScopeSnapshot();
 }
 
 async function onProductChange(): Promise<void> {
@@ -617,6 +608,7 @@ async function onProductChange(): Promise<void> {
   if (product && hasCompleteScope.value && selectedDepartment.value) {
     await loadDepartment(selectedDepartment.value);
   }
+  emitScopeSnapshot();
 }
 
 watch(
@@ -637,9 +629,10 @@ watch(
     }
     const currentDepartment = departmentByPath(selectedDepartmentPath.value);
     if (!currentDepartment) {
-      applyDefaultScopeSelection();
+      const restoredScope = restoreScopeSnapshot();
+      if (!restoredScope) applyDefaultScopeSelection();
       if (selectedDepartment.value) {
-        void loadProducts();
+        void loadProducts(restoredScope).then(emitScopeSnapshot);
         void loadDepartment(selectedDepartment.value);
       }
     } else if (
@@ -649,7 +642,7 @@ watch(
       selectedDepartmentPath.value = [...currentDepartment.path];
       selectedDepartment.value = currentDepartment.name;
       scopeDepartmentCommitted.value = true;
-      void loadProducts();
+      void loadProducts().then(emitScopeSnapshot);
       void loadDepartment(currentDepartment.name);
     }
   },
@@ -685,11 +678,9 @@ function guardDepartmentChange(path: string[]): boolean {
     return false;
   }
 
-  return (
-    sameDepartmentPath(path, selectedDepartmentPath.value) ||
-    !dirty.value ||
-    window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？')
-  );
+  if (sameDepartmentPath(path, selectedDepartmentPath.value)) return true;
+  if (!validateBeforeLeave()) return false;
+  return !dirty.value || window.confirm('当前部门有未保存修改，切换部门将丢失这些修改，是否继续？');
 }
 
 function guardDefaultDepartmentRestore(): boolean {
@@ -701,7 +692,26 @@ function guardDefaultDepartmentRestore(): boolean {
   return guardDepartmentChange(defaultDepartmentPath.value);
 }
 
+function validateBeforeLeave(): boolean {
+  if (!hasIncompletePrimaryDraft.value) return true;
+  showToast(incompleteDraftMessage.value, 5000);
+  return false;
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!hasIncompletePrimaryDraft.value) return;
+  event.preventDefault();
+  event.returnValue = incompleteDraftMessage.value;
+}
+
+defineExpose({ validateBeforeLeave });
+
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload);
+});
+
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload);
   if (toastTimer) {
     window.clearTimeout(toastTimer);
     toastTimer = null;
@@ -734,6 +744,7 @@ async function changeDepartment(path: string[]): Promise<void> {
   if (shouldLoadDepartment && hasCompleteScope.value) {
     await loadDepartment(nextDepartment.name);
   }
+  emitScopeSnapshot();
 }
 
 function clearDepartment(path: string[]): void {
@@ -780,6 +791,10 @@ const editorName = ref('');
 const editorError = ref('');
 
 function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
+  if (!taxonomyLoaded.value || loading.value) {
+    showToast('请等待配置成功加载后再编辑');
+    return;
+  }
   if (record && blockReferencedAction(record, '编辑')) return;
 
   editorId.value = record?.id ?? '';
@@ -789,7 +804,7 @@ function openEditor(parentId: string | null, record?: TaxonomyRecord): void {
   editorOpen.value = true;
 }
 
-function saveEditor(): void {
+async function saveEditor(): Promise<void> {
   const name = editorName.value.trim();
   if (!name) {
     editorError.value = '请输入' + labels.value.item + '名称';
@@ -804,8 +819,10 @@ function saveEditor(): void {
     return;
   }
 
-  if (editorId.value) {
-    const record = draftRecords.value.find((item) => item.id === editorId.value);
+  const editedId = editorId.value;
+  const editedParentId = editorParentId.value;
+  if (editedId) {
+    const record = draftRecords.value.find((item) => item.id === editedId);
     if (record) {
       record.name = name;
     }
@@ -823,9 +840,16 @@ function saveEditor(): void {
     if (editorParentId.value === null) selectedPrimaryId.value = id;
   }
   editorOpen.value = false;
+  const involvesSecondary =
+    editedParentId !== null || (Boolean(editedId) && childRecords(editedId).length > 0);
+  if (involvesSecondary) {
+    await autoSaveCompleteDraft();
+  } else {
+    notice.value = `请继续添加${labels.value.secondary}，结构完整后将自动更新。`;
+  }
 }
 
-function moveRecord(id: string, direction: -1 | 1): void {
+async function moveRecord(id: string, direction: -1 | 1): Promise<void> {
   const record = draftRecords.value.find((item) => item.id === id);
   if (!record) return;
   const siblings = draftRecords.value
@@ -835,9 +859,10 @@ function moveRecord(id: string, direction: -1 | 1): void {
   const target = siblings[index + direction];
   if (!target) return;
   [record.sort, target.sort] = [target.sort, record.sort];
+  await autoSaveCompleteDraft();
 }
 
-function dropRecord(targetId: string): void {
+async function dropRecord(targetId: string): Promise<void> {
   const sourceId = draggedId.value;
   draggedId.value = '';
   const source = draftRecords.value.find((item) => item.id === sourceId);
@@ -848,11 +873,121 @@ function dropRecord(targetId: string): void {
     .sort((left, right) => left.sort - right.sort);
   const fromIndex = siblings.findIndex((item) => item.id === source.id);
   const toIndex = siblings.findIndex((item) => item.id === target.id);
+  if (fromIndex < 0 || toIndex < 0) return;
   const [moved] = siblings.splice(fromIndex, 1);
+  if (!moved) return;
   siblings.splice(toIndex, 0, moved);
   siblings.forEach((item, index) => {
     item.sort = index + 1;
   });
+  await autoSaveCompleteDraft();
+}
+
+// ===== 一级场景标签（仅场景模式） =====
+function sceneTagKey(record: TaxonomyRecord): string {
+  return useHttpTaxonomySource ? record.name : record.id;
+}
+
+function tagsOf(record: TaxonomyRecord): string[] {
+  return sceneTagBindings.value[record.id] ?? [];
+}
+
+const tagDisplayLimit = 4;
+const expandedTagSceneIds = ref(new Set<string>());
+
+function shownTagsOf(record: TaxonomyRecord): string[] {
+  const tags = tagsOf(record);
+  return expandedTagSceneIds.value.has(record.id) ? tags : tags.slice(0, tagDisplayLimit);
+}
+
+function hiddenTagsOf(record: TaxonomyRecord): string[] {
+  return tagsOf(record).slice(tagDisplayLimit);
+}
+
+function toggleTagExpand(id: string): void {
+  const next = new Set(expandedTagSceneIds.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  expandedTagSceneIds.value = next;
+}
+
+async function refreshSceneTagBindings(): Promise<void> {
+  if (props.kind !== 'scene') return;
+  expandedTagSceneIds.value = new Set<string>();
+
+  if (useHttpTaxonomySource) {
+    sceneTagBindings.value = Object.fromEntries(
+      primaryRecords.value.map((primary) => [primary.id, [...(primary.tags ?? [])]]),
+    );
+    return;
+  }
+
+  const next: Record<string, string[]> = {};
+  await Promise.all(
+    primaryRecords.value.map(async (primary) => {
+      next[primary.id] = await getSceneTags(sceneTagKey(primary), selectedDepartment.value);
+    }),
+  );
+  sceneTagBindings.value = next;
+}
+
+async function openTagDialog(record: TaxonomyRecord): Promise<void> {
+  tagDialogSceneId.value = record.id;
+  tagDialogSceneName.value = record.name;
+  tagSelected.value = [...tagsOf(record)];
+  tagError.value = '';
+  tagLoading.value = !useHttpTaxonomySource;
+  tagDialogOpen.value = true;
+  if (useHttpTaxonomySource) return;
+
+  try {
+    tagOptions.value = await listScenarioTags();
+  } catch (error) {
+    tagError.value = error instanceof Error ? error.message : '标签列表加载失败';
+    tagOptions.value = [];
+  } finally {
+    tagLoading.value = false;
+  }
+}
+
+function closeTagDialog(): void {
+  tagDialogOpen.value = false;
+  tagDialogSceneId.value = '';
+  tagDialogSceneName.value = '';
+  tagSelected.value = [];
+  tagError.value = '';
+}
+
+function selectAllTags(): void {
+  tagSelected.value = tagOptions.value.map((tag) => tag.name);
+}
+
+function clearSelectedTags(): void {
+  tagSelected.value = [];
+}
+
+async function confirmTagDialog(): Promise<void> {
+  const record = primaryRecords.value.find((item) => item.id === tagDialogSceneId.value);
+  if (!record || tagSaving.value) return;
+  tagSaving.value = true;
+  tagError.value = '';
+  try {
+    const savedTags = await saveScenarioTagBindings(
+      currentTaxonomyScope(selectedDepartment.value),
+      record,
+      tagSelected.value,
+    );
+    sceneTagBindings.value = {
+      ...sceneTagBindings.value,
+      [record.id]: [...savedTags],
+    };
+    tagDialogOpen.value = false;
+    showToast(`已为“${record.name}”更新标签`);
+  } catch (error) {
+    tagError.value = error instanceof Error ? error.message : '标签保存失败';
+  } finally {
+    tagSaving.value = false;
+  }
 }
 
 const deleteOpen = ref(false);
@@ -869,7 +1004,7 @@ function openDelete(record: TaxonomyRecord): void {
   deleteOpen.value = true;
 }
 
-function removeDraftRecord(): void {
+async function removeDraftRecord(): Promise<void> {
   const target = deleteTarget.value;
   if (!target) return;
   if (blockReferencedAction(target, '删除')) {
@@ -889,49 +1024,76 @@ function removeDraftRecord(): void {
     normalizeSort(target.parentId);
   }
   deleteOpen.value = false;
+  await autoSaveCompleteDraft();
 }
 
-function resetToDefault(): void {
+async function resetToDefault(): Promise<void> {
   if (dirty.value && !window.confirm('将用系统默认配置覆盖当前草稿，是否继续？')) return;
   const records = props.kind === 'scene' ? getDefaultSceneRecords() : getDefaultActivityRecords();
   draftRecords.value = cloneRecords(records);
   selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-  notice.value = '已恢复为默认草稿，点击“确认更新”后生效。';
+  await autoSaveCompleteDraft();
 }
 
-async function saveAll(): Promise<void> {
+async function saveAll(): Promise<boolean> {
+  if (!taxonomyLoaded.value) {
+    showToast('配置尚未成功加载，已阻止覆盖原有配置，请重试加载。');
+    return false;
+  }
   if (!hasCompleteScope.value || !selectedDepartment.value || loading.value) {
     if (scopeErrorMessage.value) showToast(scopeErrorMessage.value);
-    return;
+    return false;
   }
+  const selectedPrimaryName = selectedPrimary.value?.name ?? '';
   loading.value = true;
   notice.value = '';
   try {
     const records = useHttpTaxonomySource
       ? await saveHttpTaxonomyRecords(selectedDepartment.value)
       : props.kind === 'scene'
-        ? replaceScenesForDepartment(selectedDepartment.value, draftRecords.value as SceneRecord[])
+        ? await saveScenarioRecords(
+            currentTaxonomyScope(selectedDepartment.value),
+            draftRecords.value,
+          )
         : replaceActivitiesForDepartment(
             selectedDepartment.value,
             draftRecords.value as ActivityRecord[],
           );
     draftRecords.value = cloneRecords(records);
     savedSnapshot.value = JSON.stringify(draftRecords.value);
+    selectedPrimaryId.value =
+      primaryRecords.value.find((record) => record.name === selectedPrimaryName)?.id ??
+      primaryRecords.value[0]?.id ??
+      '';
     const groups = useHttpTaxonomySource
       ? recordsToOptionGroups(records)
       : props.kind === 'scene'
         ? getSceneOptionGroups(selectedDepartment.value)
         : getActivityOptionGroups(selectedDepartment.value);
-    if (useHttpTaxonomySource) {
+    if (useHttpTaxonomySource && props.kind === 'activity') {
       notifyHarnessConfigurationChanged(props.kind, selectedDepartment.value);
     }
     emit('changed', groups, selectedDepartment.value);
-    notice.value = selectedDepartment.value + '的配置已全量保存。';
+    notice.value = selectedDepartment.value + '的配置已自动更新。';
+    showToast(notice.value);
+    return true;
   } catch (error) {
     notice.value = error instanceof Error ? error.message : '保存失败，请检查配置';
+    showToast(notice.value, 5000);
+    return false;
   } finally {
     loading.value = false;
   }
+}
+
+async function autoSaveCompleteDraft(): Promise<void> {
+  if (!dirty.value) return;
+  if (hasIncompletePrimaryDraft.value) {
+    notice.value = incompleteDraftMessage.value;
+    showToast(notice.value, 5000);
+    return;
+  }
+  await saveAll();
 }
 
 function triggerImport(): void {
@@ -972,7 +1134,7 @@ async function importRecords(event: Event): Promise<void> {
     normalizeSort(null);
     primaryRecords.value.forEach((item) => normalizeSort(item.id));
     selectedPrimaryId.value = primaryRecords.value[0]?.id ?? '';
-    notice.value = '导入成功，当前仅为草稿，请点击“确认更新”。';
+    await autoSaveCompleteDraft();
   } catch (error) {
     notice.value = error instanceof Error ? error.message : '导入失败';
   }
@@ -1006,9 +1168,23 @@ function exportRecords(): void {
           class="configuration-scope-grid"
           :class="{ 'is-department-level': scopeForm.level === '部门级' }"
         >
-          <label class="configuration-field configuration-field--level">
+          <label v-if="false" class="configuration-field configuration-field--level">
             <span>层级 <em>*</em></span>
-            <select v-model="scopeForm.level" :disabled="loading" @change="onScopeLevelChange">
+            <div
+              v-if="
+                configurationLevelOptions.length === 1 && configurationLevelOptions[0] === '产品级'
+              "
+              class="single-level-value"
+              aria-label="当前层级：产品级"
+            >
+              产品级
+            </div>
+            <select
+              v-else
+              v-model="scopeForm.level"
+              :disabled="loading"
+              @change="onScopeLevelChange"
+            >
               <option v-for="level in configurationLevelOptions" :key="level" :value="level">
                 {{ level }}
               </option>
@@ -1093,32 +1269,13 @@ function exportRecords(): void {
           ><span>关联规划项</span>
         </div>
       </div>
-      <div
-        v-if="dirty || notice"
-        class="save-state"
-        :class="{ dirty }"
-        role="status"
-        aria-live="polite"
-      >
-        <span class="save-state__icon" aria-hidden="true">{{ dirty ? '!' : '✓' }}</span>
-        <span class="save-state__copy">
-          <span class="save-state__label">{{ dirty ? '有未保存修改' : '已保存' }}</span>
-          <span v-if="notice" class="save-state__detail" :title="notice">{{ notice }}</span>
-        </span>
-      </div>
-      <div class="summary-update">
-        <button
-          class="primary-button summary-confirm-button"
-          type="button"
-          :disabled="loading || !dirty || !hasCompleteScope"
-          @click="saveAll"
-        >
-          确认更新
-        </button>
-      </div>
     </div>
     <div v-if="loading" class="empty-department">
       {{ '\u6b63\u5728\u52a0\u8f7d\u573a\u666f\u914d\u7f6e\u2026' }}
+    </div>
+    <div v-else-if="hasCompleteScope && !taxonomyLoaded" class="empty-department" role="alert">
+      {{ notice || '配置尚未成功加载，已禁用编辑。' }}
+      <button type="button" @click="loadDepartment(selectedDepartment)">重试加载</button>
     </div>
     <div v-else-if="hasCompleteScope" class="taxonomy-grid">
       <aside class="tree-panel">
@@ -1170,6 +1327,34 @@ function exportRecords(): void {
               >
                 ×
               </button>
+            </div>
+            <div v-if="kind === 'scene'" class="primary-tags-row">
+              <button class="tag-add" type="button" @click="openTagDialog(primary)">
+                ＋ 添加标签
+              </button>
+              <template v-if="tagsOf(primary).length">
+                <span
+                  v-for="tag in shownTagsOf(primary)"
+                  :key="tag"
+                  class="scene-tag-pill"
+                  :title="tag"
+                >
+                  <span class="scene-tag-pill__text">{{ tag }}</span>
+                </span>
+                <button
+                  v-if="tagsOf(primary).length > tagDisplayLimit"
+                  class="tag-more"
+                  type="button"
+                  :title="hiddenTagsOf(primary).join('、')"
+                  @click="toggleTagExpand(primary.id)"
+                >
+                  {{
+                    expandedTagSceneIds.has(primary.id)
+                      ? '收起'
+                      : '＋' + (tagsOf(primary).length - tagDisplayLimit)
+                  }}
+                </button>
+              </template>
             </div>
             <div v-if="!collapsedPrimaryIds.has(primary.id)" class="tree-children">
               <button
@@ -1282,7 +1467,13 @@ function exportRecords(): void {
         <p v-if="editorError" class="form-error">{{ editorError }}</p>
         <div class="modal-actions">
           <button type="button" @click="editorOpen = false">取消</button>
-          <button class="primary-button" type="submit">保存到草稿</button>
+          <button class="primary-button" type="submit">
+            {{
+              editorParentId !== null || (editorId && childRecords(editorId).length > 0)
+                ? '保存并更新'
+                : '保存'
+            }}
+          </button>
         </div>
       </form>
     </div>
@@ -1290,10 +1481,67 @@ function exportRecords(): void {
     <div v-if="deleteOpen && deleteTarget" class="modal-backdrop" @click.self="deleteOpen = false">
       <div class="modal-card delete-card">
         <h3>删除{{ labels.item }}“{{ deleteTarget.name }}”</h3>
-        <p>该项暂无关联规划，删除将在确认更新后生效。</p>
+        <p>该项暂无关联规划，确认后将自动更新配置。</p>
+        <p v-if="props.kind === 'scene'">
+          删除后，与该场景关联的 Harness 工作流及其环节、节点也会一并移除。
+        </p>
         <div class="modal-actions">
           <button type="button" @click="deleteOpen = false">取消</button>
           <button class="danger-button" type="button" @click="removeDraftRecord">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="tagDialogOpen" class="modal-backdrop" @click.self="closeTagDialog">
+      <div class="modal-card tag-dialog">
+        <header class="tag-dialog-header">
+          <div>
+            <span class="tag-dialog-eyebrow">SCENE TAG</span>
+            <h3>添加标签</h3>
+          </div>
+          <button class="tag-dialog-close" type="button" aria-label="关闭" @click="closeTagDialog">
+            ×
+          </button>
+        </header>
+        <p class="tag-dialog-desc">
+          为一级场景<strong>“{{ tagDialogSceneName }}”</strong>选择标签，可多选。
+        </p>
+
+        <div v-if="tagLoading" class="tag-loading">标签加载中…</div>
+        <div v-else-if="tagError" class="form-error">{{ tagError }}</div>
+        <div v-else class="tag-options-wrap">
+          <div class="tag-options-meta">
+            <span>共 {{ tagOptions.length }} 个标签</span>
+            <span class="tag-options-actions">
+              <button type="button" @click="selectAllTags">全选</button>
+              <button type="button" @click="clearSelectedTags">清空</button>
+            </span>
+          </div>
+          <div class="tag-options">
+            <label
+              v-for="tag in tagOptions"
+              :key="tag.id"
+              class="tag-option"
+              :class="{ 'is-checked': tagSelected.includes(tag.name) }"
+            >
+              <input v-model="tagSelected" type="checkbox" :value="tag.name" />
+              <span>{{ tag.name }}</span>
+            </label>
+            <p v-if="!tagOptions.length" class="tag-empty">暂无可选标签</p>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <span class="tag-selected-count">已选 {{ tagSelected.length }} 项</span>
+          <button type="button" :disabled="tagSaving" @click="closeTagDialog">取消</button>
+          <button
+            class="primary-button"
+            type="button"
+            :disabled="tagSaving || tagLoading"
+            @click="confirmTagDialog"
+          >
+            {{ tagSaving ? '保存中…' : '保存标签' }}
+          </button>
         </div>
       </div>
     </div>
@@ -1359,8 +1607,7 @@ function exportRecords(): void {
 }
 
 .toolbar-copy,
-.toolbar-controls,
-.save-state {
+.toolbar-controls {
   position: relative;
   z-index: 1;
 }
@@ -1497,6 +1744,18 @@ input:focus {
   color: #94a3b8;
 }
 
+.single-level-value {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 2px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
 .configuration-dept-cascader {
   width: 100%;
   min-width: 0;
@@ -1512,79 +1771,9 @@ input:focus {
   display: none;
 }
 
-.save-state {
-  grid-column: 2;
-  align-self: center;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  min-height: 46px;
-  padding: 8px 12px;
-  border: 1px solid #bbf7d0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
-  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.12);
-  box-sizing: border-box;
-  color: #15803d;
-}
-
-.save-state.dirty {
-  border-color: #fdba74;
-  background: linear-gradient(135deg, #fff7ed, #fffbeb);
-  box-shadow: 0 10px 26px rgba(217, 119, 6, 0.18);
-  color: #b45309;
-}
-
-.summary-strip .save-state__icon {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: #22c55e;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.save-state.dirty .save-state__icon {
-  background: #f59e0b;
-  box-shadow: 0 5px 12px rgba(245, 158, 11, 0.28);
-}
-
-.summary-strip .save-state__copy {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-  color: inherit;
-}
-
-.summary-strip .save-state__label {
-  color: inherit;
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1.35;
-}
-
-.summary-strip .save-state__detail {
-  overflow: hidden;
-  color: inherit;
-  opacity: 0.78;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .summary-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(170px, 180px) minmax(180px, 240px);
-  align-items: stretch;
-  gap: 12px;
+  display: block;
+  width: 100%;
 }
 
 .summary-metrics {
@@ -1601,23 +1790,6 @@ input:focus {
   justify-items: center;
   padding: 18px;
   border-right: 1px solid #e6ebf4;
-}
-
-.summary-update {
-  grid-column: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 18px;
-  background: transparent;
-}
-
-.summary-confirm-button {
-  min-width: 128px;
-  min-height: 42px;
-  border-radius: 10px !important;
-  box-shadow: 0 12px 24px rgba(76, 92, 238, 0.18);
-  font-size: 13px;
 }
 
 .summary-strip strong {
@@ -1775,6 +1947,313 @@ input:focus {
   padding: 6px 0;
   color: #9ba7b9;
   font-size: 12px;
+}
+
+.primary-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 10px 67px;
+}
+
+.tag-add {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px dashed #b9c6ff;
+  border-radius: 999px;
+  background: #f3f5ff;
+  color: #5367df;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-add:hover {
+  border-color: #6f7ff2;
+  background: #e9ecff;
+  color: #3b4fd0;
+}
+
+.scene-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 150px;
+  padding: 0 9px;
+  border: 1px solid #dbe4ff;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4557a6;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.scene-tag-pill__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tag-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px dashed #b9c6ff;
+  border-radius: 999px;
+  background: #f6f7ff;
+  color: #5367df;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-more:hover {
+  border-color: #6f7ff2;
+  background: #e9ecff;
+  color: #3b4fd0;
+}
+
+.modal-card.tag-dialog {
+  width: min(520px, 100%);
+}
+
+.tag-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.modal-card .tag-dialog-header h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.tag-dialog-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: #5b67e8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.tag-dialog-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: #f1f4fa;
+  color: #7c8aa0;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-dialog-close:hover {
+  background: #e7ecf6;
+  color: #33415e;
+}
+
+.tag-dialog-desc {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.tag-dialog-desc strong {
+  color: #1e2f4a;
+}
+
+.tag-loading,
+.tag-empty {
+  padding: 30px 0;
+  text-align: center;
+  color: #8b98ac;
+  font-size: 13px;
+}
+
+.tag-options-wrap {
+  min-width: 0;
+}
+
+.tag-options-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #8b98ac;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tag-options-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.tag-options-actions button {
+  min-height: 0;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #f1f4fa;
+  color: #5367df;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.tag-options-actions button:hover {
+  background: #e7ecf6;
+  color: #3b4fd0;
+}
+
+.tag-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 300px;
+  padding: 6px 2px 4px;
+  overflow: auto;
+}
+
+.tag-options::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tag-options::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d3e8;
+}
+
+.tag-options::-webkit-scrollbar-thumb:hover {
+  background: #aebadb;
+}
+
+.tag-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tag-dialog .tag-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-top: 0;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f4;
+  border-radius: 10px;
+  background: #fbfcff;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.tag-dialog .tag-option:hover {
+  border-color: #c3cdf5;
+  background: #f6f8ff;
+}
+
+.tag-dialog .tag-option.is-checked {
+  border-color: #a9b6f7;
+  background: #eef1ff;
+  box-shadow: inset 0 0 0 1px rgba(83, 103, 223, 0.14);
+}
+
+.tag-dialog .tag-option input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid #c6d0e4;
+  border-radius: 6px;
+  background: #ffffff;
+  position: relative;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.tag-dialog .tag-option input:hover {
+  border-color: #8f9ef0;
+}
+
+.tag-dialog .tag-option input:checked {
+  border-color: #5367df;
+  background: linear-gradient(135deg, #3b7df6, #6358ee);
+}
+
+.tag-dialog .tag-option input:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.tag-dialog .tag-option input:focus-visible {
+  outline: 2px solid #8f9ef0;
+  outline-offset: 2px;
+}
+
+.tag-dialog .tag-option span {
+  color: #33415e;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.tag-selected-count {
+  margin-right: auto;
+  align-self: center;
+  color: #7c8aa0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .tag-options {
+    grid-template-columns: 1fr;
+  }
 }
 
 .table-wrap {
@@ -1979,26 +2458,6 @@ td {
   font-size: 13px;
 }
 
-.save-state {
-  min-height: 38px;
-  padding: 7px 10px;
-}
-
-.summary-strip .save-state__icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  font-size: 12px;
-}
-
-.summary-strip .save-state__label {
-  font-size: 11px;
-}
-
-.summary-strip .save-state__detail {
-  font-size: 9px;
-}
-
 .summary-metrics > div {
   padding: 12px;
 }
@@ -2010,11 +2469,6 @@ td {
 
 .summary-strip span {
   font-size: 10px;
-}
-
-.summary-confirm-button {
-  min-height: 38px;
-  font-size: 12px;
 }
 
 .panel-heading {
@@ -2138,25 +2592,6 @@ td strong {
   }
 }
 
-@media (max-width: 900px) {
-  .summary-strip {
-    grid-template-columns: minmax(0, 1fr) minmax(160px, auto);
-  }
-
-  .summary-metrics {
-    grid-column: 1 / -1;
-  }
-
-  .save-state {
-    grid-column: 1;
-  }
-
-  .summary-update {
-    grid-column: 2;
-    padding: 0;
-  }
-}
-
 @media (max-width: 720px) {
   .toolbar-card {
     padding: 22px;
@@ -2175,27 +2610,8 @@ td strong {
     justify-content: flex-start;
   }
 
-  .summary-strip {
-    grid-template-columns: 1fr;
-  }
-
   .summary-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .save-state,
-  .summary-update {
-    grid-column: 1;
-    width: 100%;
-  }
-
-  .summary-update {
-    justify-content: stretch;
-    padding: 0;
-  }
-
-  .summary-confirm-button {
-    width: 100%;
   }
 }
 
@@ -2224,5 +2640,16 @@ td strong {
   .count-pill {
     font-size: clamp(10px, 0.625vw, 12px);
   }
+}
+/* Scope compact actions to Harness without changing taxonomy tree controls. */
+:where(body:has(.harness-management-shell)) .toolbar-controls button,
+:where(body:has(.harness-management-shell)) .add-button,
+:where(body:has(.harness-management-shell)) .modal-actions button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
 }
 </style>

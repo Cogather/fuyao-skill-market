@@ -32,11 +32,18 @@ interface CapabilityState {
   planningSeed: number;
 }
 
-const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v1';
+const STORAGE_PREFIX = 'skill-market-harness-capability-planning-v5';
+const LEGACY_STORAGE_PREFIX = 'skill-market-harness-capability-planning-v4';
 const now = '2026-08-01T08:00:00.000Z';
+const HARNESS_PIPELINE_OFFERING = {
+  offeringId: 'offering-harness-pipeline',
+  offeringName: 'Harness 流水线平台',
+  planningDeptName: '持续交付组',
+} satisfies ProductPlanningOption;
 
 const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPlanningOption[]> = {
   command: [
+    HARNESS_PIPELINE_OFFERING,
     {
       offeringId: 'command-product-harness-pipeline',
       offeringName: 'harness-pipeline',
@@ -69,6 +76,7 @@ const mockCapabilityProductOptions: Record<MockHarnessCapabilityType, ProductPla
     },
   ],
   agent: [
+    HARNESS_PIPELINE_OFFERING,
     {
       offeringId: 'agent-product-harness-pipeline',
       offeringName: 'harness-pipeline',
@@ -111,19 +119,42 @@ function master(
   developOwner: string,
   plannedCompleteDate: string,
   status: SkillMasterStatus,
+  scope: { level?: string; product?: string } = {},
 ): SkillMasterRecord {
+  const versionSeed = Number(id.match(/(\d+)$/)?.[1] ?? 1);
   return {
     id,
     name,
     description,
-    level: '部门级',
-    product: '',
+    level: scope.level || '部门级',
+    product: scope.product || '',
     owner,
     department,
     developOwner,
     developOwnerDepartment: department,
     plannedCompleteDate,
     status,
+    versions:
+      status === '未开始'
+        ? []
+        : [
+            {
+              version: `0.0.${versionSeed % 10 || 1}`,
+              uploadedAt: '2026-07-18 10:00:00',
+            },
+            {
+              version: `0.1.${versionSeed % 10 || 1}`,
+              uploadedAt: '2026-08-18 10:00:00',
+            },
+            ...(status === '已完成'
+              ? [
+                  {
+                    version: `0.2.${versionSeed % 10 || 1}`,
+                    uploadedAt: '2026-09-01 10:00:00',
+                  },
+                ]
+              : []),
+          ],
     createdAt: now,
     updatedAt: now,
   };
@@ -138,6 +169,11 @@ function planning(
     'firstScene' | 'secondScene' | 'activityNodeName' | 'subActivityNodeName'
   >,
 ): SkillPlanningItem {
+  const productLevel = record.level === '产品级' && Boolean(record.product);
+  const offeringId =
+    record.product === HARNESS_PIPELINE_OFFERING.offeringName
+      ? HARNESS_PIPELINE_OFFERING.offeringId
+      : record.product;
   return {
     id,
     skillId: capabilityId,
@@ -146,9 +182,9 @@ function planning(
     ...taxonomy,
     name: record.name,
     description: record.description,
-    level: '部门级',
-    offeringId: '',
-    offeringName: '',
+    level: productLevel ? '产品级' : '部门级',
+    offeringId: productLevel ? offeringId : '',
+    offeringName: productLevel ? record.product : '',
     owner: record.owner,
     deptCode: 'dept-continuous-delivery',
     deptName: record.department,
@@ -160,7 +196,87 @@ function planning(
   };
 }
 
+const harnessCommandCatalogSeeds = [
+  master(
+    'command-master-harness-1201',
+    '流水线失败诊断 Command',
+    '聚合 Harness 步骤日志、执行耗时和错误栈，快速定位流水线失败节点并给出修复建议。',
+    '张三 w30000001',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '李明 w30000006',
+    '2026-08-20',
+    '已完成',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'command-master-harness-1202',
+    '发布门禁校验 Command',
+    '在 Harness 部署前校验测试结果、安全扫描、变更窗口和审批条件，输出可解释的门禁结论。',
+    '李四 w30000002',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '周扬 w30000007',
+    '2026-10-10',
+    '进行中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'command-master-harness-1203',
+    '运行日志采集 Command',
+    '按流水线执行 ID 采集步骤日志、服务输出和变更元数据，生成可检索的故障上下文包。',
+    '郑欣 w30000015',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '马可 w30000016',
+    '2026-10-25',
+    '开发中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'command-master-harness-1204',
+    '一键回滚 Command',
+    '根据 Harness 部署历史选择稳定版本，执行环境回滚、健康检查与结果回写。',
+    '王五 w30000003',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '陈七 w30000008',
+    '2026-11-12',
+    '未开始',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+];
+
 const commandCatalog = [
+  master(
+    'command-master-1101',
+    '接口契约检查 Command',
+    '自动校验接口契约、请求参数和返回结构，输出可执行的差异清单。',
+    '张三 w30000001',
+    '持续交付组',
+    '李明 w30000006',
+    '2026-08-18',
+    '已完成',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'command-master-1102',
+    '发布流水线诊断 Command',
+    '汇总流水线日志、任务耗时和失败节点，快速定位发布阻塞原因。',
+    '李四 w30000002',
+    '持续交付组',
+    '周扬 w30000007',
+    '2026-09-05',
+    '进行中',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'command-master-1103',
+    '测试环境初始化 Command',
+    '按流水线配置初始化测试环境、依赖服务和基础测试数据。',
+    '王五 w30000003',
+    '持续交付组',
+    '陈七 w30000008',
+    '2026-09-20',
+    '未开始',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
   master(
     'command-master-1001',
     '发布前检查 Command',
@@ -169,7 +285,7 @@ const commandCatalog = [
     '持续交付组',
     '周扬 w30000007',
     '2026-08-12',
-    '开发中',
+    '进行中',
   ),
   master(
     'command-master-1002',
@@ -191,9 +307,90 @@ const commandCatalog = [
     '2026-09-05',
     '未开始',
   ),
+  ...harnessCommandCatalogSeeds,
+];
+
+const harnessAgentCatalogSeeds = [
+  master(
+    'agent-master-harness-1201',
+    '失败根因分析 Agent',
+    '持续分析 Harness 流水线失败记录，关联代码变更与环境异常，输出根因和恢复路径。',
+    '张三 w30000001',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '李明 w30000006',
+    '2026-08-28',
+    '已完成',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'agent-master-harness-1202',
+    '发布门禁决策 Agent',
+    '结合变更风险、质量指标和审批策略，动态给出 Harness 发布放行、阻断或人工复核建议。',
+    '李四 w30000002',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '周扬 w30000007',
+    '2026-10-15',
+    '进行中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'agent-master-harness-1203',
+    '日志关联分析 Agent',
+    '对齐流水线步骤日志、服务告警与调用链时间线，自动发现异常传播路径。',
+    '郑欣 w30000015',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '马可 w30000016',
+    '2026-10-30',
+    '开发中',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
+  master(
+    'agent-master-harness-1204',
+    '智能回滚编排 Agent',
+    '评估异常影响面和版本依赖，为 Harness 生成分阶段回滚方案并跟踪恢复验证。',
+    '王五 w30000003',
+    HARNESS_PIPELINE_OFFERING.planningDeptName,
+    '陈七 w30000008',
+    '2026-11-18',
+    '未开始',
+    { level: '产品级', product: HARNESS_PIPELINE_OFFERING.offeringName },
+  ),
 ];
 
 const agentCatalog = [
+  master(
+    'agent-master-1101',
+    '流水线异常分析 Agent',
+    '持续分析流水线运行数据，识别失败模式并给出恢复建议。',
+    '张三 w30000001',
+    '持续交付组',
+    '李明 w30000006',
+    '2026-08-22',
+    '已完成',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'agent-master-1102',
+    '发布风险评估 Agent',
+    '结合代码变更、依赖关系和历史事故，动态评估版本发布风险。',
+    '李四 w30000002',
+    '持续交付组',
+    '周扬 w30000007',
+    '2026-09-08',
+    '进行中',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
+  master(
+    'agent-master-1103',
+    '交付协同 Agent',
+    '跟踪跨团队交付依赖、阻塞事项和待确认信息，推动事项闭环。',
+    '王五 w30000003',
+    '持续交付组',
+    '陈七 w30000008',
+    '2026-09-25',
+    '未开始',
+    { level: '产品级', product: 'harness-pipeline' },
+  ),
   master(
     'agent-master-1001',
     '测试用例评审 Agent',
@@ -222,7 +419,102 @@ const agentCatalog = [
     '需求分析组',
     '孟扬 w30000032',
     '2026-09-16',
-    '开发中',
+    '进行中',
+  ),
+  ...harnessAgentCatalogSeeds,
+];
+
+const harnessCommandPlanningSeeds = [
+  planning(
+    'command-plan-harness-1201',
+    harnessCommandCatalogSeeds[0]!.id,
+    harnessCommandCatalogSeeds[0]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '失败诊断',
+      activityNodeName: '流水线执行',
+      subActivityNodeName: '异常定位',
+    },
+  ),
+  planning(
+    'command-plan-harness-1202',
+    harnessCommandCatalogSeeds[1]!.id,
+    harnessCommandCatalogSeeds[1]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '变更管控',
+      activityNodeName: '版本发布',
+      subActivityNodeName: '发布门禁',
+    },
+  ),
+  planning(
+    'command-plan-harness-1203',
+    harnessCommandCatalogSeeds[2]!.id,
+    harnessCommandCatalogSeeds[2]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '可观测性',
+      activityNodeName: '运行监控',
+      subActivityNodeName: '日志采集',
+    },
+  ),
+  planning(
+    'command-plan-harness-1204',
+    harnessCommandCatalogSeeds[3]!.id,
+    harnessCommandCatalogSeeds[3]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '故障恢复',
+      activityNodeName: '版本回退',
+      subActivityNodeName: '一键回滚',
+    },
+  ),
+];
+
+const harnessAgentPlanningSeeds = [
+  planning(
+    'agent-plan-harness-1201',
+    harnessAgentCatalogSeeds[0]!.id,
+    harnessAgentCatalogSeeds[0]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '失败诊断',
+      activityNodeName: '问题闭环',
+      subActivityNodeName: '根因分析',
+    },
+  ),
+  planning(
+    'agent-plan-harness-1202',
+    harnessAgentCatalogSeeds[1]!.id,
+    harnessAgentCatalogSeeds[1]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '变更管控',
+      activityNodeName: '版本发布',
+      subActivityNodeName: '门禁决策',
+    },
+  ),
+  planning(
+    'agent-plan-harness-1203',
+    harnessAgentCatalogSeeds[2]!.id,
+    harnessAgentCatalogSeeds[2]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '可观测性',
+      activityNodeName: '运行监控',
+      subActivityNodeName: '日志分析',
+    },
+  ),
+  planning(
+    'agent-plan-harness-1204',
+    harnessAgentCatalogSeeds[3]!.id,
+    harnessAgentCatalogSeeds[3]!,
+    {
+      firstScene: '发布运维',
+      secondScene: '故障恢复',
+      activityNodeName: '版本回退',
+      subActivityNodeName: '回滚编排',
+    },
   ),
 ];
 
@@ -230,6 +522,7 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
   command: {
     catalog: commandCatalog,
     planning: [
+      ...harnessCommandPlanningSeeds,
       planning('command-plan-1001', commandCatalog[0]!.id, commandCatalog[0]!, {
         firstScene: '发布运维',
         secondScene: '变更管控',
@@ -242,6 +535,12 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
         activityNodeName: '问题闭环',
         subActivityNodeName: '根因分析',
       }),
+      planning('command-plan-1003', commandCatalog[2]!.id, commandCatalog[2]!, {
+        firstScene: '研发提效',
+        secondScene: '环境准备',
+        activityNodeName: '测试验证',
+        subActivityNodeName: '环境初始化',
+      }),
     ],
     catalogSeed: 2000,
     planningSeed: 2000,
@@ -249,6 +548,7 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
   agent: {
     catalog: agentCatalog,
     planning: [
+      ...harnessAgentPlanningSeeds,
       planning('agent-plan-1001', agentCatalog[0]!.id, agentCatalog[0]!, {
         firstScene: '质量保障',
         secondScene: '测试设计',
@@ -261,6 +561,12 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
         activityNodeName: '问题闭环',
         subActivityNodeName: '根因分析',
       }),
+      planning('agent-plan-1003', agentCatalog[2]!.id, agentCatalog[2]!, {
+        firstScene: '交付管理',
+        secondScene: '依赖协同',
+        activityNodeName: '项目推进',
+        subActivityNodeName: '阻塞跟踪',
+      }),
     ],
     catalogSeed: 2000,
     planningSeed: 2000,
@@ -270,7 +576,10 @@ const defaultStates: Record<MockHarnessCapabilityType, CapabilityState> = {
 const memoryStates = new Map<MockHarnessCapabilityType, CapabilityState>();
 
 function cloneRecord(record: SkillMasterRecord): SkillMasterRecord {
-  return { ...record };
+  return {
+    ...record,
+    versions: record.versions?.map((version) => ({ ...version })) ?? [],
+  };
 }
 
 function clonePlanningItem(item: SkillPlanningItem): SkillPlanningItem {
@@ -286,8 +595,42 @@ function cloneState(state: CapabilityState): CapabilityState {
   };
 }
 
-function storageKey(type: MockHarnessCapabilityType): string {
-  return `${STORAGE_PREFIX}-${type}`;
+function storageKey(type: MockHarnessCapabilityType, prefix = STORAGE_PREFIX): string {
+  return `${prefix}-${type}`;
+}
+
+function parseStoredState(raw: string | null): CapabilityState | null {
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as Partial<CapabilityState>;
+  if (!Array.isArray(parsed.catalog) || !Array.isArray(parsed.planning)) return null;
+  return {
+    catalog: parsed.catalog.map(cloneRecord),
+    planning: parsed.planning.map(clonePlanningItem),
+    catalogSeed: Number(parsed.catalogSeed) || 2000,
+    planningSeed: Number(parsed.planningSeed) || 2000,
+  };
+}
+
+function mergeHarnessSeeds(
+  type: MockHarnessCapabilityType,
+  state: CapabilityState,
+): CapabilityState {
+  const catalogSeeds = type === 'command' ? harnessCommandCatalogSeeds : harnessAgentCatalogSeeds;
+  const planningSeeds =
+    type === 'command' ? harnessCommandPlanningSeeds : harnessAgentPlanningSeeds;
+  const catalogIds = new Set(state.catalog.map((record) => record.id));
+  const planningIds = new Set(state.planning.map((item) => item.id));
+  return {
+    ...state,
+    catalog: [
+      ...catalogSeeds.filter((record) => !catalogIds.has(record.id)).map(cloneRecord),
+      ...state.catalog,
+    ],
+    planning: [
+      ...planningSeeds.filter((item) => !planningIds.has(item.id)).map(clonePlanningItem),
+      ...state.planning,
+    ],
+  };
 }
 
 function readState(type: MockHarnessCapabilityType): CapabilityState {
@@ -295,19 +638,20 @@ function readState(type: MockHarnessCapabilityType): CapabilityState {
   if (cached) return cached;
   if (typeof window !== 'undefined') {
     try {
-      const raw = window.localStorage.getItem(storageKey(type));
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<CapabilityState>;
-        if (Array.isArray(parsed.catalog) && Array.isArray(parsed.planning)) {
-          const state: CapabilityState = {
-            catalog: parsed.catalog.map(cloneRecord),
-            planning: parsed.planning.map(clonePlanningItem),
-            catalogSeed: Number(parsed.catalogSeed) || 2000,
-            planningSeed: Number(parsed.planningSeed) || 2000,
-          };
-          memoryStates.set(type, state);
-          return state;
-        }
+      const state = parseStoredState(window.localStorage.getItem(storageKey(type)));
+      if (state) {
+        memoryStates.set(type, state);
+        return state;
+      }
+
+      const legacyState = parseStoredState(
+        window.localStorage.getItem(storageKey(type, LEGACY_STORAGE_PREFIX)),
+      );
+      if (legacyState) {
+        const migratedState = mergeHarnessSeeds(type, legacyState);
+        memoryStates.set(type, migratedState);
+        window.localStorage.setItem(storageKey(type), JSON.stringify(migratedState));
+        return migratedState;
       }
     } catch {
       // Invalid local mock data falls back to the bundled examples.
@@ -424,7 +768,14 @@ function planningItemFromBody(
   id: string,
   previous?: SkillPlanningItem,
 ): SkillPlanningItem {
-  const record = state.catalog.find((item) => item.name === text(body.skillName));
+  const capabilityBody = body as unknown as {
+    commandName?: string;
+    agentName?: string;
+  };
+  const capabilityName = text(
+    body.skillName ?? capabilityBody.commandName ?? capabilityBody.agentName,
+  );
+  const record = state.catalog.find((item) => item.name === capabilityName);
   if (!record) {
     throw new Error(`请先在 ${type === 'command' ? 'Command' : 'Agent'} 清单中维护该能力`);
   }
@@ -621,7 +972,7 @@ export async function importMockCapabilityPlanning(
     if (missing.length > 0 || !catalog) {
       errors.push({
         rowNum: index + 2,
-        errMsg: !catalog ? `${label} 不在原子清单中` : `缺少必填字段：${missing.join('、')}`,
+        errMsg: !catalog ? `${label} 不在 ${label} 清单中` : `缺少必填字段：${missing.join('、')}`,
       });
       return;
     }
@@ -670,8 +1021,14 @@ export async function queryMockCapabilityCatalog(
   const departmentName = text(query.departmentName);
   const level = text(query.level);
   const product = text(query.product);
-  return readState(type)
-    .catalog.filter((record) => {
+  const state = readState(type);
+  const referenceCounts = state.planning.reduce((counts, item) => {
+    const catalogId = text(item.skillId);
+    if (catalogId) counts.set(catalogId, (counts.get(catalogId) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  return state.catalog
+    .filter((record) => {
       if (departmentName && record.department !== departmentName) return false;
       if (level && record.level && record.level !== level) return false;
       if (product && record.product && record.product !== product) return false;
@@ -682,7 +1039,10 @@ export async function queryMockCapabilityCatalog(
         .includes(keyword);
     })
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .map(cloneRecord);
+    .map((record) => ({
+      ...cloneRecord(record),
+      referenceCount: referenceCounts.get(record.id) ?? 0,
+    }));
 }
 
 function normalizeCatalogPayload(payload: SkillMasterPayload): SkillMasterPayload {
@@ -722,6 +1082,7 @@ export async function createMockCapabilityCatalogRecord(
   const record: SkillMasterRecord = {
     id: `${type}-master-${state.catalogSeed++}`,
     ...normalized,
+    versions: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -750,11 +1111,41 @@ export async function updateMockCapabilityCatalogRecord(
   return cloneRecord(record);
 }
 
+export function updateMockCapabilityCatalogPerson(
+  type: MockHarnessCapabilityType,
+  id: string,
+  field: 'owner' | 'developOwner',
+  label: string,
+): void {
+  const state = readState(type);
+  const record = state.catalog.find((item) => item.id === id);
+  if (!record) throw new Error(`未找到该 ${capabilityLabel(type)}`);
+  record[field] = label;
+  record.updatedAt = new Date().toISOString();
+  persistState(type, state);
+}
+
+export function updateMockCapabilityCatalogDetails(
+  type: MockHarnessCapabilityType,
+  id: string,
+  patch: Pick<SkillMasterRecord, 'name' | 'description'> &
+    Partial<Pick<SkillMasterRecord, 'owner' | 'developOwner' | 'plannedCompleteDate'>>,
+): void {
+  const state = readState(type);
+  const record = state.catalog.find((item) => item.id === id);
+  if (!record) throw new Error(`未找到该 ${capabilityLabel(type)}`);
+  Object.assign(record, patch, { updatedAt: new Date().toISOString() });
+  persistState(type, state);
+}
+
 export async function deleteMockCapabilityCatalogRecord(
   type: MockHarnessCapabilityType,
   id: string,
 ): Promise<void> {
   const state = readState(type);
+  if (state.planning.some((item) => item.skillId === id)) {
+    throw new Error(`${capabilityLabel(type)} 已被规划引用，不能删除`);
+  }
   state.catalog = state.catalog.filter((record) => record.id !== id);
   persistState(type, state);
 }
@@ -765,6 +1156,9 @@ export async function batchDeleteMockCapabilityCatalogRecords(
 ): Promise<number> {
   const state = readState(type);
   const idSet = new Set(ids);
+  if (state.planning.some((item) => idSet.has(item.skillId ?? ''))) {
+    throw new Error(`${capabilityLabel(type)} 存在被规划引用的数据，不能删除`);
+  }
   const before = state.catalog.length;
   state.catalog = state.catalog.filter((record) => !idSet.has(record.id));
   persistState(type, state);
@@ -788,8 +1182,8 @@ export async function exportMockCapabilityCatalog(
     })),
   );
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, `${label}清单`);
-  XLSX.writeFile(workbook, `${label}原子清单.xlsx`);
+  XLSX.utils.book_append_sheet(workbook, sheet, `${label} 清单`);
+  XLSX.writeFile(workbook, `${label} 清单.xlsx`);
 }
 
 export async function importMockCapabilityCatalog(

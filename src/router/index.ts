@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HarnessManagementPage from '../views/HarnessManagementPage.vue';
 import SkillMarketPage from '../views/SkillMarketPage.vue';
-import SkillDebugPage from '../views/SkillMarketPage.vue';
+import SkillDebugPage from '../views/skill/SkillDebugPage.vue';
 import SkillDetailPage from '../views/skill/SkillDetailPage.vue';
 
 const legacyPlanningTabs = new Set([

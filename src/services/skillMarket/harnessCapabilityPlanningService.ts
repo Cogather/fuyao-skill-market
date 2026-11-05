@@ -18,6 +18,7 @@ import {
   importHttpCapabilityCatalog,
   importHttpCapabilityPlanning,
   queryHttpCapabilityCatalog,
+  queryHttpCapabilityCatalogPage,
   queryHttpCapabilityPlanning,
   updateHttpCapabilityCatalogRecord,
   updateHttpCapabilityPlanning,
@@ -44,10 +45,11 @@ import {
   type MockHarnessCapabilityType,
 } from './harnessCapabilityPlanningMock';
 import { skillBaseService } from './skillBaseService';
-import type {
-  SkillMasterPayload,
-  SkillMasterRecord,
-  SkillMasterStatus,
+import {
+  normalizeSkillMasterVersions,
+  type SkillMasterPayload,
+  type SkillMasterRecord,
+  type SkillMasterStatus,
 } from './skillMasterManagementService';
 import {
   batchDeleteSkillPlanningSupplement,
@@ -63,6 +65,7 @@ import {
 import type {
   ProductPlanningOption,
   SkillPlanningImportResult,
+  SkillPlanningItem,
   SkillPlanningListResult,
   SkillPlanningQuery,
 } from './skillPlanningShared';
@@ -78,6 +81,15 @@ export interface HarnessCapabilityPlanningCatalogQuery extends HarnessCapability
   dimType?: string;
   dimCode?: string;
   dimName?: string;
+  pageNum?: number;
+  pageSize?: number;
+}
+
+export interface HarnessCapabilityCatalogListResult {
+  list: SkillMasterRecord[];
+  total: number;
+  totalKnown: boolean;
+  hasMore: boolean;
 }
 
 export interface HarnessCapabilityPlanningApi {
@@ -120,6 +132,51 @@ export interface HarnessCapabilityPlanningApi {
 
 function useHttpTransport(): boolean {
   return String(import.meta.env.VITE_SKILL_MARKET_TRANSPORT ?? 'mock').toLowerCase() === 'http';
+}
+
+function responseCatalogTotal(response: unknown): number | undefined {
+  if (!response || typeof response !== 'object') return undefined;
+  const record = response as Record<string, unknown>;
+  const meta =
+    record.meta && typeof record.meta === 'object' ? (record.meta as Record<string, unknown>) : {};
+  const data =
+    record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {};
+  for (const value of [meta.number, meta.total, data.total, data.number, record.total]) {
+    if (value === null || value === undefined || value === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return undefined;
+}
+
+export async function queryHarnessCapabilityCatalogPage(
+  type: HarnessCapabilityType,
+  query: HarnessCapabilityPlanningCatalogQuery = {},
+): Promise<HarnessCapabilityCatalogListResult> {
+  const pageNum = Math.max(1, Math.floor(Number(query.pageNum ?? 1)));
+  const pageSize = Math.max(1, Math.floor(Number(query.pageSize ?? 10)));
+  if (type === 'skill') {
+    const result = await querySkillCatalogPage(query, pageNum, pageSize);
+    return {
+      list: result.rows,
+      total: result.total,
+      totalKnown: result.totalKnown,
+      hasMore: result.hasMore,
+    };
+  }
+  if (useHttpTransport()) {
+    return queryHttpCapabilityCatalogPage(type, query);
+  }
+  const records = await queryMockCapabilityCatalog(type, query);
+  const start = (pageNum - 1) * pageSize;
+  return {
+    list: records.slice(start, start + pageSize),
+    total: records.length,
+    totalKnown: true,
+    hasMore: start + pageSize < records.length,
+  };
 }
 
 function capabilityLabel(type: HarnessCapabilityType): 'Skill' | 'Command' | 'Agent' {
@@ -173,30 +230,80 @@ function mapSkillCatalogItem(item: SkillMasterManagementItemDto): SkillMasterRec
     developOwnerDepartment: '',
     plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
     status: status || '未开始',
+    versions: normalizeSkillMasterVersions(item.versions),
+    referenceCount: Number(
+      item.referenceCount ??
+        item.planningCount ??
+        item.planningReferenceCount ??
+        item.supplementCount ??
+        item.configCount ??
+        item.relatedPlanningCount ??
+        0,
+    ),
     createdAt: timestamp,
     updatedAt: timestamp,
+  };
+}
+
+async function querySkillCatalogPage(
+  query: HarnessCapabilityPlanningCatalogQuery,
+  pageNum: number,
+  pageSize: number,
+): Promise<{ rows: SkillMasterRecord[]; total: number; totalKnown: boolean; hasMore: boolean }> {
+  const keyword = query.keyword?.trim();
+  const inferredDimType =
+    query.dimType ||
+    query.level ||
+    (query.product
+      ? '产品级'
+      : useHttpTransport() && (query.departmentName || !keyword)
+        ? '部门级'
+        : '');
+  const inferredDimName =
+    query.dimName ||
+    (inferredDimType ? (inferredDimType === '产品级' ? query.product : query.departmentName) : '');
+  const body: QuerySkillMasterManagementBody = {
+    userId: String(query.userId ?? '').trim(),
+    sortBy: 'updatedAt',
+    sortOrder: 'desc',
+    pageNum,
+    pageSize,
+  };
+  if (keyword) body.keyword = keyword;
+  if (inferredDimType) body.dimType = inferredDimType;
+  if (query.dimCode) body.dimCode = query.dimCode;
+  if (inferredDimName) body.dimName = inferredDimName;
+  const response = await skillBaseService.querySkillMasterManagement(body);
+  if (response?.meta?.success !== true) {
+    throw new Error(String(response?.meta?.message || response?.message || 'Skill 查询失败'));
+  }
+  const rows = (Array.isArray(response.data) ? response.data : []).map(mapSkillCatalogItem);
+  const parsedTotal = responseCatalogTotal(response);
+  const totalKnown = parsedTotal !== undefined;
+  const total = parsedTotal ?? rows.length;
+  return {
+    rows,
+    total,
+    totalKnown,
+    hasMore: totalKnown ? pageNum * pageSize < total : rows.length === pageSize,
   };
 }
 
 async function querySkillCatalog(
   query: HarnessCapabilityPlanningCatalogQuery = {},
 ): Promise<SkillMasterRecord[]> {
-  const body: QuerySkillMasterManagementBody = {
-    userId: String(query.userId ?? '').trim(),
-    sortBy: 'updatedAt',
-    sortOrder: 'desc',
-    pageNum: 1,
-    pageSize: 100,
-  };
-  if (query.keyword) body.keyword = query.keyword;
-  if (query.dimType) body.dimType = query.dimType;
-  if (query.dimCode) body.dimCode = query.dimCode;
-  if (query.dimName) body.dimName = query.dimName;
-  const response = await skillBaseService.querySkillMasterManagement(body);
-  if (response?.meta?.success !== true) {
-    throw new Error(String(response?.meta?.message || response?.message || 'Skill 查询失败'));
+  const pageSize = 200;
+  const first = await querySkillCatalogPage(query, 1, pageSize);
+  const rows = [...first.rows];
+  let hasMore = first.hasMore;
+  let pageNum = 2;
+  while (hasMore) {
+    const page = await querySkillCatalogPage(query, pageNum, pageSize);
+    rows.push(...page.rows);
+    hasMore = page.hasMore;
+    pageNum += 1;
   }
-  return (Array.isArray(response.data) ? response.data : []).map(mapSkillCatalogItem);
+  return rows;
 }
 
 function nonSkillApi(type: MockHarnessCapabilityType): HarnessCapabilityPlanningApi {
@@ -304,6 +411,36 @@ const skillApi: HarnessCapabilityPlanningApi = {
 
 const commandApi = nonSkillApi('command');
 const agentApi = nonSkillApi('agent');
+
+export async function findReferencedCapabilityCatalogIds(
+  type: HarnessCapabilityType,
+  ids: string[],
+  query: SkillPlanningQuery = {},
+): Promise<string[]> {
+  const counts = await getCapabilityCatalogReferenceCounts(type, ids, query);
+  return Object.keys(counts).filter((id) => (counts[id] ?? 0) > 0);
+}
+
+export async function getCapabilityCatalogReferenceCounts(
+  type: HarnessCapabilityType,
+  ids: string[],
+  query: SkillPlanningQuery = {},
+): Promise<Record<string, number>> {
+  const normalizedIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  const idSet = new Set(normalizedIds);
+  const counts = Object.fromEntries(normalizedIds.map((id) => [id, 0]));
+  if (!idSet.size) return counts;
+  const result = await getHarnessCapabilityPlanningApi(type).queryPlanning({
+    ...query,
+    pageNum: 1,
+    pageSize: 10000,
+  });
+  result.list.forEach((item: SkillPlanningItem) => {
+    const id = String(item.skillId ?? '').trim();
+    if (idSet.has(id)) counts[id] = (counts[id] ?? 0) + 1;
+  });
+  return counts;
+}
 
 export function getHarnessCapabilityPlanningApi(
   type: HarnessCapabilityType,

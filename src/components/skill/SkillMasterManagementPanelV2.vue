@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import HarnessSelect from './HarnessSelect.vue';
+import HarnessCatalogPagination from './HarnessCatalogPagination.vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import MarketDeptCascader from './MarketDeptCascader.vue';
+import HarnessCatalogCreateScope from './HarnessCatalogCreateScope.vue';
+import HarnessCatalogDetailDialog from './HarnessCatalogDetailDialog.vue';
 import { listScenes, type SceneRecord } from '../../services/skillMarket/sceneManagementService';
 import {
   listActivities,
@@ -13,6 +17,8 @@ import {
   type SkillMasterAssociation,
 } from '../../services/skillMarket/skillMasterAssociationService';
 import {
+  latestSkillMasterVersion,
+  normalizeSkillMasterVersions,
   type SkillMasterRecord,
   type SkillMasterStatus,
 } from '../../services/skillMarket/skillMasterManagementService';
@@ -35,6 +41,7 @@ import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
 import {
   getProductCatalogItemNamePrefix,
+  getSuggestedProductCatalogItemNamePrefix,
   isCatalogItemNameValid,
 } from '../../utils/catalogItemName';
 import {
@@ -43,10 +50,27 @@ import {
   openSkillExportResponse,
   skillImportErrorMessage,
 } from '../../services/skillMarket/skillTransferService';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
+import { getHarnessDepartmentMaxLevel } from '../../utils/harnessDepartmentDepth';
 
 type PlanningLevel = '产品级' | '部门级';
 type DepartmentNode = { id?: string; deptCode?: string; name: string; children?: DepartmentNode[] };
 type TaxonomyOption = { id: string; label: string };
+type CreateSkillTab = 'direct' | 'import';
+type SkillSourceValue = 'created' | 'imported';
+
+interface SkillSquareOption {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  category: string;
+  version: string;
+  /** 发布人（姓名 + 工号） */
+  publisher: string;
+  /** 发布人部门 */
+  department: string;
+}
 type PersonPickerState = {
   keyword: string;
   open: boolean;
@@ -75,6 +99,8 @@ const props = withDefaults(
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessScopeSnapshot;
+    createOnly?: boolean;
   }>(),
   {
     departmentTree: () => [],
@@ -83,11 +109,19 @@ const props = withDefaults(
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
+    createOnly: false,
   },
 );
+const emit = defineEmits<{
+  'scope-change': [snapshot: HarnessScopeSnapshot];
+  close: [];
+  created: [];
+}>();
 const records = ref<SkillMasterRecord[]>([]);
+const detailRecord = ref<SkillMasterRecord | null>(null);
 const masterLoading = ref(false);
-const masterPageSizeOptions = [5, 10, 20, 50];
+const tableScroll = ref<HTMLElement | null>(null);
 const masterPageNum = ref(1);
 const masterPageSize = ref(10);
 const masterTotal = ref(0);
@@ -108,6 +142,7 @@ const sceneOptions = ref<TaxonomyOption[]>([]);
 const activityOptions = ref<TaxonomyOption[]>([]);
 const ownerPicker = reactive(createPersonPickerState());
 const developOwnerPicker = reactive(createPersonPickerState());
+const editorFormRef = ref<HTMLFormElement | null>(null);
 const personDisplayLabels = ref<Record<string, string>>({});
 let ownerSearchTimer: number | null = null;
 let developOwnerSearchTimer: number | null = null;
@@ -166,10 +201,12 @@ const editor = reactive({
   developOwnerDepartment: '',
   plannedCompleteDate: '',
   status: '未开始' as SkillMasterStatus,
+  skillSource: 'created' as SkillSourceValue,
   error: '',
 });
 const initialOwnerValue = reactive(createEmptyPersonSubmitValue());
 const initialDevelopOwnerValue = reactive(createEmptyPersonSubmitValue());
+const initialPlannedCompleteDate = ref('');
 const associationEditor = reactive({
   open: false,
   skillId: '',
@@ -181,9 +218,21 @@ const associationEditor = reactive({
 const departmentPath = ref<string[]>([]);
 const deleteDialog = reactive({ open: false, id: '', name: '' });
 const submitting = ref(false);
+const createTab = ref<CreateSkillTab>('direct');
+const importKeyword = ref('');
+const importLoading = ref(false);
+const importSubmitting = ref(false);
+const importRows = ref<SkillSquareOption[]>([]);
+const importTotal = ref(0);
+const importPageNum = ref(1);
+const importPageSize = ref(5);
+const importPageSizeOptions = [5, 10, 20, 100];
+const importSelectedId = ref('');
+let importQuerySequence = 0;
+let importSearchTimer: number | null = null;
 const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
 const masterScopeForm = reactive({
-  level: '部门级' as PlanningLevel,
+  level: '产品级' as PlanningLevel,
   planningDeptName: '',
   offeringId: '',
   offeringName: '',
@@ -202,6 +251,13 @@ let masterQuerySequence = 0;
 
 function normalizeDepartmentPath(segments: string[] | undefined): string[] {
   return (segments ?? []).map((segment) => segment.trim()).filter(Boolean);
+}
+
+function normalizeScopeDepartmentPath(segments: string[], level = masterScopeForm.level): string[] {
+  return normalizeDepartmentPath(segments).slice(
+    0,
+    props.createOnly ? getHarnessDepartmentMaxLevel(level) : 6,
+  );
 }
 
 function sameDepartmentPath(left: string[], right: string[]): boolean {
@@ -309,6 +365,10 @@ const selectedMasterProduct = computed(() =>
 const requiredSkillNamePrefix = computed(() => {
   return getProductCatalogItemNamePrefix(masterScopeForm.level, masterScopeForm.offeringName);
 });
+const suggestedSkillNamePrefix = computed(() => {
+  if (masterScopeForm.level !== '产品级') return '';
+  return getSuggestedProductCatalogItemNamePrefix(masterScopeForm.offeringName);
+});
 const masterScopeErrorMessage = computed(() => {
   if (!planningLevelOptions.includes(masterScopeForm.level as PlanningLevel)) {
     return '请先选择层级';
@@ -326,7 +386,7 @@ const masterScopeErrorMessage = computed(() => {
 const hasCompleteMasterScope = computed(() => !masterScopeErrorMessage.value);
 
 function syncMasterDepartment(segments = masterDepartmentSegments.value): void {
-  const nextSegments = normalizeDepartmentPath(segments).slice(0, 6);
+  const nextSegments = normalizeScopeDepartmentPath(segments);
   masterDepartmentSegments.value = nextSegments;
   masterScopeForm.planningDeptName = nextSegments[nextSegments.length - 1] ?? '';
 }
@@ -451,6 +511,17 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
     developOwnerDepartment: '',
     plannedCompleteDate: String(item.planFinishDate ?? '').trim(),
     status: statusText as SkillMasterStatus,
+    versions: normalizeSkillMasterVersions(item.versions),
+    referenceCount: Number(
+      item.referenceCount ??
+        item.planningCount ??
+        item.planningReferenceCount ??
+        item.supplementCount ??
+        item.configCount ??
+        item.relatedPlanningCount ??
+        0,
+    ),
+    skillSource: normalizeSkillSource(item.skillSource),
     createdAt: now,
     updatedAt: now,
   };
@@ -459,11 +530,11 @@ function mapManagementItemToRecord(item: SkillMasterManagementItemDto): SkillMas
 function applyDefaultMasterScopeSelection(): boolean {
   const defaultPath = defaultMasterDepartmentPath.value;
   const changed =
-    masterScopeForm.level !== '部门级' ||
+    masterScopeForm.level !== '产品级' ||
     !sameDepartmentPath(masterDepartmentSegments.value, defaultPath) ||
     masterScopeDepartmentCommitted.value !== defaultPath.length > 0;
 
-  masterScopeForm.level = '部门级';
+  masterScopeForm.level = '产品级';
   masterScopeForm.offeringId = '';
   masterScopeForm.offeringName = '';
   masterDepartmentSegments.value = [...defaultPath];
@@ -472,10 +543,10 @@ function applyDefaultMasterScopeSelection(): boolean {
   return changed;
 }
 
-async function loadMasterProducts(): Promise<void> {
+async function loadMasterProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSeq = ++masterProductLoadSequence;
-  masterScopeForm.offeringId = '';
-  masterScopeForm.offeringName = '';
+  masterScopeForm.offeringId = preferredScope?.offeringId.trim() ?? '';
+  masterScopeForm.offeringName = preferredScope?.offeringName.trim() ?? '';
   masterProductOptions.value = [];
   masterProductsLoading.value = false;
   const departmentName = masterScopeForm.planningDeptName.trim();
@@ -487,7 +558,26 @@ async function loadMasterProducts(): Promise<void> {
     const deptCode = getDepartmentNodeCode(departmentNode);
     const options = await getProductPlanning('', departmentName, deptCode);
     if (requestSeq !== masterProductLoadSequence) return;
-    masterProductOptions.value = options;
+    const restoredOption = preferredScope
+      ? (options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
+      : undefined;
+    const externalOption =
+      !restoredOption && preferredScope?.offeringName
+        ? {
+            offeringId: preferredScope.offeringId,
+            offeringName: preferredScope.offeringName,
+            planningDeptName: masterScopeForm.planningDeptName,
+          }
+        : undefined;
+    masterProductOptions.value = externalOption ? [...options, externalOption] : options;
+    const firstOption = restoredOption ?? externalOption ?? options[0];
+    if (firstOption) {
+      masterScopeForm.offeringName = firstOption.offeringName;
+      masterScopeForm.offeringId = firstOption.offeringId;
+    }
   } catch (error) {
     if (requestSeq !== masterProductLoadSequence) return;
     showToast(error instanceof Error ? error.message : '产品加载失败，请稍后重试');
@@ -496,6 +586,41 @@ async function loadMasterProducts(): Promise<void> {
       masterProductsLoading.value = false;
     }
   }
+}
+
+function emitMasterScopeSnapshot(): void {
+  if (!masterScopeDepartmentCommitted.value || !masterScopeForm.planningDeptName.trim()) return;
+  emit('scope-change', {
+    level: masterScopeForm.level,
+    departmentPath: [...masterDepartmentSegments.value],
+    offeringId:
+      masterScopeForm.level === '产品级'
+        ? (selectedMasterProduct.value?.offeringId ?? masterScopeForm.offeringId)
+        : '',
+    offeringName: masterScopeForm.level === '产品级' ? masterScopeForm.offeringName.trim() : '',
+  });
+}
+
+function restoreMasterScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  if (
+    !snapshot ||
+    !planningLevelOptions.includes(snapshot.level) ||
+    !findMasterDepartmentNode(snapshot.departmentPath) ||
+    !isMasterDepartmentSelectionAllowed(snapshot.departmentPath)
+  ) {
+    return undefined;
+  }
+  masterScopeForm.level = snapshot.level;
+  masterDepartmentSegments.value = normalizeScopeDepartmentPath(
+    snapshot.departmentPath,
+    snapshot.level,
+  );
+  syncMasterDepartment(masterDepartmentSegments.value);
+  masterScopeDepartmentCommitted.value = true;
+  masterScopeForm.offeringId = snapshot.level === '产品级' ? snapshot.offeringId.trim() : '';
+  masterScopeForm.offeringName = snapshot.level === '产品级' ? snapshot.offeringName.trim() : '';
+  return { ...snapshot, departmentPath: [...masterDepartmentSegments.value] };
 }
 const filteredRecords = computed(() => {
   const text = keyword.value.trim().toLowerCase();
@@ -509,12 +634,6 @@ const filteredRecords = computed(() => {
 });
 const masterTotalPages = computed(() =>
   Math.max(1, Math.ceil(masterTotal.value / masterPageSize.value)),
-);
-const masterPageStart = computed(() =>
-  masterTotal.value === 0 ? 0 : (masterPageNum.value - 1) * masterPageSize.value + 1,
-);
-const masterPageEnd = computed(() =>
-  Math.min(masterTotal.value, masterPageNum.value * masterPageSize.value),
 );
 const selectedMasterRecords = computed(() =>
   records.value.filter((record) => selectedMasterIds.value.includes(record.id)),
@@ -572,6 +691,8 @@ async function hydratePersonDisplayLabels(sourceRecords: SkillMasterRecord[]): P
 }
 
 async function reload(options: { notifyOnMissingScope?: boolean } = {}): Promise<void> {
+  if (props.createOnly) return;
+  tableScroll.value?.scrollTo({ top: 0 });
   const requestSequence = ++masterQuerySequence;
   const validationMessage = masterQueryValidationMessage();
   if (validationMessage) {
@@ -661,12 +782,36 @@ function resetEditor(): void {
     developOwnerDepartment: '',
     plannedCompleteDate: '',
     status: '未开始',
+    skillSource: 'created',
     error: '',
   });
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+}
+
+function currentLocalDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function ensurePlannedCompleteDate(): boolean {
+  if (!editor.plannedCompleteDate) {
+    editor.error = '请选择计划完成时间';
+    return false;
+  }
+  const plannedCompleteDateChanged =
+    editor.mode === 'create' || editor.plannedCompleteDate !== initialPlannedCompleteDate.value;
+  if (plannedCompleteDateChanged && editor.plannedCompleteDate < currentLocalDate()) {
+    editor.error = '计划完成时间不能早于当前日期';
+    return false;
+  }
+  return true;
 }
 
 function applyCurrentScopeToEditor(): void {
@@ -675,6 +820,9 @@ function applyCurrentScopeToEditor(): void {
 }
 
 function ensureProductSkillNamePrefix(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   const prefix = requiredSkillNamePrefix.value;
   if (!prefix) {
     return true;
@@ -691,6 +839,9 @@ function ensureProductSkillNamePrefix(): boolean {
   return true;
 }
 function ensureSkillNameFormat(): boolean {
+  if (editor.skillSource === 'imported' || createTab.value === 'import') {
+    return true;
+  }
   if (isCatalogItemNameValid(editor.name.trim())) return true;
   editor.error =
     'Skill \u540d\u79f0\u4ec5\u5141\u8bb8\u5c0f\u5199\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u8fde\u5b57\u7b26\uff0c\u6700\u957f 64 \u5b57\u7b26';
@@ -751,6 +902,20 @@ function closeDevelopOwnerPersonSearch(): void {
   clearDevelopOwnerSearchTimer();
   developOwnerSearchSequence += 1;
   developOwnerPicker.loading = false;
+}
+
+function onPersonPickerOutsideClick(event: MouseEvent): void {
+  const picker = event.target instanceof Element ? event.target.closest('.person-search') : null;
+  const insideEditor = picker && editorFormRef.value?.contains(picker);
+  if (ownerPicker.open && (!insideEditor || !picker?.classList.contains('owner-picker'))) {
+    closeOwnerPersonSearch();
+  }
+  if (
+    developOwnerPicker.open &&
+    (!insideEditor || !picker?.classList.contains('develop-owner-picker'))
+  ) {
+    closeDevelopOwnerPersonSearch();
+  }
 }
 
 function applyOwnerSelection(option: SkillPlanningUserOption): void {
@@ -990,15 +1155,327 @@ function resolvePersonForSubmit(
   return null;
 }
 
+function normalizeSkillSource(value: unknown): SkillSourceValue {
+  const source = String(value ?? '').trim();
+  return source === '引用' || source === 'imported' ? 'imported' : 'created';
+}
+
+function splitSkillTags(value: unknown): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : String(value ?? '')
+        .split(/[,，;；、\s]+/)
+        .filter(Boolean);
+  return [...new Set(source.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+/** 发布人「姓名 工号」：优先 owner_list / ownerName+ownerUser，回退 publisher/author/createdBy。 */
+function publisherLabelOf(row: Record<string, unknown>): string {
+  const rawOwnerList = row.ownerList ?? row.owner_list;
+  if (typeof rawOwnerList === 'string' && rawOwnerList.trim()) {
+    try {
+      const parsed = JSON.parse(rawOwnerList) as unknown;
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed[0] &&
+        typeof parsed[0] === 'object'
+      ) {
+        const ownerRecord = parsed[0] as Record<string, unknown>;
+        const name = String(
+          ownerRecord.lastName ??
+            ownerRecord.name ??
+            ownerRecord.chName ??
+            ownerRecord.userName ??
+            '',
+        ).trim();
+        const id = String(
+          ownerRecord.Account ?? ownerRecord.account ?? ownerRecord.userId ?? ownerRecord.id ?? '',
+        ).trim();
+        if (name || id) return [name, id].filter(Boolean).join(' ');
+      }
+    } catch {
+      // owner_list 非 JSON 时按纯文本使用
+      return rawOwnerList.trim();
+    }
+  }
+  const ownerName = String(row.ownerName ?? row.owner_name ?? '').trim();
+  const ownerId = String(row.ownerUser ?? row.ownerId ?? row.owner_id ?? '').trim();
+  if (ownerName || ownerId) return [ownerName, ownerId].filter(Boolean).join(' ');
+  return String(
+    row.publisher ?? row.author ?? row.createdBy ?? row.publish_name ?? row.publishName ?? '',
+  ).trim();
+}
+
+/** 发布人部门：优先 dept_name 的最小层级，回退 departmentL1~L6 的最小非空层级 / orgName。 */
+function publisherDepartmentOf(row: Record<string, unknown>): string {
+  const deptPath = String(row.dept_name ?? row.deptName ?? '').trim();
+  if (deptPath) {
+    const segments = deptPath
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const deepest = segments[segments.length - 1];
+    if (deepest) return deepest;
+  }
+  const levels = [
+    'departmentL1',
+    'departmentL2',
+    'departmentL3',
+    'departmentL4',
+    'departmentL5',
+    'departmentL6',
+  ]
+    .map((key) => String(row[key] ?? '').trim())
+    .filter(Boolean);
+  const deepestLevel = levels[levels.length - 1];
+  if (deepestLevel) return deepestLevel;
+  return String(row.orgName ?? row.ownerDepartment ?? row.publishDeptName ?? '').trim();
+}
+
+function normalizeSquareSkillRows(response: unknown): {
+  rows: SkillSquareOption[];
+  total: number;
+} {
+  const record =
+    response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
+  const data = record.data ?? response;
+  const dataRecord = data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+  const rawRows = Array.isArray(data)
+    ? data
+    : (['records', 'list', 'items', 'rows']
+        .map((key) => dataRecord[key])
+        .find((value): value is unknown[] => Array.isArray(value)) ?? []);
+  const meta =
+    record.meta && typeof record.meta === 'object' ? (record.meta as Record<string, unknown>) : {};
+  const total = Number(dataRecord.total ?? meta.number ?? meta.total ?? rawRows.length);
+  const rows = rawRows.map((item, index) => {
+    const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    const id = String(row.id ?? row.skillId ?? row.skill_id ?? index).trim();
+    return {
+      id,
+      name: String(row.name ?? row.skillName ?? '').trim(),
+      description: String(row.description ?? row.skillDescription ?? '').trim(),
+      tags: splitSkillTags(row.tags),
+      category:
+        String(row.categoryGroupName ?? row.tagFunctional ?? row.category ?? '').trim() || '公共',
+      version: String(row.currentVersion ?? row.version ?? '').trim(),
+      publisher: publisherLabelOf(row),
+      department: publisherDepartmentOf(row),
+    };
+  });
+  return { rows, total: Number.isFinite(total) && total >= 0 ? total : rows.length };
+}
+
+async function loadSquareSkills(): Promise<void> {
+  const requestSequence = ++importQuerySequence;
+  importLoading.value = true;
+  try {
+    const response = await skillBaseService.querySkillmarketList({
+      keyword: importKeyword.value.trim(),
+      pageNo: importPageNum.value,
+      pageSize: importPageSize.value,
+    });
+    if (requestSequence !== importQuerySequence) return;
+    const { rows, total } = normalizeSquareSkillRows(response);
+    importRows.value = rows;
+    importTotal.value = total;
+    importSelectedId.value = rows.some((row) => row.id === importSelectedId.value)
+      ? importSelectedId.value
+      : '';
+  } catch (error) {
+    if (requestSequence !== importQuerySequence) return;
+    importRows.value = [];
+    importTotal.value = 0;
+    importSelectedId.value = '';
+    editor.error = error instanceof Error ? error.message : 'Skill 广场列表加载失败';
+  } finally {
+    if (requestSequence === importQuerySequence) {
+      importLoading.value = false;
+    }
+  }
+}
+
+async function searchSquareSkills(): Promise<void> {
+  importPageNum.value = 1;
+  await loadSquareSkills();
+}
+
+function clearImportSearchTimer(): void {
+  if (importSearchTimer !== null) {
+    window.clearTimeout(importSearchTimer);
+    importSearchTimer = null;
+  }
+}
+
+/** 搜索框输入实时触发：300ms 防抖，仅在引用页签打开时生效。 */
+function scheduleImportKeywordSearch(): void {
+  clearImportSearchTimer();
+  importSearchTimer = window.setTimeout(() => {
+    importSearchTimer = null;
+    if (editor.open && createTab.value === 'import') {
+      void searchSquareSkills();
+    }
+  }, 300);
+}
+
+/** 点击「搜索」按钮 / 回车：立即搜索，并取消未触发的防抖任务，避免重复请求。 */
+function triggerImportSearchNow(): void {
+  clearImportSearchTimer();
+  void searchSquareSkills();
+}
+
+async function goSquarePage(nextPage: number): Promise<void> {
+  importPageNum.value = Math.min(importTotalPages.value, Math.max(1, nextPage));
+  await loadSquareSkills();
+}
+
+async function changeImportPageSize(): Promise<void> {
+  importPageNum.value = 1;
+  await loadSquareSkills();
+}
+
+function selectSquareSkill(id: string): void {
+  importSelectedId.value = importSelectedId.value === id ? '' : id;
+  editor.error = '';
+}
+
+function switchCreateTab(tab: CreateSkillTab): void {
+  createTab.value = tab;
+  editor.error = '';
+  if (tab === 'import' && importRows.value.length === 0) {
+    void loadSquareSkills();
+  }
+}
+
+function resetImportTab(): void {
+  importQuerySequence += 1;
+  clearImportSearchTimer();
+  importKeyword.value = '';
+  importLoading.value = false;
+  importRows.value = [];
+  importTotal.value = 0;
+  importPageNum.value = 1;
+  importSelectedId.value = '';
+}
+
+async function prepareNextCreate(tab: CreateSkillTab): Promise<void> {
+  resetEditor();
+  editor.mode = 'create';
+  applyCurrentScopeToEditor();
+  editor.name = tab === 'direct' ? requiredSkillNamePrefix.value : '';
+  createTab.value = tab;
+  if (tab === 'import') importSelectedId.value = '';
+  editor.open = true;
+  await nextTick();
+  if (tab === 'direct') {
+    editorFormRef.value?.querySelector<HTMLInputElement>('input[maxlength="64"]')?.focus();
+  }
+}
+
+const importTotalPages = computed(() =>
+  Math.max(1, Math.ceil(importTotal.value / importPageSize.value)),
+);
+const selectedSquareSkill = computed(
+  () => importRows.value.find((row) => row.id === importSelectedId.value) ?? null,
+);
+
+async function importFromSquare(): Promise<void> {
+  const skill = selectedSquareSkill.value;
+  if (!skill) {
+    editor.error = '请先从列表中选择要引入的 Skill';
+    return;
+  }
+  if (importSubmitting.value) return;
+  applyCurrentScopeToEditor();
+  editor.error = '';
+
+  const dim = resolveDimFields();
+  if (!dim) return;
+  if (!editor.owner.trim()) {
+    editor.error = '请选择责任 Owner';
+    return;
+  }
+  if (!editor.developOwner.trim()) {
+    editor.error = '请选择开发责任人';
+    return;
+  }
+  const ownerValue = resolvePersonForSubmit(ownerPicker, initialOwnerValue, 'owner');
+  if (!ownerValue?.id) {
+    editor.error = '责任 Owner 人员信息不完整，请清除后重新选择';
+    return;
+  }
+  const developOwnerValue = resolvePersonForSubmit(
+    developOwnerPicker,
+    initialDevelopOwnerValue,
+    'developOwner',
+  );
+  if (!developOwnerValue?.id) {
+    editor.error = '开发责任人信息不完整，请清除后重新选择';
+    return;
+  }
+  if (!ensurePlannedCompleteDate()) return;
+
+  const params: CreateSkillMasterManagementParams = {
+    userId: props.userId.trim(),
+    dimType: dim.dimType,
+    dimCode: dim.dimCode,
+    dimName: dim.dimName,
+  };
+  const body: CreateSkillMasterManagementBody = {
+    skillName: skill.name,
+    skillDescription: skill.description,
+    ownerName: ownerValue.name,
+    ownerId: ownerValue.id,
+    developOwnerName: developOwnerValue.name,
+    developOwnerId: developOwnerValue.id,
+    planFinishDate: editor.plannedCompleteDate,
+    skillSource: '引用',
+  };
+
+  importSubmitting.value = true;
+  try {
+    const response = await skillBaseService.createSkillMasterManagement(body, params);
+    if (response?.meta?.success !== true) {
+      editor.error = String(response?.meta?.message || response?.message || '引入失败，请稍后重试');
+      return;
+    }
+    if (props.createOnly) {
+      emit('created');
+      showToast(`已从 Skill 广场引入“${skill.name}”，可继续引入`);
+      await prepareNextCreate('import');
+      return;
+    }
+    closeEditor();
+    masterPageNum.value = 1;
+    await reload();
+    showToast('已从 Skill 广场引入“' + skill.name + '”');
+  } catch (error) {
+    editor.error = error instanceof Error ? error.message : '引入失败，请稍后重试';
+  } finally {
+    importSubmitting.value = false;
+  }
+}
+
 function openCreate(): void {
-  if (!ensureMasterScopeSelection(true)) {
+  if (!props.createOnly && !ensureMasterScopeSelection(true)) {
     return;
   }
   resetEditor();
   editor.mode = 'create';
   applyCurrentScopeToEditor();
   editor.name = requiredSkillNamePrefix.value;
+  createTab.value = 'direct';
+  resetImportTab();
   editor.open = true;
+}
+
+function openDetail(record: SkillMasterRecord): void {
+  detailRecord.value = record;
+}
+
+function closeDetail(): void {
+  detailRecord.value = null;
 }
 
 function openEdit(record: SkillMasterRecord): void {
@@ -1020,10 +1497,12 @@ function openEdit(record: SkillMasterRecord): void {
     developOwnerDepartment: record.developOwnerDepartment || '',
     plannedCompleteDate: record.plannedCompleteDate,
     status: record.status,
+    skillSource: normalizeSkillSource(record.skillSource),
     error: '',
   });
   Object.assign(initialOwnerValue, parsePersonSubmitValue(nextOwnerLabel));
   Object.assign(initialDevelopOwnerValue, parsePersonSubmitValue(nextDevelopOwnerLabel));
+  initialPlannedCompleteDate.value = record.plannedCompleteDate;
   hydratePickerFromValue(ownerPicker, nextOwnerLabel, editor.department);
   hydratePickerFromValue(developOwnerPicker, nextDevelopOwnerLabel, editor.developOwnerDepartment);
   applyCurrentScopeToEditor();
@@ -1034,11 +1513,16 @@ function closeEditor(): void {
   editor.error = '';
   Object.assign(initialOwnerValue, createEmptyPersonSubmitValue());
   Object.assign(initialDevelopOwnerValue, createEmptyPersonSubmitValue());
+  initialPlannedCompleteDate.value = '';
   resetPersonPicker(ownerPicker);
   resetPersonPicker(developOwnerPicker);
+  if (props.createOnly) emit('close');
 }
 
 function onEditorFormSubmit(event: SubmitEvent): void {
+  if (editor.mode === 'create' && createTab.value === 'import') {
+    return;
+  }
   if (event.submitter instanceof HTMLButtonElement) {
     void submitEditor();
   }
@@ -1100,10 +1584,7 @@ async function submitEditor(): Promise<void> {
       editor.error = '开发责任人信息不完整，请清除后重新选择';
       return;
     }
-    if (!editor.plannedCompleteDate) {
-      editor.error = '请选择计划完成时间';
-      return;
-    }
+    if (!ensurePlannedCompleteDate()) return;
 
     const params: CreateSkillMasterManagementParams = {
       userId: props.userId.trim(),
@@ -1119,6 +1600,7 @@ async function submitEditor(): Promise<void> {
       developOwnerName: developOwnerValue.name,
       developOwnerId: developOwnerValue.id,
       planFinishDate: editor.plannedCompleteDate,
+      skillSource: '规划',
     };
 
     submitting.value = true;
@@ -1128,6 +1610,12 @@ async function submitEditor(): Promise<void> {
         editor.error = String(
           response?.meta?.message || response?.message || '新增失败，请稍后重试',
         );
+        return;
+      }
+      if (props.createOnly) {
+        emit('created');
+        showToast('Skill 已新增，可继续添加');
+        await prepareNextCreate('direct');
         return;
       }
       closeEditor();
@@ -1154,11 +1642,14 @@ async function submitEditor(): Promise<void> {
     editor.error = '请填写 Skill 名称';
     return;
   }
-  if (!ensureSkillNameFormat()) {
-    return;
-  }
-  if (!ensureProductSkillNamePrefix()) {
-    return;
+  // 从 Skill 广场引入的记录名称与广场保持一致，不做格式/前缀校验
+  if (editor.skillSource !== 'imported') {
+    if (!ensureSkillNameFormat()) {
+      return;
+    }
+    if (!ensureProductSkillNamePrefix()) {
+      return;
+    }
   }
   if (!editor.description.trim()) {
     editor.error = '请填写 Skill 说明';
@@ -1186,10 +1677,7 @@ async function submitEditor(): Promise<void> {
     editor.error = '开发责任人信息不完整，请清除后重新选择';
     return;
   }
-  if (!editor.plannedCompleteDate) {
-    editor.error = '请选择计划完成时间';
-    return;
-  }
+  if (!ensurePlannedCompleteDate()) return;
 
   const updateParams: UpdateSkillMasterManagementParams = {
     userId: props.userId.trim(),
@@ -1206,6 +1694,7 @@ async function submitEditor(): Promise<void> {
     developOwnerName: developOwnerValue.name,
     developOwnerId: developOwnerValue.id,
     planFinishDate: editor.plannedCompleteDate,
+    skillSource: editor.skillSource === 'imported' ? '引用' : '规划',
   };
 
   submitting.value = true;
@@ -1266,7 +1755,11 @@ function saveAssociation(): void {
   closeAssociation();
   showToast('Skill 关联范围已更新');
 }
-function requestDelete(record: SkillMasterRecord): void {
+async function requestDelete(record: SkillMasterRecord): Promise<void> {
+  if ((record.referenceCount ?? 0) > 0) {
+    showToast(`“${record.name}”已关联 ${record.referenceCount} 个规划项，不能删除`);
+    return;
+  }
   Object.assign(deleteDialog, { open: true, id: record.id, name: record.name });
 }
 async function confirmDelete(): Promise<void> {
@@ -1316,6 +1809,38 @@ function triggerMasterImport(): void {
     masterImportInputRef.value.click();
   }
 }
+
+function applyExternalScope(scope: HarnessScopeSnapshot): boolean {
+  const path = normalizeScopeDepartmentPath(scope.departmentPath, scope.level);
+  if (
+    !planningLevelOptions.includes(scope.level) ||
+    !findMasterDepartmentNode(path) ||
+    !isMasterDepartmentSelectionAllowed(path)
+  ) {
+    showToast('资产范围已失效，请重新选择部门和产品');
+    return false;
+  }
+  masterScopeForm.level = scope.level;
+  masterDepartmentSegments.value = path;
+  syncMasterDepartment(path);
+  masterScopeDepartmentCommitted.value = true;
+  masterScopeForm.offeringId = scope.level === '产品级' ? scope.offeringId.trim() : '';
+  masterScopeForm.offeringName = scope.level === '产品级' ? scope.offeringName.trim() : '';
+  masterPageNum.value = 1;
+  selectedMasterIds.value = [];
+  void (async () => {
+    await loadMasterProducts(scope);
+    await reload();
+    emitMasterScopeSnapshot();
+  })();
+  return true;
+}
+
+defineExpose({
+  openCreate,
+  triggerImport: triggerMasterImport,
+  applyExternalScope,
+});
 
 async function masterImportResponse(request: Promise<unknown>): Promise<unknown> {
   try {
@@ -1397,7 +1922,20 @@ function requestBatchMasterDelete(): void {
     showToast('请先勾选需要批量删除的数据');
     return;
   }
-  Object.assign(batchDeleteDialog, { open: true, ids: [...selectedMasterIds.value] });
+  void requestBatchMasterDeleteConfirmation();
+}
+
+async function requestBatchMasterDeleteConfirmation(): Promise<void> {
+  const ids = [...selectedMasterIds.value];
+  const referencedRecords = records.value.filter(
+    (record) => ids.includes(record.id) && (record.referenceCount ?? 0) > 0,
+  );
+  if (referencedRecords.length) {
+    const names = referencedRecords.map((record) => `“${record.name}”`);
+    showToast(`${names.join('、')}已关联规划项，不能删除`);
+    return;
+  }
+  Object.assign(batchDeleteDialog, { open: true, ids });
 }
 
 async function confirmBatchMasterDelete(): Promise<void> {
@@ -1435,6 +1973,7 @@ async function onMasterScopeLevelChange(): Promise<void> {
   syncMasterDepartment(defaultPath);
   await loadMasterProducts();
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 function onMasterDepartmentChange(segments: string[]): void {
@@ -1444,11 +1983,12 @@ function onMasterDepartmentChange(segments: string[]): void {
 
 async function applyMasterDepartmentQuery(segments: string[]): Promise<void> {
   masterPageNum.value = 1;
-  masterDepartmentSegments.value = normalizeDepartmentPath(segments).slice(0, 6);
+  masterDepartmentSegments.value = normalizeScopeDepartmentPath(segments);
   syncMasterDepartment(masterDepartmentSegments.value);
   masterScopeDepartmentCommitted.value = masterDepartmentSegments.value.length > 0;
   await loadMasterProducts();
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 async function onMasterDepartmentDone(segments: string[]): Promise<void> {
@@ -1463,6 +2003,7 @@ async function onMasterProductChange(): Promise<void> {
   masterPageNum.value = 1;
   masterScopeForm.offeringId = selectedMasterProduct.value?.offeringId ?? '';
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 async function applyMasterQuery(): Promise<void> {
@@ -1476,6 +2017,7 @@ async function resetMasterQuery(): Promise<void> {
   applyDefaultMasterScopeSelection();
   await loadMasterProducts();
   await reload();
+  emitMasterScopeSnapshot();
 }
 
 async function goMasterPage(nextPage: number): Promise<void> {
@@ -1483,62 +2025,80 @@ async function goMasterPage(nextPage: number): Promise<void> {
   await reload();
 }
 
-async function changeMasterPageSize(): Promise<void> {
+async function changeMasterPageSize(size: number): Promise<void> {
+  masterPageSize.value = size;
   masterPageNum.value = 1;
   await reload();
 }
 
-watch(
-  requiredSkillNamePrefix,
-  (nextPrefix, previousPrefix) => {
-    if (!editor.open || editor.mode !== 'create') return;
-    if (!editor.name || editor.name === previousPrefix) {
-      editor.name = nextPrefix;
-      return;
-    }
-    if (previousPrefix && editor.name.startsWith(previousPrefix)) {
-      editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
-    }
-  },
-);
+watch(requiredSkillNamePrefix, (nextPrefix, previousPrefix) => {
+  if (!editor.open || editor.mode !== 'create') return;
+  if (!editor.name || editor.name === previousPrefix) {
+    editor.name = nextPrefix;
+    return;
+  }
+  if (previousPrefix && editor.name.startsWith(previousPrefix)) {
+    editor.name = nextPrefix + editor.name.slice(previousPrefix.length);
+  } else if (
+    props.createOnly &&
+    nextPrefix &&
+    !previousPrefix &&
+    !editor.name.startsWith(nextPrefix)
+  ) {
+    editor.name = nextPrefix + editor.name;
+  }
+});
+
+watch(importKeyword, scheduleImportKeywordSearch);
 
 watch(
   () => [props.currentUserDepartmentPath, props.allowedDepartmentPaths, props.departmentTree],
   async () => {
     masterPageNum.value = 1;
-    applyDefaultMasterScopeSelection();
-    await loadMasterProducts();
+    const restoredScope = restoreMasterScopeSnapshot();
+    if (!restoredScope) applyDefaultMasterScopeSelection();
+    await loadMasterProducts(restoredScope);
     await reload();
+    emitMasterScopeSnapshot();
   },
   { immediate: true, deep: true },
 );
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onPersonPickerOutsideClick, true);
+  masterProductLoadSequence += 1;
   if (toastTimer !== null) {
     window.clearTimeout(toastTimer);
   }
   clearOwnerSearchTimer();
   clearDevelopOwnerSearchTimer();
+  clearImportSearchTimer();
+});
+onMounted(() => {
+  // Capture clicks before the modal stops them from bubbling to document.
+  document.addEventListener('click', onPersonPickerOutsideClick, true);
+  if (props.createOnly) openCreate();
 });
 </script>
 
 <template>
-  <section class="master-panel" aria-label="Skill 管理">
-    <section class="master-filter-card" aria-label="Skill 清单查询">
+  <section
+    class="master-panel"
+    :class="{ 'is-create-only': props.createOnly }"
+    aria-label="Skill 管理"
+  >
+    <section v-if="!props.createOnly" class="master-filter-card" aria-label="Skill 清单查询">
       <div
         class="master-scope-controls"
         :class="{ 'is-department-level': masterScopeForm.level === '部门级' }"
       >
         <label class="master-scope-field master-scope-field--level">
           <span>层级 <em>*</em></span>
-          <select v-model="masterScopeForm.level" @change="onMasterScopeLevelChange">
-            <option
-              v-for="item in planningLevelOptions"
-              :key="`master-level-${item}`"
-              :value="item"
-            >
-              {{ item }}
-            </option>
-          </select>
+          <HarnessSelect
+            v-model="masterScopeForm.level"
+            @change="onMasterScopeLevelChange"
+            :searchable="false"
+            :options="[...planningLevelOptions.map((item) => ({ value: item, label: item }))]"
+          />
         </label>
         <div class="master-scope-field master-scope-field--dept">
           <span
@@ -1567,28 +2127,25 @@ onBeforeUnmount(() => {
         </div>
         <label v-if="masterScopeForm.level === '产品级'" class="master-scope-field">
           <span>产品 <em>*</em></span>
-          <select
+          <HarnessSelect
             v-model="masterScopeForm.offeringName"
             :disabled="!masterScopeForm.planningDeptName || masterProductsLoading"
             @change="onMasterProductChange"
-          >
-            <option value="">
-              {{
-                !masterScopeForm.planningDeptName
+            :options="[
+              {
+                value: '',
+                label: !masterScopeForm.planningDeptName
                   ? '请先选择部门'
                   : masterProductsLoading
                     ? '产品加载中...'
-                    : '请选择产品'
-              }}
-            </option>
-            <option
-              v-for="item in masterProductOptions"
-              :key="item.offeringId || item.offeringName"
-              :value="item.offeringName"
-            >
-              {{ item.offeringName }}
-            </option>
-          </select>
+                    : '请选择产品',
+              },
+              ...masterProductOptions.map((item) => ({
+                value: item.offeringName,
+                label: item.offeringName,
+              })),
+            ]"
+          />
         </label>
         <label class="master-scope-field master-scope-field--keyword">
           <span>关键词</span>
@@ -1596,6 +2153,7 @@ onBeforeUnmount(() => {
             v-model.trim="keyword"
             type="search"
             placeholder="搜索 Skill 或 Owner"
+            @input="applyMasterQuery"
             @keydown.enter.prevent="applyMasterQuery"
           />
         </label>
@@ -1610,10 +2168,9 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div class="master-board">
+    <div v-if="!props.createOnly" class="master-board">
       <header class="master-toolbar">
         <div class="master-toolbar__title">
-          <strong>Skill 原子清单</strong>
           <small
             >已选 {{ selectedMasterIds.length }} 条 / 共 {{ masterTotal }} 条 ·
             可被不同部门的规划复用</small
@@ -1687,7 +2244,13 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <div class="table-wrap">
+      <div
+        ref="tableScroll"
+        class="table-wrap"
+        role="region"
+        aria-label="Skill 清单表格"
+        tabindex="0"
+      >
         <table>
           <colgroup>
             <col class="selection-column" />
@@ -1697,6 +2260,7 @@ onBeforeUnmount(() => {
             <col class="develop-owner-column" />
             <col class="date-column" />
             <col class="status-column" />
+            <col class="version-column" />
             <col class="action-column" />
           </colgroup>
           <thead>
@@ -1720,12 +2284,14 @@ onBeforeUnmount(() => {
               <th>开发责任人</th>
               <th>计划完成</th>
               <th>当前进展</th>
+              <th>版本</th>
+              <!-- <th class="reference-cell">关联规划项</th> -->
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="masterLoading">
-              <td colspan="8" class="empty">正在加载 Skill 清单...</td>
+              <td colspan="9" class="empty">正在加载 Skill 清单...</td>
             </tr>
             <tr v-for="record in masterLoading ? [] : filteredRecords" :key="record.id">
               <td class="selection-cell">
@@ -1740,11 +2306,18 @@ onBeforeUnmount(() => {
                 <div class="name-cell">
                   <i>{{ record.name.slice(0, 1) }}</i
                   ><span
-                    ><strong>{{ record.name }}</strong></span
+                    ><strong :title="record.name">{{ record.name }}</strong>
+                    <em
+                      v-if="record.skillSource === 'imported'"
+                      class="skill-source-badge is-imported"
+                      >广场引入</em
+                    ></span
                   >
                 </div>
               </td>
-              <td>{{ record.description || '无' }}</td>
+              <td class="description-cell">
+                <span :title="record.description || '无'">{{ record.description || '无' }}</span>
+              </td>
               <!-- <td>
                 <span class="badge level">{{ record.level }}</span>
               </td> -->
@@ -1761,61 +2334,114 @@ onBeforeUnmount(() => {
               <td class="person-column">{{ personDisplayLabel(record.developOwner) }}</td>
               <td>{{ record.plannedCompleteDate || '无' }}</td>
               <td>
-                <span class="badge status" :class="'is-' + record.status">{{ record.status }}</span>
+                <span
+                  class="badge status"
+                  :class="{
+                    'is-done': record.status === '已完成',
+                    'is-inProgress': record.status === '进行中',
+                  }"
+                  >{{ record.status }}</span
+                >
               </td>
               <td>
+                <span class="master-version">{{
+                  latestSkillMasterVersion(record)?.version || '—'
+                }}</span>
+              </td>
+              <!-- <td class="reference-cell">
+                <span
+                  class="planning-reference-count"
+                  :class="{ 'is-linked': (record.referenceCount ?? 0) > 0 }"
+                >{{ record.referenceCount ?? 0 }}</span>
+              </td> -->
+              <td>
                 <div class="row-actions">
-                  <button type="button" @click="openEdit(record)">编辑</button
-                  ><button class="danger" type="button" @click="requestDelete(record)">删除</button>
+                  <button
+                    type="button"
+                    class="icon-action"
+                    title="编辑"
+                    aria-label="编辑"
+                    @click="openEdit(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 20h4l10-10-4-4L4 16v4Z" />
+                      <path d="m13 7 4 4" />
+                    </svg>
+                  </button>
+                  <button
+                    class="icon-action danger"
+                    type="button"
+                    title="删除"
+                    aria-label="删除"
+                    @click="requestDelete(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16M9 7V5h6v2m-8 3 1 9h8l1-9" />
+                    </svg>
+                  </button>
+                  <button
+                    v-if="latestSkillMasterVersion(record)"
+                    type="button"
+                    class="icon-action is-view"
+                    title="查看 Skill"
+                    aria-label="查看 Skill"
+                    @click="openDetail(record)"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  </button>
                 </div>
               </td>
             </tr>
             <tr v-if="!masterLoading && filteredRecords.length === 0">
-              <td colspan="8" class="empty">
+              <td colspan="9" class="empty">
                 {{ hasCompleteMasterScope ? '暂无符合条件的 Skill' : masterScopeErrorMessage }}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div class="master-pagination">
-        <span>第 {{ masterPageStart }}-{{ masterPageEnd }} 条，共 {{ masterTotal }} 条</span>
-        <div class="master-pagination__controls">
-          <select
-            v-model.number="masterPageSize"
-            :disabled="masterLoading"
-            @change="changeMasterPageSize"
-          >
-            <option v-for="size in masterPageSizeOptions" :key="size" :value="size">
-              {{ size }} 条/页
-            </option>
-          </select>
-          <button
-            type="button"
-            :disabled="masterLoading || masterPageNum <= 1"
-            @click="goMasterPage(masterPageNum - 1)"
-          >
-            上一页
-          </button>
-          <strong>{{ masterPageNum }} / {{ masterTotalPages }}</strong>
-          <button
-            type="button"
-            :disabled="masterLoading || masterPageNum >= masterTotalPages"
-            @click="goMasterPage(masterPageNum + 1)"
-          >
-            下一页
-          </button>
-        </div>
-      </div>
+      <HarnessCatalogPagination
+        :page="masterPageNum"
+        :page-size="masterPageSize"
+        :total="masterTotal"
+        :loading="masterLoading"
+        @page-change="goMasterPage"
+        @page-size-change="changeMasterPageSize"
+      />
     </div>
+
+    <HarnessCatalogDetailDialog
+      :open="Boolean(detailRecord)"
+      :record="detailRecord"
+      :user-id="props.userId"
+      capability-type="skill"
+      @close="closeDetail"
+    />
 
     <Teleport to="body">
       <div
         v-if="editor.open"
         class="overlay"
+        :class="{ 'harness-workspace-overlay': props.createOnly }"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
       >
         <form
+          ref="editorFormRef"
           class="dialog"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="editor.mode === 'create' ? '添加 Skill' : '编辑 Skill'"
+          :class="{
+            'is-create-dialog': editor.mode === 'create',
+            'is-imported-edit':
+              (editor.mode === 'edit' && editor.skillSource === 'imported') ||
+              (editor.mode === 'create' && createTab === 'import'),
+          }"
           @click.stop
           @pointerdown.stop
           @pointerup.stop
@@ -1824,139 +2450,432 @@ onBeforeUnmount(() => {
         >
           <header>
             <div>
-              <small>SKILL MASTER</small
-              ><strong>{{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}</strong>
-              <p>
+              <small v-if="!props.createOnly">SKILL MASTER</small
+              ><strong>
+                {{ editor.mode === 'create' ? '添加 Skill' : '编辑 Skill' }}
+                <em
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="dialog-source-badge is-imported"
+                  >广场引入</em
+                >
+              </strong>
+              <p v-if="props.createOnly">选择资产归属并填写基本信息，也可从 Skill 广场引入。</p>
+              <p v-else>
                 这里只维护可复用的原子 Skill；场景、活动、层级和部门/产品请在 Skill 规划中配置。
               </p>
             </div>
             <button type="button" @click="closeEditor">×</button>
           </header>
-          <div class="note">
-            <b>部门语义</b><span>Owner 所在部门是人员属性，不作为 Skill 的规划归属。</span>
-          </div>
-          <div class="form-grid">
-            <label class="wide"
-              ><span>Skill 名称 *</span
-              ><input
-                v-model.trim="editor.name"
-                maxlength="64"
-                :placeholder="requiredSkillNamePrefix || '请输入 Skill 名称'"
-              /><small v-if="requiredSkillNamePrefix" class="field-hint"
-                >需以产品名称的小写形式“{{ requiredSkillNamePrefix }}”开头</small
-              ></label
+          <HarnessCatalogCreateScope
+            v-if="props.createOnly"
+            :level="masterScopeForm.level"
+            :department-path="masterDepartmentSegments"
+            :department-tree="masterDepartmentTree"
+            :product-name="masterScopeForm.offeringName"
+            :products="masterProductOptions"
+            :products-loading="masterProductsLoading"
+            :disabled="submitting || importSubmitting"
+            :permission-path="legacyMasterPermissionPath"
+            :allowed-department-paths="normalizedAllowedDepartmentPaths"
+            :before-department-done="guardMasterDepartmentSelection"
+            @level-change="
+              masterScopeForm.level = $event;
+              onMasterScopeLevelChange();
+            "
+            @department-change="onMasterDepartmentDone"
+            @product-change="
+              masterScopeForm.offeringName = $event;
+              onMasterProductChange();
+            "
+          />
+          <div
+            v-if="editor.mode === 'create'"
+            class="dialog-tabs"
+            role="tablist"
+            aria-label="新增 Skill 方式"
+          >
+            <button
+              type="button"
+              class="dialog-tab"
+              role="tab"
+              :class="{ 'is-active': createTab === 'direct' }"
+              :aria-selected="createTab === 'direct'"
+              @click="switchCreateTab('direct')"
             >
-            <label class="wide"
-              ><span>Skill 说明 *</span
-              ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
-            </label>
-            <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
-              <span>责任 Owner *</span>
-              <div class="person-search__control">
-                <input
-                  :value="ownerPicker.keyword"
-                  type="text"
-                  autocomplete="off"
-                  :readonly="Boolean(editor.owner.trim())"
-                  placeholder="输入姓名或工号后选择"
-                  @focus="onOwnerPickerFocus"
-                  @input="onOwnerPickerInput"
+              直接新建
+            </button>
+            <button
+              type="button"
+              class="dialog-tab"
+              role="tab"
+              :class="{ 'is-active': createTab === 'import' }"
+              :aria-selected="createTab === 'import'"
+              @click="switchCreateTab('import')"
+            >
+              从 Skill 广场引入
+            </button>
+          </div>
+          <div class="dialog-scroll-body">
+            <div v-if="editor.mode === 'edit' && editor.skillSource === 'imported'" class="note">
+              <b>来源</b
+              ><span
+                >广场引入，名称不可修改；可修改 Skill 说明、责任
+                Owner、开发责任人和计划完成时间</span
+              >
+            </div>
+            <div v-show="editor.mode === 'edit' || createTab === 'direct'" class="form-grid">
+              <label class="wide"
+                ><span>Skill 名称 *</span
+                ><input
+                  v-model.trim="editor.name"
+                  maxlength="64"
+                  :readonly="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  placeholder="请输入 Skill 名称"
                 />
-                <button
-                  v-if="editor.owner.trim()"
-                  type="button"
-                  class="person-search__clear"
-                  title="清除责任 Owner"
-                  aria-label="清除责任 Owner"
-                  @mousedown.prevent
-                  @click.stop="clearOwnerSelection"
-                >
-                  ×
-                </button>
-              </div>
-              <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
-                <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
-                <template v-else>
+                <small
+                  v-if="editor.mode === 'edit' && editor.skillSource === 'imported'"
+                  class="field-hint"
+                  >从 Skill 广场引入的 Skill 名称不可修改</small
+                ><small v-else-if="requiredSkillNamePrefix" class="field-hint"
+                  >需以产品名称的小写形式“{{
+                    requiredSkillNamePrefix
+                  }}”开头，仅使用小写字母、数字和连字符。</small
+                ><small v-else-if="suggestedSkillNamePrefix" class="field-hint"
+                  >建议使用“{{
+                    suggestedSkillNamePrefix
+                  }}”作为名称前缀，仅使用小写字母、数字和连字符。</small
+                ></label
+              >
+              <label class="wide"
+                ><span>Skill 说明 *</span
+                ><textarea v-model.trim="editor.description" maxlength="300" rows="4"></textarea>
+              </label>
+              <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
+                <span>责任 Owner *</span>
+                <div class="person-search__control">
+                  <input
+                    :value="ownerPicker.keyword"
+                    type="text"
+                    autocomplete="off"
+                    :readonly="Boolean(editor.owner.trim())"
+                    placeholder="输入姓名或工号后选择"
+                    @focus="onOwnerPickerFocus"
+                    @input="onOwnerPickerInput"
+                  />
                   <button
-                    v-for="option in ownerPicker.options"
-                    :key="option.id || option.label"
+                    v-if="editor.owner.trim()"
                     type="button"
-                    @click="selectOwner(option)"
+                    class="person-search__clear"
+                    title="清除责任 Owner"
+                    aria-label="清除责任 Owner"
+                    @mousedown.prevent
+                    @click.stop="clearOwnerSelection"
                   >
-                    <span
-                      ><strong>{{ option.chName || option.label }}</strong
-                      ><small>{{ option.id }}</small></span
-                    >
-                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    ×
                   </button>
-                  <span v-if="ownerPicker.message" class="person-search__empty">{{
-                    ownerPicker.message
-                  }}</span>
-                </template>
-              </div>
-            </label>
-            <!-- <label
+                </div>
+                <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                  <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                  <template v-else>
+                    <button
+                      v-for="option in ownerPicker.options"
+                      :key="option.id || option.label"
+                      type="button"
+                      @click="selectOwner(option)"
+                    >
+                      <span
+                        ><strong>{{ option.chName || option.label }}</strong
+                        ><small>{{ option.id }}</small></span
+                      >
+                      <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    </button>
+                    <span v-if="ownerPicker.message" class="person-search__empty">{{
+                      ownerPicker.message
+                    }}</span>
+                  </template>
+                </div>
+              </label>
+              <!-- <label
               ><span>Owner 所在部门</span
               ><input v-model.trim="editor.department" placeholder="由 Owner 资料自动带出" readonly
             /></label> -->
-            <label
-              class="develop-owner-picker person-search"
-              @keydown.esc="closeDevelopOwnerPersonSearch"
-            >
-              <span>开发责任人 *</span>
-              <div class="person-search__control">
+              <label
+                class="develop-owner-picker person-search"
+                @keydown.esc="closeDevelopOwnerPersonSearch"
+              >
+                <span>开发责任人 *</span>
+                <div class="person-search__control">
+                  <input
+                    :value="developOwnerPicker.keyword"
+                    type="text"
+                    autocomplete="off"
+                    :readonly="Boolean(editor.developOwner.trim())"
+                    placeholder="输入姓名或工号后选择"
+                    @focus="onDevelopOwnerPickerFocus"
+                    @input="onDevelopOwnerPickerInput"
+                  />
+                  <button
+                    v-if="editor.developOwner.trim()"
+                    type="button"
+                    class="person-search__clear"
+                    title="清除开发责任人"
+                    aria-label="清除开发责任人"
+                    @mousedown.prevent
+                    @click.stop="clearDevelopOwnerSelection"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                  <span v-if="developOwnerPicker.loading" class="person-search__empty"
+                    >查询中...</span
+                  >
+                  <template v-else>
+                    <button
+                      v-for="option in developOwnerPicker.options"
+                      :key="option.id || option.label"
+                      type="button"
+                      @click="selectDevelopOwner(option)"
+                    >
+                      <span
+                        ><strong>{{ option.chName || option.label }}</strong
+                        ><small>{{ option.id }}</small></span
+                      >
+                      <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    </button>
+                    <span v-if="developOwnerPicker.message" class="person-search__empty">{{
+                      developOwnerPicker.message
+                    }}</span>
+                  </template>
+                </div>
+              </label>
+              <label
+                ><span>计划完成时间 *</span
+                ><input v-model="editor.plannedCompleteDate" type="date" :min="currentLocalDate()"
+              /></label>
+            </div>
+
+            <div v-if="editor.mode === 'create' && createTab === 'import'" class="import-panel">
+              <div class="import-search">
                 <input
-                  :value="developOwnerPicker.keyword"
-                  type="text"
-                  autocomplete="off"
-                  :readonly="Boolean(editor.developOwner.trim())"
-                  placeholder="输入姓名或工号后选择"
-                  @focus="onDevelopOwnerPickerFocus"
-                  @input="onDevelopOwnerPickerInput"
+                  v-model.trim="importKeyword"
+                  type="search"
+                  placeholder="输入关键词实时搜索 Skill 广场中的 Skill"
+                  @keydown.enter.prevent="triggerImportSearchNow"
                 />
                 <button
-                  v-if="editor.developOwner.trim()"
+                  class="primary"
                   type="button"
-                  class="person-search__clear"
-                  title="清除开发责任人"
-                  aria-label="清除开发责任人"
-                  @mousedown.prevent
-                  @click.stop="clearDevelopOwnerSelection"
+                  :disabled="importLoading"
+                  @click="triggerImportSearchNow"
                 >
-                  ×
+                  搜索
                 </button>
               </div>
-              <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
-                <span v-if="developOwnerPicker.loading" class="person-search__empty"
-                  >查询中...</span
-                >
+
+              <div class="import-list" :aria-busy="importLoading">
+                <div v-if="importLoading" class="import-empty">正在加载 Skill 广场列表…</div>
                 <template v-else>
                   <button
-                    v-for="option in developOwnerPicker.options"
-                    :key="option.id || option.label"
+                    v-for="row in importRows"
+                    :key="row.id"
                     type="button"
-                    @click="selectDevelopOwner(option)"
+                    class="import-row"
+                    :class="{ 'is-selected': importSelectedId === row.id }"
+                    @click="selectSquareSkill(row.id)"
                   >
-                    <span
-                      ><strong>{{ option.chName || option.label }}</strong
-                      ><small>{{ option.id }}</small></span
-                    >
-                    <em>{{ option.deptName || '部门信息待补充' }}</em>
+                    <span class="import-row__radio" aria-hidden="true"></span>
+                    <span class="import-row__main">
+                      <strong :title="row.name">{{ row.name }}</strong>
+                      <small :title="row.description || '暂无描述'">{{
+                        row.description || '暂无描述'
+                      }}</small>
+                    </span>
+                    <span class="import-row__meta">
+                      <em v-if="row.version" class="is-version">v{{ row.version }}</em>
+                      <em v-if="row.publisher" :title="row.publisher">{{ row.publisher }}</em>
+                      <em v-if="row.department" :title="row.department">{{ row.department }}</em>
+                    </span>
                   </button>
-                  <span v-if="developOwnerPicker.message" class="person-search__empty">{{
-                    developOwnerPicker.message
-                  }}</span>
+                  <div v-if="!importRows.length" class="import-empty">
+                    未找到匹配的 Skill，请调整关键词后重试
+                  </div>
                 </template>
               </div>
-            </label>
-            <label
-              ><span>计划完成时间 *</span><input v-model="editor.plannedCompleteDate" type="date"
-            /></label>
+
+              <div class="import-pagination">
+                <span>共 {{ importTotal }} 条</span>
+                <HarnessSelect
+                  v-model="importPageSize"
+                  :disabled="importLoading"
+                  aria-label="每页条数"
+                  @change="changeImportPageSize"
+                  :searchable="false"
+                  :options="[
+                    ...importPageSizeOptions.map((size) => ({
+                      value: size,
+                      label: size + '条/页',
+                    })),
+                  ]"
+                />
+                <button
+                  type="button"
+                  :disabled="importLoading || importPageNum <= 1"
+                  @click="goSquarePage(importPageNum - 1)"
+                >
+                  上一页
+                </button>
+                <strong>{{ importPageNum }} / {{ importTotalPages }}</strong>
+                <button
+                  type="button"
+                  :disabled="importLoading || importPageNum >= importTotalPages"
+                  @click="goSquarePage(importPageNum + 1)"
+                >
+                  下一页
+                </button>
+              </div>
+
+              <div v-if="selectedSquareSkill" class="import-selected">
+                <header>
+                  <strong>已选 Skill</strong>
+                  <span>名称与说明以 Skill 广场为准，不可修改</span>
+                </header>
+                <div class="import-selected__name" :title="selectedSquareSkill.name">
+                  {{ selectedSquareSkill.name }}
+                </div>
+                <div class="import-selected__tags">
+                  <em v-for="tag in selectedSquareSkill.tags.slice(0, 4)" :key="tag">
+                    {{ tag }}
+                  </em>
+                  <em>{{ selectedSquareSkill.category }}</em>
+                  <em v-if="selectedSquareSkill.version">v{{ selectedSquareSkill.version }}</em>
+                </div>
+                <p :title="selectedSquareSkill.description || '暂无描述'">
+                  {{ selectedSquareSkill.description || '暂无描述' }}
+                </p>
+              </div>
+
+              <div class="form-grid import-form-grid">
+                <label class="owner-picker person-search" @keydown.esc="closeOwnerPersonSearch">
+                  <span>责任 Owner *</span>
+                  <div class="person-search__control">
+                    <input
+                      :value="ownerPicker.keyword"
+                      type="text"
+                      autocomplete="off"
+                      :readonly="Boolean(editor.owner.trim())"
+                      placeholder="输入姓名或工号后选择"
+                      @focus="onOwnerPickerFocus"
+                      @input="onOwnerPickerInput"
+                    />
+                    <button
+                      v-if="editor.owner.trim()"
+                      type="button"
+                      class="person-search__clear"
+                      title="清除责任 Owner"
+                      aria-label="清除责任 Owner"
+                      @mousedown.prevent
+                      @click.stop="clearOwnerSelection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="ownerPicker.open" class="person-search__panel" @mousedown.stop>
+                    <span v-if="ownerPicker.loading" class="person-search__empty">查询中...</span>
+                    <template v-else>
+                      <button
+                        v-for="option in ownerPicker.options"
+                        :key="option.id || option.label"
+                        type="button"
+                        @click="selectOwner(option)"
+                      >
+                        <span
+                          ><strong>{{ option.chName || option.label }}</strong
+                          ><small>{{ option.id }}</small></span
+                        >
+                        <em>{{ option.deptName || '部门信息待补充' }}</em>
+                      </button>
+                      <span v-if="ownerPicker.message" class="person-search__empty">{{
+                        ownerPicker.message
+                      }}</span>
+                    </template>
+                  </div>
+                </label>
+                <label
+                  class="develop-owner-picker person-search"
+                  @keydown.esc="closeDevelopOwnerPersonSearch"
+                >
+                  <span>开发责任人 *</span>
+                  <div class="person-search__control">
+                    <input
+                      :value="developOwnerPicker.keyword"
+                      type="text"
+                      autocomplete="off"
+                      :readonly="Boolean(editor.developOwner.trim())"
+                      placeholder="输入姓名或工号后选择"
+                      @focus="onDevelopOwnerPickerFocus"
+                      @input="onDevelopOwnerPickerInput"
+                    />
+                    <button
+                      v-if="editor.developOwner.trim()"
+                      type="button"
+                      class="person-search__clear"
+                      title="清除开发责任人"
+                      aria-label="清除开发责任人"
+                      @mousedown.prevent
+                      @click.stop="clearDevelopOwnerSelection"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="developOwnerPicker.open" class="person-search__panel" @mousedown.stop>
+                    <span v-if="developOwnerPicker.loading" class="person-search__empty"
+                      >查询中...</span
+                    >
+                    <template v-else>
+                      <button
+                        v-for="option in developOwnerPicker.options"
+                        :key="option.id || option.label"
+                        type="button"
+                        @click="selectDevelopOwner(option)"
+                      >
+                        <span
+                          ><strong>{{ option.chName || option.label }}</strong
+                          ><small>{{ option.id }}</small></span
+                        >
+                        <em>{{ option.deptName || '部门信息待补充' }}</em>
+                      </button>
+                      <span v-if="developOwnerPicker.message" class="person-search__empty">{{
+                        developOwnerPicker.message
+                      }}</span>
+                    </template>
+                  </div>
+                </label>
+                <label
+                  ><span>计划完成时间 *</span
+                  ><input
+                    v-model="editor.plannedCompleteDate"
+                    type="date"
+                    :min="currentLocalDate()"
+                /></label>
+              </div>
+            </div>
           </div>
           <p v-if="editor.error" class="error">{{ editor.error }}</p>
           <footer>
-            <button type="button" @click="closeEditor">取消</button
-            ><button class="primary" type="submit" :disabled="submitting">保存</button>
+            <button type="button" @click="closeEditor">取消</button>
+            <button
+              v-if="editor.mode === 'create' && createTab === 'import'"
+              class="primary"
+              type="button"
+              :disabled="importSubmitting"
+              @click="importFromSquare"
+            >
+              {{ importSubmitting ? '引入中…' : '引入' }}
+            </button>
+            <button v-else class="primary" type="submit" formnovalidate :disabled="submitting">
+              保存
+            </button>
           </footer>
         </form>
       </div>
@@ -2044,7 +2963,6 @@ onBeforeUnmount(() => {
         <div class="dialog delete-dialog" role="dialog" aria-modal="true">
           <i class="delete-dialog__icon" aria-hidden="true">!</i>
           <strong>删除“{{ deleteDialog.name }}”？</strong>
-          <p>删除后将不能用于新规划，已有规划仍保留历史快照。</p>
           <footer>
             <button type="button" @click="deleteDialog.open = false">取消</button
             ><button class="danger-btn" type="button" @click="confirmDelete">确认删除</button>
@@ -2083,8 +3001,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+.master-panel.is-create-only {
+  display: contents;
+}
+
 .master-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 18px;
   color: #17233d;
 }
@@ -2194,15 +3120,19 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 28px rgba(35, 52, 84, 0.06);
 }
 .master-filter-card {
+  flex: 0 0 auto;
   padding: 18px;
 }
 .master-board {
-  min-height: clamp(500px, calc(100vh - 410px), 820px);
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .master-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2214,11 +3144,6 @@ onBeforeUnmount(() => {
   display: grid;
   min-width: 0;
   gap: 4px;
-}
-.master-toolbar__title strong {
-  color: #101828;
-  font-size: 17px;
-  font-weight: 900;
 }
 .master-toolbar small {
   color: #64748b;
@@ -2252,7 +3177,7 @@ onBeforeUnmount(() => {
   font-style: normal;
 }
 .master-scope-field input,
-.master-scope-field select {
+.master-scope-field :is(select, .harness-select) {
   box-sizing: border-box;
   width: 100%;
   height: 38px;
@@ -2267,7 +3192,7 @@ onBeforeUnmount(() => {
   outline: none;
 }
 .master-scope-field input:focus,
-.master-scope-field select:focus {
+.master-scope-field :is(select, .harness-select):focus {
   border-color: #5b8ff9;
   box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
 }
@@ -2377,6 +3302,358 @@ onBeforeUnmount(() => {
   background: #aebcf3 !important;
   cursor: not-allowed;
 }
+.dialog-tabs {
+  display: inline-flex;
+  gap: 28px;
+  margin-bottom: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.dialog-tab {
+  position: relative;
+  min-height: 34px;
+  padding: 0 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.dialog-tab:hover {
+  color: #3156b5;
+}
+.dialog-tab.is-active {
+  color: #3569e8;
+  box-shadow: none;
+}
+.dialog-tab.is-active::after {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: #3569e8;
+  content: '';
+}
+.dialog-source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin-left: 10px;
+  padding: 0 9px;
+  border-radius: 99px;
+  background: #eef2f8;
+  color: #66758c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  vertical-align: middle;
+}
+.dialog-source-badge.is-imported {
+  background: #eef1ff;
+  color: #4c63c8;
+}
+.skill-source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 20px;
+  margin-top: 3px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: #eef2f8;
+  color: #66758c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+}
+.skill-source-badge.is-imported {
+  background: #eef1ff;
+  color: #4c63c8;
+}
+.import-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 14px;
+}
+.import-panel > * {
+  min-width: 0;
+}
+.import-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  gap: 9px;
+}
+.import-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d7dfeb;
+  border-radius: 8px;
+  outline: 0;
+  color: #344159;
+  background: #fff;
+}
+.import-search input:focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  height: clamp(132px, 19vh, 180px);
+  height: clamp(132px, 19dvh, 180px);
+  padding: 3px 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.import-list::-webkit-scrollbar {
+  width: 6px;
+}
+.import-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9d3e8;
+}
+.import-list::-webkit-scrollbar-thumb:hover {
+  background: #aebadb;
+}
+.import-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 0 54px;
+  height: 54px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #e3e9f3;
+  border-radius: 9px;
+  background: #fbfcff;
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+.import-row:hover {
+  border-color: #c3cdf5;
+  background: #f6f8ff;
+}
+.import-row.is-selected {
+  border-color: #9fb3f3;
+  background: #eef2ff;
+  box-shadow: inset 0 0 0 1px #d3dcff;
+}
+.import-row__radio {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid #c6d0e4;
+  border-radius: 50%;
+  background: #fff;
+}
+.import-row.is-selected .import-row__radio {
+  border: 5px solid #3569e8;
+}
+.import-row__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  gap: 3px;
+}
+.import-row__main strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: #2c3950;
+  font-size: 13px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row__main small {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: #8c97a8;
+  font-size: 11px;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row__meta {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 45%;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+.import-row__meta em {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #f0f3f9;
+  color: #66758c;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-row__meta em.is-version {
+  background: #e9eeff;
+  color: #4c63c8;
+}
+.import-empty {
+  padding: 30px 12px;
+  color: #98a2b1;
+  font-size: 12px;
+  text-align: center;
+}
+.import-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  min-width: 0;
+  color: #7c879a;
+  font-size: 11px;
+}
+.import-pagination :is(select, .harness-select) {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #d7dfeb;
+  border-radius: 7px;
+  background: #fff;
+  color: #55617a;
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.import-pagination :is(select, .harness-select):focus {
+  border-color: #5b8ff9;
+  box-shadow: 0 0 0 3px rgba(47, 125, 246, 0.14);
+}
+.import-pagination :is(select, .harness-select):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.import-pagination button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d7dfeb;
+  border-radius: 7px;
+  background: #fff;
+  color: #55617a;
+  cursor: pointer;
+}
+.import-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.import-pagination strong {
+  color: #3c4a66;
+  font-size: 11px;
+}
+.import-selected {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #c9d8ff;
+  border-radius: 10px;
+  background: #f5f8ff;
+}
+.import-selected > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.import-selected > header strong {
+  color: #2c3950;
+  font-size: 13px;
+}
+.import-selected > header span {
+  color: #8c97a8;
+  font-size: 11px;
+}
+.import-selected__name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #23314f;
+  font-size: 15px;
+  font-weight: 850;
+}
+.import-selected__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.import-selected__tags em {
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #e9eeff;
+  color: #4c63c8;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+.import-selected > p {
+  margin: 8px 0 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  color: #66758c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.import-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.import-form-grid > * {
+  min-width: 0;
+}
+.import-form-grid label:last-child {
+  grid-column: 1 / -1;
+}
 .table-wrap {
   flex: 1 1 auto;
   width: 100%;
@@ -2385,32 +3662,53 @@ onBeforeUnmount(() => {
 }
 .table-wrap table {
   width: 100%;
-  min-width: 1320px;
+  min-width: 1280px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
 }
 .table-wrap col.selection-column {
-  width: 48px;
+  width: 4%;
 }
 .table-wrap col.skill-column {
-  width: 220px;
+  width: 18%;
 }
 .table-wrap col.description-column {
-  width: 330px;
+  width: 20%;
 }
 .table-wrap col.owner-column,
 .table-wrap col.develop-owner-column {
-  width: 170px;
+  width: 11%;
 }
 .table-wrap col.date-column {
-  width: 140px;
+  width: 10%;
 }
 .table-wrap col.status-column {
-  width: 130px;
+  width: 8%;
+}
+.table-wrap col.version-column {
+  width: 7%;
 }
 .table-wrap col.action-column {
-  width: 140px;
+  width: 11%;
+}
+.table-wrap .reference-cell {
+  text-align: center;
+}
+.planning-reference-count {
+  display: inline-flex;
+  min-width: 30px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 800;
+}
+.planning-reference-count.is-linked {
+  background: #eef2ff;
+  color: #4f46e5;
 }
 .table-wrap th,
 .table-wrap td {
@@ -2418,7 +3716,7 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #edf2f7;
   color: #334155;
   font-size: 13px;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   word-break: break-word;
 }
@@ -2431,49 +3729,16 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 900;
 }
+.table-wrap td:nth-child(2) {
+  padding-left: 24px;
+  text-align: left;
+}
 .table-wrap td {
   height: 78px;
   background: #ffffff;
 }
 .table-wrap tbody tr:hover td {
   background: #f8fbff;
-}
-.master-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 18px;
-  border-top: 1px solid #edf2f7;
-  color: #64748b;
-  font-size: 13px;
-}
-.master-pagination__controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.master-pagination__controls select,
-.master-pagination__controls button {
-  height: 32px;
-  border: 1px solid #dbe5f2;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #253857;
-  font: inherit;
-  font-size: 13px;
-}
-.master-pagination__controls select {
-  padding: 0 8px;
-}
-.master-pagination__controls button {
-  padding: 0 10px;
-  cursor: pointer;
-}
-.master-pagination__controls button:disabled,
-.master-pagination__controls select:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 .table-wrap .selection-cell {
   text-align: center;
@@ -2490,9 +3755,21 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.table-wrap td.description-cell > span {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
 .name-cell {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   justify-content: flex-start;
   gap: 9px;
   min-width: 0;
@@ -2539,15 +3816,39 @@ onBeforeUnmount(() => {
   background: #f1f3f7;
   color: #66758c;
 }
-.status.is-开发中,
-.status.is-联调中,
-.status.is-进行中 {
-  background: #fff3df;
-  color: #aa6415;
+.status.is-inProgress {
+  gap: 5px;
+  border: 1px solid #c5d7ff;
+  background: linear-gradient(135deg, #f1f6ff, #e7efff);
+  color: #3156b5;
+  box-shadow: 0 2px 8px rgba(70, 109, 224, 0.1);
 }
-.status.is-已完成 {
-  background: #eaf8f1;
-  color: #27815d;
+.status.is-inProgress::before,
+.status.is-done::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  content: '';
+}
+.status.is-inProgress::before {
+  background: #5b7fe5;
+  box-shadow: 0 0 0 3px rgba(91, 127, 229, 0.12);
+}
+.status.is-done {
+  gap: 5px;
+  border: 1px solid #bce8d1;
+  background: linear-gradient(135deg, #effaf4, #e4f6ed);
+  color: #18794e;
+  box-shadow: 0 2px 8px rgba(39, 129, 93, 0.1);
+}
+.status.is-done::before {
+  background: #2fac78;
+  box-shadow: 0 0 0 3px rgba(47, 172, 120, 0.12);
+}
+.master-version {
+  color: #53627a;
+  font-weight: 700;
 }
 .association-summary {
   display: flex;
@@ -2564,7 +3865,10 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 .row-actions {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
+  justify-content: center;
+  gap: 4px;
   white-space: nowrap;
 }
 .row-actions__muted {
@@ -2585,6 +3889,40 @@ onBeforeUnmount(() => {
 .row-actions button:hover {
   background: #eef3ff;
   color: #3569e8;
+}
+.row-actions button.is-view {
+  color: #526b9d;
+}
+.row-actions button.is-view:hover {
+  color: #3569e8;
+}
+.row-actions button.icon-action {
+  display: inline-flex;
+  width: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #dbe5f2;
+  background: #fff;
+  color: #2563eb;
+}
+.row-actions button.icon-action:hover {
+  border-color: #b9ccff;
+  background: #eff6ff;
+}
+.row-actions button.icon-action.danger:hover {
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+.row-actions button.icon-action svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 .row-actions .associate {
   background: #eef3ff;
@@ -2610,11 +3948,41 @@ onBeforeUnmount(() => {
 .dialog {
   width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 22px;
   border-radius: 14px;
   background: #fff;
   box-shadow: 0 24px 70px rgba(24, 36, 59, 0.24);
+}
+.dialog.is-create-dialog {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(1206px, calc(100vw - 32px));
+  height: 760px;
+  min-height: 0;
+  max-height: calc(100vh - 92px);
+  max-height: calc(100dvh - 92px);
+  overflow: hidden;
+}
+.dialog.is-create-dialog > header,
+.dialog.is-create-dialog > .catalog-create-scope,
+.dialog.is-create-dialog > .dialog-tabs,
+.dialog.is-create-dialog > .error,
+.dialog.is-create-dialog > footer {
+  flex: 0 0 auto;
+}
+.dialog.is-create-dialog > .catalog-create-scope {
+  grid-template-columns: 174px minmax(0, 1fr) minmax(210px, 0.6fr);
+}
+.dialog-scroll-body {
+  min-height: 0;
+  overflow-x: hidden;
+}
+.dialog.is-create-dialog > .dialog-scroll-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
 .dialog > header {
   display: flex;
@@ -2672,7 +4040,7 @@ onBeforeUnmount(() => {
   line-height: 1.45;
 }
 .form-grid input,
-.form-grid select,
+.form-grid :is(select, .harness-select),
 .form-grid textarea {
   box-sizing: border-box;
   width: 100%;
@@ -2682,11 +4050,28 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 .form-grid input,
-.form-grid select {
+.form-grid :is(select, .harness-select) {
   height: 40px;
 }
 .form-grid textarea {
   padding-top: 10px;
+}
+.form-grid input[readonly],
+.form-grid textarea[readonly] {
+  background: #f6f8fc;
+  color: #64748b;
+  cursor: default;
+}
+.form-grid input[readonly]:focus,
+.form-grid textarea[readonly]:focus {
+  border-color: #d7dfeb;
+  box-shadow: none;
+}
+/* 广场引入场景（新建引入 / 编辑引入记录）：人员选中后仍可清除重选，保持白底避免误读为禁用。 */
+.dialog.is-imported-edit .person-search__control > input[readonly] {
+  background: #ffffff;
+  color: #17233d;
+  font-size: 13px;
 }
 .person-search {
   position: relative;
@@ -2708,7 +4093,9 @@ onBeforeUnmount(() => {
 }
 .person-search__control > input[readonly] {
   padding-right: 38px;
-  background: #f8fbff;
+  background: #ffffff;
+  color: #17233d;
+  font-size: 13px;
   cursor: default;
 }
 .person-search__control > input:focus {
@@ -2798,6 +4185,7 @@ onBeforeUnmount(() => {
   color: #d94851;
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 .dialog > footer {
   display: flex;
@@ -2933,6 +4321,57 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 800;
 }
+@media (max-height: 760px) {
+  .dialog.is-create-dialog {
+    height: calc(100vh - 84px);
+    height: calc(100dvh - 84px);
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+    padding: 18px 22px;
+  }
+  .dialog.is-create-dialog > header {
+    margin-bottom: 12px;
+  }
+  .dialog.is-create-dialog > .dialog-tabs {
+    margin-bottom: 10px;
+  }
+  .dialog.is-create-dialog .form-grid {
+    gap: 10px 13px;
+  }
+  .dialog.is-create-dialog .import-panel {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .dialog.is-create-dialog .import-list {
+    height: clamp(110px, 18vh, 140px);
+    height: clamp(110px, 18dvh, 140px);
+  }
+  .dialog.is-create-dialog > .error {
+    margin-top: 10px;
+    padding: 7px 10px;
+  }
+  .dialog.is-create-dialog > footer {
+    margin-top: 12px;
+  }
+}
+@media (max-height: 680px) {
+  .dialog.is-create-dialog .form-grid textarea {
+    height: 64px;
+  }
+  .dialog.is-create-dialog .import-selected {
+    padding: 8px 10px;
+  }
+  .dialog.is-create-dialog .import-selected > header {
+    margin-bottom: 4px;
+  }
+  .dialog.is-create-dialog .import-selected__tags {
+    display: none;
+  }
+  .dialog.is-create-dialog .import-selected > p {
+    margin-top: 4px;
+    -webkit-line-clamp: 1;
+  }
+}
 @media (max-width: 1100px) {
   .master-hero {
     align-items: stretch;
@@ -2941,14 +4380,6 @@ onBeforeUnmount(() => {
   .master-toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-  .master-pagination {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .master-pagination__controls {
-    justify-content: flex-start;
-    flex-wrap: wrap;
   }
 
   .master-scope-controls,
@@ -2985,5 +4416,27 @@ onBeforeUnmount(() => {
   .toolbar-actions > * {
     flex: 1 1 150px;
   }
+}
+/* Keep Harness actions compact, including dialogs teleported to body. */
+:where(body:has(.harness-management-shell)) .master-btn,
+:where(body:has(.harness-management-shell)) .import-search > button.primary,
+:where(body:has(.harness-management-shell)) .dialog > footer button {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  align-self: center;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+:where(body:has(.harness-management-shell)) .row-actions button {
+  height: 28px;
+  min-height: 28px;
+  align-self: center;
+}
+
+:where(body:has(.harness-management-shell)) .row-actions button.icon-action {
+  width: 28px;
+  min-height: 28px;
 }
 </style>

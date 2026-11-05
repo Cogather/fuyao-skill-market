@@ -3103,6 +3103,11 @@
   padding: 16px;
 }
 
+/* DeptSkillReviewPanel overlay 降低层级 */
+.dept-review-content .overlay {
+  z-index: 1000;
+}
+
 .v-dialog {
   width: 100%;
   max-width: 420px;
@@ -4156,6 +4161,11 @@
 
 .my-release-panel .col-dl {
   min-width: 92px;
+}
+
+.my-release-panel .col-comment {
+  min-width: 70px;
+  text-align: center;
 }
 
 .my-release-panel .col-action {
@@ -5765,6 +5775,32 @@
   font-size: 14px;
   line-height: 1.6;
 }
+.ai-evo-reject-reason {
+  margin-top: 8px;
+}
+
+.ai-evo-reject-reason-label {
+  font-weight: 600;
+}
+
+.ai-evo-reject-reason-optional {
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.ai-evo-reject-reason .admin-textarea {
+  font-weight: 400;
+}
+
+.ai-evo-reject-reason-count {
+  align-self: flex-end;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.ai-evo-reject-reason-count.is-near-limit {
+  color: #dc2626;
+}
 
 .btn.danger {
   color: #fff;
@@ -7020,6 +7056,24 @@
   line-height: 1.8;
 }
 
+.my-release-panel .mine-flow-ops-btn {
+  margin: 14px 0 0;
+  min-height: 38px;
+  padding: 0 18px;
+  border: 1px solid #d8eaff;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #2f7df6;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.my-release-panel .mine-flow-ops-btn:hover {
+  background: #dbeaff;
+  transform: translateY(-1px);
+}
+
 .my-release-panel .my-toolbar {
   margin: 34px 0 14px;
 }
@@ -7222,6 +7276,122 @@
   gap: 14px;
   margin: 6px auto 0;
   padding: 0 20px;
+}
+
+.hot-search-mode {
+  height: 42px;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid rgba(222, 230, 244, 0.96);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 34px rgba(45, 62, 96, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.hot-search-mode-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #7b89a4;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.hot-search-mode-item:hover {
+  color: #20283a;
+}
+
+.hot-search-mode-item.active {
+  background: #111318;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(17, 19, 24, 0.14);
+}
+
+.hot-search-mode-item:focus-visible {
+  outline: 3px solid rgba(17, 19, 24, 0.18);
+  outline-offset: 2px;
+}
+
+.hot-search-mode-label {
+  line-height: 1;
+}
+
+.hot-search-mode-help {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  width: 12px;
+  height: 12px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(123, 137, 164, 0.16);
+  color: #7b89a4;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: help;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.hot-search-mode-item.active .hot-search-mode-help {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.hot-search-mode-help:focus-visible {
+  outline: 2px solid rgba(17, 19, 24, 0.4);
+  outline-offset: 1px;
+}
+
+.hot-search-mode-tip {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -6px;
+  z-index: 20;
+  width: max-content;
+  max-width: 220px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #111318;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 12px 28px rgba(17, 19, 24, 0.24);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.hot-search-mode-help:hover .hot-search-mode-tip,
+.hot-search-mode-help:focus-visible .hot-search-mode-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .hot-search-box {
@@ -7685,6 +7855,16 @@ span {
     flex-direction: column;
   }
 
+  .hot-search-mode {
+    width: 100%;
+    height: 42px;
+  }
+
+  .hot-search-mode-item {
+    flex: 1;
+    justify-content: center;
+  }
+
   .hot-search-box {
     height: 52px;
     padding: 0 18px;
@@ -8144,6 +8324,12 @@ span {
   margin-top: 16px;
   font-size: 14px;
   line-height: 1.65;
+}
+
+.my-release-panel .mine-flow-ops-btn {
+  margin-top: 12px;
+  min-height: 34px;
+  font-size: 13px;
 }
 
 .my-release-panel .my-toolbar {

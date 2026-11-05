@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabilityCatalogPanel.vue';
 import MarketDeptCascader from '../../components/skill/MarketDeptCascader.vue';
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
@@ -33,6 +33,7 @@ import {
 } from '../../services/skillMarket/harnessCapabilityPlanningService';
 import { harnessConfigurationRevision } from '../../services/skillMarket/harnessConfigurationSyncService';
 import { getDepartmentNodeCode } from '../../services/skillMarket/marketDeptTreeFromApi';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import { openSkillExportResponse } from '../../services/skillMarket/skillTransferService';
 
 const transportIsHttp = import.meta.env.VITE_SKILL_MARKET_TRANSPORT === 'http';
@@ -47,11 +48,7 @@ type PlanningDepartmentTreeNode = {
   children?: PlanningDepartmentTreeNode[];
 };
 type PlanningHeaderFilterKey =
-  | 'firstScene'
-  | 'secondScene'
-  | 'activityNodeName'
-  | 'subActivityNodeName'
-  | 'level';
+  'firstScene' | 'secondScene' | 'activityNodeName' | 'subActivityNodeName' | 'level';
 type PlanningHeaderFilterSelections = Record<PlanningHeaderFilterKey, string[]>;
 type PlanningBatchField = keyof SkillPlanningBatchPatch;
 type PlanningBatchForm = Record<PlanningBatchField, string>;
@@ -74,6 +71,8 @@ const props = withDefaults(
     allowedDepartmentNames?: string[];
     allowedDepartmentPaths?: string[][];
     restrictToAllowedDepartments?: boolean;
+    initialScope?: HarnessScopeSnapshot;
+    initialCatalogScope?: HarnessScopeSnapshot;
   }>(),
   {
     capabilityType: 'skill',
@@ -83,15 +82,28 @@ const props = withDefaults(
     allowedDepartmentNames: () => [],
     allowedDepartmentPaths: () => [],
     restrictToAllowedDepartments: false,
+    initialScope: undefined,
+    initialCatalogScope: undefined,
   },
 );
+
+const emit = defineEmits<{
+  'scope-change': [
+    change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot },
+  ];
+  'catalog-scope-change': [
+    change: { capabilityType: HarnessCapabilityType; snapshot: HarnessScopeSnapshot },
+  ];
+}>();
 
 const capabilityPlanningApi = computed(() => getHarnessCapabilityPlanningApi(props.capabilityType));
 const capabilityLabel = computed(() => capabilityPlanningApi.value.label);
 const capabilityPlanningLabel = computed(() => `${capabilityLabel.value} 规划`);
+const capabilitySceneRelationLabel = computed(() => '场景关系配置');
 const capabilityCatalogLabel = computed(() => `${capabilityLabel.value} 清单`);
+const planningActivityRequired = computed(() => props.capabilityType === 'skill');
 
-const planningLevelOptions: PlanningLevel[] = ['产品级', '部门级'];
+const planningLevelOptions: PlanningLevel[] = ['产品级'];
 
 const planningHeaderFilterKeys = [
   'firstScene',
@@ -117,6 +129,36 @@ const batchReadonlyHeaders = computed(() => [
 ]);
 
 const activePlanningTab = ref<'skills' | 'management'>('skills');
+const catalogActionScope = ref<HarnessScopeSnapshot>();
+const skillMasterManagementPanel = ref<InstanceType<typeof SkillMasterManagementPanel> | null>(
+  null,
+);
+const capabilityCatalogPanel = ref<InstanceType<typeof HarnessCapabilityCatalogPanel> | null>(null);
+const activePlanningDescription = computed(() =>
+  activePlanningTab.value === 'management'
+    ? '用于维护部门/产品范围内的原子能力及基础建设信息，作为场景关系配置的数据来源，支持查询、新增、导入、导出和批量维护。'
+    : '用于配置原子能力在部门/产品下的场景关系，将能力关联到一级/二级场景及归属活动/子活动，形成可跟踪的能力规划关系。',
+);
+
+async function openCatalogAction(
+  action: 'create' | 'import',
+  scope?: HarnessScopeSnapshot,
+): Promise<void> {
+  catalogActionScope.value = scope
+    ? { ...scope, departmentPath: [...scope.departmentPath] }
+    : props.initialCatalogScope;
+  activePlanningTab.value = 'management';
+  await nextTick();
+  const panel =
+    props.capabilityType === 'skill'
+      ? skillMasterManagementPanel.value
+      : capabilityCatalogPanel.value;
+  if (scope && panel?.applyExternalScope(scope) === false) return;
+  if (action === 'create') panel?.openCreate();
+  else panel?.triggerImport();
+}
+
+defineExpose({ openCatalogAction });
 
 const emptyFilters = {
   planningDeptName: '',
@@ -130,7 +172,7 @@ const emptyFilters = {
   secondScene: '',
   activityNodeName: '',
   subActivityNodeName: '',
-  level: '部门级',
+  level: '产品级',
   offeringName: '',
   owner: '',
   plannedStartDate: '',
@@ -725,7 +767,12 @@ function buildPlanningSupplementBody(): CreateSkillPlanningSupplementBody | null
   const secondScene = planningForm.secondScene.trim();
   const activityNodeName = planningForm.activityNodeName.trim();
   const subActivityNodeName = planningForm.subActivityNodeName.trim();
-  if (!name || !firstScene || !secondScene || !activityNodeName || !subActivityNodeName) {
+  if (
+    !name ||
+    !firstScene ||
+    !secondScene ||
+    (planningActivityRequired.value && (!activityNodeName || !subActivityNodeName))
+  ) {
     return null;
   }
   return {
@@ -971,7 +1018,7 @@ function resetProductSearchState(): void {
   productSearchMessage.value = '';
 }
 
-async function loadFilterProducts(): Promise<void> {
+async function loadFilterProducts(preferredScope?: HarnessScopeSnapshot): Promise<void> {
   const requestSeq = ++filterProductSearchSeq;
   const departmentName = filterForm.planningDeptName.trim();
   filterForm.offeringName = '';
@@ -988,6 +1035,16 @@ async function loadFilterProducts(): Promise<void> {
     );
     if (requestSeq !== filterProductSearchSeq) return;
     filterProductOptions.value = options;
+    const restoredOption = preferredScope
+      ? (options.find(
+          (item) =>
+            Boolean(preferredScope.offeringId) && item.offeringId === preferredScope.offeringId,
+        ) ?? options.find((item) => item.offeringName === preferredScope.offeringName))
+      : undefined;
+    const firstOption = restoredOption ?? options[0];
+    if (firstOption) {
+      filterForm.offeringName = firstOption.offeringName;
+    }
   } catch (error) {
     if (requestSeq !== filterProductSearchSeq) return;
     showToast(error instanceof Error ? error.message : '产品加载失败，请稍后重试');
@@ -1630,8 +1687,10 @@ async function resetQuery() {
   Object.assign(filterForm, { ...emptyFilters });
   applyDefaultPlanningScopeSelection();
   await loadFilterProducts();
+  await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 async function toggleHeaderFilterOption(
@@ -1698,16 +1757,53 @@ function syncPlanningDepartmentLevels(segments = planningDepartmentSegments.valu
 function applyDefaultPlanningScopeSelection(): boolean {
   const defaultPath = defaultPlanningDepartmentPath.value;
   const changed =
-    filterForm.level !== '部门级' ||
+    filterForm.level !== '产品级' ||
     !samePlanningDepartmentPath(planningDepartmentSegments.value, defaultPath) ||
     planningScopeDepartmentCommitted.value !== defaultPath.length > 0;
 
-  filterForm.level = '部门级';
+  filterForm.level = '产品级';
   filterForm.offeringName = '';
   planningDepartmentSegments.value = [...defaultPath];
   syncPlanningDepartmentLevels(defaultPath);
   planningScopeDepartmentCommitted.value = defaultPath.length > 0;
   return changed;
+}
+
+function emitPlanningScopeSnapshot(): void {
+  if (!planningScopeDepartmentCommitted.value || !filterForm.planningDeptName.trim()) return;
+  const selectedProduct = selectedFilterProduct.value;
+  emit('scope-change', {
+    capabilityType: props.capabilityType,
+    snapshot: {
+      level: filterForm.level as PlanningLevel,
+      departmentPath: [...planningDepartmentSegments.value],
+      offeringId: filterForm.level === '产品级' ? (selectedProduct?.offeringId ?? '') : '',
+      offeringName: filterForm.level === '产品级' ? filterForm.offeringName.trim() : '',
+    },
+  });
+}
+
+function emitCatalogScopeSnapshot(snapshot: HarnessScopeSnapshot): void {
+  emit('catalog-scope-change', {
+    capabilityType: props.capabilityType,
+    snapshot: { ...snapshot, departmentPath: [...snapshot.departmentPath] },
+  });
+}
+
+function restorePlanningScopeSnapshot(): HarnessScopeSnapshot | undefined {
+  const snapshot = props.initialScope;
+  if (
+    !snapshot ||
+    !planningLevelOptions.includes(snapshot.level) ||
+    !findPlanningDepartmentNodeByPath(snapshot.departmentPath)
+  ) {
+    return undefined;
+  }
+  filterForm.level = snapshot.level;
+  planningDepartmentSegments.value = normalizePlanningDepartmentPath(snapshot.departmentPath);
+  syncPlanningDepartmentLevels(planningDepartmentSegments.value);
+  planningScopeDepartmentCommitted.value = true;
+  return { ...snapshot, departmentPath: [...planningDepartmentSegments.value] };
 }
 
 async function onPlanningScopeLevelChange(): Promise<void> {
@@ -1719,12 +1815,14 @@ async function onPlanningScopeLevelChange(): Promise<void> {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 async function onFilterProductChange(): Promise<void> {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 function onPlanningDepartmentChange(segments: string[]): void {
@@ -1740,6 +1838,7 @@ async function applyPlanningDepartmentQuery(segments: string[]): Promise<void> {
   await loadPlanningFilterOptions();
   pageNum.value = 1;
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 async function onPlanningDepartmentDone(segments: string[]): Promise<void> {
@@ -2106,14 +2205,15 @@ function validateForm(): boolean {
   const requiredFields: Array<keyof SkillPlanningPayload> = [
     'firstScene',
     'secondScene',
-    'activityNodeName',
-    'subActivityNodeName',
     'description',
     'owner',
     'developOwner',
     'level',
     'planningDeptName',
   ];
+  if (planningActivityRequired.value) {
+    requiredFields.push('activityNodeName', 'subActivityNodeName');
+  }
 
   requiredFields.forEach((field) => {
     if (!String(planningForm[field] ?? '').trim()) {
@@ -2524,20 +2624,28 @@ let planningScopeInitialLoadStarted = false;
 async function initializePlanningScopeAndList(): Promise<void> {
   if (planningScopeInitialLoadStarted) return;
   planningScopeInitialLoadStarted = true;
-  applyDefaultPlanningScopeSelection();
-  await loadFilterProducts();
+  const restoredScope = restorePlanningScopeSnapshot();
+  if (!restoredScope) applyDefaultPlanningScopeSelection();
+  await loadFilterProducts(restoredScope);
+  await loadPlanningFilterOptions();
   await reloadList();
+  emitPlanningScopeSnapshot();
 }
 
 watch(
   () => defaultPlanningDepartmentPath.value.join('\u0001'),
   () => {
-    if (!planningScopeInitialLoadStarted || !applyDefaultPlanningScopeSelection()) return;
+    if (!planningScopeInitialLoadStarted) return;
+    const currentPathIsValid = Boolean(
+      findPlanningDepartmentNodeByPath(planningDepartmentSegments.value),
+    );
+    if (currentPathIsValid || !applyDefaultPlanningScopeSelection()) return;
     void (async () => {
-      await loadPlanningFilterOptions();
       await loadFilterProducts();
+      await loadPlanningFilterOptions();
       pageNum.value = 1;
       await reloadList();
+      emitPlanningScopeSnapshot();
     })();
   },
 );
@@ -2547,7 +2655,6 @@ onMounted(() => {
   refreshSkillMasterOptions();
   applyDefaultPlanningScopeSelection();
   void (async () => {
-    await loadPlanningFilterOptions();
     await initializePlanningScopeAndList();
   })();
 });
@@ -2569,14 +2676,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="planning-pageNum">
-    <header class="planning-hero">
+  <div class="planning-pageNum harness-viewport-page">
+    <header class="planning-hero harness-page-heading">
       <div>
-        <h2 class="panel-title">{{ capabilityPlanningLabel }}</h2>
-        <p class="all-desc">
-          用于统一管理各部门规划建设中的
-          {{ capabilityLabel }} 清单，支持查询、新增、导入、导出和批量维护。
-        </p>
+        <h2 class="panel-title harness-page-title">{{ capabilityPlanningLabel }}</h2>
+        <p class="all-desc harness-page-description">{{ activePlanningDescription }}</p>
       </div>
     </header>
 
@@ -2589,7 +2693,7 @@ onBeforeUnmount(() => {
       >
         <span class="planning-tab__icon" aria-hidden="true">01</span>
         <span
-          ><strong>{{ capabilityPlanningLabel }}</strong></span
+          ><strong>{{ capabilitySceneRelationLabel }}</strong></span
         >
       </button>
       <button
@@ -2608,9 +2712,16 @@ onBeforeUnmount(() => {
     <div v-show="activePlanningTab === 'skills'" class="planning-tab-panel">
       <section class="planning-filter-card" :aria-label="`${capabilityPlanningLabel}查询`">
         <div class="filter-grid" :class="{ 'is-department-level': filterForm.level === '部门级' }">
-          <label class="planning-field planning-field--level">
+          <label v-if="false" class="planning-field planning-field--level">
             <span>层级 <em>*</em></span>
-            <select v-model="filterForm.level" @change="onPlanningScopeLevelChange">
+            <div
+              v-if="planningLevelOptions.length === 1 && planningLevelOptions[0] === '产品级'"
+              class="single-level-value"
+              aria-label="当前层级：产品级"
+            >
+              产品级
+            </div>
+            <select v-else v-model="filterForm.level" @change="onPlanningScopeLevelChange">
               <option v-for="item in planningLevelOptions" :key="`scope-${item}`" :value="item">
                 {{ item }}
               </option>
@@ -2699,10 +2810,9 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="planning-board" :aria-label="`${capabilityPlanningLabel}清单`">
+      <section class="planning-board" :aria-label="capabilitySceneRelationLabel">
         <div class="planning-toolbar">
           <div class="planning-toolbar__summary">
-            <strong>{{ capabilityPlanningLabel }}清单</strong>
             <span>
               已选 {{ selectedIds.length }} 条 / 共 {{ total }} 条
               <template v-if="hasActivePlanningHeaderFilters || plannedFinishSortOrder">
@@ -3867,10 +3977,12 @@ onBeforeUnmount(() => {
                     <td>{{ row.activityNodeName }}</td>
                     <td>{{ row.subActivityNodeName }}</td>
                     <td>
-                      <strong class="skill-name">{{ row.name }}</strong>
+                      <strong class="skill-name" :title="row.name">{{ row.name }}</strong>
                     </td>
                     <td class="desc-col">
-                      <span :title="row.description">{{ row.description }}</span>
+                      <span class="planning-description" :title="row.description">{{
+                        row.description
+                      }}</span>
                     </td>
                     <td>{{ row.owner }}</td>
                     <td>{{ row.developOwner }}</td>
@@ -3938,20 +4050,26 @@ onBeforeUnmount(() => {
 
     <SkillMasterManagementPanel
       v-if="activePlanningTab === 'management' && props.capabilityType === 'skill'"
+      ref="skillMasterManagementPanel"
       :department-tree="planningDepartmentTree"
       :user-id="props.userId"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :allowed-department-names="props.allowedDepartmentNames"
       :allowed-department-paths="props.allowedDepartmentPaths"
       :restrict-to-allowed-departments="props.restrictToAllowedDepartments"
+      :initial-scope="catalogActionScope ?? props.initialCatalogScope"
+      @scope-change="emitCatalogScopeSnapshot"
     />
     <HarnessCapabilityCatalogPanel
       v-else-if="activePlanningTab === 'management'"
+      ref="capabilityCatalogPanel"
       :capability-type="props.capabilityType === 'command' ? 'command' : 'agent'"
       :user-id="props.userId"
       :department-tree="planningDepartmentTree"
       :current-user-department-path="currentUserMinimumDepartmentPath"
       :default-department-path="defaultPlanningDepartmentPath"
+      :initial-scope="catalogActionScope ?? props.initialCatalogScope"
+      @scope-change="emitCatalogScopeSnapshot"
     />
 
     <Teleport to="body">
@@ -4139,6 +4257,9 @@ onBeforeUnmount(() => {
         v-if="formDialogOpen"
         class="planning-overlay"
         role="presentation"
+        @click.stop
+        @pointerdown.stop
+        @pointerup.stop
       >
         <div class="planning-dialog planning-dialog--wide" role="dialog" aria-modal="true">
           <div class="planning-dialog__head">
@@ -4149,7 +4270,10 @@ onBeforeUnmount(() => {
                   : `编辑 ${capabilityPlanningLabel}`
               }}</strong>
               <p>
-                层级及归属部门/产品继承顶部当前选择；请选择原子 {{ capabilityLabel }} 和场景、活动。
+                层级及归属部门/产品继承顶部当前选择；请选择原子 {{ capabilityLabel }} 和场景<span
+                  v-if="planningActivityRequired"
+                  >、活动</span
+                >。
               </p>
             </div>
             <button type="button" class="dialog-close" aria-label="关闭" @click="closeFormDialog">
@@ -4192,7 +4316,7 @@ onBeforeUnmount(() => {
               <small v-if="formErrors.secondScene">{{ formErrors.secondScene }}</small>
             </label>
             <label class="planning-field">
-              <span>归属活动 <em>*</em></span>
+              <span>归属活动 <em v-if="planningActivityRequired">*</em></span>
               <select v-model="planningForm.activityNodeName" @change="onPlanningActivityChange">
                 <option value="">请选择</option>
                 <option
@@ -4206,7 +4330,7 @@ onBeforeUnmount(() => {
               <small v-if="formErrors.activityNodeName">{{ formErrors.activityNodeName }}</small>
             </label>
             <label class="planning-field">
-              <span>归属子活动 <em>*</em></span>
+              <span>归属子活动 <em v-if="planningActivityRequired">*</em></span>
               <select
                 v-model="planningForm.subActivityNodeName"
                 :disabled="subActivitySelectDisabled"
@@ -4621,6 +4745,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 18px 48px rgba(35, 52, 84, 0.08); */
 }
 
+.planning-hero > div {
+  width: 100%;
+  min-width: 0;
+}
+
 .planning-hero h2 {
   margin: 0;
   color: #07172f;
@@ -4631,7 +4760,7 @@ onBeforeUnmount(() => {
 }
 
 .planning-hero p {
-  max-width: 820px;
+  max-width: none;
   margin: 12px 0 0;
   color: #52647d;
   font-size: 15px;
@@ -4707,6 +4836,18 @@ onBeforeUnmount(() => {
 
 .planning-field input {
   min-width: 50%;
+}
+
+.single-level-value {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 2px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
 }
 
 .planning-field--dept {
@@ -4881,12 +5022,6 @@ onBeforeUnmount(() => {
 .planning-toolbar__summary {
   display: grid;
   gap: 4px;
-}
-
-.planning-toolbar__summary strong {
-  color: #101828;
-  font-size: 17px;
-  font-weight: 900;
 }
 
 .planning-toolbar__summary span {
@@ -5655,8 +5790,25 @@ onBeforeUnmount(() => {
 }
 
 .skill-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
   color: #10243e;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-description {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.55;
+  text-align: left;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .status-pill {
@@ -6211,5 +6363,54 @@ onBeforeUnmount(() => {
   .import-dropzone__copy strong {
     white-space: normal;
   }
+}
+.planning-pageNum {
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-tabs,
+.planning-filter-card,
+.planning-toolbar,
+.planning-pagination {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1101px) and (min-height: 900px) {
+  .planning-pageNum > :deep(.master-panel),
+  .planning-pageNum > :deep(.capability-master-panel) {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+
+  .planning-tab-panel {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .planning-board {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+}
+/* Keep the Harness action scale on teleported dialogs as well. */
+:where(body:has(.harness-management-shell)) .planning-btn {
+  flex-shrink: 0;
+  align-self: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-weight: 600;
+}
+
+:where(body:has(.harness-management-shell)) .icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  align-self: center;
 }
 </style>

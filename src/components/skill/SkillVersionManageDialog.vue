@@ -90,7 +90,7 @@ const sortedVersions = computed(() =>
   [...(props.skill?.versions ?? [])].sort(compareVersionCreatedAtDesc),
 );
 
-function isUnpublished(row: SkillVersionListItemDto): boolean {
+function isDeleted(row: SkillVersionListItemDto): boolean {
   return Number(row.deleted) === 1;
 }
 
@@ -186,15 +186,15 @@ const confirmUnpublish = () => {
                   v-for="row in sortedVersions"
                   :key="row.version + String(row.publishTime)"
                   class="ver-mgmt-row"
-                  :class="{ 'is-unpublished': isUnpublished(row) }"
+                  :class="{ 'is-unpublished': isDeleted(row) }"
                 >
                   <td class="col-ver">
                     <div class="ver-vercell">
                       <span class="ver-num">{{ row.version }}</span>
-                      <span v-if="isCurrent(row) && !isUnpublished(row)" class="badge badge-current"
+                      <span v-if="isCurrent(row) && !isDeleted(row)" class="badge badge-current"
                         >当前</span
                       >
-                      <span v-if="isUnpublished(row)" class="badge badge-off">已下架</span>
+                      <span v-if="isDeleted(row)" class="badge badge-off">已下架</span>
                       <button
                         v-if="!showOperationsColumn"
                         type="button"
@@ -216,7 +216,7 @@ const confirmUnpublish = () => {
                       >
                         查看
                       </button>
-                      <template v-if="!isUnpublished(row)">
+                      <template v-if="!isDeleted(row)">
                         <button
                           type="button"
                           class="ver-op-link primary"

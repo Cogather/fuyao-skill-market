@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+
 import type { SkillPlanningOptionGroup } from '../../services/skillMarket/skillPlanningShared';
 import type { HarnessAuthorizedDepartment } from '../../services/skillMarket/harnessDepartmentPermission';
+import type { HarnessScopeSnapshot } from '../../types/harnessFilterMemory';
 import DepartmentTaxonomyPanel from './DepartmentTaxonomyPanel.vue';
 
 interface DepartmentTreeNode {
@@ -21,6 +24,7 @@ withDefaults(
     restrictToAllowedDepartments?: boolean;
     departmentPermissionsLoading?: boolean;
     departmentPermissionsError?: string;
+    initialScope?: HarnessScopeSnapshot;
   }>(),
   {
     departmentTree: () => [],
@@ -32,16 +36,27 @@ withDefaults(
     manageableDepartments: () => [],
     departmentPermissionsLoading: false,
     departmentPermissionsError: '',
+    initialScope: undefined,
   },
 );
 
 defineEmits<{
   changed: [groups: SkillPlanningOptionGroup[], departmentName: string];
+  'scope-change': [snapshot: HarnessScopeSnapshot];
 }>();
+
+const taxonomyPanel = ref<InstanceType<typeof DepartmentTaxonomyPanel> | null>(null);
+
+function validateBeforeLeave(): boolean {
+  return taxonomyPanel.value?.validateBeforeLeave() ?? true;
+}
+
+defineExpose({ validateBeforeLeave });
 </script>
 
 <template>
   <DepartmentTaxonomyPanel
+    ref="taxonomyPanel"
     kind="scene"
     :department-tree="departmentTree"
     :user-id="userId"
@@ -53,5 +68,7 @@ defineEmits<{
     @changed="(groups, departmentName) => $emit('changed', groups, departmentName)"
     :department-permissions-loading="departmentPermissionsLoading"
     :department-permissions-error="departmentPermissionsError"
+    :initial-scope="initialScope"
+    @scope-change="$emit('scope-change', $event)"
   />
 </template>

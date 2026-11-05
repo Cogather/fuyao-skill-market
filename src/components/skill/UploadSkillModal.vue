@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import { skillBaseService } from '../../services/skillMarket/skillBaseService';
 import { useSkillMarketStore } from '../../stores/skillMarketStore';
 import { useProfileStore } from '../../stores/userStore';
+import type { SkillPublishOrgOption, SkillPublishScope } from '../../types/skill';
 import BusinessDimensionCascader from './BusinessDimensionCascader.vue';
 
 const skillMarketStore = useSkillMarketStore();
@@ -36,13 +37,15 @@ const props = withDefaults(
      * 避免弹窗内仅读 store 时与壳层「角色已返回、store 尚未回填」的瞬时不同步。
      */
     operatorUserId?: string;
+    /** 操作者姓名，随发布请求一起传给后端 */
+    operatorUserName?: string;
   }>(),
   {
     modelValue: false,
   },
 );
 
-/** 父级传入 > 市场 store > Profile w3Id */
+/** 父级传入 > 市场 store > Profile w3Id（允许为空，与既有模块一致直接发查询） */
 const userId = computed(() => {
   const fromParent = String(props.operatorUserId ?? '').trim();
   if (fromParent) {
@@ -55,6 +58,21 @@ const userId = computed(() => {
   return String(userStore.userInfo?.w3Id ?? '').trim();
 });
 
+/** 操作者姓名：父级传入 > 市场 store > Profile 姓名 */
+const userName = computed(() => {
+  const fromParent = String(props.operatorUserName ?? '').trim();
+  if (fromParent) {
+    return fromParent;
+  }
+  const fromMarket = String(skillMarketStore.userName ?? '').trim();
+  if (fromMarket) {
+    return fromMarket;
+  }
+  return (
+    String(userStore.userInfo?.nameCn ?? '').trim() || String(userStore.userInfo?.name ?? '').trim()
+  );
+});
+
 const emit = defineEmits<{
   'update:modelValue': [v: boolean];
   submit: [
@@ -63,7 +81,11 @@ const emit = defineEmits<{
       publisher: string;
       note: string;
       file: File | null;
+      scope?: SkillPublishScope;
       scopeLabel?: string;
+      targetOrgId?: string;
+      targetOrgName?: string;
+      taskId?: string;
       tagFunctional?: string;
       version?: string;
       versionUpgrade?: boolean;
@@ -81,6 +103,7 @@ const versionUpgrade = ref<VersionUpgradeMeta | null>(null);
 const parsing = ref(false);
 const uploading = ref(false);
 const parseError = ref('');
+const isDraggingArchive = ref(false);
 const selectedBusinessDimensionName = ref('');
 const selectedBusinessCategoryParam = ref('');
 const duplicateChecking = ref(false);
@@ -88,7 +111,16 @@ const duplicateCheckMessage = ref('');
 const duplicateCheckStatus = ref<'idle' | 'found' | 'none' | 'error'>('idle');
 const skillGuideOpen = ref(false);
 const skillGuideCopied = ref(false);
+
+/** 发布层级：个人级（默认）/ 组织级（需审批） */
+const publishScope = ref<SkillPublishScope>('personal');
+const orgOptions = ref<SkillPublishOrgOption[]>([]);
+const orgOptionsLoading = ref(false);
+const orgOptionsError = ref('');
+const orgOptionsLoaded = ref(false);
+const selectedOrgId = ref('');
 let skillGuideCopyTimer: number | undefined;
+let archiveDragDepth = 0;
 
 const skillFrontMatterExample = `---
 name: skill-name
@@ -129,13 +161,30 @@ const canSubmit = computed(
     parseState.value === 'success' &&
     Boolean(selectedBusinessDimensionName.value) &&
     Boolean(selectedBusinessCategoryParam.value) &&
+    (publishScope.value === 'personal' ||
+      (Boolean(selectedOrgId.value) && !isOrgOptionMissing.value)) &&
     !uploading.value,
+);
+
+const selectedOrg = computed(
+  () => orgOptions.value.find((org) => org.orgId === selectedOrgId.value) ?? null,
+);
+
+/** 已有选中、但该组织已不在可选列表中（数据变化后校验） */
+const isOrgOptionMissing = computed(
+  () =>
+    Boolean(selectedOrgId.value) &&
+    !orgOptionsLoading.value &&
+    orgOptionsLoaded.value &&
+    !selectedOrg.value,
 );
 
 watch(
   () => props.modelValue,
   (open) => {
-    if (!open) {
+    if (open) {
+      void ensureOrgOptions();
+    } else {
       reset();
     }
   },
@@ -151,11 +200,77 @@ function reset(): void {
   parsing.value = false;
   uploading.value = false;
   parseError.value = '';
+  isDraggingArchive.value = false;
+  archiveDragDepth = 0;
   selectedBusinessDimensionName.value = '';
   selectedBusinessCategoryParam.value = '';
   duplicateChecking.value = false;
   duplicateCheckMessage.value = '';
   duplicateCheckStatus.value = 'idle';
+  publishScope.value = 'personal';
+  orgOptions.value = [];
+  orgOptionsLoading.value = false;
+  orgOptionsError.value = '';
+  orgOptionsLoaded.value = false;
+  selectedOrgId.value = '';
+}
+
+/** 拉取当前用户有发布权限的组织，失败后可在切换层级时重试 */
+async function ensureOrgOptions(): Promise<void> {
+  if (orgOptionsLoading.value) {
+    return;
+  }
+  orgOptionsLoading.value = true;
+  orgOptionsError.value = '';
+  try {
+    const env = await skillBaseService.querySkillOrgPublishOrganizations({
+      userId: userId.value,
+    });
+    if (!serviceSucceeded(env)) {
+      orgOptionsError.value = serviceMessage(env, '目标组织加载失败');
+      return;
+    }
+    orgOptions.value = normalizeOrgOptions(readEnvelopeRecord(env).data);
+    orgOptionsLoaded.value = true;
+  } catch (e) {
+    orgOptionsError.value = e instanceof Error ? e.message : '目标组织加载失败';
+  } finally {
+    orgOptionsLoading.value = false;
+  }
+}
+
+function normalizeOrgOptions(raw: unknown): SkillPublishOrgOption[] {
+  const record = readEnvelopeRecord(raw);
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray(record.records)
+      ? record.records
+      : Array.isArray(record.list)
+        ? record.list
+        : [];
+  return list
+    .map((item) => {
+      const row = readEnvelopeRecord(item);
+      const orgId = String(row.orgId ?? row.id ?? row.orgCode ?? row.organizationCode ?? '').trim();
+      const orgName = String(row.orgName ?? row.organizationName ?? row.name ?? '').trim();
+      return {
+        orgId,
+        orgCode: String(row.orgCode ?? row.organizationCode ?? '').trim() || undefined,
+        orgName,
+        owner: String(row.owner ?? row.orgOwner ?? '').trim() || undefined,
+      } satisfies SkillPublishOrgOption;
+    })
+    .filter((org) => Boolean(org.orgId && org.orgName));
+}
+
+function setPublishScope(scope: SkillPublishScope): void {
+  if (parsing.value || uploading.value) {
+    return;
+  }
+  publishScope.value = scope;
+  if (scope === 'org') {
+    void ensureOrgOptions();
+  }
 }
 
 function close(): void {
@@ -324,9 +439,7 @@ function buildStorageFileDir(meta: ParsedSkillMeta): string {
   ].join('/');
 }
 
-async function onFileChange(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement;
-  file.value = input.files?.[0] ?? null;
+function clearParsedArchive(): void {
   parseError.value = '';
   parseWarnings.value = [];
   versionUpgrade.value = null;
@@ -334,13 +447,27 @@ async function onFileChange(event: Event): Promise<void> {
   parseState.value = 'idle';
   duplicateCheckMessage.value = '';
   duplicateCheckStatus.value = 'idle';
-  if (!file.value) {
+}
+
+function isZipArchive(uploadFile: File): boolean {
+  return uploadFile.name.toLowerCase().endsWith('.zip');
+}
+
+async function selectArchive(uploadFile: File | null): Promise<void> {
+  clearParsedArchive();
+  file.value = uploadFile;
+  if (!uploadFile) {
+    return;
+  }
+  if (!isZipArchive(uploadFile)) {
+    file.value = null;
+    parseError.value = '仅支持 .zip 文件，请重新选择。';
     return;
   }
   if (props.parseSkillArchive) {
     parsing.value = true;
     try {
-      const r = await props.parseSkillArchive(file.value);
+      const r = await props.parseSkillArchive(uploadFile);
       const warnings = r.warnings ?? [];
       if (warnings.length > 0) {
         parseWarnings.value = warnings;
@@ -363,13 +490,107 @@ async function onFileChange(event: Event): Promise<void> {
   }
 }
 
+async function onFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  await selectArchive(input.files?.[0] ?? null);
+  input.value = '';
+}
+
+function dragContainsFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+}
+
+function onArchiveDragEnter(event: DragEvent): void {
+  if (parsing.value || uploading.value || !dragContainsFiles(event)) {
+    return;
+  }
+  archiveDragDepth += 1;
+  isDraggingArchive.value = true;
+}
+
+function onArchiveDragOver(event: DragEvent): void {
+  if (event.dataTransfer && !parsing.value && !uploading.value) {
+    event.dataTransfer.dropEffect = 'copy';
+  }
+}
+
+function onArchiveDragLeave(): void {
+  archiveDragDepth = Math.max(0, archiveDragDepth - 1);
+  if (archiveDragDepth === 0) {
+    isDraggingArchive.value = false;
+  }
+}
+
+async function onArchiveDrop(event: DragEvent): Promise<void> {
+  archiveDragDepth = 0;
+  isDraggingArchive.value = false;
+  if (parsing.value || uploading.value) {
+    return;
+  }
+  const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+  if (droppedFiles.length === 0) {
+    return;
+  }
+  if (droppedFiles.length > 1) {
+    clearParsedArchive();
+    file.value = null;
+    parseError.value = '一次只能上传一个 .zip 文件。';
+    return;
+  }
+  await selectArchive(droppedFiles[0] ?? null);
+}
+
 const onSubmit = async (): Promise<void> => {
   if (!parsed.value || parseState.value !== 'success' || !file.value || uploading.value) {
+    return;
+  }
+  if (publishScope.value === 'org' && (!selectedOrg.value || isOrgOptionMissing.value)) {
+    parseError.value = '请选择有效的目标组织后再提交。';
     return;
   }
   parseError.value = '';
   uploading.value = true;
   try {
+    if (publishScope.value === 'org') {
+      // 组织级：FormData(file + orgCode + userId) 创建发布任务，后续走「解析校验 -> 组织审批」流程
+      const org = selectedOrg.value;
+      const orgSkill = parsed.value;
+      const orgView = file.value;
+      const orgUserId = userId.value;
+      const formData = new FormData();
+      formData.append('file', orgView);
+      formData.append('orgCode', org!.orgId);
+      formData.append('userId', orgUserId);
+      formData.append('userName', userName.value);
+      const env = await skillBaseService.submitSkillOrgPublish(formData);
+      if (!serviceSucceeded(env)) {
+        parseError.value = serviceMessage(env, '组织级发布提交失败');
+        return;
+      }
+      const submitData = readEnvelopeRecord(env).data;
+      emit('submit', {
+        name: orgSkill.name,
+        publisher: orgSkill.author ?? '',
+        note: note.value.trim() || orgSkill.description,
+        file: orgView,
+        scope: 'org',
+        scopeLabel: '组织级',
+        targetOrgId: org!.orgId,
+        targetOrgName: org!.orgName,
+        taskId:
+          String(
+            (submitData as Record<string, unknown>)?.taskId ??
+              (submitData as Record<string, unknown>)?.id ??
+              '',
+          ).trim() || undefined,
+        tagFunctional: selectedBusinessDimensionName.value,
+        version: orgSkill.version,
+        versionUpgrade: Boolean(versionUpgrade.value),
+        existingVersion: versionUpgrade.value?.existingVersion,
+      });
+      close();
+      return;
+    }
     // 调用skill的upload接口
     const formData = new FormData();
     formData.append('file', file.value);
@@ -396,6 +617,7 @@ const onSubmit = async (): Promise<void> => {
       publisher: parsed.value.author ?? '',
       note: note.value.trim() || parsed.value.description,
       file: file.value,
+      scope: 'personal',
       scopeLabel: '个人级',
       tagFunctional: selectedBusinessDimensionName.value,
       version: parsed.value.version,
@@ -427,15 +649,106 @@ const onSubmit = async (): Promise<void> => {
           <code>SKILL.md</code> 自动带出。
         </div>
 
-        <label class="upload-zone" :class="{ disabled: parsing }" for="sk-file">
+        <section class="scope-bar" aria-label="发布层级">
+          <span class="scope-bar-label">发布层级</span>
+          <div class="scope-switch" role="radiogroup" aria-label="发布层级">
+            <button
+              type="button"
+              class="scope-option"
+              :class="{ on: publishScope === 'personal' }"
+              :disabled="parsing || uploading"
+              :aria-pressed="publishScope === 'personal'"
+              @click="setPublishScope('personal')"
+            >
+              个人级<span class="scope-option-sub">无需审核</span>
+            </button>
+            <button
+              type="button"
+              class="scope-option"
+              :class="{ on: publishScope === 'org' }"
+              :disabled="parsing || uploading"
+              :aria-pressed="publishScope === 'org'"
+              @click="setPublishScope('org')"
+            >
+              组织级<span class="scope-option-sub">需组织审批</span>
+            </button>
+          </div>
+          <div v-if="publishScope === 'org'" class="scope-org-field">
+            <select
+              v-model="selectedOrgId"
+              class="input compact"
+              :class="{ placeholder: !selectedOrgId }"
+              :disabled="orgOptionsLoading || uploading || parsing"
+              aria-label="目标组织"
+            >
+              <option value="" disabled>
+                {{ orgOptionsLoading ? '组织加载中...' : '选择目标组织' }}
+              </option>
+              <option v-for="org in orgOptions" :key="org.orgId" :value="org.orgId">
+                {{ org.orgName }}
+              </option>
+            </select>
+          </div>
+        </section>
+        <p v-if="publishScope === 'org' && orgOptionsError" class="org-hint org-hint-bar error">
+          {{ orgOptionsError }}
+          <button
+            type="button"
+            class="org-hint-retry"
+            :disabled="orgOptionsLoading"
+            @click="ensureOrgOptions"
+          >
+            重试
+          </button>
+        </p>
+        <p
+          v-else-if="
+            publishScope === 'org' &&
+            !orgOptionsLoading &&
+            orgOptionsLoaded &&
+            orgOptions.length === 0
+          "
+          class="org-hint org-hint-bar"
+        >
+          暂无可发布的目标组织，请联系组织管理员添加权限。
+        </p>
+        <p
+          v-else-if="publishScope === 'org' && isOrgOptionMissing"
+          class="org-hint org-hint-bar error"
+        >
+          当前选中组织已不可选，请重新选择。
+        </p>
+        <p v-else-if="publishScope === 'org' && !orgOptionsLoaded" class="org-hint org-hint-bar">
+          选择目标组织后提交，提交后进入「解析校验 → 组织审批」流程。
+        </p>
+
+        <label
+          class="upload-zone"
+          :class="{
+            disabled: parsing || uploading,
+            'is-dragging': isDraggingArchive,
+          }"
+          for="sk-file"
+          :aria-busy="parsing"
+          @dragenter.prevent="onArchiveDragEnter"
+          @dragover.prevent="onArchiveDragOver"
+          @dragleave.prevent="onArchiveDragLeave"
+          @drop.prevent="onArchiveDrop"
+        >
           <span class="upload-icon" aria-hidden="true">↑</span>
-          <strong>上传 Skill 压缩包</strong>
-          <span>支持 .zip 文件。选择后自动解析并回显基础信息。</span>
+          <strong>{{ isDraggingArchive ? '松开以上传压缩包' : '上传 Skill 压缩包' }}</strong>
+          <span>
+            {{
+              isDraggingArchive
+                ? '仅支持单个 .zip 文件'
+                : '点击选择或拖拽 .zip 文件到此处，自动解析并回显基础信息。'
+            }}
+          </span>
           <input
             id="sk-file"
             type="file"
             accept=".zip,application/zip"
-            :disabled="parsing"
+            :disabled="parsing || uploading"
             @change="onFileChange"
           />
         </label>
@@ -503,14 +816,6 @@ const onSubmit = async (): Promise<void> => {
                   aria-label-prefix="业务维度"
                 />
               </div>
-              <div class="form-field">
-                <label>默认发布层级</label>
-                <input
-                  class="input readonly"
-                  readonly
-                  :value="parsed?.level ?? '个人级（默认发布，无需审核）'"
-                />
-              </div>
               <div class="duplicate-row full">
                 <span
                   v-if="duplicateCheckMessage"
@@ -537,7 +842,15 @@ const onSubmit = async (): Promise<void> => {
           <span class="actions-spacer" aria-hidden="true" />
           <button type="button" class="btn ghost" @click="close">取消</button>
           <button type="button" class="btn primary" :disabled="!canSubmit" @click="onSubmit">
-            {{ uploading ? '上传中...' : '确定上传' }}
+            {{
+              uploading
+                ? publishScope === 'org'
+                  ? '提交中...'
+                  : '上传中...'
+                : publishScope === 'org'
+                  ? '提交发布'
+                  : '确定上传'
+            }}
           </button>
         </footer>
 
@@ -674,6 +987,87 @@ const onSubmit = async (): Promise<void> => {
   border: 1px solid #dbeafe;
 }
 
+.scope-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 22px 14px;
+  padding: 10px 14px;
+  border: 1px solid #e9edf3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.scope-bar-label {
+  color: #15171d;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.scope-bar .scope-switch {
+  display: inline-flex;
+  grid-template-columns: none;
+  padding: 3px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #fff;
+  gap: 4px;
+}
+
+.scope-bar .scope-switch .scope-option {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.scope-bar .scope-switch .scope-option.on {
+  border: none;
+  background: #eef6ff;
+  box-shadow: inset 0 0 0 1px rgba(47, 125, 246, 0.35);
+}
+
+.scope-bar .scope-switch .scope-option:hover:not(.on):not(:disabled) {
+  border: none;
+  background: #f1f5f9;
+}
+
+.scope-org-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  flex: 1 1 260px;
+  max-width: 340px;
+}
+
+.scope-org-field .input.compact {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.scope-bar-label + .scope-switch {
+  flex: 0 0 auto;
+}
+
+.org-hint-bar {
+  margin: -6px 22px 12px;
+  padding: 0 14px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.org-hint-bar.error {
+  color: #b91c1c;
+}
+
 .upload-zone {
   display: grid;
   place-items: center;
@@ -691,6 +1085,17 @@ const onSubmit = async (): Promise<void> => {
 .upload-zone:hover {
   background: #eff6ff;
   transform: translateY(-1px);
+}
+
+.upload-zone.is-dragging {
+  border-color: #2563eb;
+  background: #dbeafe;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.upload-zone.is-dragging .upload-icon {
+  transform: translateY(-2px) scale(1.06);
 }
 
 .upload-zone.disabled {
@@ -718,6 +1123,7 @@ const onSubmit = async (): Promise<void> => {
   color: #fff;
   font-size: 20px;
   font-weight: 900;
+  transition: transform 0.16s ease;
 }
 
 .upload-zone strong {
@@ -1006,6 +1412,87 @@ const onSubmit = async (): Promise<void> => {
   background: #f8fafc;
   color: #475569;
   cursor: not-allowed;
+}
+
+.scope-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.scope-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 850;
+  transition: 0.16s ease;
+}
+
+.scope-option-sub {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scope-option.on {
+  border-color: rgba(47, 125, 246, 0.55);
+  background: #eef6ff;
+  color: #2f7df6;
+}
+
+.scope-option.on .scope-option-sub {
+  color: rgba(47, 125, 246, 0.72);
+}
+
+.scope-option:hover:not(.on):not(:disabled) {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.scope-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.org-hint {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.org-hint.error {
+  color: #b91c1c;
+}
+
+.org-hint-retry {
+  margin-left: 6px;
+  padding: 0 8px;
+  min-height: 22px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.org-hint-retry:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input.placeholder {
+  color: #94a3b8;
 }
 
 .duplicate-row {

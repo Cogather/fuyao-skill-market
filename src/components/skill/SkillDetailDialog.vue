@@ -35,15 +35,6 @@ const props = withDefaults(
   },
 );
 
-// const emit = defineEmits<{
-//   close: [];
-//   trySkill: [];
-//   download: [];
-//   deleteClick: [evt: MouseEvent];
-//   versionManage: [];
-//   updateSkillData: [id: string, currentVersion: string];
-// }>();
-
 const emit = defineEmits([
   'close',
   'trySkill',
@@ -884,8 +875,6 @@ const goToDebugPage = (skill) => {
   });
 };
 const updateSkill = async (skill: any) => {
-  console.log('updateSkill called with skill:', skill);
-  console.log('showTrySkill:', props.showTrySkill, 'previewOnly:', props.previewOnly);
   try {
     await new Promise<void>((resolve, reject) => {
       emit(
@@ -898,12 +887,6 @@ const updateSkill = async (skill: any) => {
   } catch (error) {
     console.error(error);
   }
-  // try {
-  //   await emit('updateSkillData', skill.id, skill.currentVersion);
-  //   goToDebugPage(skill);
-  // } catch (err) {
-  //   console.error(err);
-  // }
 };
 onBeforeUnmount(() => {
   removeDetailMoreMenuListeners();
@@ -941,12 +924,16 @@ onBeforeUnmount(() => {
               {{ detailIcon }}
             </div>
             <div class="detail-title-copy">
-              <h2 id="skill-detail-title">
+              <h2 id="skill-detail-title" :title="isPageMode ? detailTitle : undefined">
                 {{
                   isPageMode ? detailTitle : previewOnly ? 'Skill 详情 · 版本预览' : 'Skill 详情'
                 }}
               </h2>
-              <p v-if="isPageMode && detailDescription" class="detail-description">
+              <p
+                v-if="isPageMode && detailDescription"
+                class="detail-description"
+                :title="detailDescription"
+              >
                 {{ detailDescription }}
               </p>
             </div>
@@ -1928,6 +1915,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 7px;
   min-width: 0;
+  max-width: 100%;
   color: #94a3b8;
   font-size: 12px;
   line-height: 1.4;
@@ -1936,7 +1924,9 @@ onBeforeUnmount(() => {
 .detail-breadcrumb-back {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 5px;
+  white-space: nowrap;
   min-height: 24px;
   padding: 0;
   border: 0;
@@ -1952,6 +1942,7 @@ onBeforeUnmount(() => {
 }
 
 .detail-breadcrumb-separator {
+  flex-shrink: 0;
   color: inherit;
 }
 
@@ -1976,7 +1967,12 @@ onBeforeUnmount(() => {
 
 .detail-description {
   margin: 10px 0 0;
-  max-width: 760px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
   color: #475569;
   font-size: 13px;
   line-height: 1.65;
@@ -1999,6 +1995,7 @@ onBeforeUnmount(() => {
 .skill-detail-dialog--page .detail-head {
   grid-column: 1;
   grid-row: 1;
+  min-width: 0;
   flex-direction: column;
   justify-content: flex-start;
   gap: 22px;
@@ -2009,8 +2006,19 @@ onBeforeUnmount(() => {
 }
 
 .skill-detail-dialog--page .detail-title-wrap {
+  width: 100%;
   align-items: flex-start;
   gap: 20px;
+}
+
+.skill-detail-dialog--page .detail-title-copy {
+  flex: 1;
+}
+
+.skill-detail-dialog--page .detail-title-copy h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-hero-icon {
@@ -2809,7 +2817,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1100px) {
   .skill-detail-dialog--page {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto auto minmax(0, 1fr);
     row-gap: 0;
     padding: 24px;
