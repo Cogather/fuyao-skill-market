@@ -4918,17 +4918,17 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
                       <span v-if="myPublishReleaseOp(row) === 'upgraded'" class="my-rel-upgraded"
                         >已升级</span
                       >
-                        <template v-else-if="myPublishReleaseOp(row) === 'upgrade'">
-                          <button
-                            v-if="false"
-                            type="button"
-                            class="btn primary sm my-rel-upgrade-btn"
-                            disabled
-                            title="建设中"
-                          >
-                            升级为组织级
-                          </button>
-                        </template>
+                      <template v-else-if="myPublishReleaseOp(row) === 'upgrade'">
+                        <button
+                          v-if="false"
+                          type="button"
+                          class="btn primary sm my-rel-upgrade-btn"
+                          disabled
+                          title="建设中"
+                        >
+                          升级为组织级
+                        </button>
+                      </template>
                       <button v-else type="button" class="mini my-rel-pending-btn" disabled>
                         升级中
                       </button>
