@@ -14,10 +14,16 @@ import {
   type HarnessWorkflowListRow,
 } from '@/services/skillMarket/harnessWorkflowListService';
 import type { ExtensionReleaseContext } from '@/services/skillMarket/extensionPublishHttp';
+import { useHarnessFilterMemory } from '@/composables/useHarnessFilterMemory';
 
 const props = withDefaults(
-  defineProps<{ workspace: HarnessScenarioWorkspace; active?: boolean; userName?: string }>(),
-  { active: true, userName: '' },
+  defineProps<{
+    workspace: HarnessScenarioWorkspace;
+    active?: boolean;
+    userName?: string;
+    userId?: string;
+  }>(),
+  { active: true, userName: '', userId: '' },
 );
 const emit = defineEmits<{ (event: 'open-scenarios'): void }>();
 const {
@@ -68,7 +74,12 @@ type WorkflowDisplayRow = {
 };
 const view = ref<WorkflowPageView>('list');
 const pageSize = ref(10);
-const productFilter = ref('');
+const productFilter = useHarnessFilterMemory(
+  () => props.userId,
+  'workflow-product',
+  (value): value is string => typeof value === 'string',
+  () => '',
+);
 const statusFilter = ref<StatusFilter>('全部');
 const page = ref(1);
 const jumpPage = ref<string | number>('1');

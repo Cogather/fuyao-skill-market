@@ -43,7 +43,15 @@ import {
   harnessConfigurationRevision,
   lastHarnessConfigurationChange,
 } from '../services/skillMarket/harnessConfigurationSyncService';
-import type { HarnessScopeLevel } from '../types/harnessFilterMemory';
+import type {
+  HarnessScopeLevel,
+  HarnessWorkspaceFilterSnapshot,
+} from '../types/harnessFilterMemory';
+import {
+  isWorkspaceFilterSnapshot,
+  readHarnessFilterMemory,
+  writeHarnessFilterMemory,
+} from './useHarnessFilterMemory';
 import {
   createLocalWorkflowInheritanceDraft,
   copyWorkflowInheritance,
@@ -169,7 +177,7 @@ export type ScenarioWorkspaceContext = {
   departmentMaxLevel?: number;
   /** Read-only list filters can select navigation ancestors; management checks remain separate. */
   readOnlyDepartmentSelection?: boolean;
-  /** Remember each tab's selection only for this workspace instance. */
+  /** Keep each tab's department/product selection independent, including across visits. */
   filterKey?: string;
 };
 type ScenarioDetails = Pick<Scenario, 'code' | 'description' | 'releaseCount'> & { name?: string };
@@ -245,14 +253,26 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     );
   }
   let preferredProduct: { offeringId: string; offeringName: string } | null = null;
-  type FilterSnapshot = {
-    level: HarnessScopeLevel;
-    departmentId: string;
-    product: { offeringId: string; offeringName: string } | null;
-  };
+  type FilterSnapshot = HarnessWorkspaceFilterSnapshot;
   const filterSnapshots = new Map<string, FilterSnapshot>();
   let currentFilterKey: string | undefined;
   let syncingContext = false;
+  function rememberFilter(key: string): void {
+    const product = products.find(
+      (item) => item._id === productId.value && item.departmentId === selectedDeptId.value,
+    );
+    const snapshot: FilterSnapshot = {
+      level: scopeLevel.value,
+      departmentId: selectedDeptId.value,
+      product:
+        scopeLevel.value === '产品级'
+          ? (preferredProduct ??
+            (product ? { offeringId: product.code, offeringName: product.name } : null))
+          : null,
+    };
+    filterSnapshots.set(key, snapshot);
+    writeHarnessFilterMemory(contextUser, `workspace:${key}`, snapshot);
+  }
   const productOptions = computed(() =>
     scopeLevel.value === '产品级'
       ? products.filter(
@@ -1063,18 +1083,18 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
         const previousLevel = scopeLevel.value;
         if (filterChanged) {
           if (currentFilterKey !== undefined) {
-            const product = products.find((item) => item._id === productId.value);
-            filterSnapshots.set(currentFilterKey, {
-              level: previousLevel,
-              departmentId: selectedDeptId.value,
-              product:
-                preferredProduct ??
-                (product ? { offeringId: product.code, offeringName: product.name } : null),
-            });
+            rememberFilter(currentFilterKey);
           }
           currentFilterKey = nextFilterKey;
           restoredFilter =
-            nextFilterKey === undefined ? undefined : filterSnapshots.get(nextFilterKey);
+            nextFilterKey === undefined
+              ? undefined
+              : (filterSnapshots.get(nextFilterKey) ??
+                readHarnessFilterMemory(
+                  value.userId,
+                  `workspace:${nextFilterKey}`,
+                  isWorkspaceFilterSnapshot,
+                ));
           scopeLevel.value = restoredFilter?.level ?? '产品级';
           selectedDeptId.value = restoredFilter?.departmentId ?? '';
           preferredProduct = restoredFilter?.product ?? null;
@@ -1163,6 +1183,18 @@ export function createHarnessScenarioWorkspace(context: () => ScenarioWorkspaceC
     // Normalize the selected department before queued scope loaders can issue a request.
     { deep: true, immediate: true, flush: 'sync' },
   );
+  watch([scopeLevel, selectedDeptId, productId, loading, sourceReady], () => {
+    if (
+      syncingContext ||
+      !context().ready ||
+      contextUser !== context().userId ||
+      currentFilterKey === undefined ||
+      loading.value ||
+      (selectedDeptId.value && !sourceReady.value)
+    )
+      return;
+    rememberFilter(currentFilterKey);
+  });
   watch(harnessConfigurationRevision, () => {
     const change = lastHarnessConfigurationChange.value;
     if (!ownSave && change?.kind === 'scene' && scopeProducts.value.length) void reloadScenes();
