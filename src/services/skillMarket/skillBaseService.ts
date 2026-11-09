@@ -1,4 +1,5 @@
 import httpRequest from '@/services/skillMarket/request';
+import type { HarnessBatchPublishInput, HarnessBatchPublishQuery } from './batchAssetPublishTypes';
 import type {
   ExtensionBypassDownloadInput,
   ExtensionBypassIdentity,
@@ -1046,12 +1047,32 @@ export const skillBaseService = {
     });
   },
 
-  // Agent / Skill / Command 发布历史
+  // 批量发布：待发布清单由后端按资产唯一目标组织分组。
+  queryHarnessBatchPublishPending: (params: HarnessBatchPublishQuery): Promise<unknown> => {
+    return httpRequest.api({
+      url: '/v1/harness/assets/publish/batch/pending-list',
+      method: 'get',
+      params,
+      withCredentials: true,
+    });
+  },
+
+  publishHarnessAssetBatch: (body: HarnessBatchPublishInput): Promise<unknown> => {
+    return httpRequest.api({
+      url: '/v1/harness/assets/publish/batch',
+      method: 'post',
+      data: body,
+      withCredentials: true,
+    });
+  },
+
+  // Agent / Skill / Command 发布历史（支持 batchId 筛选）
   queryHarnessAssetPublishHistory: (body: any): any => {
     return httpRequest.harnessApi<any>({
       url: '/assets/publish/history',
       method: 'post',
       data: body,
+      withCredentials: true,
     });
   },
 
@@ -1061,6 +1082,7 @@ export const skillBaseService = {
       url: `/assets/publish/${encodeURIComponent(taskId)}/retry`,
       method: 'post',
       params,
+      withCredentials: true,
     });
   },
 

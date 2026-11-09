@@ -127,23 +127,17 @@ try {
   assert.equal(taskOnly.state.harnessAccessLevel.value, 'task-only');
   assert.deepEqual(taskOnly.state.permissionDepartmentPaths.value, []);
   const workspace = taskOnly.state.scenarioWorkspace;
-  for (let attempt = 0; attempt < 100 && !workspace.available.value; attempt += 1) {
-    await settle();
-  }
+  await settle();
   assert.equal(
     workspace.available.value,
-    true,
-    'the real page workspace loads from the injected tree',
+    false,
+    'the real page workspace cannot select departments without management permissions',
   );
-  assert.equal(workspace.selectedDeptId.value, 'dept-root');
+  assert.equal(workspace.selectedDeptId.value, '');
+  assert.deepEqual(workspace.departments, []);
   assert.equal(workspace.scopeLevel.value, '产品级');
-  assert.equal(workspace.canManageDepartment.value, true);
-  assert.deepEqual(sceneQueries.at(-1), {
-    userId: 'permission-user',
-    dimType: '产品级',
-    dimCode: 'injected-product',
-    dimName: 'injected-product',
-  });
+  assert.equal(workspace.canManageDepartment.value, false);
+  assert.deepEqual(sceneQueries, []);
   const command = {
     _id: 'draft-command',
     name: '/injected-product-check',
@@ -155,18 +149,12 @@ try {
     version: null,
     dueDate: null,
   };
-  await workspace.createCapability('Command', command);
+  await assert.rejects(() => workspace.createCapability('Command', command), /无管理权限/);
   assert.equal(
     capabilityWrites.length,
-    1,
-    'the page allows a product-level write without department permissions',
+    0,
+    'the page blocks product-level writes without department permissions',
   );
-  assert.deepEqual(capabilityWrites[0].scope, {
-    userId: 'permission-user',
-    dimType: '产品级',
-    dimCode: 'injected-product',
-    dimName: 'injected-product',
-  });
   sceneQueries.length = 0;
   workspace.selectLevel('部门级');
   await settle();
@@ -174,7 +162,7 @@ try {
   assert.equal(workspace.canManageDepartment.value, false);
   assert.deepEqual(sceneQueries, [], 'the page never requests an unauthorized department scope');
   await assert.rejects(() => workspace.createCapability('Command', command), /无管理权限/);
-  assert.equal(capabilityWrites.length, 1, 'department writes remain blocked');
+  assert.equal(capabilityWrites.length, 0, 'department writes remain blocked');
   assert.deepEqual(taskOnly.state.permissionDepartmentPaths.value, []);
   taskOnly.app.unmount();
 

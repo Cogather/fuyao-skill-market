@@ -5,6 +5,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import HarnessCatalogDetailDialog from '../../components/skill/HarnessCatalogDetailDialog.vue';
 import HarnessExtensionDetailContent from '../../components/skill/HarnessExtensionDetailContent.vue';
 import HarnessAssetDeleteDialog from '../../components/skill/HarnessAssetDeleteDialog.vue';
+import HarnessBatchPublishDialog from '../../components/skill/HarnessBatchPublishDialog.vue';
+import {
+  batchAssetPublishService,
+  createBatchPublishQuery,
+  type HarnessBatchPublishOptions,
+  type HarnessBatchPublishQuery,
+} from '../../services/skillMarket/batchAssetPublishService';
 import HarnessCatalogImportDialog from '../../components/skill/HarnessCatalogImportDialog.vue';
 import HarnessCatalogExportDialog from '../../components/skill/HarnessCatalogExportDialog.vue';
 import HarnessDepartmentPicker from '../../components/skill/HarnessDepartmentPicker.vue';
@@ -15,7 +22,10 @@ import HarnessCapabilityCatalogPanel from '../../components/skill/HarnessCapabil
 import SkillMasterManagementPanel from '../../components/skill/SkillMasterManagementPanelV2.vue';
 import AtomicAssetPublishPage from './AtomicAssetPublishPage.vue';
 import ExtensionPublishPage from './ExtensionPublishPage.vue';
-import { atomicAssetApiType } from '../../services/skillMarket/atomicAssetPublishHttp';
+import {
+  atomicAssetApiType,
+  canPublishAtomicAsset,
+} from '../../services/skillMarket/atomicAssetPublishHttp';
 import type { ExtensionReleaseContext } from '../../services/skillMarket/extensionPublishHttp';
 import { getExtensionBypassDownload } from '../../services/skillMarket/extensionBypassService';
 import {
@@ -93,6 +103,15 @@ const detailTab = ref<'content' | 'report' | 'behavior' | 'history'>('content');
 const deleteTarget = ref<DeleteHarnessAssetInput | null>(null);
 const assetListHeading = ref<HTMLElement | null>(null);
 const atomicPublishAsset = ref<HarnessAsset | null>(null);
+const batchPublishContext = ref<{
+  assetType: (typeof CATALOG_TYPES)[number];
+  query: HarnessBatchPublishQuery;
+  options: HarnessBatchPublishOptions;
+} | null>(null);
+const batchPublishLoading = ref(false);
+const batchPublishError = ref('');
+const batchPublishTrigger = ref<HTMLButtonElement | null>(null);
+let batchPublishSequence = 0;
 const extensionRelease = ref<{
   context: ExtensionReleaseContext;
   mode: 'publish' | 'history';
@@ -194,6 +213,22 @@ const {
 
 watch([selectedDepartmentId, selectedProductId], ([departmentId, productId]) => {
   emit('list-filter-change', { departmentId, productId });
+});
+
+const batchPublishScopeKey = computed(() =>
+  JSON.stringify([
+    filter.value,
+    selectedDepartmentId.value,
+    selectedProductId.value,
+    props.userId,
+    view.value,
+  ]),
+);
+watch(batchPublishScopeKey, () => {
+  batchPublishSequence += 1;
+  batchPublishContext.value = null;
+  batchPublishLoading.value = false;
+  batchPublishError.value = '';
 });
 
 function initialDetailPerson(field: HarnessAssetPersonField): SkillPlanningUserOption | null {
@@ -694,7 +729,7 @@ function deleteCardAsset(asset: HarnessAsset): void {
 
 function openAtomicPublish(asset: HarnessAsset): void {
   closeCardMenu();
-  if (asset.assetType === 'Extension' || asset.canPublish !== true) return;
+  if (!canPublishAtomicAsset(asset)) return;
   try {
     atomicAssetApiType(asset);
   } catch (error) {
@@ -715,6 +750,39 @@ function openAtomicPublish(asset: HarnessAsset): void {
     dimName: asset.dimName,
   };
   view.value = 'publish';
+}
+
+async function openBatchPublish(): Promise<void> {
+  const assetType = selectedCatalogType.value;
+  const scope = currentScope.value;
+  if (!assetType || !scope || batchPublishLoading.value) return;
+  closeCardMenu();
+  const query = createBatchPublishQuery(assetType, props.userId, scope.department);
+  const scopeKey = batchPublishScopeKey.value;
+  const sequence = ++batchPublishSequence;
+  batchPublishLoading.value = true;
+  batchPublishError.value = '';
+  try {
+    const options = await batchAssetPublishService.queryOptions(query);
+    if (sequence !== batchPublishSequence || scopeKey !== batchPublishScopeKey.value) return;
+    batchPublishContext.value = { assetType, query, options };
+  } catch (error) {
+    if (sequence === batchPublishSequence && scopeKey === batchPublishScopeKey.value) {
+      batchPublishError.value = errorMessage(error, '批量发布信息加载失败，请重试');
+    }
+  } finally {
+    if (sequence === batchPublishSequence) batchPublishLoading.value = false;
+  }
+}
+
+async function closeBatchPublish(): Promise<void> {
+  batchPublishContext.value = null;
+  if (assetsNeedRefresh.value) {
+    assetsNeedRefresh.value = false;
+    await reloadAssets();
+  }
+  await nextTick();
+  batchPublishTrigger.value?.focus();
 }
 
 async function returnFromAtomicPublish(): Promise<void> {
@@ -958,6 +1026,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  batchPublishSequence += 1;
   resetExtensionDownload();
   document.removeEventListener('pointerdown', handleCardMenuPointerDown);
   document.removeEventListener('keydown', handleCardMenuKeydown);
@@ -971,6 +1040,15 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="asset-page harness-viewport-page">
+    <HarnessBatchPublishDialog
+      v-if="batchPublishContext"
+      :asset-type="batchPublishContext.assetType"
+      :options="batchPublishContext.options"
+      :query="batchPublishContext.query"
+      :user-name="userName"
+      @close="closeBatchPublish"
+      @accepted="assetsNeedRefresh = true"
+    />
     <HarnessAssetDeleteDialog
       v-if="deleteTarget"
       :asset-name="deleteTarget.asset.name"
@@ -1143,7 +1221,29 @@ onBeforeUnmount(() => {
           >
             导出
           </button>
+          <button
+            ref="batchPublishTrigger"
+            type="button"
+            class="asset-button is-primary"
+            :disabled="!selectedCatalogType || !currentScope || listLoading || batchPublishLoading"
+            :aria-busy="batchPublishLoading"
+            :title="
+              selectedCatalogType
+                ? `批量发布 ${selectedCatalogType}，每次最多 10 项`
+                : 'Extension 不支持批量发布'
+            "
+            @click="openBatchPublish"
+          >
+            {{ batchPublishLoading ? '正在准备…' : '批量发布' }}
+          </button>
         </div>
+      </div>
+
+      <div v-if="batchPublishError" class="asset-scope-error" role="alert">
+        {{ batchPublishError }}
+        <button type="button" class="asset-button is-secondary" @click="openBatchPublish">
+          重试
+        </button>
       </div>
 
       <div class="asset-subbar">
@@ -1257,7 +1357,7 @@ onBeforeUnmount(() => {
                 编辑信息
               </button>
               <button
-                v-if="asset.assetType !== 'Extension' && asset.canPublish === true"
+                v-if="canPublishAtomicAsset(asset)"
                 type="button"
                 role="menuitem"
                 @click="openAtomicPublish(asset)"

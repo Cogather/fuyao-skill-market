@@ -863,10 +863,8 @@ function createHarnessAssetApi(transport: AssetTransport): HarnessAssetApi {
     return result.list
       .filter((record) => recordMatchesScope(record, state.scope, state.products))
       .map((record) => {
-        const canPublish =
-          transport === 'mock' &&
-          Boolean(latestSkillMasterVersion(record)?.version?.trim()) &&
-          lane.mockPublishableCount < 3;
+        // Mock 每类前 3 张卡片提供发布演示；缺版本时由 atomicAsset 补齐演示版本。
+        const canPublish = transport === 'mock' && lane.mockPublishableCount < 3;
         if (canPublish) lane.mockPublishableCount += 1;
         return atomicAsset(lane.type, record, state.scope, state.products, canPublish);
       });

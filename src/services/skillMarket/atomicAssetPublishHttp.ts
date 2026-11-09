@@ -5,6 +5,7 @@ import type {
 } from './assetManagementTypes';
 import { queryHttpPublishableOrganizations } from './extensionPublishHttp';
 import { skillBaseService } from './skillBaseService';
+import { batchAssetPublishMock } from './batchAssetPublishMock';
 
 export type HarnessAtomicAssetApiType = 'AGENT' | 'SKILL' | 'COMMAND';
 
@@ -225,6 +226,11 @@ function requiredText(value: unknown, message: string): string {
   return result;
 }
 
+export function canPublishAtomicAsset(asset: HarnessAsset): boolean {
+  // 与 Harness 工作流一致，只接受接口明确返回的 true；不根据状态或编辑权限推断。
+  return asset.assetType !== 'Extension' && asset.canPublish === true;
+}
+
 export function atomicAssetApiType(asset: HarnessAsset): HarnessAtomicAssetApiType {
   if (asset.assetType === 'Extension') throw new Error('Extension 不支持独立资产发布接口');
   const expectedType = API_TYPES[asset.assetType];
@@ -373,7 +379,10 @@ export async function queryAtomicAssetPublishHistory(
   const assetName = requiredText(query.assetName, '资产名称不能为空');
   const operatorId = requiredText(query.operatorId, '尚未获取当前用户工号');
   if (!transportIsHttp) {
-    const allRecords = getMockHistoryRecords(normalizedAssetType, assetName, operatorId);
+    const allRecords = [
+      ...batchAssetPublishMock.assetHistory(normalizedAssetType, assetName, operatorId),
+      ...getMockHistoryRecords(normalizedAssetType, assetName, operatorId),
+    ];
     const start = (pageNum - 1) * pageSize;
     return {
       records: allRecords.slice(start, start + pageSize).map((record) => ({ ...record })),
@@ -413,6 +422,11 @@ export async function retryAtomicAssetPublish(taskId: string, userId: string): P
   const requiredTaskId = requiredText(taskId, '发布记录缺少任务 ID');
   const requiredUserId = requiredText(userId, '尚未获取当前用户工号');
   if (!transportIsHttp) {
+    if (batchAssetPublishMock.hasTask(requiredTaskId)) {
+      const response = await batchAssetPublishMock.retry(requiredTaskId, requiredUserId);
+      assertSuccess(response, '发布任务重试失败');
+      return;
+    }
     for (const records of mockHistoryByAsset.values()) {
       const record = records.find(
         (item) => item.id === requiredTaskId && item.operatorId === requiredUserId,
