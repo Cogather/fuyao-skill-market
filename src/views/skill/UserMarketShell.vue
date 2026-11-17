@@ -1012,7 +1012,25 @@ const tabPanelFillStyle = computed(() => {
   };
 });
 
-const overviewIframeSrc =  import.meta.env.VITE_AGENT_CENTER_AI_API_BASE || '';
+let overviewSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const overviewSearchQuery = ref('');
+
+// overviewIframeSrc 动态拼接：基础 URL 来自环境变量，搜索词非空时追加 &q=<encodeURIComponent(搜索词)>
+const overviewIframeSrc = computed(() => {
+  const base = import.meta.env.VITE_AGENT_CENTER_AI_API_BASE || '';
+  const q = overviewSearchQuery.value.trim();
+  if (!base) {
+    return '';
+  }
+  if (!q) {
+    return base;
+  }
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}q=${encodeURIComponent(q)}`;
+});
+
+// 热榜 iframe 链接固定不变，由环境变量提供
+const hotIframeSrc = import.meta.env.VITE_HOT_SKILL_IFRAME_SRC || '';
 
 // userId 和部门树都由父页面通过 Skill_Square_Init 注入。
 function waitUserIdAndDepartmentList(timeout = 8000): Promise<void> {
@@ -1212,6 +1230,10 @@ onBeforeUnmount(() => {
   if (overviewDimensionResizeFrame) {
     window.cancelAnimationFrame(overviewDimensionResizeFrame);
   }
+  if (overviewSearchDebounceTimer) {
+    clearTimeout(overviewSearchDebounceTimer);
+    overviewSearchDebounceTimer = null;
+  }
   stopOpsDimensionResize();
 });
 
@@ -1314,6 +1336,13 @@ const changeOverviewTab = async (tabName: string) => {
 const onSearchKeyWord = async (event: Event) => {
   const query = (event.target as HTMLInputElement).value;
   overviewFilterObj.value.keyword = query;
+  // 同步搜索词到 overviewIframeSrc 的 q 参数（防抖300ms）
+  if (overviewSearchDebounceTimer) {
+    clearTimeout(overviewSearchDebounceTimer);
+  }
+  overviewSearchDebounceTimer = setTimeout(() => {
+    overviewSearchQuery.value = query;
+  }, 300);
   await reloadOverviewFirstPageFromUserInput();
 };
 
@@ -1611,17 +1640,17 @@ async function loadSyncApplicationRows(): Promise<void> {
   }
 }
 
-const loadHotSkillNums = async () => {
-  await skillBaseService.getHotSkillNums().then((res: any) => {
-    if (res.meta.success && res.data) {
-      Object.keys(res.data).map((key) => {
-        if (hotMarketStatsByKey.value[key]) {
-          hotMarketStatsByKey.value[key].value = res.data[key].toString();
-        }
-      });
-    }
-  });
-};
+// const loadHotSkillNums = async () => {
+//   await skillBaseService.getHotSkillNums().then((res: any) => {
+//     if (res.meta.success && res.data) {
+//       Object.keys(res.data).map((key) => {
+//         if (hotMarketStatsByKey.value[key]) {
+//           hotMarketStatsByKey.value[key].value = res.data[key].toString();
+//         }
+//       });
+//     }
+//   });
+// };
 
 async function loadHotSkillCards(): Promise<void> {
   hotSkillsLoading.value = true;
@@ -1652,7 +1681,18 @@ async function loadHotSkillCards(): Promise<void> {
 const onSearchHot = async (e: Event | KeyboardEvent) => {
   const value = (e.target as HTMLInputElement).value;
   hotSearch.value = value;
-  await loadHotSkillCards();
+  // await loadHotSkillCards();
+  if (e.type === 'keydown') {
+    hotSearchToOverview(value);
+  }
+};
+
+const hotSearchToOverview = (value: string) => {
+  const q = (value ?? '').trim();
+  search.value = q;
+  overviewSearchQuery.value = q;
+  hotSearch.value = '';
+  goTab('overview');
 };
 
 const setHotSearchMode = async (mode: 'normal' | 'smart') => {
@@ -1661,7 +1701,7 @@ const setHotSearchMode = async (mode: 'normal' | 'smart') => {
   }
   hotSearchMode.value = mode;
   if (hotSearch.value.trim()) {
-    await loadHotSkillCards();
+    // await loadHotSkillCards();
   }
 };
 
@@ -4062,7 +4102,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
       </section>
 
       <div class="hot-search-row" role="search">
-        <div class="hot-search-mode" role="radiogroup" aria-label="检索模式">
+        <div v-if="false" class="hot-search-mode" role="radiogroup" aria-label="检索模式">
           <button
             type="button"
             class="hot-search-mode-item"
@@ -4115,12 +4155,12 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
           <input
             v-model="hotSearch"
             type="search"
-            placeholder="搜索热门 Skill / 创建者 / 描述"
+            placeholder="输入名称和描述搜索 Skill"
             @keydown.enter="onSearchHot"
             @input="onSearchHot"
           />
         </label>
-        <button type="button" class="hot-search-more" @click="goTab('overview')">
+        <button type="button" class="hot-search-more" @click="hotSearchToOverview(hotSearch)">
           探索全部技能 <span aria-hidden="true">→</span>
         </button>
       </div>
@@ -4150,10 +4190,29 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
               <p>热门 Skill</p>
             </h2>
           </div>
-          <span v-if="hotSkillsLoading" class="hot-loading">加载中…</span>
         </div>
 
-        <div v-if="hotSkills.length > 0" class="hot-skill-grid">
+        <!-- 新增：嵌入 AgentCenter 热榜页 -->
+        <iframe
+          v-if="hotIframeSrc"
+          :src="hotIframeSrc"
+          style="
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-width: medium;
+            border-style: none;
+            border-color: currentColor;
+            border-image: none;
+            mix-blend-mode: multiply;
+            margin-top: 10px;
+          "
+          allow="fullscreen"
+          loading="eager"
+        />
+
+        <!-- 原热门 Skill 卡片列表，默认隐藏，保留代码便于回退 -->
+        <div v-if="false && hotSkills.length > 0" class="hot-skill-grid">
           <SkillCard
             v-for="(s, index) in hotSkills"
             :key="s.id"
@@ -4166,7 +4225,7 @@ async function onOpsExcelFileChange(ev: Event): Promise<void> {
             @update-skill-data="updateSkillData"
           />
         </div>
-        <p v-else class="empty hot-empty">
+        <p v-if="false" class="empty hot-empty">
           {{ hotSkillsLoading ? '热门 Skill 加载中…' : '暂无匹配的热门 Skill' }}
         </p>
       </section>
