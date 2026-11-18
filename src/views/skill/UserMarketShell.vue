@@ -1652,31 +1652,31 @@ async function loadSyncApplicationRows(): Promise<void> {
 //   });
 // };
 
-async function loadHotSkillCards(): Promise<void> {
-  hotSkillsLoading.value = true;
-  try {
-    const params: Record<string, unknown> = {
-      pageNum: 1,
-      pageSize: 6,
-      sortBy: 'downloads',
-      sortOrder: 'desc',
-      keyword: hotSearch.value,
-    };
-    if (hotSearchMode.value === 'smart') {
-      params.searchMode = 'smart';
-    }
-    const res = await skillBaseService.querySkillList(params);
-    if (res?.meta?.success && res?.data) {
-      hotSkills.value = [...res.data];
-    }
-  } catch (e) {
-    if (transportIsHttp) {
-      showToast(e instanceof Error ? e.message : '热门 Skill 加载失败');
-    }
-  } finally {
-    hotSkillsLoading.value = false;
-  }
-}
+// async function loadHotSkillCards(): Promise<void> {
+//   hotSkillsLoading.value = true;
+//   try {
+//     const params: Record<string, unknown> = {
+//       pageNum: 1,
+//       pageSize: 6,
+//       sortBy: 'downloads',
+//       sortOrder: 'desc',
+//       keyword: hotSearch.value,
+//     };
+//     if (hotSearchMode.value === 'smart') {
+//       params.searchMode = 'smart';
+//     }
+//     const res = await skillBaseService.querySkillList(params);
+//     if (res?.meta?.success && res?.data) {
+//       hotSkills.value = [...res.data];
+//     }
+//   } catch (e) {
+//     if (transportIsHttp) {
+//       showToast(e instanceof Error ? e.message : '热门 Skill 加载失败');
+//     }
+//   } finally {
+//     hotSkillsLoading.value = false;
+//   }
+// }
 
 const onSearchHot = async (e: Event | KeyboardEvent) => {
   const value = (e.target as HTMLInputElement).value;
@@ -2186,7 +2186,7 @@ watch(
   async (tab) => {
     closeDeleteConfirm();
     if (tab === 'hot') {
-      await Promise.all([loadHotSkillNums(), loadHotSkillCards()]);
+      // await Promise.all([loadHotSkillNums(), loadHotSkillCards()]);
     }
     if (tab === 'overview') {
       await startOverviewRemoteFetch();
