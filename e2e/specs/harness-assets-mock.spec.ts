@@ -80,6 +80,53 @@ test.describe('Agent / Skill \u8d44\u4ea7 Mock \u4e1a\u52a1', () => {
     expect(confirmBox!.height).toBeLessThanOrEqual(40);
   });
 
+  for (const type of ['Agent', 'Skill', 'Command']) {
+    test(`${type} 前三张 Mock 卡片可完整预览和发布`, async ({ page }) => {
+      await page.getByRole('button', { name: type, exact: true }).click();
+      const cards = page.locator('.asset-card');
+      await expect(cards.nth(3)).toBeVisible();
+      for (let index = 0; index < 4; index += 1) {
+        const menu = await openAssetCardMenu(cards.nth(index));
+        await expect(menu.getByRole('menuitem', { name: '发布', exact: true })).toHaveCount(
+          index < 3 ? 1 : 0,
+        );
+        await page.keyboard.press('Escape');
+      }
+
+      const name = (await cards.first().getByRole('heading').innerText()).trim();
+      await clickAssetCardAction(cards.first(), '发布');
+      const publishPage = page.getByRole('region', { name: `发布 ${type} · ${name}` });
+      await expect(publishPage.getByLabel('目标组织', { exact: true })).toHaveValue('org-fuyao');
+      if (type === 'Skill') {
+        await publishPage.locator('.atomic-publish__checklist-row').click();
+        await expect(
+          publishPage.locator('.atomic-publish__file-content pre').first(),
+        ).toContainText(name);
+      } else {
+        await expect(publishPage.locator('.atomic-publish__direct-content pre')).toContainText(
+          name,
+        );
+      }
+
+      await publishPage.getByRole('button', { name: '发布记录', exact: true }).click();
+      const history = publishPage.getByRole('region', { name: `${type} 发布记录` });
+      await expect(history.locator('.atomic-timeline__item')).toHaveCount(4);
+      await history.getByRole('button', { name: `重试：${name}` }).click();
+      await expect(history.locator('.atomic-timeline__item').nth(2)).toContainText('进行中');
+      await publishPage.getByRole('button', { name: '发布信息', exact: true }).click();
+      await publishPage.getByLabel('目标组织', { exact: true }).selectOption('org-yunshan');
+      await publishPage.getByRole('button', { name: '确认发布', exact: true }).click();
+      await expect(publishPage.getByRole('status', { name: '提交结果' })).toContainText(
+        '发布任务已受理',
+      );
+      await expect(history.locator('.atomic-timeline__item')).toHaveCount(5);
+      await expect(history.locator('.atomic-timeline__item').first()).toContainText('Mock 发布人');
+      await expect(history.locator('.atomic-timeline__item').first()).toContainText('云山组织');
+      await publishPage.getByRole('button', { name: '返回', exact: true }).click();
+      await expect(cards.first()).toContainText(name);
+    });
+  }
+
   test('部门级联选择确认后才刷新产品范围，清空和切换页签正确收起面板', async ({
     page,
   }, testInfo) => {

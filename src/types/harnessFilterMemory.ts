@@ -16,6 +16,12 @@ export type HarnessListFilterSnapshot = {
   productId: string;
 };
 
+export type HarnessWorkspaceFilterSnapshot = {
+  level: HarnessScopeLevel;
+  departmentId: string;
+  product: { offeringId: string; offeringName: string } | null;
+};
+
 export type HarnessCatalogAssetType = 'Agent' | 'Skill' | 'Command';
 export type HarnessCatalogAction = 'create' | 'import' | 'export';
 

@@ -132,37 +132,47 @@ test.describe('HTTP 场景部门权限与列表筛选', () => {
     });
   }
 
-  test('场景设计只可选择授权部门及下级，上级仅用于导航', async ({ page }) => {
-    const requests = await prepare(page);
-    const panel = page.locator('#harness-panel-scenarios');
-    const create = panel.locator('.tree-panel > header button');
-    const trigger = panel.getByRole('button', { name: '选择部门', exact: true });
-    await expect(trigger).toContainText('团队A');
-    await expect(create).toBeEnabled();
-    await trigger.click();
-    const picker = page.getByRole('listbox');
-    await expect(picker.getByRole('option').filter({ hasText: '团队B' })).toHaveCount(0);
-    await expect(picker.getByRole('option').filter({ hasText: '运营部' })).toHaveCount(0);
-    await picker.getByRole('option').filter({ hasText: '研发部' }).click();
-    await picker.getByRole('button', { name: '完成', exact: true }).click();
-    await expect(picker).toBeVisible();
-    await expect(panel.getByRole('alert')).toContainText('请选择有管理权限的部门');
-    await expect(trigger).toContainText('团队A');
-    await picker.getByRole('option').filter({ hasText: '团队A' }).click();
-    await picker.getByRole('option').filter({ hasText: 'A子团队' }).click();
-    await picker.getByRole('button', { name: '完成', exact: true }).click();
-    await expect(trigger).toContainText('A子团队');
-    await expect
-      .poll(() =>
-        requests
-          .filter((request) => new URL(request.url()).pathname.endsWith('/smapi-product-by-dept'))
-          .map((request) => new URL(request.url()).searchParams.get('deptCode')),
-      )
-      .toContain('team-a-child');
-    await expect(create).toBeEnabled();
-    await selectDepartment(page, '#harness-panel-scenarios', ['研发部', '团队A']);
-    await expect(create).toBeEnabled();
-  });
+  for (const level of ['产品级', '部门级']) {
+    test(`场景设计${level}只可选择授权部门及下级，上级仅用于导航`, async ({ page }) => {
+      const requests = await prepare(page);
+      const panel = page.locator('#harness-panel-scenarios');
+      await selectHarnessOption(panel.getByRole('combobox', { name: '选择层级' }), level);
+      const create = panel.locator('.tree-panel > header button');
+      const trigger = panel.getByRole('button', { name: '选择部门', exact: true });
+      await expect(trigger).toContainText('团队A');
+      await expect(create).toBeEnabled();
+      await trigger.click();
+      const picker = page.getByRole('listbox');
+      await expect(picker.getByRole('option').filter({ hasText: '团队B' })).toHaveCount(0);
+      await expect(picker.getByRole('option').filter({ hasText: '运营部' })).toHaveCount(0);
+      await picker.getByRole('searchbox').fill('团队B');
+      await expect(picker.getByRole('option')).toHaveCount(0);
+      await picker.getByRole('searchbox').clear();
+      await picker.getByRole('option').filter({ hasText: '研发部' }).click();
+      await picker.getByRole('button', { name: '完成', exact: true }).click();
+      await expect(picker).toBeVisible();
+      await expect(panel.getByRole('alert')).toContainText('请选择有管理权限的部门');
+      await expect(trigger).toContainText('团队A');
+      await picker.getByRole('option').filter({ hasText: '团队A' }).click();
+      await picker.getByRole('option').filter({ hasText: 'A子团队' }).click();
+      await picker.getByRole('button', { name: '完成', exact: true }).click();
+      await expect(trigger).toContainText('A子团队');
+      if (level === '产品级') {
+        await expect
+          .poll(() =>
+            requests
+              .filter((request) =>
+                new URL(request.url()).pathname.endsWith('/smapi-product-by-dept'),
+              )
+              .map((request) => new URL(request.url()).searchParams.get('deptCode')),
+          )
+          .toContain('team-a-child');
+      }
+      await expect(create).toBeEnabled();
+      await selectDepartment(page, '#harness-panel-scenarios', ['研发部', '团队A']);
+      await expect(create).toBeEnabled();
+    });
+  }
 
   test('从工作流返回场景设计时，未授权的筛选部门会重置为授权部门', async ({ page }) => {
     await prepare(page);

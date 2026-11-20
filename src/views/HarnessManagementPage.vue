@@ -13,6 +13,13 @@ import HarnessTaskManagementPage from './skill/HarnessTaskManagementPage.vue';
 import SkillPlanningPage from './skill/SkillPlanningPage.vue';
 import { createHarnessScenarioWorkspace } from '../composables/useHarnessScenarioWorkspace';
 import {
+  isDepartmentSnapshot,
+  isListFilterSnapshot,
+  isScopeSnapshot,
+  isSnapshotRecord,
+  useHarnessFilterMemory,
+} from '../composables/useHarnessFilterMemory';
+import {
   coerceDepartmentTreeFromUnknown,
   mapDepartmentTreeDtoToForest,
 } from '../services/skillMarket/marketDeptTreeFromApi';
@@ -119,11 +126,6 @@ const configurationPage = ref<InstanceType<typeof HarnessConfigurationPage> | nu
 const planningPage = ref<InstanceType<typeof SkillPlanningPage> | null>(null);
 const capabilityManagementActivated = ref(false);
 const extensionTabActivated = ref(false);
-const planningScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
-const catalogScopeSnapshots = ref<Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>>({});
-const assetCatalogScopeSnapshotsByUser = ref<Record<string, HarnessCatalogScopeSnapshots>>({});
-const assetListFiltersByUser = ref<Record<string, HarnessListFilterSnapshot>>({});
-const extensionScopeSnapshot = ref<HarnessScopeSnapshot>();
 const capabilityScopeSnapshots = computed<
   Partial<Record<PlanningScopeChange['capabilityType'], HarnessScopeSnapshot>>
 >(() => {
@@ -140,12 +142,6 @@ const capabilityScopeSnapshots = computed<
   }
   return snapshots;
 });
-const configurationScopeSnapshots = ref<
-  Partial<Record<'scene' | 'activity', HarnessScopeSnapshot>>
->({});
-const configurationDepartmentSnapshots = ref<
-  Partial<Record<'permission', HarnessDepartmentSnapshot>>
->({});
 const activeHarnessTabMeta = computed(
   () => harnessTabs.find((tab) => tab.key === activeHarnessTab.value) ?? harnessTabs[0]!,
 );
@@ -159,10 +155,46 @@ const userId = computed(() => {
   return String(profileStore.userInfo?.w3Id ?? '').trim() || MOCK_HARNESS_USER_ID;
 });
 
-const userName = computed(() => String(skillMarketStore.userName ?? '').trim());
-const assetCatalogScopeSnapshots = computed<HarnessCatalogScopeSnapshots>(
-  () => assetCatalogScopeSnapshotsByUser.value[userId.value] ?? {},
+const memoryUserId = () => userId.value;
+const planningScopeSnapshots = useHarnessFilterMemory<
+  Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>
+>(memoryUserId, 'planning', isSnapshotRecord(isScopeSnapshot), () => ({}));
+const catalogScopeSnapshots = useHarnessFilterMemory<
+  Partial<Record<PlanningMemoryKey, HarnessScopeSnapshot>>
+>(memoryUserId, 'catalog', isSnapshotRecord(isScopeSnapshot), () => ({}));
+const assetCatalogScopeSnapshots = useHarnessFilterMemory<HarnessCatalogScopeSnapshots>(
+  memoryUserId,
+  'asset-dialogs',
+  isSnapshotRecord(isSnapshotRecord(isScopeSnapshot)),
+  () => ({}),
 );
+const assetListFilters = useHarnessFilterMemory<HarnessListFilterSnapshot | undefined>(
+  memoryUserId,
+  'asset-list',
+  isListFilterSnapshot,
+  () => undefined,
+);
+const extensionScopeSnapshot = useHarnessFilterMemory<HarnessScopeSnapshot | undefined>(
+  memoryUserId,
+  'extension',
+  isScopeSnapshot,
+  () => undefined,
+);
+const configurationScopeSnapshots = useHarnessFilterMemory<
+  Partial<Record<'scene' | 'activity', HarnessScopeSnapshot>>
+>(memoryUserId, 'configuration', isSnapshotRecord(isScopeSnapshot), () => ({}));
+const configurationDepartmentSnapshots = useHarnessFilterMemory<
+  Partial<Record<'permission', HarnessDepartmentSnapshot>>
+>(memoryUserId, 'configuration-departments', isSnapshotRecord(isDepartmentSnapshot), () => ({}));
+
+const userName = computed(() => {
+  const injectedUserName = String(skillMarketStore.userName ?? '').trim();
+  if (injectedUserName || transportIsHttp) return injectedUserName;
+  return (
+    String(profileStore.userInfo?.nameCn || profileStore.userInfo?.name || '').trim() ||
+    'Mock 发布人'
+  );
+});
 
 const departmentTree = computed(() => {
   const injectedDepartments = skillMarketStore.departmentList;
@@ -257,7 +289,7 @@ const scenarioWorkspace = createHarnessScenarioWorkspace(() => ({
   defaultDepartmentPath:
     permissionDepartmentPaths.value[0] ?? currentUserDepartmentPermission.value.path,
   allowedDepartmentPaths: permissionDepartmentPaths.value,
-  // 场景设计的部门级受管理权限约束；工作流列表可以按上级部门筛选。
+  // 场景设计的产品级和部门级均受管理权限约束；工作流列表可以按上级部门筛选。
   restrictToAllowedDepartments:
     restrictToPermissionDepartments.value && workspaceFilterTab.value === 'scenarios',
   departmentMaxLevel:
@@ -422,18 +454,14 @@ function updateCatalogScopeSnapshot(change: PlanningScopeChange): void {
 }
 
 function updateAssetCatalogScopeSnapshot(change: HarnessCatalogScopeChange): void {
-  const memoryKey = userId.value;
-  if (!memoryKey) return;
-  assetCatalogScopeSnapshotsByUser.value = {
-    ...assetCatalogScopeSnapshotsByUser.value,
-    [memoryKey]: {
-      ...(assetCatalogScopeSnapshotsByUser.value[memoryKey] ?? {}),
-      [change.assetType]: {
-        ...(assetCatalogScopeSnapshotsByUser.value[memoryKey]?.[change.assetType] ?? {}),
-        [change.action]: {
-          ...change.snapshot,
-          departmentPath: [...change.snapshot.departmentPath],
-        },
+  if (!userId.value) return;
+  assetCatalogScopeSnapshots.value = {
+    ...assetCatalogScopeSnapshots.value,
+    [change.assetType]: {
+      ...assetCatalogScopeSnapshots.value[change.assetType],
+      [change.action]: {
+        ...change.snapshot,
+        departmentPath: [...change.snapshot.departmentPath],
       },
     },
   };
@@ -632,6 +660,7 @@ onBeforeRouteLeave(() => {
       <HarnessWorkflowsPage
         :workspace="scenarioWorkspace"
         :active="activeHarnessTab === 'workflows'"
+        :user-id="userId"
         :user-name="userName"
         @open-scenarios="selectHarnessTab('scenarios')"
       />
@@ -645,6 +674,7 @@ onBeforeRouteLeave(() => {
       aria-labelledby="harness-tab-assets"
     >
       <AgentSkillAssetsPage
+        :key="userId"
         :user-id="userId"
         :user-name="userName"
         :department-tree="departmentTree"
@@ -652,9 +682,9 @@ onBeforeRouteLeave(() => {
         :allowed-department-paths="permissionDepartmentPaths"
         :restrict-to-allowed-departments="restrictToPermissionDepartments"
         :scope-snapshots="assetCatalogScopeSnapshots"
-        :initial-list-filters="assetListFiltersByUser[userId]"
+        :initial-list-filters="assetListFilters"
         @scope-change="updateAssetCatalogScopeSnapshot"
-        @list-filter-change="assetListFiltersByUser[userId] = $event"
+        @list-filter-change="assetListFilters = $event"
       />
     </section>
 

@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Locator, Page, Request } from '@playwright/test';
 
 import { clickAssetCardAction, openAssetCardMenu } from '../helpers/assetCardActions';
 import { expect, test } from '../fixtures/base';
@@ -7,6 +7,7 @@ import { APP_BASE_PATH } from '../helpers/constants';
 const envelope = (data: unknown) => ({ meta: { success: true, message: 'OK' }, data });
 
 type CapturedAtomicRequests = {
+  components: Request[];
   organizations: Request[];
   publishes: Request[];
   histories: Request[];
@@ -24,6 +25,7 @@ function assetCard(page: Page, name: string): Locator {
 async function prepareAtomicAssets(
   page: Page,
   captured: CapturedAtomicRequests = {
+    components: [],
     organizations: [],
     publishes: [],
     histories: [],
@@ -66,6 +68,7 @@ async function prepareAtomicAssets(
     } else if (path.endsWith('/smapi-product-by-dept')) {
       data = [{ offeringId: 'product-1', offeringName: '交付平台' }];
     } else if (path.endsWith('/components/query')) {
+      captured.components.push(request);
       const body = request.postDataJSON() as { type: 'AGENT' | 'SKILL' | 'COMMAND' };
       const type = body.type[0] + body.type.slice(1).toLocaleLowerCase('en-US');
       data = {
@@ -82,7 +85,7 @@ async function prepareAtomicAssets(
             dimName: '交付平台',
             updatedAt: '2026-09-18 09:00:00',
             canPublish: true,
-            canEdit: true,
+            canEdit: false,
           },
           {
             name: `${type} 无发布权限资产`,
@@ -111,10 +114,27 @@ async function prepareAtomicAssets(
             updatedAt: '2026-09-18 09:00:00',
             canEdit: true,
           },
+          ...[null, 'true', 1].map((permission, index) => ({
+            name: `${type} 非布尔权限资产 ${index}`,
+            description: '仅布尔 true 可以显示发布菜单',
+            type: body.type,
+            latestVersion: 'v1.2.3',
+            status: '待发布',
+            category: '产品级/交付平台',
+            updatedAt: '2026-09-18 09:00:00',
+            canPublish: permission,
+          })),
         ],
-        total: 3,
-        pageNo: body.type ? 1 : 1,
+        total: 6,
+        pageNo: 1,
         pageSize: 30,
+      };
+    } else if (path.endsWith('/components/detail')) {
+      data = {
+        name: url.searchParams.get('name'),
+        type: url.searchParams.get('type'),
+        description: '资产详情',
+        versions: [{ version: 'v1.2.3' }],
       };
     } else if (path.endsWith('/extensions/orgs')) {
       captured.organizations.push(request);
@@ -217,7 +237,13 @@ test.describe('Agent / Skill / Command 发布入口', () => {
     for (const type of ['Agent', 'Skill', 'Command'] as const) {
       await page.getByRole('button', { name: type, exact: true }).click();
 
-      for (const suffix of ['无发布权限资产', '未声明权限资产']) {
+      for (const suffix of [
+        '无发布权限资产',
+        '未声明权限资产',
+        '非布尔权限资产 0',
+        '非布尔权限资产 1',
+        '非布尔权限资产 2',
+      ]) {
         const menu = await openAssetCardMenu(assetCard(page, `${type} ${suffix}`));
         await expect(menu.getByRole('menuitem', { name: '发布', exact: true })).toHaveCount(0);
         await page.keyboard.press('Escape');
@@ -402,7 +428,41 @@ test.describe('Agent / Skill / Command 发布入口', () => {
       userId: 'publish-user',
     });
     await expect.poll(() => captured.histories.length).toBe(2);
+
+    const listRequests = captured.components.length;
+    await publishPage.getByRole('button', { name: '返回', exact: true }).click();
+    await expect.poll(() => captured.components.length).toBeGreaterThan(listRequests);
+    await expect(assetCard(page, 'Skill 可发布资产')).toBeVisible();
   });
+
+  for (const type of ['Agent', 'Command'] as const) {
+    test(`${type} 发布时保留资产身份、最新版本和所选组织`, async ({ page }) => {
+      const captured = await prepareAtomicAssets(page);
+      const name = `${type} 可发布资产`;
+      await page.getByRole('button', { name: type, exact: true }).click();
+      await clickAssetCardAction(assetCard(page, name), '发布');
+      const publishPage = page.getByRole('region', { name: `发布 ${type} · ${name}` });
+      await expect(publishPage.getByLabel('目标组织', { exact: true })).toHaveValue('org-a');
+      await publishPage.getByLabel('目标组织', { exact: true }).selectOption('org-b');
+      await publishPage.getByRole('button', { name: '确认发布', exact: true }).click();
+      await expect(publishPage.getByRole('status', { name: '提交结果' })).toContainText(
+        '发布任务已受理',
+      );
+      expect(captured.publishes).toHaveLength(1);
+      expect(captured.publishes[0]!.postDataJSON()).toEqual({
+        items: [{ assetType: type.toUpperCase(), assetName: name, assetVersion: 'v1.2.3' }],
+        orgCode: 'org-b',
+      });
+      expect(captured.histories[0]!.postDataJSON()).toMatchObject({
+        assetType: type.toUpperCase(),
+        assetName: name,
+      });
+      const listRequests = captured.components.length;
+      await publishPage.getByRole('button', { name: '返回', exact: true }).click();
+      await expect.poll(() => captured.components.length).toBeGreaterThan(listRequests);
+      await expect(assetCard(page, name)).toBeVisible();
+    });
+  }
 
   test('详情发布记录按资产类型和名称查询独立历史', async ({ page }) => {
     const captured = await prepareAtomicAssets(page);

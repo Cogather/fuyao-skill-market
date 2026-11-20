@@ -98,6 +98,8 @@ export async function queryHttpHarnessAssetPage(
       firstScene: record.firstScene ?? null,
       secondScene: record.secondScene ?? null,
       latestVersion,
+      // 发布开关字段暂沿用 Harness 工作流的 canPublish；后端定名后在此处适配，
+      // 页面统一使用 HarnessAsset.canPublish，字段缺失时不显示发布入口。
       canPublish: record.canPublish,
       canEdit: record.canEdit,
       currentVersion,

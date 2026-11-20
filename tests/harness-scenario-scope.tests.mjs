@@ -266,11 +266,14 @@ try {
     assert.equal(sceneCodeWrites.at(-1).body.sceneExtensionCode, 'change-review');
   });
   for (const restrictToAllowedDepartments of [true, false]) {
-    await test(`product scope outside department permissions remains editable (tree restriction ${restrictToAllowedDepartments})`, async () => {
+    await test(`both design levels require department permissions (tree restriction ${restrictToAllowedDepartments})`, async () => {
       const sceneQueries = [];
       const capabilityCalls = [];
-      api.queryProducts = async () =>
-        success([{ offeringId: 'outside-offering', offeringName: 'outside-product' }]);
+      const productQueries = [];
+      api.queryProducts = async ({ deptCode }) => {
+        productQueries.push(deptCode);
+        return success([{ offeringId: 'allowed-offering', offeringName: 'allowed-product' }]);
+      };
       api.querySceneList = async (dimension) => {
         sceneQueries.push(structuredClone(dimension));
         return success([]);
@@ -301,27 +304,33 @@ try {
       await settleUntil(() => workspace.available.value, 'product-level data should load');
       assert.equal(
         workspace.selectedDeptId.value,
-        'outside-code',
-        'product scope retains an unauthorized department',
+        'allowed-code',
+        'product scope replaces an unauthorized default department',
       );
       assert.deepEqual(
         workspace.departments.map((item) => item.deptCode),
-        ['outside-code', 'allowed-code', 'child-code'],
+        restrictToAllowedDepartments
+          ? ['allowed-code', 'child-code']
+          : ['outside-code', 'allowed-code', 'child-code'],
       );
       assert.equal(
         workspace.canManageDepartment.value,
         true,
-        'product-level management skips department permission checks',
+        'authorized product-level management remains available',
       );
       assert.deepEqual(sceneQueries.at(-1), {
         userId: 'parent-injected-user',
         dimType: '产品级',
-        dimCode: 'outside-offering',
-        dimName: 'outside-product',
+        dimCode: 'allowed-offering',
+        dimName: 'allowed-product',
       });
+      workspace.selectDepartment('outside-code');
+      await nextTick();
+      assert.equal(workspace.selectedDeptId.value, 'allowed-code');
+      assert.deepEqual(productQueries, ['allowed-code'], 'unauthorized products are never queried');
       const command = {
         _id: 'draft',
-        name: '/outside-product-check',
+        name: '/allowed-product-check',
         description: '产品检查',
         owner: 'owner',
         ownerId: 'owner',
@@ -335,8 +344,8 @@ try {
       assert.deepEqual(capabilityCalls[0].dimension, {
         userId: 'parent-injected-user',
         dimType: '产品级',
-        dimCode: 'outside-offering',
-        dimName: 'outside-product',
+        dimCode: 'allowed-offering',
+        dimName: 'allowed-product',
       });
 
       sceneQueries.length = 0;
@@ -382,13 +391,14 @@ try {
       );
       assert.deepEqual(
         workspace.departments.map((item) => item.deptCode),
-        ['outside-code', 'allowed-code', 'child-code'],
+        restrictToAllowedDepartments
+          ? ['allowed-code', 'child-code']
+          : ['outside-code', 'allowed-code', 'child-code'],
       );
       workspace.selectDepartment('outside-code');
-      await settleUntil(
-        () => workspace.available.value && workspace.selectedDeptId.value === 'outside-code',
-        'full product tree should be selectable again',
-      );
+      await nextTick();
+      assert.equal(workspace.selectedDeptId.value, 'child-code');
+      assert.ok(!productQueries.includes('outside-code'));
       assert.equal(workspace.canManageDepartment.value, true);
       assert.deepEqual(
         context.allowedDepartmentPaths,
@@ -478,11 +488,14 @@ try {
     );
   });
 
-  await test('switching to department scope without any authorized node blocks data and writes', async () => {
+  await test('both design levels without any authorized node block data and writes', async () => {
     const sceneQueries = [];
+    const productQueries = [];
     let writes = 0;
-    api.queryProducts = async () =>
-      success([{ offeringId: 'product-code', offeringName: 'test-product' }]);
+    api.queryProducts = async ({ deptCode }) => {
+      productQueries.push(deptCode);
+      return success([{ offeringId: 'product-code', offeringName: 'test-product' }]);
+    };
     api.querySceneList = async (dimension) => {
       sceneQueries.push(structuredClone(dimension));
       return success([]);
@@ -502,21 +515,20 @@ try {
     const scope = effectScope();
     scopes.push(scope);
     const workspace = scope.run(() => createHarnessScenarioWorkspace(() => context));
-    await settleUntil(
-      () => workspace.available.value,
-      'product scope does not require department permissions',
-    );
-    sceneQueries.length = 0;
-    workspace.selectLevel('部门级');
-    await nextTick();
-    await setImmediate();
-    assert.equal(workspace.available.value, false);
-    assert.equal(workspace.canManageDepartment.value, false);
-    assert.deepEqual(sceneQueries, [], 'no department request is allowed without permission');
-    await assert.rejects(
-      () => workspace.createCapability('Command', { name: '/check' }),
-      /无管理权限/,
-    );
+    for (const level of ['产品级', '部门级']) {
+      workspace.selectLevel(level);
+      await nextTick();
+      await setImmediate();
+      assert.equal(workspace.selectedDeptId.value, '');
+      assert.equal(workspace.available.value, false);
+      assert.equal(workspace.canManageDepartment.value, false);
+      assert.deepEqual(productQueries, [], 'no product request is allowed without permission');
+      assert.deepEqual(sceneQueries, [], 'no scene request is allowed without permission');
+      await assert.rejects(
+        () => workspace.createCapability('Command', { name: '/check' }),
+        /无管理权限/,
+      );
+    }
     assert.equal(writes, 0);
   });
 } finally {
